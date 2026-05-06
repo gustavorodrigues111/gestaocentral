@@ -11,7 +11,7 @@ export const MODULES: ModuleDef[] = [
   { id: "equipe",           area: "escritorio", label: "Equipe",           icon: "👥", status: "ativo",     desc: "Cargos e empregados do restaurante" },
   { id: "configuracoes",    area: "escritorio", label: "Configurações",    icon: "⚙️", status: "ativo",     desc: "Configurações do restaurante" },
   { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     desc: "Lançamento e divisão de gorjetas" },
-  { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "em-breve",  desc: "Cálculo e pagamento de VT" },
+  { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     desc: "Cálculo e pagamento de VT" },
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", desc: "Fechar escala mensal e ajustes" },
   { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "planejado", desc: "Pedidos baseados em contagens e padrões" },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", desc: "Documentos e wiki interna" },

@@ -152,6 +152,9 @@ function EmpregadoModal({ empregado, cargos, restaurantId, onClose }: {
     inativaFrom:    empregado?.inativaFrom || "",
     email:          empregado?.email || "",
     telefone:       empregado?.telefone || "",
+    vtAtivo:           empregado?.vtAtivo ?? false,
+    vtPassagensPorDia: empregado?.vtPassagensPorDia,
+    vtValorPassagem:   empregado?.vtValorPassagem,
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -188,6 +191,9 @@ function EmpregadoModal({ empregado, cargos, restaurantId, onClose }: {
         emergenciaNome: empregado?.emergenciaNome || null,
         emergenciaTelefone: empregado?.emergenciaTelefone || null,
         pessoaId: empregado?.pessoaId || null,
+        vtAtivo: !!form.vtAtivo,
+        ...(typeof form.vtPassagensPorDia === "number" ? { vtPassagensPorDia: form.vtPassagensPorDia } : {}),
+        ...(typeof form.vtValorPassagem   === "number" ? { vtValorPassagem:   form.vtValorPassagem   } : {}),
       };
       if (empregado) {
         await updateDoc(doc(db, "empregados", empregado.id), data);
@@ -249,6 +255,31 @@ function EmpregadoModal({ empregado, cargos, restaurantId, onClose }: {
               <span title="Sócio — não é assalariado">Sócio (Pró-labore)</span>
             </label>
           </div>
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={!!form.vtAtivo} onChange={(e) => set("vtAtivo", e.target.checked)} />
+            <span className="font-medium">Recebe VT (Vale Transporte)</span>
+          </label>
+          {form.vtAtivo && (
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <Input
+                label="Passagens/dia (deixe vazio pra usar padrão)"
+                type="number" min="0" step="1"
+                value={form.vtPassagensPorDia === undefined ? "" : String(form.vtPassagensPorDia)}
+                onChange={(e) => set("vtPassagensPorDia", e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
+                placeholder="ex: 2"
+              />
+              <Input
+                label="Valor passagem (R$, vazio = padrão)"
+                type="number" min="0" step="0.01"
+                value={form.vtValorPassagem === undefined ? "" : String(form.vtValorPassagem)}
+                onChange={(e) => set("vtValorPassagem", e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                placeholder="ex: 5.00"
+              />
+            </div>
+          )}
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">

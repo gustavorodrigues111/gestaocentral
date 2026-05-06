@@ -12,6 +12,7 @@ import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EquipePage } from "./modules/equipe/EquipePage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
 import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
+import { VTPage } from "./modules/vt/VTPage";
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -38,6 +39,7 @@ function ModuleRouter() {
     case "equipe":        return <EquipePage key={k} />;
     case "escala":        return <EscalaPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
+    case "vt":            return <VTPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

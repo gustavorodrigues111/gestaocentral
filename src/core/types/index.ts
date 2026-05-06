@@ -48,6 +48,10 @@ export type Empregado = {
   emergenciaNome?: string | null;
   emergenciaTelefone?: string | null;
   pessoaId?: string | null;       // vínculo opcional com Pessoa (login)
+  // VT (vale transporte)
+  vtAtivo?: boolean;              // recebe VT? Default false
+  vtPassagensPorDia?: number;     // override do default do restaurante
+  vtValorPassagem?: number;       // override do default do restaurante
   createdAt: string;
   createdBy: string;
 };
@@ -112,6 +116,9 @@ export type Restaurant = {
   modulosAtivos: ModuleId[];  // quais módulos esse restaurante usa
   // Gorjetas
   taxRate?: number;           // % de retenção da gorjeta (ex: 33 = 33%). Default 0
+  // VT
+  vtValorPassagemDefault?: number;  // valor unitário da passagem (R$). Empregado pode ter override.
+  vtPassagensDefault?: number;      // passagens por dia trabalhado padrão (ex: 2). Empregado pode ter override.
   ativo: boolean;
   createdAt: string;
   createdBy: string;
@@ -131,6 +138,27 @@ export type Gorjeta = {
   paidBy?: string | null;
   createdAt: string;
   createdBy: string;
+  updatedAt: string;
+};
+
+// ─── VT (VALE TRANSPORTE) ───
+
+export type VTFolhaItem = {
+  diasTrabalhados: number;       // status trabalho ou comp_trab
+  passagensPorDia: number;       // snapshot do dia que foi calculado
+  valorPassagem: number;         // snapshot
+  total: number;                 // dias * passagens * valor
+  paidAt?: string | null;
+  paidBy?: string | null;
+  observacao?: string;
+};
+
+export type VTFolha = {
+  id: string;                    // `${restaurantId}_${yyyy-mm}`
+  restaurantId: string;
+  ano: number;
+  mes: number;
+  itens: { [empregadoId: string]: VTFolhaItem };
   updatedAt: string;
 };
 

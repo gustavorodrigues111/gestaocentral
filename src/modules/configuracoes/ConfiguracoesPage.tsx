@@ -25,6 +25,8 @@ export function ConfiguracoesPage() {
     codigoContabil: activeRestaurant?.codigoContabil || "",
     cnpj: activeRestaurant?.cnpj || "",
     taxRate: String(activeRestaurant?.taxRate ?? 0),
+    vtPassagensDefault: String(activeRestaurant?.vtPassagensDefault ?? 2),
+    vtValorPassagemDefault: String(activeRestaurant?.vtValorPassagemDefault ?? 0),
   });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
@@ -62,6 +64,8 @@ export function ConfiguracoesPage() {
         codigoContabil: form.codigoContabil.trim() || null,
         cnpj: form.cnpj.trim() || null,
         taxRate: parseFloat(form.taxRate) || 0,
+        vtPassagensDefault: parseFloat(form.vtPassagensDefault) || 0,
+        vtValorPassagemDefault: parseFloat(form.vtValorPassagemDefault) || 0,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -93,6 +97,22 @@ export function ConfiguracoesPage() {
             value={form.taxRate}
             onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
             placeholder="ex: 33"
+          />
+          <Input
+            label="VT — passagens/dia padrão"
+            type="number"
+            min="0" step="1"
+            value={form.vtPassagensDefault}
+            onChange={(e) => setForm({ ...form, vtPassagensDefault: e.target.value })}
+            placeholder="ex: 2"
+          />
+          <Input
+            label="VT — valor unitário da passagem (R$)"
+            type="number"
+            min="0" step="0.01"
+            value={form.vtValorPassagemDefault}
+            onChange={(e) => setForm({ ...form, vtValorPassagemDefault: e.target.value })}
+            placeholder="ex: 5.00"
           />
         </div>
         <div className="flex items-center gap-3 mt-4">
