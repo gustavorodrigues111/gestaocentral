@@ -9,7 +9,6 @@ import { HomePage } from "./core/layout/HomePage";
 import { ModulePlaceholder } from "./core/layout/ModulePlaceholder";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
-import { EquipePage } from "./modules/equipe/EquipePage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
 import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
 import { VTPage } from "./modules/vt/VTPage";
@@ -37,7 +36,6 @@ function ModuleRouter() {
   switch (moduleId) {
     case "pessoas":       return <PessoasPage key={k} />;
     case "configuracoes": return <ConfiguracoesPage key={k} />;
-    case "equipe":        return <EquipePage key={k} />;
     case "escala":        return <EscalaPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
     case "vt":            return <VTPage key={k} />;

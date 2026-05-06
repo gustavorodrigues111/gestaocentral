@@ -6,8 +6,8 @@ export type Sprint = {
   id: string;
   title: string;
   status: SprintStatus;
-  modules?: ModuleId[];      // módulos que essa sprint entrega ou toca
-  items: string[];           // bullets do que tem na sprint
+  modules?: ModuleId[];
+  items: string[];
   notes?: string;
 };
 
@@ -15,113 +15,124 @@ export type Sprint = {
 // uma feature pra ver se ela já tá planejada e em qual sprint.
 export const ROADMAP: Sprint[] = [
   {
-    id: "sprint-0",
-    title: "Sprint 0 — Fundação",
-    status: "completed",
+    id: "sprint-prep",
+    title: "Refatoração inicial — Modelo final",
+    status: "active",
+    modules: ["pessoas"],
     items: [
-      "Setup: Vite + React + TS + Tailwind + Firebase",
-      "Auth (Firebase Auth, email + senha)",
-      "Tipos base: Pessoa, Restaurant, ModulePermission",
-      "AppShell + seletor de restaurante (URL como source of truth)",
-      "Pessoas: CRUD + matriz de permissões por módulo",
-      "Configurações: dados básicos + módulos ativos do restaurante",
+      "Wipe das collections de teste (cargos, empregados, escalas, gorjetas, vtFolhas)",
+      "Tipos refeitos: Pessoa, Empregado (com periodos[]), Cargo (com tipoVinculo + recebeProducao)",
+      "Permissões renomeadas: ver/configurar (eram use/config)",
+      "Módulo Equipe sai do menu — vira filtro em Pessoas",
+      "Polling real-time da pessoa: inativação imediata bloqueia acesso",
+      "EscalaMes ganha versões prevista + real (refator de UI vem na Fase 7)",
     ],
-    modules: ["pessoas", "configuracoes"],
+    notes: "Fase 0 do plano de execução — prepara terreno pras fases seguintes.",
   },
   {
-    id: "sprint-1a",
-    title: "Sprint 1a — Equipe + Escala",
-    status: "completed",
-    modules: ["equipe", "escala"],
+    id: "fase-1",
+    title: "Fase 1 — Cargos novos",
+    status: "planned",
     items: [
-      "Cargos: CRUD agrupado por área (Bar/Cozinha/Salão/Limpeza)",
-      "Empregados: CRUD com flags isFreela/isProducao/isProlaborista",
-      "Escala mensal: grade editável célula a célula",
-      "8 status (trabalho, folga, freela, comp, comp_trab, férias, falta_j, falta_i)",
-      "Filtra automaticamente demitidos/inativos antes do mês",
+      "Tela Pessoas → sub-tab Cargos",
+      "CRUD com tipoVinculo (registrado/provisório/estagiário/terceirizado)",
+      "Flags: recebeProducao, semGorjeta, pontos",
+      "Bloqueia inativar cargo se tem empregado ativo",
     ],
   },
   {
-    id: "sprint-1b",
-    title: "Sprint 1b — Gorjetas",
-    status: "completed",
+    id: "fase-2",
+    title: "Fase 2 — Pessoas unificada",
+    status: "planned",
+    items: [
+      "Tela com filtros: Equipe/Não · Ativa/Inativa",
+      "Edição em 3 abas: Identidade · Vínculos · Permissões",
+      "Aba Vínculos cadastra Empregado(s) — 1 ou mais restaurantes",
+      "Validação: cargo registrado/estagiário exige email; provisório/terceirizado opcional",
+    ],
+  },
+  {
+    id: "fase-3",
+    title: "Fase 3 — Templates de permissão",
+    status: "planned",
+    items: [
+      "Sub-tab Pessoas → Templates",
+      "CRUD por restaurante (cada restaurante tem seus templates)",
+      "Botão 'Aplicar template' na aba Permissões da Pessoa",
+    ],
+  },
+  {
+    id: "fase-4",
+    title: "Fase 4 — Histórico + Audit log + Mudanças agendadas",
+    status: "planned",
+    items: [
+      "Coleções: historicos, auditLog, mudancasAgendadas",
+      "Modal padrão 'Data de vigência + impacto' reutilizável",
+      "Aplica nos campos: cargoId, vt*, pontos, taxRate, recebeProducao, semGorjeta, tipoVinculo",
+      "Job de aplicação de mudanças agendadas (rodando ao abrir o app)",
+    ],
+  },
+  {
+    id: "fase-5",
+    title: "Fase 5 — Inativação / Reativação / Exclusão",
+    status: "planned",
+    items: [
+      "Inativar com motivo + data efetiva",
+      "Reativar revisando dados antes",
+      "Excluir definitivo (permissão pessoasExcluir)",
+      "Readmissão preserva trilha (novo período no array periodos)",
+    ],
+  },
+  {
+    id: "fase-6",
+    title: "Fase 6 — Portal do Empregado config",
+    status: "planned",
+    modules: ["configuracoes"],
+    items: [
+      "Aba em Configurações: Portal do Empregado",
+      "Toggles: Escala / Gorjetas / Comunicados (default true)",
+      "Vê na home só pra quem é equipe registrada/estagiária",
+    ],
+  },
+  {
+    id: "fase-7",
+    title: "Fase 7 — Refator Escala (Prevista vs Real)",
+    status: "planned",
+    modules: ["escala"],
+    items: [
+      "Grade ganha modo prevista (planejamento) e real (após o mês)",
+      "VT é pago em cima da prevista (congela snapshot)",
+      "Versões anteriores arquivadas (restaurar versão como no AppTip)",
+    ],
+  },
+  {
+    id: "fase-8",
+    title: "Fase 8 — Refator Gorjetas (snapshot + retroativo)",
+    status: "planned",
     modules: ["gorjetas"],
     items: [
-      "Lançamento diário (1 doc por dia: gorjetas/{rid}_{data})",
-      "Cálculo de divisão automático (escala + pontos do cargo + flags)",
-      "Modal com bruto / retenção / líquido + painel de divisão em tempo real",
-      "taxRate como config interna do módulo (engrenagem ⚙️)",
+      "Snapshot completo no doc da gorjeta (cargo, pontos, etc.)",
+      "Modal de retroativo quando muda taxRate",
+      "Confirmação com diff antes de aplicar mudanças que alteram gorjetas fechadas",
     ],
   },
   {
-    id: "sprint-1c",
-    title: "Sprint 1c — VT",
-    status: "completed",
+    id: "fase-9",
+    title: "Fase 9 — Refator VT + Tela de divergências",
+    status: "planned",
     modules: ["vt"],
     items: [
-      "Folha mensal (vtFolhas/{rid}_{yyyy-mm})",
-      "Cálculo: dias trabalhados × passagens/dia × valor",
-      "VT 100% por empregado (sem default no restaurante)",
-      "Marcação pago/pendente + 'pagar todos' em 1 clique",
+      "Folha em cima da prevista; congela ao pagar",
+      "Tela de divergências: 'a devolver' / 'a receber' baseado em real vs prevista",
     ],
   },
   {
-    id: "sprint-2",
-    title: "Sprint 2 — Fechamento + Histórico",
+    id: "fase-10",
+    title: "Fase 10 — Atualiza ArquiteturaPage",
     status: "planned",
-    modules: ["fechamentoEscala"],
     items: [
-      "Fechar escala mensal (snapshot, status='closed')",
-      "Histórico de Gorjetas (folha mensal arquivada)",
-      "Export contábil (XLSX) de gorjetas + VT por empregado",
-      "Reabrir mês fechado (perm especial)",
-    ],
-  },
-  {
-    id: "sprint-3",
-    title: "Sprint 3 — Pessoa ↔ Empregado (login do empregado)",
-    status: "planned",
-    modules: ["pessoas", "equipe"],
-    items: [
-      "Vincular pessoa.id ↔ empregado.pessoaId",
-      "Portal do Empregado: minha escala, minhas gorjetas, meu VT",
-      "Permissão de visualização restrita (só dados próprios)",
-    ],
-  },
-  {
-    id: "sprint-4",
-    title: "Sprint 4 — Reuniões + Trilha + Comunicação",
-    status: "planned",
-    modules: ["reunioes", "trilha", "ideias"],
-    items: [
-      "Reuniões: planejamento, agenda, ações, ocorrências",
-      "Trilha do empregado: histórico de desenvolvimento",
-      "Banco de ideias",
-    ],
-  },
-  {
-    id: "sprint-5",
-    title: "Sprint 5 — Operação dia-a-dia",
-    status: "planned",
-    modules: ["reservas", "ocorrencias", "checklists", "contagens"],
-    items: [
-      "Reservas: configuração de salões/mesas + operação",
-      "Ocorrências: log do dia",
-      "Checklists operacionais",
-      "Contagens de estoque",
-    ],
-  },
-  {
-    id: "sprint-6",
-    title: "Sprint 6 — Compras + Fichas + Recursos + Fale com DP",
-    status: "planned",
-    modules: ["compras", "fichas", "recursos", "faleDp", "temperaturas"],
-    items: [
-      "Compras (pedidos baseados em contagens)",
-      "Fichas técnicas (receitas + custo)",
-      "Biblioteca interna",
-      "Canal Fale com DP",
-      "Monitoramento de temperaturas",
+      "Reflete novo modelo nas abas Dados/Roadmap/Permissões",
+      "Adiciona aba 'Histórico' lendo audit log + mudancasAgendadas",
     ],
   },
 ];

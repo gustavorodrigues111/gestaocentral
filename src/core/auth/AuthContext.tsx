@@ -6,7 +6,7 @@ import {
   signOut as fbSignOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, getDocs, query, collection, where, limit, updateDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, onSnapshot, query, collection, where, limit, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 import type { Pessoa } from "../types";
 
@@ -28,46 +28,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!auth) { setLoading(false); return; }
-    const unsub = onAuthStateChanged(auth, async (user) => {
+
+    // unsub do listener de pessoa (precisa cleanup quando muda fbUser ou desloga)
+    let unsubPessoa: (() => void) | null = null;
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       setFbUser(user);
+
+      // limpa listener anterior
+      if (unsubPessoa) { unsubPessoa(); unsubPessoa = null; }
+
       if (!user) {
         setPessoa(null);
         setLoading(false);
         return;
       }
-      // Carrega doc da pessoa por uid PRIMEIRO. Se não existe, fallback: query por email.
-      // Isso permite que pessoas cadastradas pelo app (com Auto-ID) vinculem ao auth uid
-      // automaticamente quando fizerem signup.
+
+      // Tenta resolver o doc da pessoa: primeiro por uid, fallback por email.
+      let pessoaDocId = user.uid;
       try {
-        const snap = await getDoc(doc(db, "pessoas", user.uid));
-        if (snap.exists()) {
-          setPessoa({ id: user.uid, ...snap.data() } as Pessoa);
-        } else if (user.email) {
-          // Fallback: query por email
+        const direct = await getDoc(doc(db, "pessoas", user.uid));
+        if (!direct.exists() && user.email) {
           const q = query(collection(db, "pessoas"), where("email", "==", user.email), limit(1));
           const qsnap = await getDocs(q);
           if (!qsnap.empty) {
-            const d = qsnap.docs[0];
-            // Vincula uid no doc pra próximas leituras irem direto pelo uid (mais rápido + permissão certa)
+            pessoaDocId = qsnap.docs[0].id;
             try {
-              await updateDoc(doc(db, "pessoas", d.id), { uidVinculado: user.uid });
+              await updateDoc(doc(db, "pessoas", pessoaDocId), { uidVinculado: user.uid });
             } catch (e) {
               console.warn("Não foi possível atualizar uidVinculado:", e);
             }
-            setPessoa({ id: d.id, ...d.data() } as Pessoa);
           } else {
             setPessoa(null);
+            setLoading(false);
+            return;
           }
-        } else {
-          setPessoa(null);
         }
       } catch (e) {
-        console.error("Erro carregando pessoa:", e);
-        setPessoa(null);
+        console.error("Erro resolvendo pessoa:", e);
       }
-      setLoading(false);
+
+      // Listener real-time no doc da pessoa.
+      // Detecta inativação imediatamente (ativa = false → kicka).
+      // Também propaga mudanças de permissões na hora.
+      unsubPessoa = onSnapshot(doc(db, "pessoas", pessoaDocId), (snap) => {
+        if (!snap.exists()) {
+          setPessoa(null);
+          setLoading(false);
+          return;
+        }
+        const data = { id: snap.id, ...snap.data() } as Pessoa;
+        // Inativação imediata: se o doc virou ativa=false enquanto a pessoa tava logada,
+        // faz logout. Pessoas SEM o campo 'ativa' (legado) são tratadas como ativas.
+        if (data.ativa === false) {
+          alert("Sua conta foi inativada. Acesso bloqueado.");
+          fbSignOut(auth).catch(() => {});
+          setPessoa(null);
+          setLoading(false);
+          return;
+        }
+        setPessoa(data);
+        setLoading(false);
+      }, (err) => {
+        console.error("Erro no listener de pessoa:", err);
+        setPessoa(null);
+        setLoading(false);
+      });
     });
-    return () => unsub();
+
+    return () => {
+      unsubAuth();
+      if (unsubPessoa) unsubPessoa();
+    };
   }, []);
 
   async function signIn(email: string, password: string) {

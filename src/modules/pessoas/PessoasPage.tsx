@@ -21,6 +21,7 @@ export function PessoasPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [showNewPessoa, setShowNewPessoa] = useState(false);
+  const [filtroStatus, setFiltroStatus] = useState<"ativas" | "inativas" | "todas">("ativas");
   const podeConfig = canConfig(me, rid, "pessoas");
 
   useEffect(() => {
@@ -37,6 +38,10 @@ export function PessoasPage() {
   }, [rid]);
 
   const filtered = pessoas.filter(p => {
+    // Filtro de status (default: ativa = true; pessoas antigas sem o campo são tratadas como ativas)
+    const isAtiva = p.ativa !== false;
+    if (filtroStatus === "ativas"  && !isAtiva) return false;
+    if (filtroStatus === "inativas" && isAtiva) return false;
     if (!search.trim()) return true;
     const s = search.toLowerCase();
     return (p.nome || "").toLowerCase().includes(s)
@@ -63,8 +68,31 @@ export function PessoasPage() {
         placeholder="🔍 Buscar por nome ou email..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
-        className="mb-4"
+        className="mb-3"
       />
+
+      <div className="flex items-center gap-2 mb-4">
+        {(["ativas", "inativas", "todas"] as const).map(f => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFiltroStatus(f)}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              filtroStatus === f
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+            }`}
+          >
+            {f === "ativas" ? "✓ Ativas" : f === "inativas" ? "○ Inativas" : "Todas"}
+          </button>
+        ))}
+      </div>
+
+      <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-4 text-xs text-amber-800 dark:text-amber-300">
+        🚧 <strong>Refator em andamento.</strong> Fase 2 vai trazer: filtro Equipe/Não-equipe,
+        edição com abas (Identidade · Vínculos · Permissões), criação de empregados, e templates
+        de permissão.
+      </div>
 
       {loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>

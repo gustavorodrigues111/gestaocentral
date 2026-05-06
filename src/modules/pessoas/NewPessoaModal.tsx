@@ -27,13 +27,13 @@ export function NewPessoaModal({ onClose, onCreated }: Props) {
   });
   const [perms, setPerms] = useState<Record<string, ModulePermission>>(() => {
     const init: Record<string, ModulePermission> = {};
-    modulosAtivos.forEach(m => { init[m] = { use: false, config: false }; });
+    modulosAtivos.forEach(m => { init[m] = { ver: false, configurar: false }; });
     return init;
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  function togglePerm(moduleId: ModuleId, kind: "use" | "config") {
+  function togglePerm(moduleId: ModuleId, kind: "ver" | "configurar") {
     setPerms(p => ({
       ...p,
       [moduleId]: { ...p[moduleId], [kind]: !p[moduleId]?.[kind] },
@@ -49,10 +49,10 @@ export function NewPessoaModal({ onClose, onCreated }: Props) {
     setError("");
     setSaving(true);
     try {
-      // Filtra só perms que tem use ou config marcado
+      // Filtra só perms que tem ver ou configurar marcado
       const permissionsRid: Record<string, ModulePermission> = {};
       Object.entries(perms).forEach(([k, v]) => {
-        if (v.use || v.config) permissionsRid[k] = v;
+        if (v.ver || v.configurar) permissionsRid[k] = v;
       });
 
       await addDoc(collection(db, "pessoas"), {
@@ -120,11 +120,11 @@ export function NewPessoaModal({ onClose, onCreated }: Props) {
             <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
               <div className="grid grid-cols-[1fr_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-400">
                 <div>Módulo</div>
-                <div className="w-12 text-center">Usar</div>
+                <div className="w-12 text-center">Ver</div>
                 <div className="w-16 text-center">Configurar</div>
               </div>
               {modulosAtivos.map(m => {
-                const p = perms[m] || { use: false, config: false };
+                const p = perms[m] || { ver: false, configurar: false };
                 return (
                   <div
                     key={m}
@@ -134,15 +134,15 @@ export function NewPessoaModal({ onClose, onCreated }: Props) {
                     <div className="w-12 text-center">
                       <input
                         type="checkbox"
-                        checked={p.use}
-                        onChange={() => togglePerm(m, "use")}
+                        checked={p.ver}
+                        onChange={() => togglePerm(m, "ver")}
                       />
                     </div>
                     <div className="w-16 text-center">
                       <input
                         type="checkbox"
-                        checked={p.config}
-                        onChange={() => togglePerm(m, "config")}
+                        checked={p.configurar}
+                        onChange={() => togglePerm(m, "configurar")}
                       />
                     </div>
                   </div>
@@ -151,7 +151,8 @@ export function NewPessoaModal({ onClose, onCreated }: Props) {
             </div>
           )}
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            <strong>Usar</strong>: pode acessar e usar o módulo no dia-a-dia. <strong>Configurar</strong>: pode mexer nas configurações do módulo.
+            <strong>Ver</strong>: pode visualizar e usar o módulo. <strong>Configurar</strong>: pode editar configurações
+            (configurar implica ver). Marcar os 2 = controle total.
           </p>
         </div>
 

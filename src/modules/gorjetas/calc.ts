@@ -6,7 +6,7 @@ const STATUS_RECEBE: Record<ScheduleStatus, boolean> = {
   freela:    true,
   comp_trab: true,   // trabalhou compensando outro dia
   folga:     false,
-  comp:      false,  // folgou (compensação)
+  comp:      false,
   ferias:    false,
   falta_j:   false,
   falta_i:   false,
@@ -15,21 +15,22 @@ const STATUS_RECEBE: Record<ScheduleStatus, boolean> = {
 export type DivisaoResult = {
   itens: DivisaoItem[];
   totalPontos: number;
-  valorPonto: number;       // valorLiquido / totalPontos (0 se sem pontos)
-  totalDistribuido: number; // soma final dos valores dos itens (pode ter centavos a menos)
-  resto: number;            // valorLiquido - totalDistribuido (centavos não distribuídos)
+  valorPonto: number;
+  totalDistribuido: number;
+  resto: number;
 };
 
 /**
  * Calcula a divisão da gorjeta de UM dia.
  *
- * Quem entra:
- * - Empregados com status que recebe (trabalho, freela, comp_trab) E cargo com pontos > 0 e !semGorjeta
- * - Empregados marcados isProducao recebem TODO DIA (independente da escala)
- * - Empregados marcados isProlaborista NÃO recebem (sócio recebe pró-labore separado)
- * - Empregados inativos/demitidos no dia: filtrados
+ * Regras (todas no CARGO, não mais no Empregado):
+ * - Cargo com `semGorjeta: true` ou `pontos <= 0` → não recebe (cobre sócio também)
+ * - Cargo com `recebeProducao: true` → recebe TODO dia (independente da escala)
+ * - Demais → recebem se status na escala REAL é trabalho/freela/comp_trab
  *
- * O valor por ponto é arredondado pra centavos. O resto fica no campo `resto`.
+ * Considera também:
+ * - Empregado fora do período (não admitido ou demitido) → fora
+ * - Usa escala REAL (não a prevista) — gorjeta é paga em cima do que de fato aconteceu
  */
 export function calcularDivisaoDia(
   date: string,                                  // YYYY-MM-DD
@@ -42,20 +43,17 @@ export function calcularDivisaoDia(
   const itens: DivisaoItem[] = [];
 
   for (const e of empregados) {
-    if (e.isProlaborista) continue;
-    if (e.demitidoEm && date >= e.demitidoEm) continue;        // primeiro dia FORA = demitidoEm
-    if (e.inativa && e.inativaFrom && date >= e.inativaFrom) continue;
-    if (e.admissao && date < e.admissao) continue;
+    if (!empregadoAtivoEm(e, date)) continue;
 
     const cargo = cargoMap[e.cargoId];
     if (!cargo || cargo.semGorjeta || cargo.pontos <= 0) continue;
 
     let motivo: DivisaoItem["motivo"] | null = null;
 
-    if (e.isProducao) {
+    if (cargo.recebeProducao) {
       motivo = "producao";
     } else {
-      const status = escala?.empregados?.[e.id]?.[date];
+      const status = escala?.real?.[e.id]?.[date];
       if (status && STATUS_RECEBE[status]) {
         motivo = status === "freela" ? "freela" : "trabalho";
       }
@@ -69,7 +67,7 @@ export function calcularDivisaoDia(
       cargoNome: cargo.nome,
       area: cargo.area,
       pontos: cargo.pontos,
-      valor: 0, // preenchido abaixo
+      valor: 0,
       motivo,
     });
   }
@@ -79,7 +77,6 @@ export function calcularDivisaoDia(
     return { itens, totalPontos: 0, valorPonto: 0, totalDistribuido: 0, resto: valorLiquido };
   }
 
-  // valor por ponto (arredondado pra centavos)
   const valorPonto = Math.floor((valorLiquido / totalPontos) * 100) / 100;
 
   let totalDistribuido = 0;
@@ -96,4 +93,14 @@ export function calcularDivisaoDia(
 export function calcularValorLiquido(valorBruto: number, taxRate: number): number {
   const liquido = valorBruto * (1 - taxRate / 100);
   return Math.round(liquido * 100) / 100;
+}
+
+// Verifica se o empregado estava ATIVO numa data específica (algum período cobre essa data)
+export function empregadoAtivoEm(e: Empregado, date: string): boolean {
+  for (const p of e.periodos || []) {
+    if (date < p.admissao) continue;
+    if (p.demissao && date >= p.demissao) continue;
+    return true;
+  }
+  return false;
 }

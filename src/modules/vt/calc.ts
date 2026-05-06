@@ -12,9 +12,15 @@ const STATUS_TRABALHADO: Record<ScheduleStatus, boolean> = {
   falta_i:   false,
 };
 
-export function contarDiasTrabalhados(empregadoId: string, escala: EscalaMes | null): number {
+// Conta dias de trabalho na escala — versão "prevista" pra VT antecipado,
+// "real" pra divergências/ajustes posteriores.
+export function contarDiasTrabalhados(
+  empregadoId: string,
+  escala: EscalaMes | null,
+  versao: "prevista" | "real" = "prevista",
+): number {
   if (!escala) return 0;
-  const dias = escala.empregados?.[empregadoId];
+  const dias = escala[versao]?.[empregadoId];
   if (!dias) return 0;
   let n = 0;
   for (const k of Object.keys(dias)) {

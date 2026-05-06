@@ -227,51 +227,53 @@ const ENTITIES: Entity[] = [
     desc: "Restaurante (4 do grupo)",
     collection: "restaurants",
     status: "ativo",
-    fields: ["id", "nome", "shortCode", "cnpj?", "razaoSocial?", "codigoContabil?", "modulosAtivos[]", "taxRate?"],
+    fields: ["id", "nome", "shortCode", "cnpj?", "modulosAtivos[]", "portalEmpregado{...}", "taxRate?"],
     relations: [
       { label: "tem N", to: "Empregado" },
       { label: "tem N", to: "Cargo" },
       { label: "tem N", to: "EscalaMes" },
       { label: "tem N", to: "Gorjeta" },
       { label: "tem N", to: "VTFolha" },
+      { label: "tem N", to: "PermissionTemplate" },
     ],
   },
   {
     name: "Pessoa", icon: "👤",
-    desc: "Usuário com acesso ao sistema",
+    desc: "Usuário do sistema (qualquer um: dono, contador, gestor, empregado…)",
     collection: "pessoas",
     status: "ativo",
-    fields: ["id (=uid)", "email", "nome", "cpf?", "isMaster", "restaurantIds[]", "permissions{rid: {moduloId: {use, config}}}", "ativa"],
+    fields: ["id (=uid)", "email", "nome", "cpf?", "isMaster", "restaurantIds[]", "permissions{rid: {moduloId: {ver, configurar}}}", "specialPermissions{rid: {pessoasExcluir?}}", "ativa", "inativadaEm?"],
     relations: [
       { label: "acesso a N", to: "Restaurant" },
-      { label: "vínculo opcional 1:1", to: "Empregado" },
+      { label: "vínculo opcional 1:N", to: "Empregado" },
     ],
   },
   {
     name: "Cargo", icon: "🏷️",
-    desc: "Cargo do restaurante (Garçom, Cozinheiro, Barman...)",
+    desc: "Cargo do restaurante. Carrega tipoVinculo, regra de gorjeta, área.",
     collection: "cargos",
     status: "ativo",
-    fields: ["id", "restaurantId", "nome", "area", "pontos", "semGorjeta", "ativo"],
+    fields: ["id", "restaurantId", "nome", "area", "tipoVinculo (registrado/provisorio/estagiario/terceirizado)", "pontos", "semGorjeta", "recebeProducao", "ativo"],
     relations: [{ label: "tem N", to: "Empregado" }],
   },
   {
     name: "Empregado", icon: "👥",
-    desc: "Funcionário do restaurante (CLT, freela, sócio)",
+    desc: "Membro da equipe (com ou sem registro). Trilha completa em periodos[].",
     collection: "empregados",
     status: "ativo",
-    fields: ["id", "restaurantId", "nome", "cpf?", "cargoId", "admissao", "demitidoEm?", "isFreela", "isProducao", "isProlaborista", "vtAtivo?", "vtPassagensPorDia?", "vtValorPassagem?", "pessoaId?"],
+    fields: ["id", "restaurantId", "pessoaId? (só registrados)", "nome", "cpf?", "cargoId", "periodos[{admissao, demissao?}]", "estaAtivo", "vtAtivo?", "vtPassagensPorDia?", "vtValorPassagem?"],
     relations: [
       { label: "tem 1", to: "Cargo" },
+      { label: "tem 1 (opcional)", to: "Pessoa" },
       { label: "está em N", to: "EscalaMes" },
     ],
   },
   {
     name: "EscalaMes", icon: "📅",
-    desc: "Escala de 1 mês de 1 restaurante",
+    desc: "Escala de 1 mês com 2 versões: prevista (planejamento) e real (depois)",
     collection: "escalas",
     status: "ativo",
-    fields: ["id (=rid_yyyy-mm)", "restaurantId", "ano", "mes", "empregados{empId: {date: status}}", "status (open/closed)"],
+    fields: ["id (=rid_yyyy-mm)", "restaurantId", "ano", "mes", "prevista{empId: {date: status}}", "real{empId: {date: status}}", "vtPagoEm?", "fechadoEm?"],
     relations: [{ label: "alimenta", to: "Gorjeta" }, { label: "alimenta", to: "VTFolha" }],
   },
   {
@@ -289,6 +291,38 @@ const ENTITIES: Entity[] = [
     status: "ativo",
     fields: ["id (=rid_yyyy-mm)", "restaurantId", "ano", "mes", "itens{empId: {dias, total, paidAt?}}"],
     relations: [{ label: "depende de", to: "EscalaMes" }, { label: "depende de", to: "Empregado" }],
+  },
+  {
+    name: "PermissionTemplate", icon: "🎯",
+    desc: "Conjunto pré-definido de permissões (ex: 'Líder Sororoca'). Cadastrável.",
+    collection: "permissionTemplates",
+    status: "planejado",
+    fields: ["id", "restaurantId", "nome", "descricao?", "permissions{moduloId: {ver, configurar}}", "ativo"],
+    relations: [{ label: "aplicado a N", to: "Pessoa" }],
+  },
+  {
+    name: "Historico", icon: "📜",
+    desc: "Versões de campos críticos com data de vigência (cargo, vt, pontos, taxRate)",
+    collection: "historicos",
+    status: "planejado",
+    fields: ["id (=entityType_entityId_campo)", "entityType", "entityId", "campo", "versoes[{valor, inicio, fim?, motivo?}]"],
+    relations: [],
+  },
+  {
+    name: "AuditLog", icon: "📝",
+    desc: "Registro de TODA mudança crítica (criar, alterar, demitir, excluir, etc.)",
+    collection: "auditLog",
+    status: "planejado",
+    fields: ["id", "entityType", "entityId", "acao", "diff{campo: {antes, depois}}", "vigenteApartir?", "motivo?", "registradoEm", "registradoPor"],
+    relations: [],
+  },
+  {
+    name: "MudancaAgendada", icon: "⏰",
+    desc: "Mudança com data futura. Aplicada automaticamente quando o dia chega.",
+    collection: "mudancasAgendadas",
+    status: "planejado",
+    fields: ["id", "entityType", "entityId", "campo", "valorNovo", "aplicarEm (YYYY-MM-DD)", "aplicadoEm?"],
+    relations: [],
   },
 ];
 
@@ -406,11 +440,11 @@ function SprintCard({ sprint }: { sprint: typeof ROADMAP[number] }) {
 // ════════════════════════════════════════════════════════════════
 
 const ROLES = [
-  { id: "owner",    label: "Owner / Master",  desc: "Acesso total, implícito a todos os módulos" },
-  { id: "admin",    label: "Gestor Adm.",      desc: "Gestão completa do restaurante (config + uso)" },
-  { id: "lider",    label: "Líder de Área",    desc: "Vê dados das áreas que lidera; usa mas não configura" },
-  { id: "operac",   label: "Operacional",      desc: "Usa módulos no dia-a-dia, sem mexer em configs" },
-  { id: "empreg",   label: "Empregado",        desc: "Vê só dados próprios (sua escala, gorjetas, VT)" },
+  { id: "owner",    label: "Owner / Master",  desc: "isMaster=true → acesso total a todos restaurantes" },
+  { id: "ext",      label: "Externo (contador, consultor)", desc: "Pessoa sem vínculo de equipe. Permissões por módulo (geralmente só 'ver')" },
+  { id: "emp_pure", label: "Empregado puro",   desc: "Pessoa + Empregado. Vê só Portal do Empregado (Minha Escala, Minhas Gorjetas, Comunicados). Sem permissões admin." },
+  { id: "emp_admin",label: "Empregado + Admin (ex: DP)", desc: "Pessoa + Empregado + permissões admin. Vê portal + módulos administrativos juntos." },
+  { id: "freela",   label: "Freela / Provisório", desc: "Empregado SEM Pessoa. Aparece em escala/gorjeta. Sem login, sem portal." },
 ];
 
 function PermissoesView() {
@@ -425,14 +459,19 @@ function PermissoesView() {
           <pre className="bg-gray-50 dark:bg-gray-800/50 rounded p-3 text-xs overflow-x-auto">
 {`pessoa.permissions = {
   [restaurantId]: {
-    [moduleId]: { use: boolean, config: boolean }
+    [moduleId]: { ver: boolean, configurar: boolean }
   }
+}
+pessoa.specialPermissions = {
+  [restaurantId]: { pessoasExcluir?: boolean }
 }`}
           </pre>
           <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1 list-disc ml-4">
-            <li><code>use</code>: pode usar o módulo no dia-a-dia (lançar gorjeta, ver escala, etc.)</li>
-            <li><code>config</code>: pode mexer em configurações (taxRate, cargos, etc.)</li>
+            <li><code>ver</code>: pode visualizar e usar o módulo</li>
+            <li><code>configurar</code>: pode editar configurações (implica <code>ver</code>)</li>
             <li><code>isMaster: true</code> bypassa todas as checagens</li>
+            <li>Especiais (transversais ao restaurante): <code>pessoasExcluir</code></li>
+            <li><strong>Sem perfis fixos.</strong> Apenas permissões granulares + templates cadastráveis (ex: "Líder Sororoca")</li>
           </ul>
         </div>
       </div>

@@ -7,7 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import {
-  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
+  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, shiftMonth,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 
@@ -84,29 +84,18 @@ export function EscalaPage() {
     return () => unsub();
   }, [rid, escalaId]);
 
-  // Filtra empregados que devem aparecer no mês:
-  // - Não está demitido ANTES do início do mês (demitidoEm é primeiro dia FORA)
-  // - Não está inativo desde data anterior ao início
+  // Filtra empregados que estiveram ATIVOS em algum dia do mês
+  // (algum dos periodos cobre alguma data do intervalo)
   const empregadosDoMes = useMemo(() => {
-    const inicioMes = new Date(ano, mes - 1, 1);
-    const fimMes   = new Date(ano, mes - 1, daysInMonth(ano, mes));
+    const inicioMes = `${ano}-${pad2(mes)}-01`;
+    const fimMes    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
     return empregados.filter(e => {
-      // Demitido antes do início → fora
-      if (e.demitidoEm) {
-        const dem = parseYmd(e.demitidoEm);
-        if (dem <= inicioMes) return false;
+      for (const p of e.periodos || []) {
+        if (p.admissao > fimMes) continue;            // admitido depois do fim do mês
+        if (p.demissao && p.demissao <= inicioMes) continue; // demitido antes/no 1º dia
+        return true;
       }
-      // Inativa desde antes do início → fora
-      if (e.inativa && e.inativaFrom) {
-        const ia = parseYmd(e.inativaFrom);
-        if (ia <= inicioMes) return false;
-      }
-      // Admissão depois do fim do mês → fora
-      if (e.admissao) {
-        const adm = parseYmd(e.admissao);
-        if (adm > fimMes) return false;
-      }
-      return true;
+      return false;
     });
   }, [empregados, ano, mes]);
 
@@ -129,26 +118,29 @@ export function EscalaPage() {
 
   const dias = daysInMonth(ano, mes);
 
+  // Fase 0: editamos a versão PREVISTA. Fase 7 vai dividir a UI em prevista/real.
   async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null) {
     if (!rid) return;
-    const empregadosNovo = { ...(escala?.empregados || {}) };
-    const dias = { ...(empregadosNovo[empregadoId] || {}) };
+    const previstaNova = { ...(escala?.prevista || {}) };
+    const dias = { ...(previstaNova[empregadoId] || {}) };
     if (status === null) {
       delete dias[ymdDate];
     } else {
       dias[ymdDate] = status;
     }
-    empregadosNovo[empregadoId] = dias;
+    previstaNova[empregadoId] = dias;
 
     const payload: EscalaMes = {
       id: escalaId,
       restaurantId: rid,
       ano,
       mes,
-      empregados: empregadosNovo,
-      status: escala?.status || "open",
-      closedAt: escala?.closedAt ?? null,
-      closedBy: escala?.closedBy ?? null,
+      prevista: previstaNova,
+      real: escala?.real || {},
+      vtPagoEm: escala?.vtPagoEm ?? null,
+      vtPagoPor: escala?.vtPagoPor ?? null,
+      fechadoEm: escala?.fechadoEm ?? null,
+      fechadoPor: escala?.fechadoPor ?? null,
       updatedAt: new Date().toISOString(),
     };
     await setDoc(doc(db, "escalas", escalaId), payload, { merge: true });
@@ -172,7 +164,7 @@ export function EscalaPage() {
     );
   }
 
-  const fechada = escala?.status === "closed";
+  const fechada = !!escala?.fechadoEm;
   const podeEditar = podeConfig && !fechada;
 
   return (
@@ -206,7 +198,7 @@ export function EscalaPage() {
           <div className="text-4xl mb-3">🤷</div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum empregado neste mês</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Cadastre empregados na aba Equipe pra começar a montar a escala.
+            Cadastre empregados em Pessoas (filtro "Empregados") pra começar a montar a escala.
           </p>
         </div>
       ) : (
@@ -311,7 +303,7 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-                  const status = escala?.empregados?.[e.id]?.[d];
+                  const status = escala?.prevista?.[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const isOpen = openCell?.emp === e.id && openCell?.ymd === d;
                   return (
