@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -11,8 +12,11 @@ import type { Pessoa } from "../../core/types";
 
 export function PessoasPage() {
   const { pessoa: me } = useAuth();
-  const { activeRestaurant } = useRestaurant();
-  const rid = activeRestaurant?.id || "";
+  const { restaurants } = useRestaurant();
+  // URL é source of truth — busca o restaurante pelo rid da rota, não do contexto
+  const { rid: ridParam } = useParams<{ rid: string }>();
+  const rid = ridParam || "";
+  const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");

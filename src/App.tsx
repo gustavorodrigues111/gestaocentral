@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./core/auth/AuthContext";
 import { RestaurantProvider, useRestaurant } from "./core/restaurant/RestaurantContext";
@@ -20,12 +21,13 @@ function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
   const { activeId, setActiveId } = useRestaurant();
 
-  // Sincroniza activeId no contexto com o :rid da URL (URL é source of truth)
-  if (rid && rid !== activeId) {
-    setActiveId(rid);
-  }
+  // Sincroniza activeId no contexto com o :rid da URL (URL é source of truth).
+  // Usa useEffect pra não disparar setState durante render.
+  useEffect(() => {
+    if (rid && rid !== activeId) setActiveId(rid);
+  }, [rid, activeId, setActiveId]);
 
-  // key força remount quando muda restaurante — evita estado preso (forms etc)
+  // key força remount quando muda restaurante — limpa estado interno dos forms.
   const k = rid || "";
   switch (moduleId) {
     case "pessoas":       return <PessoasPage key={k} />;
