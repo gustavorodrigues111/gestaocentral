@@ -110,9 +110,39 @@ export type Restaurant = {
   whatsappOperacional?: string;
   serviceStartDate?: string; // YYYY-MM-DD
   modulosAtivos: ModuleId[];  // quais módulos esse restaurante usa
+  // Gorjetas
+  taxRate?: number;           // % de retenção da gorjeta (ex: 33 = 33%). Default 0
   ativo: boolean;
   createdAt: string;
   createdBy: string;
+};
+
+// ─── GORJETAS ───
+
+export type Gorjeta = {
+  id: string;            // `${restaurantId}_${date}`
+  restaurantId: string;
+  date: string;          // YYYY-MM-DD
+  valorBruto: number;    // total recebido na maquininha
+  taxRate: number;       // % de retenção aplicada (snapshot do dia)
+  valorLiquido: number;  // = valorBruto * (1 - taxRate/100)
+  observacao?: string;
+  paidAt?: string | null;     // quando foi distribuída efetivamente
+  paidBy?: string | null;
+  createdAt: string;
+  createdBy: string;
+  updatedAt: string;
+};
+
+// Item da divisão de gorjeta (calculado, não armazenado)
+export type DivisaoItem = {
+  empregadoId: string;
+  empregadoNome: string;
+  cargoNome: string;
+  area: Area;
+  pontos: number;
+  valor: number;       // valor que esse empregado recebe nesse dia
+  motivo: "trabalho" | "freela" | "producao";
 };
 
 export type Pessoa = {

@@ -11,6 +11,7 @@ import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EquipePage } from "./modules/equipe/EquipePage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
+import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -36,6 +37,7 @@ function ModuleRouter() {
     case "configuracoes": return <ConfiguracoesPage key={k} />;
     case "equipe":        return <EquipePage key={k} />;
     case "escala":        return <EscalaPage key={k} />;
+    case "gorjetas":      return <GorjetasPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

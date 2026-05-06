@@ -24,6 +24,7 @@ export function ConfiguracoesPage() {
     razaoSocial: activeRestaurant?.razaoSocial || "",
     codigoContabil: activeRestaurant?.codigoContabil || "",
     cnpj: activeRestaurant?.cnpj || "",
+    taxRate: String(activeRestaurant?.taxRate ?? 0),
   });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
@@ -60,6 +61,7 @@ export function ConfiguracoesPage() {
         razaoSocial: form.razaoSocial.trim() || null,
         codigoContabil: form.codigoContabil.trim() || null,
         cnpj: form.cnpj.trim() || null,
+        taxRate: parseFloat(form.taxRate) || 0,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -84,6 +86,14 @@ export function ConfiguracoesPage() {
           <Input label="Razão social" value={form.razaoSocial} onChange={(e) => setForm({ ...form, razaoSocial: e.target.value })} placeholder="ex: SOROROCA BAR LTDA" />
           <Input label="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
           <Input label="Código contábil" value={form.codigoContabil} onChange={(e) => setForm({ ...form, codigoContabil: e.target.value.replace(/\D/g, "") })} placeholder="ex: 2992" />
+          <Input
+            label="Retenção da gorjeta (%)"
+            type="number"
+            min="0" max="100" step="0.01"
+            value={form.taxRate}
+            onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
+            placeholder="ex: 33"
+          />
         </div>
         <div className="flex items-center gap-3 mt-4">
           <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
