@@ -2,11 +2,19 @@ import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-
 import { AuthProvider, useAuth } from "./core/auth/AuthContext";
 import { RestaurantProvider } from "./core/restaurant/RestaurantContext";
 import { LoginScreen } from "./core/auth/LoginScreen";
+import { SignupScreen } from "./core/auth/SignupScreen";
 import { AppShell } from "./core/layout/AppShell";
 import { HomePage } from "./core/layout/HomePage";
 import { ModulePlaceholder } from "./core/layout/ModulePlaceholder";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
+
+function PublicSignup() {
+  const { fbUser, loading } = useAuth();
+  if (loading) return null;
+  if (fbUser) return <Navigate to="/" replace />;
+  return <SignupScreen />;
+}
 
 function ModuleRouter() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -60,7 +68,10 @@ function App() {
   return (
     <BrowserRouter>
       <AuthProvider>
-        <ProtectedShell />
+        <Routes>
+          <Route path="/signup" element={<PublicSignup />} />
+          <Route path="*" element={<ProtectedShell />} />
+        </Routes>
       </AuthProvider>
     </BrowserRouter>
   );

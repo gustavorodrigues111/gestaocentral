@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -70,6 +71,12 @@ export function LoginScreen() {
           <Button type="submit" disabled={loading || !email || !password} size="lg" className="mt-2">
             {loading ? "Entrando..." : "Entrar"}
           </Button>
+
+          <div className="text-center text-sm mt-2">
+            <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+              Primeira vez? Criar conta
+            </Link>
+          </div>
         </div>
       </form>
     </div>

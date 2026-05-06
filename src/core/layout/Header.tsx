@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
+import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { fbUser, pessoa, signOut } = useAuth();
   const { restaurants, activeRestaurant, setActiveId } = useRestaurant();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showNewRest, setShowNewRest] = useState(false);
+  const isMaster = !!pessoa?.isMaster;
 
   return (
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-4 gap-4">
@@ -28,6 +31,16 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
             <option key={r.id} value={r.id}>{r.nome}</option>
           ))}
         </select>
+      )}
+
+      {isMaster && (
+        <button
+          onClick={() => setShowNewRest(true)}
+          title="Novo restaurante"
+          className="px-2 py-1 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+        >
+          + Restaurante
+        </button>
       )}
 
       <div className="flex-1" />
@@ -62,6 +75,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
           </>
         )}
       </div>
+
+      {showNewRest && (
+        <NewRestaurantModal
+          onClose={() => setShowNewRest(false)}
+          onCreated={(id) => setActiveId(id)}
+        />
+      )}
     </header>
   );
 }

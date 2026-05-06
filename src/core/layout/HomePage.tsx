@@ -1,22 +1,40 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
+import { Button } from "../ui/Button";
+import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
 export function HomePage() {
   const { pessoa } = useAuth();
-  const { activeRestaurant } = useRestaurant();
+  const { activeRestaurant, setActiveId } = useRestaurant();
+  const [showNewRest, setShowNewRest] = useState(false);
+  const isMaster = !!pessoa?.isMaster;
 
   if (!activeRestaurant) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
         <div className="text-5xl mb-4">🏠</div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Nenhum restaurante</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Você ainda não tem acesso a nenhum restaurante. Peça pro administrador te dar acesso.
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          {isMaster ? "Nenhum restaurante cadastrado ainda" : "Nenhum restaurante"}
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          {isMaster
+            ? "Cadastre o primeiro restaurante pra começar."
+            : "Você ainda não tem acesso a nenhum restaurante. Peça pro administrador te dar acesso."}
         </p>
+        {isMaster && (
+          <Button onClick={() => setShowNewRest(true)} size="lg">+ Novo Restaurante</Button>
+        )}
+        {showNewRest && (
+          <NewRestaurantModal
+            onClose={() => setShowNewRest(false)}
+            onCreated={(id) => setActiveId(id)}
+          />
+        )}
       </div>
     );
   }

@@ -6,6 +6,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { NewPessoaModal } from "./NewPessoaModal";
 import type { Pessoa } from "../../core/types";
 
 export function PessoasPage() {
@@ -15,6 +16,7 @@ export function PessoasPage() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [showNewPessoa, setShowNewPessoa] = useState(false);
   const podeConfig = canConfig(me, rid, "pessoas");
 
   useEffect(() => {
@@ -49,7 +51,7 @@ export function PessoasPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} pessoa(s) com acesso ao {activeRestaurant.nome}</p>
         </div>
         {podeConfig && (
-          <Button>+ Nova pessoa</Button>
+          <Button onClick={() => setShowNewPessoa(true)}>+ Nova pessoa</Button>
         )}
       </div>
 
@@ -96,13 +98,12 @@ export function PessoasPage() {
         </div>
       )}
 
-      <div className="mt-8 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900 rounded-lg text-sm text-amber-900 dark:text-amber-300">
-        <strong>📦 Sprint 0 — em construção</strong>
-        <p className="mt-1">
-          Esta página mostra a lista. Cadastro/edição/permissões granulares vêm no Sprint 1.
-          Por enquanto, criação de pessoas é feita direto no console Firebase Auth + Firestore (instruções no README).
-        </p>
-      </div>
+      {showNewPessoa && (
+        <NewPessoaModal
+          onClose={() => setShowNewPessoa(false)}
+          onCreated={() => { /* lista atualiza via onSnapshot */ }}
+        />
+      )}
     </div>
   );
 }
