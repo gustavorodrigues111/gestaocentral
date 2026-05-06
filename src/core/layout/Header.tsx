@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
@@ -9,6 +10,15 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [showNewRest, setShowNewRest] = useState(false);
   const isMaster = !!pessoa?.isMaster;
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  function changeRestaurant(newRid: string) {
+    setActiveId(newRid);
+    // Se está em /r/{oldRid}/{moduleId}, navega pro mesmo módulo no novo restaurante.
+    const m = location.pathname.match(/^\/r\/[^/]+\/(.+)$/);
+    if (m) navigate(`/r/${newRid}/${m[1]}`);
+  }
 
   return (
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-4 gap-4">
@@ -24,7 +34,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       {restaurants.length > 0 && (
         <select
           value={activeRestaurant?.id || ""}
-          onChange={(e) => setActiveId(e.target.value)}
+          onChange={(e) => changeRestaurant(e.target.value)}
           className="ml-4 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer"
         >
           {restaurants.map(r => (

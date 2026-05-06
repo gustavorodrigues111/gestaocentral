@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./core/auth/AuthContext";
-import { RestaurantProvider } from "./core/restaurant/RestaurantContext";
+import { RestaurantProvider, useRestaurant } from "./core/restaurant/RestaurantContext";
 import { LoginScreen } from "./core/auth/LoginScreen";
 import { SignupScreen } from "./core/auth/SignupScreen";
 import { AppShell } from "./core/layout/AppShell";
@@ -17,11 +17,20 @@ function PublicSignup() {
 }
 
 function ModuleRouter() {
-  const { moduleId } = useParams<{ moduleId: string }>();
+  const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
+  const { activeId, setActiveId } = useRestaurant();
+
+  // Sincroniza activeId no contexto com o :rid da URL (URL é source of truth)
+  if (rid && rid !== activeId) {
+    setActiveId(rid);
+  }
+
+  // key força remount quando muda restaurante — evita estado preso (forms etc)
+  const k = rid || "";
   switch (moduleId) {
-    case "pessoas":       return <PessoasPage />;
-    case "configuracoes": return <ConfiguracoesPage />;
-    default:              return <ModulePlaceholder />;
+    case "pessoas":       return <PessoasPage key={k} />;
+    case "configuracoes": return <ConfiguracoesPage key={k} />;
+    default:              return <ModulePlaceholder key={k} />;
   }
 }
 
