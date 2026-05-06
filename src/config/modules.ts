@@ -10,27 +10,27 @@ export const MODULES: ModuleDef[] = [
   { id: "pessoas",          area: "escritorio", label: "Pessoas",          icon: "👤", status: "ativo",     desc: "Cadastro de pessoas, vínculos e permissões" },
   { id: "equipe",           area: "escritorio", label: "Equipe",           icon: "👥", status: "ativo",     desc: "Cargos e empregados do restaurante" },
   { id: "configuracoes",    area: "escritorio", label: "Configurações",    icon: "⚙️", status: "ativo",     desc: "Configurações do restaurante" },
-  { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     desc: "Lançamento e divisão de gorjetas" },
-  { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     desc: "Cálculo e pagamento de VT" },
-  { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", desc: "Fechar escala mensal e ajustes" },
-  { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "planejado", desc: "Pedidos baseados em contagens e padrões" },
+  { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     desc: "Lançamento e divisão de gorjetas",       dependsOn: ["equipe", "escala"] },
+  { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     desc: "Cálculo e pagamento de VT",              dependsOn: ["equipe", "escala"] },
+  { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
+  { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "planejado", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", desc: "Documentos e wiki interna" },
-  { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", desc: "Canal anônimo / suporte ao funcionário" },
+  { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"] },
 
   // ═══ TIME (azul) ═══
-  { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "ativo",     desc: "Planejamento de escalas mensais" },
-  { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "planejado", desc: "Controle de freelas" },
-  { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "planejado", desc: "Reuniões de líderes e equipe" },
-  { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "planejado", desc: "Desenvolvimento e histórico" },
-  { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "planejado", desc: "Ideias para discutir em reuniões" },
+  { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "ativo",     desc: "Planejamento de escalas mensais",       dependsOn: ["equipe"] },
+  { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "planejado", desc: "Controle de freelas",                   dependsOn: ["equipe", "escala"] },
+  { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "planejado", desc: "Reuniões de líderes e equipe",          dependsOn: ["pessoas", "equipe"] },
+  { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "planejado", desc: "Desenvolvimento e histórico",            dependsOn: ["equipe"] },
+  { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "planejado", desc: "Ideias para discutir em reuniões",       dependsOn: ["reunioes"] },
 
   // ═══ OPERAÇÃO (laranja) ═══
-  { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "planejado", desc: "Log de ocorrências do dia-a-dia" },
-  { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "planejado", desc: "Reservas de mesa e base de clientes" },
-  { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "planejado", desc: "Checklists operacionais" },
-  { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "planejado", desc: "Contagens de estoque" },
+  { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "planejado", desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
+  { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "planejado", desc: "Reservas de mesa e base de clientes",    dependsOn: ["equipe"] },
+  { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "planejado", desc: "Checklists operacionais",                dependsOn: ["equipe"] },
+  { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "planejado", desc: "Contagens de estoque",                   dependsOn: ["equipe"] },
   { id: "temperaturas",     area: "operacao", label: "Temperaturas",       icon: "🌡️", status: "planejado", desc: "Monitoramento e alertas" },
-  { id: "fichas",           area: "operacao", label: "Fichas Técnicas",    icon: "📋", status: "planejado", desc: "Receitas e custo de pratos" },
+  { id: "fichas",           area: "operacao", label: "Fichas Técnicas",    icon: "📋", status: "planejado", desc: "Receitas e custo de pratos",             dependsOn: ["compras"] },
 ];
 
 export const AREA_INFO = {

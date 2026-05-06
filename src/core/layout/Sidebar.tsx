@@ -49,6 +49,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             🏠 Início
           </NavLink>
 
+          <NavLink
+            to="/arquitetura"
+            className={({ isActive }) => `
+              block px-3 py-2 rounded-lg text-sm font-medium
+              ${isActive
+                ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}
+            `}
+          >
+            🏗️ Arquitetura
+          </NavLink>
+
           {areas.map(area => {
             const mods = modulesByArea(area).filter(m => visibleModule(m.id));
             if (mods.length === 0) return null;

@@ -86,6 +86,8 @@ export type ModuleDef = {
   desc?: string;
   // Sprint atual: módulo está implementado?
   status: "ativo" | "em-breve" | "planejado";
+  // De quais módulos esse aqui depende pra funcionar
+  dependsOn?: ModuleId[];
 };
 
 // Permissão por módulo dentro de um restaurante
