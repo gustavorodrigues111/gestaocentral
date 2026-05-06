@@ -9,7 +9,70 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "configuracoes";
+  | "pessoas" | "equipe" | "configuracoes";
+
+// ─── ESCALA / EQUIPE ───
+
+export type Area = "Bar" | "Cozinha" | "Salão" | "Limpeza";
+export const AREAS: Area[] = ["Bar", "Cozinha", "Salão", "Limpeza"];
+
+export type Cargo = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  area: Area;
+  pontos: number;       // pontos pra divisão de gorjeta
+  semGorjeta: boolean;  // true = não recebe gorjeta
+  ativo: boolean;
+  ordem: number;
+  createdAt: string;
+};
+
+export type Empregado = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  cpf?: string | null;
+  cargoId: string;
+  admissao: string;     // YYYY-MM-DD
+  empCode?: string | null;       // código interno
+  codigoContabil?: string | null; // código no escritório de contabilidade
+  isFreela: boolean;
+  isProducao: boolean;            // recebe gorjeta todos os dias (cozinha, etc)
+  isProlaborista: boolean;        // sócio
+  inativa: boolean;
+  inativaFrom?: string | null;
+  demitidoEm?: string | null;     // primeiro dia FORA = último dia trabalhado + 1
+  email?: string | null;
+  telefone?: string | null;
+  emergenciaNome?: string | null;
+  emergenciaTelefone?: string | null;
+  pessoaId?: string | null;       // vínculo opcional com Pessoa (login)
+  createdAt: string;
+  createdBy: string;
+};
+
+export type ScheduleStatus =
+  | "trabalho" | "folga" | "freela"
+  | "comp" | "comp_trab"
+  | "ferias" | "falta_j" | "falta_i";
+
+// Escala mensal — armazenada como /escalas/{rid}_{yyyy-mm}
+export type EscalaMes = {
+  id: string;            // `${restaurantId}_${yyyy-mm}`
+  restaurantId: string;
+  ano: number;
+  mes: number;            // 1-12
+  empregados: {
+    [empregadoId: string]: {
+      [date: string]: ScheduleStatus;  // YYYY-MM-DD
+    };
+  };
+  status: "open" | "closed";
+  closedAt?: string | null;
+  closedBy?: string | null;
+  updatedAt: string;
+};
 
 export type ModuleDef = {
   id: ModuleId;

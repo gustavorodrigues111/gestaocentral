@@ -8,6 +8,7 @@ import type { ModuleDef } from "../core/types";
 export const MODULES: ModuleDef[] = [
   // ═══ ESCRITÓRIO (cinza) ═══
   { id: "pessoas",          area: "escritorio", label: "Pessoas",          icon: "👤", status: "ativo",     desc: "Cadastro de pessoas, vínculos e permissões" },
+  { id: "equipe",           area: "escritorio", label: "Equipe",           icon: "👥", status: "ativo",     desc: "Cargos e empregados do restaurante" },
   { id: "configuracoes",    area: "escritorio", label: "Configurações",    icon: "⚙️", status: "ativo",     desc: "Configurações do restaurante" },
   { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "em-breve",  desc: "Lançamento e divisão de gorjetas" },
   { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "em-breve",  desc: "Cálculo e pagamento de VT" },
@@ -17,7 +18,7 @@ export const MODULES: ModuleDef[] = [
   { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", desc: "Canal anônimo / suporte ao funcionário" },
 
   // ═══ TIME (azul) ═══
-  { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "planejado", desc: "Planejamento de escalas" },
+  { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "ativo",     desc: "Planejamento de escalas mensais" },
   { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "planejado", desc: "Controle de freelas" },
   { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "planejado", desc: "Reuniões de líderes e equipe" },
   { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "planejado", desc: "Desenvolvimento e histórico" },

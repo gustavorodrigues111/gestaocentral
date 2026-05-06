@@ -9,6 +9,7 @@ import { HomePage } from "./core/layout/HomePage";
 import { ModulePlaceholder } from "./core/layout/ModulePlaceholder";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
+import { EquipePage } from "./modules/equipe/EquipePage";
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -32,6 +33,7 @@ function ModuleRouter() {
   switch (moduleId) {
     case "pessoas":       return <PessoasPage key={k} />;
     case "configuracoes": return <ConfiguracoesPage key={k} />;
+    case "equipe":        return <EquipePage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
