@@ -10,6 +10,7 @@ import { ModulePlaceholder } from "./core/layout/ModulePlaceholder";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EquipePage } from "./modules/equipe/EquipePage";
+import { EscalaPage } from "./modules/escala/EscalaPage";
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -34,6 +35,7 @@ function ModuleRouter() {
     case "pessoas":       return <PessoasPage key={k} />;
     case "configuracoes": return <ConfiguracoesPage key={k} />;
     case "equipe":        return <EquipePage key={k} />;
+    case "escala":        return <EscalaPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
