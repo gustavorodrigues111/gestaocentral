@@ -70,20 +70,21 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid, ano, mes]);
 
-  // Gorjetas do mês
+  // Gorjetas do mês — query simples (só restaurantId), filtra mês no client
+  // pra não precisar criar composite index no Firestore
   useEffect(() => {
     if (!rid) return;
     setLoading(true);
-    const inicio = `${ano}-${pad2(mes)}-01`;
-    const fim    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
     const q = query(
       collection(db, "gorjetas"),
       where("restaurantId", "==", rid),
-      where("date", ">=", inicio),
-      where("date", "<=", fim),
     );
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Gorjeta);
+      const inicio = `${ano}-${pad2(mes)}-01`;
+      const fim    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...d.data() }) as Gorjeta)
+        .filter(g => g.date >= inicio && g.date <= fim);
       list.sort((a, b) => a.date.localeCompare(b.date));
       setGorjetas(list);
       setLoading(false);
