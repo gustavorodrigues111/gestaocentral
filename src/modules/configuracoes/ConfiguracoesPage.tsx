@@ -41,10 +41,17 @@ export function ConfiguracoesPage() {
     );
   }
 
-  const modulosAtivos = activeRestaurant.modulosAtivos || [];
+  // Filtra IDs de módulos que NÃO existem mais no registry (ex: "equipe" antigo)
+  const modulosAtivos = (activeRestaurant.modulosAtivos || []).filter(id => {
+    // import dinâmico evitado — usa lookup direto via modulesByArea
+    return ["operacao", "time", "escritorio"].some(area =>
+      modulesByArea(area as ModuleArea).some(m => m.id === id)
+    );
+  });
 
   async function toggleModulo(moduleId: ModuleId) {
     if (!rid) return;
+    // Sempre persiste a versão LIMPA (sem IDs órfãos)
     const novos = modulosAtivos.includes(moduleId)
       ? modulosAtivos.filter(m => m !== moduleId)
       : [...modulosAtivos, moduleId];

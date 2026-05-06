@@ -5,6 +5,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
+import { TemplatesTab } from "./TemplatesTab";
 
 type Tab = "pessoas" | "cargos" | "templates";
 
@@ -56,22 +57,9 @@ export function PessoasPage() {
         ))}
       </div>
 
-      {tab === "pessoas"   && <PessoasList restaurantId={rid} />}
-      {tab === "cargos"    && <CargosTab   restaurantId={rid} />}
-      {tab === "templates" && <TemplatesPlaceholder />}
-    </div>
-  );
-}
-
-function TemplatesPlaceholder() {
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-      <div className="text-4xl mb-3">🎯</div>
-      <p className="text-gray-700 dark:text-gray-300 font-medium">Templates de permissão</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
-        Cadastre conjuntos de permissões reutilizáveis (ex: "Líder Sororoca", "DP Operacional").
-        Vem na <strong>Fase 3</strong>.
-      </p>
+      {tab === "pessoas"   && <PessoasList   restaurantId={rid} />}
+      {tab === "cargos"    && <CargosTab     restaurantId={rid} />}
+      {tab === "templates" && <TemplatesTab  restaurantId={rid} />}
     </div>
   );
 }

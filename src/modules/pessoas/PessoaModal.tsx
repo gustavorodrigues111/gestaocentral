@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -7,7 +7,8 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { EmpregadoModal } from "./EmpregadoModal";
-import type { Cargo, Empregado, ModulePermission, Pessoa } from "../../core/types";
+import { getModule } from "../../config/modules";
+import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 
 type Tab = "identidade" | "vinculos" | "permissoes";
@@ -319,7 +320,11 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
 function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: string }) {
   const { restaurants } = useRestaurant();
   const activeRestaurant = restaurants.find(r => r.id === restaurantId);
-  const modulosAtivos = activeRestaurant?.modulosAtivos || [];
+  // Filtra módulos: só os IDs que existem no registry (ignora resíduos como "equipe" antigo)
+  const modulosAtivos = useMemo(
+    () => (activeRestaurant?.modulosAtivos || []).filter(id => getModule(id)),
+    [activeRestaurant?.modulosAtivos],
+  );
 
   const [perms, setPerms] = useState<Record<string, ModulePermission>>(
     (pessoa.permissions?.[restaurantId] as Record<string, ModulePermission>) || {}
@@ -330,22 +335,44 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
 
+  // Templates do restaurante (pra o seletor "Aplicar template")
+  const [templates, setTemplates] = useState<PermissionTemplate[]>([]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    const q = query(
+      collection(db, "permissionTemplates"),
+      where("restaurantId", "==", restaurantId),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as PermissionTemplate);
+      setTemplates(list.filter(t => t.ativo).sort((a, b) =>
+        (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome)
+      ));
+    });
+    return () => unsub();
+  }, [restaurantId]);
+
   function togglePerm(moduleId: string, kind: "ver" | "configurar") {
     setPerms(p => {
       const cur = p[moduleId] || { ver: false, configurar: false };
       const next = { ...cur, [kind]: !cur[kind] };
-      // Configurar implica ver
       if (kind === "configurar" && next.configurar && !next.ver) next.ver = true;
-      // Se desmarca ver, desmarca configurar também
       if (kind === "ver" && !next.ver) next.configurar = false;
       return { ...p, [moduleId]: next };
     });
   }
 
+  function aplicarTemplate(templateId: string) {
+    const t = templates.find(x => x.id === templateId);
+    if (!t) return;
+    if (!confirm(`Aplicar template "${t.nome}"? Isso SOBRESCREVE as permissões atuais.`)) return;
+    setPerms(t.permissions || {});
+    setPessoasExcluir(!!t.specialPermissions?.pessoasExcluir);
+  }
+
   async function salvar() {
     setSaving(true);
     try {
-      // Limpa entradas vazias
       const limpo: Record<string, ModulePermission> = {};
       Object.entries(perms).forEach(([k, v]) => {
         if (v.ver || v.configurar) limpo[k] = v;
@@ -380,6 +407,23 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
         Sem nenhum check em todos = sem acesso a esse módulo.
       </p>
 
+      {templates.length > 0 && (
+        <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
+          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">🎯 Aplicar template:</span>
+          <select
+            onChange={(e) => { if (e.target.value) { aplicarTemplate(e.target.value); e.target.value = ""; } }}
+            value=""
+            className="text-xs px-2 py-1 rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900"
+          >
+            <option value="">— escolher —</option>
+            {templates.map(t => (
+              <option key={t.id} value={t.id}>{t.nome}</option>
+            ))}
+          </select>
+          <span className="text-[10px] text-indigo-600 dark:text-indigo-400">sobrescreve o que tá marcado</span>
+        </div>
+      )}
+
       <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
         <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-400">
           <div>Módulo</div>
@@ -387,10 +431,15 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
           <div className="text-center">Configurar</div>
         </div>
         {modulosAtivos.map(m => {
+          const mod = getModule(m as ModuleId);
+          if (!mod) return null;
           const p = perms[m] || { ver: false, configurar: false };
           return (
             <div key={m} className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center border-t border-gray-100 dark:border-gray-800 text-sm">
-              <div className="text-gray-800 dark:text-gray-200">{m}</div>
+              <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                <span className="text-base">{mod.icon}</span>
+                <span>{mod.label}</span>
+              </div>
               <div className="text-center">
                 <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
               </div>
