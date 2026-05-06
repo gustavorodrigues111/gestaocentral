@@ -115,10 +115,7 @@ export type Restaurant = {
   serviceStartDate?: string; // YYYY-MM-DD
   modulosAtivos: ModuleId[];  // quais módulos esse restaurante usa
   // Gorjetas
-  taxRate?: number;           // % de retenção da gorjeta (ex: 33 = 33%). Default 0
-  // VT
-  vtValorPassagemDefault?: number;  // valor unitário da passagem (R$). Empregado pode ter override.
-  vtPassagensDefault?: number;      // passagens por dia trabalhado padrão (ex: 2). Empregado pode ter override.
+  taxRate?: number;           // % de retenção da gorjeta (ex: 33 = 33%). Editado dentro do módulo Gorjetas.
   ativo: boolean;
   createdAt: string;
   createdBy: string;

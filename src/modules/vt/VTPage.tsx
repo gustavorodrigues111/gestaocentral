@@ -66,22 +66,18 @@ export function VTPage() {
     return () => unsub();
   }, [rid, folhaId]);
 
-  const defaults = {
-    passagens: activeRestaurant?.vtPassagensDefault ?? 2,
-    valor:     activeRestaurant?.vtValorPassagemDefault ?? 0,
-  };
-
   const linhas = useMemo(() => {
     return empregados
       .map(e => {
-        const calc = calcularVTLinha(e, escala, defaults);
+        const calc = calcularVTLinha(e, escala);
         if (!calc) return null;
         const item = folha?.itens?.[e.id];
-        return { ...calc, paidAt: item?.paidAt ?? null };
+        const semConfig = !e.vtPassagensPorDia || !e.vtValorPassagem;
+        return { ...calc, paidAt: item?.paidAt ?? null, semConfig };
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [empregados, escala, folha, defaults]);
+  }, [empregados, escala, folha]);
 
   const totais = useMemo(() => {
     const total = linhas.reduce((s, l) => s + l.total, 0);
@@ -161,7 +157,7 @@ export function VTPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🚌 Vale Transporte</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            {activeRestaurant.nome} · padrão {defaults.passagens} pass/dia × {fmtBR(defaults.valor)}
+            {activeRestaurant.nome}
           </p>
         </div>
 
@@ -201,8 +197,11 @@ export function VTPage() {
             <div className="text-right">Status</div>
           </div>
           {linhas.map(l => (
-            <div key={l.empregadoId} className="grid grid-cols-[1fr_70px_70px_90px_110px_120px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800">
-              <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
+            <div key={l.empregadoId} className={`grid grid-cols-[1fr_70px_70px_90px_110px_120px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50 dark:bg-amber-900/10" : ""}`}>
+              <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                {l.nome}
+                {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+              </div>
               <div className="text-right tabular-nums">{l.diasTrabalhados}</div>
               <div className="text-right tabular-nums">{l.passagensPorDia}</div>
               <div className="text-right tabular-nums">{fmtBR(l.valorPassagem)}</div>

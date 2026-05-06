@@ -24,9 +24,6 @@ export function ConfiguracoesPage() {
     razaoSocial: activeRestaurant?.razaoSocial || "",
     codigoContabil: activeRestaurant?.codigoContabil || "",
     cnpj: activeRestaurant?.cnpj || "",
-    taxRate: String(activeRestaurant?.taxRate ?? 0),
-    vtPassagensDefault: String(activeRestaurant?.vtPassagensDefault ?? 2),
-    vtValorPassagemDefault: String(activeRestaurant?.vtValorPassagemDefault ?? 0),
   });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
@@ -63,9 +60,6 @@ export function ConfiguracoesPage() {
         razaoSocial: form.razaoSocial.trim() || null,
         codigoContabil: form.codigoContabil.trim() || null,
         cnpj: form.cnpj.trim() || null,
-        taxRate: parseFloat(form.taxRate) || 0,
-        vtPassagensDefault: parseFloat(form.vtPassagensDefault) || 0,
-        vtValorPassagemDefault: parseFloat(form.vtValorPassagemDefault) || 0,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -90,31 +84,10 @@ export function ConfiguracoesPage() {
           <Input label="Razão social" value={form.razaoSocial} onChange={(e) => setForm({ ...form, razaoSocial: e.target.value })} placeholder="ex: SOROROCA BAR LTDA" />
           <Input label="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
           <Input label="Código contábil" value={form.codigoContabil} onChange={(e) => setForm({ ...form, codigoContabil: e.target.value.replace(/\D/g, "") })} placeholder="ex: 2992" />
-          <Input
-            label="Retenção da gorjeta (%)"
-            type="number"
-            min="0" max="100" step="0.01"
-            value={form.taxRate}
-            onChange={(e) => setForm({ ...form, taxRate: e.target.value })}
-            placeholder="ex: 33"
-          />
-          <Input
-            label="VT — passagens/dia padrão"
-            type="number"
-            min="0" step="1"
-            value={form.vtPassagensDefault}
-            onChange={(e) => setForm({ ...form, vtPassagensDefault: e.target.value })}
-            placeholder="ex: 2"
-          />
-          <Input
-            label="VT — valor unitário da passagem (R$)"
-            type="number"
-            min="0" step="0.01"
-            value={form.vtValorPassagemDefault}
-            onChange={(e) => setForm({ ...form, vtValorPassagemDefault: e.target.value })}
-            placeholder="ex: 5.00"
-          />
         </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          💡 Configurações específicas (gorjetas, VT, etc.) ficam dentro de cada módulo — clica no ⚙️ no canto superior direito.
+        </p>
         <div className="flex items-center gap-3 mt-4">
           <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
           {savedAt && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo às {savedAt}</span>}

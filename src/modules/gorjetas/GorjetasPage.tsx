@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -8,6 +8,7 @@ import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
+import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
@@ -138,6 +139,13 @@ export function GorjetasPage() {
             {nomeMes(mes)} {ano}
           </div>
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
+          <ModuleConfigButton title="Configurações de Gorjetas" disabled={!podeConfig}>
+            <GorjetasConfig
+              rid={rid}
+              taxRate={taxRateDefault}
+              onClose={() => { /* fechado pelo Modal */ }}
+            />
+          </ModuleConfigButton>
         </div>
       </div>
 
@@ -413,5 +421,42 @@ function GorjetaModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+function GorjetasConfig({ rid, taxRate, onClose: _ }: { rid: string; taxRate: number; onClose: () => void }) {
+  const [valor, setValor] = useState(String(taxRate));
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState("");
+
+  async function salvar() {
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "restaurants", rid), { taxRate: parseFloat(valor) || 0 });
+      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <Input
+        label="Retenção da gorjeta (%)"
+        type="number"
+        min="0" max="100" step="0.01"
+        value={valor}
+        onChange={(e) => setValor(e.target.value)}
+        placeholder="ex: 33"
+      />
+      <p className="text-xs text-gray-500">
+        Percentual descontado do bruto antes da divisão. Aplicado a partir dos próximos lançamentos
+        — lançamentos antigos mantêm o snapshot da retenção do dia.
+      </p>
+      <div className="flex items-center justify-end gap-3 pt-2">
+        {savedAt && <span className="text-xs text-emerald-600">✓ Salvo às {savedAt}</span>}
+        <Button onClick={salvar} disabled={saving}>{saving ? "..." : "Salvar"}</Button>
+      </div>
+    </div>
   );
 }

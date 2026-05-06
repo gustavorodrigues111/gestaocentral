@@ -36,11 +36,11 @@ export type VTLinhaCalc = {
 export function calcularVTLinha(
   e: Empregado,
   escala: EscalaMes | null,
-  defaults: { passagens: number; valor: number },
 ): VTLinhaCalc | null {
   if (!e.vtAtivo) return null;
-  const passagensPorDia = e.vtPassagensPorDia ?? defaults.passagens;
-  const valorPassagem   = e.vtValorPassagem   ?? defaults.valor;
+  // Valores são obrigatórios no cadastro do empregado quando vtAtivo. Defensivo: zero se faltar.
+  const passagensPorDia = e.vtPassagensPorDia ?? 0;
+  const valorPassagem   = e.vtValorPassagem   ?? 0;
   const diasTrabalhados = contarDiasTrabalhados(e.id, escala);
   const total = Math.round(diasTrabalhados * passagensPorDia * valorPassagem * 100) / 100;
   return {

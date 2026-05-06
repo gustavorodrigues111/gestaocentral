@@ -168,6 +168,16 @@ function EmpregadoModal({ empregado, cargos, restaurantId, onClose }: {
       setErr("Nome, cargo e admissão obrigatórios");
       return;
     }
+    if (form.vtAtivo) {
+      if (!form.vtPassagensPorDia || form.vtPassagensPorDia <= 0) {
+        setErr("Quando VT está ativo, passagens/dia é obrigatório");
+        return;
+      }
+      if (!form.vtValorPassagem || form.vtValorPassagem <= 0) {
+        setErr("Quando VT está ativo, valor da passagem é obrigatório");
+        return;
+      }
+    }
     if (!pessoa) return;
     setErr("");
     setSaving(true);
@@ -263,22 +273,27 @@ function EmpregadoModal({ empregado, cargos, restaurantId, onClose }: {
             <span className="font-medium">Recebe VT (Vale Transporte)</span>
           </label>
           {form.vtAtivo && (
-            <div className="grid grid-cols-2 gap-3 mt-2">
-              <Input
-                label="Passagens/dia (deixe vazio pra usar padrão)"
-                type="number" min="0" step="1"
-                value={form.vtPassagensPorDia === undefined ? "" : String(form.vtPassagensPorDia)}
-                onChange={(e) => set("vtPassagensPorDia", e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
-                placeholder="ex: 2"
-              />
-              <Input
-                label="Valor passagem (R$, vazio = padrão)"
-                type="number" min="0" step="0.01"
-                value={form.vtValorPassagem === undefined ? "" : String(form.vtValorPassagem)}
-                onChange={(e) => set("vtValorPassagem", e.target.value === "" ? undefined : parseFloat(e.target.value))}
-                placeholder="ex: 5.00"
-              />
-            </div>
+            <>
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <Input
+                  label="Passagens/dia *"
+                  type="number" min="0" step="1"
+                  value={form.vtPassagensPorDia === undefined ? "" : String(form.vtPassagensPorDia)}
+                  onChange={(e) => set("vtPassagensPorDia", e.target.value === "" ? undefined : parseInt(e.target.value, 10))}
+                  placeholder="ex: 2 (ida + volta)"
+                />
+                <Input
+                  label="Valor unitário da passagem (R$) *"
+                  type="number" min="0" step="0.01"
+                  value={form.vtValorPassagem === undefined ? "" : String(form.vtValorPassagem)}
+                  onChange={(e) => set("vtValorPassagem", e.target.value === "" ? undefined : parseFloat(e.target.value))}
+                  placeholder="ex: 5.00"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Cada empregado pode usar um modal/quantidade diferente — preencha conforme o trajeto dele.
+              </p>
+            </>
           )}
         </div>
 
