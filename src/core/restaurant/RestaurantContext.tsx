@@ -44,12 +44,14 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
     [allRestaurants, pessoa],
   );
 
-  // Se restaurant ativo sumiu, escolhe primeiro
+  // Se NÃO há activeId, escolhe o primeiro disponível.
+  // ⚠️ NUNCA sobrescreve activeId existente — isso causaria conflito com o
+  // ModuleRouter que sincroniza activeId com :rid da URL. Se a URL tem um rid
+  // que não existe na lista, simplesmente o activeRestaurant fica null e a
+  // página mostra "Selecione um restaurante".
   useEffect(() => {
     if (loading) return;
-    if (activeId && !restaurants.find(r => r.id === activeId)) {
-      setActiveIdState(restaurants[0]?.id || null);
-    } else if (!activeId && restaurants[0]) {
+    if (!activeId && restaurants[0]) {
       setActiveIdState(restaurants[0].id);
     }
   }, [restaurants, activeId, loading]);
