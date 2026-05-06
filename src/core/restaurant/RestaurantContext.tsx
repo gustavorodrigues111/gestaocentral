@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
@@ -37,7 +37,12 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [pessoa]);
 
-  const restaurants = allRestaurants.filter(r => hasAnyAccess(pessoa, r.id) && r.ativo !== false);
+  // useMemo evita criar array novo toda render — estabiliza referência pra
+  // dependências de outros useEffect e evita re-renders em cascata.
+  const restaurants = useMemo(
+    () => allRestaurants.filter(r => hasAnyAccess(pessoa, r.id) && r.ativo !== false),
+    [allRestaurants, pessoa],
+  );
 
   // Se restaurant ativo sumiu, escolhe primeiro
   useEffect(() => {
