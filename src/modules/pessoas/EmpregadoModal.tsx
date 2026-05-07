@@ -21,8 +21,11 @@ type Props = {
   onSaved?: (empregadoId: string) => void;
 };
 
-export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClose, onSaved }: Props) {
+export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved }: Props) {
   const { pessoa: me } = useAuth();
+  // State local pro empregado: começa = prop. Após criar, vira o empregado novo
+  // pra a aba Horários ficar disponível inline (sem precisar fechar/reabrir).
+  const [empregado, setEmpregado] = useState<Empregado | null>(empregadoProp);
   const isNew = !empregado;
 
   // Cargos ativos pra escolha
@@ -204,8 +207,17 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
           acao: "criado",
           registradoPor: me.id,
         });
+        // Atualiza state local pra continuar editando (sem fechar) e pula
+        // direto pra aba Horários — UX mais fluida pro user que acabou de criar.
+        const novoEmpregado: Empregado = {
+          id: ref.id,
+          ...data,
+          createdAt: now,
+          createdBy: me.id,
+        };
+        setEmpregado(novoEmpregado);
+        setTab("horarios");
         onSaved?.(ref.id);
-        onClose();
       } catch (e) {
         console.error(e);
         setErr(e instanceof Error ? e.message : "Erro");

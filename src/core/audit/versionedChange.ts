@@ -14,6 +14,7 @@ import { addDoc, collection, doc, getDoc, setDoc, updateDoc } from "firebase/fir
 import { db } from "../firebase/config";
 import type { AuditLog, HistoricoVersao, MudancaAgendada } from "../types";
 import { todayYmd } from "../utils/date";
+import { sanitizeForFirestore } from "../firebase/sanitize";
 
 // Mapeia entityType → nome da coleção no Firestore
 const COLLECTION_BY_TYPE: Record<string, string> = {
@@ -115,7 +116,7 @@ export async function applyVersionedChange(input: VersionedChangeInput): Promise
     registradoEm: now,
     registradoPor: input.registradoPor,
   };
-  await addDoc(collection(db, "auditLog"), log);
+  await addDoc(collection(db, "auditLog"), sanitizeForFirestore(log));
 
   return { imediato, agendadaId };
 }
@@ -137,7 +138,8 @@ export async function logAudit(input: {
     ...input,
     registradoEm: new Date().toISOString(),
   };
-  await addDoc(collection(db, "auditLog"), log);
+  // Firestore rejeita undefined em qualquer profundidade do diff — sanitiza
+  await addDoc(collection(db, "auditLog"), sanitizeForFirestore(log));
 }
 
 function previousDay(ymd: string): string {
