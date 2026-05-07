@@ -101,6 +101,19 @@ export function ConfiguracoesPage() {
         </div>
       </section>
 
+      {/* Portal do Empregado */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Portal do Empregado</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          O que TODOS os empregados deste restaurante veem ao logar.
+          Aplica igual pra todos — sem customização individual.
+        </p>
+        <PortalEmpregadoToggles
+          rid={rid}
+          atual={activeRestaurant.portalEmpregado || {}}
+        />
+      </section>
+
       {/* Módulos ativos */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Módulos ativos</h2>
@@ -145,6 +158,81 @@ export function ConfiguracoesPage() {
           })}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Toggles do Portal do Empregado
+// ────────────────────────────────────────────────────────────────────────────
+
+type PortalConfig = NonNullable<ReturnType<() => { escala?: boolean; gorjetas?: boolean; comunicados?: boolean }>>;
+
+const ITENS_PORTAL: { key: keyof PortalConfig; icon: string; label: string; desc: string }[] = [
+  { key: "escala",      icon: "📅", label: "Minha escala",     desc: "Empregado vê só os dias dele no mês" },
+  { key: "gorjetas",    icon: "💸", label: "Minhas gorjetas",  desc: "Extrato de gorjetas recebidas" },
+  { key: "comunicados", icon: "📣", label: "Comunicados",      desc: "Avisos e comunicados do restaurante" },
+];
+
+function PortalEmpregadoToggles({ rid, atual }: { rid: string; atual: PortalConfig }) {
+  const [config, setConfig] = useState<PortalConfig>({
+    escala:      atual.escala      !== false,
+    gorjetas:    atual.gorjetas    !== false,
+    comunicados: atual.comunicados !== false,
+  });
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savedAt, setSavedAt] = useState("");
+
+  async function toggle(key: keyof PortalConfig) {
+    const next = { ...config, [key]: !config[key] };
+    setConfig(next);
+    setSavingKey(key);
+    try {
+      await updateDoc(doc(db, "restaurants", rid), { portalEmpregado: next });
+      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+    } catch (e) {
+      console.error(e);
+      // Reverte em caso de erro
+      setConfig(config);
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {ITENS_PORTAL.map(item => {
+        const ativo = !!config[item.key];
+        const isSaving = savingKey === item.key;
+        return (
+          <button
+            key={item.key}
+            type="button"
+            onClick={() => toggle(item.key)}
+            disabled={isSaving}
+            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border text-left transition-colors
+              ${ativo
+                ? "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-700"
+                : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"}
+              ${isSaving ? "opacity-60 cursor-wait" : "cursor-pointer"}
+            `}
+          >
+            <span className="text-xl">{item.icon}</span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {item.label}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{item.desc}</div>
+            </div>
+            <input type="checkbox" checked={ativo} readOnly className="pointer-events-none" />
+          </button>
+        );
+      })}
+      {savedAt && (
+        <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-2">
+          ✓ Atualizado às {savedAt}
+        </p>
+      )}
     </div>
   );
 }
