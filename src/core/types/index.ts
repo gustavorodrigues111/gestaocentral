@@ -104,6 +104,9 @@ export type Empregado = {
   vtPassagensPorDia?: number;
   vtValorPassagem?: number;
 
+  // Horários de trabalho — array versionado por validFrom (asc)
+  workSchedules?: WorkSchedule[];
+
   // Contatos
   email?: string | null;
   telefone?: string | null;
@@ -112,6 +115,46 @@ export type Empregado = {
 
   createdAt: string;
   createdBy: string;
+};
+
+// ─── HORÁRIO DE TRABALHO ────────────────────────────────────────────────────
+
+// 1 dia da semana — usado em days[0..6] (0=Dom, 6=Sáb)
+export type HorarioDia = {
+  active: boolean;
+  in?: string;       // "HH:MM" — entrada
+  out?: string;      // "HH:MM" — saída (pode ser do dia seguinte se overnight)
+  break?: number;    // intervalo intra-jornada em minutos
+};
+
+// Ciclo de domingo (modelo: trabalha N domingos seguidos, depois folga 1)
+export type SundayCycle = {
+  workCount: number;   // N domingos trabalhados consecutivos
+  offCount: number;    // M domingos folgados (na prática, sempre 1)
+  refDate: string;     // YYYY-MM-DD — primeiro domingo de FOLGA da sequência
+};
+
+// Carga horária = soma dos totalContract de cada dia ativo (em minutos).
+// Hora ficta noturna (Art. 73 CLT): 22h–05h conta como 52min30s = 1h pra contrato.
+export type WorkSchedule = {
+  validFrom: string;            // YYYY-MM-DD — vigência
+  type: "single" | "alternating";
+  totalContract: number;        // minutos somados (calculado e gravado pra performance)
+
+  // Se type === "single":
+  days?: { [key: number]: HorarioDia };  // 0..6
+  sundayCycle?: SundayCycle | null;
+
+  // Se type === "alternating":
+  weeks?: {
+    A: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
+    B: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
+  };
+  anchor?: { date: string; week: "A" | "B" };  // qual semana é A/B na data informada
+
+  registradoEm: string;         // ISO
+  registradoPor: string;        // pessoaId
+  motivo?: string;
 };
 
 // Status do dia na escala
@@ -165,6 +208,13 @@ export type Restaurant = {
 
   // Configs internas de módulos (alteráveis via ⚙️ do módulo)
   taxRate?: number;            // % retenção da gorjeta
+
+  // Limites de carga horária semanal (em minutos) usados nas validações de horário
+  // Default: 43h55min a 44h00min (CLT padrão)
+  horarioConfig?: {
+    cargaSemanalMinMin?: number;  // default 2635 (43:55)
+    cargaSemanalMaxMin?: number;  // default 2640 (44:00)
+  };
 
   ativo: boolean;
   createdAt: string;

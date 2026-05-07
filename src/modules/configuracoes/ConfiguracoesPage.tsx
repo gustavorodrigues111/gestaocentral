@@ -101,6 +101,19 @@ export function ConfiguracoesPage() {
         </div>
       </section>
 
+      {/* Carga horária */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Horário de trabalho</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Limites de carga semanal aplicados nas validações CLT do horário de cada empregado.
+          Padrão CLT é 43:55 a 44:00.
+        </p>
+        <CargaHorariaForm
+          rid={rid}
+          atual={activeRestaurant.horarioConfig || {}}
+        />
+      </section>
+
       {/* Portal do Empregado */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Portal do Empregado</h2>
@@ -235,4 +248,84 @@ function PortalEmpregadoToggles({ rid, atual }: { rid: string; atual: PortalConf
       )}
     </div>
   );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Carga horária do restaurante (HH:MM mínima/máxima)
+// ────────────────────────────────────────────────────────────────────────────
+
+function CargaHorariaForm({ rid, atual }: {
+  rid: string;
+  atual: { cargaSemanalMinMin?: number; cargaSemanalMaxMin?: number };
+}) {
+  const minMin = atual.cargaSemanalMinMin ?? 2635; // 43:55
+  const maxMin = atual.cargaSemanalMaxMin ?? 2640; // 44:00
+  const [minStr, setMinStr] = useState(minToHHMM(minMin));
+  const [maxStr, setMaxStr] = useState(minToHHMM(maxMin));
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState("");
+  const [err, setErr] = useState("");
+
+  async function salvar() {
+    const minM = hhmmToMin(minStr);
+    const maxM = hhmmToMin(maxStr);
+    if (minM === null || maxM === null) {
+      setErr("Use formato HH:MM (ex: 43:55, 44:00)");
+      return;
+    }
+    if (minM > maxM) {
+      setErr("Mínimo não pode ser maior que máximo");
+      return;
+    }
+    setErr("");
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "restaurants", rid), {
+        horarioConfig: {
+          cargaSemanalMinMin: minM,
+          cargaSemanalMaxMin: maxM,
+        },
+      });
+      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-3">
+        <Input
+          label="Carga semanal MÍNIMA (HH:MM)"
+          value={minStr}
+          onChange={(e) => setMinStr(e.target.value)}
+          placeholder="43:55"
+        />
+        <Input
+          label="Carga semanal MÁXIMA (HH:MM)"
+          value={maxStr}
+          onChange={(e) => setMaxStr(e.target.value)}
+          placeholder="44:00"
+        />
+      </div>
+      {err && <div className="text-sm text-rose-600 mt-2">{err}</div>}
+      <div className="flex items-center gap-3 mt-3">
+        <Button onClick={salvar} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+        {savedAt && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ Salvo às {savedAt}</span>}
+      </div>
+    </div>
+  );
+}
+
+function minToHHMM(min: number): string {
+  if (!Number.isFinite(min) || min < 0) return "00:00";
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+function hhmmToMin(s: string): number | null {
+  const m = s.trim().match(/^(\d{1,3}):([0-5]?\d)$/);
+  if (!m) return null;
+  return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
 }

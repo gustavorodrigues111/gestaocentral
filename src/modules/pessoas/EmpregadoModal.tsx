@@ -7,9 +7,10 @@ import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
 import { applyVersionedChange, logAudit } from "../../core/audit/versionedChange";
-import { TIPO_VINCULO_LABEL } from "../../core/types";
+import { TIPO_VINCULO_LABEL, TIPOS_VINCULO_COM_PESSOA } from "../../core/types";
 import type { Cargo, Empregado, Pessoa } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
+import { HorariosTab } from "./HorariosTab";
 
 type Props = {
   empregado: Empregado | null;       // null = novo
@@ -51,13 +52,14 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [tab, setTab] = useState<"dados" | "horarios">("dados");
   const [pendingVigencia, setPendingVigencia] = useState<{
     changes: ChangedField[];
     nonVersionedUpdates: Record<string, unknown>;
   } | null>(null);
 
   const cargo = cargosAtivos.find(c => c.id === cargoId);
-  const exigePessoa = cargo ? ["registrado", "estagiario"].includes(cargo.tipoVinculo) : false;
+  const exigePessoa = cargo ? TIPOS_VINCULO_COM_PESSOA.includes(cargo.tipoVinculo) : false;
   const usaPessoa = !!pessoa;
 
   function diffCriticoEmpregado(): { criticas: ChangedField[]; nonCritical: Record<string, unknown> } {
@@ -269,7 +271,42 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
   }
 
   return (
-    <Modal title={isNew ? "+ Vincular como empregado" : "Editar dados de empregado"} onClose={onClose} maxWidth="max-w-xl">
+    <Modal title={isNew ? "+ Vincular como empregado" : "Editar dados de empregado"} onClose={onClose} maxWidth="max-w-2xl">
+      {/* Tabs (só aparecem se empregado já criado) */}
+      {!isNew && empregado && (
+        <div className="flex border-b border-gray-200 dark:border-gray-800 -mx-6 px-6 mb-4">
+          <button
+            type="button"
+            onClick={() => setTab("dados")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === "dados"
+                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+            }`}
+          >
+            📇 Dados
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("horarios")}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === "horarios"
+                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+            }`}
+          >
+            🕒 Horários
+          </button>
+        </div>
+      )}
+
+      {tab === "horarios" && empregado ? (
+        <HorariosTab
+          empregado={empregado}
+          restaurantId={restaurantId}
+          exigeValidacao={exigePessoa}
+        />
+      ) : (
       <div className="space-y-3">
         {/* Identidade (só pra provisório sem Pessoa) */}
         {!usaPessoa && (
@@ -383,6 +420,7 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
           <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Vincular" : "Salvar"}</Button>
         </div>
       </div>
+      )}
 
       {pendingVigencia && (
         <VigenciaModal
