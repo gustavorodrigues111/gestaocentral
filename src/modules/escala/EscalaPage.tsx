@@ -6,8 +6,10 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
+import { Modal } from "../../core/ui/Modal";
+import { Input } from "../../core/ui/Input";
 import {
-  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, shiftMonth,
+  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
@@ -203,6 +205,7 @@ export function EscalaPage() {
 
   const fechada = !!escala?.fechadoEm;
   const vtPago = !!escala?.vtPagoEm;
+  const [showFeriasLote, setShowFeriasLote] = useState(false);
   // Pode editar a versão atualmente selecionada?
   // - Mês fechado → nada editável
   // - Prevista após VT pago → trava (snapshot pra cálculo)
@@ -256,6 +259,11 @@ export function EscalaPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {podeEditar && (
+            <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
+              🏖️ Marcar férias em lote
+            </Button>
+          )}
           {versao === "real" && realVazia && podeConfig && !fechada && (
             <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
               📋 Copiar Prevista → Real
@@ -278,7 +286,7 @@ export function EscalaPage() {
       <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
 
       <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
-        💡 <strong>Click</strong> nos dias que quer alterar — barra com opções aparece embaixo. <strong>ESC</strong> limpa a seleção.
+        💡 <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> limpar
       </div>
 
       <Legenda />
@@ -305,6 +313,24 @@ export function EscalaPage() {
           versao={versao}
           podeEditar={podeEditar}
           onSetStatus={setStatusCelula}
+        />
+      )}
+
+      {showFeriasLote && (
+        <MarcarFeriasLoteModal
+          empregados={empregadosOrdenados}
+          ano={ano}
+          mes={mes}
+          onClose={() => setShowFeriasLote(false)}
+          onApply={async (empregadoId, dataInicio, dataFim, status) => {
+            // Aplica em cada dia do range
+            const ini = parseYmd(dataInicio);
+            const fim = parseYmd(dataFim);
+            for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
+              await setStatusCelula(empregadoId, ymdFromDate(d), status);
+            }
+            setShowFeriasLote(false);
+          }}
         />
       )}
     </div>
@@ -376,14 +402,42 @@ function Grade({
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const wrapRef = useRef<HTMLDivElement>(null);
 
-  // ESC limpa seleção
+  // Atalhos de teclado quando há seleção
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setSelecionadas(new Set());
+      // Ignora se digitando em input/textarea
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+
+      if (e.key === "Escape") {
+        setSelecionadas(new Set());
+        return;
+      }
+      // Atalhos só com seleção ativa e em modo edição
+      if (selecionadas.size === 0 || !podeEditar) return;
+      const map: Record<string, ScheduleStatus | null> = {
+        "t": "trabalho",
+        "f": "folga",
+        "r": "freela",
+        "c": "comp",
+        "b": "comp_trab",
+        "v": "ferias",
+        "j": "falta_j",
+        "i": "falta_i",
+      };
+      const k = e.key.toLowerCase();
+      if (k in map) {
+        e.preventDefault();
+        aplicarBulk(map[k]);
+      } else if (e.key === "Backspace" || e.key === "Delete") {
+        e.preventDefault();
+        aplicarBulk(null); // reverter
+      }
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selecionadas, podeEditar]);
 
   function toggleSelecao(empId: string, date: string) {
     const key = `${empId}|${date}`;
@@ -566,6 +620,12 @@ function Celula({
 // pela barra de bulk inferior. Click numa célula só seleciona/desmarca.
 
 // ─── Barra de ação flutuante quando há células multi-selecionadas ─────────
+// Mapa de atalhos pra mostrar na barra
+const STATUS_KEY: Partial<Record<ScheduleStatus, string>> = {
+  trabalho: "T", folga: "F", freela: "R", comp: "C", comp_trab: "B",
+  ferias: "V", falta_j: "J", falta_i: "I",
+};
+
 function BulkActionBar({
   count, onApply, onClear,
 }: {
@@ -578,25 +638,26 @@ function BulkActionBar({
       <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
         ✨ {count} dia{count > 1 ? "s" : ""} selecionado{count > 1 ? "s" : ""}
       </div>
-      <div className="flex items-center gap-1 flex-wrap flex-1">
+      <div className="flex items-center gap-2 flex-wrap flex-1">
         {STATUS_LIST.map(s => (
           <button
             key={s}
             type="button"
             onClick={() => onApply(s)}
-            title={`Marcar todos como "${STATUS_INFO[s].label}"`}
-            className={`inline-flex items-center justify-center w-7 h-7 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-[10px] font-bold hover:scale-110 transition-transform`}
+            title={`${STATUS_INFO[s].label} — atalho: ${STATUS_KEY[s]}`}
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-xs font-bold hover:scale-105 transition-transform`}
           >
-            {STATUS_INFO[s].short}
+            <span>{STATUS_INFO[s].short}</span>
+            <span className="text-[9px] opacity-70 px-0.5 bg-black/20 rounded">{STATUS_KEY[s]}</span>
           </button>
         ))}
         <button
           type="button"
           onClick={() => onApply(null)}
-          title="Reverter ao cadastrado em todas"
+          title="Reverter ao cadastrado em todas — atalho: ⌫"
           className="ml-2 px-2 py-1 rounded text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
         >
-          ↩ Reverter
+          ↩ Reverter <span className="text-[9px] opacity-60 ml-1">⌫</span>
         </button>
       </div>
       <button
@@ -604,8 +665,132 @@ function BulkActionBar({
         onClick={onClear}
         className="px-2 py-1 rounded text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
       >
-        ✕ Limpar (ESC)
+        ✕ Limpar <span className="text-[9px] opacity-60">ESC</span>
       </button>
     </div>
+  );
+}
+
+// ─── Modal: marcar férias (ou outro status) em lote num range ──────────────
+function MarcarFeriasLoteModal({
+  empregados, ano, mes, onClose, onApply,
+}: {
+  empregados: Empregado[];
+  ano: number; mes: number;
+  onClose: () => void;
+  onApply: (empregadoId: string, dataInicio: string, dataFim: string, status: ScheduleStatus) => Promise<void>;
+}) {
+  const [empregadoId, setEmpregadoId] = useState(empregados[0]?.id || "");
+  // Default: 1º dia do mês visualizado
+  const inicioDefault = `${ano}-${pad2(mes)}-01`;
+  const fimDefault = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+  const [dataInicio, setDataInicio] = useState(inicioDefault);
+  const [dataFim, setDataFim] = useState(fimDefault);
+  const [status, setStatus] = useState<ScheduleStatus>("ferias");
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Calcula quantos dias serão alterados
+  const diasNoRange = (() => {
+    if (!dataInicio || !dataFim || dataInicio > dataFim) return 0;
+    const ini = parseYmd(dataInicio);
+    const fim = parseYmd(dataFim);
+    return Math.round((fim.getTime() - ini.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+  })();
+
+  async function aplicar() {
+    if (!empregadoId) { setErr("Escolha um empregado"); return; }
+    if (!dataInicio || !dataFim) { setErr("Datas obrigatórias"); return; }
+    if (dataInicio > dataFim) { setErr("Início depois do fim"); return; }
+    setErr("");
+    setSaving(true);
+    try {
+      await onApply(empregadoId, dataInicio, dataFim, status);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  // Status disponíveis no modo lote (mais comuns)
+  const statusOpcoes: ScheduleStatus[] = ["ferias", "falta_j", "comp", "folga"];
+
+  return (
+    <Modal title="🏖️ Marcar em lote" onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Pinta um intervalo de dias com o mesmo status (override). Útil pra férias,
+          atestados longos, banco de horas em compensação.
+        </p>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Empregado *</label>
+          <select
+            value={empregadoId}
+            onChange={(e) => setEmpregadoId(e.target.value)}
+            className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+          >
+            {empregados.map(emp => (
+              <option key={emp.id} value={emp.id}>{emp.nome}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Início *"
+            type="date"
+            value={dataInicio}
+            onChange={(e) => setDataInicio(e.target.value)}
+          />
+          <Input
+            label="Fim *"
+            type="date"
+            value={dataFim}
+            onChange={(e) => setDataFim(e.target.value)}
+          />
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-2">Status pra aplicar</label>
+          <div className="flex gap-2 flex-wrap">
+            {statusOpcoes.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setStatus(s)}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${
+                  status === s
+                    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30"
+                    : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800"
+                }`}
+              >
+                <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-[10px] font-bold`}>
+                  {STATUS_INFO[s].short}
+                </span>
+                <span className="text-gray-700 dark:text-gray-300">{STATUS_INFO[s].label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {diasNoRange > 0 && (
+          <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 px-3 py-2 text-xs text-blue-800 dark:text-blue-300">
+            Vai aplicar <strong>{STATUS_INFO[status].label}</strong> em <strong>{diasNoRange} dia(s)</strong>.
+            Sobrescreve overrides existentes no range. (Pra reverter, use o botão "↩ Reverter" depois.)
+          </div>
+        )}
+
+        {err && <div className="text-sm text-rose-600">{err}</div>}
+
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={aplicar} disabled={saving || diasNoRange <= 0}>
+            {saving ? "Aplicando..." : `Aplicar em ${diasNoRange} dia(s)`}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
