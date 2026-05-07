@@ -9,6 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
@@ -353,7 +354,7 @@ function GorjetaModal({
         createdBy: gorjeta?.createdBy || pessoa.id,
         updatedAt: now,
       };
-      await setDoc(doc(db, "gorjetas", id), data);
+      await setDoc(doc(db, "gorjetas", id), sanitizeForFirestore(data));
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro");
@@ -368,13 +369,13 @@ function GorjetaModal({
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      await setDoc(doc(db, "gorjetas", gorjeta.id), {
+      await setDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
         ...gorjeta,
         divisaoSnapshot: divisaoLive.itens,
         paidAt: now,
         paidBy: pessoa.id,
         updatedAt: now,
-      });
+      }));
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro");
@@ -388,13 +389,13 @@ function GorjetaModal({
     if (!confirm("Desfazer pagamento?\n\nA divisão volta a ser calculada em tempo real e o snapshot é apagado.")) return;
     setSaving(true);
     try {
-      await setDoc(doc(db, "gorjetas", gorjeta.id), {
+      await setDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
         ...gorjeta,
         divisaoSnapshot: null,
         paidAt: null,
         paidBy: null,
         updatedAt: new Date().toISOString(),
-      });
+      }));
       onClose();
     } finally {
       setSaving(false);
