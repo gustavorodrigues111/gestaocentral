@@ -14,6 +14,7 @@ import {
   computeAreaPercentages, countEmpregadosRegistradosNaArea,
   defaultPercentages, getActiveSplitVersion,
 } from "./splitRules";
+import { HistoricoRegrasTab } from "./HistoricoRegrasTab";
 
 type Props = {
   rid: string;
@@ -22,6 +23,7 @@ type Props = {
 
 export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
   const { pessoa: me } = useAuth();
+  const [tab, setTab] = useState<"editar" | "historico">("editar");
   const [versions, setVersions] = useState<SplitVersion[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -187,6 +189,36 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
         Cada versão pode gerar uma <strong>Ata de Assembleia</strong>.
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 -mx-1">
+        <button
+          type="button"
+          onClick={() => setTab("editar")}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+            tab === "editar"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500"
+          }`}
+        >
+          ✏️ Nova versão
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("historico")}
+          className={`px-3 py-1.5 text-xs font-medium border-b-2 transition-colors ${
+            tab === "historico"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500"
+          }`}
+        >
+          📋 Histórico ({versions.length})
+        </button>
+      </div>
+
+      {tab === "historico" && <HistoricoRegrasTab rid={rid} />}
+
+      {tab === "editar" && (
+        <>
       {/* Versão vigente */}
       {versaoVigente && (
         <div className="text-xs bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 text-emerald-800 dark:text-emerald-300">
@@ -345,6 +377,8 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
           {saving ? "Salvando..." : "Salvar nova versão"}
         </Button>
       </div>
+        </>
+      )}
     </div>
   );
 }
