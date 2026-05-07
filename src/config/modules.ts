@@ -27,9 +27,9 @@ export const MODULES: ModuleDef[] = [
   { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "ativo",     desc: "Ideias para discutir em reuniões",       dependsOn: ["reunioes"] },
 
   // ═══ OPERAÇÃO (laranja) ═══
-  { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "planejado", desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
+  { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "ativo",     desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
   { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "planejado", desc: "Reservas de mesa e base de clientes",    dependsOn: ["pessoas"] },
-  { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "planejado", desc: "Checklists operacionais",                dependsOn: ["pessoas"] },
+  { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "ativo",     desc: "Checklists operacionais",                dependsOn: ["pessoas"] },
   { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "planejado", desc: "Contagens de estoque",                   dependsOn: ["pessoas"] },
   { id: "temperaturas",     area: "operacao", label: "Temperaturas",       icon: "🌡️", status: "planejado", desc: "Monitoramento e alertas" },
   { id: "fichas",           area: "operacao", label: "Fichas Técnicas",    icon: "📋", status: "planejado", desc: "Receitas e custo de pratos",             dependsOn: ["compras"] },

@@ -510,6 +510,124 @@ export type EventoTrilha = {
   registradoPor: string;
 };
 
+// ─── OCORRÊNCIAS ───────────────────────────────────────────────────────────
+
+export type OcorrenciaGravidade = "elogio" | "leve" | "media" | "grave";
+
+export const OCORRENCIA_GRAVIDADE_LABEL: Record<OcorrenciaGravidade, string> = {
+  elogio: "Elogio",
+  leve:   "Leve",
+  media:  "Média",
+  grave:  "Grave",
+};
+
+export const OCORRENCIA_GRAVIDADE_ICON: Record<OcorrenciaGravidade, string> = {
+  elogio: "🌟",
+  leve:   "ℹ️",
+  media:  "⚠️",
+  grave:  "🚨",
+};
+
+export type OcorrenciaStatus = "aberta" | "em_apuracao" | "resolvida" | "arquivada";
+
+export const OCORRENCIA_STATUS_LABEL: Record<OcorrenciaStatus, string> = {
+  aberta:       "Aberta",
+  em_apuracao:  "Em apuração",
+  resolvida:    "Resolvida",
+  arquivada:    "Arquivada",
+};
+
+export type Ocorrencia = {
+  id: string;
+  restaurantId: string;
+  data: string;                          // YYYY-MM-DD
+  hora?: string;                         // HH:MM
+  titulo: string;
+  descricao: string;
+  gravidade: OcorrenciaGravidade;
+  status: OcorrenciaStatus;
+  categoria?: string;                    // ex: "Atendimento", "Cozinha", "Financeiro"
+  // Envolvidos
+  empregadosEnvolvidos: string[];        // empregadoIds
+  clienteNome?: string;                  // externo (texto livre)
+  // Resolução
+  resolucao?: string;                    // texto da resolução
+  resolvidaEm?: string | null;           // ISO
+  resolvidaPor?: string | null;          // pessoaId
+  // Auditoria
+  criadaEm: string;                      // ISO
+  criadaPor: string;                     // pessoaId
+  atualizadaEm: string;
+};
+
+// ─── CHECKLISTS ─────────────────────────────────────────────────────────────
+
+export type ChecklistFrequencia = "diaria" | "semanal" | "mensal" | "avulsa";
+
+export const CHECKLIST_FREQ_LABEL: Record<ChecklistFrequencia, string> = {
+  diaria:  "Diária",
+  semanal: "Semanal",
+  mensal:  "Mensal",
+  avulsa:  "Avulsa",
+};
+
+export type ChecklistItemTemplate = {
+  id: string;
+  texto: string;
+  ordem: number;
+  obrigatorio: boolean;       // se true, run não fecha sem marcar
+  exigeFoto?: boolean;        // futuro: anexar foto (placeholder)
+  exigeObs?: boolean;         // se true, run pede observação no item
+};
+
+export type ChecklistTemplate = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  descricao?: string;
+  area?: Area;                      // opcional — pode ser geral
+  frequencia: ChecklistFrequencia;
+  // pra "diaria" — quais dias da semana (0=Dom..6=Sáb). Vazio = todos.
+  diasSemana?: number[];
+  // horário de referência (ex: "08:00" pra abertura). Pra dashboard.
+  horarioReferencia?: string;
+  itens: ChecklistItemTemplate[];
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export type ChecklistRunItemResultado = {
+  itemId: string;
+  textoSnapshot: string;            // snapshot pra preservar mesmo após editar template
+  feito: boolean;
+  observacao?: string;
+  marcadoEm?: string;               // ISO
+};
+
+export type ChecklistRunStatus = "rascunho" | "completo" | "incompleto";
+
+export type ChecklistRun = {
+  id: string;
+  restaurantId: string;
+  templateId: string;
+  templateNomeSnapshot: string;
+  templateAreaSnapshot?: Area;
+  data: string;                     // YYYY-MM-DD
+  executorEmpregadoId?: string | null;
+  executorNome: string;             // snapshot
+  itens: ChecklistRunItemResultado[];
+  totalItens: number;
+  feitos: number;
+  obrigatoriosFeitos: number;
+  obrigatoriosTotal: number;
+  status: ChecklistRunStatus;
+  iniciadoEm: string;
+  finalizadoEm?: string | null;
+  observacaoGeral?: string;
+};
+
 // ─── TEMPLATES DE PERMISSÃO ───
 
 export type PermissionTemplate = {
