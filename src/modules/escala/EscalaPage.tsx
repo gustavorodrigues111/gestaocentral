@@ -13,6 +13,7 @@ import {
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
+import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 
 // Tabela de status: cor + label curto + label longo
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
@@ -137,11 +138,19 @@ export function EscalaPage() {
 
   const dias = daysInMonth(ano, mes);
 
-  async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null) {
-    if (!rid) return;
-    const ref = doc(db, "escalas", escalaId);
+  async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null): Promise<ValidacaoEscalaIssue[]> {
+    if (!rid) return [];
 
-    // Garante que o doc existe (updateDoc com dot notation falha se o doc é novo)
+    // ── VALIDAÇÃO CLT ──
+    // Antes de aplicar, simula o estado novo e checa DSR.
+    // Se viola, NÃO salva e retorna as issues pro caller mostrar.
+    const issues = validarOverride({
+      empregadoId, data: ymdDate, novoStatus: status,
+      escala, derivados, versao,
+    });
+    if (issues.length > 0) return issues;
+
+    const ref = doc(db, "escalas", escalaId);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       await setDoc(ref, {
@@ -154,11 +163,8 @@ export function EscalaPage() {
       });
     }
 
-    // Path tipo "prevista.empregadoId.2026-05-15"
     const path = `${versao}.${empregadoId}.${ymdDate}`;
     if (status === null) {
-      // Reverter ao cadastrado = APAGA a chave (Firestore merge não apaga chave;
-      // tem que usar deleteField() explicitamente)
       await updateDoc(ref, {
         [path]: deleteField(),
         updatedAt: new Date().toISOString(),
@@ -169,6 +175,7 @@ export function EscalaPage() {
         updatedAt: new Date().toISOString(),
       });
     }
+    return [];
   }
 
   // Copia o que tem na prevista pra real (útil pra começar o mês a partir do plano)
@@ -395,7 +402,7 @@ function Grade({
   derivados: Record<string, { [date: string]: DerivedDay }>;
   versao: "prevista" | "real";
   podeEditar: boolean;
-  onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => void;
+  onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   // Seleção: Set<"empId|date"> — qualquer click adiciona/remove. Ações via barra inferior.
@@ -451,9 +458,25 @@ function Grade({
 
   async function aplicarBulk(status: ScheduleStatus | null) {
     if (selecionadas.size === 0) return;
+    const erros: ValidacaoEscalaIssue[] = [];
+    let aplicados = 0;
     for (const key of selecionadas) {
       const [empId, date] = key.split("|");
-      await onSetStatus(empId, date, status);
+      const issues = await onSetStatus(empId, date, status);
+      if (issues.length > 0) erros.push(...issues);
+      else aplicados++;
+    }
+    if (erros.length > 0) {
+      const empMap = Object.fromEntries(empregados.map(e => [e.id, e.nome]));
+      const msg = erros
+        .map(er => {
+          const empId = [...selecionadas].find(k => k.includes(er.data))?.split("|")[0];
+          const nome = empId ? empMap[empId] : "?";
+          return `• ${nome} em ${er.data}: ${er.mensagem} (${er.artigo})`;
+        })
+        .slice(0, 10)
+        .join("\n");
+      alert(`⚠ ${erros.length} célula(s) bloqueada(s) por violação CLT.\n${aplicados > 0 ? `${aplicados} célula(s) foram aplicadas.\n` : ""}\n${msg}${erros.length > 10 ? "\n…" : ""}`);
     }
     setSelecionadas(new Set());
   }

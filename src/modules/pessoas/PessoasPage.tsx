@@ -6,8 +6,9 @@ import { canVer } from "../../core/auth/permissions";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
 import { TemplatesTab } from "./TemplatesTab";
+import { AlteracoesTab } from "./AlteracoesTab";
 
-type Tab = "pessoas" | "cargos" | "templates";
+type Tab = "pessoas" | "cargos" | "templates" | "alteracoes";
 
 export function PessoasPage() {
   const { pessoa: me } = useAuth();
@@ -31,9 +32,10 @@ export function PessoasPage() {
   }
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "pessoas",   label: "Pessoas",   icon: "👤" },
-    { id: "cargos",    label: "Cargos",    icon: "🏷️" },
-    { id: "templates", label: "Templates", icon: "🎯" },
+    { id: "pessoas",    label: "Pessoas",    icon: "👤" },
+    { id: "cargos",     label: "Cargos",     icon: "🏷️" },
+    { id: "templates",  label: "Templates",  icon: "🎯" },
+    { id: "alteracoes", label: "Alterações", icon: "📋" },
   ];
 
   return (
@@ -57,9 +59,10 @@ export function PessoasPage() {
         ))}
       </div>
 
-      {tab === "pessoas"   && <PessoasList   restaurantId={rid} />}
-      {tab === "cargos"    && <CargosTab     restaurantId={rid} />}
-      {tab === "templates" && <TemplatesTab  restaurantId={rid} />}
+      {tab === "pessoas"    && <PessoasList    restaurantId={rid} />}
+      {tab === "cargos"     && <CargosTab      restaurantId={rid} />}
+      {tab === "templates"  && <TemplatesTab   restaurantId={rid} />}
+      {tab === "alteracoes" && <AlteracoesTab  restaurantId={rid} />}
     </div>
   );
 }
