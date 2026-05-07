@@ -1,4 +1,7 @@
+import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
@@ -10,6 +13,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
+
+  // Pessoa logada é equipe deste restaurante? (tem empregado com pessoaId == ela)
+  const [souEquipe, setSouEquipe] = useState(false);
+  useEffect(() => {
+    if (!rid || !pessoa?.id) { setSouEquipe(false); return; }
+    const q = query(
+      collection(db, "empregados"),
+      where("restaurantId", "==", rid),
+      where("pessoaId", "==", pessoa.id),
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      setSouEquipe(snap.docs.length > 0);
+    });
+    return () => unsub();
+  }, [rid, pessoa?.id]);
 
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
@@ -48,6 +66,20 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           >
             🏠 Início
           </NavLink>
+
+          {souEquipe && rid && (
+            <NavLink
+              to={`/portal/${rid}`}
+              className={({ isActive }) => `
+                block px-3 py-2 rounded-lg text-sm font-medium
+                ${isActive
+                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}
+              `}
+            >
+              👤 Meu Portal
+            </NavLink>
+          )}
 
           <NavLink
             to="/arquitetura"

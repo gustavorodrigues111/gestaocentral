@@ -13,6 +13,7 @@ import { EscalaPage } from "./modules/escala/EscalaPage";
 import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
 import { VTPage } from "./modules/vt/VTPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
+import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -75,6 +76,7 @@ function ProtectedShell() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/arquitetura" element={<ArquiteturaPage />} />
+          <Route path="/portal/:rid" element={<PortalPage />} />
           <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
