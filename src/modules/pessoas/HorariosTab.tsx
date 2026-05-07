@@ -7,6 +7,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { logAudit } from "../../core/audit/versionedChange";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import {
   WEEKDAYS, calcDayHours, fmtHHMM, getActiveWorkSchedule,
@@ -173,6 +174,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
     setSaving(true);
     try {
       const now = new Date().toISOString();
+      const motivoLimpo = motivo.trim();
       let novaVersao: WorkSchedule;
       if (tipo === "single") {
         novaVersao = {
@@ -180,10 +182,10 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
           type: "single",
           totalContract: validSingle.totalContract,
           days: daysSingle,
-          sundayCycle: cicloSingle,
+          sundayCycle: cicloSingle ?? null,
           registradoEm: now,
           registradoPor: me.id,
-          motivo: motivo.trim() || undefined,
+          ...(motivoLimpo ? { motivo: motivoLimpo } : {}),
         };
       } else {
         novaVersao = {
@@ -191,19 +193,22 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
           type: "alternating",
           totalContract: Math.round((validA.totalContract + validB.totalContract) / 2),
           weeks: {
-            A: { days: daysA, sundayCycle: cicloA, totalContract: validA.totalContract },
-            B: { days: daysB, sundayCycle: cicloB, totalContract: validB.totalContract },
+            A: { days: daysA, sundayCycle: cicloA ?? null, totalContract: validA.totalContract },
+            B: { days: daysB, sundayCycle: cicloB ?? null, totalContract: validB.totalContract },
           },
           anchor,
           registradoEm: now,
           registradoPor: me.id,
-          motivo: motivo.trim() || undefined,
+          ...(motivoLimpo ? { motivo: motivoLimpo } : {}),
         };
       }
       const lista = [...(empregado.workSchedules || [])].filter(s => s.validFrom !== validFrom);
       lista.push(novaVersao);
       lista.sort((a, b) => a.validFrom.localeCompare(b.validFrom));
-      await updateDoc(doc(db, "empregados", empregado.id), { workSchedules: lista });
+      // Firestore rejeita undefined — sanitiza recursivamente antes de gravar
+      await updateDoc(doc(db, "empregados", empregado.id), {
+        workSchedules: sanitizeForFirestore(lista),
+      });
       await logAudit({
         entityType: "empregado",
         entityId: empregado.id,
@@ -489,6 +494,9 @@ function DiasTabela({
                 <CopiarDeMenu
                   daysAtivos={WEEKDAYS.filter(w => w.idx !== wd.idx && days[w.idx]?.active)}
                   onPick={(srcIdx) => onCopiar(srcIdx, wd.idx)}
+                  // Pros últimos 2 dias (Sex, Sáb), abre o dropdown PRA CIMA
+                  // pra não ser cortado pelo final do modal
+                  abrirParaCima={wd.idx >= 5}
                 />
               )}
             </div>
@@ -571,8 +579,8 @@ function ResumoCard({ label, value, variant }: { label: string; value: string; v
 }
 
 function CopiarDeMenu({
-  daysAtivos, onPick,
-}: { daysAtivos: typeof WEEKDAYS; onPick: (idx: number) => void }) {
+  daysAtivos, onPick, abrirParaCima,
+}: { daysAtivos: typeof WEEKDAYS; onPick: (idx: number) => void; abrirParaCima?: boolean }) {
   const [open, setOpen] = useState(false);
   if (daysAtivos.length === 0) return <span className="text-xs text-gray-300">—</span>;
   return (
@@ -582,7 +590,7 @@ function CopiarDeMenu({
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
+          <div className={`absolute right-0 ${abrirParaCima ? "bottom-full mb-1" : "top-full mt-1"} z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden`}>
             {daysAtivos.map(d => (
               <button key={d.idx} type="button"
                 onClick={() => { onPick(d.idx); setOpen(false); }}
