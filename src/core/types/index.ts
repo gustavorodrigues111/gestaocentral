@@ -24,7 +24,8 @@ export type RestaurantPermissions = {
 
 // Permissões "transversais" da pessoa em um restaurante (não por módulo)
 export type PessoaSpecialPermissions = {
-  pessoasExcluir?: boolean;   // pode excluir pessoas DEFINITIVAMENTE
+  pessoasExcluir?: boolean;             // pode excluir pessoas DEFINITIVAMENTE
+  gorjetasConfigurarRegra?: boolean;    // pode mexer na regra de divisão de gorjeta (assembleia)
 };
 
 export type ModuleDef = {
@@ -239,6 +240,46 @@ export type Pessoa = {
   motivoInativacao?: string;
 
   createdAt: string;
+};
+
+// ─── REGRA DE DIVISÃO DE GORJETA (versionada por restaurante) ───────────────
+// Cada mudança nas regras de divisão cria nova SplitVersion com effectiveFrom.
+// O cálculo de gorjeta usa a versão vigente no DIA da gorjeta (snapshot no doc).
+
+export type SplitMode = "global_points" | "area_points";
+
+// Tipo de configuração de uma área (modo "area_points")
+export type AreaPercentConfig =
+  | { type: "fixed"; value: number }                  // ex: { fixed, value: 40 } → 40%
+  | { type: "perEmployee"; valuePerEmp: number };     // ex: { perEmployee, 2 } → 2% × N empregados ativos
+
+export type AtaMeta = {
+  meetingDate?: string;       // YYYY-MM-DD da assembleia
+  meetingLocation?: string;
+  motivo?: string;
+};
+
+export type SplitVersion = {
+  id: string;
+  restaurantId: string;
+  effectiveFrom: string;       // YYYY-MM-DD — vigência
+  mode: SplitMode;
+
+  // Só preenchido se mode === "area_points"
+  percentages?: {
+    Bar:     AreaPercentConfig;
+    Cozinha: AreaPercentConfig;
+    Salão:   AreaPercentConfig;
+    Limpeza: AreaPercentConfig;
+  };
+
+  taxRate: number;             // % retenção (0-100). Migrado de Restaurant.taxRate.
+
+  ata?: AtaMeta;
+
+  status: "active" | "draft" | "superseded";
+  createdAt: string;
+  createdBy: string;
 };
 
 // ─── GORJETAS ───

@@ -9,13 +9,13 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
-import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
-import { applyVersionedChange } from "../../core/audit/versionedChange";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
-import type { Cargo, Empregado, EscalaMes, Gorjeta } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
+import { getActiveSplitVersion } from "./splitRules";
+import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -37,10 +37,25 @@ export function GorjetasPage() {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
+  const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingDate, setEditingDate] = useState<string | null>(null);
 
-  const taxRateDefault = activeRestaurant?.taxRate ?? 0;
+  // SplitVersions do restaurante (regras de divisão)
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "splitVersions"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setSplitVersions(snap.docs.map(d => ({ id: d.id, ...d.data() }) as SplitVersion));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  // taxRate vigente HOJE — vem da SplitVersion (não mais do Restaurant)
+  const taxRateDefault = useMemo(() => {
+    const v = getActiveSplitVersion(splitVersions, `${ano}-${pad2(mes)}-${pad2(new Date().getDate())}`);
+    return v?.taxRate ?? activeRestaurant?.taxRate ?? 0;
+  }, [splitVersions, activeRestaurant, ano, mes]);
 
   // Empregados
   useEffect(() => {
@@ -142,10 +157,9 @@ export function GorjetasPage() {
             {nomeMes(mes)} {ano}
           </div>
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-          <ModuleConfigButton title="Configurações de Gorjetas" disabled={!podeConfig}>
-            <GorjetasConfig
+          <ModuleConfigButton title="⚙️ Regras de divisão de gorjeta" disabled={!podeConfig}>
+            <RegrasDivisaoConfig
               rid={rid}
-              taxRate={taxRateDefault}
               onClose={() => { /* fechado pelo Modal */ }}
             />
           </ModuleConfigButton>
@@ -169,6 +183,7 @@ export function GorjetasPage() {
           empregados={empregados}
           cargos={cargos}
           escala={escala}
+          splitVersions={splitVersions}
           onPickDate={(d) => setEditingDate(d)}
         />
       )}
@@ -182,6 +197,7 @@ export function GorjetasPage() {
           empregados={empregados}
           cargos={cargos}
           escala={escala}
+          splitVersions={splitVersions}
           podeEditar={podeConfig}
           onClose={() => setEditingDate(null)}
         />
@@ -206,11 +222,12 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
 }
 
 function ListaDias({
-  ano, mes, gorjetaMap, empregados, cargos, escala, onPickDate,
+  ano, mes, gorjetaMap, empregados, cargos, escala, splitVersions, onPickDate,
 }: {
   ano: number; mes: number;
   gorjetaMap: Record<string, Gorjeta>;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  splitVersions: SplitVersion[];
   onPickDate: (d: string) => void;
 }) {
   const dias = daysInMonth(ano, mes);
@@ -235,7 +252,8 @@ function ListaDias({
         const wd = d.getDay();
         const weekend = wd === 0 || wd === 6;
         const isToday = date === todayYmd;
-        const recebem = g ? calcularDivisaoDia(date, g.valorLiquido, empregados, cargos, escala).itens.length : 0;
+        const splitVersion = getActiveSplitVersion(splitVersions, date);
+        const recebem = g ? calcularDivisaoDia(date, g.valorLiquido, empregados, cargos, escala, splitVersion).itens.length : 0;
         return (
           <button
             key={date}
@@ -269,11 +287,12 @@ function ListaDias({
 }
 
 function GorjetaModal({
-  date, rid, taxRateDefault, gorjeta, empregados, cargos, escala, podeEditar, onClose,
+  date, rid, taxRateDefault, gorjeta, empregados, cargos, escala, splitVersions, podeEditar, onClose,
 }: {
   date: string; rid: string; taxRateDefault: number;
   gorjeta: Gorjeta | null;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  splitVersions: SplitVersion[];
   podeEditar: boolean;
   onClose: () => void;
 }) {
@@ -285,19 +304,20 @@ function GorjetaModal({
 
   const isPago = !!gorjeta?.paidAt;
 
-  // taxRate vem do restaurante (config vigente). Pra gorjeta JÁ existente,
-  // mantém o snapshot que foi gravado na criação. Mudanças posteriores no taxRate
-  // do restaurante NÃO afetam lançamentos antigos (snapshot por dia).
-  const tax = gorjeta?.taxRate ?? taxRateDefault;
+  // SplitVersion vigente NA DATA da gorjeta (não hoje)
+  const splitVersion = useMemo(() => getActiveSplitVersion(splitVersions, date), [splitVersions, date]);
+
+  // taxRate: snapshot na gorjeta (se existe) OU vigente do dia OU default
+  const tax = gorjeta?.taxRate ?? splitVersion?.taxRate ?? taxRateDefault;
 
   const bruto = parseFloat(valorBruto.replace(",", ".")) || 0;
   const liquido = calcularValorLiquido(bruto, tax);
 
   // Se a gorjeta está paga, usa o snapshot da divisão (congelado).
-  // Senão, calcula em tempo real a partir da escala/cargos atuais.
+  // Senão, calcula em tempo real a partir da escala/cargos/splitVersion vigentes na data.
   const divisaoLive = useMemo(
-    () => calcularDivisaoDia(date, liquido, empregados, cargos, escala),
-    [date, liquido, empregados, cargos, escala],
+    () => calcularDivisaoDia(date, liquido, empregados, cargos, escala, splitVersion),
+    [date, liquido, empregados, cargos, escala, splitVersion],
   );
   const divisao = isPago && gorjeta?.divisaoSnapshot
     ? {
@@ -504,73 +524,5 @@ function GorjetaModal({
   );
 }
 
-function GorjetasConfig({ rid, taxRate, onClose: _ }: { rid: string; taxRate: number; onClose: () => void }) {
-  const { pessoa: me } = useAuth();
-  const [valor, setValor] = useState(String(taxRate));
-  const [savedAt, setSavedAt] = useState("");
-  const [pendingVigencia, setPendingVigencia] = useState<ChangedField[] | null>(null);
-
-  async function salvar() {
-    if (!me) return;
-    const novo = parseFloat(valor) || 0;
-    if (novo === taxRate) {
-      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
-      return;
-    }
-    // Mudança crítica → abre modal de vigência (afeta gorjetas futuras / retroativas)
-    setPendingVigencia([{
-      campo: "taxRate",
-      label: "Retenção da gorjeta",
-      valorAntes: `${taxRate}%`,
-      valorDepois: `${novo}%`,
-      rawValorAntes: taxRate,
-      rawValorDepois: novo,
-    }]);
-  }
-
-  return (
-    <div className="space-y-3">
-      <Input
-        label="Retenção da gorjeta (%)"
-        type="number"
-        min="0" max="100" step="0.01"
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        placeholder="ex: 33"
-      />
-      <p className="text-xs text-gray-500">
-        Percentual descontado do bruto antes da divisão. Lançamentos diários têm
-        snapshot do dia — só novos lançamentos usam a regra atualizada (a partir
-        da data de vigência informada).
-      </p>
-      <div className="flex items-center justify-end gap-3 pt-2">
-        {savedAt && <span className="text-xs text-emerald-600">✓ Salvo às {savedAt}</span>}
-        <Button onClick={salvar}>Salvar</Button>
-      </div>
-
-      {pendingVigencia && me && (
-        <VigenciaModal
-          titulo="Mudar retenção da gorjeta"
-          changes={pendingVigencia}
-          impacto="Gorjetas lançadas antes da vigência mantêm o snapshot da retenção daquele dia. Mudança aplica só pra novos lançamentos a partir da data informada."
-          onConfirm={async (vigencia, motivo) => {
-            await applyVersionedChange({
-              entityType: "restaurant",
-              entityId: rid,
-              restaurantId: rid,
-              campo: "taxRate",
-              valorAntes: pendingVigencia[0].rawValorAntes,
-              valorDepois: pendingVigencia[0].rawValorDepois,
-              vigenteApartir: vigencia,
-              motivo,
-              registradoPor: me.id,
-            });
-            setPendingVigencia(null);
-            setSavedAt(new Date().toLocaleTimeString("pt-BR"));
-          }}
-          onClose={() => setPendingVigencia(null)}
-        />
-      )}
-    </div>
-  );
-}
+// GorjetasConfig antigo foi substituído por RegrasDivisaoConfig (Fase 16A).
+// O arquivo RegrasDivisaoConfig.tsx faz CRUD de SplitVersion versionado.
