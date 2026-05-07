@@ -44,6 +44,13 @@ export function EscalaPage() {
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [loading, setLoading] = useState(true);
+  // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
+  const [versao, setVersao] = useState<"prevista" | "real">("prevista");
+
+  // Quando carrega a escala: se VT já foi pago, abre direto na real
+  useEffect(() => {
+    if (escala?.vtPagoEm) setVersao("real");
+  }, [escala?.vtPagoEm]);
 
   // Empregados
   useEffect(() => {
@@ -118,32 +125,42 @@ export function EscalaPage() {
 
   const dias = daysInMonth(ano, mes);
 
-  // Fase 0: editamos a versão PREVISTA. Fase 7 vai dividir a UI em prevista/real.
   async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null) {
     if (!rid) return;
-    const previstaNova = { ...(escala?.prevista || {}) };
-    const dias = { ...(previstaNova[empregadoId] || {}) };
+    const fonte = versao === "prevista" ? escala?.prevista : escala?.real;
+    const novo = { ...(fonte || {}) };
+    const dias = { ...(novo[empregadoId] || {}) };
     if (status === null) {
       delete dias[ymdDate];
     } else {
       dias[ymdDate] = status;
     }
-    previstaNova[empregadoId] = dias;
+    novo[empregadoId] = dias;
 
-    const payload: EscalaMes = {
+    const patch: Partial<EscalaMes> & Pick<EscalaMes, "id" | "restaurantId" | "ano" | "mes" | "updatedAt"> = {
       id: escalaId,
       restaurantId: rid,
       ano,
       mes,
-      prevista: previstaNova,
-      real: escala?.real || {},
-      vtPagoEm: escala?.vtPagoEm ?? null,
-      vtPagoPor: escala?.vtPagoPor ?? null,
-      fechadoEm: escala?.fechadoEm ?? null,
-      fechadoPor: escala?.fechadoPor ?? null,
+      prevista: versao === "prevista" ? novo : (escala?.prevista || {}),
+      real:     versao === "real"     ? novo : (escala?.real || {}),
       updatedAt: new Date().toISOString(),
     };
-    await setDoc(doc(db, "escalas", escalaId), payload, { merge: true });
+    await setDoc(doc(db, "escalas", escalaId), patch, { merge: true });
+  }
+
+  // Copia o que tem na prevista pra real (útil pra começar o mês a partir do plano)
+  async function copiarPrevistaParaReal() {
+    if (!rid || !escala?.prevista) return;
+    if (!confirm("Copiar a Prevista pra Real? (sobrescreve o que estiver na Real)")) return;
+    await setDoc(doc(db, "escalas", escalaId), {
+      id: escalaId,
+      restaurantId: rid,
+      ano, mes,
+      real: { ...escala.prevista },
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+    setVersao("real");
   }
 
   function navegarMes(delta: number) {
@@ -165,7 +182,13 @@ export function EscalaPage() {
   }
 
   const fechada = !!escala?.fechadoEm;
-  const podeEditar = podeConfig && !fechada;
+  const vtPago = !!escala?.vtPagoEm;
+  // Pode editar a versão atualmente selecionada?
+  // - Mês fechado → nada editável
+  // - Prevista após VT pago → trava (snapshot pra cálculo)
+  // - Real até o fechamento → editável
+  const podeEditar = podeConfig && !fechada && !(versao === "prevista" && vtPago);
+  const realVazia = !escala?.real || Object.keys(escala.real).length === 0;
 
   return (
     <div className="max-w-[1400px]">
@@ -175,19 +198,64 @@ export function EscalaPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
           <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
             {nomeMes(mes)} {ano}
           </div>
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
+        </div>
+      </div>
+
+      {/* Toggle Prevista / Real + status */}
+      <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        <div className="inline-flex items-center bg-gray-100 dark:bg-gray-800/60 p-0.5 rounded-lg">
+          <button
+            type="button"
+            onClick={() => setVersao("prevista")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              versao === "prevista"
+                ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+            }`}
+          >
+            📋 Prevista
+            {vtPago && versao !== "prevista" && <span className="ml-1 text-[10px]">🔒</span>}
+          </button>
+          <button
+            type="button"
+            onClick={() => setVersao("real")}
+            className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+              versao === "real"
+                ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
+            }`}
+          >
+            ✅ Real
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {versao === "real" && realVazia && podeConfig && !fechada && (
+            <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
+              📋 Copiar Prevista → Real
+            </Button>
+          )}
           {fechada && (
-            <span className="ml-2 text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
-              Fechada
+            <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+              🔒 Fechada
+            </span>
+          )}
+          {!fechada && vtPago && (
+            <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+              💸 VT pago
             </span>
           )}
         </div>
       </div>
+
+      {/* Banners de status */}
+      <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
 
       <Legenda />
 
@@ -209,10 +277,46 @@ export function EscalaPage() {
           empregados={empregadosOrdenados}
           cargos={cargos}
           escala={escala}
+          versao={versao}
           podeEditar={podeEditar}
           onSetStatus={setStatusCelula}
         />
       )}
+    </div>
+  );
+}
+
+function BannerStatus({
+  versao, vtPago, fechada,
+}: { versao: "prevista" | "real"; vtPago: boolean; fechada: boolean }) {
+  if (fechada) {
+    return (
+      <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
+        🔒 Mês fechado. Tudo read-only — gorjetas e VT consolidados.
+      </div>
+    );
+  }
+  if (versao === "prevista" && vtPago) {
+    return (
+      <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
+        💸 VT já foi pago. A Prevista ficou travada como snapshot pro cálculo.
+        Pra registrar o que de fato aconteceu (faltas, atestados, mudanças), edite a <strong>Real</strong>.
+      </div>
+    );
+  }
+  if (versao === "prevista") {
+    return (
+      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
+        📋 <strong>Prevista</strong> = planejamento. Edite aqui antes de pagar o VT.
+        Quando pagar VT, esta versão fica congelada como snapshot pro cálculo.
+      </div>
+    );
+  }
+  // versao === "real"
+  return (
+    <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-300 mb-4">
+      ✅ <strong>Real</strong> = o que de fato aconteceu. Use pra calcular gorjetas
+      e detectar divergências de VT (a devolver / a receber).
     </div>
   );
 }
@@ -233,10 +337,11 @@ function Legenda() {
 }
 
 function Grade({
-  ano, mes, dias, empregados, cargos, escala, podeEditar, onSetStatus,
+  ano, mes, dias, empregados, cargos, escala, versao, podeEditar, onSetStatus,
 }: {
   ano: number; mes: number; dias: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => void;
 }) {
@@ -303,7 +408,7 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-                  const status = escala?.prevista?.[e.id]?.[d];
+                  const status = escala?.[versao]?.[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const isOpen = openCell?.emp === e.id && openCell?.ymd === d;
                   return (
