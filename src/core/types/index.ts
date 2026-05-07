@@ -9,7 +9,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "configuracoes";
+  | "pessoas" | "comunicados" | "configuracoes";
 
 // ─── PERMISSÕES ───
 
@@ -353,6 +353,37 @@ export type VTFolha = {
   mes: number;
   itens: { [empregadoId: string]: VTFolhaItem };
   updatedAt: string;
+};
+
+// ─── COMUNICADOS ────────────────────────────────────────────────────────────
+
+export type ComunicadoPrioridade = "info" | "aviso" | "urgente";
+
+export type ComunicadoDestinatarios =
+  | { tipo: "todos" }
+  | { tipo: "areas"; areas: Area[] }
+  | { tipo: "empregados"; empregadoIds: string[] };
+
+export type Comunicado = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  corpo: string;                  // texto simples por enquanto
+  prioridade: ComunicadoPrioridade;
+  destinatarios: ComunicadoDestinatarios;
+  validoAte?: string | null;      // YYYY-MM-DD — depois disso, comunicado some pro empregado
+  ativo: boolean;                 // se desativado, não aparece (mas mantém histórico)
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export type ComunicadoLeitura = {
+  id: string;                     // `${comunicadoId}_${pessoaId}`
+  comunicadoId: string;
+  pessoaId: string;
+  restaurantId: string;
+  lidoEm: string;                 // ISO
 };
 
 // ─── TEMPLATES DE PERMISSÃO ───

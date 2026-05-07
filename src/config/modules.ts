@@ -15,6 +15,7 @@ export const MODULES: ModuleDef[] = [
   { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     desc: "Cálculo e pagamento de VT",              dependsOn: ["pessoas", "escala"] },
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
   { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "planejado", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
+  { id: "comunicados",      area: "escritorio", label: "Comunicados",      icon: "📣", status: "ativo",     desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", desc: "Documentos e wiki interna" },
   { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"] },
 

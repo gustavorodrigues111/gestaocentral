@@ -12,6 +12,7 @@ import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
 import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
 import { VTPage } from "./modules/vt/VTPage";
+import { ComunicadosPage } from "./modules/comunicados/ComunicadosPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -40,6 +41,7 @@ function ModuleRouter() {
     case "escala":        return <EscalaPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
     case "vt":            return <VTPage key={k} />;
+    case "comunicados":   return <ComunicadosPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

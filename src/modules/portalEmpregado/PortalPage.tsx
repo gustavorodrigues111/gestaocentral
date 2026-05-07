@@ -7,6 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import type { Cargo, Empregado } from "../../core/types";
 import { MinhaEscalaTab } from "./MinhaEscalaTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
+import { ComunicadosTab } from "./ComunicadosTab";
 
 type Tab = "escala" | "gorjetas" | "comunicados";
 
@@ -138,20 +139,7 @@ export function PortalPage() {
 
       {tab === "escala"      && verEscala      && <MinhaEscalaTab     empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
       {tab === "gorjetas"    && verGorjetas    && <MinhasGorjetasTab  empregado={empregado} restaurantId={rid} />}
-      {tab === "comunicados" && verComunicados && <ComunicadosPlaceholder />}
-    </div>
-  );
-}
-
-function ComunicadosPlaceholder() {
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-      <div className="text-4xl mb-3">📣</div>
-      <p className="text-gray-700 dark:text-gray-300 font-medium">Comunicados</p>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm mx-auto">
-        Em breve — o módulo Comunicados ainda não foi implementado. Avisos do restaurante
-        aparecerão aqui quando estiver pronto (Sprint 19).
-      </p>
+      {tab === "comunicados" && verComunicados && <ComunicadosTab empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
     </div>
   );
 }
