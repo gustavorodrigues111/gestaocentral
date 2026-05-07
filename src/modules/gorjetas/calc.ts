@@ -3,6 +3,7 @@ import type {
 } from "../../core/types";
 import { AREAS } from "../../core/types";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
+import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import { computeAreaPercentages, countEmpregadosRegistradosNaArea } from "./splitRules";
 
 // Re-export pra retrocompatibilidade (módulos antigos importam daqui)
@@ -52,6 +53,26 @@ export function calcularDivisaoDia(
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const itens: DivisaoItem[] = [];
 
+  // Pra cada empregado, resolve status do dia com fallback chain:
+  //   1. override em escala.real (o que aconteceu)
+  //   2. override em escala.prevista (planejamento — usado quando real ainda vazia)
+  //   3. derivado do horário cadastrado (workSchedule)
+  // Sem isso, gorjetas lançadas durante/antes do mês não veriam ninguém porque
+  // a Real só é preenchida após os fatos.
+  const [yStr, mStr] = date.split("-");
+  const yNum = parseInt(yStr, 10);
+  const mNum = parseInt(mStr, 10);
+
+  function resolverStatus(emp: Empregado): ScheduleStatus | undefined {
+    const real = escala?.real?.[emp.id]?.[date];
+    if (real) return real;
+    const prevista = escala?.prevista?.[emp.id]?.[date];
+    if (prevista) return prevista;
+    // Deriva do workSchedule (cache por empregado fora do for? aqui simples)
+    const derived = derivedScheduleForEmpregado(emp, yNum, mNum);
+    return derived[date]?.status;
+  }
+
   // 1) Eligibilidade — quem recebe gorjeta neste dia?
   for (const e of empregados) {
     if (!empregadoAtivoEm(e, date)) continue;
@@ -62,7 +83,7 @@ export function calcularDivisaoDia(
     if (cargo.recebeProducao) {
       motivo = "producao";
     } else {
-      const status = escala?.real?.[e.id]?.[date];
+      const status = resolverStatus(e);
       if (status && STATUS_RECEBE[status]) {
         motivo = status === "freela" ? "freela" : "trabalho";
       }
