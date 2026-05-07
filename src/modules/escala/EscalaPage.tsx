@@ -277,6 +277,10 @@ export function EscalaPage() {
       {/* Banners de status */}
       <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
 
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+        💡 <strong>Shift+Click</strong> em várias células pra aplicar o mesmo status em lote · <strong>ESC</strong> limpa a seleção
+      </div>
+
       <Legenda />
 
       {loading ? (
@@ -369,6 +373,8 @@ function Grade({
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const [openCell, setOpenCell] = useState<{ emp: string; ymd: string } | null>(null);
+  // Multi-seleção: Set<"empId|date">
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Fecha popover ao clicar fora
@@ -380,6 +386,37 @@ function Grade({
     document.addEventListener("mousedown", onDocClick);
     return () => document.removeEventListener("mousedown", onDocClick);
   }, []);
+
+  // ESC limpa seleção
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        setSelecionadas(new Set());
+        setOpenCell(null);
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  function toggleSelecao(empId: string, date: string) {
+    const key = `${empId}|${date}`;
+    setSelecionadas(s => {
+      const next = new Set(s);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  async function aplicarBulk(status: ScheduleStatus | null) {
+    if (selecionadas.size === 0) return;
+    for (const key of selecionadas) {
+      const [empId, date] = key.split("|");
+      await onSetStatus(empId, date, status);
+    }
+    setSelecionadas(new Set());
+  }
 
   const hojeYmd = (() => {
     const d = new Date();
@@ -411,12 +448,15 @@ function Grade({
           </tr>
         </thead>
         <tbody>
-          {empregados.map(e => {
+          {empregados.map((e, empIdx) => {
             const cargo = cargoMap[e.cargoId];
             const dot = cargo?.area === "Salão" ? "bg-emerald-500"
                       : cargo?.area === "Bar"    ? "bg-blue-500"
                       : cargo?.area === "Cozinha" ? "bg-orange-500"
                       : "bg-gray-400";
+            // Pra empregados nas últimas 3 linhas, o menu da célula abre pra CIMA
+            // (evita ser cortado pelo final do container)
+            const menuAcima = empIdx >= empregados.length - 3 && empregados.length > 3;
             return (
               <tr key={e.id} className="border-t border-gray-100 dark:border-gray-800">
                 <td className="px-3 py-1.5 sticky left-0 bg-white dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-800">
@@ -434,6 +474,8 @@ function Grade({
                   const derived = derivados[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const isOpen = openCell?.emp === e.id && openCell?.ymd === d;
+                  const cellKey = `${e.id}|${d}`;
+                  const isSelected = selecionadas.has(cellKey);
                   return (
                     <td key={dia} className={`p-0.5 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""}`}>
                       <Celula
@@ -441,12 +483,20 @@ function Grade({
                         derived={derived}
                         podeEditar={podeEditar}
                         isOpen={isOpen}
-                        onClick={() => setOpenCell(isOpen ? null : { emp: e.id, ymd: d })}
+                        isSelected={isSelected}
+                        onClick={(ev) => {
+                          if (ev.shiftKey || ev.metaKey || ev.ctrlKey) {
+                            toggleSelecao(e.id, d);
+                            return;
+                          }
+                          setOpenCell(isOpen ? null : { emp: e.id, ymd: d });
+                        }}
                       />
                       {isOpen && podeEditar && (
                         <CellMenu
                           override={override || null}
                           derived={derived || null}
+                          abrirAcima={menuAcima}
                           onPick={(s) => { onSetStatus(e.id, d, s); setOpenCell(null); }}
                         />
                       )}
@@ -458,6 +508,15 @@ function Grade({
           })}
         </tbody>
       </table>
+
+      {/* Barra de bulk quando há células selecionadas */}
+      {selecionadas.size > 0 && podeEditar && (
+        <BulkActionBar
+          count={selecionadas.size}
+          onApply={aplicarBulk}
+          onClear={() => setSelecionadas(new Set())}
+        />
+      )}
     </div>
   );
 }
@@ -466,19 +525,24 @@ function Grade({
 // - Override (manual): cor sólida, foco visual.
 // - Derivado vindo do horário cadastrado: cor light + borda tracejada.
 // - Sem nada (sem horário cadastrado): célula vazia (subentende "trabalho implícito").
+// - Selecionada (multi-select): ring indigo
 function Celula({
-  override, derived, podeEditar, isOpen, onClick,
+  override, derived, podeEditar, isOpen, isSelected, onClick,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
   podeEditar: boolean;
   isOpen: boolean;
-  onClick: () => void;
+  isSelected: boolean;
+  onClick: (ev: React.MouseEvent) => void;
 }) {
   // Resolve display
   const displayStatus = override ?? derived?.status;
   const isFromOverride = !!override;
   const isImplicito = !override && derived?.fonte === "implicito";
+
+  // Ring extra quando célula está selecionada via Shift+Click
+  const selRing = isSelected ? "ring-2 ring-indigo-500 ring-offset-1" : "";
 
   // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
   // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
@@ -490,7 +554,7 @@ function Celula({
         onClick={onClick}
         className={`w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""}`}
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
         title={isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio"}
       >
         {isImplicito ? "·" : ""}
@@ -500,7 +564,6 @@ function Celula({
 
   const info = STATUS_INFO[displayStatus];
   if (isFromOverride) {
-    // Override = cor sólida + sem borda especial
     return (
       <button
         type="button"
@@ -508,7 +571,7 @@ function Celula({
         onClick={onClick}
         className={`w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""}`}
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
         title={`${info.label} (override manual)`}
       >
         {info.short}
@@ -516,7 +579,6 @@ function Celula({
     );
   }
 
-  // Derivado de horário cadastrado: cor light + borda tracejada
   return (
     <button
       type="button"
@@ -524,7 +586,7 @@ function Celula({
       onClick={onClick}
       className={`w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
         podeEditar ? "cursor-pointer hover:opacity-80 hover:scale-110" : "cursor-default"
-      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""}`}
+      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""} ${selRing}`}
       title={`${info.label} (do horário cadastrado)`}
     >
       {info.short}
@@ -533,15 +595,17 @@ function Celula({
 }
 
 function CellMenu({
-  override, derived, onPick,
+  override, derived, abrirAcima, onPick,
 }: {
   override: ScheduleStatus | null;
   derived: DerivedDay | null;
+  abrirAcima?: boolean;
   onPick: (s: ScheduleStatus | null) => void;
 }) {
   const displayAtual = override ?? derived?.status ?? null;
+  const pos = abrirAcima ? "bottom-full mb-1" : "top-full mt-1";
   return (
-    <div className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 min-w-[200px]">
+    <div className={`absolute z-30 ${pos} left-1/2 -translate-x-1/2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 min-w-[200px]`}>
       {derived && derived.fonte === "schedule" && (
         <div className="text-[10px] text-gray-500 dark:text-gray-400 px-2 py-1 border-b border-gray-100 dark:border-gray-800 mb-1">
           📋 Horário cadastrado: <strong>{STATUS_INFO[derived.status].label}</strong>
@@ -571,6 +635,51 @@ function CellMenu({
             : "🗑 Limpar override"}
         </button>
       )}
+    </div>
+  );
+}
+
+// ─── Barra de ação flutuante quando há células multi-selecionadas ─────────
+function BulkActionBar({
+  count, onApply, onClear,
+}: {
+  count: number;
+  onApply: (status: ScheduleStatus | null) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="sticky bottom-0 left-0 right-0 z-20 bg-indigo-50 dark:bg-indigo-900/40 border-t-2 border-indigo-300 dark:border-indigo-700 p-3 flex items-center gap-3 flex-wrap">
+      <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
+        ✨ {count} dia{count > 1 ? "s" : ""} selecionado{count > 1 ? "s" : ""}
+      </div>
+      <div className="flex items-center gap-1 flex-wrap flex-1">
+        {STATUS_LIST.map(s => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => onApply(s)}
+            title={`Marcar todos como "${STATUS_INFO[s].label}"`}
+            className={`inline-flex items-center justify-center w-7 h-7 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-[10px] font-bold hover:scale-110 transition-transform`}
+          >
+            {STATUS_INFO[s].short}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => onApply(null)}
+          title="Reverter ao cadastrado em todas"
+          className="ml-2 px-2 py-1 rounded text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          ↩ Reverter
+        </button>
+      </div>
+      <button
+        type="button"
+        onClick={onClear}
+        className="px-2 py-1 rounded text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        ✕ Limpar (ESC)
+      </button>
     </div>
   );
 }
