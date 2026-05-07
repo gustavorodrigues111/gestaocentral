@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -137,26 +137,36 @@ export function EscalaPage() {
 
   async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null) {
     if (!rid) return;
-    const fonte = versao === "prevista" ? escala?.prevista : escala?.real;
-    const novo = { ...(fonte || {}) };
-    const dias = { ...(novo[empregadoId] || {}) };
-    if (status === null) {
-      delete dias[ymdDate];
-    } else {
-      dias[ymdDate] = status;
-    }
-    novo[empregadoId] = dias;
+    const ref = doc(db, "escalas", escalaId);
 
-    const patch: Partial<EscalaMes> & Pick<EscalaMes, "id" | "restaurantId" | "ano" | "mes" | "updatedAt"> = {
-      id: escalaId,
-      restaurantId: rid,
-      ano,
-      mes,
-      prevista: versao === "prevista" ? novo : (escala?.prevista || {}),
-      real:     versao === "real"     ? novo : (escala?.real || {}),
-      updatedAt: new Date().toISOString(),
-    };
-    await setDoc(doc(db, "escalas", escalaId), patch, { merge: true });
+    // Garante que o doc existe (updateDoc com dot notation falha se o doc é novo)
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        id: escalaId,
+        restaurantId: rid,
+        ano, mes,
+        prevista: {},
+        real: {},
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    // Path tipo "prevista.empregadoId.2026-05-15"
+    const path = `${versao}.${empregadoId}.${ymdDate}`;
+    if (status === null) {
+      // Reverter ao cadastrado = APAGA a chave (Firestore merge não apaga chave;
+      // tem que usar deleteField() explicitamente)
+      await updateDoc(ref, {
+        [path]: deleteField(),
+        updatedAt: new Date().toISOString(),
+      });
+    } else {
+      await updateDoc(ref, {
+        [path]: status,
+        updatedAt: new Date().toISOString(),
+      });
+    }
   }
 
   // Copia o que tem na prevista pra real (útil pra começar o mês a partir do plano)
