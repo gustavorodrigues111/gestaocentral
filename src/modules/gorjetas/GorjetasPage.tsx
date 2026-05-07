@@ -17,6 +17,7 @@ import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../c
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
+import { DivisaoMesTab } from "./DivisaoMesTab";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -41,6 +42,7 @@ export function GorjetasPage() {
   const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [tab, setTab] = useState<"lancamentos" | "divisao">("lancamentos");
 
   // SplitVersions do restaurante (regras de divisão)
   useEffect(() => {
@@ -167,25 +169,68 @@ export function GorjetasPage() {
         </div>
       </div>
 
-      {/* Resumo do mês */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
-        <Card label="Bruto do mês" value={fmtBR(totaisMes.bruto)} />
-        <Card label="Líquido do mês" value={fmtBR(totaisMes.liquido)} highlight />
-        <Card label="Dias lançados" value={`${totaisMes.dias} dia(s)`} />
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4">
+        <button
+          type="button"
+          onClick={() => setTab("lancamentos")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === "lancamentos"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
+          }`}
+        >
+          📅 Lançamentos
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("divisao")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === "divisao"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
+          }`}
+        >
+          📊 Divisão do mês
+        </button>
       </div>
 
-      {loading ? (
-        <div className="text-sm text-gray-500">Carregando...</div>
-      ) : (
-        <ListaDias
+      {tab === "lancamentos" && (
+        <>
+          {/* Resumo do mês */}
+          <div className="grid grid-cols-3 gap-3 mb-5">
+            <Card label="Bruto do mês" value={fmtBR(totaisMes.bruto)} />
+            <Card label="Líquido do mês" value={fmtBR(totaisMes.liquido)} highlight />
+            <Card label="Dias lançados" value={`${totaisMes.dias} dia(s)`} />
+          </div>
+
+          {loading ? (
+            <div className="text-sm text-gray-500">Carregando...</div>
+          ) : (
+            <ListaDias
+              ano={ano}
+              mes={mes}
+              gorjetaMap={gorjetaMap}
+              empregados={empregados}
+              cargos={cargos}
+              escala={escala}
+              splitVersions={splitVersions}
+              onPickDate={(d) => setEditingDate(d)}
+            />
+          )}
+        </>
+      )}
+
+      {tab === "divisao" && (
+        <DivisaoMesTab
           ano={ano}
           mes={mes}
-          gorjetaMap={gorjetaMap}
+          gorjetas={gorjetas}
           empregados={empregados}
           cargos={cargos}
           escala={escala}
           splitVersions={splitVersions}
-          onPickDate={(d) => setEditingDate(d)}
+          restaurantNome={activeRestaurant.nome}
         />
       )}
 
