@@ -3,11 +3,16 @@ import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } 
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { canExcluirPessoa } from "../../core/auth/permissions";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { EmpregadoModal } from "./EmpregadoModal";
+import { InativarModal } from "./InativarModal";
+import { ReativarModal } from "./ReativarModal";
+import { ExcluirModal } from "./ExcluirModal";
 import { getModule } from "../../config/modules";
+import { logAudit } from "../../core/audit/versionedChange";
 import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 
@@ -84,6 +89,7 @@ function TabIdentidade({
 }) {
   const { pessoa: me } = useAuth();
   const isNew = !pessoa;
+  const isInativa = !!pessoa && pessoa.ativa === false;
 
   const [form, setForm] = useState({
     nome: pessoa?.nome || "",
@@ -91,10 +97,14 @@ function TabIdentidade({
     cpf: pessoa?.cpf || "",
     whatsapp: pessoa?.whatsapp || "",
   });
-  const [ativa, setAtiva] = useState(pessoa?.ativa !== false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  const [showInativar, setShowInativar] = useState(false);
+  const [showReativar, setShowReativar] = useState(false);
+  const [showExcluir, setShowExcluir] = useState(false);
+
+  const podeExcluir = canExcluirPessoa(me, restaurantId);
 
   async function salvar() {
     if (!form.nome.trim()) { setErr("Nome obrigatório"); return; }
@@ -104,7 +114,7 @@ function TabIdentidade({
     try {
       const now = new Date().toISOString();
       if (isNew) {
-        await addDoc(collection(db, "pessoas"), {
+        const ref = await addDoc(collection(db, "pessoas"), {
           email: form.email.trim().toLowerCase(),
           nome: form.nome.trim(),
           cpf: form.cpf.trim() || null,
@@ -115,6 +125,13 @@ function TabIdentidade({
           ativa: true,
           createdAt: now,
         });
+        await logAudit({
+          entityType: "pessoa",
+          entityId: ref.id,
+          restaurantId,
+          acao: "criado",
+          registradoPor: me.id,
+        });
         onCreated();
       } else {
         const update: Record<string, unknown> = {
@@ -123,18 +140,14 @@ function TabIdentidade({
           cpf: form.cpf.trim() || null,
           whatsapp: form.whatsapp.trim() || null,
         };
-        // Se mudou ativa: aplica + registra metadata
-        if (ativa !== (pessoa.ativa !== false)) {
-          update.ativa = ativa;
-          if (!ativa) {
-            update.inativadaEm = now;
-            update.inativadaPor = me.id;
-          } else {
-            update.inativadaEm = null;
-            update.inativadaPor = null;
-          }
-        }
         await updateDoc(doc(db, "pessoas", pessoa.id), update);
+        await logAudit({
+          entityType: "pessoa",
+          entityId: pessoa.id,
+          restaurantId,
+          acao: "alterado",
+          registradoPor: me.id,
+        });
         setSavedAt(new Date().toLocaleTimeString("pt-BR"));
       }
     } catch (e) {
@@ -147,6 +160,17 @@ function TabIdentidade({
 
   return (
     <div className="space-y-3">
+      {isInativa && (
+        <div className="rounded-lg bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm">
+          <span className="text-gray-700 dark:text-gray-300">○ Pessoa inativa</span>
+          {pessoa?.motivoInativacao && (
+            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+              · {pessoa.motivoInativacao}
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <Input
           label="Nome completo *"
@@ -176,15 +200,22 @@ function TabIdentidade({
       </div>
 
       {!isNew && (
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} />
-            <span className="font-medium">Ativa</span>
-          </label>
-          {!ativa && (
-            <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-              ⚠ Ao salvar, essa pessoa perde o acesso em até 30 segundos. Logins futuros são bloqueados.
-            </p>
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
+          {!isInativa ? (
+            <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
+              🚫 Inativar pessoa
+            </Button>
+          ) : (
+            <>
+              <Button size="sm" onClick={() => setShowReativar(true)}>
+                ✓ Reativar pessoa
+              </Button>
+              {podeExcluir && (
+                <Button variant="danger" size="sm" onClick={() => setShowExcluir(true)}>
+                  🗑 Excluir definitivamente
+                </Button>
+              )}
+            </>
           )}
         </div>
       )}
@@ -207,6 +238,25 @@ function TabIdentidade({
           <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Criar pessoa" : "Salvar"}</Button>
         </div>
       </div>
+
+      {showInativar && pessoa && (
+        <InativarModal
+          pessoa={pessoa}
+          onClose={() => { setShowInativar(false); onClose(); }}
+        />
+      )}
+      {showReativar && pessoa && (
+        <ReativarModal
+          pessoa={pessoa}
+          onClose={() => { setShowReativar(false); onClose(); }}
+        />
+      )}
+      {showExcluir && pessoa && (
+        <ExcluirModal
+          pessoa={pessoa}
+          onClose={() => { setShowExcluir(false); onClose(); }}
+        />
+      )}
     </div>
   );
 }
