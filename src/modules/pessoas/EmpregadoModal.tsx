@@ -5,6 +5,8 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
+import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
+import { applyVersionedChange, logAudit } from "../../core/audit/versionedChange";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 import type { Cargo, Empregado, Pessoa } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
@@ -49,10 +51,95 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [pendingVigencia, setPendingVigencia] = useState<{
+    changes: ChangedField[];
+    nonVersionedUpdates: Record<string, unknown>;
+  } | null>(null);
 
   const cargo = cargosAtivos.find(c => c.id === cargoId);
   const exigePessoa = cargo ? ["registrado", "estagiario"].includes(cargo.tipoVinculo) : false;
   const usaPessoa = !!pessoa;
+
+  function diffCriticoEmpregado(): { criticas: ChangedField[]; nonCritical: Record<string, unknown> } {
+    const criticas: ChangedField[] = [];
+    const nonCritical: Record<string, unknown> = {};
+    if (!empregado) return { criticas, nonCritical };
+
+    const cargoNovoId = cargoId;
+    const cargoNovoNome = cargosAtivos.find(c => c.id === cargoNovoId)?.nome || cargoNovoId;
+    const cargoAntigoNome = cargosAtivos.find(c => c.id === empregado.cargoId)?.nome || empregado.cargoId;
+    if (empregado.cargoId !== cargoNovoId) {
+      criticas.push({
+        campo: "cargoId",
+        label: "Cargo",
+        valorAntes: cargoAntigoNome,
+        valorDepois: cargoNovoNome,
+        rawValorAntes: empregado.cargoId,
+        rawValorDepois: cargoNovoId,
+      });
+    }
+    const novoVtAtivo = !!vtAtivo;
+    if ((empregado.vtAtivo ?? false) !== novoVtAtivo) {
+      criticas.push({
+        campo: "vtAtivo",
+        label: "VT ativo",
+        valorAntes: empregado.vtAtivo ? "Sim" : "Não",
+        valorDepois: novoVtAtivo ? "Sim" : "Não",
+        rawValorAntes: empregado.vtAtivo ?? false,
+        rawValorDepois: novoVtAtivo,
+      });
+    }
+    const novoVtPassagens = vtAtivo ? parseFloat(vtPassagensPorDia) : 0;
+    if (vtAtivo && (empregado.vtPassagensPorDia ?? 0) !== novoVtPassagens) {
+      criticas.push({
+        campo: "vtPassagensPorDia",
+        label: "VT passagens/dia",
+        valorAntes: String(empregado.vtPassagensPorDia ?? 0),
+        valorDepois: String(novoVtPassagens),
+        rawValorAntes: empregado.vtPassagensPorDia ?? 0,
+        rawValorDepois: novoVtPassagens,
+      });
+    }
+    const novoVtValor = vtAtivo ? parseFloat(vtValorPassagem) : 0;
+    if (vtAtivo && (empregado.vtValorPassagem ?? 0) !== novoVtValor) {
+      criticas.push({
+        campo: "vtValorPassagem",
+        label: "VT valor passagem",
+        valorAntes: `R$ ${(empregado.vtValorPassagem ?? 0).toFixed(2)}`,
+        valorDepois: `R$ ${novoVtValor.toFixed(2)}`,
+        rawValorAntes: empregado.vtValorPassagem ?? 0,
+        rawValorDepois: novoVtValor,
+      });
+    }
+
+    // Não-versionados (aplicam imediato): nome, cpf, empCode, codigoContabil, contatos, periodos
+    const novoNome = usaPessoa ? pessoa.nome : nomeProvisorio.trim();
+    const novoCpf = usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null);
+    if (empregado.nome !== novoNome) nonCritical.nome = novoNome;
+    if ((empregado.cpf || null) !== novoCpf) nonCritical.cpf = novoCpf;
+    if ((empregado.empCode || null) !== (empCode.trim() || null)) nonCritical.empCode = empCode.trim() || null;
+    if ((empregado.codigoContabil || null) !== (codigoContabil.trim() || null)) nonCritical.codigoContabil = codigoContabil.trim() || null;
+    if ((empregado.emergenciaNome || null) !== (emergenciaNome.trim() || null)) nonCritical.emergenciaNome = emergenciaNome.trim() || null;
+    if ((empregado.emergenciaTelefone || null) !== (emergenciaTelefone.trim() || null)) nonCritical.emergenciaTelefone = emergenciaTelefone.trim() || null;
+    return { criticas, nonCritical };
+  }
+
+  function buildPeriodos() {
+    const now = new Date().toISOString();
+    const periodoNovo = {
+      admissao,
+      demissao: null,
+      registradoEm: now,
+      registradoPor: me!.id,
+    };
+    if (!empregado?.periodos) return [periodoNovo];
+    const last = empregado.periodos[empregado.periodos.length - 1];
+    if (last && !last.demissao && last.admissao === admissao) return empregado.periodos;
+    if (last && !last.demissao) {
+      return [...empregado.periodos.slice(0, -1), { ...last, admissao }];
+    }
+    return [...empregado.periodos, periodoNovo];
+  }
 
   async function salvar() {
     if (!cargoId) { setErr("Cargo obrigatório"); return; }
@@ -74,76 +161,110 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
       }
     }
     if (!me) return;
-
     setErr("");
-    setSaving(true);
-    try {
-      const now = new Date().toISOString();
-      // Periodo atual (ou novo se readmissão)
-      const periodoNovo = {
-        admissao,
-        demissao: null,
-        registradoEm: now,
-        registradoPor: me.id,
-      };
-      const periodos = empregado?.periodos
-        ? // Se editando e o último período já está aberto com mesma admissao, não duplica.
-          (() => {
-            const last = empregado.periodos[empregado.periodos.length - 1];
-            if (last && !last.demissao && last.admissao === admissao) return empregado.periodos;
-            // Se adminssao mudou e último período tá aberto: substitui (caso de correção)
-            if (last && !last.demissao) {
-              return [...empregado.periodos.slice(0, -1), { ...last, admissao }];
-            }
-            return [...empregado.periodos, periodoNovo];
-          })()
-        : [periodoNovo];
 
-      const data: Omit<Empregado, "id" | "createdAt" | "createdBy"> & {
-        createdAt?: string;
-        createdBy?: string;
-      } = {
-        restaurantId,
-        pessoaId: pessoa?.id || empregado?.pessoaId || null,
-        nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
-        cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
-        cargoId,
-        empCode: empCode.trim() || null,
-        codigoContabil: codigoContabil.trim() || null,
-        emergenciaNome: emergenciaNome.trim() || null,
-        emergenciaTelefone: emergenciaTelefone.trim() || null,
-        periodos,
-        estaAtivo: true,
-        admissaoAtual: admissao,
-        demitidoEm: null,
-        vtAtivo: !!vtAtivo,
-        ...(vtAtivo ? {
-          vtPassagensPorDia: parseFloat(vtPassagensPorDia),
-          vtValorPassagem: parseFloat(vtValorPassagem),
-        } : {}),
-        email: pessoa?.email || null,
-        telefone: pessoa?.whatsapp || null,
-      };
-
-      let savedId: string;
-      if (isNew) {
+    // Caso 1: NOVO empregado — addDoc + audit log "criado"
+    if (isNew) {
+      setSaving(true);
+      try {
+        const now = new Date().toISOString();
+        const data: Omit<Empregado, "id" | "createdAt" | "createdBy"> = {
+          restaurantId,
+          pessoaId: pessoa?.id || null,
+          nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
+          cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
+          cargoId,
+          empCode: empCode.trim() || null,
+          codigoContabil: codigoContabil.trim() || null,
+          emergenciaNome: emergenciaNome.trim() || null,
+          emergenciaTelefone: emergenciaTelefone.trim() || null,
+          periodos: buildPeriodos(),
+          estaAtivo: true,
+          admissaoAtual: admissao,
+          demitidoEm: null,
+          vtAtivo: !!vtAtivo,
+          ...(vtAtivo ? {
+            vtPassagensPorDia: parseFloat(vtPassagensPorDia),
+            vtValorPassagem: parseFloat(vtValorPassagem),
+          } : {}),
+          email: pessoa?.email || null,
+          telefone: pessoa?.whatsapp || null,
+        };
         const ref = await addDoc(collection(db, "empregados"), {
           ...data,
           createdAt: now,
           createdBy: me.id,
         });
-        savedId = ref.id;
-      } else {
-        await updateDoc(doc(db, "empregados", empregado.id), data);
-        savedId = empregado.id;
+        await logAudit({
+          entityType: "empregado",
+          entityId: ref.id,
+          restaurantId,
+          acao: "criado",
+          registradoPor: me.id,
+        });
+        onSaved?.(ref.id);
+        onClose();
+      } catch (e) {
+        console.error(e);
+        setErr(e instanceof Error ? e.message : "Erro");
+      } finally {
+        setSaving(false);
       }
-      onSaved?.(savedId);
-      onClose();
-    } catch (e) {
-      console.error(e);
-      setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
+      return;
+    }
+
+    // Caso 2: editando — separa críticos/não-críticos
+    const { criticas, nonCritical } = diffCriticoEmpregado();
+    // periodos sempre vai junto se admissao mudou
+    const periodos = buildPeriodos();
+    if (JSON.stringify(periodos) !== JSON.stringify(empregado!.periodos)) {
+      nonCritical.periodos = periodos;
+      nonCritical.admissaoAtual = admissao;
+    }
+
+    if (criticas.length === 0) {
+      // Só não-críticos — aplica direto
+      if (Object.keys(nonCritical).length === 0) { onClose(); return; }
+      setSaving(true);
+      try {
+        await updateDoc(doc(db, "empregados", empregado!.id), nonCritical);
+        await logAudit({
+          entityType: "empregado",
+          entityId: empregado!.id,
+          restaurantId,
+          acao: "alterado",
+          registradoPor: me.id,
+        });
+        onClose();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Erro");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Caso 3: tem críticas — abre VigenciaModal
+    setPendingVigencia({ changes: criticas, nonVersionedUpdates: nonCritical });
+  }
+
+  async function aplicarComVigencia(vigencia: string, motivo: string) {
+    if (!empregado || !me || !pendingVigencia) return;
+    if (Object.keys(pendingVigencia.nonVersionedUpdates).length > 0) {
+      await updateDoc(doc(db, "empregados", empregado.id), pendingVigencia.nonVersionedUpdates);
+    }
+    for (const c of pendingVigencia.changes) {
+      await applyVersionedChange({
+        entityType: "empregado",
+        entityId: empregado.id,
+        restaurantId,
+        campo: c.campo,
+        valorAntes: c.rawValorAntes,
+        valorDepois: c.rawValorDepois,
+        vigenteApartir: vigencia,
+        motivo,
+        registradoPor: me.id,
+      });
     }
   }
 
@@ -262,6 +383,20 @@ export function EmpregadoModal({ empregado, pessoa, restaurantId, cargos, onClos
           <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Vincular" : "Salvar"}</Button>
         </div>
       </div>
+
+      {pendingVigencia && (
+        <VigenciaModal
+          titulo={`Confirmar mudança em "${empregado?.nome ?? ""}"`}
+          changes={pendingVigencia.changes}
+          impacto="A mudança afeta cálculo de gorjeta e VT a partir da data de vigência."
+          onConfirm={async (vigencia, motivo) => {
+            await aplicarComVigencia(vigencia, motivo);
+            setPendingVigencia(null);
+            onClose();
+          }}
+          onClose={() => setPendingVigencia(null)}
+        />
+      )}
     </Modal>
   );
 }

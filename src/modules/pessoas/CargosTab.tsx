@@ -6,6 +6,8 @@ import { canConfigurar } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
+import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
+import { applyVersionedChange, logAudit } from "../../core/audit/versionedChange";
 import {
   AREAS, TIPOS_VINCULO, TIPO_VINCULO_LABEL, TIPOS_VINCULO_COM_PESSOA,
 } from "../../core/types";
@@ -217,6 +219,7 @@ function CargoModal({
   empregadosAtivos: number;
   onClose: () => void;
 }) {
+  const { pessoa: me } = useAuth();
   const [nome, setNome] = useState(cargo?.nome || "");
   const [area, setArea] = useState<Area>(cargo?.area || "Salão");
   const [tipoVinculo, setTipoVinculo] = useState<TipoVinculo>(cargo?.tipoVinculo || "registrado");
@@ -226,6 +229,11 @@ function CargoModal({
   const [ativo, setAtivo] = useState(cargo?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // Pending vigência changes (quando há mudança crítica em cargo existente)
+  const [pendingVigencia, setPendingVigencia] = useState<{
+    changes: ChangedField[];
+    nonVersionedUpdates: Record<string, unknown>;
+  } | null>(null);
 
   const tipoOriginal = cargo?.tipoVinculo;
   const ativoOriginal = cargo?.ativo;
@@ -235,39 +243,164 @@ function CargoModal({
   const trocouTipoVinculo = !!cargo && tipoOriginal && tipoOriginal !== tipoVinculo && empregadosAtivos > 0;
   const tipoExigePessoa = TIPOS_VINCULO_COM_PESSOA.includes(tipoVinculo);
 
+  // Detecta diff entre cargo original e form atual.
+  // Retorna { criticas, naoCriticas } separadas. Críticas vão pelo VigenciaModal.
+  function diffAtual() {
+    const criticas: ChangedField[] = [];
+    const naoCriticas: Record<string, unknown> = {};
+
+    if (!cargo) return { criticas, naoCriticas };
+
+    // Não-versionados (sempre aplicam imediato)
+    if (cargo.nome !== nome.trim()) naoCriticas.nome = nome.trim();
+    if (cargo.area !== area) naoCriticas.area = area;
+    if (cargo.ativo !== ativo) naoCriticas.ativo = ativo;
+
+    // Versionados (críticos — afetam gorjeta/escala/empregados)
+    const novoPontos = semGorjeta ? 0 : pontos;
+    if ((cargo.pontos ?? 0) !== novoPontos) {
+      criticas.push({
+        campo: "pontos",
+        label: "Pontos",
+        valorAntes: String(cargo.pontos ?? 0),
+        valorDepois: String(novoPontos),
+        rawValorAntes: cargo.pontos ?? 0,
+        rawValorDepois: novoPontos,
+      });
+    }
+    if ((cargo.semGorjeta ?? false) !== semGorjeta) {
+      criticas.push({
+        campo: "semGorjeta",
+        label: "Sem gorjeta",
+        valorAntes: cargo.semGorjeta ? "Sim" : "Não",
+        valorDepois: semGorjeta ? "Sim" : "Não",
+        rawValorAntes: cargo.semGorjeta ?? false,
+        rawValorDepois: semGorjeta,
+      });
+    }
+    const novoRecebeProd = semGorjeta ? false : recebeProducao;
+    if ((cargo.recebeProducao ?? false) !== novoRecebeProd) {
+      criticas.push({
+        campo: "recebeProducao",
+        label: "Recebe produção",
+        valorAntes: cargo.recebeProducao ? "Sim" : "Não",
+        valorDepois: novoRecebeProd ? "Sim" : "Não",
+        rawValorAntes: cargo.recebeProducao ?? false,
+        rawValorDepois: novoRecebeProd,
+      });
+    }
+    if ((cargo.tipoVinculo ?? "registrado") !== tipoVinculo) {
+      criticas.push({
+        campo: "tipoVinculo",
+        label: "Tipo de vínculo",
+        valorAntes: TIPO_VINCULO_LABEL[cargo.tipoVinculo ?? "registrado"],
+        valorDepois: TIPO_VINCULO_LABEL[tipoVinculo],
+        rawValorAntes: cargo.tipoVinculo ?? "registrado",
+        rawValorDepois: tipoVinculo,
+      });
+    }
+
+    return { criticas, naoCriticas };
+  }
+
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
     if (tentaInativarComEmpregados) {
       setErr(`Não dá pra inativar — ${empregadosAtivos} empregado(s) com esse cargo. Migre eles primeiro.`);
       return;
     }
+    if (!me) { setErr("Sessão inválida"); return; }
     setErr("");
-    setSaving(true);
-    try {
-      const data = {
-        restaurantId,
-        nome: nome.trim(),
-        area,
-        tipoVinculo,
-        pontos: semGorjeta ? 0 : pontos,
-        semGorjeta,
-        recebeProducao: semGorjeta ? false : recebeProducao,
-        ativo,
-      };
-      if (cargo) {
-        await updateDoc(doc(db, "cargos", cargo.id), data);
-      } else {
-        await addDoc(collection(db, "cargos"), {
+
+    // Caso 1: cargo NOVO — addDoc imediato + audit log "criado"
+    if (!cargo) {
+      setSaving(true);
+      try {
+        const data = {
+          restaurantId,
+          nome: nome.trim(),
+          area,
+          tipoVinculo,
+          pontos: semGorjeta ? 0 : pontos,
+          semGorjeta,
+          recebeProducao: semGorjeta ? false : recebeProducao,
+          ativo,
+        };
+        const ref = await addDoc(collection(db, "cargos"), {
           ...data,
           ordem: 999,
           createdAt: new Date().toISOString(),
         });
+        await logAudit({
+          entityType: "cargo",
+          entityId: ref.id,
+          restaurantId,
+          acao: "criado",
+          registradoPor: me.id,
+        });
+        onClose();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Erro");
+      } finally {
+        setSaving(false);
       }
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
+      return;
+    }
+
+    // Caso 2: editando — separa diff entre crítico (com vigência) e não-crítico (imediato)
+    const { criticas, naoCriticas } = diffAtual();
+
+    if (criticas.length === 0) {
+      // Sem mudanças críticas: aplica direto
+      if (Object.keys(naoCriticas).length === 0) {
+        onClose();
+        return;
+      }
+      setSaving(true);
+      try {
+        await updateDoc(doc(db, "cargos", cargo.id), naoCriticas);
+        await logAudit({
+          entityType: "cargo",
+          entityId: cargo.id,
+          restaurantId,
+          acao: "alterado",
+          diff: Object.fromEntries(Object.entries(naoCriticas).map(([k, v]) =>
+            [k, { antes: (cargo as unknown as Record<string, unknown>)[k], depois: v }]
+          )),
+          registradoPor: me.id,
+        });
+        onClose();
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "Erro");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
+    // Caso 3: tem mudanças críticas — abre VigenciaModal
+    setPendingVigencia({ changes: criticas, nonVersionedUpdates: naoCriticas });
+  }
+
+  async function aplicarComVigencia(vigencia: string, motivo: string) {
+    if (!cargo || !me || !pendingVigencia) return;
+    // 1. Aplica não-críticos imediato
+    if (Object.keys(pendingVigencia.nonVersionedUpdates).length > 0) {
+      await updateDoc(doc(db, "cargos", cargo.id), pendingVigencia.nonVersionedUpdates);
+    }
+    // 2. Cada mudança crítica vai pelo applyVersionedChange (com a mesma vigência+motivo)
+    for (const c of pendingVigencia.changes) {
+      await applyVersionedChange({
+        entityType: "cargo",
+        entityId: cargo.id,
+        restaurantId,
+        campo: c.campo,
+        valorAntes: c.rawValorAntes,
+        valorDepois: c.rawValorDepois,
+        vigenteApartir: vigencia,
+        motivo,
+        registradoPor: me.id,
+      });
     }
   }
 
@@ -400,6 +533,24 @@ function CargoModal({
           </div>
         </div>
       </div>
+
+      {pendingVigencia && (
+        <VigenciaModal
+          titulo={`Confirmar mudança no cargo "${cargo?.nome ?? ""}"`}
+          changes={pendingVigencia.changes}
+          impacto={
+            empregadosAtivos > 0
+              ? `${empregadosAtivos} empregado(s) tem esse cargo. A mudança afeta cálculo de gorjeta a partir da data de vigência.`
+              : undefined
+          }
+          onConfirm={async (vigencia, motivo) => {
+            await aplicarComVigencia(vigencia, motivo);
+            setPendingVigencia(null);
+            onClose();
+          }}
+          onClose={() => setPendingVigencia(null)}
+        />
+      )}
     </Modal>
   );
 }

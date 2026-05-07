@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -9,6 +9,8 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
+import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
+import { applyVersionedChange } from "../../core/audit/versionedChange";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
@@ -426,18 +428,27 @@ function GorjetaModal({
 }
 
 function GorjetasConfig({ rid, taxRate, onClose: _ }: { rid: string; taxRate: number; onClose: () => void }) {
+  const { pessoa: me } = useAuth();
   const [valor, setValor] = useState(String(taxRate));
-  const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  const [pendingVigencia, setPendingVigencia] = useState<ChangedField[] | null>(null);
 
   async function salvar() {
-    setSaving(true);
-    try {
-      await updateDoc(doc(db, "restaurants", rid), { taxRate: parseFloat(valor) || 0 });
+    if (!me) return;
+    const novo = parseFloat(valor) || 0;
+    if (novo === taxRate) {
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
-    } finally {
-      setSaving(false);
+      return;
     }
+    // Mudança crítica → abre modal de vigência (afeta gorjetas futuras / retroativas)
+    setPendingVigencia([{
+      campo: "taxRate",
+      label: "Retenção da gorjeta",
+      valorAntes: `${taxRate}%`,
+      valorDepois: `${novo}%`,
+      rawValorAntes: taxRate,
+      rawValorDepois: novo,
+    }]);
   }
 
   return (
@@ -451,13 +462,38 @@ function GorjetasConfig({ rid, taxRate, onClose: _ }: { rid: string; taxRate: nu
         placeholder="ex: 33"
       />
       <p className="text-xs text-gray-500">
-        Percentual descontado do bruto antes da divisão. Aplicado a partir dos próximos lançamentos
-        — lançamentos antigos mantêm o snapshot da retenção do dia.
+        Percentual descontado do bruto antes da divisão. Lançamentos diários têm
+        snapshot do dia — só novos lançamentos usam a regra atualizada (a partir
+        da data de vigência informada).
       </p>
       <div className="flex items-center justify-end gap-3 pt-2">
         {savedAt && <span className="text-xs text-emerald-600">✓ Salvo às {savedAt}</span>}
-        <Button onClick={salvar} disabled={saving}>{saving ? "..." : "Salvar"}</Button>
+        <Button onClick={salvar}>Salvar</Button>
       </div>
+
+      {pendingVigencia && me && (
+        <VigenciaModal
+          titulo="Mudar retenção da gorjeta"
+          changes={pendingVigencia}
+          impacto="Gorjetas lançadas antes da vigência mantêm o snapshot da retenção daquele dia. Mudança aplica só pra novos lançamentos a partir da data informada."
+          onConfirm={async (vigencia, motivo) => {
+            await applyVersionedChange({
+              entityType: "restaurant",
+              entityId: rid,
+              restaurantId: rid,
+              campo: "taxRate",
+              valorAntes: pendingVigencia[0].rawValorAntes,
+              valorDepois: pendingVigencia[0].rawValorDepois,
+              vigenteApartir: vigencia,
+              motivo,
+              registradoPor: me.id,
+            });
+            setPendingVigencia(null);
+            setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+          }}
+          onClose={() => setPendingVigencia(null)}
+        />
+      )}
     </div>
   );
 }
