@@ -284,14 +284,28 @@ function GorjetaModal({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
+  const isPago = !!gorjeta?.paidAt;
+
   const bruto = parseFloat(valorBruto.replace(",", ".")) || 0;
   const tax   = parseFloat(taxRate) || 0;
   const liquido = calcularValorLiquido(bruto, tax);
 
-  const divisao = useMemo(
+  // Se a gorjeta está paga, usa o snapshot da divisão (congelado).
+  // Senão, calcula em tempo real a partir da escala/cargos atuais.
+  const divisaoLive = useMemo(
     () => calcularDivisaoDia(date, liquido, empregados, cargos, escala),
     [date, liquido, empregados, cargos, escala],
   );
+  const divisao = isPago && gorjeta?.divisaoSnapshot
+    ? {
+        itens: gorjeta.divisaoSnapshot,
+        totalPontos: gorjeta.divisaoSnapshot.reduce((s, i) => s + i.pontos, 0),
+        valorPonto: gorjeta.divisaoSnapshot[0]?.pontos
+          ? gorjeta.divisaoSnapshot[0].valor / gorjeta.divisaoSnapshot[0].pontos : 0,
+        totalDistribuido: gorjeta.divisaoSnapshot.reduce((s, i) => s + i.valor, 0),
+        resto: 0,
+      }
+    : divisaoLive;
 
   async function salvar() {
     if (!pessoa) return;
@@ -309,6 +323,7 @@ function GorjetaModal({
         taxRate: tax,
         valorLiquido: liquido,
         observacao: observacao.trim() || undefined,
+        divisaoSnapshot: gorjeta?.divisaoSnapshot,  // preserva snapshot existente se já tinha
         paidAt: gorjeta?.paidAt ?? null,
         paidBy: gorjeta?.paidBy ?? null,
         createdAt: gorjeta?.createdAt || now,
@@ -319,6 +334,45 @@ function GorjetaModal({
       onClose();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function pagar() {
+    if (!pessoa || !gorjeta) return;
+    if (!confirm(`Marcar como PAGO?\n\nA divisão atual (${divisaoLive.itens.length} pessoa(s) · ${fmtBR(divisaoLive.totalDistribuido)}) será CONGELADA como snapshot. Mudanças futuras em cargos/escala não afetam essa gorjeta.`)) return;
+    setSaving(true);
+    try {
+      const now = new Date().toISOString();
+      await setDoc(doc(db, "gorjetas", gorjeta.id), {
+        ...gorjeta,
+        divisaoSnapshot: divisaoLive.itens,
+        paidAt: now,
+        paidBy: pessoa.id,
+        updatedAt: now,
+      });
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function desfazerPagamento() {
+    if (!gorjeta) return;
+    if (!confirm("Desfazer pagamento?\n\nA divisão volta a ser calculada em tempo real e o snapshot é apagado.")) return;
+    setSaving(true);
+    try {
+      await setDoc(doc(db, "gorjetas", gorjeta.id), {
+        ...gorjeta,
+        divisaoSnapshot: null,
+        paidAt: null,
+        paidBy: null,
+        updatedAt: new Date().toISOString(),
+      });
+      onClose();
     } finally {
       setSaving(false);
     }
@@ -412,13 +466,28 @@ function GorjetaModal({
         </div>
       </div>
 
+      {isPago && (
+        <div className="mt-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
+          ✓ <strong>Paga em {gorjeta?.paidAt && new Date(gorjeta.paidAt).toLocaleString("pt-BR")}.</strong>{" "}
+          Divisão congelada — mudanças posteriores em cargos/escala não afetam.
+        </div>
+      )}
+
       <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200 dark:border-gray-800">
-        <div>
-          {gorjeta && podeEditar && <Button variant="danger" size="sm" onClick={excluir}>Excluir</Button>}
+        <div className="flex gap-2">
+          {gorjeta && podeEditar && !isPago && (
+            <Button variant="danger" size="sm" onClick={excluir}>Excluir</Button>
+          )}
+          {gorjeta && podeEditar && isPago && (
+            <Button variant="secondary" size="sm" onClick={desfazerPagamento}>↩ Desfazer pagamento</Button>
+          )}
         </div>
         <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          {podeEditar && (
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          {podeEditar && !isPago && gorjeta && divisaoLive.itens.length > 0 && (
+            <Button variant="secondary" onClick={pagar} disabled={saving}>💰 Marcar como pago</Button>
+          )}
+          {podeEditar && !isPago && (
             <Button onClick={salvar} disabled={saving}>{saving ? "..." : "Salvar"}</Button>
           )}
         </div>

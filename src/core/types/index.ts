@@ -248,9 +248,13 @@ export type Gorjeta = {
   restaurantId: string;
   date: string;
   valorBruto: number;
-  taxRate: number;              // snapshot
+  taxRate: number;              // snapshot do dia
   valorLiquido: number;
   observacao?: string;
+  // Quando a gorjeta é PAGA, salvamos o snapshot completo da divisão.
+  // Dia depois, mesmo que o cargo/pontos/empregados mudem, esse pagamento
+  // mantém os valores fixados no momento do pagamento.
+  divisaoSnapshot?: DivisaoItem[];
   paidAt?: string | null;
   paidBy?: string | null;
   createdAt: string;
