@@ -279,15 +279,18 @@ function GorjetaModal({
 }) {
   const { pessoa } = useAuth();
   const [valorBruto, setValorBruto] = useState<string>(gorjeta ? String(gorjeta.valorBruto).replace(".", ",") : "");
-  const [taxRate, setTaxRate] = useState<string>(String(gorjeta?.taxRate ?? taxRateDefault));
   const [observacao, setObservacao] = useState(gorjeta?.observacao || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   const isPago = !!gorjeta?.paidAt;
 
+  // taxRate vem do restaurante (config vigente). Pra gorjeta JÁ existente,
+  // mantém o snapshot que foi gravado na criação. Mudanças posteriores no taxRate
+  // do restaurante NÃO afetam lançamentos antigos (snapshot por dia).
+  const tax = gorjeta?.taxRate ?? taxRateDefault;
+
   const bruto = parseFloat(valorBruto.replace(",", ".")) || 0;
-  const tax   = parseFloat(taxRate) || 0;
   const liquido = calcularValorLiquido(bruto, tax);
 
   // Se a gorjeta está paga, usa o snapshot da divisão (congelado).
@@ -403,14 +406,19 @@ function GorjetaModal({
             disabled={!podeEditar}
             autoFocus
           />
-          <Input
-            label="Retenção (%)"
-            type="number"
-            min="0" max="100" step="0.01"
-            value={taxRate}
-            onChange={(e) => setTaxRate(e.target.value)}
-            disabled={!podeEditar}
-          />
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+              Retenção {gorjeta ? "(snapshot do dia)" : "(do restaurante)"}
+            </div>
+            <div className="flex items-baseline gap-2">
+              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{tax}%</div>
+              <span className="text-[11px] text-gray-500">
+                {gorjeta
+                  ? "fixo neste lançamento — pra mudar, use o ⚙️ de Gorjetas (afeta novos)"
+                  : "vem do ⚙️ Configurações de Gorjetas — vai virar snapshot ao salvar"}
+              </span>
+            </div>
+          </div>
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Líquido a distribuir</div>
             <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(liquido)}</div>
