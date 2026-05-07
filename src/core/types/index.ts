@@ -628,6 +628,86 @@ export type ChecklistRun = {
   observacaoGeral?: string;
 };
 
+// ─── RESERVAS + CRM ─────────────────────────────────────────────────────────
+
+export type Cliente = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  telefone?: string;                  // formato livre
+  email?: string;
+  aniversario?: string | null;        // MM-DD (sem ano, opcional ano "YYYY-MM-DD")
+  observacoes?: string;
+  restricoesAlimentares?: string;     // texto livre (alergias, vegano, etc)
+  tags?: string[];                    // ["VIP", "frequente", etc]
+  // Stats derivados (atualizados ao criar reserva chegou/cancelada)
+  totalReservas?: number;
+  totalCompareceu?: number;
+  totalNoShow?: number;
+  ultimaVisita?: string | null;       // YYYY-MM-DD
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export type Mesa = {
+  id: string;
+  restaurantId: string;
+  nome: string;                       // ex: "Mesa 4", "Bar 2", "Varanda 1"
+  capacidade: number;                 // qtd máx de pessoas
+  setor?: string;                     // ex: "Salão interno", "Varanda", "Bar"
+  ativa: boolean;
+  ordem: number;
+};
+
+export type ReservaStatus =
+  | "pendente"        // marcada mas ainda não confirmada
+  | "confirmada"      // confirmada (cliente avisou que vem)
+  | "chegou"          // cliente está/esteve no restaurante
+  | "no_show"         // não compareceu
+  | "cancelada";      // cancelada pelo cliente ou casa
+
+export const RESERVA_STATUS_LABEL: Record<ReservaStatus, string> = {
+  pendente:    "Pendente",
+  confirmada:  "Confirmada",
+  chegou:      "Chegou",
+  no_show:     "Não veio",
+  cancelada:   "Cancelada",
+};
+
+export const RESERVA_STATUS_ICON: Record<ReservaStatus, string> = {
+  pendente:    "⏳",
+  confirmada:  "✓",
+  chegou:      "🪑",
+  no_show:     "😶",
+  cancelada:   "✕",
+};
+
+export type Reserva = {
+  id: string;
+  restaurantId: string;
+  data: string;                       // YYYY-MM-DD
+  horario: string;                    // HH:MM
+  // Cliente: pode ser ID ou avulso (sem cadastro)
+  clienteId?: string | null;
+  clienteNomeSnapshot: string;        // sempre preenchido pra mostrar mesmo sem ID
+  clienteTelefoneSnapshot?: string;
+  pessoas: number;                    // qtd
+  mesaId?: string | null;             // opcional — pode confirmar mesa só na chegada
+  mesaNomeSnapshot?: string;
+  observacoes?: string;
+  ocasiao?: string;                   // ex: "Aniversário", "Almoço de negócios"
+  status: ReservaStatus;
+  // Auditoria de status
+  confirmadaEm?: string | null;
+  chegouEm?: string | null;
+  canceladaEm?: string | null;
+  motivoCancelamento?: string;
+  registradoEm: string;
+  registradoPor: string;              // pessoaId
+  atualizadoEm: string;
+};
+
 // ─── TEMPLATES DE PERMISSÃO ───
 
 export type PermissionTemplate = {
