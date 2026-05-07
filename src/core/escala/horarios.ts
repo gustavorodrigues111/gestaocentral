@@ -3,7 +3,7 @@
 // Portado do AppTip mantendo as regras CLT idênticas.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { HorarioDia, WorkSchedule } from "../types";
+import type { HorarioDia, SundayCycle, WorkSchedule } from "../types";
 
 export const WEEKDAYS: { idx: number; short: string; long: string }[] = [
   { idx: 0, short: "Dom", long: "Domingo" },
@@ -252,4 +252,86 @@ export function emptyDays(): { [key: number]: HorarioDia } {
     0: { active: false }, 1: { active: false }, 2: { active: false }, 3: { active: false },
     4: { active: false }, 5: { active: false }, 6: { active: false },
   };
+}
+
+// ─── CICLO DE DOMINGO ────────────────────────────────────────────────────────
+// Modelo: trabalha N domingos seguidos, depois folga 1.
+// User informa só `primeiroDomingoFolga` (refDate). offCount sempre = 1.
+
+export function isSundayOffByCycle(cycle: SundayCycle | null | undefined, dateStr: string): boolean {
+  if (!cycle || !cycle.refDate || !dateStr) return false;
+  const work = parseInt(String(cycle.workCount), 10);
+  const off = parseInt(String(cycle.offCount), 10) || 1;
+  if (!Number.isFinite(work) || work < 0) return false;
+  // Ambos devem ser domingo
+  const d = new Date(dateStr + "T12:00:00");
+  if (d.getDay() !== 0) return false;
+  const ref = new Date(cycle.refDate + "T12:00:00");
+  if (ref.getDay() !== 0) return false;
+  const diffMs = d.getTime() - ref.getTime();
+  const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  // Posição no ciclo. refDate é a 1ª folga (pos 0). Posições 0..off-1 = folga, off..off+work-1 = trabalho.
+  const cycleLen = work + off;
+  if (cycleLen <= 0) return false;
+  const pos = ((diffWeeks % cycleLen) + cycleLen) % cycleLen;
+  return pos < off;
+}
+
+// Verifica se uma data é domingo (0)
+export function isSunday(dateStr: string): boolean {
+  return new Date(dateStr + "T12:00:00").getDay() === 0;
+}
+
+// ─── ESCALA ALTERNADA A/B ────────────────────────────────────────────────────
+// Define qual semana (A ou B) uma data específica cai, baseado no anchor.
+// Anchor.date é uma SEGUNDA-FEIRA de referência marcada como anchor.week.
+// Próxima segunda alterna.
+
+export function weekTypeForDate(
+  anchor: { date: string; week: "A" | "B" } | undefined,
+  dateStr: string,
+): "A" | "B" {
+  if (!anchor || !anchor.date) return "A";
+  const monAnchor = getWeekMonday(anchor.date);
+  const monTarget = getWeekMonday(dateStr);
+  const diffMs = new Date(monTarget + "T12:00:00").getTime()
+                - new Date(monAnchor + "T12:00:00").getTime();
+  const diffWeeks = Math.round(diffMs / (7 * 24 * 60 * 60 * 1000));
+  const isEven = ((diffWeeks % 2) + 2) % 2 === 0;
+  return isEven ? anchor.week : (anchor.week === "A" ? "B" : "A");
+}
+
+// Retorna a segunda-feira da semana de uma data (YYYY-MM-DD)
+export function getWeekMonday(dateStr: string): string {
+  const d = new Date(dateStr + "T12:00:00");
+  const dow = d.getDay(); // 0=Dom, 1=Seg, ..., 6=Sáb
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// Retorna o objeto `days` efetivo do schedule pra uma data específica
+// (resolve se é semana A ou B se for alternada)
+export function getEffectiveDays(
+  schedule: WorkSchedule | null | undefined,
+  dateStr: string,
+): { [k: number]: HorarioDia } | null {
+  if (!schedule) return null;
+  if (schedule.type !== "alternating") return schedule.days || null;
+  const wk = weekTypeForDate(schedule.anchor, dateStr);
+  return schedule.weeks?.[wk]?.days || null;
+}
+
+// Pega o ciclo de domingo efetivo (resolve A/B)
+export function getEffectiveSundayCycle(
+  schedule: WorkSchedule | null | undefined,
+  dateStr: string,
+): SundayCycle | null {
+  if (!schedule) return null;
+  if (schedule.type !== "alternating") return schedule.sundayCycle || null;
+  const wk = weekTypeForDate(schedule.anchor, dateStr);
+  return schedule.weeks?.[wk]?.sundayCycle || schedule.sundayCycle || null;
 }
