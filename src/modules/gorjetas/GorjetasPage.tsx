@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -517,19 +517,34 @@ function GorjetaModal({
             </div>
           ) : (
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 max-h-[340px] overflow-y-auto">
-              {divisao.itens.map((it, i) => (
-                <div key={it.empregadoId} className={`flex items-center justify-between px-3 py-1.5 text-sm ${i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
-                  <div className="min-w-0">
-                    <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{it.empregadoNome}</div>
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                      {it.cargoNome} · {it.pontos} pts
-                      {it.motivo === "freela" && " · freela"}
-                      {it.motivo === "producao" && " · produção"}
+              {[...divisao.itens]
+                .sort((a, b) => (a.area || "").localeCompare(b.area || "") || a.empregadoNome.localeCompare(b.empregadoNome))
+                .map((it, i, arr) => {
+                const areaPrev = i > 0 ? arr[i - 1].area : null;
+                const isPrimeiroDaArea = it.area !== areaPrev;
+                return (
+                  <Fragment key={it.empregadoId}>
+                    {isPrimeiroDaArea && (
+                      <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 first:border-t-0">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                          {it.area || "Sem área"}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between px-3 py-1.5 text-sm border-t border-gray-100 dark:border-gray-800">
+                      <div className="min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{it.empregadoNome}</div>
+                        <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                          {it.cargoNome} · {it.pontos} pts
+                          {it.motivo === "freela" && " · freela"}
+                          {it.motivo === "producao" && " · produção"}
+                        </div>
+                      </div>
+                      <div className="font-semibold text-emerald-600 tabular-nums">{fmtBR(it.valor)}</div>
                     </div>
-                  </div>
-                  <div className="font-semibold text-emerald-600 tabular-nums">{fmtBR(it.valor)}</div>
-                </div>
-              ))}
+                  </Fragment>
+                );
+              })}
             </div>
           )}
           {divisao.resto !== 0 && (

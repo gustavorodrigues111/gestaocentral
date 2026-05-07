@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { Button } from "../../core/ui/Button";
 import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
@@ -191,18 +191,31 @@ export function DivisaoMesTab({
           <div className="text-right">Retenção</div>
           <div className="text-right">Líquido</div>
         </div>
-        {linhas.map(l => (
-          <div key={l.empregadoId} className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800">
-            <div className="min-w-0">
-              <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
-              <div className="text-[10px] text-gray-500">{l.cargoNome} · {l.area}</div>
-            </div>
-            <div className="text-right tabular-nums text-gray-600 dark:text-gray-400">{l.diasComRecebimento}</div>
-            <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.bruto)}</div>
-            <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(l.retencao)}</div>
-            <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
-          </div>
-        ))}
+        {linhas.map((l, i) => {
+          const areaPrev = i > 0 ? linhas[i - 1].area : null;
+          const isPrimeiroDaArea = l.area !== areaPrev;
+          return (
+            <Fragment key={l.empregadoId}>
+              {isPrimeiroDaArea && (
+                <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                    {l.area || "Sem área"}
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
+                  <div className="text-[10px] text-gray-500">{l.cargoNome}</div>
+                </div>
+                <div className="text-right tabular-nums text-gray-600 dark:text-gray-400">{l.diasComRecebimento}</div>
+                <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.bruto)}</div>
+                <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(l.retencao)}</div>
+                <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
+              </div>
+            </Fragment>
+          );
+        })}
         {/* Linha de total */}
         <div className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
           <div>TOTAL</div>

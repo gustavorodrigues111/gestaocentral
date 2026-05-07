@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -119,19 +119,15 @@ export function EscalaPage() {
     return m;
   }, [empregadosDoMes, ano, mes]);
 
-  // Ordena por área do cargo + nome
+  // Ordena por área (alfabética) + nome do empregado (alfabético)
   const empregadosOrdenados = useMemo(() => {
     const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
-    const areaOrder: Record<string, number> = { "Salão": 0, Bar: 1, Cozinha: 2, Limpeza: 3 };
     return [...empregadosDoMes].sort((a, b) => {
       const ca = cargoMap[a.cargoId];
       const cb = cargoMap[b.cargoId];
-      const ao = ca ? areaOrder[ca.area] ?? 99 : 99;
-      const bo = cb ? areaOrder[cb.area] ?? 99 : 99;
-      if (ao !== bo) return ao - bo;
-      const an = ca?.nome || "";
-      const bn = cb?.nome || "";
-      if (an !== bn) return an.localeCompare(bn);
+      const areaA = ca?.area || "ZZ";  // sem área cai no fim
+      const areaB = cb?.area || "ZZ";
+      if (areaA !== areaB) return areaA.localeCompare(areaB);
       return a.nome.localeCompare(b.nome);
     });
   }, [empregadosDoMes, cargos]);
@@ -511,14 +507,28 @@ function Grade({
           </tr>
         </thead>
         <tbody>
-          {empregados.map(e => {
+          {empregados.map((e, idx) => {
             const cargo = cargoMap[e.cargoId];
-            const dot = cargo?.area === "Salão" ? "bg-emerald-500"
-                      : cargo?.area === "Bar"    ? "bg-blue-500"
-                      : cargo?.area === "Cozinha" ? "bg-orange-500"
+            const cargoPrev = idx > 0 ? cargoMap[empregados[idx - 1].cargoId] : null;
+            const areaPrev = cargoPrev?.area;
+            const areaAtual = cargo?.area;
+            const isPrimeiroDaArea = areaAtual !== areaPrev;
+            const dot = areaAtual === "Salão" ? "bg-emerald-500"
+                      : areaAtual === "Bar"    ? "bg-blue-500"
+                      : areaAtual === "Cozinha" ? "bg-orange-500"
                       : "bg-gray-400";
             return (
-              <tr key={e.id} className="border-t border-gray-100 dark:border-gray-800">
+              <Fragment key={e.id}>
+              {isPrimeiroDaArea && (
+                <tr className="bg-gray-50 dark:bg-gray-800/50">
+                  <td colSpan={dias + 1} className="px-3 py-1 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-10">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                      {areaAtual || "Sem área"}
+                    </span>
+                  </td>
+                </tr>
+              )}
+              <tr className="border-t border-gray-100 dark:border-gray-800">
                 <td className="px-3 py-1.5 sticky left-0 bg-white dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-800">
                   <div className="flex items-center gap-2">
                     <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
@@ -549,6 +559,7 @@ function Grade({
                   );
                 })}
               </tr>
+              </Fragment>
             );
           })}
         </tbody>
