@@ -1,5 +1,4 @@
-import { Fragment, useMemo } from "react";
-import * as XLSX from "xlsx";
+import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
@@ -100,9 +99,14 @@ export function DivisaoMesTab({
     return { bruto, liquido, retencao, distribuido };
   }, [gorjetas, linhas]);
 
-  function exportar() {
+  const [exportando, setExportando] = useState(false);
+  async function exportar() {
     if (linhas.length === 0) return;
-    const wb = XLSX.utils.book_new();
+    setExportando(true);
+    try {
+      // Lazy load — xlsx é ~250KB
+      const XLSX = await import("xlsx");
+      const wb = XLSX.utils.book_new();
 
     // Aba 1: Resumo do mês
     const resumoData = [
@@ -150,8 +154,14 @@ export function DivisaoMesTab({
     const lancamentosWS = XLSX.utils.aoa_to_sheet([lancamentosHeader, ...lancamentosRows]);
     XLSX.utils.book_append_sheet(wb, lancamentosWS, "Lançamentos");
 
-    const fileName = `Gorjetas_${restaurantNome.replace(/\s+/g, "_")}_${ano}-${String(mes).padStart(2,"0")}.xlsx`;
-    XLSX.writeFile(wb, fileName);
+      const fileName = `Gorjetas_${restaurantNome.replace(/\s+/g, "_")}_${ano}-${String(mes).padStart(2,"0")}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao exportar XLSX: " + (e instanceof Error ? e.message : "desconhecido"));
+    } finally {
+      setExportando(false);
+    }
   }
 
   if (gorjetas.length === 0) {
@@ -177,8 +187,8 @@ export function DivisaoMesTab({
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {linhas.length} empregado(s) com recebimento · {gorjetas.length} dia(s) lançados
         </p>
-        <Button variant="secondary" size="sm" onClick={exportar}>
-          📊 Exportar planilha (XLSX)
+        <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
+          {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
         </Button>
       </div>
 

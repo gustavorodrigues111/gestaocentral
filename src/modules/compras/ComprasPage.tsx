@@ -153,7 +153,6 @@ export function ComprasPage() {
 
       {tab === "sugestoes" && (
         <SugestoesTab
-          insumos={insumos}
           ultimaContagem={ultimaContagem}
           fornecedores={fornecedores}
           insumosComFalta={insumosComFalta}
@@ -165,8 +164,6 @@ export function ComprasPage() {
       {tab === "pedidos" && (
         <PedidosTab
           pedidos={pedidos}
-          insumos={insumos}
-          restaurantId={rid}
           podeConfig={podeConfig}
         />
       )}

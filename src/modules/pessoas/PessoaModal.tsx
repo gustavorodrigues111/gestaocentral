@@ -382,6 +382,12 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   const [pessoasExcluir, setPessoasExcluir] = useState<boolean>(
     pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true
   );
+  const [gorjetasConfigurarRegra, setGorjetasConfigurarRegra] = useState<boolean>(
+    pessoa.specialPermissions?.[restaurantId]?.gorjetasConfigurarRegra === true
+  );
+  const [escalaReabrir, setEscalaReabrir] = useState<boolean>(
+    pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true
+  );
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
 
@@ -418,6 +424,8 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
     if (!confirm(`Aplicar template "${t.nome}"? Isso SOBRESCREVE as permissões atuais.`)) return;
     setPerms(t.permissions || {});
     setPessoasExcluir(!!t.specialPermissions?.pessoasExcluir);
+    setGorjetasConfigurarRegra(!!t.specialPermissions?.gorjetasConfigurarRegra);
+    setEscalaReabrir(!!t.specialPermissions?.escalaReabrir);
   }
 
   async function salvar() {
@@ -430,7 +438,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
       const newPermissions = { ...(pessoa.permissions || {}), [restaurantId]: limpo };
       const newSpecial = {
         ...(pessoa.specialPermissions || {}),
-        [restaurantId]: { pessoasExcluir },
+        [restaurantId]: { pessoasExcluir, gorjetasConfigurarRegra, escalaReabrir },
       };
       await setDoc(doc(db, "pessoas", pessoa.id), {
         permissions: newPermissions,
@@ -505,15 +513,44 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
         <div className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-2">
           Permissões especiais
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={pessoasExcluir}
-            onChange={(e) => setPessoasExcluir(e.target.checked)}
-          />
-          <span>Pode <strong>excluir definitivamente</strong> pessoas</span>
-          <span className="text-xs text-gray-500">(perigoso — só pra usuários muito confiáveis)</span>
-        </label>
+        <div className="space-y-2">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pessoasExcluir}
+              onChange={(e) => setPessoasExcluir(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="flex-1">
+              🗑️ Pode <strong>excluir definitivamente</strong> pessoas
+              <span className="block text-xs text-gray-500">Perigoso — só pra usuários muito confiáveis (DP master).</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={gorjetasConfigurarRegra}
+              onChange={(e) => setGorjetasConfigurarRegra(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="flex-1">
+              💸 Pode <strong>alterar regra de divisão de gorjeta</strong> (assembleia)
+              <span className="block text-xs text-gray-500">Mesmo se tiver "Configurar" no módulo de Gorjetas, mexer na regra exige essa permissão extra.</span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={escalaReabrir}
+              onChange={(e) => setEscalaReabrir(e.target.checked)}
+              className="mt-0.5"
+            />
+            <span className="flex-1">
+              🔓 Pode <strong>reabrir mês de escala fechado</strong>
+              <span className="block text-xs text-gray-500">Reabrir afeta gorjetas/VT já calculados — operação rara.</span>
+            </span>
+          </label>
+        </div>
       </div>
 
       <div className="flex justify-end gap-3 items-center pt-3 border-t border-gray-200 dark:border-gray-800">

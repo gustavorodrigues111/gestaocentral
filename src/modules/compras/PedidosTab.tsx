@@ -9,13 +9,11 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   PEDIDO_STATUS_ICON, PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
 } from "../../core/types";
-import type { Insumo, Pedido, PedidoStatus, PedidoItem } from "../../core/types";
+import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
 import { onlyDigits } from "./FornecedoresTab";
 
 type Props = {
   pedidos: Pedido[];
-  insumos: Insumo[];
-  restaurantId: string;
   podeConfig: boolean;
 };
 
@@ -28,12 +26,11 @@ const STATUS_CLS: Record<PedidoStatus, string> = {
   cancelado:    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
 };
 
-export function PedidosTab({ pedidos, insumos, restaurantId, podeConfig }: Props) {
+export function PedidosTab({ pedidos, podeConfig }: Props) {
   const [filtroStatus, setFiltroStatus] = useState<"abertos" | "todos" | PedidoStatus>("abertos");
   const [search, setSearch] = useState("");
   const [recebendo, setRecebendo] = useState<Pedido | null>(null);
 
-  void insumos; void restaurantId;
   const filtered = useMemo(() => {
     return pedidos.filter(p => {
       if (filtroStatus === "abertos") {

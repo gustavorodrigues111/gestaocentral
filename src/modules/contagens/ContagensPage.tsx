@@ -7,7 +7,6 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import { todayYmd } from "../../core/utils/date";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
@@ -327,7 +326,4 @@ export function ContagensPage() {
       )}
     </div>
   );
-
-  // unused, just to silence ts warning if user removes today
-  void todayYmd;
 }

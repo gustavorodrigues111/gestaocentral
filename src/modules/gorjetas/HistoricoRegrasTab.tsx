@@ -143,17 +143,26 @@ function GerarAtaModal({
   function selecionarTodos() { setSelecionados(new Set(elegiveis.map(e => e.id))); }
   function limparSelecao() { setSelecionados(new Set()); }
 
-  function gerar() {
+  const [gerando, setGerando] = useState(false);
+  async function gerar() {
     // Restaurant pode não ter cnpj/endereco — passa só o que tem
     const restFull = restaurant as Parameters<typeof gerarAtaPDF>[0]["restaurant"];
-    const pdf = gerarAtaPDF({
-      splitVersion,
-      restaurant: restFull,
-      cargos,
-      empregados,
-      empregadosAssinantesIds: [...selecionados],
-    });
-    pdf.save(`Ata_${restaurant.nome.replace(/\s+/g, "_")}_${splitVersion.effectiveFrom}.pdf`);
+    setGerando(true);
+    try {
+      const pdf = await gerarAtaPDF({
+        splitVersion,
+        restaurant: restFull,
+        cargos,
+        empregados,
+        empregadosAssinantesIds: [...selecionados],
+      });
+      pdf.save(`Ata_${restaurant.nome.replace(/\s+/g, "_")}_${splitVersion.effectiveFrom}.pdf`);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gerar PDF: " + (e instanceof Error ? e.message : "desconhecido"));
+    } finally {
+      setGerando(false);
+    }
   }
 
   return (
@@ -210,8 +219,8 @@ function GerarAtaModal({
 
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={gerar} disabled={selecionados.size === 0}>
-            📄 Baixar PDF da Ata
+          <Button onClick={gerar} disabled={selecionados.size === 0 || gerando}>
+            {gerando ? "Gerando..." : "📄 Baixar PDF da Ata"}
           </Button>
         </div>
       </div>

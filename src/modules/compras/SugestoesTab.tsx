@@ -8,7 +8,6 @@ import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo, Pedido, PedidoItem } from "../../core/types";
 
 type Props = {
-  insumos: Insumo[];
   ultimaContagem: Record<string, Contagem>;
   fornecedores: Fornecedor[];
   insumosComFalta: Insumo[];
@@ -26,7 +25,7 @@ type LinhaSugestao = {
 };
 
 export function SugestoesTab({
-  insumos, ultimaContagem, fornecedores, insumosComFalta,
+  ultimaContagem, fornecedores, insumosComFalta,
   restaurantId, podeConfig, onPedidoCriado,
 }: Props) {
   const { pessoa: me } = useAuth();
@@ -139,7 +138,6 @@ export function SugestoesTab({
     return null; // ComprasPage já mostra o "tudo em ordem"
   }
 
-  void insumos;
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 dark:text-gray-400">

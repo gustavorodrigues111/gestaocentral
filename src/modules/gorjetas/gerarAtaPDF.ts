@@ -1,8 +1,10 @@
 // Gera PDF da Ata de Assembleia da regra de divisão de gorjeta.
 // Versão simplificada — pode evoluir depois pra layout do AppTip.
+//
+// jsPDF + jspdf-autotable são lazy loaded (carga só quando o user clica
+// em "Gerar PDF") — corta ~250KB do bundle inicial.
 
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
+import type { jsPDF as JsPDFType } from "jspdf";
 import type { Cargo, Empregado, Restaurant, SplitVersion } from "../../core/types";
 import { AREAS } from "../../core/types";
 import { computeAreaPercentages, countEmpregadosRegistradosNaArea } from "./splitRules";
@@ -20,9 +22,15 @@ const ACCENT: [number, number, number] = [99, 102, 241];      // indigo
 const TEXT: [number, number, number] = [28, 23, 16];
 const TEXT2: [number, number, number] = [100, 116, 139];
 
-export function gerarAtaPDF({
+export async function gerarAtaPDF({
   splitVersion, restaurant, cargos, empregados, empregadosAssinantesIds,
-}: AtaParams): jsPDF {
+}: AtaParams): Promise<JsPDFType> {
+  // Lazy load — só carrega jsPDF quando o user de fato vai gerar o PDF.
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+    import("jspdf"),
+    import("jspdf-autotable"),
+  ]);
+
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -172,7 +180,7 @@ export function gerarAtaPDF({
       headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: "bold" },
       margin: { left: MARGIN, right: MARGIN },
     });
-    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    y = (doc as JsPDFType & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
 
     const temVariavel = AREAS.some(a => splitVersion.percentages![a].type === "perEmployee");
     if (temVariavel) {
@@ -212,7 +220,7 @@ export function gerarAtaPDF({
       headStyles: { fillColor: ACCENT, textColor: [255, 255, 255], fontStyle: "bold" },
       margin: { left: MARGIN, right: MARGIN },
     });
-    y = (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+    y = (doc as JsPDFType & { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
   }
 
   // ─── Assinaturas ───

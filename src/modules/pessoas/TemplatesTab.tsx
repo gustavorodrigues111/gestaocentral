@@ -110,7 +110,10 @@ function TemplateRow({
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{template.descricao}</p>
         )}
         <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-          {numModulos} módulo(s) · {template.specialPermissions?.pessoasExcluir && "+ excluir pessoas"}
+          {numModulos} módulo(s)
+          {template.specialPermissions?.pessoasExcluir && " · 🗑️ excluir pessoas"}
+          {template.specialPermissions?.gorjetasConfigurarRegra && " · 💸 regra gorjeta"}
+          {template.specialPermissions?.escalaReabrir && " · 🔓 reabrir escala"}
         </div>
       </div>
       {podeConfig && (
@@ -147,6 +150,12 @@ function TemplateModal({
   const [pessoasExcluir, setPessoasExcluir] = useState<boolean>(
     template?.specialPermissions?.pessoasExcluir === true
   );
+  const [gorjetasConfigurarRegra, setGorjetasConfigurarRegra] = useState<boolean>(
+    template?.specialPermissions?.gorjetasConfigurarRegra === true
+  );
+  const [escalaReabrir, setEscalaReabrir] = useState<boolean>(
+    template?.specialPermissions?.escalaReabrir === true
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -171,12 +180,17 @@ function TemplateModal({
         if (v.ver || v.configurar) limpo[k] = v;
       });
 
+      const specialPermissions: Record<string, boolean> = {};
+      if (pessoasExcluir) specialPermissions.pessoasExcluir = true;
+      if (gorjetasConfigurarRegra) specialPermissions.gorjetasConfigurarRegra = true;
+      if (escalaReabrir) specialPermissions.escalaReabrir = true;
+
       const data = {
         restaurantId,
         nome: nome.trim(),
         descricao: descricao.trim() || null,
         permissions: limpo,
-        specialPermissions: pessoasExcluir ? { pessoasExcluir: true } : {},
+        specialPermissions,
         ativo,
       };
       if (isNew) {
@@ -266,14 +280,32 @@ function TemplateModal({
           <div className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-2">
             Permissões especiais
           </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={pessoasExcluir}
-              onChange={(e) => setPessoasExcluir(e.target.checked)}
-            />
-            <span>Pode <strong>excluir definitivamente</strong> pessoas</span>
-          </label>
+          <div className="space-y-1.5">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={pessoasExcluir}
+                onChange={(e) => setPessoasExcluir(e.target.checked)}
+              />
+              <span>🗑️ Pode <strong>excluir definitivamente</strong> pessoas</span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={gorjetasConfigurarRegra}
+                onChange={(e) => setGorjetasConfigurarRegra(e.target.checked)}
+              />
+              <span>💸 Pode <strong>alterar regra de divisão de gorjeta</strong></span>
+            </label>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                checked={escalaReabrir}
+                onChange={(e) => setEscalaReabrir(e.target.checked)}
+              />
+              <span>🔓 Pode <strong>reabrir mês de escala fechado</strong></span>
+            </label>
+          </div>
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
