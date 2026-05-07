@@ -42,12 +42,12 @@ export type VTLinhaCalc = {
 export function calcularVTLinha(
   e: Empregado,
   escala: EscalaMes | null,
+  versao: "prevista" | "real" = "prevista",
 ): VTLinhaCalc | null {
   if (!e.vtAtivo) return null;
-  // Valores são obrigatórios no cadastro do empregado quando vtAtivo. Defensivo: zero se faltar.
   const passagensPorDia = e.vtPassagensPorDia ?? 0;
   const valorPassagem   = e.vtValorPassagem   ?? 0;
-  const diasTrabalhados = contarDiasTrabalhados(e.id, escala);
+  const diasTrabalhados = contarDiasTrabalhados(e.id, escala, versao);
   const total = Math.round(diasTrabalhados * passagensPorDia * valorPassagem * 100) / 100;
   return {
     empregadoId: e.id,
@@ -57,4 +57,51 @@ export function calcularVTLinha(
     valorPassagem,
     total,
   };
+}
+
+// ─── DIVERGÊNCIAS ENTRE PREVISTA E REAL ──────────────────────────────────────
+// Pra cada empregado VT-ativo, compara dias trabalhados na Prevista (que foi
+// usada pra pagar VT) vs Real (o que de fato aconteceu).
+// - Real > Prevista: empregado tem a RECEBER (trabalhou mais dias do que esperado)
+// - Real < Prevista: empregado tem a DEVOLVER (faltou ou folgou compensatório)
+
+export type VTDivergencia = {
+  empregadoId: string;
+  nome: string;
+  diasPrevista: number;
+  diasReal: number;
+  delta: number;          // positivo = a receber; negativo = a devolver
+  passagensPorDia: number;
+  valorPassagem: number;
+  diferencaValor: number; // delta * passagens * valor
+};
+
+export function calcularDivergenciasVT(
+  empregados: Empregado[],
+  escala: EscalaMes | null,
+): VTDivergencia[] {
+  if (!escala) return [];
+  const divergencias: VTDivergencia[] = [];
+  for (const e of empregados) {
+    if (!e.vtAtivo) continue;
+    const passagensPorDia = e.vtPassagensPorDia ?? 0;
+    const valorPassagem   = e.vtValorPassagem   ?? 0;
+    if (passagensPorDia <= 0 || valorPassagem <= 0) continue;
+    const prev = contarDiasTrabalhados(e.id, escala, "prevista");
+    const real = contarDiasTrabalhados(e.id, escala, "real");
+    const delta = real - prev;
+    if (delta === 0) continue;
+    const diferencaValor = Math.round(delta * passagensPorDia * valorPassagem * 100) / 100;
+    divergencias.push({
+      empregadoId: e.id,
+      nome: e.nome,
+      diasPrevista: prev,
+      diasReal: real,
+      delta,
+      passagensPorDia,
+      valorPassagem,
+      diferencaValor,
+    });
+  }
+  return divergencias.sort((a, b) => Math.abs(b.diferencaValor) - Math.abs(a.diferencaValor));
 }

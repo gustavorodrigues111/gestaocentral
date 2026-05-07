@@ -1,9 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs, query } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { AREA_INFO, MODULES, getModule } from "../../config/modules";
 import { ROADMAP } from "../../config/roadmap";
-import type { ModuleArea, ModuleDef, ModuleId } from "../../core/types";
+import type { AuditLog, ModuleArea, ModuleDef, ModuleId, Restaurant } from "../../core/types";
 
-type Tab = "modulos" | "dados" | "roadmap" | "permissoes";
+type Tab = "modulos" | "dados" | "roadmap" | "permissoes" | "historico";
 
 export function ArquiteturaPage() {
   const [tab, setTab] = useState<Tab>("modulos");
@@ -13,6 +15,7 @@ export function ArquiteturaPage() {
     { id: "dados",       label: "Modelo de dados",  icon: "🗄️" },
     { id: "roadmap",     label: "Roadmap",          icon: "🛣️" },
     { id: "permissoes",  label: "Permissões",       icon: "🔐" },
+    { id: "historico",   label: "Histórico global", icon: "📋" },
   ];
 
   return (
@@ -44,6 +47,7 @@ export function ArquiteturaPage() {
       {tab === "dados"      && <ModeloDados />}
       {tab === "roadmap"    && <RoadmapView />}
       {tab === "permissoes" && <PermissoesView />}
+      {tab === "historico"  && <HistoricoGlobal />}
     </div>
   );
 }
@@ -502,6 +506,188 @@ pessoa.specialPermissions = {
           <div className="text-gray-500 mt-2">📁 src/core/auth/permissions.ts</div>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// TAB 5: HISTÓRICO GLOBAL (auditLog de todos os restaurantes)
+// ════════════════════════════════════════════════════════════════
+
+const ACAO_INFO: Record<AuditLog["acao"], { label: string; icon: string; cls: string }> = {
+  criado:    { label: "Criado",     icon: "✨", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  alterado:  { label: "Alterado",   icon: "✏️", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  agendado:  { label: "Agendado",   icon: "⏰", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  inativado: { label: "Inativado",  icon: "🚫", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+  reativado: { label: "Reativado",  icon: "✓", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  demitido:  { label: "Demitido",   icon: "📤", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+  readmitido:{ label: "Readmitido", icon: "📥", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  excluido:  { label: "Excluído",   icon: "🗑", cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+};
+
+function HistoricoGlobal() {
+  const [logs, setLogs] = useState<AuditLog[]>([]);
+  const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filtroPeriodo, setFiltroPeriodo] = useState<"7d" | "30d" | "90d" | "todos">("7d");
+  const [filtroEntidade, setFiltroEntidade] = useState<string>("todos");
+  const [filtroRestaurante, setFiltroRestaurante] = useState<string>("todos");
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [snapLogs, snapRest] = await Promise.all([
+          getDocs(query(collection(db, "auditLog"))),
+          getDocs(query(collection(db, "restaurants"))),
+        ]);
+        if (!alive) return;
+        const list = snapLogs.docs.map(d => ({ id: d.id, ...d.data() }) as AuditLog);
+        list.sort((a, b) => (b.registradoEm || "").localeCompare(a.registradoEm || ""));
+        setLogs(list);
+        setRestaurants(snapRest.docs.map(d => ({ id: d.id, ...d.data() }) as Restaurant));
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  const restMap = useMemo(
+    () => Object.fromEntries(restaurants.map(r => [r.id, r.nome])),
+    [restaurants],
+  );
+
+  const filtered = useMemo(() => {
+    return logs.filter(l => {
+      if (filtroEntidade !== "todos" && l.entityType !== filtroEntidade) return false;
+      if (filtroRestaurante !== "todos" && l.restaurantId !== filtroRestaurante) return false;
+      if (filtroPeriodo !== "todos") {
+        const dias = filtroPeriodo === "7d" ? 7 : filtroPeriodo === "30d" ? 30 : 90;
+        const cutoff = new Date();
+        cutoff.setDate(cutoff.getDate() - dias);
+        if (l.registradoEm < cutoff.toISOString()) return false;
+      }
+      return true;
+    });
+  }, [logs, filtroEntidade, filtroRestaurante, filtroPeriodo]);
+
+  const stats = useMemo(() => {
+    const m: Record<string, number> = {};
+    filtered.forEach(l => { m[l.acao] = (m[l.acao] || 0) + 1; });
+    return m;
+  }, [filtered]);
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+        Timeline de todas as mudanças críticas no sistema (todos os restaurantes).
+        Útil pra debug, compliance e acompanhamento.
+      </p>
+
+      {/* Stats por ação */}
+      {Object.keys(stats).length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {(Object.keys(stats) as AuditLog["acao"][]).map(a => (
+            <div key={a} className={`px-2 py-1 rounded text-xs ${ACAO_INFO[a].cls}`}>
+              {ACAO_INFO[a].icon} {ACAO_INFO[a].label}: <strong>{stats[a]}</strong>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Filtros */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Período:</span>
+        {(["7d", "30d", "90d", "todos"] as const).map(p => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => setFiltroPeriodo(p)}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              filtroPeriodo === p
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+            }`}
+          >
+            {p === "7d" ? "7 dias" : p === "30d" ? "30 dias" : p === "90d" ? "90 dias" : "Todos"}
+          </button>
+        ))}
+        <select
+          value={filtroEntidade}
+          onChange={(e) => setFiltroEntidade(e.target.value)}
+          className="ml-2 text-xs px-3 py-1 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+        >
+          <option value="todos">Todas entidades</option>
+          <option value="empregado">Empregado</option>
+          <option value="cargo">Cargo</option>
+          <option value="pessoa">Pessoa</option>
+          <option value="restaurant">Restaurante</option>
+          <option value="permissionTemplate">Template</option>
+        </select>
+        <select
+          value={filtroRestaurante}
+          onChange={(e) => setFiltroRestaurante(e.target.value)}
+          className="text-xs px-3 py-1 rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+        >
+          <option value="todos">Todos restaurantes</option>
+          {restaurants.map(r => (
+            <option key={r.id} value={r.id}>{r.nome}</option>
+          ))}
+        </select>
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
+          <div className="text-4xl mb-3">📋</div>
+          <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma alteração no período</p>
+        </div>
+      ) : (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          {filtered.slice(0, 200).map((log, i) => {
+            const acao = ACAO_INFO[log.acao] || ACAO_INFO.alterado;
+            const data = log.registradoEm
+              ? new Date(log.registradoEm).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })
+              : "—";
+            const restNome = log.restaurantId ? restMap[log.restaurantId] || "?" : "global";
+            return (
+              <div key={log.id || i} className={`px-4 py-3 ${i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
+                <div className="flex items-start gap-3">
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${acao.cls} flex-shrink-0`}>
+                    {acao.icon} {acao.label}
+                  </span>
+                  <div className="flex-1 min-w-0 text-xs">
+                    <div>
+                      <span className="text-gray-500 dark:text-gray-400">{log.entityType}</span>
+                      <span className="font-mono text-[10px] ml-1 opacity-60">{log.entityId.slice(0, 10)}</span>
+                      <span className="ml-2 text-[10px] text-gray-400">@ {restNome}</span>
+                    </div>
+                    {log.motivo && (
+                      <div className="text-gray-600 dark:text-gray-400 mt-0.5 italic">"{log.motivo}"</div>
+                    )}
+                    {log.diff && Object.keys(log.diff).length > 0 && (
+                      <div className="text-gray-500 mt-1 font-mono text-[10px]">
+                        {Object.keys(log.diff).slice(0, 3).join(", ")}
+                        {Object.keys(log.diff).length > 3 && ` +${Object.keys(log.diff).length - 3}`}
+                      </div>
+                    )}
+                  </div>
+                  <div className="text-right text-[10px] text-gray-400 flex-shrink-0">
+                    {data}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length > 200 && (
+            <div className="px-4 py-2 text-xs text-gray-500 text-center border-t border-gray-100 dark:border-gray-800">
+              Mostrando 200 de {filtered.length}. Use filtros pra refinar.
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

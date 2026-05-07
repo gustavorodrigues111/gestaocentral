@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -8,7 +8,7 @@ import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { fmtAnoMes, nomeMes, shiftMonth } from "../../core/utils/date";
 import type { Empregado, EscalaMes, VTFolha, VTFolhaItem } from "../../core/types";
-import { calcularVTLinha } from "./calc";
+import { calcularDivergenciasVT, calcularVTLinha, type VTDivergencia } from "./calc";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -112,7 +112,7 @@ export function VTPage() {
 
   async function pagarTodos() {
     if (!rid) return;
-    if (!confirm("Marcar TODOS os pendentes como pagos?")) return;
+    if (!confirm("Marcar TODOS os pendentes como pagos?\n\nIsso também CONGELA a Prevista da escala como snapshot pro cálculo. Mudanças posteriores na escala REAL geram divergências (a devolver / a receber).")) return;
     const itens = { ...(folha?.itens || {}) };
     const now = new Date().toISOString();
     for (const l of linhas) {
@@ -131,7 +131,39 @@ export function VTPage() {
       restaurantId: rid, ano, mes, itens,
       updatedAt: now,
     }, { merge: true });
+    // Congela a Prevista da escala marcando vtPagoEm
+    if (!escala?.vtPagoEm) {
+      try {
+        await updateDoc(doc(db, "escalas", escalaId), {
+          vtPagoEm: now,
+          vtPagoPor: me?.id || null,
+        });
+      } catch (e) {
+        // Doc da escala pode não existir ainda — cria
+        await setDoc(doc(db, "escalas", escalaId), {
+          id: escalaId,
+          restaurantId: rid,
+          ano, mes,
+          prevista: {},
+          real: {},
+          vtPagoEm: now,
+          vtPagoPor: me?.id || null,
+          updatedAt: now,
+        }, { merge: true });
+      }
+    }
   }
+
+  // Divergências entre Real e Prevista (só faz sentido APÓS VT pago)
+  const divergencias: VTDivergencia[] = useMemo(
+    () => calcularDivergenciasVT(empregados, escala),
+    [empregados, escala],
+  );
+  const totaisDivergencia = useMemo(() => {
+    const aReceber = divergencias.filter(d => d.delta > 0).reduce((s, d) => s + d.diferencaValor, 0);
+    const aDevolver = -divergencias.filter(d => d.delta < 0).reduce((s, d) => s + d.diferencaValor, 0);
+    return { aReceber, aDevolver, saldoLiquido: aReceber - aDevolver };
+  }, [divergencias]);
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
@@ -232,9 +264,75 @@ export function VTPage() {
           ))}
           {podeConfig && totais.pendente > 0 && (
             <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-800 flex justify-end">
-              <Button size="sm" onClick={pagarTodos}>Pagar todos pendentes ({fmtBR(totais.pendente)})</Button>
+              <Button size="sm" onClick={pagarTodos}>💸 Pagar todos pendentes ({fmtBR(totais.pendente)})</Button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Tela de Divergências (Real vs Prevista) — aparece APÓS VT pago */}
+      {escala?.vtPagoEm && divergencias.length > 0 && (
+        <div className="mt-6 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h2 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  📊 Divergências entre Prevista e Real
+                </h2>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  Comparação dos dias trabalhados na escala REAL contra a PREVISTA (que pagou o VT).
+                </p>
+              </div>
+              <div className="text-right">
+                <div className="text-[10px] uppercase font-bold tracking-wider text-amber-700">Saldo</div>
+                <div className={`text-lg font-bold tabular-nums ${
+                  totaisDivergencia.saldoLiquido >= 0 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"
+                }`}>
+                  {totaisDivergencia.saldoLiquido >= 0 ? "+" : "-"}
+                  {fmtBR(Math.abs(totaisDivergencia.saldoLiquido))}
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="rounded bg-emerald-100 dark:bg-emerald-900/40 px-2 py-1 text-xs">
+                <span className="text-emerald-700 dark:text-emerald-300 font-semibold">A receber (a + dias):</span>
+                <span className="ml-2 font-bold tabular-nums text-emerald-900 dark:text-emerald-200">{fmtBR(totaisDivergencia.aReceber)}</span>
+              </div>
+              <div className="rounded bg-rose-100 dark:bg-rose-900/40 px-2 py-1 text-xs">
+                <span className="text-rose-700 dark:text-rose-300 font-semibold">A devolver (- dias):</span>
+                <span className="ml-2 font-bold tabular-nums text-rose-900 dark:text-rose-200">{fmtBR(totaisDivergencia.aDevolver)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-[1fr_70px_70px_90px_140px] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+            <div>Empregado</div>
+            <div className="text-right">Prev.</div>
+            <div className="text-right">Real</div>
+            <div className="text-right">Δ dias</div>
+            <div className="text-right">Diferença R$</div>
+          </div>
+          {divergencias.map(d => (
+            <div key={d.empregadoId} className={`grid grid-cols-[1fr_70px_70px_90px_140px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${
+              d.delta > 0 ? "bg-emerald-50/30 dark:bg-emerald-900/10" : "bg-rose-50/30 dark:bg-rose-900/10"
+            }`}>
+              <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{d.nome}</div>
+              <div className="text-right tabular-nums text-gray-600 dark:text-gray-400">{d.diasPrevista}</div>
+              <div className="text-right tabular-nums text-gray-900 dark:text-gray-100 font-medium">{d.diasReal}</div>
+              <div className={`text-right tabular-nums font-semibold ${d.delta > 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                {d.delta > 0 ? "+" : ""}{d.delta}
+              </div>
+              <div className={`text-right tabular-nums font-bold ${d.delta > 0 ? "text-emerald-700" : "text-rose-700"}`}>
+                {d.delta > 0 ? "+" : ""}{fmtBR(d.diferencaValor)}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {escala?.vtPagoEm && divergencias.length === 0 && (
+        <div className="mt-6 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-center text-sm text-emerald-800 dark:text-emerald-300">
+          ✓ <strong>Sem divergências.</strong> A escala Real bate com a Prevista — VT calculado certinho.
         </div>
       )}
     </div>
