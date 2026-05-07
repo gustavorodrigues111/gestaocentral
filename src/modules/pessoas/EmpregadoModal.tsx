@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -282,6 +282,35 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     }
   }
 
+  async function excluirVinculo() {
+    if (!empregado || !me) return;
+    const aviso = `Excluir o vínculo de empregado de "${empregado.nome}"?\n\n` +
+      `⚠ Apaga o registro de empregado (workSchedules incluídos).\n` +
+      `⚠ A Pessoa NÃO é apagada — só perde a relação de equipe.\n` +
+      `⚠ Gorjetas/VT já pagos mantêm snapshot do nome (preservação histórica).\n` +
+      `⚠ Se quiser preservar histórico de períodos, use "Demitir" em vez de excluir.`;
+    if (!confirm(aviso)) return;
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, "empregados", empregado.id));
+      await logAudit({
+        entityType: "empregado",
+        entityId: empregado.id,
+        restaurantId,
+        acao: "excluido",
+        diff: { nome: { antes: empregado.nome, depois: null } },
+        motivo: "Vínculo de equipe excluído (Pessoa preservada)",
+        registradoPor: me.id,
+      });
+      onClose();
+    } catch (e) {
+      console.error(e);
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <Modal title={isNew ? "+ Vincular como empregado" : "Editar dados de empregado"} onClose={onClose} maxWidth="max-w-2xl">
       {/* Tabs (só aparecem se empregado já criado) */}
@@ -427,9 +456,18 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Vincular" : "Salvar"}</Button>
+        <div className="flex justify-between items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <div>
+            {!isNew && empregado && (
+              <Button variant="danger" size="sm" onClick={excluirVinculo} disabled={saving}>
+                🗑 Excluir vínculo
+              </Button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+            <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Vincular" : "Salvar"}</Button>
+          </div>
         </div>
       </div>
       )}
