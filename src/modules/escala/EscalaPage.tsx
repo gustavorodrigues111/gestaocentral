@@ -4,7 +4,7 @@ import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, update
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfig, canUse } from "../../core/auth/permissions";
+import { canConfig, canReabrirEscala, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -14,6 +14,8 @@ import {
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
+import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
+import { SumarioMesModal } from "./SumarioMesModal";
 
 // Tabela de status: cor + label curto + label longo
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
@@ -208,7 +210,11 @@ export function EscalaPage() {
 
   const fechada = !!escala?.fechadoEm;
   const vtPago = !!escala?.vtPagoEm;
+  const podeReabrir = canReabrirEscala(me, rid);
   const [showFeriasLote, setShowFeriasLote] = useState(false);
+  const [showFecharMes, setShowFecharMes] = useState(false);
+  const [showReabrirMes, setShowReabrirMes] = useState(false);
+  const [showSumario, setShowSumario] = useState(false);
   // Pode editar a versão atualmente selecionada?
   // - Mês fechado → nada editável
   // - Prevista após VT pago → trava (snapshot pra cálculo)
@@ -272,6 +278,19 @@ export function EscalaPage() {
               📋 Copiar Prevista → Real
             </Button>
           )}
+          <Button variant="secondary" size="sm" onClick={() => setShowSumario(true)}>
+            📊 Sumário
+          </Button>
+          {!fechada && podeConfig && (
+            <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
+              🔒 Fechar mês
+            </Button>
+          )}
+          {fechada && podeReabrir && (
+            <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
+              🔓 Reabrir mês
+            </Button>
+          )}
           {fechada && (
             <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
               🔒 Fechada
@@ -326,7 +345,6 @@ export function EscalaPage() {
           mes={mes}
           onClose={() => setShowFeriasLote(false)}
           onApply={async (empregadoId, dataInicio, dataFim, status) => {
-            // Aplica em cada dia do range
             const ini = parseYmd(dataInicio);
             const fim = parseYmd(dataFim);
             for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
@@ -334,6 +352,37 @@ export function EscalaPage() {
             }
             setShowFeriasLote(false);
           }}
+        />
+      )}
+
+      {showFecharMes && (
+        <FecharMesModal
+          rid={rid}
+          ano={ano}
+          mes={mes}
+          escala={escala}
+          onClose={() => setShowFecharMes(false)}
+        />
+      )}
+      {showReabrirMes && (
+        <ReabrirMesModal
+          rid={rid}
+          ano={ano}
+          mes={mes}
+          escala={escala}
+          onClose={() => setShowReabrirMes(false)}
+        />
+      )}
+      {showSumario && activeRestaurant && (
+        <SumarioMesModal
+          rid={rid}
+          ano={ano}
+          mes={mes}
+          escala={escala}
+          empregados={empregados}
+          cargos={cargos}
+          restaurant={activeRestaurant}
+          onClose={() => setShowSumario(false)}
         />
       )}
     </div>

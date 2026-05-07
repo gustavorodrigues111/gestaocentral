@@ -26,6 +26,7 @@ export type RestaurantPermissions = {
 export type PessoaSpecialPermissions = {
   pessoasExcluir?: boolean;             // pode excluir pessoas DEFINITIVAMENTE
   gorjetasConfigurarRegra?: boolean;    // pode mexer na regra de divisão de gorjeta (assembleia)
+  escalaReabrir?: boolean;              // pode reabrir mês de escala fechado
 };
 
 export type ModuleDef = {
@@ -164,6 +165,19 @@ export type ScheduleStatus =
   | "comp" | "comp_trab"
   | "ferias" | "falta_j" | "falta_i";
 
+// Snapshot de uma versão antiga da escala (gravado ao fechar/reabrir)
+export type EscalaSnapshot = {
+  snapshotEm: string;             // ISO
+  motivo: "fechamento" | "reabertura";
+  motivoTexto?: string;
+  prevista: { [empregadoId: string]: { [date: string]: ScheduleStatus } };
+  real:     { [empregadoId: string]: { [date: string]: ScheduleStatus } };
+  vtPagoEm?: string | null;
+  fechadoEm?: string | null;
+  fechadoPor?: string | null;
+  registradoPor: string;
+};
+
 // Escala mensal — armazenada como /escalas/{rid}_{yyyy-mm}
 // Tem 2 versões: prevista (planejamento) e real (após o mês passar)
 export type EscalaMes = {
@@ -181,6 +195,13 @@ export type EscalaMes = {
   vtPagoPor?: string | null;
   fechadoEm?: string | null;      // ISO — congela "real" no fechamento total
   fechadoPor?: string | null;
+  fechadoMotivo?: string;
+  reabertoEm?: string | null;     // se foi reaberto, registra
+  reabertoPor?: string | null;
+  reabertoMotivo?: string;
+
+  // Snapshots de versões anteriores (gravados ao fechar e ao reabrir)
+  versoesAnteriores?: EscalaSnapshot[];
 
   updatedAt: string;
 };

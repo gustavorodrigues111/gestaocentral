@@ -32,6 +32,13 @@ export function canExcluirPessoa(pessoa: Pessoa | null, restaurantId: string): b
   return pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true;
 }
 
+// Permissão especial: pode reabrir mês de escala fechado?
+export function canReabrirEscala(pessoa: Pessoa | null, restaurantId: string): boolean {
+  if (!pessoa) return false;
+  if (pessoa.isMaster) return true;
+  return pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true;
+}
+
 // ── Aliases legados (mantidos enquanto refatoramos as páginas) ────────────────
 // Use `canVer` e `canConfigurar` em código novo.
 export const canUse = canVer;
