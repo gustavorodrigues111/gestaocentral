@@ -19,6 +19,8 @@ import { TrilhaPage } from "./modules/trilha/TrilhaPage";
 import { OcorrenciasPage } from "./modules/ocorrencias/OcorrenciasPage";
 import { ChecklistsPage } from "./modules/checklists/ChecklistsPage";
 import { ReservasPage } from "./modules/reservas/ReservasPage";
+import { ContagensPage } from "./modules/contagens/ContagensPage";
+import { ComprasPage } from "./modules/compras/ComprasPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -54,6 +56,8 @@ function ModuleRouter() {
     case "ocorrencias":   return <OcorrenciasPage key={k} />;
     case "checklists":    return <ChecklistsPage key={k} />;
     case "reservas":      return <ReservasPage key={k} />;
+    case "contagens":     return <ContagensPage key={k} />;
+    case "compras":       return <ComprasPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

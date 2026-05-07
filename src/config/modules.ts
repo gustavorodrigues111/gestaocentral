@@ -14,7 +14,7 @@ export const MODULES: ModuleDef[] = [
   { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     desc: "Lançamento e divisão de gorjetas",       dependsOn: ["pessoas", "escala"] },
   { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     desc: "Cálculo e pagamento de VT",              dependsOn: ["pessoas", "escala"] },
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
-  { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "planejado", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
+  { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "ativo",     desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
   { id: "comunicados",      area: "escritorio", label: "Comunicados",      icon: "📣", status: "ativo",     desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", desc: "Documentos e wiki interna" },
   { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"] },
@@ -30,7 +30,7 @@ export const MODULES: ModuleDef[] = [
   { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "ativo",     desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
   { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "ativo",     desc: "Reservas de mesa e base de clientes",    dependsOn: ["pessoas"] },
   { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "ativo",     desc: "Checklists operacionais",                dependsOn: ["pessoas"] },
-  { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "planejado", desc: "Contagens de estoque",                   dependsOn: ["pessoas"] },
+  { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "ativo",     desc: "Contagens de estoque",                   dependsOn: ["pessoas"] },
   { id: "temperaturas",     area: "operacao", label: "Temperaturas",       icon: "🌡️", status: "planejado", desc: "Monitoramento e alertas" },
   { id: "fichas",           area: "operacao", label: "Fichas Técnicas",    icon: "📋", status: "planejado", desc: "Receitas e custo de pratos",             dependsOn: ["compras"] },
 ];

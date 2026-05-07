@@ -708,6 +708,130 @@ export type Reserva = {
   atualizadoEm: string;
 };
 
+// ─── CONTAGENS + COMPRAS (estoque) ─────────────────────────────────────────
+
+export type Fornecedor = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  whatsapp?: string;                  // só dígitos pra link wa.me
+  email?: string;
+  observacoes?: string;
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+};
+
+// Unidade comum de medida
+export type UnidadeMedida =
+  | "un" | "kg" | "g" | "L" | "ml"
+  | "cx" | "pct" | "fardo" | "garrafa" | "lata"
+  | "outro";
+
+export const UNIDADES_LABEL: Record<UnidadeMedida, string> = {
+  un: "Unidade", kg: "Quilo", g: "Grama", L: "Litro", ml: "Mililitro",
+  cx: "Caixa", pct: "Pacote", fardo: "Fardo", garrafa: "Garrafa", lata: "Lata",
+  outro: "Outro",
+};
+
+export const UNIDADES_LISTA: UnidadeMedida[] = [
+  "un", "kg", "g", "L", "ml", "cx", "pct", "fardo", "garrafa", "lata", "outro",
+];
+
+export type Insumo = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  categoria?: string;                 // ex: "Bebidas", "Carnes" (texto livre)
+  unidade: UnidadeMedida;
+  unidadeOutroLabel?: string;         // se unidade === "outro"
+  minStock?: number;                  // estoque mínimo (gera alerta + sugestão)
+  // Fornecedor preferencial pra reposição
+  fornecedorPreferredId?: string | null;
+  // Quanto comprar de cada vez (múltiplo). Ex: vinho vem caixa de 6 → fator=6
+  fatorCompra?: number;
+  precoEstimado?: number;             // R$ por unidade do insumo (info)
+  ativo: boolean;
+  ordem?: number;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export type Contagem = {
+  id: string;
+  restaurantId: string;
+  insumoId: string;
+  insumoNomeSnapshot: string;         // pra preservar histórico
+  unidadeSnapshot: UnidadeMedida;
+  qty: number;
+  data: string;                       // YYYY-MM-DD
+  observacao?: string;
+  registradoEm: string;
+  registradoPor: string;
+  registradoNome?: string;            // snapshot
+};
+
+// Pedido / ordem de compra
+export type PedidoStatus =
+  | "rascunho"
+  | "aprovado"
+  | "enviado"           // mensagem WhatsApp já foi/marcada como enviada
+  | "recebido_ok"       // recebido conforme
+  | "recebido_div"      // recebido com divergência
+  | "cancelado";
+
+export const PEDIDO_STATUS_LABEL: Record<PedidoStatus, string> = {
+  rascunho:     "Rascunho",
+  aprovado:     "Aprovado",
+  enviado:      "Enviado",
+  recebido_ok:  "Recebido OK",
+  recebido_div: "Recebido c/ diff",
+  cancelado:    "Cancelado",
+};
+
+export const PEDIDO_STATUS_ICON: Record<PedidoStatus, string> = {
+  rascunho:     "📝",
+  aprovado:     "✓",
+  enviado:      "📤",
+  recebido_ok:  "📦",
+  recebido_div: "⚠️",
+  cancelado:    "✕",
+};
+
+export type PedidoItem = {
+  insumoId: string;
+  insumoNomeSnapshot: string;
+  unidadeSnapshot: UnidadeMedida;
+  qtdPedida: number;
+  qtdRecebida?: number | null;        // preenchido no recebimento
+  precoUnit?: number;                 // R$ por unidade (snapshot)
+  observacao?: string;
+};
+
+export type Pedido = {
+  id: string;
+  restaurantId: string;
+  fornecedorId: string;
+  fornecedorNomeSnapshot: string;
+  fornecedorWhatsappSnapshot?: string;
+  itens: PedidoItem[];
+  totalEstimado?: number;             // soma dos precos
+  status: PedidoStatus;
+  // Auditoria
+  criadoEm: string;
+  criadoPor: string;
+  aprovadoEm?: string | null;
+  aprovadoPor?: string | null;
+  enviadoEm?: string | null;
+  enviadoPor?: string | null;
+  recebidoEm?: string | null;
+  recebidoPor?: string | null;
+  observacaoGeral?: string;
+  observacaoRecebimento?: string;
+  atualizadoEm: string;
+};
+
 // ─── TEMPLATES DE PERMISSÃO ───
 
 export type PermissionTemplate = {
