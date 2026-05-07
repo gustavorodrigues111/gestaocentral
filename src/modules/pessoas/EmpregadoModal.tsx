@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { registrarAdmissao, registrarMudancaCargo } from "../trilha/autoEventos";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -207,6 +208,16 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           acao: "criado",
           registradoPor: me.id,
         });
+        // Auto-evento de trilha: admissão
+        await registrarAdmissao({
+          restaurantId,
+          empregadoId: ref.id,
+          empregadoNome: data.nome,
+          cargoNome: cargo?.nome || "(cargo)",
+          area: cargo?.area || "(área)",
+          admissao,
+          registradoPor: me.id,
+        });
         // Atualiza state local pra continuar editando (sem fechar) e pula
         // direto pra aba Horários — UX mais fluida pro user que acabou de criar.
         const novoEmpregado: Empregado = {
@@ -279,6 +290,19 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         motivo,
         registradoPor: me.id,
       });
+      // Auto-evento de trilha: mudança de cargo
+      if (c.campo === "cargoId") {
+        await registrarMudancaCargo({
+          restaurantId,
+          empregadoId: empregado.id,
+          empregadoNome: empregado.nome,
+          cargoAntigo: String(c.valorAntes),
+          cargoNovo: String(c.valorDepois),
+          vigenteApartir: vigencia,
+          motivo,
+          registradoPor: me.id,
+        });
+      }
     }
   }
 

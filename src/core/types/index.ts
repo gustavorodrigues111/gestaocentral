@@ -386,6 +386,130 @@ export type ComunicadoLeitura = {
   lidoEm: string;                 // ISO
 };
 
+// ─── BANCO DE IDEIAS ────────────────────────────────────────────────────────
+
+export type IdeiaStatus = "aberta" | "em_pauta" | "discutida" | "descartada";
+
+export type Ideia = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  descricao?: string;
+  categoria?: string;            // ex: "Operação", "Cardápio", "Cultura"
+  status: IdeiaStatus;
+  reuniaoId?: string | null;     // se em_pauta ou discutida → linkada a uma reunião
+  criadoEm: string;
+  criadoPor: string;             // pessoaId
+  atualizadoEm: string;
+};
+
+// ─── REUNIÕES ──────────────────────────────────────────────────────────────
+
+export type ReuniaoTipo = "lideres" | "equipe" | "individual" | "outro";
+export const REUNIAO_TIPO_LABEL: Record<ReuniaoTipo, string> = {
+  lideres:    "Líderes",
+  equipe:     "Equipe",
+  individual: "Individual / 1:1",
+  outro:      "Outro",
+};
+
+export type ReuniaoStatus = "planejada" | "realizada" | "cancelada";
+
+export type PautaItem = {
+  id: string;
+  titulo: string;
+  descricao?: string;
+  ideiaId?: string | null;       // se importado do Banco de Ideias
+  ordem: number;
+  discutido: boolean;
+  notas?: string;                // notas específicas do tópico
+};
+
+export type AcaoStatus = "pendente" | "feito" | "cancelado";
+
+export type AcaoReuniao = {
+  id: string;
+  descricao: string;
+  responsavelEmpregadoId?: string | null;
+  responsavelNome?: string;      // snapshot pra exibir mesmo após mudança
+  prazo?: string | null;         // YYYY-MM-DD
+  status: AcaoStatus;
+  concluidoEm?: string | null;
+  observacao?: string;
+};
+
+export type ParticipanteReuniao = {
+  empregadoId?: string;          // pode ter externo sem empregadoId
+  nome: string;
+};
+
+export type Reuniao = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  tipo: ReuniaoTipo;
+  data: string;                  // YYYY-MM-DD
+  horario?: string;              // HH:MM
+  local?: string;
+  participantes: ParticipanteReuniao[];
+  pauta: PautaItem[];
+  ata?: string;                  // texto livre
+  acoes: AcaoReuniao[];
+  status: ReuniaoStatus;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// ─── TRILHA DO EMPREGADO ───────────────────────────────────────────────────
+
+export type EventoTrilhaTipo =
+  | "admissao" | "demissao" | "readmissao"
+  | "mudanca_cargo" | "promocao"
+  | "treinamento" | "feedback_positivo" | "feedback_negativo"
+  | "ocorrencia" | "premiacao" | "outro";
+
+export const EVENTO_TRILHA_LABEL: Record<EventoTrilhaTipo, string> = {
+  admissao:           "Admissão",
+  demissao:           "Demissão",
+  readmissao:         "Readmissão",
+  mudanca_cargo:      "Mudança de cargo",
+  promocao:           "Promoção",
+  treinamento:        "Treinamento",
+  feedback_positivo:  "Feedback positivo",
+  feedback_negativo:  "Feedback negativo",
+  ocorrencia:         "Ocorrência",
+  premiacao:          "Premiação",
+  outro:              "Outro",
+};
+
+export const EVENTO_TRILHA_ICON: Record<EventoTrilhaTipo, string> = {
+  admissao:           "🎉",
+  demissao:           "👋",
+  readmissao:         "🔄",
+  mudanca_cargo:      "🔁",
+  promocao:           "🚀",
+  treinamento:        "📚",
+  feedback_positivo:  "👍",
+  feedback_negativo:  "👎",
+  ocorrencia:         "⚠️",
+  premiacao:          "🏆",
+  outro:              "📌",
+};
+
+export type EventoTrilha = {
+  id: string;
+  restaurantId: string;
+  empregadoId: string;
+  tipo: EventoTrilhaTipo;
+  data: string;                  // YYYY-MM-DD
+  titulo: string;
+  descricao?: string;
+  fonte: "auto" | "manual";      // auto = gerado pelo sistema (admissão/cargo/etc)
+  registradoEm: string;
+  registradoPor: string;
+};
+
 // ─── TEMPLATES DE PERMISSÃO ───
 
 export type PermissionTemplate = {

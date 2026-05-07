@@ -1,0 +1,230 @@
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
+import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { Button } from "../../core/ui/Button";
+import { Input } from "../../core/ui/Input";
+import type { Ideia, IdeiaStatus, Reuniao } from "../../core/types";
+import { IdeiaModal } from "./IdeiaModal";
+import { LevarParaReuniaoModal } from "./LevarParaReuniaoModal";
+
+const STATUS_INFO: Record<IdeiaStatus, { label: string; cls: string }> = {
+  aberta:     { label: "Aberta",       cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  em_pauta:   { label: "Em pauta",     cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  discutida:  { label: "Discutida",    cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  descartada: { label: "Descartada",   cls: "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
+};
+
+export function IdeiasPage() {
+  const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const { rid: ridParam } = useParams<{ rid: string }>();
+  const rid = ridParam || "";
+  const restaurant = restaurants.find(r => r.id === rid) || null;
+  const podeVer = canVer(me, rid, "ideias");
+  const podeConfig = canConfigurar(me, rid, "ideias");
+
+  const [ideias, setIdeias] = useState<Ideia[]>([]);
+  const [reunioes, setReunioes] = useState<Reuniao[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"abertas" | "em_pauta" | "discutidas" | "descartadas" | "todas">("abertas");
+  const [editing, setEditing] = useState<Ideia | "new" | null>(null);
+  const [levando, setLevando] = useState<Ideia | null>(null);
+
+  useEffect(() => {
+    if (!rid) return;
+    setLoading(true);
+    const q = query(collection(db, "ideias"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Ideia);
+      list.sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+      setIdeias(list);
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [rid]);
+
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "reunioes"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setReunioes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Reuniao));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  const reuniaoMap = useMemo(() => {
+    const m: Record<string, Reuniao> = {};
+    reunioes.forEach(r => { m[r.id] = r; });
+    return m;
+  }, [reunioes]);
+
+  const filtered = useMemo(() => {
+    return ideias.filter(i => {
+      if (filtroStatus === "abertas"    && i.status !== "aberta")     return false;
+      if (filtroStatus === "em_pauta"   && i.status !== "em_pauta")   return false;
+      if (filtroStatus === "discutidas" && i.status !== "discutida")  return false;
+      if (filtroStatus === "descartadas"&& i.status !== "descartada") return false;
+      if (search.trim()) {
+        const s = search.toLowerCase();
+        if (!i.titulo.toLowerCase().includes(s) && !(i.descricao || "").toLowerCase().includes(s)) return false;
+      }
+      return true;
+    });
+  }, [ideias, filtroStatus, search]);
+
+  async function excluir(i: Ideia) {
+    if (!confirm(`Excluir "${i.titulo}"?`)) return;
+    await deleteDoc(doc(db, "ideias", i.id));
+  }
+
+  async function descartar(i: Ideia) {
+    if (!confirm(`Descartar "${i.titulo}"? Vai pra lista de descartadas mas não some.`)) return;
+    await updateDoc(doc(db, "ideias", i.id), { status: "descartada", atualizadoEm: new Date().toISOString() });
+  }
+
+  async function reabrir(i: Ideia) {
+    await updateDoc(doc(db, "ideias", i.id), { status: "aberta", reuniaoId: null, atualizadoEm: new Date().toISOString() });
+  }
+
+  if (!restaurant) {
+    return <div className="text-gray-500">Selecione um restaurante.</div>;
+  }
+  if (!podeVer) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl">
+      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">💡 Banco de Ideias</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
+        </div>
+        {podeConfig && (
+          <Button onClick={() => setEditing("new")}>+ Nova ideia</Button>
+        )}
+      </div>
+
+      <Input
+        placeholder="🔍 Buscar..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="mb-3"
+      />
+
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        {([
+          ["abertas",     "💡 Abertas"],
+          ["em_pauta",    "🗓️ Em pauta"],
+          ["discutidas",  "✓ Discutidas"],
+          ["descartadas", "🗑 Descartadas"],
+          ["todas",       "Todas"],
+        ] as const).map(([f, label]) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setFiltroStatus(f)}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              filtroStatus === f
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-500">Carregando...</div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
+          <div className="text-4xl mb-3">💡</div>
+          <p className="text-gray-700 dark:text-gray-300 font-medium">
+            {search ? "Nenhuma ideia encontrada" : "Sem ideias por aqui"}
+          </p>
+          {!search && podeConfig && (
+            <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Nova ideia"</p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map(i => {
+            const status = STATUS_INFO[i.status];
+            const reuniao = i.reuniaoId ? reuniaoMap[i.reuniaoId] : null;
+            return (
+              <div
+                key={i.id}
+                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+              >
+                <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${status.cls}`}>
+                      {status.label}
+                    </span>
+                    <h3 className="font-bold text-gray-900 dark:text-gray-100">{i.titulo}</h3>
+                    {i.categoria && (
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
+                        {i.categoria}
+                      </span>
+                    )}
+                  </div>
+                  {podeConfig && (
+                    <div className="flex gap-1 flex-wrap">
+                      {i.status === "aberta" && (
+                        <Button variant="secondary" size="sm" onClick={() => setLevando(i)}>🗓️ Pra reunião</Button>
+                      )}
+                      {(i.status === "em_pauta" || i.status === "discutida" || i.status === "descartada") && (
+                        <Button variant="secondary" size="sm" onClick={() => reabrir(i)}>↻ Reabrir</Button>
+                      )}
+                      {i.status === "aberta" && (
+                        <Button variant="secondary" size="sm" onClick={() => descartar(i)}>🗑 Descartar</Button>
+                      )}
+                      <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
+                      <Button variant="danger" size="sm" onClick={() => excluir(i)}>×</Button>
+                    </div>
+                  )}
+                </div>
+                {i.descricao && (
+                  <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-2">{i.descricao}</p>
+                )}
+                <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  📅 {i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}
+                  {reuniao && (
+                    <> · 🗣️ {reuniao.titulo} ({new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")})</>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {editing && (
+        <IdeiaModal
+          ideia={editing === "new" ? null : editing}
+          restaurantId={rid}
+          onClose={() => setEditing(null)}
+        />
+      )}
+      {levando && (
+        <LevarParaReuniaoModal
+          ideia={levando}
+          reunioes={reunioes.filter(r => r.status === "planejada")}
+          restaurantId={rid}
+          onClose={() => setLevando(null)}
+        />
+      )}
+    </div>
+  );
+}

@@ -7,6 +7,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { logAudit } from "../../core/audit/versionedChange";
+import { registrarDemissao } from "../trilha/autoEventos";
 import { todayYmd } from "../../core/utils/date";
 import type { Empregado, Pessoa } from "../../core/types";
 
@@ -106,6 +107,15 @@ export function InativarModal({ pessoa, onClose }: Props) {
           restaurantId: emp.restaurantId,
           acao: "demitido",
           diff: { demitidoEm: { antes: null, depois: demitidoEm } },
+          motivo: motivoLabel,
+          registradoPor: me.id,
+        });
+        // Auto-evento de trilha: demissão (data = último dia ativo)
+        await registrarDemissao({
+          restaurantId: emp.restaurantId,
+          empregadoId: emp.id,
+          empregadoNome: emp.nome,
+          ultimoDia: dataEfetiva,
           motivo: motivoLabel,
           registradoPor: me.id,
         });

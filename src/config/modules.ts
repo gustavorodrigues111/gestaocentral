@@ -22,9 +22,9 @@ export const MODULES: ModuleDef[] = [
   // ═══ TIME (azul) ═══
   { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "ativo",     desc: "Planejamento de escalas mensais",       dependsOn: ["pessoas"] },
   { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "planejado", desc: "Controle de freelas",                   dependsOn: ["pessoas", "escala"] },
-  { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "planejado", desc: "Reuniões de líderes e equipe",          dependsOn: ["pessoas"] },
-  { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "planejado", desc: "Desenvolvimento e histórico",            dependsOn: ["pessoas"] },
-  { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "planejado", desc: "Ideias para discutir em reuniões",       dependsOn: ["reunioes"] },
+  { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "ativo",     desc: "Reuniões de líderes e equipe",          dependsOn: ["pessoas"] },
+  { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "ativo",     desc: "Desenvolvimento e histórico",            dependsOn: ["pessoas"] },
+  { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "ativo",     desc: "Ideias para discutir em reuniões",       dependsOn: ["reunioes"] },
 
   // ═══ OPERAÇÃO (laranja) ═══
   { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "planejado", desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
