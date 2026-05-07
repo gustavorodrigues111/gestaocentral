@@ -1,4 +1,8 @@
 import type { Cargo, DivisaoItem, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
+
+// Re-export pra retrocompatibilidade (módulos antigos importam daqui)
+export { empregadoAtivoEm };
 
 // Status que faz o empregado RECEBER gorjeta naquele dia (se cargo tem pontos)
 const STATUS_RECEBE: Record<ScheduleStatus, boolean> = {
@@ -95,12 +99,3 @@ export function calcularValorLiquido(valorBruto: number, taxRate: number): numbe
   return Math.round(liquido * 100) / 100;
 }
 
-// Verifica se o empregado estava ATIVO numa data específica (algum período cobre essa data)
-export function empregadoAtivoEm(e: Empregado, date: string): boolean {
-  for (const p of e.periodos || []) {
-    if (date < p.admissao) continue;
-    if (p.demissao && date >= p.demissao) continue;
-    return true;
-  }
-  return false;
-}

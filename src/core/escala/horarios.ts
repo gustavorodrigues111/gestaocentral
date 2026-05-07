@@ -3,7 +3,8 @@
 // Portado do AppTip mantendo as regras CLT idênticas.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { HorarioDia, SundayCycle, WorkSchedule } from "../types";
+import type { Empregado, HorarioDia, ScheduleStatus, SundayCycle, WorkSchedule } from "../types";
+import { empregadoAtivoEm } from "../utils/empregado";
 
 export const WEEKDAYS: { idx: number; short: string; long: string }[] = [
   { idx: 0, short: "Dom", long: "Domingo" },
@@ -334,4 +335,59 @@ export function getEffectiveSundayCycle(
   if (schedule.type !== "alternating") return schedule.sundayCycle || null;
   const wk = weekTypeForDate(schedule.anchor, dateStr);
   return schedule.weeks?.[wk]?.sundayCycle || schedule.sundayCycle || null;
+}
+
+// ─── ESCALA DERIVADA AUTOMATICAMENTE ─────────────────────────────────────────
+// Pra cada dia do mês, retorna o status que o empregado teria SE seguisse
+// estritamente o horário cadastrado:
+//   - Sem workSchedule: assume "trabalho" (mas marca um flag externo pra UI saber)
+//   - Com workSchedule: pega effective days do dia da semana
+//     • dia inativo → "folga"
+//     • dia ativo + domingo + ciclo bate → "folga"
+//     • caso contrário → "trabalho"
+//   - Empregado fora do período (não admitido / demitido) → não inclui
+
+export type DerivedDay = {
+  status: ScheduleStatus;     // "trabalho" | "folga" (na fase 10, só esses)
+  fonte: "schedule" | "implicito";  // schedule = veio do workSchedule; implicito = sem cadastro
+};
+
+export function derivedScheduleForEmpregado(
+  emp: Empregado,
+  year: number,
+  month: number,           // 1-12
+): { [date: string]: DerivedDay } {
+  const result: { [date: string]: DerivedDay } = {};
+  const lastDay = new Date(year, month, 0).getDate();
+  for (let d = 1; d <= lastDay; d++) {
+    const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    if (!empregadoAtivoEm(emp, dateStr)) continue;
+    const ws = getActiveWorkSchedule(emp.workSchedules, dateStr);
+    if (!ws) {
+      // Sem cadastro de horário — empregado é considerado trabalhando todo dia
+      result[dateStr] = { status: "trabalho", fonte: "implicito" };
+      continue;
+    }
+    const days = getEffectiveDays(ws, dateStr);
+    if (!days) {
+      result[dateStr] = { status: "trabalho", fonte: "implicito" };
+      continue;
+    }
+    const dow = new Date(dateStr + "T12:00:00").getDay();
+    const dayCfg = days[dow];
+    if (!dayCfg || !dayCfg.active) {
+      result[dateStr] = { status: "folga", fonte: "schedule" };
+      continue;
+    }
+    // Dia ativo. Verifica ciclo de domingo.
+    if (dow === 0) {
+      const cycle = getEffectiveSundayCycle(ws, dateStr);
+      if (cycle && isSundayOffByCycle(cycle, dateStr)) {
+        result[dateStr] = { status: "folga", fonte: "schedule" };
+        continue;
+      }
+    }
+    result[dateStr] = { status: "trabalho", fonte: "schedule" };
+  }
+  return result;
 }

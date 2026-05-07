@@ -10,6 +10,7 @@ import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, shiftMonth,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
+import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 
 // Tabela de status: cor + label curto + label longo
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
@@ -105,6 +106,15 @@ export function EscalaPage() {
       return false;
     });
   }, [empregados, ano, mes]);
+
+  // Calcula a escala derivada (dos workSchedules) pra cada empregado do mês
+  const derivados = useMemo(() => {
+    const m: Record<string, { [date: string]: DerivedDay }> = {};
+    for (const e of empregadosDoMes) {
+      m[e.id] = derivedScheduleForEmpregado(e, ano, mes);
+    }
+    return m;
+  }, [empregadosDoMes, ano, mes]);
 
   // Ordena por área do cargo + nome
   const empregadosOrdenados = useMemo(() => {
@@ -277,6 +287,7 @@ export function EscalaPage() {
           empregados={empregadosOrdenados}
           cargos={cargos}
           escala={escala}
+          derivados={derivados}
           versao={versao}
           podeEditar={podeEditar}
           onSetStatus={setStatusCelula}
@@ -337,10 +348,11 @@ function Legenda() {
 }
 
 function Grade({
-  ano, mes, dias, empregados, cargos, escala, versao, podeEditar, onSetStatus,
+  ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
 }: {
   ano: number; mes: number; dias: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  derivados: Record<string, { [date: string]: DerivedDay }>;
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => void;
@@ -408,27 +420,23 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-                  const status = escala?.[versao]?.[e.id]?.[d];
+                  const override = escala?.[versao]?.[e.id]?.[d];
+                  const derived = derivados[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const isOpen = openCell?.emp === e.id && openCell?.ymd === d;
                   return (
                     <td key={dia} className={`p-0.5 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""}`}>
-                      <button
-                        type="button"
-                        disabled={!podeEditar}
+                      <Celula
+                        override={override}
+                        derived={derived}
+                        podeEditar={podeEditar}
+                        isOpen={isOpen}
                         onClick={() => setOpenCell(isOpen ? null : { emp: e.id, ymd: d })}
-                        className={`w-7 h-7 rounded text-[10px] font-bold transition-all ${
-                          status
-                            ? `${STATUS_INFO[status].bg} ${STATUS_INFO[status].text}`
-                            : "bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-                        } ${podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"}`}
-                        title={status ? STATUS_INFO[status].label : "Vazio"}
-                      >
-                        {status ? STATUS_INFO[status].short : ""}
-                      </button>
+                      />
                       {isOpen && podeEditar && (
                         <CellMenu
-                          atual={status || null}
+                          override={override || null}
+                          derived={derived || null}
                           onPick={(s) => { onSetStatus(e.id, d, s); setOpenCell(null); }}
                         />
                       )}
@@ -444,15 +452,97 @@ function Grade({
   );
 }
 
-function CellMenu({ atual, onPick }: { atual: ScheduleStatus | null; onPick: (s: ScheduleStatus | null) => void }) {
+// Renderiza UMA célula da grade combinando override + derivado.
+// - Override (manual): cor sólida, foco visual.
+// - Derivado vindo do horário cadastrado: cor light + borda tracejada.
+// - Sem nada (sem horário cadastrado): célula vazia (subentende "trabalho implícito").
+function Celula({
+  override, derived, podeEditar, isOpen, onClick,
+}: {
+  override: ScheduleStatus | undefined;
+  derived: DerivedDay | undefined;
+  podeEditar: boolean;
+  isOpen: boolean;
+  onClick: () => void;
+}) {
+  // Resolve display
+  const displayStatus = override ?? derived?.status;
+  const isFromOverride = !!override;
+  const isImplicito = !override && derived?.fonte === "implicito";
+
+  // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
+  // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
+  if (!displayStatus || (isImplicito)) {
+    return (
+      <button
+        type="button"
+        disabled={!podeEditar}
+        onClick={onClick}
+        className={`w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
+          podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""}`}
+        title={isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio"}
+      >
+        {isImplicito ? "·" : ""}
+      </button>
+    );
+  }
+
+  const info = STATUS_INFO[displayStatus];
+  if (isFromOverride) {
+    // Override = cor sólida + sem borda especial
+    return (
+      <button
+        type="button"
+        disabled={!podeEditar}
+        onClick={onClick}
+        className={`w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
+          podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""}`}
+        title={`${info.label} (override manual)`}
+      >
+        {info.short}
+      </button>
+    );
+  }
+
+  // Derivado de horário cadastrado: cor light + borda tracejada
   return (
-    <div className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 min-w-[170px]">
+    <button
+      type="button"
+      disabled={!podeEditar}
+      onClick={onClick}
+      className={`w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
+        podeEditar ? "cursor-pointer hover:opacity-80 hover:scale-110" : "cursor-default"
+      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""}`}
+      title={`${info.label} (do horário cadastrado)`}
+    >
+      {info.short}
+    </button>
+  );
+}
+
+function CellMenu({
+  override, derived, onPick,
+}: {
+  override: ScheduleStatus | null;
+  derived: DerivedDay | null;
+  onPick: (s: ScheduleStatus | null) => void;
+}) {
+  const displayAtual = override ?? derived?.status ?? null;
+  return (
+    <div className="absolute z-30 top-full left-1/2 -translate-x-1/2 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-1 min-w-[200px]">
+      {derived && derived.fonte === "schedule" && (
+        <div className="text-[10px] text-gray-500 dark:text-gray-400 px-2 py-1 border-b border-gray-100 dark:border-gray-800 mb-1">
+          📋 Horário cadastrado: <strong>{STATUS_INFO[derived.status].label}</strong>
+        </div>
+      )}
       {STATUS_LIST.map(s => (
         <button
           key={s}
           type="button"
           onClick={() => onPick(s)}
-          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-800 ${atual === s ? "ring-1 ring-indigo-400" : ""}`}
+          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-800 ${displayAtual === s ? "ring-1 ring-indigo-400" : ""}`}
         >
           <span className={`inline-flex items-center justify-center w-5 h-5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-[10px] font-bold`}>
             {STATUS_INFO[s].short}
@@ -460,13 +550,15 @@ function CellMenu({ atual, onPick }: { atual: ScheduleStatus | null; onPick: (s:
           <span className="text-gray-700 dark:text-gray-300">{STATUS_INFO[s].label}</span>
         </button>
       ))}
-      {atual && (
+      {override && (
         <button
           type="button"
           onClick={() => onPick(null)}
           className="w-full px-2 py-1.5 rounded text-left text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 mt-1 border-t border-gray-100 dark:border-gray-800 pt-2"
         >
-          🗑 Limpar
+          {derived?.fonte === "schedule"
+            ? `↩ Reverter ao cadastrado (${STATUS_INFO[derived.status].label})`
+            : "🗑 Limpar override"}
         </button>
       )}
     </div>
