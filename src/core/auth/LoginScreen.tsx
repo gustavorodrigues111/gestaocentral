@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -91,11 +90,10 @@ export function LoginScreen() {
             {loading ? "Entrando..." : "Entrar"}
           </Button>
 
-          <div className="text-center text-sm mt-2">
-            <Link to="/signup" className="text-indigo-600 dark:text-indigo-400 hover:underline">
-              Primeira vez? Criar conta
-            </Link>
-          </div>
+          <p className="text-center text-xs text-gray-500 dark:text-gray-500 mt-3">
+            Acesso só por convite. Se é seu primeiro acesso e você foi cadastrado pelo administrador,
+            peça o link de criação de senha pra ele.
+          </p>
         </div>
       </form>
     </div>

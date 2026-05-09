@@ -5,9 +5,11 @@ import { db } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { detectSubdomain } from "../restaurant/subdomain";
 
 export function SignupScreen() {
   const { signUp } = useAuth();
+  const subdomain = detectSubdomain();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [password2, setPassword2] = useState("");
@@ -62,10 +64,18 @@ export function SignupScreen() {
         className="w-full max-w-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm"
       >
         <div className="text-center mb-6">
-          <div className="text-3xl mb-2">🏠</div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Criar conta</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Use o email cadastrado pelo seu administrador
+          <div className="text-3xl mb-2">🔐</div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Primeiro acesso</h1>
+          {subdomain && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              {subdomain}.planejamento.app
+            </p>
+          )}
+          <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+            Defina sua senha pra começar
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
+            Use exatamente o email que o admin cadastrou pra você.
           </p>
         </div>
 
