@@ -42,7 +42,7 @@ export function WelcomePage() {
                 type="text"
                 value={sub}
                 onChange={(e) => setSub(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
-                placeholder="lobozo"
+                placeholder="seurestaurante"
                 autoFocus
                 autoComplete="off"
                 className="flex-1 min-w-0 px-3 py-2.5 text-sm rounded-l-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-500"
@@ -66,7 +66,7 @@ export function WelcomePage() {
 
         <div className="text-center text-xs text-gray-500 dark:text-gray-500 mt-5 pt-5 border-t border-gray-100 dark:border-gray-800">
           <p>
-            Cada restaurante tem seu próprio endereço (ex: <strong>lobozo.planejamento.app</strong>).
+            Cada restaurante tem seu próprio endereço (ex: <strong>seurestaurante.planejamento.app</strong>).
           </p>
           <p className="mt-1.5">
             Não sabe o seu? Peça pro administrador do restaurante.
