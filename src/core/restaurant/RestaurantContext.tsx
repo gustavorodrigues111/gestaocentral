@@ -16,6 +16,10 @@ type RestaurantState = {
   // activeId é fixado nesse restaurante e não pode ser trocado.
   subdomain: string | null;
   subdomainLocked: boolean;
+  // True se o subdomain bate com ALGUM restaurante (mesmo que a pessoa
+  // logada não tenha acesso). Permite distinguir "endereço errado" vs
+  // "sem permissão" na UI.
+  subdomainExists: boolean;
 };
 
 const RestaurantCtx = createContext<RestaurantState | null>(null);
@@ -101,6 +105,7 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
       restaurants, activeId, activeRestaurant,
       setActiveId, loading,
       subdomain, subdomainLocked,
+      subdomainExists: !!subdomainRestaurant,
     }}>
       {children}
     </RestaurantCtx.Provider>

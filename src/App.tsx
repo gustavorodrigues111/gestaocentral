@@ -111,7 +111,7 @@ function ProtectedShell() {
 // se o restaurante existe e se a pessoa tem acesso. Caso contrário,
 // mostra tela amigável em vez de derrubar todo o app.
 function SubdomainGuard({ children }: { children: React.ReactNode }) {
-  const { subdomain, subdomainLocked, loading, restaurants } = useRestaurant();
+  const { subdomain, subdomainLocked, subdomainExists, loading, restaurants } = useRestaurant();
 
   if (!subdomain) return <>{children}</>;
   if (loading) {
@@ -121,25 +121,47 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  // subdomain detectado, mas o RestaurantProvider já filtrou — se não tem
-  // nada na lista, ou o subdomain não bate ou a pessoa não tem acesso.
   if (!subdomainLocked || restaurants.length === 0) {
+    // Distingue 2 cenários:
+    //   (a) subdomainExists = false → endereço não bate com nenhum restaurante
+    //   (b) subdomainExists = true  → restaurante existe mas pessoa não tem acesso
+    const enderecoErrado = !subdomainExists;
     return (
-      <div className="min-h-screen flex items-center justify-center px-4 text-center">
-        <div className="max-w-md">
-          <div className="text-5xl mb-3">🚪</div>
+      <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm">
+          <div className="text-5xl mb-3">{enderecoErrado ? "🤔" : "🔒"}</div>
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
-            Sem acesso a {subdomain}
+            {enderecoErrado
+              ? "Endereço não encontrado"
+              : `Sem acesso a ${subdomain}`}
           </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Esse endereço (<strong>{subdomain}.planejamento.app</strong>) não está vinculado
-            a nenhum restaurante que você acessa, ou o restaurante ainda não foi configurado.
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-500 mt-4">
-            Se for o seu primeiro acesso, peça pro DP/admin verificar seu vínculo.
-            Se você é admin, abra <a className="text-indigo-600 hover:underline" href="https://planejamento.app">planejamento.app</a>{" "}
-            (sem o subdomínio) e configure o subdomínio do restaurante em Configurações.
-          </p>
+          {enderecoErrado ? (
+            <>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                <strong>{subdomain}.planejamento.app</strong> não está vinculado a nenhum
+                restaurante. Verifique se o endereço está certo.
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
+                Não sabe o endereço do seu restaurante? Peça pro administrador.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Sua conta está logada, mas <strong>não tem permissão</strong> nesse restaurante.
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
+                Peça pro administrador do restaurante verificar seu vínculo,
+                ou faça logout e entre com a conta certa.
+              </p>
+            </>
+          )}
+          <a
+            href="https://planejamento.app"
+            className="inline-block mt-5 px-4 py-2 text-sm font-medium rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+          >
+            ← Voltar pra planejamento.app
+          </a>
         </div>
       </div>
     );
