@@ -9,6 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import type { ModuleArea, ModuleId } from "../../core/types";
+import { isValidSubdomain } from "../../core/restaurant/subdomain";
 
 export function ConfiguracoesPage() {
   const { pessoa: me } = useAuth();
@@ -24,9 +25,11 @@ export function ConfiguracoesPage() {
     razaoSocial: activeRestaurant?.razaoSocial || "",
     codigoContabil: activeRestaurant?.codigoContabil || "",
     cnpj: activeRestaurant?.cnpj || "",
+    subdomain: activeRestaurant?.subdomain || "",
   });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  const [err, setErr] = useState("");
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -60,6 +63,18 @@ export function ConfiguracoesPage() {
 
   async function salvarBasico() {
     if (!rid) return;
+    setErr("");
+    // Valida subdomain
+    const sub = form.subdomain.trim().toLowerCase();
+    if (sub && !isValidSubdomain(sub)) {
+      setErr("Subdomínio inválido. Use 3-30 caracteres, só letras minúsculas, números e hífen (ex: 'lobozo', 'bar-do-bicho').");
+      return;
+    }
+    // Valida unicidade entre restaurantes
+    if (sub && restaurants.some(r => r.id !== rid && (r.subdomain || "").toLowerCase() === sub)) {
+      setErr(`O subdomínio "${sub}" já está em uso por outro restaurante.`);
+      return;
+    }
     setSaving(true);
     try {
       await updateDoc(doc(db, "restaurants", rid), {
@@ -67,6 +82,7 @@ export function ConfiguracoesPage() {
         razaoSocial: form.razaoSocial.trim() || null,
         codigoContabil: form.codigoContabil.trim() || null,
         cnpj: form.cnpj.trim() || null,
+        subdomain: sub || null,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -92,9 +108,38 @@ export function ConfiguracoesPage() {
           <Input label="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
           <Input label="Código contábil" value={form.codigoContabil} onChange={(e) => setForm({ ...form, codigoContabil: e.target.value.replace(/\D/g, "") })} placeholder="ex: 2992" />
         </div>
+
+        {/* Subdomain — porta de entrada brandada */}
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-2">
+            🌐 Subdomínio público
+          </label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={form.subdomain}
+              onChange={(e) => setForm({ ...form, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
+              placeholder="ex: lobozo"
+              className="flex-1"
+            />
+            <span className="text-sm text-gray-500 whitespace-nowrap">.planejamento.app</span>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+            Endereço próprio pra equipe acessar:{" "}
+            {form.subdomain ? (
+              <strong className="text-indigo-600 dark:text-indigo-400">
+                {form.subdomain}.planejamento.app
+              </strong>
+            ) : (
+              <em>(nenhum subdomínio configurado)</em>
+            )}
+            . 3-30 caracteres, letras minúsculas/números/hífen.
+          </p>
+        </div>
+
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
           💡 Configurações específicas (gorjetas, VT, etc.) ficam dentro de cada módulo — clica no ⚙️ no canto superior direito.
         </p>
+        {err && <div className="text-sm text-rose-600 mt-2">{err}</div>}
         <div className="flex items-center gap-3 mt-4">
           <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
           {savedAt && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo às {savedAt}</span>}

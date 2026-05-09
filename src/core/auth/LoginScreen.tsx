@@ -3,9 +3,14 @@ import { Link } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
+import { detectSubdomain } from "../restaurant/subdomain";
 
 export function LoginScreen() {
   const { signIn } = useAuth();
+  // Pre-auth: só temos o subdomain bruto. Pra ter o nome do restaurante
+  // precisaria de auth ou regras permissivas. Mostra o subdomain como
+  // pista visual, e após login o nome real aparece.
+  const subdomain = detectSubdomain();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,8 +42,22 @@ export function LoginScreen() {
       <form onSubmit={handleSubmit} className="w-full max-w-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm">
         <div className="text-center mb-6">
           <div className="text-3xl mb-2">🏠</div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Gestão Central</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Entre com seu email e senha</p>
+          {subdomain ? (
+            <>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                {capitalize(subdomain)}
+              </h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {subdomain}.planejamento.app
+              </p>
+              <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">Entre com seu email e senha</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">planejamento.app</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Entre com seu email e senha</p>
+            </>
+          )}
         </div>
 
         <div className="flex flex-col gap-3">
@@ -81,4 +100,9 @@ export function LoginScreen() {
       </form>
     </div>
   );
+}
+
+function capitalize(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -6,7 +6,7 @@ import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantMod
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { fbUser, pessoa, signOut } = useAuth();
-  const { restaurants, activeRestaurant, setActiveId } = useRestaurant();
+  const { restaurants, activeRestaurant, setActiveId, subdomainLocked } = useRestaurant();
   const [menuOpen, setMenuOpen] = useState(false);
   const [showNewRest, setShowNewRest] = useState(false);
   const isMaster = !!pessoa?.isMaster;
@@ -27,11 +27,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       </button>
 
       <div className="flex items-center gap-2">
-        <span className="text-lg font-bold text-gray-900 dark:text-gray-100">Gestão Central</span>
+        <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+          {subdomainLocked && activeRestaurant ? activeRestaurant.nome : "Planejamento"}
+        </span>
       </div>
 
-      {/* Seletor de restaurante */}
-      {restaurants.length > 0 && (
+      {/* Seletor de restaurante — escondido quando entrou via subdomain */}
+      {!subdomainLocked && restaurants.length > 0 && (
         <select
           value={activeRestaurant?.id || ""}
           onChange={(e) => changeRestaurant(e.target.value)}
@@ -43,7 +45,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </select>
       )}
 
-      {isMaster && (
+      {!subdomainLocked && isMaster && (
         <button
           onClick={() => setShowNewRest(true)}
           title="Novo restaurante"

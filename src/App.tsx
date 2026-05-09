@@ -90,17 +90,59 @@ function ProtectedShell() {
 
   return (
     <RestaurantProvider>
-      <AppShell>
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/arquitetura" element={<ArquiteturaPage />} />
-          <Route path="/portal/:rid" element={<PortalPage />} />
-          <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </AppShell>
+      <SubdomainGuard>
+        <AppShell>
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/arquitetura" element={<ArquiteturaPage />} />
+            <Route path="/portal/:rid" element={<PortalPage />} />
+            <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </AppShell>
+      </SubdomainGuard>
     </RestaurantProvider>
   );
+}
+
+// Quando o user entra via subdomain (ex: lobozo.planejamento.app), guarda
+// se o restaurante existe e se a pessoa tem acesso. Caso contrário,
+// mostra tela amigável em vez de derrubar todo o app.
+function SubdomainGuard({ children }: { children: React.ReactNode }) {
+  const { subdomain, subdomainLocked, loading, restaurants } = useRestaurant();
+
+  if (!subdomain) return <>{children}</>;
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+        Carregando...
+      </div>
+    );
+  }
+  // subdomain detectado, mas o RestaurantProvider já filtrou — se não tem
+  // nada na lista, ou o subdomain não bate ou a pessoa não tem acesso.
+  if (!subdomainLocked || restaurants.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center">
+        <div className="max-w-md">
+          <div className="text-5xl mb-3">🚪</div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
+            Sem acesso a {subdomain}
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Esse endereço (<strong>{subdomain}.planejamento.app</strong>) não está vinculado
+            a nenhum restaurante que você acessa, ou o restaurante ainda não foi configurado.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-4">
+            Se for o seu primeiro acesso, peça pro DP/admin verificar seu vínculo.
+            Se você é admin, abra <a className="text-indigo-600 hover:underline" href="https://planejamento.app">planejamento.app</a>{" "}
+            (sem o subdomínio) e configure o subdomínio do restaurante em Configurações.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return <>{children}</>;
 }
 
 function App() {

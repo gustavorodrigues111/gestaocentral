@@ -212,6 +212,9 @@ export type Restaurant = {
   id: string;
   nome: string;
   shortCode: string;
+  // Subdomínio público (ex: "lobozo" → lobozo.planejamento.app)
+  // Opcional. Lowercase, [a-z0-9-]. Único entre restaurantes.
+  subdomain?: string;
   cnpj?: string;
   razaoSocial?: string;
   codigoContabil?: string;
