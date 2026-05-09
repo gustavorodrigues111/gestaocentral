@@ -6,7 +6,9 @@ import { LoginScreen } from "./core/auth/LoginScreen";
 import { SignupScreen } from "./core/auth/SignupScreen";
 import { AppShell } from "./core/layout/AppShell";
 import { HomePage } from "./core/layout/HomePage";
+import { WelcomePage } from "./core/layout/WelcomePage";
 import { ModulePlaceholder } from "./core/layout/ModulePlaceholder";
+import { isWelcomePageHost } from "./core/restaurant/subdomain";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
@@ -151,11 +153,18 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/signup" element={<PublicSignup />} />
-          <Route path="*" element={<ProtectedShell />} />
+          <Route path="*" element={<RootOrShell />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>
   );
+}
+
+// Root domain (planejamento.app, www.planejamento.app) → tela de boas-vindas
+// que pede o subdomínio do restaurante. Outros hosts → app normal.
+function RootOrShell() {
+  if (isWelcomePageHost()) return <WelcomePage />;
+  return <ProtectedShell />;
 }
 
 export default App;

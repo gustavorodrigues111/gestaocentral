@@ -67,6 +67,30 @@ export function detectSubdomain(hostname?: string): string | null {
 }
 
 /**
+ * True se a URL atual é o ROOT domain (`planejamento.app` ou `www.planejamento.app`).
+ *
+ * Quando true, mostramos uma WelcomePage em vez do app normal — o root é uma
+ * porta de entrada que pede o subdomínio do restaurante.
+ *
+ * Falsy pra: subdomínios de restaurante (lobozo.*), reservados (admin.*,
+ * app.*, etc), localhost (dev), *.vercel.app (preview).
+ */
+export function isWelcomePageHost(hostname?: string): boolean {
+  const host = (hostname ?? window.location.hostname).toLowerCase();
+
+  // Dev e preview deploys: nunca welcome (acesso direto ao app pra testar)
+  if (host === "localhost" || host === "127.0.0.1") return false;
+  if (host.endsWith(".vercel.app")) return false;
+
+  const parts = host.split(".");
+  // 2 partes (apex): "planejamento.app" → root
+  if (parts.length === 2) return true;
+  // 3 partes começando com www: "www.planejamento.app" → root
+  if (parts.length === 3 && parts[0] === "www") return true;
+  return false;
+}
+
+/**
  * Valida se uma string serve como subdomain (3-30 chars, lowercase, [a-z0-9-]).
  */
 export function isValidSubdomain(s: string): boolean {
