@@ -196,6 +196,12 @@ export type EscalaMes = {
   // REAL: o que de fato aconteceu (faltas, atestados, etc)
   real:     { [empregadoId: string]: { [date: string]: ScheduleStatus } };
 
+  // Multi-unidades: pra cada célula "trabalho", em qual unidade o
+  // empregado atuou. Só presente quando o restaurante tem multiUnidades.
+  // Mapas paralelos a prevista/real — mesma estrutura, valor = unidadeId.
+  unidadesPrevistas?: { [empregadoId: string]: { [date: string]: string } };
+  unidadesReais?:     { [empregadoId: string]: { [date: string]: string } };
+
   vtPagoEm?: string | null;       // ISO — congela "prevista" após pagamento
   vtPagoPor?: string | null;
   fechadoEm?: string | null;      // ISO — congela "real" no fechamento total

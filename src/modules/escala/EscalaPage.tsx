@@ -11,7 +11,7 @@ import { Input } from "../../core/ui/Input";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
@@ -136,7 +136,12 @@ export function EscalaPage() {
 
   const dias = daysInMonth(ano, mes);
 
-  async function setStatusCelula(empregadoId: string, ymdDate: string, status: ScheduleStatus | null): Promise<ValidacaoEscalaIssue[]> {
+  async function setStatusCelula(
+    empregadoId: string,
+    ymdDate: string,
+    status: ScheduleStatus | null,
+    unidadeId?: string | null,
+  ): Promise<ValidacaoEscalaIssue[]> {
     if (!rid) return [];
 
     // ── VALIDAÇÃO CLT ──
@@ -161,18 +166,28 @@ export function EscalaPage() {
       });
     }
 
-    const path = `${versao}.${empregadoId}.${ymdDate}`;
+    const statusPath = `${versao}.${empregadoId}.${ymdDate}`;
+    const unidadeKey = versao === "prevista" ? "unidadesPrevistas" : "unidadesReais";
+    const unidadePath = `${unidadeKey}.${empregadoId}.${ymdDate}`;
+
+    const updates: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
+    };
+
     if (status === null) {
-      await updateDoc(ref, {
-        [path]: deleteField(),
-        updatedAt: new Date().toISOString(),
-      });
+      // Reverter: limpa status E unidade
+      updates[statusPath] = deleteField();
+      updates[unidadePath] = deleteField();
     } else {
-      await updateDoc(ref, {
-        [path]: status,
-        updatedAt: new Date().toISOString(),
-      });
+      updates[statusPath] = status;
+      // Unidade só faz sentido pra "trabalho". Outros status limpam unidade.
+      if (status === "trabalho" && unidadeId) {
+        updates[unidadePath] = unidadeId;
+      } else {
+        updates[unidadePath] = deleteField();
+      }
     }
+    await updateDoc(ref, updates);
     return [];
   }
 
@@ -215,6 +230,11 @@ export function EscalaPage() {
   const [showFecharMes, setShowFecharMes] = useState(false);
   const [showReabrirMes, setShowReabrirMes] = useState(false);
   const [showSumario, setShowSumario] = useState(false);
+  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
+
+  // Multi-unidades — derivados
+  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
+  const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
   // Pode editar a versão atualmente selecionada?
   // - Mês fechado → nada editável
   // - Prevista após VT pago → trava (snapshot pra cálculo)
@@ -268,6 +288,19 @@ export function EscalaPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {usaMultiUnidades && unidadesAtivas.length > 0 && (
+            <select
+              value={filtroUnidadeId}
+              onChange={(e) => setFiltroUnidadeId(e.target.value)}
+              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+              title="Filtrar escala por unidade"
+            >
+              <option value="">🏢 Todas as unidades</option>
+              {unidadesAtivas.map(u => (
+                <option key={u.id} value={u.id}>{u.nome}</option>
+              ))}
+            </select>
+          )}
           {podeEditar && (
             <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
               🏖️ Marcar férias em lote
@@ -335,6 +368,9 @@ export function EscalaPage() {
           versao={versao}
           podeEditar={podeEditar}
           onSetStatus={setStatusCelula}
+          unidadesAtivas={unidadesAtivas}
+          usaMultiUnidades={usaMultiUnidades}
+          filtroUnidadeId={filtroUnidadeId}
         />
       )}
 
@@ -441,17 +477,26 @@ function Legenda() {
 
 function Grade({
   ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
+  unidadesAtivas, usaMultiUnidades, filtroUnidadeId,
 }: {
   ano: number; mes: number; dias: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
   derivados: Record<string, { [date: string]: DerivedDay }>;
   versao: "prevista" | "real";
   podeEditar: boolean;
-  onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
+  onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null, unidadeId?: string | null) => Promise<ValidacaoEscalaIssue[]>;
+  unidadesAtivas: Unidade[];
+  usaMultiUnidades: boolean;
+  filtroUnidadeId: string;
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
+  const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
   // Seleção: Set<"empId|date"> — qualquer click adiciona/remove. Ações via barra inferior.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  // Multi-unidades: override de unidade ao aplicar bulk de "trabalho".
+  // "" (default) = usa unidade padrão de cada empregado.
+  // <unidadeId>    = força essa unidade pra todos.
+  const [unidadeOverride, setUnidadeOverride] = useState<string>("");
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Atalhos de teclado quando há seleção
@@ -501,13 +546,22 @@ function Grade({
     });
   }
 
+  // Resolve qual unidade aplicar pra um empregado quando o status é "trabalho":
+  //   override > unidadePadrao do empregado > null (sem unidade definida)
+  function resolverUnidade(empId: string): string | null {
+    if (unidadeOverride) return unidadeOverride;
+    const emp = empMap[empId];
+    return emp?.unidadePadraoId || null;
+  }
+
   async function aplicarBulk(status: ScheduleStatus | null) {
     if (selecionadas.size === 0) return;
     const erros: ValidacaoEscalaIssue[] = [];
     let aplicados = 0;
     for (const key of selecionadas) {
       const [empId, date] = key.split("|");
-      const issues = await onSetStatus(empId, date, status);
+      const unidadeId = (status === "trabalho" && usaMultiUnidades) ? resolverUnidade(empId) : null;
+      const issues = await onSetStatus(empId, date, status, unidadeId);
       if (issues.length > 0) erros.push(...issues);
       else aplicados++;
     }
@@ -594,8 +648,20 @@ function Grade({
                   const isToday = d === hojeYmd;
                   const cellKey = `${e.id}|${d}`;
                   const isSelected = selecionadas.has(cellKey);
+                  // Unidade efetiva do dia (só se status é "trabalho")
+                  const unidadeIdDoDia = usaMultiUnidades
+                    ? escala?.[versao === "prevista" ? "unidadesPrevistas" : "unidadesReais"]?.[e.id]?.[d]
+                    : undefined;
+                  const unidadeBadge = unidadeIdDoDia
+                    ? (unidadesAtivas.find(u => u.id === unidadeIdDoDia)?.nome?.[0]?.toUpperCase() || "?")
+                    : undefined;
+                  // Filtro: se há filtroUnidadeId, esmaece células de outra unidade quando trabalho
+                  const status = override || derived?.status;
+                  const ocultaPorFiltro = !!(
+                    filtroUnidadeId && status === "trabalho" && unidadeIdDoDia !== filtroUnidadeId
+                  );
                   return (
-                    <td key={dia} className={`p-0.5 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""}`}>
+                    <td key={dia} className={`p-0.5 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""} ${ocultaPorFiltro ? "opacity-25" : ""}`}>
                       <Celula
                         override={override}
                         derived={derived}
@@ -603,6 +669,7 @@ function Grade({
                         isOpen={false}
                         isSelected={isSelected}
                         onClick={() => toggleSelecao(e.id, d)}
+                        unidadeBadge={unidadeBadge}
                       />
                     </td>
                   );
@@ -620,6 +687,10 @@ function Grade({
           count={selecionadas.size}
           onApply={aplicarBulk}
           onClear={() => setSelecionadas(new Set())}
+          unidadesAtivas={unidadesAtivas}
+          usaMultiUnidades={usaMultiUnidades}
+          unidadeOverride={unidadeOverride}
+          onChangeUnidadeOverride={setUnidadeOverride}
         />
       )}
     </div>
@@ -632,7 +703,7 @@ function Grade({
 // - Sem nada (sem horário cadastrado): célula vazia (subentende "trabalho implícito").
 // - Selecionada (multi-select): ring indigo
 function Celula({
-  override, derived, podeEditar, isOpen, isSelected, onClick,
+  override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
@@ -640,6 +711,7 @@ function Celula({
   isOpen: boolean;
   isSelected: boolean;
   onClick: (ev: React.MouseEvent) => void;
+  unidadeBadge?: string;     // letra única da unidade (ex: "M", "F", "P")
 }) {
   // Resolve display
   const displayStatus = override ?? derived?.status;
@@ -649,6 +721,16 @@ function Celula({
   // Ring extra quando célula está selecionada via Shift+Click
   const selRing = isSelected ? "ring-2 ring-indigo-500 ring-offset-1" : "";
 
+  // Badge da unidade — pequeno indicador no canto inferior direito
+  const unidadeSubscript = unidadeBadge ? (
+    <span
+      className="absolute -bottom-0.5 -right-0.5 text-[8px] font-bold leading-none px-0.5 rounded bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700"
+      style={{ minWidth: "10px", textAlign: "center" }}
+    >
+      {unidadeBadge}
+    </span>
+  ) : null;
+
   // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
   // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
   if (!displayStatus || (isImplicito)) {
@@ -657,12 +739,13 @@ function Celula({
         type="button"
         disabled={!podeEditar}
         onClick={onClick}
-        className={`w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
+        className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
         } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
         title={isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio"}
       >
         {isImplicito ? "·" : ""}
+        {unidadeSubscript}
       </button>
     );
   }
@@ -674,12 +757,13 @@ function Celula({
         type="button"
         disabled={!podeEditar}
         onClick={onClick}
-        className={`w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
+        className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
         } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
         title={`${info.label} (override manual)`}
       >
         {info.short}
+        {unidadeSubscript}
       </button>
     );
   }
@@ -689,12 +773,13 @@ function Celula({
       type="button"
       disabled={!podeEditar}
       onClick={onClick}
-      className={`w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
+      className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
         podeEditar ? "cursor-pointer hover:opacity-80 hover:scale-110" : "cursor-default"
       } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""} ${selRing}`}
       title={`${info.label} (do horário cadastrado)`}
     >
       {info.short}
+      {unidadeSubscript}
     </button>
   );
 }
@@ -711,16 +796,42 @@ const STATUS_KEY: Partial<Record<ScheduleStatus, string>> = {
 
 function BulkActionBar({
   count, onApply, onClear,
+  unidadesAtivas, usaMultiUnidades, unidadeOverride, onChangeUnidadeOverride,
 }: {
   count: number;
   onApply: (status: ScheduleStatus | null) => void;
   onClear: () => void;
+  unidadesAtivas: Unidade[];
+  usaMultiUnidades: boolean;
+  unidadeOverride: string;
+  onChangeUnidadeOverride: (v: string) => void;
 }) {
   return (
     <div className="sticky bottom-0 left-0 right-0 z-20 bg-indigo-50 dark:bg-indigo-900/40 border-t-2 border-indigo-300 dark:border-indigo-700 p-3 flex items-center gap-3 flex-wrap">
       <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
         ✨ {count} dia{count > 1 ? "s" : ""} selecionado{count > 1 ? "s" : ""}
       </div>
+
+      {/* Dropdown de unidade — só aparece se multi-unidades */}
+      {usaMultiUnidades && unidadesAtivas.length > 0 && (
+        <div className="flex items-center gap-1 bg-white dark:bg-gray-800 rounded px-2 py-0.5 border border-indigo-200 dark:border-indigo-800">
+          <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">
+            🏢
+          </span>
+          <select
+            value={unidadeOverride}
+            onChange={(e) => onChangeUnidadeOverride(e.target.value)}
+            className="text-xs bg-transparent border-0 outline-none text-gray-900 dark:text-gray-100"
+            title="Unidade que será atribuída quando o status for 'Trabalho'. Vazio = usa o padrão de cada empregado."
+          >
+            <option value="">Padrão do empregado</option>
+            {unidadesAtivas.map(u => (
+              <option key={u.id} value={u.id}>{u.nome}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex items-center gap-2 flex-wrap flex-1">
         {STATUS_LIST.map(s => (
           <button
