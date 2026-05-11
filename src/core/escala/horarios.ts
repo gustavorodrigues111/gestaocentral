@@ -350,6 +350,7 @@ export function getEffectiveSundayCycle(
 export type DerivedDay = {
   status: ScheduleStatus;     // "trabalho" | "folga" (na fase 10, só esses)
   fonte: "schedule" | "implicito";  // schedule = veio do workSchedule; implicito = sem cadastro
+  unidadeId?: string;         // Multi-unidades: override do dia (do HorarioDia.unidadeId)
 };
 
 export function derivedScheduleForEmpregado(
@@ -387,7 +388,11 @@ export function derivedScheduleForEmpregado(
         continue;
       }
     }
-    result[dateStr] = { status: "trabalho", fonte: "schedule" };
+    result[dateStr] = {
+      status: "trabalho",
+      fonte: "schedule",
+      ...(dayCfg.unidadeId ? { unidadeId: dayCfg.unidadeId } : {}),
+    };
   }
   return result;
 }

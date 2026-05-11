@@ -135,6 +135,10 @@ export type HorarioDia = {
   in?: string;       // "HH:MM" — entrada
   out?: string;      // "HH:MM" — saída (pode ser do dia seguinte se overnight)
   break?: number;    // intervalo intra-jornada em minutos
+  // Multi-unidades: override de unidade pra esse dia. Vazio = usa
+  // empregado.unidadePadraoId. Útil pra alternância semanal recorrente
+  // (ex: toda quinta atua na Filial em vez da Matriz).
+  unidadeId?: string;
 };
 
 // Ciclo de domingo (modelo: trabalha N domingos seguidos, depois folga 1)

@@ -84,14 +84,22 @@ export function calcularDivisaoDia(
     return derived[date]?.status;
   }
 
-  // Resolve unidade onde o empregado trabalhou no dia (usa real → prevista → padrão).
-  // Só relevante quando isMultiUnidades.
+  // Resolve unidade onde o empregado trabalhou no dia.
+  // Fallback chain:
+  //   1. override em escala.unidadesReais (real)
+  //   2. override em escala.unidadesPrevistas (prevista)
+  //   3. workSchedule do dia da semana (HorarioDia.unidadeId — alternância recorrente)
+  //   4. empregado.unidadePadraoId
   function resolverUnidade(emp: Empregado): string | null {
     if (!isMultiUnidades) return null;
     const real = escala?.unidadesReais?.[emp.id]?.[date];
     if (real) return real;
     const prev = escala?.unidadesPrevistas?.[emp.id]?.[date];
     if (prev) return prev;
+    // Tenta workSchedule (alternância semanal recorrente — toda quinta na Filial, etc)
+    const derived = derivedScheduleForEmpregado(emp, yNum, mNum);
+    const dayUnit = derived[date]?.unidadeId;
+    if (dayUnit) return dayUnit;
     return emp.unidadePadraoId || null;
   }
 

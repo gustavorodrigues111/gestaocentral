@@ -14,7 +14,7 @@ import {
   emptyDays, validateWorkScheduleDays, isSunday,
 } from "../../core/escala/horarios";
 import type {
-  Empregado, HorarioDia, SundayCycle, WorkSchedule,
+  Empregado, HorarioDia, SundayCycle, Unidade, WorkSchedule,
 } from "../../core/types";
 import type { ValidacaoIssue, ValidacaoResultado } from "../../core/escala/horarios";
 
@@ -33,6 +33,8 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
 
   const cargaMinMin = restaurant?.horarioConfig?.cargaSemanalMinMin ?? 2635;
   const cargaMaxMin = restaurant?.horarioConfig?.cargaSemanalMaxMin ?? 2640;
+  const unidadesAtivas = (restaurant?.unidades || []).filter(u => u.ativa);
+  const mostraUnidade = unidadesAtivas.length > 1;
 
   const vigenteHoje = useMemo(
     () => getActiveWorkSchedule(empregado.workSchedules, todayYmd()),
@@ -327,6 +329,9 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
         onPatch={patchDia}
         onCopiar={copiarDe}
         onLimpar={limparDia}
+        unidadesAtivas={unidadesAtivas}
+        mostraUnidade={mostraUnidade}
+        unidadePadraoId={empregado.unidadePadraoId || ""}
       />
 
       {/* Ciclo de domingo (se domingo está ativo na semana atual) */}
@@ -437,21 +442,30 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
 
 function DiasTabela({
   days, onPatch, onCopiar, onLimpar,
+  unidadesAtivas, mostraUnidade, unidadePadraoId,
 }: {
   days: { [k: number]: HorarioDia };
   onPatch: (idx: number, patch: Partial<HorarioDia>) => void;
   onCopiar: (idxFonte: number, idxDestino: number) => void;
   onLimpar: (idx: number) => void;
+  unidadesAtivas: Unidade[];
+  mostraUnidade: boolean;
+  unidadePadraoId: string;
 }) {
+  const padraoNome = unidadesAtivas.find(u => u.id === unidadePadraoId)?.nome;
+  const gridCols = mostraUnidade
+    ? "grid-cols-[70px_50px_85px_85px_70px_70px_110px_50px]"
+    : "grid-cols-[80px_60px_90px_90px_80px_80px_60px]";
   return (
     <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
-      <div className="grid grid-cols-[80px_60px_90px_90px_80px_80px_60px] gap-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+      <div className={`grid ${gridCols} gap-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400`}>
         <div>Dia</div>
         <div className="text-center">Ativo</div>
         <div className="text-center">Entrada</div>
         <div className="text-center">Saída</div>
         <div className="text-right">Intervalo</div>
         <div className="text-right">Contratada</div>
+        {mostraUnidade && <div className="text-center">Unidade</div>}
         <div className="text-center">Copiar</div>
       </div>
       {WEEKDAYS.map(wd => {
@@ -460,7 +474,7 @@ function DiasTabela({
         return (
           <div
             key={wd.idx}
-            className="grid grid-cols-[80px_60px_90px_90px_80px_80px_60px] gap-1 px-3 py-2 items-center border-t border-gray-100 dark:border-gray-800 text-sm"
+            className={`grid ${gridCols} gap-1 px-3 py-2 items-center border-t border-gray-100 dark:border-gray-800 text-sm`}
           >
             <div className="font-medium text-gray-700 dark:text-gray-300">{wd.short}</div>
             <div className="text-center">
@@ -486,6 +500,22 @@ function DiasTabela({
             <div className="text-right text-xs text-gray-700 dark:text-gray-300 tabular-nums">
               {calc ? fmtHHMM(calc.totalContract) : "—"}
             </div>
+            {mostraUnidade && (
+              <div>
+                <select
+                  disabled={!d.active}
+                  value={d.unidadeId || ""}
+                  onChange={(e) => onPatch(wd.idx, { unidadeId: e.target.value || undefined })}
+                  className="w-full px-1 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50"
+                  title={padraoNome ? `Vazio = padrão (${padraoNome})` : "Vazio = unidade padrão"}
+                >
+                  <option value="">— padrão —</option>
+                  {unidadesAtivas.map(u => (
+                    <option key={u.id} value={u.id}>{u.nome}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="text-center">
               {d.active ? (
                 <button type="button" onClick={() => onLimpar(wd.idx)} title="Limpar"
@@ -494,8 +524,6 @@ function DiasTabela({
                 <CopiarDeMenu
                   daysAtivos={WEEKDAYS.filter(w => w.idx !== wd.idx && days[w.idx]?.active)}
                   onPick={(srcIdx) => onCopiar(srcIdx, wd.idx)}
-                  // Pros últimos 2 dias (Sex, Sáb), abre o dropdown PRA CIMA
-                  // pra não ser cortado pelo final do modal
                   abrirParaCima={wd.idx >= 5}
                 />
               )}

@@ -37,13 +37,26 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     (a.area || "").localeCompare(b.area || "") || a.nome.localeCompare(b.nome)
   );
 
-  // Unidades disponíveis (só relevante se restaurante tem multi-unidades)
-  const usaMultiUnidades = !!restaurant?.multiUnidades;
+  // Unidades disponíveis. Sempre há pelo menos 1 (auto-criada no boot).
   const unidadesAtivas = (restaurant?.unidades || []).filter(u => u.ativa);
+  const temVariasUnidades = unidadesAtivas.length > 1;
 
   const [cargoId, setCargoId] = useState<string>(empregado?.cargoId || cargosAtivos[0]?.id || "");
+  // Auto-sugere unidade padrão: se cargo é produção, pega primeira de produção;
+  // senão pega primeira de atendimento. Se rest tem só 1, usa essa.
+  function sugestaoUnidade(novoCargoId: string): string {
+    if (unidadesAtivas.length === 0) return "";
+    if (unidadesAtivas.length === 1) return unidadesAtivas[0].id;
+    const cargoEscolhido = cargosAtivos.find(c => c.id === novoCargoId);
+    if (cargoEscolhido?.recebeProducao) {
+      const prod = unidadesAtivas.find(u => u.tipo === "producao");
+      if (prod) return prod.id;
+    }
+    const atend = unidadesAtivas.find(u => u.tipo === "atendimento");
+    return atend?.id || unidadesAtivas[0].id;
+  }
   const [unidadePadraoId, setUnidadePadraoId] = useState<string>(
-    empregado?.unidadePadraoId || ""
+    empregado?.unidadePadraoId || sugestaoUnidade(empregado?.cargoId || cargosAtivos[0]?.id || "")
   );
   const [admissao, setAdmissao] = useState<string>(
     empregado?.admissaoAtual || todayYmd()
@@ -138,7 +151,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     if ((empregado.emergenciaNome || null) !== (emergenciaNome.trim() || null)) nonCritical.emergenciaNome = emergenciaNome.trim() || null;
     if ((empregado.emergenciaTelefone || null) !== (emergenciaTelefone.trim() || null)) nonCritical.emergenciaTelefone = emergenciaTelefone.trim() || null;
     // Unidade padrão: não afeta cálculo retroativo (só novos lançamentos de escala)
-    const novoUnidadePadrao = usaMultiUnidades ? (unidadePadraoId || null) : null;
+    const novoUnidadePadrao = unidadePadraoId || null;
     if ((empregado.unidadePadraoId || null) !== novoUnidadePadrao) {
       nonCritical.unidadePadraoId = novoUnidadePadrao;
     }
@@ -173,6 +186,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       setErr("Cargo do tipo registrado/estagiário exige Pessoa vinculada (login). Use cadastro de Pessoa.");
       return;
     }
+    // Unidade padrão é obrigatória sempre. Se há só 1 unidade, já vem
+    // auto-preenchida; se há várias, o user precisa escolher.
+    if (!unidadePadraoId) {
+      setErr("Defina a unidade padrão do empregado.");
+      return;
+    }
     if (vtAtivo) {
       if (!vtPassagensPorDia || parseFloat(vtPassagensPorDia) <= 0) {
         setErr("VT ativo exige passagens/dia"); return;
@@ -195,7 +214,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
           cargoId,
-          unidadePadraoId: usaMultiUnidades ? (unidadePadraoId || null) : null,
+          unidadePadraoId: unidadePadraoId || null,
           empCode: empCode.trim() || null,
           codigoContabil: codigoContabil.trim() || null,
           emergenciaNome: emergenciaNome.trim() || null,
@@ -416,7 +435,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Cargo *</label>
           <select
             value={cargoId}
-            onChange={(e) => setCargoId(e.target.value)}
+            onChange={(e) => {
+              const novoCargoId = e.target.value;
+              setCargoId(novoCargoId);
+              // Re-sugere unidade se o cargo mudou (ex: cargo produção sugere unidade produção)
+              if (!empregado?.unidadePadraoId) {
+                setUnidadePadraoId(sugestaoUnidade(novoCargoId));
+              }
+            }}
             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 mt-1"
           >
             <option value="">— escolha —</option>
@@ -433,15 +459,17 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           )}
         </div>
 
-        {usaMultiUnidades && unidadesAtivas.length > 0 && (
+        {/* Unidade padrão: só aparece se há mais de 1 unidade. Se há 1 só,
+            já vem auto-preenchida e não precisa mostrar dropdown. */}
+        {temVariasUnidades && (
           <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade padrão</label>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade padrão *</label>
             <select
               value={unidadePadraoId}
               onChange={(e) => setUnidadePadraoId(e.target.value)}
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 mt-1"
             >
-              <option value="">— sem padrão —</option>
+              <option value="">— escolha —</option>
               {unidadesAtivas.map(u => (
                 <option key={u.id} value={u.id}>
                   {u.nome} {u.tipo === "producao" ? "(Produção)" : ""}
@@ -449,7 +477,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               ))}
             </select>
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-              Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade. Pode ser alterado dia a dia.
+              Onde o empregado atua na maior parte do tempo. Pode ser sobrescrito
+              dia a dia nos horários (aba ao lado) ou diretamente na escala.
             </p>
           </div>
         )}

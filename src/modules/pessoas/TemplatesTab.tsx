@@ -139,8 +139,8 @@ function TemplateModal({
     () => (activeRestaurant?.modulosAtivos || []).filter(id => getModule(id)),
     [activeRestaurant?.modulosAtivos],
   );
-  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
   const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
+  const usaMultiUnidades = unidadesAtivas.length > 1;
 
   const isNew = !template;
   const [nome, setNome] = useState(template?.nome || "");

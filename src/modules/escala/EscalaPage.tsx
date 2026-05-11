@@ -242,9 +242,10 @@ export function EscalaPage() {
   const [showSumario, setShowSumario] = useState(false);
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
 
-  // Multi-unidades — derivados
-  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
+  // Multi-unidades — derivados. UI multi-unit aparece quando há 2+ unidades
+  // ativas; com 1 só, sistema age como single (auto-preenchido implicitamente).
   const todasUnidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
+  const usaMultiUnidades = todasUnidadesAtivas.length > 1;
 
   // Escopo da permissão: se a pessoa tem permissão restrita a unidades, lista
   // só essas. null = ampla (todas). Lista vazia = sem acesso (não cai aqui
@@ -565,9 +566,11 @@ function Grade({
   }
 
   // Resolve qual unidade aplicar pra um empregado quando o status é "trabalho":
-  //   override > unidadePadrao do empregado > null (sem unidade definida)
-  function resolverUnidade(empId: string): string | null {
+  //   override > derivedDay.unidadeId (do workSchedule do dia da semana) > unidadePadrao > null
+  function resolverUnidade(empId: string, date: string): string | null {
     if (unidadeOverride) return unidadeOverride;
+    const dayUnit = derivados[empId]?.[date]?.unidadeId;
+    if (dayUnit) return dayUnit;
     const emp = empMap[empId];
     return emp?.unidadePadraoId || null;
   }
@@ -578,7 +581,7 @@ function Grade({
     let aplicados = 0;
     for (const key of selecionadas) {
       const [empId, date] = key.split("|");
-      const unidadeId = (status === "trabalho" && usaMultiUnidades) ? resolverUnidade(empId) : null;
+      const unidadeId = (status === "trabalho" && usaMultiUnidades) ? resolverUnidade(empId, date) : null;
       const issues = await onSetStatus(empId, date, status, unidadeId);
       if (issues.length > 0) erros.push(...issues);
       else aplicados++;

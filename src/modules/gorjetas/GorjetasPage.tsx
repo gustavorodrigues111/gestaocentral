@@ -118,9 +118,9 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid, ano, mes]);
 
-  // Multi-unidades
-  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
+  // Multi-unidades. UI ativa apenas quando há 2+ unidades ativas.
   const todasUnidades = activeRestaurant?.unidades || [];
+  const usaMultiUnidades = todasUnidades.filter(u => u.ativa).length > 1;
   // Escopo de permissão de gorjetas — se ampla, mostra todas; senão filtra
   const escopoUnidades = unidadesAcessiveis(me, rid, "gorjetas");
   const unidades = escopoUnidades === null

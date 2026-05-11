@@ -375,8 +375,8 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
     () => (activeRestaurant?.modulosAtivos || []).filter(id => getModule(id)),
     [activeRestaurant?.modulosAtivos],
   );
-  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
   const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
+  const usaMultiUnidades = unidadesAtivas.length > 1;
 
   const [perms, setPerms] = useState<Record<string, ModulePermission>>(
     (pessoa.permissions?.[restaurantId] as Record<string, ModulePermission>) || {}

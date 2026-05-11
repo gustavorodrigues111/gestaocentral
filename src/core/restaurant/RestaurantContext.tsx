@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import { hasAnyAccess } from "../auth/permissions";
-import type { Restaurant } from "../types";
+import type { Restaurant, Unidade } from "../types";
 import { detectSubdomain, findRestaurantBySubdomain } from "./subdomain";
 
 type RestaurantState = {
@@ -33,6 +33,10 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
   });
   const [loading, setLoading] = useState(true);
 
+  // Auto-criação de unidade default: cada restaurante precisa ter pelo menos
+  // 1 unidade. Roda 1x por restaurante (cache no ref) pra não criar duplicado.
+  const unidadeAutoCreatedRef = useRef<Set<string>>(new Set());
+
   // Listen to restaurants in real-time
   useEffect(() => {
     if (!pessoa) { setAllRestaurants([]); setLoading(false); return; }
@@ -40,6 +44,23 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Restaurant);
       setAllRestaurants(list);
       setLoading(false);
+
+      // Auto-criar unidade default pra restaurantes sem nenhuma
+      for (const r of list) {
+        const unidades = r.unidades || [];
+        if (unidades.length === 0 && !unidadeAutoCreatedRef.current.has(r.id)) {
+          unidadeAutoCreatedRef.current.add(r.id);
+          const defaultUnidade: Unidade = {
+            id: `u_default_${r.id.slice(0, 8)}`,
+            nome: r.nome || "Principal",
+            tipo: "atendimento",
+            ordem: 1,
+            ativa: true,
+          };
+          updateDoc(doc(db, "restaurants", r.id), { unidades: [defaultUnidade] })
+            .catch(e => console.warn("Auto-criação de unidade falhou:", e));
+        }
+      }
     }, (err) => {
       console.error("Erro carregando restaurants:", err);
       setLoading(false);
