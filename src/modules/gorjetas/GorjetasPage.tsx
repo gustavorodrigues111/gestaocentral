@@ -13,7 +13,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
-import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
@@ -41,7 +41,8 @@ export function GorjetasPage() {
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingDate, setEditingDate] = useState<string | null>(null);
+  // Quando edita, captura date + unidadeId (vazio se single-unit)
+  const [editing, setEditing] = useState<{ date: string; unidadeId: string } | null>(null);
   const [tab, setTab] = useState<"lancamentos" | "divisao">("lancamentos");
 
   // SplitVersions do restaurante (regras de divisão)
@@ -112,16 +113,28 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid, ano, mes]);
 
+  // Multi-unidades
+  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
+  const unidades = activeRestaurant?.unidades || [];
+  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
+
+  // Key da gorjeta na map:
+  //   single-unit: date            (gorjetaMap["2026-05-10"])
+  //   multi-unidade: date|unidadeId (gorjetaMap["2026-05-10|u_abc"])
   const gorjetaMap = useMemo(() => {
     const m: Record<string, Gorjeta> = {};
-    gorjetas.forEach(g => { m[g.date] = g; });
+    gorjetas.forEach(g => {
+      const key = g.unidadeId ? `${g.date}|${g.unidadeId}` : g.date;
+      m[key] = g;
+    });
     return m;
   }, [gorjetas]);
 
   const totaisMes = useMemo(() => {
     const bruto = gorjetas.reduce((s, g) => s + (g.valorBruto || 0), 0);
     const liquido = gorjetas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
-    return { bruto, liquido, dias: gorjetas.length };
+    const datasUnicas = new Set(gorjetas.map(g => g.date));
+    return { bruto, liquido, dias: datasUnicas.size, lancamentos: gorjetas.length };
   }, [gorjetas]);
 
   function navegarMes(delta: number) {
@@ -215,7 +228,10 @@ export function GorjetasPage() {
               cargos={cargos}
               escala={escala}
               splitVersions={splitVersions}
-              onPickDate={(d) => setEditingDate(d)}
+              unidadesAtendimento={unidadesAtendimento}
+              unidades={unidades}
+              usaMultiUnidades={usaMultiUnidades}
+              onPick={(date, unidadeId) => setEditing({ date, unidadeId })}
             />
           )}
         </>
@@ -231,21 +247,31 @@ export function GorjetasPage() {
           escala={escala}
           splitVersions={splitVersions}
           restaurantNome={activeRestaurant.nome}
+          unidades={unidades}
+          usaMultiUnidades={usaMultiUnidades}
         />
       )}
 
-      {editingDate && (
+      {editing && (
         <GorjetaModal
-          date={editingDate}
+          date={editing.date}
           rid={rid}
           taxRateDefault={taxRateDefault}
-          gorjeta={gorjetaMap[editingDate] || null}
+          gorjeta={
+            (editing.unidadeId
+              ? gorjetaMap[`${editing.date}|${editing.unidadeId}`]
+              : gorjetaMap[editing.date]
+            ) || null
+          }
           empregados={empregados}
           cargos={cargos}
           escala={escala}
           splitVersions={splitVersions}
           podeEditar={podeConfig}
-          onClose={() => setEditingDate(null)}
+          onClose={() => setEditing(null)}
+          unidadeId={editing.unidadeId || undefined}
+          unidades={unidades}
+          usaMultiUnidades={usaMultiUnidades}
         />
       )}
     </div>
@@ -268,13 +294,17 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
 }
 
 function ListaDias({
-  ano, mes, gorjetaMap, empregados, cargos, escala, splitVersions, onPickDate,
+  ano, mes, gorjetaMap, empregados, cargos, escala, splitVersions,
+  unidadesAtendimento, unidades, usaMultiUnidades, onPick,
 }: {
   ano: number; mes: number;
   gorjetaMap: Record<string, Gorjeta>;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
   splitVersions: SplitVersion[];
-  onPickDate: (d: string) => void;
+  unidadesAtendimento: Unidade[];
+  unidades: Unidade[];
+  usaMultiUnidades: boolean;
+  onPick: (date: string, unidadeId: string) => void;
 }) {
   const dias = daysInMonth(ano, mes);
   const todayYmd = (() => {
@@ -282,10 +312,17 @@ function ListaDias({
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   })();
 
+  // Lista de unidades a exibir: pra multi, 1 row por unidade de atendimento.
+  // Pra single, 1 row sem unidade (com "" como key).
+  const unidadesParaRow: { id: string; nome: string }[] = usaMultiUnidades
+    ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
+    : [{ id: "", nome: "" }];
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-      <div className="grid grid-cols-[80px_1fr_120px_120px_60px] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+      <div className="grid grid-cols-[80px_120px_1fr_120px_120px_60px] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
         <div>Dia</div>
+        <div>Unidade</div>
         <div>Resumo</div>
         <div className="text-right">Bruto</div>
         <div className="text-right">Líquido</div>
@@ -293,40 +330,54 @@ function ListaDias({
       </div>
       {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
         const date = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-        const g = gorjetaMap[date];
         const d = parseYmd(date);
         const wd = d.getDay();
         const weekend = wd === 0 || wd === 6;
         const isToday = date === todayYmd;
         const splitVersion = getActiveSplitVersion(splitVersions, date);
-        const recebem = g ? calcularDivisaoDia(date, g.valorLiquido, empregados, cargos, escala, splitVersion).itens.length : 0;
-        return (
-          <button
-            key={date}
-            type="button"
-            onClick={() => onPickDate(date)}
-            className={`w-full grid grid-cols-[80px_1fr_120px_120px_60px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-left ${
-              weekend ? "bg-amber-50/40 dark:bg-amber-900/10" : ""
-            } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""}`}
-          >
-            <div className="font-medium text-gray-900 dark:text-gray-100">
-              {pad2(dia)}
-              <span className="ml-1 text-[10px] text-gray-400 uppercase">{dowShort(d)}</span>
-            </div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              {g
-                ? <>{recebem} empregado(s) recebem · {fmtBR(g.valorLiquido / Math.max(1, recebem))} médio</>
-                : <span className="text-gray-400">— sem lançamento —</span>}
-            </div>
-            <div className={`text-right font-medium ${g ? "text-gray-900 dark:text-gray-100" : "text-gray-400"}`}>
-              {g ? fmtBR(g.valorBruto) : "—"}
-            </div>
-            <div className={`text-right font-medium ${g ? "text-emerald-600" : "text-gray-400"}`}>
-              {g ? fmtBR(g.valorLiquido) : "—"}
-            </div>
-            <div className="text-right text-gray-400">›</div>
-          </button>
-        );
+        return unidadesParaRow.map((u, idx) => {
+          const key = u.id ? `${date}|${u.id}` : date;
+          const g = gorjetaMap[key];
+          const recebem = g
+            ? calcularDivisaoDia(date, g.valorLiquido, empregados, cargos, escala, splitVersion, u.id || null, unidades).itens.length
+            : 0;
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onPick(date, u.id)}
+              className={`w-full grid grid-cols-[80px_120px_1fr_120px_120px_60px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-left ${
+                weekend ? "bg-amber-50/40 dark:bg-amber-900/10" : ""
+              } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""}`}
+            >
+              <div className="font-medium text-gray-900 dark:text-gray-100">
+                {idx === 0 ? (
+                  <>
+                    {pad2(dia)}
+                    <span className="ml-1 text-[10px] text-gray-400 uppercase">{dowShort(d)}</span>
+                  </>
+                ) : (
+                  <span className="text-gray-300 dark:text-gray-700">·</span>
+                )}
+              </div>
+              <div className="text-xs text-gray-600 dark:text-gray-400">
+                {usaMultiUnidades ? u.nome : <span className="text-gray-400">—</span>}
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {g
+                  ? <>{recebem} empregado(s) recebem · {fmtBR(g.valorLiquido / Math.max(1, recebem))} médio</>
+                  : <span className="text-gray-400">— sem lançamento —</span>}
+              </div>
+              <div className={`text-right font-medium ${g ? "text-gray-900 dark:text-gray-100" : "text-gray-400"}`}>
+                {g ? fmtBR(g.valorBruto) : "—"}
+              </div>
+              <div className={`text-right font-medium ${g ? "text-emerald-600" : "text-gray-400"}`}>
+                {g ? fmtBR(g.valorLiquido) : "—"}
+              </div>
+              <div className="text-right text-gray-400">›</div>
+            </button>
+          );
+        });
       })}
     </div>
   );
@@ -334,6 +385,7 @@ function ListaDias({
 
 function GorjetaModal({
   date, rid, taxRateDefault, gorjeta, empregados, cargos, escala, splitVersions, podeEditar, onClose,
+  unidadeId: unidadeIdProp, unidades, usaMultiUnidades,
 }: {
   date: string; rid: string; taxRateDefault: number;
   gorjeta: Gorjeta | null;
@@ -341,14 +393,21 @@ function GorjetaModal({
   splitVersions: SplitVersion[];
   podeEditar: boolean;
   onClose: () => void;
+  unidadeId?: string;          // unidade pré-selecionada (se vier da listagem por unidade)
+  unidades: Unidade[];
+  usaMultiUnidades: boolean;
 }) {
   const { pessoa } = useAuth();
   const [valorBruto, setValorBruto] = useState<string>(gorjeta ? String(gorjeta.valorBruto).replace(".", ",") : "");
   const [observacao, setObservacao] = useState(gorjeta?.observacao || "");
+  const [unidadeId, setUnidadeId] = useState<string>(
+    gorjeta?.unidadeId || unidadeIdProp || ""
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
   const isPago = !!gorjeta?.paidAt;
+  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
 
   // SplitVersion vigente NA DATA da gorjeta (não hoje)
   const splitVersion = useMemo(() => getActiveSplitVersion(splitVersions, date), [splitVersions, date]);
@@ -362,8 +421,8 @@ function GorjetaModal({
   // Se a gorjeta está paga, usa o snapshot da divisão (congelado).
   // Senão, calcula em tempo real a partir da escala/cargos/splitVersion vigentes na data.
   const divisaoLive = useMemo(
-    () => calcularDivisaoDia(date, liquido, empregados, cargos, escala, splitVersion),
-    [date, liquido, empregados, cargos, escala, splitVersion],
+    () => calcularDivisaoDia(date, liquido, empregados, cargos, escala, splitVersion, unidadeId || null, unidades),
+    [date, liquido, empregados, cargos, escala, splitVersion, unidadeId, unidades],
   );
   const divisao = isPago && gorjeta?.divisaoSnapshot
     ? {
@@ -379,20 +438,26 @@ function GorjetaModal({
   async function salvar() {
     if (!pessoa) return;
     if (bruto <= 0) { setErr("Valor bruto obrigatório"); return; }
+    if (usaMultiUnidades && !unidadeId) {
+      setErr("Selecione a unidade que arrecadou essa gorjeta.");
+      return;
+    }
     setErr("");
     setSaving(true);
     try {
-      const id = `${rid}_${date}`;
+      // ID composto quando multi-unidade
+      const id = unidadeId ? `${rid}_${date}_${unidadeId}` : `${rid}_${date}`;
       const now = new Date().toISOString();
       const data: Gorjeta = {
         id,
         restaurantId: rid,
         date,
+        unidadeId: unidadeId || null,
         valorBruto: Math.round(bruto * 100) / 100,
         taxRate: tax,
         valorLiquido: liquido,
         observacao: observacao.trim() || undefined,
-        divisaoSnapshot: gorjeta?.divisaoSnapshot,  // preserva snapshot existente se já tinha
+        divisaoSnapshot: gorjeta?.divisaoSnapshot,
         paidAt: gorjeta?.paidAt ?? null,
         paidBy: gorjeta?.paidBy ?? null,
         createdAt: gorjeta?.createdAt || now,
@@ -462,6 +527,25 @@ function GorjetaModal({
       <div className="grid md:grid-cols-2 gap-5">
         {/* Esquerda: lançamento */}
         <div className="space-y-3">
+          {usaMultiUnidades && (
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade que arrecadou *</label>
+              <select
+                value={unidadeId}
+                onChange={(e) => setUnidadeId(e.target.value)}
+                disabled={!podeEditar || isPago}
+                className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-60"
+              >
+                <option value="">— escolha a unidade —</option>
+                {unidadesAtendimento.map(u => (
+                  <option key={u.id} value={u.id}>{u.nome}</option>
+                ))}
+              </select>
+              {isPago && (
+                <p className="text-[11px] text-gray-500 mt-1">Lançamento pago — unidade não pode mudar.</p>
+              )}
+            </div>
+          )}
           <Input
             label="Valor bruto (R$)"
             type="text"

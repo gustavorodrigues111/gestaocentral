@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
-import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
+import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
@@ -17,6 +17,8 @@ type Props = {
   escala: EscalaMes | null;
   splitVersions: SplitVersion[];
   restaurantNome: string;
+  unidades: Unidade[];
+  usaMultiUnidades: boolean;
 };
 
 type LinhaEmpregado = {
@@ -32,14 +34,23 @@ type LinhaEmpregado = {
 
 export function DivisaoMesTab({
   ano, mes, gorjetas, empregados, cargos, escala, splitVersions, restaurantNome,
+  unidades, usaMultiUnidades,
 }: Props) {
+  // Filtro por unidade (só relevante se multi)
+  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
+  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
+
+  const gorjetasFiltradas = useMemo(() => {
+    if (!filtroUnidadeId) return gorjetas;
+    return gorjetas.filter(g => g.unidadeId === filtroUnidadeId);
+  }, [gorjetas, filtroUnidadeId]);
 
   // Agrega por empregado: pra cada gorjeta do mês, calcula a divisão.
   // bruto do empregado = liquido / (1 - taxRate/100); retenção = bruto - liquido.
   const linhas = useMemo<LinhaEmpregado[]>(() => {
     const acc: Record<string, LinhaEmpregado> = {};
 
-    for (const g of gorjetas) {
+    for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
       // Usa snapshot se gorjeta paga; senão recalcula em tempo real
       let itens: DivisaoItem[];
@@ -47,7 +58,7 @@ export function DivisaoMesTab({
         itens = g.divisaoSnapshot;
       } else {
         const liquido = calcularValorLiquido(g.valorBruto, g.taxRate);
-        const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion);
+        const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
         itens = r.itens;
       }
 
@@ -88,16 +99,16 @@ export function DivisaoMesTab({
       (a.area || "").localeCompare(b.area || "")
         || a.nome.localeCompare(b.nome)
     );
-  }, [gorjetas, empregados, cargos, escala, splitVersions]);
+  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades]);
 
-  // Totais do mês
+  // Totais do mês (respeitam filtro)
   const totais = useMemo(() => {
-    const bruto = gorjetas.reduce((s, g) => s + (g.valorBruto || 0), 0);
-    const liquido = gorjetas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
+    const bruto = gorjetasFiltradas.reduce((s, g) => s + (g.valorBruto || 0), 0);
+    const liquido = gorjetasFiltradas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
     const retencao = bruto - liquido;
     const distribuido = linhas.reduce((s, l) => s + l.liquido, 0);
     return { bruto, liquido, retencao, distribuido };
-  }, [gorjetas, linhas]);
+  }, [gorjetasFiltradas, linhas]);
 
   const [exportando, setExportando] = useState(false);
   async function exportar() {
@@ -176,6 +187,34 @@ export function DivisaoMesTab({
 
   return (
     <div className="space-y-4">
+      {/* Filtro por unidade (só se multi) */}
+      {usaMultiUnidades && unidadesAtendimento.length > 0 && (
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">🏢 Unidade:</span>
+          <button
+            type="button"
+            onClick={() => setFiltroUnidadeId("")}
+            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+              !filtroUnidadeId
+                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+            }`}
+          >Todas (soma)</button>
+          {unidadesAtendimento.map(u => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => setFiltroUnidadeId(u.id)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
+                filtroUnidadeId === u.id
+                  ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
+                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+              }`}
+            >{u.nome}</button>
+          ))}
+        </div>
+      )}
+
       {/* Cards de totais */}
       <div className="grid grid-cols-3 gap-3">
         <Card label="Bruto do mês" value={fmtBR(totais.bruto)} />
@@ -185,7 +224,7 @@ export function DivisaoMesTab({
 
       <div className="flex justify-between items-center flex-wrap gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {linhas.length} empregado(s) com recebimento · {gorjetas.length} dia(s) lançados
+          {linhas.length} empregado(s) com recebimento · {gorjetasFiltradas.length} lançamento(s)
         </p>
         <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
           {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}

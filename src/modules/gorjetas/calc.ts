@@ -1,5 +1,6 @@
 import type {
   Area, Cargo, DivisaoItem, Empregado, EscalaMes, ScheduleStatus, SplitVersion,
+  Unidade,
 } from "../../core/types";
 import { AREAS } from "../../core/types";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
@@ -38,9 +39,14 @@ export type DivisaoResult = {
  *
  * Regras de elegibilidade (sempre):
  * - Cargo com semGorjeta=true ou pontos<=0 → fora (cobre sócio)
- * - Cargo com recebeProducao=true → recebe TODO dia (independente da escala)
+ * - Cargo com recebeProducao=true → recebe se trabalhou (em qualquer unidade,
+ *   se multi; mesmo sem escala em single-unit)
  * - Demais → status REAL é trabalho/freela/comp_trab
  * - Empregado fora do período → fora
+ *
+ * Multi-unidades: se `gorjetaUnidadeId` está setado, filtra empregados que
+ * trabalharam NESSA unidade (cargos normais) ou em qualquer unidade de
+ * PRODUÇÃO (cargos com recebeProducao=true).
  */
 export function calcularDivisaoDia(
   date: string,
@@ -49,16 +55,22 @@ export function calcularDivisaoDia(
   cargos: Cargo[],
   escala: EscalaMes | null,
   splitVersion?: SplitVersion | null,
+  gorjetaUnidadeId?: string | null,
+  unidades?: Unidade[],
 ): DivisaoResult {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const itens: DivisaoItem[] = [];
+
+  // Unidades de produção (pra cargos com recebeProducao=true)
+  const idsUnidadesProducao = new Set(
+    (unidades || []).filter(u => u.tipo === "producao" && u.ativa).map(u => u.id)
+  );
+  const isMultiUnidades = !!gorjetaUnidadeId;
 
   // Pra cada empregado, resolve status do dia com fallback chain:
   //   1. override em escala.real (o que aconteceu)
   //   2. override em escala.prevista (planejamento — usado quando real ainda vazia)
   //   3. derivado do horário cadastrado (workSchedule)
-  // Sem isso, gorjetas lançadas durante/antes do mês não veriam ninguém porque
-  // a Real só é preenchida após os fatos.
   const [yStr, mStr] = date.split("-");
   const yNum = parseInt(yStr, 10);
   const mNum = parseInt(mStr, 10);
@@ -68,9 +80,19 @@ export function calcularDivisaoDia(
     if (real) return real;
     const prevista = escala?.prevista?.[emp.id]?.[date];
     if (prevista) return prevista;
-    // Deriva do workSchedule (cache por empregado fora do for? aqui simples)
     const derived = derivedScheduleForEmpregado(emp, yNum, mNum);
     return derived[date]?.status;
+  }
+
+  // Resolve unidade onde o empregado trabalhou no dia (usa real → prevista → padrão).
+  // Só relevante quando isMultiUnidades.
+  function resolverUnidade(emp: Empregado): string | null {
+    if (!isMultiUnidades) return null;
+    const real = escala?.unidadesReais?.[emp.id]?.[date];
+    if (real) return real;
+    const prev = escala?.unidadesPrevistas?.[emp.id]?.[date];
+    if (prev) return prev;
+    return emp.unidadePadraoId || null;
   }
 
   // 1) Eligibilidade — quem recebe gorjeta neste dia?
@@ -80,15 +102,28 @@ export function calcularDivisaoDia(
     if (!cargo || cargo.semGorjeta || cargo.pontos <= 0) continue;
 
     let motivo: DivisaoItem["motivo"] | null = null;
+    const status = resolverStatus(e);
+    const trabalhou = !!status && STATUS_RECEBE[status];
+
     if (cargo.recebeProducao) {
+      if (isMultiUnidades) {
+        // Multi: precisa ter trabalhado em alguma unidade de PRODUÇÃO no dia
+        if (!trabalhou) continue;
+        const unidadeDoDia = resolverUnidade(e);
+        if (!unidadeDoDia || !idsUnidadesProducao.has(unidadeDoDia)) continue;
+      }
+      // Single-unit: comportamento antigo — recebe TODO dia (independente da escala)
       motivo = "producao";
     } else {
-      const status = resolverStatus(e);
-      if (status && STATUS_RECEBE[status]) {
-        motivo = status === "freela" ? "freela" : "trabalho";
+      // Cargo normal: precisa ter trabalhado
+      if (!trabalhou) continue;
+      if (isMultiUnidades) {
+        // Empregado precisa ter trabalhado NESSA unidade
+        const unidadeDoDia = resolverUnidade(e);
+        if (unidadeDoDia !== gorjetaUnidadeId) continue;
       }
+      motivo = status === "freela" ? "freela" : "trabalho";
     }
-    if (motivo === null) continue;
 
     itens.push({
       empregadoId: e.id,

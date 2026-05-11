@@ -72,7 +72,7 @@ export function SumarioMesModal({
       const sv = getActiveSplitVersion(splitVersions, g.date);
       const itens = (g.paidAt && g.divisaoSnapshot)
         ? g.divisaoSnapshot
-        : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv).itens;
+        : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv, g.unidadeId || null, restaurant.unidades || []).itens;
       const fator = 1 - (g.taxRate || 0) / 100;
       for (const it of itens) {
         if (!acc[it.empregadoId]) {

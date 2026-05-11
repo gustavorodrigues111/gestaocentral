@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
@@ -18,6 +19,9 @@ type Props = {
 };
 
 export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
+  const { restaurants } = useRestaurant();
+  const restaurant = restaurants.find(r => r.id === restaurantId);
+  const unidades = restaurant?.unidades || [];
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
@@ -83,7 +87,7 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
       const sv = getActiveSplitVersion(splitVersions, g.date);
       const itens = (g.paidAt && g.divisaoSnapshot)
         ? g.divisaoSnapshot
-        : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv).itens;
+        : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv, g.unidadeId || null, unidades).itens;
       const meu = itens.find(it => it.empregadoId === empregado.id);
       if (!meu) continue;
       const fator = 1 - (g.taxRate || 0) / 100;

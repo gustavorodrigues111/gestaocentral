@@ -351,9 +351,13 @@ export type SplitVersion = {
 // ─── GORJETAS ───
 
 export type Gorjeta = {
-  id: string;                   // `${restaurantId}_${date}`
+  id: string;                   // single-unidade: `${restaurantId}_${date}`
+                                // multi-unidades: `${restaurantId}_${date}_${unidadeId}`
   restaurantId: string;
   date: string;
+  // Multi-unidades: unidade que arrecadou. Vazio em rest single-unidade.
+  // Só unidades de tipo "atendimento" podem arrecadar.
+  unidadeId?: string | null;
   valorBruto: number;
   taxRate: number;              // snapshot do dia
   valorLiquido: number;
