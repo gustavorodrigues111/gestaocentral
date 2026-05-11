@@ -139,6 +139,8 @@ function TemplateModal({
     () => (activeRestaurant?.modulosAtivos || []).filter(id => getModule(id)),
     [activeRestaurant?.modulosAtivos],
   );
+  const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
+  const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
 
   const isNew = !template;
   const [nome, setNome] = useState(template?.nome || "");
@@ -164,7 +166,36 @@ function TemplateModal({
       const cur = p[moduleId] || { ver: false, configurar: false };
       const next = { ...cur, [kind]: !cur[kind] };
       if (kind === "configurar" && next.configurar && !next.ver) next.ver = true;
-      if (kind === "ver" && !next.ver) next.configurar = false;
+      if (kind === "ver" && !next.ver) {
+        next.configurar = false;
+        delete next.unidades;
+      }
+      return { ...p, [moduleId]: next };
+    });
+  }
+
+  function toggleUnidadePerm(moduleId: string, unidadeId: string) {
+    setPerms(p => {
+      const cur = p[moduleId] || { ver: false, configurar: false };
+      const atual = cur.unidades || [];
+      const next = { ...cur };
+      if (atual.includes(unidadeId)) {
+        const filtrado = atual.filter(u => u !== unidadeId);
+        if (filtrado.length === 0) delete next.unidades;
+        else next.unidades = filtrado;
+      } else {
+        next.unidades = [...atual, unidadeId];
+      }
+      return { ...p, [moduleId]: next };
+    });
+  }
+
+  function limparEscopoUnidade(moduleId: string) {
+    setPerms(p => {
+      const cur = p[moduleId];
+      if (!cur) return p;
+      const next = { ...cur };
+      delete next.unidades;
       return { ...p, [moduleId]: next };
     });
   }
@@ -259,18 +290,53 @@ function TemplateModal({
             const mod = getModule(m as ModuleId);
             if (!mod) return null;
             const p = perms[m] || { ver: false, configurar: false };
+            const temAcesso = p.ver || p.configurar;
+            const mostrarEscopo = usaMultiUnidades && temAcesso && unidadesAtivas.length > 0;
             return (
-              <div key={m} className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center border-t border-gray-100 dark:border-gray-800 text-sm">
-                <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                  <span className="text-base">{mod.icon}</span>
-                  <span>{mod.label}</span>
+              <div key={m} className="border-t border-gray-100 dark:border-gray-800">
+                <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center text-sm">
+                  <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    <span className="text-base">{mod.icon}</span>
+                    <span>{mod.label}</span>
+                  </div>
+                  <div className="text-center">
+                    <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
+                  </div>
+                  <div className="text-center">
+                    <input type="checkbox" checked={p.configurar} onChange={() => togglePerm(m, "configurar")} />
+                  </div>
                 </div>
-                <div className="text-center">
-                  <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
-                </div>
-                <div className="text-center">
-                  <input type="checkbox" checked={p.configurar} onChange={() => togglePerm(m, "configurar")} />
-                </div>
+                {mostrarEscopo && (
+                  <div className="px-3 pb-2 -mt-1 flex items-center gap-2 flex-wrap text-xs">
+                    <span className="text-gray-500 dark:text-gray-400">🏢 Em:</span>
+                    <button
+                      type="button"
+                      onClick={() => limparEscopoUnidade(m)}
+                      className={`px-2 py-0.5 rounded-full transition-colors ${
+                        (p.unidades?.length || 0) === 0
+                          ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
+                          : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+                      }`}
+                    >Todas</button>
+                    {unidadesAtivas.map(u => {
+                      const sel = (p.unidades || []).includes(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleUnidadePerm(m, u.id)}
+                          className={`px-2 py-0.5 rounded-full transition-colors ${
+                            sel
+                              ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
+                              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+                          }`}
+                        >
+                          {sel ? "✓ " : ""}{u.nome}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

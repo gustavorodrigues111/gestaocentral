@@ -4,7 +4,7 @@ import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, update
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfig, canReabrirEscala, canUse } from "../../core/auth/permissions";
+import { canConfig, canReabrirEscala, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -121,18 +121,28 @@ export function EscalaPage() {
     return m;
   }, [empregadosDoMes, ano, mes]);
 
-  // Ordena por área (alfabética) + nome do empregado (alfabético)
+  // Ordena por área (alfabética) + nome do empregado (alfabético).
+  // Filtra por escopo de permissão de unidade — se a pessoa tem permissão
+  // restrita, só mostra empregados cuja unidadePadrão está no escopo dela
+  // (empregados sem unidade padrão são incluídos pra evitar "sumir" alguém).
   const empregadosOrdenados = useMemo(() => {
     const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
-    return [...empregadosDoMes].sort((a, b) => {
+    let lista = empregadosDoMes;
+    if (me && !me.isMaster) {
+      const escopo = unidadesAcessiveis(me, rid, "escala");
+      if (escopo !== null) {
+        lista = lista.filter(e => !e.unidadePadraoId || escopo.includes(e.unidadePadraoId));
+      }
+    }
+    return [...lista].sort((a, b) => {
       const ca = cargoMap[a.cargoId];
       const cb = cargoMap[b.cargoId];
-      const areaA = ca?.area || "ZZ";  // sem área cai no fim
+      const areaA = ca?.area || "ZZ";
       const areaB = cb?.area || "ZZ";
       if (areaA !== areaB) return areaA.localeCompare(areaB);
       return a.nome.localeCompare(b.nome);
     });
-  }, [empregadosDoMes, cargos]);
+  }, [empregadosDoMes, cargos, me, rid]);
 
   const dias = daysInMonth(ano, mes);
 
@@ -234,7 +244,15 @@ export function EscalaPage() {
 
   // Multi-unidades — derivados
   const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
-  const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
+  const todasUnidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
+
+  // Escopo da permissão: se a pessoa tem permissão restrita a unidades, lista
+  // só essas. null = ampla (todas). Lista vazia = sem acesso (não cai aqui
+  // porque já passou pelo canUse).
+  const escopoUnidades = unidadesAcessiveis(me, rid, "escala");
+  const unidadesAtivas = escopoUnidades === null
+    ? todasUnidadesAtivas
+    : todasUnidadesAtivas.filter(u => escopoUnidades.includes(u.id));
   // Pode editar a versão atualmente selecionada?
   // - Mês fechado → nada editável
   // - Prevista após VT pago → trava (snapshot pra cálculo)

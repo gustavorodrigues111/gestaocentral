@@ -39,6 +39,49 @@ export function canReabrirEscala(pessoa: Pessoa | null, restaurantId: string): b
   return pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true;
 }
 
+/**
+ * Unidades que a pessoa pode acessar pra um módulo específico.
+ * - null   = TODAS (pessoa é master OU permission.unidades vazio/ausente)
+ * - []     = NENHUMA (pessoa não tem permissão no módulo)
+ * - [...]  = só essas unidadeIds
+ *
+ * Uso: filtrar dados (gorjetas, empregados, etc) pelas unidades retornadas.
+ * Função `null` é o caso "ampla" — escopo de unidade não aplica.
+ */
+export function unidadesAcessiveis(
+  pessoa: Pessoa | null,
+  restaurantId: string,
+  moduleId: ModuleId,
+): string[] | null {
+  if (!pessoa) return [];
+  if (pessoa.isMaster) return null;
+  const p = pessoa.permissions?.[restaurantId]?.[moduleId];
+  if (!p || (!p.ver && !p.configurar)) return [];
+  // Sem campo unidades ou vazio = todas
+  if (!p.unidades || p.unidades.length === 0) return null;
+  return p.unidades;
+}
+
+/**
+ * Pode acessar (ver/configurar) o módulo NESSA unidade específica?
+ * Retorna true se: master, ou se a pessoa tem a permissão geral E
+ * (a permissão é ampla OU a unidadeId está no escopo).
+ */
+export function canVerNaUnidade(
+  pessoa: Pessoa | null,
+  restaurantId: string,
+  moduleId: ModuleId,
+  unidadeId: string | null | undefined,
+): boolean {
+  if (!pessoa) return false;
+  if (pessoa.isMaster) return true;
+  if (!canVer(pessoa, restaurantId, moduleId)) return false;
+  const unidades = unidadesAcessiveis(pessoa, restaurantId, moduleId);
+  if (unidades === null) return true;  // ampla
+  if (!unidadeId) return true;          // dado sem unidade — todos veem (single-rest fallback)
+  return unidades.includes(unidadeId);
+}
+
 // ── Aliases legados (mantidos enquanto refatoramos as páginas) ────────────────
 // Use `canVer` e `canConfigurar` em código novo.
 export const canUse = canVer;

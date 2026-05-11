@@ -4,7 +4,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from "fi
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfig, canUse } from "../../core/auth/permissions";
+import { canConfig, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -103,9 +103,14 @@ export function GorjetasPage() {
     const unsub = onSnapshot(q, (snap) => {
       const inicio = `${ano}-${pad2(mes)}-01`;
       const fim    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
-      const list = snap.docs
+      let list = snap.docs
         .map(d => ({ id: d.id, ...d.data() }) as Gorjeta)
         .filter(g => g.date >= inicio && g.date <= fim);
+      // Filtra pelo escopo de unidade da permissão (se restrito)
+      const escopo = unidadesAcessiveis(me, rid, "gorjetas");
+      if (escopo !== null) {
+        list = list.filter(g => !g.unidadeId || escopo.includes(g.unidadeId));
+      }
       list.sort((a, b) => a.date.localeCompare(b.date));
       setGorjetas(list);
       setLoading(false);
@@ -115,7 +120,12 @@ export function GorjetasPage() {
 
   // Multi-unidades
   const usaMultiUnidades = !!activeRestaurant?.multiUnidades;
-  const unidades = activeRestaurant?.unidades || [];
+  const todasUnidades = activeRestaurant?.unidades || [];
+  // Escopo de permissão de gorjetas — se ampla, mostra todas; senão filtra
+  const escopoUnidades = unidadesAcessiveis(me, rid, "gorjetas");
+  const unidades = escopoUnidades === null
+    ? todasUnidades
+    : todasUnidades.filter(u => escopoUnidades.includes(u.id));
   const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
 
   // Key da gorjeta na map:

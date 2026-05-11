@@ -16,6 +16,9 @@ export type ModuleId =
 export type ModulePermission = {
   ver: boolean;        // pode visualizar o módulo (read)
   configurar: boolean; // pode configurar / editar (write)
+  // Multi-unidades: escopo da permissão. undefined ou vazio = TODAS as unidades
+  // (e qualquer dado sem unidade). Preenchido = só essas.
+  unidades?: string[];
 };
 
 export type RestaurantPermissions = {
