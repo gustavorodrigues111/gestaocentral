@@ -100,6 +100,110 @@ async function main() {
     console.log();
   }
 
+  // ─── Sample de 1 employee do AppTip ─────────────────────────────────────
+  if (employeesApptip.length > 0) {
+    console.log("📋 Exemplo de employee no AppTip (campos disponíveis):");
+    const sampleEmp = employeesApptip[0];
+    Object.keys(sampleEmp).forEach(k => {
+      let val = sampleEmp[k];
+      if (typeof val === "object" && val !== null) {
+        val = JSON.stringify(val).slice(0, 80);
+      } else if (typeof val === "string" && val.length > 80) {
+        val = val.slice(0, 80) + "...";
+      }
+      console.log(`   ${k.padEnd(20)} ${val ?? "(null)"}`);
+    });
+    console.log();
+  }
+
+  // ─── Sample de 1 role do AppTip ──────────────────────────────────────────
+  const rolesApptipDoc = await apptipDb.doc("appdata/v4:roles").get();
+  const rolesApptip = rolesApptipDoc.exists ? (rolesApptipDoc.data()?.value || []) : [];
+  console.log(`📋 ${rolesApptip.length} cargos no AppTip.`);
+  if (rolesApptip.length > 0) {
+    console.log("    Exemplo de cargo:");
+    const sampleRole = rolesApptip[0];
+    Object.keys(sampleRole).forEach(k => {
+      let val = sampleRole[k];
+      if (typeof val === "object" && val !== null) {
+        val = JSON.stringify(val).slice(0, 80);
+      }
+      console.log(`       ${k.padEnd(18)} ${val ?? "(null)"}`);
+    });
+    console.log();
+  }
+
+  // ─── Lista TODOS os docs em /appdata pra descobrir nomes reais ───────────
+  console.log("📋 Todos os docs em /appdata (pra descobrir chaves):");
+  const appdataSnap = await apptipDb.collection("appdata").get();
+  const allDocIds = appdataSnap.docs.map(d => d.id).sort();
+  // Filtra os que parecem relevantes pra migração
+  const interessantes = allDocIds.filter(id =>
+    /work|schedule|horario|vt|tip|employee|cargo|role|pessoa|empregado/i.test(id)
+  );
+  console.log("    Docs relevantes:");
+  interessantes.forEach(id => console.log(`       ${id}`));
+  console.log(`    (total: ${allDocIds.length} docs em /appdata)`);
+  console.log();
+
+  // ─── workSchedules: lê bruto e mostra a estrutura (array OU map) ─────────
+  const wsDoc = await apptipDb.doc("appdata/v4:workSchedules").get();
+  let wsApptip = [];
+  if (wsDoc.exists) {
+    const data = wsDoc.data() || {};
+    console.log(`📋 Doc /appdata/v4:workSchedules — top-level keys: ${Object.keys(data).join(", ")}`);
+    const raw = data.value;
+    if (Array.isArray(raw)) {
+      wsApptip = raw;
+      console.log(`    Formato: array com ${raw.length} itens`);
+    } else if (raw && typeof raw === "object") {
+      const entries = Object.entries(raw);
+      console.log(`    Formato: objeto/map com ${entries.length} chaves`);
+      // Converte pra array adicionando o key como _key
+      wsApptip = entries.map(([k, v]) => ({ _key: k, ...(typeof v === "object" ? v : { value: v }) }));
+    } else {
+      console.log(`    Formato inesperado: ${typeof raw}`);
+    }
+    if (wsApptip.length > 0) {
+      console.log("    Primeiro item (JSON completo):");
+      console.log("    " + JSON.stringify(wsApptip[0], null, 2).split("\n").join("\n    "));
+      console.log();
+      if (wsApptip.length > 1) {
+        console.log("    Segundo item (pra ver se varia):");
+        console.log("    " + JSON.stringify(wsApptip[1], null, 2).split("\n").join("\n    "));
+        console.log();
+      }
+    }
+  } else {
+    console.log("⚠️ Doc /appdata/v4:workSchedules não existe.\n");
+  }
+
+  // ─── VT config: ver se existe estrutura ────────────────────────────────
+  const vtCfgDoc = await apptipDb.doc("appdata/v4:vtConfig").get();
+  if (vtCfgDoc.exists) {
+    const data = vtCfgDoc.data() || {};
+    console.log(`📋 Doc /appdata/v4:vtConfig — top-level keys: ${Object.keys(data).join(", ")}`);
+    const raw = data.value;
+    if (raw) {
+      const sample = Array.isArray(raw) ? raw[0] : (typeof raw === "object" ? Object.entries(raw)[0] : raw);
+      console.log("    Sample:");
+      console.log("    " + JSON.stringify(sample, null, 2).split("\n").join("\n    "));
+      console.log();
+    }
+  }
+
+  // ─── Compatibilidade: contagem por restaurante ──────────────────────────
+  console.log("📊 Por restaurante do AppTip:");
+  for (const r of restApptip) {
+    const emps = employeesApptip.filter(e => e.restaurantId === r.id);
+    const empIds = new Set(emps.map(e => e.id));
+    const wsCount = Array.isArray(wsApptip)
+      ? wsApptip.filter(w => empIds.has(w.employeeId) || empIds.has(w.empId) || empIds.has(w.id)).length
+      : 0;
+    console.log(`   ${(r.name || r.nome || "?").padEnd(28)} employees: ${emps.length}, com horário: ${wsCount}`);
+  }
+  console.log();
+
   console.log("✅ Inspeção concluída.\n");
   console.log("📝 Pra migrar pessoas, anote os 2 IDs (AppTip + Planejamento) do");
   console.log("   restaurante que quer migrar e rode:");

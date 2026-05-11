@@ -6,7 +6,9 @@
   "description": "Scripts de migração de dados do AppTip (gorjeta-app) pro Planejamento (gestaocentral)",
   "scripts": {
     "listar": "node listar.mjs",
-    "migrar:pessoas": "node migrar-pessoas.mjs"
+    "migrar:pessoas": "node migrar-pessoas.mjs",
+    "migrar:empregados": "node migrar-empregados.mjs",
+    "migrar:horarios": "node migrar-horarios.mjs"
   },
   "dependencies": {
     "firebase-admin": "^12.7.0",
