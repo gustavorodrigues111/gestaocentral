@@ -106,6 +106,11 @@ export type Empregado = {
   vtPassagensPorDia?: number;
   vtValorPassagem?: number;
 
+  // Multi-unidades — só faz sentido quando restaurante.multiUnidades = true.
+  // Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade
+  // (pode ser sobrescrito dia a dia).
+  unidadePadraoId?: string | null;
+
   // Horários de trabalho — array versionado por validFrom (asc)
   workSchedules?: WorkSchedule[];
 
@@ -208,6 +213,32 @@ export type EscalaMes = {
 
 // ─── ENTIDADES PRINCIPAIS ───
 
+// Multi-unidades: restaurante pode operar em N endereços físicos (Matriz,
+// Filial, Cozinha de Produção). Quando `multiUnidades=true`, escala/gorjeta
+// passam a registrar em qual unidade o trabalho/arrecadação aconteceu.
+//
+// Tipos de unidade:
+//   - "atendimento": arrecada gorjeta (Matriz, Filial)
+//   - "producao":    NÃO arrecada — empregados que trabalham aqui entram
+//                    na divisão de gorjeta de todas as unidades de atendimento
+//                    do dia (se tiverem cargo com recebeProducao=true)
+
+export type UnidadeTipo = "atendimento" | "producao";
+
+export const UNIDADE_TIPO_LABEL: Record<UnidadeTipo, string> = {
+  atendimento: "Atendimento",
+  producao:    "Produção",
+};
+
+export type Unidade = {
+  id: string;
+  nome: string;                     // ex: "Matriz", "Filial", "Cozinha"
+  tipo: UnidadeTipo;
+  cnpj?: string;                    // opcional — pode compartilhar CNPJ com outras
+  ordem: number;
+  ativa: boolean;
+};
+
 export type Restaurant = {
   id: string;
   nome: string;
@@ -223,6 +254,11 @@ export type Restaurant = {
   whatsappOperacional?: string;
   serviceStartDate?: string;
   modulosAtivos: ModuleId[];
+
+  // Multi-unidades. Default false — restaurante single-unidade não vê nada
+  // disso na UI e o sistema funciona como antes.
+  multiUnidades?: boolean;
+  unidades?: Unidade[];
 
   // Portal do Empregado: o que aparece pra empregado registrado deste restaurante
   portalEmpregado?: {

@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestor
 import { registrarAdmissao, registrarMudancaCargo } from "../trilha/autoEventos";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -24,6 +25,8 @@ type Props = {
 
 export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved }: Props) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const restaurant = restaurants.find(r => r.id === restaurantId);
   // State local pro empregado: começa = prop. Após criar, vira o empregado novo
   // pra a aba Horários ficar disponível inline (sem precisar fechar/reabrir).
   const [empregado, setEmpregado] = useState<Empregado | null>(empregadoProp);
@@ -34,7 +37,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     (a.area || "").localeCompare(b.area || "") || a.nome.localeCompare(b.nome)
   );
 
+  // Unidades disponíveis (só relevante se restaurante tem multi-unidades)
+  const usaMultiUnidades = !!restaurant?.multiUnidades;
+  const unidadesAtivas = (restaurant?.unidades || []).filter(u => u.ativa);
+
   const [cargoId, setCargoId] = useState<string>(empregado?.cargoId || cargosAtivos[0]?.id || "");
+  const [unidadePadraoId, setUnidadePadraoId] = useState<string>(
+    empregado?.unidadePadraoId || ""
+  );
   const [admissao, setAdmissao] = useState<string>(
     empregado?.admissaoAtual || todayYmd()
   );
@@ -127,6 +137,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     if ((empregado.codigoContabil || null) !== (codigoContabil.trim() || null)) nonCritical.codigoContabil = codigoContabil.trim() || null;
     if ((empregado.emergenciaNome || null) !== (emergenciaNome.trim() || null)) nonCritical.emergenciaNome = emergenciaNome.trim() || null;
     if ((empregado.emergenciaTelefone || null) !== (emergenciaTelefone.trim() || null)) nonCritical.emergenciaTelefone = emergenciaTelefone.trim() || null;
+    // Unidade padrão: não afeta cálculo retroativo (só novos lançamentos de escala)
+    const novoUnidadePadrao = usaMultiUnidades ? (unidadePadraoId || null) : null;
+    if ((empregado.unidadePadraoId || null) !== novoUnidadePadrao) {
+      nonCritical.unidadePadraoId = novoUnidadePadrao;
+    }
     return { criticas, nonCritical };
   }
 
@@ -180,6 +195,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
           cargoId,
+          unidadePadraoId: usaMultiUnidades ? (unidadePadraoId || null) : null,
           empCode: empCode.trim() || null,
           codigoContabil: codigoContabil.trim() || null,
           emergenciaNome: emergenciaNome.trim() || null,
@@ -416,6 +432,27 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </p>
           )}
         </div>
+
+        {usaMultiUnidades && unidadesAtivas.length > 0 && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade padrão</label>
+            <select
+              value={unidadePadraoId}
+              onChange={(e) => setUnidadePadraoId(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 mt-1"
+            >
+              <option value="">— sem padrão —</option>
+              {unidadesAtivas.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.nome} {u.tipo === "producao" ? "(Produção)" : ""}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade. Pode ser alterado dia a dia.
+            </p>
+          </div>
+        )}
 
         <Input
           label="Data de admissão *"

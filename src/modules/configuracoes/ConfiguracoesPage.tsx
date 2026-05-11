@@ -8,7 +8,8 @@ import { canConfig } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
-import type { ModuleArea, ModuleId } from "../../core/types";
+import { UNIDADE_TIPO_LABEL } from "../../core/types";
+import type { ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
 
 export function ConfiguracoesPage() {
@@ -144,6 +145,23 @@ export function ConfiguracoesPage() {
           <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
           {savedAt && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo às {savedAt}</span>}
         </div>
+      </section>
+
+      {/* Unidades */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">🏢 Unidades</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Use múltiplas unidades quando seu restaurante tem mais de um endereço
+          (matriz + filial, ou casa principal + cozinha de produção).
+          Cada unidade vai aparecer na escala e gorjeta com seus próprios dados.
+        </p>
+        <UnidadesForm
+          rid={rid}
+          atual={{
+            multiUnidades: activeRestaurant.multiUnidades || false,
+            unidades: activeRestaurant.unidades || [],
+          }}
+        />
       </section>
 
       {/* Carga horária */}
@@ -373,4 +391,169 @@ function hhmmToMin(s: string): number | null {
   const m = s.trim().match(/^(\d{1,3}):([0-5]?\d)$/);
   if (!m) return null;
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Unidades — toggle + CRUD inline (Matriz, Filial, Produção, etc)
+// ────────────────────────────────────────────────────────────────────────────
+
+function UnidadesForm({ rid, atual }: {
+  rid: string;
+  atual: { multiUnidades: boolean; unidades: Unidade[] };
+}) {
+  const [multi, setMulti] = useState(atual.multiUnidades);
+  const [unidades, setUnidades] = useState<Unidade[]>(atual.unidades || []);
+  const [saving, setSaving] = useState(false);
+  const [savedAt, setSavedAt] = useState("");
+  const [err, setErr] = useState("");
+
+  function addUnidade() {
+    const id = `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    setUnidades(s => [...s, {
+      id,
+      nome: "",
+      tipo: "atendimento",
+      cnpj: undefined,
+      ordem: s.length + 1,
+      ativa: true,
+    }]);
+  }
+
+  function updateUnidade(id: string, patch: Partial<Unidade>) {
+    setUnidades(s => s.map(u => u.id === id ? { ...u, ...patch } : u));
+  }
+
+  function removerUnidade(id: string) {
+    if (!confirm("Remover essa unidade? Empregados/escalas com essa unidade ficam com o ID solto.")) return;
+    setUnidades(s => s.filter(u => u.id !== id));
+  }
+
+  async function salvar() {
+    setErr("");
+
+    if (multi) {
+      // Valida: pelo menos 2 unidades, sem nomes vazios, sem duplicatas
+      if (unidades.length < 2) {
+        setErr("Pra ativar múltiplas unidades, cadastre pelo menos 2.");
+        return;
+      }
+      const semNome = unidades.find(u => !u.nome.trim());
+      if (semNome) { setErr("Toda unidade precisa ter nome."); return; }
+      const nomes = unidades.map(u => u.nome.trim().toLowerCase());
+      if (new Set(nomes).size !== nomes.length) {
+        setErr("Nomes de unidade duplicados — cada unidade precisa ter nome único.");
+        return;
+      }
+    }
+
+    setSaving(true);
+    try {
+      await updateDoc(doc(db, "restaurants", rid), {
+        multiUnidades: multi,
+        unidades: multi ? unidades.map(u => ({
+          ...u,
+          nome: u.nome.trim(),
+          cnpj: u.cnpj?.trim() || undefined,
+        })) : [],
+      });
+      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+    } catch (e) {
+      console.error(e);
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <label className="flex items-center gap-2 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={multi}
+          onChange={(e) => setMulti(e.target.checked)}
+        />
+        <span className="font-medium">Esse restaurante tem múltiplas unidades</span>
+      </label>
+
+      {multi && (
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
+          {unidades.length === 0 ? (
+            <div className="text-sm text-gray-500 italic">
+              Nenhuma unidade cadastrada. Clica em "+ Adicionar unidade" abaixo.
+            </div>
+          ) : (
+            unidades.map(u => (
+              <div
+                key={u.id}
+                className={`grid grid-cols-12 gap-2 p-2 rounded-lg border ${
+                  u.ativa
+                    ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+                    : "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 opacity-60"
+                }`}
+              >
+                <input
+                  type="text"
+                  value={u.nome}
+                  onChange={(e) => updateUnidade(u.id, { nome: e.target.value })}
+                  placeholder="Nome (ex: Matriz)"
+                  className="col-span-4 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                />
+                <select
+                  value={u.tipo}
+                  onChange={(e) => updateUnidade(u.id, { tipo: e.target.value as UnidadeTipo })}
+                  className="col-span-3 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                >
+                  <option value="atendimento">{UNIDADE_TIPO_LABEL.atendimento}</option>
+                  <option value="producao">{UNIDADE_TIPO_LABEL.producao}</option>
+                </select>
+                <input
+                  type="text"
+                  value={u.cnpj || ""}
+                  onChange={(e) => updateUnidade(u.id, { cnpj: e.target.value })}
+                  placeholder="CNPJ (opcional)"
+                  className="col-span-3 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                />
+                <label className="col-span-1 flex items-center justify-center gap-1 text-xs cursor-pointer" title="Ativa">
+                  <input
+                    type="checkbox"
+                    checked={u.ativa}
+                    onChange={(e) => updateUnidade(u.id, { ativa: e.target.checked })}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => removerUnidade(u.id)}
+                  className="col-span-1 text-rose-600 hover:text-rose-700 text-sm"
+                  title="Remover"
+                >
+                  ×
+                </button>
+              </div>
+            ))
+          )}
+
+          <Button variant="secondary" size="sm" onClick={addUnidade}>
+            + Adicionar unidade
+          </Button>
+
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-2">
+            🏪 <strong>Atendimento</strong> arrecada gorjeta dos clientes (ex: Matriz, Filial).<br />
+            🍳 <strong>Produção</strong> só prepara — não arrecada. Empregados que trabalham
+            aqui e têm cargo com "recebe produção" entram na divisão de gorjeta de todas
+            as unidades de atendimento daquele dia.
+          </p>
+        </div>
+      )}
+
+      {err && <div className="text-sm text-rose-600">{err}</div>}
+
+      <div className="flex items-center gap-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <Button onClick={salvar} disabled={saving}>
+          {saving ? "Salvando..." : "Salvar"}
+        </Button>
+        {savedAt && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ Salvo às {savedAt}</span>}
+      </div>
+    </div>
+  );
 }
