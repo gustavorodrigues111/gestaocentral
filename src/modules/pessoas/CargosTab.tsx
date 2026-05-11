@@ -12,6 +12,7 @@ import {
   AREAS, TIPOS_VINCULO, TIPO_VINCULO_LABEL, TIPOS_VINCULO_COM_PESSOA,
 } from "../../core/types";
 import type { Area, Cargo, Empregado, TipoVinculo } from "../../core/types";
+import { ImportCargosModal } from "./ImportCargosModal";
 
 type Props = { restaurantId: string };
 
@@ -22,6 +23,7 @@ export function CargosTab({ restaurantId }: Props) {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Cargo | "new" | null>(null);
   const [filtroAtivos, setFiltroAtivos] = useState<"ativos" | "inativos" | "todos">("ativos");
+  const [importing, setImporting] = useState(false);
   const podeConfig = canConfigurar(me, restaurantId, "pessoas");
 
   // Carrega cargos
@@ -87,7 +89,12 @@ export function CargosTab({ restaurantId }: Props) {
           {filtered.length} cargo(s)
         </p>
         {podeConfig && (
-          <Button onClick={() => setEditing("new")}>+ Novo cargo</Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setImporting(true)} title="Importar cargos via CSV (migração do AppTip)">
+              📥 Importar CSV
+            </Button>
+            <Button onClick={() => setEditing("new")}>+ Novo cargo</Button>
+          </div>
         )}
       </div>
 
@@ -154,6 +161,14 @@ export function CargosTab({ restaurantId }: Props) {
           restaurantId={restaurantId}
           empregadosAtivos={editing === "new" ? 0 : (empregadosAtivosPorCargo[editing.id]?.length || 0)}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {importing && (
+        <ImportCargosModal
+          cargosExistentes={cargos}
+          restaurantId={restaurantId}
+          onClose={() => setImporting(false)}
         />
       )}
     </div>
