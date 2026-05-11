@@ -6,6 +6,7 @@ import { canConfigurar } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { PessoaModal } from "./PessoaModal";
+import { VincularPessoaModal } from "./VincularPessoaModal";
 import type { Cargo, Empregado, Pessoa } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 
@@ -24,6 +25,7 @@ export function PessoasList({ restaurantId }: Props) {
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("ativas");
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
   const [editing, setEditing] = useState<Pessoa | "new" | null>(null);
+  const [vinculando, setVinculando] = useState(false);
   const podeConfig = canConfigurar(me, restaurantId, "pessoas");
 
   // Pessoas com acesso a esse restaurante
@@ -91,7 +93,12 @@ export function PessoasList({ restaurantId }: Props) {
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} pessoa(s)</p>
         {podeConfig && (
-          <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={() => setVinculando(true)} title="Vincular pessoa já cadastrada em outro restaurante">
+              🔗 Vincular existente
+            </Button>
+            <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>
+          </div>
         )}
       </div>
 
@@ -179,6 +186,13 @@ export function PessoasList({ restaurantId }: Props) {
           pessoa={editing === "new" ? null : editing}
           restaurantId={restaurantId}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {vinculando && (
+        <VincularPessoaModal
+          restaurantId={restaurantId}
+          onClose={() => setVinculando(false)}
         />
       )}
     </div>

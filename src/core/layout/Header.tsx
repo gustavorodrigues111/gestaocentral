@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
@@ -57,6 +59,11 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       <div className="flex-1" />
 
+      {/* Badge de "novos restaurantes" — pessoa foi adicionada e ainda não viu */}
+      {pessoa && (pessoa.novosRestaurantes?.length || 0) > 0 && (
+        <NovosRestaurantesBadge pessoaId={pessoa.id} novosRids={pessoa.novosRestaurantes!} />
+      )}
+
       {/* Menu do usuário */}
       <div className="relative">
         <button
@@ -95,5 +102,82 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         />
       )}
     </header>
+  );
+}
+
+// ── Badge "Você foi adicionada a N restaurantes" ──────────────────────────
+function NovosRestaurantesBadge({ pessoaId, novosRids }: {
+  pessoaId: string;
+  novosRids: string[];
+}) {
+  const [aberto, setAberto] = useState(false);
+  const { restaurants } = useRestaurant();
+  const novos = novosRids
+    .map(rid => restaurants.find(r => r.id === rid))
+    .filter((r): r is NonNullable<typeof r> => !!r);
+
+  async function dispensar(rid?: string) {
+    try {
+      const remaining = rid
+        ? novosRids.filter(r => r !== rid)
+        : [];
+      await updateDoc(doc(db, "pessoas", pessoaId), {
+        novosRestaurantes: remaining,
+      });
+      if (remaining.length === 0) setAberto(false);
+    } catch (e) {
+      console.error("Erro ao marcar como visto:", e);
+    }
+  }
+
+  return (
+    <div className="relative mr-2">
+      <button
+        onClick={() => setAberto(o => !o)}
+        className="relative px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-amber-600 dark:text-amber-400"
+        title={`${novos.length} restaurante(s) novo(s)`}
+      >
+        📨
+        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
+          {novos.length}
+        </span>
+      </button>
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+          <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-20 p-3">
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              📨 Você foi adicionada a {novos.length} restaurante(s)
+            </div>
+            <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              {novos.map(r => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800"
+                >
+                  <span className="text-sm text-gray-900 dark:text-gray-100">{r.nome}</span>
+                  <button
+                    type="button"
+                    onClick={() => dispensar(r.id)}
+                    className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    ✓ Vi
+                  </button>
+                </div>
+              ))}
+            </div>
+            {novos.length > 1 && (
+              <button
+                type="button"
+                onClick={() => dispensar()}
+                className="w-full mt-2 px-3 py-1.5 rounded text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-700"
+              >
+                Marcar todos como vistos
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </div>
   );
 }

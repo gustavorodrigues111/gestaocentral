@@ -1,0 +1,15 @@
+{
+  "name": "gestaocentral-migration",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Scripts de migração de dados do AppTip (gorjeta-app) pro Planejamento (gestaocentral)",
+  "scripts": {
+    "listar": "node listar.mjs",
+    "migrar:pessoas": "node migrar-pessoas.mjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.7.0",
+    "@google-cloud/firestore": "^7.10.0"
+  }
+}

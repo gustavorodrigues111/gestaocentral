@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -106,18 +106,44 @@ function TabIdentidade({
 
   const podeExcluir = canExcluirPessoa(me, restaurantId);
 
+  // Detecção de pessoa duplicada por CPF — quando user tenta criar nova com
+  // CPF que já existe (em qualquer restaurante). Oferece vincular em vez de
+  // criar duplicada.
+  const [duplicada, setDuplicada] = useState<Pessoa | null>(null);
+
+  function cpfLimpo(s: string): string {
+    return s.replace(/\D/g, "");
+  }
+
   async function salvar() {
     if (!form.nome.trim()) { setErr("Nome obrigatório"); return; }
+    const cpfDigits = cpfLimpo(form.cpf);
+    if (!cpfDigits) { setErr("CPF obrigatório"); return; }
+    if (cpfDigits.length !== 11) { setErr("CPF inválido — precisa de 11 dígitos"); return; }
     if (!me) return;
     setErr("");
+    setDuplicada(null);
     setSaving(true);
     try {
       const now = new Date().toISOString();
       if (isNew) {
+        // Verifica se já existe Pessoa com esse CPF
+        const dupQ = query(
+          collection(db, "pessoas"),
+          where("cpf", "==", cpfDigits),
+          limit(1),
+        );
+        const dupSnap = await getDocs(dupQ);
+        if (!dupSnap.empty) {
+          const existente = { id: dupSnap.docs[0].id, ...dupSnap.docs[0].data() } as Pessoa;
+          setDuplicada(existente);
+          setSaving(false);
+          return;
+        }
         const ref = await addDoc(collection(db, "pessoas"), {
           email: form.email.trim().toLowerCase(),
           nome: form.nome.trim(),
-          cpf: form.cpf.trim() || null,
+          cpf: cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
           isMaster: false,
           restaurantIds: [restaurantId],
@@ -134,11 +160,25 @@ function TabIdentidade({
         });
         onCreated();
       } else {
+        // Editando — checa se outro doc tem o mesmo CPF (não o próprio)
+        const dupQ = query(
+          collection(db, "pessoas"),
+          where("cpf", "==", cpfDigits),
+          limit(2),
+        );
+        const dupSnap = await getDocs(dupQ);
+        const conflito = dupSnap.docs.find(d => d.id !== pessoa.id);
+        if (conflito) {
+          setErr(`CPF já está cadastrado em outra pessoa (${(conflito.data() as Pessoa).nome}).`);
+          setSaving(false);
+          return;
+        }
         const update: Record<string, unknown> = {
           email: form.email.trim().toLowerCase(),
           nome: form.nome.trim(),
-          cpf: form.cpf.trim() || null,
+          cpf: cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
+          cadastroIncompleto: false,  // CPF preenchido manualmente → completo
         };
         await updateDoc(doc(db, "pessoas", pessoa.id), update);
         await logAudit({
@@ -150,6 +190,34 @@ function TabIdentidade({
         });
         setSavedAt(new Date().toLocaleTimeString("pt-BR"));
       }
+    } catch (e) {
+      console.error(e);
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function vincularDuplicada() {
+    if (!duplicada || !me) return;
+    setSaving(true);
+    try {
+      const atualizadas = Array.from(new Set([...(duplicada.restaurantIds || []), restaurantId]));
+      const novosRest = Array.from(new Set([...(duplicada.novosRestaurantes || []), restaurantId]));
+      await updateDoc(doc(db, "pessoas", duplicada.id), {
+        restaurantIds: atualizadas,
+        novosRestaurantes: novosRest,
+      });
+      await logAudit({
+        entityType: "pessoa",
+        entityId: duplicada.id,
+        restaurantId,
+        acao: "alterado",
+        motivo: "Vinculada a novo restaurante (CPF já existente)",
+        registradoPor: me.id,
+      });
+      setDuplicada(null);
+      onCreated();
     } catch (e) {
       console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");
@@ -171,6 +239,33 @@ function TabIdentidade({
         </div>
       )}
 
+      {pessoa?.cadastroIncompleto && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+          ⚠ <strong>Cadastro incompleto</strong> — preencha o CPF pra ativar o vínculo desta pessoa.
+        </div>
+      )}
+
+      {duplicada && (
+        <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-800 px-3 py-2 text-sm">
+          <div className="font-medium text-blue-900 dark:text-blue-200 mb-1">
+            👤 Essa pessoa já está cadastrada
+          </div>
+          <div className="text-blue-800 dark:text-blue-300 text-xs mb-2">
+            <strong>{duplicada.nome}</strong> (CPF {duplicada.cpf}) já existe em{" "}
+            {duplicada.restaurantIds?.length || 0} restaurante(s).
+            {" "}Quer vincular ela a este também?
+          </div>
+          <div className="flex gap-2">
+            <Button size="sm" onClick={vincularDuplicada} disabled={saving}>
+              ✓ Sim, vincular
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setDuplicada(null)} disabled={saving}>
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3">
         <Input
           label="Nome completo *"
@@ -186,7 +281,7 @@ function TabIdentidade({
           placeholder="pessoa@exemplo.com"
         />
         <Input
-          label="CPF"
+          label="CPF *"
           value={form.cpf}
           onChange={(e) => setForm({ ...form, cpf: e.target.value })}
           placeholder="000.000.000-00"

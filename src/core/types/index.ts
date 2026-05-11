@@ -296,15 +296,24 @@ export type Restaurant = {
 };
 
 export type Pessoa = {
-  id: string;                  // = uid Firebase Auth
+  id: string;                  // = uid Firebase Auth (ou autoid em pré-cadastros)
   email: string;
   nome: string;
-  cpf?: string;
+  cpf?: string;                // obrigatório na UI nova; opcional só pra docs migrados sem CPF
   whatsapp?: string;
   isMaster: boolean;
   restaurantIds: string[];
   permissions: { [restaurantId: string]: RestaurantPermissions };
   specialPermissions?: { [restaurantId: string]: PessoaSpecialPermissions };
+
+  // "Convite simplificado": quando a pessoa é vinculada a um restaurante novo,
+  // o rid entra aqui pra virar um badge "📨 Você foi adicionada a X" no header
+  // dela. Ela vê, clica em "ok, vi", e o rid sai dessa lista.
+  novosRestaurantes?: string[];
+
+  // Cadastro incompleto: importação trouxe pessoa sem CPF — admin precisa
+  // completar antes de algum fluxo crítico (signup, login, etc).
+  cadastroIncompleto?: boolean;
 
   // Status de acesso
   ativa: boolean;              // false = bloqueio imediato (polling 30s detecta)
