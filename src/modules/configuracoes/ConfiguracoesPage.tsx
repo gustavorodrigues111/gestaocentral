@@ -413,7 +413,7 @@ function UnidadesForm({ rid, atual }: {
       id,
       nome: "",
       tipo: "atendimento",
-      cnpj: undefined,
+      cnpj: "",
       ordem: s.length + 1,
       ativa: true,
     }]);
@@ -448,13 +448,22 @@ function UnidadesForm({ rid, atual }: {
 
     setSaving(true);
     try {
+      // Constrói cada unidade omitindo cnpj quando vazio (Firestore rejeita undefined).
+      const unidadesPersist: Unidade[] = multi ? unidades.map(u => {
+        const cnpjLimpo = (u.cnpj || "").trim();
+        const out: Unidade = {
+          id: u.id,
+          nome: u.nome.trim(),
+          tipo: u.tipo,
+          ordem: u.ordem,
+          ativa: u.ativa,
+        };
+        if (cnpjLimpo) out.cnpj = cnpjLimpo;
+        return out;
+      }) : [];
       await updateDoc(doc(db, "restaurants", rid), {
         multiUnidades: multi,
-        unidades: multi ? unidades.map(u => ({
-          ...u,
-          nome: u.nome.trim(),
-          cnpj: u.cnpj?.trim() || undefined,
-        })) : [],
+        unidades: unidadesPersist,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
