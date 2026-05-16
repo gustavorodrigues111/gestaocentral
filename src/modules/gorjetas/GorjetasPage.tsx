@@ -306,7 +306,8 @@ function ListaDiasInline({
     ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
     : [{ id: "", nome: "" }];
 
-  // Estado local pros inputs (string com vírgula). Sincroniza com gorjetaMap.
+  // Estado local pros inputs (em edição, valor raw que o user está digitando).
+  // Quando NÃO está em edição, o display vem formatado com pt-BR (2.953,36).
   const [valorInputs, setValorInputs] = useState<Record<string, string>>({});
 
   function keyFor(date: string, unidadeId: string) {
@@ -315,11 +316,21 @@ function ListaDiasInline({
   function docIdFor(date: string, unidadeId: string) {
     return unidadeId ? `${rid}_${date}_${unidadeId}` : `${rid}_${date}`;
   }
+  // Formata número como string pt-BR com separador de milhar (sem R$).
+  function fmtMoneyInput(n: number): string {
+    if (!n) return "";
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Parse "2.953,36" ou "2953.36" ou "2953,36" → 2953.36
+  function parseMoneyInput(s: string): number {
+    const clean = (s || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    return parseFloat(clean) || 0;
+  }
   function valorEditado(date: string, unidadeId: string): string {
     const k = keyFor(date, unidadeId);
-    if (k in valorInputs) return valorInputs[k];
+    if (k in valorInputs) return valorInputs[k];   // user digitando agora
     const g = gorjetaMap[k];
-    return g && g.valorBruto > 0 ? String(g.valorBruto).replace(".", ",") : "";
+    return g && g.valorBruto > 0 ? fmtMoneyInput(g.valorBruto) : "";
   }
 
   async function gravar(date: string, unidadeId: string, fields: Partial<Gorjeta>) {
@@ -352,8 +363,11 @@ function ListaDiasInline({
 
   async function salvarValor(date: string, unidadeId: string, raw: string) {
     if (!podeEditar) return;
-    const v = parseFloat((raw || "").replace(",", ".")) || 0;
+    const v = parseMoneyInput(raw);
+    const k = keyFor(date, unidadeId);
     await gravar(date, unidadeId, { valorBruto: Math.round(v * 100) / 100, semGorjeta: false });
+    // Limpa o state local — próximo render usa o valor formatado do gorjetaMap
+    setValorInputs(s => { const c = { ...s }; delete c[k]; return c; });
   }
   async function toggleSemGorjeta(date: string, unidadeId: string) {
     if (!podeEditar) return;
