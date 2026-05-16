@@ -23,13 +23,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   }
 
   return (
-    <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-4 gap-4">
-      <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900">
+    <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 overflow-hidden">
+      <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 text-xl leading-none">
         ☰
       </button>
 
-      <div className="flex items-center gap-2">
-        <span className="text-lg font-bold text-gray-900 dark:text-gray-100">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
           {subdomainLocked && activeRestaurant ? activeRestaurant.nome : "Planejamento"}
         </span>
       </div>
@@ -39,7 +39,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         <select
           value={activeRestaurant?.id || ""}
           onChange={(e) => changeRestaurant(e.target.value)}
-          className="ml-4 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer"
+          className="ml-1 sm:ml-4 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer max-w-[120px] sm:max-w-none truncate min-w-0"
         >
           {restaurants.map(r => (
             <option key={r.id} value={r.id}>{r.nome}</option>
@@ -47,30 +47,31 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </select>
       )}
 
+      {/* "+ Restaurante" — só desktop */}
       {!subdomainLocked && isMaster && (
         <button
           onClick={() => setShowNewRest(true)}
           title="Novo restaurante"
-          className="px-2 py-1 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+          className="hidden sm:inline-flex px-2 py-1 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex-shrink-0"
         >
           + Restaurante
         </button>
       )}
 
-      <div className="flex-1" />
+      <div className="flex-1 min-w-0" />
 
       {/* Badge de "novos restaurantes" — pessoa foi adicionada e ainda não viu */}
       {pessoa && (pessoa.novosRestaurantes?.length || 0) > 0 && (
         <NovosRestaurantesBadge pessoaId={pessoa.id} novosRids={pessoa.novosRestaurantes!} />
       )}
 
-      {/* Menu do usuário */}
-      <div className="relative">
+      {/* Menu do usuário — flex-shrink-0 garante que o avatar SEMPRE fica visível */}
+      <div className="relative flex-shrink-0">
         <button
           onClick={() => setMenuOpen(o => !o)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+          className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
         >
-          <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold">
+          <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 flex items-center justify-center text-sm font-semibold flex-shrink-0">
             {(pessoa?.nome || fbUser?.email || "?")[0].toUpperCase()}
           </div>
           <span className="text-sm text-gray-700 dark:text-gray-200 hidden sm:inline">
