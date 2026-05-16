@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
-import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
+import { calcularDivisaoDia } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
 
