@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";  // pra checar isMaster
@@ -115,6 +115,13 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
     setPercentages(p => ({ ...p, [area]: cfg }));
   }
 
+  // Calcula o dia anterior (effectiveUntil da regra atual = nova.from - 1 dia)
+  function diaAnterior(ymd: string): string {
+    const [y, m, d] = ymd.split("-").map(Number);
+    const dt = new Date(y, m - 1, d - 1);
+    return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+  }
+
   async function salvar() {
     if (!me) return;
     if (!podeConfigurarRegra) {
@@ -125,6 +132,12 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
     const tax = parseFloat((taxRate || "").replace(",", ".")) || 0;
     if (tax < 0 || tax > 100) { setErr("Retenção entre 0 e 100"); return; }
     if (!effectiveFrom) { setErr("Data de vigência obrigatória"); return; }
+    // Invariante de produto: nova regra só pode começar APÓS o início da atual.
+    // Se permitido < ou =, a anterior teria que encerrar em data inexistente.
+    if (versaoVigente && effectiveFrom <= versaoVigente.effectiveFrom) {
+      setErr(`Nova regra precisa começar DEPOIS de ${versaoVigente.effectiveFrom} (data de início da regra atual).`);
+      return;
+    }
     setErr("");
     setSaving(true);
     try {
@@ -132,6 +145,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
       const novaVersao: Omit<SplitVersion, "id"> = {
         restaurantId: rid,
         effectiveFrom,
+        effectiveUntil: null,        // vigente indefinidamente até nova suceder
         mode,
         ...(mode === "area_points" ? { percentages } : {}),
         taxRate: tax,
@@ -144,11 +158,11 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
         createdAt: now,
         createdBy: me.id,
       };
-      // Marca versões anteriores ativas como superseded (só pra ficar limpo)
-      for (const v of versions) {
-        if (v.status === "active" && v.effectiveFrom < effectiveFrom) {
-          // Mantém — ela ainda foi vigente até effectiveFrom-1 (resolvido por getActive)
-        }
+      // Encerra a regra atual em (nova.from - 1) — invariante de cobertura contínua
+      if (versaoVigente) {
+        await updateDoc(doc(db, "splitVersions", versaoVigente.id), {
+          effectiveUntil: diaAnterior(effectiveFrom),
+        });
       }
       await addDoc(collection(db, "splitVersions"), sanitizeForFirestore(novaVersao));
       await logAudit({
@@ -221,11 +235,36 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
       {tab === "editar" && (
         <>
       {/* Versão vigente */}
-      {versaoVigente && (
+      {versaoVigente ? (
         <div className="text-xs bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 text-emerald-800 dark:text-emerald-300">
-          ✓ <strong>Vigente desde {versaoVigente.effectiveFrom}.</strong>{" "}
+          ✓ <strong>Regra atual vigente desde {versaoVigente.effectiveFrom}.</strong>{" "}
           Modo: {versaoVigente.mode === "global_points" ? "Pontos Globais" : "Por Área + Pontos"}.
           Retenção: {versaoVigente.taxRate}%.
+          <div className="mt-1 text-[11px] opacity-80">
+            💡 Pra inativar esta regra, cadastre uma nova abaixo — a atual é encerrada
+            automaticamente no dia anterior à nova vigência (cobertura contínua).
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-amber-800 dark:text-amber-300">
+          ⚠ <strong>Sem regra cadastrada.</strong> Esta vai ser a primeira regra de divisão
+          deste restaurante. Datas antes da vigência ficam sem regra (gorjetas lançadas
+          nesses dias não vão dividir até que uma regra cubra).
+        </div>
+      )}
+
+      {/* Pré-visualização do "encerrar regra atual" — só com effectiveFrom válido */}
+      {versaoVigente && effectiveFrom > versaoVigente.effectiveFrom && (
+        <div className="text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 text-indigo-800 dark:text-indigo-300">
+          🔄 Ao salvar:
+          <ul className="list-disc ml-5 mt-1 space-y-0.5">
+            <li>Regra atual será <strong>encerrada em {(() => {
+              const [y, m, d] = effectiveFrom.split("-").map(Number);
+              const dt = new Date(y, m - 1, d - 1);
+              return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+            })()}</strong>.</li>
+            <li>Nova regra vale <strong>a partir de {effectiveFrom.split("-").reverse().join("/")}</strong> em diante.</li>
+          </ul>
         </div>
       )}
 
