@@ -7,11 +7,12 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { PessoaModal } from "./PessoaModal";
 import { VincularPessoaModal } from "./VincularPessoaModal";
-import type { Cargo, Empregado, Pessoa } from "../../core/types";
-import { TIPO_VINCULO_LABEL } from "../../core/types";
+import type { Area, Cargo, Empregado, Pessoa } from "../../core/types";
+import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
 
 type FiltroStatus = "ativas" | "inativas" | "todas";
 type FiltroEquipe = "todos" | "equipe" | "naoEquipe";
+type FiltroArea = "todas" | Area;
 
 type Props = { restaurantId: string };
 
@@ -24,6 +25,7 @@ export function PessoasList({ restaurantId }: Props) {
   const [search, setSearch] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("ativas");
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
+  const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
   const [editing, setEditing] = useState<Pessoa | "new" | null>(null);
   const [vinculando, setVinculando] = useState(false);
   const podeConfig = canConfigurar(me, restaurantId, "pessoas");
@@ -81,12 +83,19 @@ export function PessoasList({ restaurantId }: Props) {
       if (filtroEquipe === "equipe"    && !ehEquipe) return false;
       if (filtroEquipe === "naoEquipe" && ehEquipe) return false;
 
+      // Filtro de área: só faz sentido quando filtrando por equipe + tem cargo
+      if (filtroEquipe === "equipe" && filtroArea !== "todas") {
+        const emp = empPorPessoa[p.id];
+        const cargo = emp ? cargoMap[emp.cargoId] : null;
+        if (!cargo || cargo.area !== filtroArea) return false;
+      }
+
       if (!search.trim()) return true;
       const s = search.toLowerCase();
       return (p.nome || "").toLowerCase().includes(s)
           || (p.email || "").toLowerCase().includes(s);
     }).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
-  }, [pessoas, empPorPessoa, filtroStatus, filtroEquipe, search]);
+  }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, search]);
 
   return (
     <div>
@@ -118,10 +127,29 @@ export function PessoasList({ restaurantId }: Props) {
         ))}
         <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Tipo:</span>
         {(["todos", "equipe", "naoEquipe"] as FiltroEquipe[]).map(f => (
-          <FilterChip key={f} active={filtroEquipe === f} onClick={() => setFiltroEquipe(f)}>
+          <FilterChip key={f} active={filtroEquipe === f} onClick={() => {
+            setFiltroEquipe(f);
+            // Sair de "equipe" → reseta filtro de área (deixa de fazer sentido)
+            if (f !== "equipe") setFiltroArea("todas");
+          }}>
             {f === "todos" ? "Todos" : f === "equipe" ? "👥 Equipe" : "🧑 Só usuários"}
           </FilterChip>
         ))}
+
+        {/* Filtro de área — só aparece quando filtrando por Equipe */}
+        {filtroEquipe === "equipe" && (
+          <>
+            <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Área:</span>
+            <FilterChip active={filtroArea === "todas"} onClick={() => setFiltroArea("todas")}>
+              Todas
+            </FilterChip>
+            {AREAS.map(a => (
+              <FilterChip key={a} active={filtroArea === a} onClick={() => setFiltroArea(a)}>
+                {a === "Bar" ? "🍸 Bar" : a === "Cozinha" ? "👨‍🍳 Cozinha" : a === "Salão" ? "🍽️ Salão" : "🧹 Limpeza"}
+              </FilterChip>
+            ))}
+          </>
+        )}
       </div>
 
       {loading ? (
