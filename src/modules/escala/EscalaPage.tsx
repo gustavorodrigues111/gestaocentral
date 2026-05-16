@@ -11,7 +11,8 @@ import { Input } from "../../core/ui/Input";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade } from "../../core/types";
+import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade } from "../../core/types";
+import { AREAS } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
@@ -125,6 +126,9 @@ export function EscalaPage() {
   // Filtra por escopo de permissão de unidade — se a pessoa tem permissão
   // restrita, só mostra empregados cuja unidadePadrão está no escopo dela
   // (empregados sem unidade padrão são incluídos pra evitar "sumir" alguém).
+  // Filtro de área — "" = todas (state inicializado mais abaixo)
+  const [filtroArea, setFiltroArea] = useState<"" | Area>("");
+
   const empregadosOrdenados = useMemo(() => {
     const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
     let lista = empregadosDoMes;
@@ -134,6 +138,13 @@ export function EscalaPage() {
         lista = lista.filter(e => !e.unidadePadraoId || escopo.includes(e.unidadePadraoId));
       }
     }
+    // Filtro por área (do cargo)
+    if (filtroArea) {
+      lista = lista.filter(e => {
+        const cargo = cargoMap[e.cargoId];
+        return cargo?.area === filtroArea;
+      });
+    }
     return [...lista].sort((a, b) => {
       const ca = cargoMap[a.cargoId];
       const cb = cargoMap[b.cargoId];
@@ -142,7 +153,7 @@ export function EscalaPage() {
       if (areaA !== areaB) return areaA.localeCompare(areaB);
       return a.nome.localeCompare(b.nome);
     });
-  }, [empregadosDoMes, cargos, me, rid]);
+  }, [empregadosDoMes, cargos, me, rid, filtroArea]);
 
   const dias = daysInMonth(ano, mes);
 
@@ -320,6 +331,19 @@ export function EscalaPage() {
               ))}
             </select>
           )}
+          <select
+            value={filtroArea}
+            onChange={(e) => setFiltroArea(e.target.value as "" | Area)}
+            className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+            title="Filtrar escala por área"
+          >
+            <option value="">📊 Todas as áreas</option>
+            {AREAS.map(a => (
+              <option key={a} value={a}>
+                {a === "Bar" ? "🍸 Bar" : a === "Cozinha" ? "👨‍🍳 Cozinha" : a === "Salão" ? "🍽️ Salão" : "🧹 Limpeza"}
+              </option>
+            ))}
+          </select>
           {podeEditar && (
             <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
               🏖️ Marcar férias em lote
