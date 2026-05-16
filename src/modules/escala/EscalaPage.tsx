@@ -413,21 +413,41 @@ export function EscalaPage() {
           </p>
         </div>
       ) : (
-        <Grade
-          ano={ano}
-          mes={mes}
-          dias={dias}
-          empregados={empregadosOrdenados}
-          cargos={cargos}
-          escala={escala}
-          derivados={derivados}
-          versao={versao}
-          podeEditar={podeEditar}
-          onSetStatus={setStatusCelula}
-          unidadesAtivas={unidadesAtivas}
-          usaMultiUnidades={usaMultiUnidades}
-          filtroUnidadeId={filtroUnidadeId}
-        />
+        <>
+          {/* Desktop / Tablet: vista mensal completa (31 colunas) */}
+          <div className="hidden md:block">
+            <Grade
+              ano={ano}
+              mes={mes}
+              dias={dias}
+              empregados={empregadosOrdenados}
+              cargos={cargos}
+              escala={escala}
+              derivados={derivados}
+              versao={versao}
+              podeEditar={podeEditar}
+              onSetStatus={setStatusCelula}
+              unidadesAtivas={unidadesAtivas}
+              usaMultiUnidades={usaMultiUnidades}
+              filtroUnidadeId={filtroUnidadeId}
+            />
+          </div>
+
+          {/* Mobile: vista semanal + bottom-sheet picker pra editar */}
+          <div className="md:hidden">
+            <GradeMobile
+              ano={ano}
+              mes={mes}
+              empregados={empregadosOrdenados}
+              cargos={cargos}
+              escala={escala}
+              derivados={derivados}
+              versao={versao}
+              podeEditar={podeEditar}
+              onSetStatus={setStatusCelula}
+            />
+          </div>
+        </>
       )}
 
       {showFeriasLote && (
@@ -1058,5 +1078,264 @@ function MarcarFeriasLoteModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// GradeMobile — vista semanal (7 colunas grandes) com bottom-sheet pra edição.
+// Pensada pra celular: cada célula é clicável confortavelmente, navegação por
+// semana ←→, e tocar uma célula abre uma lista vertical com os nomes completos
+// dos status (Trabalho, Folga, Férias...) — sem decorar siglas.
+// ════════════════════════════════════════════════════════════════════════════
+
+const DOW_LABELS = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+// Retorna a Segunda da semana de uma data
+function getSegunda(date: Date): Date {
+  const d = new Date(date);
+  const dow = d.getDay(); // 0=Dom..6=Sáb
+  const diff = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + diff);
+  d.setHours(12, 0, 0, 0);
+  return d;
+}
+
+function GradeMobile({
+  ano, mes, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
+}: {
+  ano: number; mes: number;
+  empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  derivados: Record<string, { [date: string]: DerivedDay }>;
+  versao: "prevista" | "real";
+  podeEditar: boolean;
+  onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
+}) {
+  // Semana atual visível: começa na 1ª Seg que cai no mês (ou na Seg da 1ª semana ISO)
+  const [weekStart, setWeekStart] = useState<Date>(() => getSegunda(new Date(ano, mes - 1, 1)));
+
+  // Reseta quando o mês/ano muda no header
+  useEffect(() => {
+    setWeekStart(getSegunda(new Date(ano, mes - 1, 1)));
+  }, [ano, mes]);
+
+  // 7 datas a partir do weekStart
+  const dates: { iso: string; date: Date; inMes: boolean }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    const iso = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    dates.push({ iso, date: d, inMes: d.getMonth() === mes - 1 && d.getFullYear() === ano });
+  }
+
+  const [picker, setPicker] = useState<{ empId: string; date: string } | null>(null);
+  const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
+
+  function navegarSemana(delta: number) {
+    const novo = new Date(weekStart);
+    novo.setDate(novo.getDate() + delta * 7);
+    setWeekStart(novo);
+  }
+
+  const hoje = new Date();
+  const hojeYmd = `${hoje.getFullYear()}-${pad2(hoje.getMonth() + 1)}-${pad2(hoje.getDate())}`;
+
+  const empregadoPicker = picker ? empregados.find(e => e.id === picker.empId) : null;
+
+  async function aplicarStatus(status: ScheduleStatus | null) {
+    if (!picker) return;
+    await onSetStatus(picker.empId, picker.date, status);
+    setPicker(null);
+  }
+
+  // Label da semana: "12 a 18 de mai"
+  const inicio = dates[0].date;
+  const fim = dates[6].date;
+  const mesesNomes = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+  const mesIni = mesesNomes[inicio.getMonth()];
+  const mesFim = mesesNomes[fim.getMonth()];
+  const labelSemana = mesIni === mesFim
+    ? `${inicio.getDate()} a ${fim.getDate()} de ${mesIni}`
+    : `${inicio.getDate()} ${mesIni} a ${fim.getDate()} ${mesFim}`;
+
+  return (
+    <>
+      {/* Navegação de semana */}
+      <div className="flex items-center justify-between mb-3 px-1">
+        <button
+          type="button"
+          onClick={() => navegarSemana(-1)}
+          className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 active:bg-gray-100"
+        >←</button>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+          {labelSemana}
+        </div>
+        <button
+          type="button"
+          onClick={() => navegarSemana(1)}
+          className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 active:bg-gray-100"
+        >→</button>
+      </div>
+
+      {/* Tabela semanal: nome empregado (sticky left) + 7 dias */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+        {/* Header de dias */}
+        <div className="grid grid-cols-[120px_repeat(7,1fr)] gap-1 sticky top-0 z-10 bg-gray-50 dark:bg-gray-800/80 border-b border-gray-200 dark:border-gray-700 px-2 py-1.5">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Empregado</div>
+          {dates.map(({ date, iso, inMes }) => (
+            <div
+              key={iso}
+              className={`text-center ${iso === hojeYmd ? "text-indigo-600 dark:text-indigo-400" : "text-gray-600 dark:text-gray-400"}`}
+            >
+              <div className="text-[9px] uppercase font-bold">{DOW_LABELS[(date.getDay() + 6) % 7]}</div>
+              <div className={`text-sm font-bold ${!inMes ? "opacity-30" : ""}`}>{date.getDate()}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Linhas por empregado */}
+        {empregados.map((e, idx) => {
+          const cargo = cargoMap[e.cargoId];
+          const cargoPrev = idx > 0 ? cargoMap[empregados[idx - 1].cargoId] : null;
+          const isPrimeiroDaArea = cargo?.area !== cargoPrev?.area;
+          return (
+            <Fragment key={e.id}>
+              {isPrimeiroDaArea && (
+                <div className="px-2 py-1 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-100 dark:border-gray-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                    {cargo?.area || "Sem área"}
+                  </span>
+                </div>
+              )}
+              <div className="grid grid-cols-[120px_repeat(7,1fr)] gap-1 items-center px-2 py-2 border-t border-gray-100 dark:border-gray-800">
+                <div className="min-w-0 pr-1">
+                  <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
+                  <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
+                </div>
+                {dates.map(({ iso, inMes }) => {
+                  const override = escala?.[versao]?.[e.id]?.[iso];
+                  const derived = derivados[e.id]?.[iso];
+                  const status = override ?? derived?.status;
+                  const isFromOverride = !!override;
+                  const isImplicito = !override && derived?.fonte === "implicito";
+                  const info = status ? STATUS_INFO[status] : null;
+                  return (
+                    <button
+                      key={iso}
+                      type="button"
+                      disabled={!podeEditar || !inMes}
+                      onClick={() => setPicker({ empId: e.id, date: iso })}
+                      className={`relative aspect-square w-full max-w-[44px] mx-auto rounded text-[11px] font-bold ${
+                        !inMes
+                          ? "bg-transparent text-gray-300 dark:text-gray-700 cursor-not-allowed"
+                          : !status || isImplicito
+                            ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
+                            : isFromOverride
+                              ? `${info!.bg} ${info!.text}`
+                              : `${info!.bg} ${info!.text} opacity-50 border border-dashed border-gray-300 dark:border-gray-600`
+                      } ${podeEditar && inMes ? "active:scale-95 transition-transform" : ""}`}
+                    >
+                      {!inMes ? "—" : (isImplicito ? "·" : (info?.short || ""))}
+                    </button>
+                  );
+                })}
+              </div>
+            </Fragment>
+          );
+        })}
+      </div>
+
+      {/* Bottom-sheet picker */}
+      {picker && empregadoPicker && (
+        <StatusPickerSheet
+          empregadoNome={empregadoPicker.nome}
+          date={picker.date}
+          atual={escala?.[versao]?.[picker.empId]?.[picker.date]}
+          onApply={aplicarStatus}
+          onClose={() => setPicker(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function StatusPickerSheet({
+  empregadoNome, date, atual, onApply, onClose,
+}: {
+  empregadoNome: string;
+  date: string;
+  atual: ScheduleStatus | undefined;
+  onApply: (status: ScheduleStatus | null) => void;
+  onClose: () => void;
+}) {
+  const dataBr = (() => {
+    const [y, m, d] = date.split("-");
+    return `${d}/${m}/${y}`;
+  })();
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl max-h-[85vh] overflow-y-auto"
+        style={{ animation: "slideUpSheet 0.2s ease-out" }}
+      >
+        <style>{`@keyframes slideUpSheet{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
+        {/* Handle visual */}
+        <div className="flex justify-center pt-2 pb-1">
+          <div className="w-10 h-1 bg-gray-300 dark:bg-gray-600 rounded-full" />
+        </div>
+        {/* Header */}
+        <div className="px-4 pt-1 pb-3 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{empregadoNome}</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400">📅 {dataBr}</p>
+        </div>
+        {/* Lista de opções */}
+        <div className="p-2">
+          {STATUS_LIST.map(s => {
+            const info = STATUS_INFO[s];
+            const ativo = atual === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onApply(s)}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors ${
+                  ativo
+                    ? "bg-indigo-50 dark:bg-indigo-900/30 ring-2 ring-indigo-400"
+                    : "hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100"
+                }`}
+              >
+                <span className={`inline-flex items-center justify-center w-8 h-8 rounded ${info.bg} ${info.text} text-xs font-bold flex-shrink-0`}>
+                  {info.short}
+                </span>
+                <span className="flex-1 text-sm text-gray-900 dark:text-gray-100">{info.label}</span>
+                {ativo && <span className="text-indigo-600 dark:text-indigo-400 text-sm">✓</span>}
+              </button>
+            );
+          })}
+          {/* Reverter ao cadastrado */}
+          <button
+            type="button"
+            onClick={() => onApply(null)}
+            className="w-full flex items-center gap-3 px-3 py-3 mt-1 rounded-lg text-left text-gray-700 dark:text-gray-300 border-t border-gray-200 dark:border-gray-800 pt-3 hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100"
+          >
+            <span className="inline-flex items-center justify-center w-8 h-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm flex-shrink-0">↩</span>
+            <span className="flex-1 text-sm">Reverter ao cadastrado</span>
+          </button>
+        </div>
+        {/* Cancelar */}
+        <div className="px-3 py-3 border-t border-gray-200 dark:border-gray-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200 active:bg-gray-200"
+          >
+            Cancelar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
