@@ -702,17 +702,22 @@ function Grade({
         </tbody>
       </table>
 
-      {/* Barra de bulk quando há células selecionadas */}
+      {/* Barra de bulk quando há células selecionadas — fica fixa no rodapé
+          do viewport (não da página). Spacer empurra a última linha da tabela
+          pra cima pra não ficar atrás da barra. */}
       {selecionadas.size > 0 && podeEditar && (
-        <BulkActionBar
-          count={selecionadas.size}
-          onApply={aplicarBulk}
-          onClear={() => setSelecionadas(new Set())}
-          unidadesAtivas={unidadesAtivas}
-          usaMultiUnidades={usaMultiUnidades}
-          unidadeOverride={unidadeOverride}
-          onChangeUnidadeOverride={setUnidadeOverride}
-        />
+        <>
+          <div className="h-24" aria-hidden />
+          <BulkActionBar
+            count={selecionadas.size}
+            onApply={aplicarBulk}
+            onClear={() => setSelecionadas(new Set())}
+            unidadesAtivas={unidadesAtivas}
+            usaMultiUnidades={usaMultiUnidades}
+            unidadeOverride={unidadeOverride}
+            onChangeUnidadeOverride={setUnidadeOverride}
+          />
+        </>
       )}
     </div>
   );
@@ -828,61 +833,78 @@ function BulkActionBar({
   onChangeUnidadeOverride: (v: string) => void;
 }) {
   return (
-    <div className="sticky bottom-0 left-0 right-0 z-20 bg-indigo-50 dark:bg-indigo-900/40 border-t-2 border-indigo-300 dark:border-indigo-700 p-3 flex items-center gap-3 flex-wrap">
-      <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
-        ✨ {count} dia{count > 1 ? "s" : ""} selecionado{count > 1 ? "s" : ""}
-      </div>
-
-      {/* Dropdown de unidade — só aparece se multi-unidades */}
-      {usaMultiUnidades && unidadesAtivas.length > 0 && (
-        <div className="flex items-center gap-1 bg-white dark:bg-gray-800 rounded px-2 py-0.5 border border-indigo-200 dark:border-indigo-800">
-          <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">
-            🏢
-          </span>
-          <select
-            value={unidadeOverride}
-            onChange={(e) => onChangeUnidadeOverride(e.target.value)}
-            className="text-xs bg-transparent border-0 outline-none text-gray-900 dark:text-gray-100"
-            title="Unidade que será atribuída quando o status for 'Trabalho'. Vazio = usa o padrão de cada empregado."
-          >
-            <option value="">Padrão do empregado</option>
-            {unidadesAtivas.map(u => (
-              <option key={u.id} value={u.id}>{u.nome}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      <div className="flex items-center gap-2 flex-wrap flex-1">
-        {STATUS_LIST.map(s => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onApply(s)}
-            title={`${STATUS_INFO[s].label} — atalho: ${STATUS_KEY[s]}`}
-            className={`inline-flex items-center gap-1 px-2 py-1 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-xs font-bold hover:scale-105 transition-transform`}
-          >
-            <span>{STATUS_INFO[s].short}</span>
-            <span className="text-[9px] opacity-70 px-0.5 bg-black/20 rounded">{STATUS_KEY[s]}</span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => onApply(null)}
-          title="Reverter ao cadastrado em todas — atalho: ⌫"
-          className="ml-2 px-2 py-1 rounded text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-        >
-          ↩ Reverter <span className="text-[9px] opacity-60 ml-1">⌫</span>
-        </button>
-      </div>
-      <button
-        type="button"
-        onClick={onClear}
-        className="px-2 py-1 rounded text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+    <>
+      {/* Keyframe da animação de entrada da barra */}
+      <style>{`@keyframes slideUpBar{from{transform:translateY(100%);opacity:0}to{transform:translateY(0);opacity:1}}`}</style>
+      <div
+        className="fixed bottom-0 left-0 md:left-60 right-0 z-30 bg-indigo-50/95 dark:bg-indigo-900/80 backdrop-blur-sm border-t-2 border-indigo-400 dark:border-indigo-600 shadow-[0_-8px_24px_rgba(79,70,229,0.18)]"
+        style={{ animation: "slideUpBar 0.2s ease-out" }}
       >
-        ✕ Limpar <span className="text-[9px] opacity-60">ESC</span>
-      </button>
-    </div>
+        <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
+          {/* Contador prominente */}
+          <div className="flex items-center gap-1.5 bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-md">
+            <span className="text-base leading-none">✨</span>
+            <span className="text-sm">{count} dia{count > 1 ? "s" : ""}</span>
+          </div>
+
+          {/* Dropdown de unidade — só aparece se multi-unidades */}
+          {usaMultiUnidades && unidadesAtivas.length > 0 && (
+            <div className="flex items-center gap-1 bg-white dark:bg-gray-800 rounded-lg px-2 py-1 border border-indigo-300 dark:border-indigo-700 shadow-sm">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">
+                🏢
+              </span>
+              <select
+                value={unidadeOverride}
+                onChange={(e) => onChangeUnidadeOverride(e.target.value)}
+                className="text-xs bg-transparent border-0 outline-none text-gray-900 dark:text-gray-100"
+                title="Unidade que será atribuída quando o status for 'Trabalho'. Vazio = usa o padrão de cada empregado."
+              >
+                <option value="">Padrão do empregado</option>
+                {unidadesAtivas.map(u => (
+                  <option key={u.id} value={u.id}>{u.nome}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Status — chip colorido + nome + atalho visível */}
+          <div className="flex items-center gap-1.5 flex-wrap flex-1">
+            {STATUS_LIST.map(s => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onApply(s)}
+                title={`${STATUS_INFO[s].label} — atalho: ${STATUS_KEY[s]}`}
+                className={`inline-flex items-center gap-1.5 pl-1.5 pr-1 py-1 rounded-lg ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text} text-xs font-bold hover:scale-105 active:scale-95 transition-transform shadow-sm`}
+              >
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded bg-black/20 text-[10px] font-bold leading-none">{STATUS_INFO[s].short}</span>
+                <span className="hidden md:inline whitespace-nowrap">{STATUS_INFO[s].label}</span>
+                <kbd className="text-[10px] font-mono font-bold bg-white/30 text-current px-1.5 py-0.5 rounded border border-white/30 leading-none">{STATUS_KEY[s]}</kbd>
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onApply(null)}
+              title="Reverter ao cadastrado em todas — atalho: ⌫"
+              className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium shadow-sm"
+            >
+              <span className="whitespace-nowrap">↩ Reverter</span>
+              <kbd className="text-[10px] font-mono font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded leading-none">⌫</kbd>
+            </button>
+          </div>
+
+          {/* Limpar */}
+          <button
+            type="button"
+            onClick={onClear}
+            className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium"
+          >
+            <span className="whitespace-nowrap">✕ Limpar</span>
+            <kbd className="text-[10px] font-mono font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded leading-none">ESC</kbd>
+          </button>
+        </div>
+      </div>
+    </>
   );
 }
 
