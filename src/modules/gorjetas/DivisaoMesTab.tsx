@@ -21,6 +21,13 @@ type Props = {
   usaMultiUnidades: boolean;
 };
 
+type DiaEmpregado = {
+  date: string;
+  bruto: number;
+  retencao: number;
+  liquido: number;
+};
+
 type LinhaEmpregado = {
   empregadoId: string;
   nome: string;
@@ -30,6 +37,7 @@ type LinhaEmpregado = {
   retencao: number;
   liquido: number;
   diasComRecebimento: number;
+  dias: DiaEmpregado[];   // detalhamento por dia pro drill-down
 };
 
 export function DivisaoMesTab({
@@ -38,6 +46,8 @@ export function DivisaoMesTab({
 }: Props) {
   // Filtro por unidade (só relevante se multi)
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
+  // Drill-down: empregadoId atualmente expandido (mostra dia-a-dia)
+  const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null);
   const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
 
   const gorjetasFiltradas = useMemo(() => {
@@ -79,6 +89,7 @@ export function DivisaoMesTab({
             retencao: 0,
             liquido: 0,
             diasComRecebimento: 0,
+            dias: [],
           };
         }
         const linha = acc[it.empregadoId];
@@ -89,15 +100,22 @@ export function DivisaoMesTab({
         linha.bruto += brutoEmp;
         linha.retencao += retencaoEmp;
         linha.diasComRecebimento += 1;
+        linha.dias.push({
+          date: g.date,
+          bruto: Math.round(brutoEmp * 100) / 100,
+          retencao: Math.round(retencaoEmp * 100) / 100,
+          liquido: Math.round(liquidoEmp * 100) / 100,
+        });
       }
     }
 
-    // Arredonda pra centavos
+    // Arredonda totais pra centavos e ordena dias asc
     return Object.values(acc).map(l => ({
       ...l,
       bruto: Math.round(l.bruto * 100) / 100,
       retencao: Math.round(l.retencao * 100) / 100,
       liquido: Math.round(l.liquido * 100) / 100,
+      dias: [...l.dias].sort((a, b) => a.date.localeCompare(b.date)),
     })).sort((a, b) =>
       (a.area || "").localeCompare(b.area || "")
         || a.nome.localeCompare(b.nome)
@@ -250,9 +268,13 @@ export function DivisaoMesTab({
         </Button>
       </div>
 
-      {/* Tabela de divisão */}
+      {/* Tabela de divisão (cabeçalho com 1 col extra pro chevron expand/collapse) */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/30">
+          💡 Click em qualquer empregado pra ver o dia-a-dia do recebimento.
+        </div>
+        <div className="grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+          <div></div>
           <div>Empregado</div>
           <div className="text-right">Dias</div>
           <div className="text-right">Bruto</div>
@@ -262,6 +284,7 @@ export function DivisaoMesTab({
         {linhas.map((l, i) => {
           const areaPrev = i > 0 ? linhas[i - 1].area : null;
           const isPrimeiroDaArea = l.area !== areaPrev;
+          const isExpanded = expandedEmpId === l.empregadoId;
           return (
             <Fragment key={l.empregadoId}>
               {isPrimeiroDaArea && (
@@ -271,7 +294,15 @@ export function DivisaoMesTab({
                   </span>
                 </div>
               )}
-              <div className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800">
+              <button
+                type="button"
+                onClick={() => setExpandedEmpId(isExpanded ? null : l.empregadoId)}
+                className={`w-full grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 text-left transition-colors ${
+                  isExpanded ? "bg-indigo-50/40 dark:bg-indigo-900/20" : ""
+                }`}
+                title={isExpanded ? "Esconder dia-a-dia" : "Ver dia-a-dia"}
+              >
+                <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
                 <div className="min-w-0">
                   <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
                   <div className="text-[10px] text-gray-500">{l.cargoNome}</div>
@@ -280,12 +311,48 @@ export function DivisaoMesTab({
                 <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.bruto)}</div>
                 <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(l.retencao)}</div>
                 <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
-              </div>
+              </button>
+
+              {/* Drill-down: dia-a-dia desse empregado */}
+              {isExpanded && l.dias.length > 0 && (
+                <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1.5">
+                    📅 Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)
+                  </div>
+                  <div className="rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden">
+                    <div className="grid grid-cols-[100px_1fr_120px_110px_120px] gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50">
+                      <div>Data</div>
+                      <div></div>
+                      <div className="text-right">Bruto do dia</div>
+                      <div className="text-right">Retenção</div>
+                      <div className="text-right">Líquido</div>
+                    </div>
+                    {l.dias.map((d) => {
+                      const [y, m, dd] = d.date.split("-");
+                      const dataBr = `${dd}/${m}/${y}`;
+                      const dayDate = new Date(d.date + "T12:00:00");
+                      const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][dayDate.getDay()];
+                      return (
+                        <div key={d.date} className="grid grid-cols-[100px_1fr_120px_110px_120px] gap-2 px-3 py-1.5 items-center text-xs border-t border-gray-100 dark:border-gray-800">
+                          <div className="tabular-nums text-gray-700 dark:text-gray-300">
+                            {dataBr} <span className="text-[10px] text-gray-400">{dow}</span>
+                          </div>
+                          <div></div>
+                          <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(d.bruto)}</div>
+                          <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(d.retencao)}</div>
+                          <div className="text-right tabular-nums font-semibold text-emerald-700 dark:text-emerald-300">{fmtBR(d.liquido)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </Fragment>
           );
         })}
         {/* Linha de total */}
-        <div className="grid grid-cols-[1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
+        <div className="grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
+          <div></div>
           <div>TOTAL</div>
           <div className="text-right tabular-nums">{linhas.reduce((s, l) => s + l.diasComRecebimento, 0)}</div>
           <div className="text-right tabular-nums">{fmtBR(linhas.reduce((s, l) => s + l.bruto, 0))}</div>
