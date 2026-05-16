@@ -30,6 +30,56 @@ export function VTPage() {
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [folha, setFolha] = useState<VTFolha | null>(null);
   const [loading, setLoading] = useState(true);
+  // Edição inline do valor da passagem (persiste em empregado.vtValorPassagem)
+  const [editingValorEmpId, setEditingValorEmpId] = useState<string | null>(null);
+  const [editingValorRaw, setEditingValorRaw] = useState<string>("");
+  const [savingValor, setSavingValor] = useState(false);
+
+  function fmtMoneyInput(n: number): string {
+    if (!n) return "";
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function parseMoneyInput(s: string): number {
+    const clean = (s || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    return parseFloat(clean) || 0;
+  }
+  function iniciarEdicaoValor(empId: string, valorAtual: number) {
+    setEditingValorEmpId(empId);
+    setEditingValorRaw(valorAtual > 0 ? fmtMoneyInput(valorAtual) : "");
+  }
+  function cancelarEdicaoValor() {
+    setEditingValorEmpId(null);
+    setEditingValorRaw("");
+  }
+  async function salvarValorEditado() {
+    if (!editingValorEmpId) return;
+    const emp = empregados.find(e => e.id === editingValorEmpId);
+    if (!emp) return;
+    const novo = Math.round(parseMoneyInput(editingValorRaw) * 100) / 100;
+    if (novo === (emp.vtValorPassagem || 0)) {
+      cancelarEdicaoValor();
+      return;
+    }
+    setSavingValor(true);
+    try {
+      const updates: Partial<Empregado> = { vtValorPassagem: novo };
+      // Se não tem passagensPorDia ainda, assume 1 (valor único diário)
+      if (!emp.vtPassagensPorDia || emp.vtPassagensPorDia <= 0) {
+        updates.vtPassagensPorDia = 1;
+      }
+      // Se vtAtivo não estava marcado e o user setou um valor, ativa
+      if (novo > 0 && !emp.vtAtivo) {
+        updates.vtAtivo = true;
+      }
+      await updateDoc(doc(db, "empregados", editingValorEmpId), updates);
+      cancelarEdicaoValor();
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSavingValor(false);
+    }
+  }
 
   const folhaId = `${rid}_${fmtAnoMes(ano, mes)}`;
   const escalaId = `${rid}_${fmtAnoMes(ano, mes)}`;
@@ -236,7 +286,41 @@ export function VTPage() {
               </div>
               <div className="text-right tabular-nums">{l.diasTrabalhados}</div>
               <div className="text-right tabular-nums">{l.passagensPorDia}</div>
-              <div className="text-right tabular-nums">{fmtBR(l.valorPassagem)}</div>
+              <div className="text-right tabular-nums">
+                {editingValorEmpId === l.empregadoId ? (
+                  <span className="inline-flex items-center gap-1">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      autoFocus
+                      value={editingValorRaw}
+                      onChange={(e) => setEditingValorRaw(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") salvarValorEditado();
+                        else if (e.key === "Escape") cancelarEdicaoValor();
+                      }}
+                      onBlur={salvarValorEditado}
+                      disabled={savingValor}
+                      placeholder="0,00"
+                      className="w-20 px-1 py-0.5 text-xs rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+                    />
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1">
+                    <span>{fmtBR(l.valorPassagem)}</span>
+                    {podeConfig && (
+                      <button
+                        type="button"
+                        onClick={() => iniciarEdicaoValor(l.empregadoId, l.valorPassagem)}
+                        title="Editar valor da passagem (persiste no cadastro do empregado)"
+                        className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-xs px-1"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </span>
+                )}
+              </div>
               <div className="text-right font-semibold tabular-nums">{fmtBR(l.total)}</div>
               <div className="text-right">
                 {l.paidAt ? (
