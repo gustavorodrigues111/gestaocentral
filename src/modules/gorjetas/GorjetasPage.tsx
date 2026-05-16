@@ -1,20 +1,17 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
-import { Input } from "../../core/ui/Input";
-import { Modal } from "../../core/ui/Modal";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
-import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
@@ -41,8 +38,7 @@ export function GorjetasPage() {
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
   const [loading, setLoading] = useState(true);
-  // Quando edita, captura date + unidadeId (vazio se single-unit)
-  const [editing, setEditing] = useState<{ date: string; unidadeId: string } | null>(null);
+  // Estado de tab (modal por dia foi removido — edição é inline no ListaDiasInline)
   const [tab, setTab] = useState<"lancamentos" | "divisao">("lancamentos");
 
   // SplitVersions do restaurante (regras de divisão)
@@ -231,18 +227,16 @@ export function GorjetasPage() {
           {loading ? (
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : (
-            <ListaDias
+            <ListaDiasInline
               ano={ano}
               mes={mes}
+              rid={rid}
               gorjetaMap={gorjetaMap}
-              empregados={empregados}
-              cargos={cargos}
-              escala={escala}
               splitVersions={splitVersions}
               unidadesAtendimento={unidadesAtendimento}
-              unidades={unidades}
               usaMultiUnidades={usaMultiUnidades}
-              onPick={(date, unidadeId) => setEditing({ date, unidadeId })}
+              podeEditar={podeConfig}
+              meId={me?.id || ""}
             />
           )}
         </>
@@ -263,28 +257,6 @@ export function GorjetasPage() {
         />
       )}
 
-      {editing && (
-        <GorjetaModal
-          date={editing.date}
-          rid={rid}
-          taxRateDefault={taxRateDefault}
-          gorjeta={
-            (editing.unidadeId
-              ? gorjetaMap[`${editing.date}|${editing.unidadeId}`]
-              : gorjetaMap[editing.date]
-            ) || null
-          }
-          empregados={empregados}
-          cargos={cargos}
-          escala={escala}
-          splitVersions={splitVersions}
-          podeEditar={podeConfig}
-          onClose={() => setEditing(null)}
-          unidadeId={editing.unidadeId || undefined}
-          unidades={unidades}
-          usaMultiUnidades={usaMultiUnidades}
-        />
-      )}
     </div>
   );
 }
@@ -304,18 +276,25 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
   );
 }
 
-function ListaDias({
-  ano, mes, gorjetaMap, empregados, cargos, escala, splitVersions,
-  unidadesAtendimento, unidades, usaMultiUnidades, onPick,
+// ════════════════════════════════════════════════════════════════════════════
+// ListaDiasInline — versão simplificada da tela de Lançamentos.
+// Cada dia (× unidade se multi) tem inputs/botões diretos:
+//   - Input "Valor bruto" inline (vírgula OK)
+//   - Toggle "Sem gorjeta hoje" (zera valor e marca explicitamente)
+//   - Toggle "Publicar" (visibilidade no portal do empregado)
+//   - Aviso ⚠ "Sem regra" quando nenhuma splitVersion cobre a data
+// SEM modal, SEM botão "pagar por dia" (pagamento é mensal — feito offline).
+// ════════════════════════════════════════════════════════════════════════════
+function ListaDiasInline({
+  ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, usaMultiUnidades, podeEditar, meId,
 }: {
-  ano: number; mes: number;
+  ano: number; mes: number; rid: string;
   gorjetaMap: Record<string, Gorjeta>;
-  empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
   splitVersions: SplitVersion[];
   unidadesAtendimento: Unidade[];
-  unidades: Unidade[];
   usaMultiUnidades: boolean;
-  onPick: (date: string, unidadeId: string) => void;
+  podeEditar: boolean;
+  meId: string;
 }) {
   const dias = daysInMonth(ano, mes);
   const todayYmd = (() => {
@@ -323,22 +302,75 @@ function ListaDias({
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   })();
 
-  // Lista de unidades a exibir: pra multi, 1 row por unidade de atendimento.
-  // Pra single, 1 row sem unidade (com "" como key).
   const unidadesParaRow: { id: string; nome: string }[] = usaMultiUnidades
     ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
     : [{ id: "", nome: "" }];
 
+  // Estado local pros inputs (string com vírgula). Sincroniza com gorjetaMap.
+  const [valorInputs, setValorInputs] = useState<Record<string, string>>({});
+
+  function keyFor(date: string, unidadeId: string) {
+    return unidadeId ? `${date}|${unidadeId}` : date;
+  }
+  function docIdFor(date: string, unidadeId: string) {
+    return unidadeId ? `${rid}_${date}_${unidadeId}` : `${rid}_${date}`;
+  }
+  function valorEditado(date: string, unidadeId: string): string {
+    const k = keyFor(date, unidadeId);
+    if (k in valorInputs) return valorInputs[k];
+    const g = gorjetaMap[k];
+    return g && g.valorBruto > 0 ? String(g.valorBruto).replace(".", ",") : "";
+  }
+
+  async function gravar(date: string, unidadeId: string, fields: Partial<Gorjeta>) {
+    const k = keyFor(date, unidadeId);
+    const existente = gorjetaMap[k];
+    const id = docIdFor(date, unidadeId);
+    const now = new Date().toISOString();
+    const payload = existente
+      ? { ...existente, ...fields, updatedAt: now }
+      : {
+          id,
+          restaurantId: rid,
+          date,
+          unidadeId: unidadeId || null,
+          valorBruto: 0,
+          valorLiquido: 0,
+          taxRate: 0,
+          semGorjeta: false,
+          publicada: false,
+          observacao: "",
+          createdAt: now,
+          createdBy: meId,
+          updatedAt: now,
+          paidAt: null,
+          paidBy: null,
+          ...fields,
+        };
+    await setDoc(doc(db, "gorjetas", id), sanitizeForFirestore(payload));
+  }
+
+  async function salvarValor(date: string, unidadeId: string, raw: string) {
+    if (!podeEditar) return;
+    const v = parseFloat((raw || "").replace(",", ".")) || 0;
+    await gravar(date, unidadeId, { valorBruto: Math.round(v * 100) / 100, semGorjeta: false });
+  }
+  async function toggleSemGorjeta(date: string, unidadeId: string) {
+    if (!podeEditar) return;
+    const g = gorjetaMap[keyFor(date, unidadeId)];
+    const novo = !g?.semGorjeta;
+    setValorInputs(s => ({ ...s, [keyFor(date, unidadeId)]: novo ? "" : (s[keyFor(date, unidadeId)] ?? "") }));
+    await gravar(date, unidadeId, { semGorjeta: novo, valorBruto: novo ? 0 : (g?.valorBruto ?? 0) });
+  }
+  async function togglePublicada(date: string, unidadeId: string) {
+    if (!podeEditar) return;
+    const g = gorjetaMap[keyFor(date, unidadeId)];
+    if (!g) return;
+    await gravar(date, unidadeId, { publicada: !g.publicada });
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-      <div className="grid grid-cols-[80px_120px_1fr_120px_120px_60px] px-3 py-2 text-xs font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
-        <div>Dia</div>
-        <div>Unidade</div>
-        <div>Resumo</div>
-        <div className="text-right">Bruto</div>
-        <div className="text-right">Líquido</div>
-        <div></div>
-      </div>
       {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
         const date = `${ano}-${pad2(mes)}-${pad2(dia)}`;
         const d = parseYmd(date);
@@ -346,21 +378,25 @@ function ListaDias({
         const weekend = wd === 0 || wd === 6;
         const isToday = date === todayYmd;
         const splitVersion = getActiveSplitVersion(splitVersions, date);
+        const semRegra = !splitVersion;
+
         return unidadesParaRow.map((u, idx) => {
-          const key = u.id ? `${date}|${u.id}` : date;
-          const g = gorjetaMap[key];
-          const recebem = g
-            ? calcularDivisaoDia(date, g.valorLiquido, empregados, cargos, escala, splitVersion, u.id || null, unidades).itens.length
-            : 0;
+          const k = keyFor(date, u.id);
+          const g = gorjetaMap[k];
+          const isPublicada = !!g?.publicada;
+          const isSemGorjeta = !!g?.semGorjeta;
+          const hasValor = !!g && g.valorBruto > 0;
+
           return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => onPick(date, u.id)}
-              className={`w-full grid grid-cols-[80px_120px_1fr_120px_120px_60px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-left ${
-                weekend ? "bg-amber-50/40 dark:bg-amber-900/10" : ""
-              } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""}`}
+            <div
+              key={k}
+              className={`grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${
+                weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
+              } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""} ${
+                isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
+              }`}
             >
+              {/* Dia */}
               <div className="font-medium text-gray-900 dark:text-gray-100">
                 {idx === 0 ? (
                   <>
@@ -371,22 +407,74 @@ function ListaDias({
                   <span className="text-gray-300 dark:text-gray-700">·</span>
                 )}
               </div>
-              <div className="text-xs text-gray-600 dark:text-gray-400">
+
+              {/* Unidade */}
+              <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
                 {usaMultiUnidades ? u.nome : <span className="text-gray-400">—</span>}
               </div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                {g
-                  ? <>{recebem} empregado(s) recebem · {fmtBR(g.valorLiquido / Math.max(1, recebem))} médio</>
-                  : <span className="text-gray-400">— sem lançamento —</span>}
+
+              {/* Valor (ou aviso/marker) */}
+              <div className="flex items-center gap-2 min-w-0">
+                {semRegra ? (
+                  <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded">
+                    ⚠ Sem regra cadastrada — cadastre nas Configurações pra dividir esse dia
+                  </span>
+                ) : isSemGorjeta ? (
+                  <span className="text-xs text-gray-500 italic">— Sem gorjeta hoje —</span>
+                ) : (
+                  <>
+                    <span className="text-xs text-gray-500">R$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      disabled={!podeEditar}
+                      placeholder="0,00"
+                      value={valorEditado(date, u.id)}
+                      onChange={(e) => setValorInputs(s => ({ ...s, [k]: e.target.value }))}
+                      onBlur={(e) => salvarValor(date, u.id, e.target.value)}
+                      className="w-28 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+                    />
+                    {hasValor && splitVersion && (
+                      <span className="text-[11px] text-gray-500">
+                        retenção {splitVersion.taxRate}% → líquido {fmtBR(g.valorBruto * (1 - splitVersion.taxRate / 100))}
+                      </span>
+                    )}
+                  </>
+                )}
               </div>
-              <div className={`text-right font-medium ${g ? "text-gray-900 dark:text-gray-100" : "text-gray-400"}`}>
-                {g ? fmtBR(g.valorBruto) : "—"}
+
+              {/* Ações */}
+              <div className="flex items-center gap-1">
+                {podeEditar && !semRegra && (
+                  <button
+                    type="button"
+                    onClick={() => toggleSemGorjeta(date, u.id)}
+                    title={isSemGorjeta ? "Reabrir lançamento" : "Marcar este dia como sem gorjeta"}
+                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                      isSemGorjeta
+                        ? "bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200"
+                        : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {isSemGorjeta ? "✓ Sem gorjeta" : "Sem gorjeta"}
+                  </button>
+                )}
+                {podeEditar && hasValor && !semRegra && (
+                  <button
+                    type="button"
+                    onClick={() => togglePublicada(date, u.id)}
+                    title={isPublicada ? "Despublicar (volta a ficar só pro escritório)" : "Publicar pra empregados verem"}
+                    className={`px-2 py-1 text-xs rounded border transition-colors ${
+                      isPublicada
+                        ? "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-semibold"
+                        : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    {isPublicada ? "📢 Publicada" : "Publicar"}
+                  </button>
+                )}
               </div>
-              <div className={`text-right font-medium ${g ? "text-emerald-600" : "text-gray-400"}`}>
-                {g ? fmtBR(g.valorLiquido) : "—"}
-              </div>
-              <div className="text-right text-gray-400">›</div>
-            </button>
+            </div>
           );
         });
       })}
@@ -394,296 +482,6 @@ function ListaDias({
   );
 }
 
-function GorjetaModal({
-  date, rid, taxRateDefault, gorjeta, empregados, cargos, escala, splitVersions, podeEditar, onClose,
-  unidadeId: unidadeIdProp, unidades, usaMultiUnidades,
-}: {
-  date: string; rid: string; taxRateDefault: number;
-  gorjeta: Gorjeta | null;
-  empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
-  splitVersions: SplitVersion[];
-  podeEditar: boolean;
-  onClose: () => void;
-  unidadeId?: string;          // unidade pré-selecionada (se vier da listagem por unidade)
-  unidades: Unidade[];
-  usaMultiUnidades: boolean;
-}) {
-  const { pessoa } = useAuth();
-  const [valorBruto, setValorBruto] = useState<string>(gorjeta ? String(gorjeta.valorBruto).replace(".", ",") : "");
-  const [observacao, setObservacao] = useState(gorjeta?.observacao || "");
-  const [unidadeId, setUnidadeId] = useState<string>(
-    gorjeta?.unidadeId || unidadeIdProp || ""
-  );
-  const [saving, setSaving] = useState(false);
-  const [err, setErr] = useState("");
-
-  const isPago = !!gorjeta?.paidAt;
-  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
-
-  // SplitVersion vigente NA DATA da gorjeta (não hoje)
-  const splitVersion = useMemo(() => getActiveSplitVersion(splitVersions, date), [splitVersions, date]);
-
-  // taxRate: se a gorjeta está PAGA, usa o snapshot dela (congelado);
-  // senão usa a splitVersion vigente da data (ou default do restaurante).
-  // Antes priorizava gorjeta.taxRate sempre, o que era ruim pra docs
-  // importados com taxRate em formato decimal (0.2 em vez de 20).
-  const tax = (gorjeta?.paidAt && gorjeta?.taxRate != null)
-    ? gorjeta.taxRate
-    : (splitVersion?.taxRate ?? taxRateDefault);
-
-  const bruto = parseFloat(valorBruto.replace(",", ".")) || 0;
-  const liquido = calcularValorLiquido(bruto, tax);
-
-  // Se a gorjeta está paga, usa o snapshot da divisão (congelado).
-  // Senão, calcula em tempo real a partir da escala/cargos/splitVersion vigentes na data.
-  const divisaoLive = useMemo(
-    () => calcularDivisaoDia(date, liquido, empregados, cargos, escala, splitVersion, unidadeId || null, unidades),
-    [date, liquido, empregados, cargos, escala, splitVersion, unidadeId, unidades],
-  );
-  const divisao = isPago && gorjeta?.divisaoSnapshot
-    ? {
-        itens: gorjeta.divisaoSnapshot,
-        totalPontos: gorjeta.divisaoSnapshot.reduce((s, i) => s + i.pontos, 0),
-        valorPonto: gorjeta.divisaoSnapshot[0]?.pontos
-          ? gorjeta.divisaoSnapshot[0].valor / gorjeta.divisaoSnapshot[0].pontos : 0,
-        totalDistribuido: gorjeta.divisaoSnapshot.reduce((s, i) => s + i.valor, 0),
-        resto: 0,
-      }
-    : divisaoLive;
-
-  async function salvar() {
-    if (!pessoa) return;
-    if (bruto <= 0) { setErr("Valor bruto obrigatório"); return; }
-    if (usaMultiUnidades && !unidadeId) {
-      setErr("Selecione a unidade que arrecadou essa gorjeta.");
-      return;
-    }
-    setErr("");
-    setSaving(true);
-    try {
-      // ID composto quando multi-unidade
-      const id = unidadeId ? `${rid}_${date}_${unidadeId}` : `${rid}_${date}`;
-      const now = new Date().toISOString();
-      const data: Gorjeta = {
-        id,
-        restaurantId: rid,
-        date,
-        unidadeId: unidadeId || null,
-        valorBruto: Math.round(bruto * 100) / 100,
-        taxRate: tax,
-        valorLiquido: liquido,
-        observacao: observacao.trim() || undefined,
-        divisaoSnapshot: gorjeta?.divisaoSnapshot,
-        paidAt: gorjeta?.paidAt ?? null,
-        paidBy: gorjeta?.paidBy ?? null,
-        createdAt: gorjeta?.createdAt || now,
-        createdBy: gorjeta?.createdBy || pessoa.id,
-        updatedAt: now,
-      };
-      await setDoc(doc(db, "gorjetas", id), sanitizeForFirestore(data));
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function pagar() {
-    if (!pessoa || !gorjeta) return;
-    if (!confirm(`Marcar como PAGO?\n\nA divisão atual (${divisaoLive.itens.length} pessoa(s) · ${fmtBR(divisaoLive.totalDistribuido)}) será CONGELADA como snapshot. Mudanças futuras em cargos/escala não afetam essa gorjeta.`)) return;
-    setSaving(true);
-    try {
-      const now = new Date().toISOString();
-      await setDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
-        ...gorjeta,
-        divisaoSnapshot: divisaoLive.itens,
-        paidAt: now,
-        paidBy: pessoa.id,
-        updatedAt: now,
-      }));
-      onClose();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function desfazerPagamento() {
-    if (!gorjeta) return;
-    if (!confirm("Desfazer pagamento?\n\nA divisão volta a ser calculada em tempo real e o snapshot é apagado.")) return;
-    setSaving(true);
-    try {
-      await setDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
-        ...gorjeta,
-        divisaoSnapshot: null,
-        paidAt: null,
-        paidBy: null,
-        updatedAt: new Date().toISOString(),
-      }));
-      onClose();
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function excluir() {
-    if (!gorjeta) return;
-    if (!confirm("Excluir o lançamento deste dia?")) return;
-    await deleteDoc(doc(db, "gorjetas", gorjeta.id));
-    onClose();
-  }
-
-  const d = parseYmd(date);
-  const titulo = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} (${dowShort(d)})`;
-
-  return (
-    <Modal title={`Gorjeta · ${titulo}`} onClose={onClose} maxWidth="max-w-3xl">
-      <div className="grid md:grid-cols-2 gap-5">
-        {/* Esquerda: lançamento */}
-        <div className="space-y-3">
-          {usaMultiUnidades && (
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade que arrecadou *</label>
-              <select
-                value={unidadeId}
-                onChange={(e) => setUnidadeId(e.target.value)}
-                disabled={!podeEditar || isPago}
-                className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-60"
-              >
-                <option value="">— escolha a unidade —</option>
-                {unidadesAtendimento.map(u => (
-                  <option key={u.id} value={u.id}>{u.nome}</option>
-                ))}
-              </select>
-              {isPago && (
-                <p className="text-[11px] text-gray-500 mt-1">Lançamento pago — unidade não pode mudar.</p>
-              )}
-            </div>
-          )}
-          <Input
-            label="Valor bruto (R$)"
-            type="text"
-            inputMode="decimal"
-            value={valorBruto}
-            onChange={(e) => setValorBruto(e.target.value)}
-            placeholder="0,00"
-            disabled={!podeEditar}
-            autoFocus
-          />
-          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-              Retenção {gorjeta ? "(snapshot do dia)" : "(do restaurante)"}
-            </div>
-            <div className="flex items-baseline gap-2">
-              <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{tax}%</div>
-              <span className="text-[11px] text-gray-500">
-                {gorjeta
-                  ? "fixo neste lançamento — pra mudar, use o ⚙️ de Gorjetas (afeta novos)"
-                  : "vem do ⚙️ Configurações de Gorjetas — vai virar snapshot ao salvar"}
-              </span>
-            </div>
-          </div>
-          <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2">
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Líquido a distribuir</div>
-            <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(liquido)}</div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação</label>
-            <textarea
-              value={observacao}
-              onChange={(e) => setObservacao(e.target.value)}
-              disabled={!podeEditar}
-              rows={2}
-              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 disabled:opacity-60"
-            />
-          </div>
-          {err && <div className="text-sm text-red-600">{err}</div>}
-        </div>
-
-        {/* Direita: divisão */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-semibold uppercase tracking-wider text-gray-500">Divisão</div>
-            <div className="text-xs text-gray-500">
-              {divisao.totalPontos > 0 && <>{divisao.totalPontos.toFixed(1)} pts · {fmtBR(divisao.valorPonto)}/pt</>}
-            </div>
-          </div>
-          {divisao.itens.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
-              Ninguém recebe nesse dia.
-              <div className="text-xs mt-1 text-gray-400">Confira escala, cargos e flags de produção.</div>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 max-h-[340px] overflow-y-auto">
-              {[...divisao.itens]
-                .sort((a, b) => (a.area || "").localeCompare(b.area || "") || a.empregadoNome.localeCompare(b.empregadoNome))
-                .map((it, i, arr) => {
-                const areaPrev = i > 0 ? arr[i - 1].area : null;
-                const isPrimeiroDaArea = it.area !== areaPrev;
-                return (
-                  <Fragment key={it.empregadoId}>
-                    {isPrimeiroDaArea && (
-                      <div className="px-3 py-1 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-800 first:border-t-0">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                          {it.area || "Sem área"}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between px-3 py-1.5 text-sm border-t border-gray-100 dark:border-gray-800">
-                      <div className="min-w-0">
-                        <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{it.empregadoNome}</div>
-                        <div className="text-[10px] text-gray-500 dark:text-gray-400">
-                          {it.cargoNome} · {it.pontos} pts
-                          {it.motivo === "freela" && " · freela"}
-                          {it.motivo === "producao" && " · produção"}
-                        </div>
-                      </div>
-                      <div className="font-semibold text-emerald-600 tabular-nums">{fmtBR(it.valor)}</div>
-                    </div>
-                  </Fragment>
-                );
-              })}
-            </div>
-          )}
-          {divisao.resto !== 0 && (
-            <div className="text-[11px] text-gray-500 mt-2">
-              Resto não distribuído: {fmtBR(divisao.resto)}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {isPago && (
-        <div className="mt-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-xs text-emerald-800 dark:text-emerald-300">
-          ✓ <strong>Paga em {gorjeta?.paidAt && new Date(gorjeta.paidAt).toLocaleString("pt-BR")}.</strong>{" "}
-          Divisão congelada — mudanças posteriores em cargos/escala não afetam.
-        </div>
-      )}
-
-      <div className="flex justify-between items-center pt-4 mt-4 border-t border-gray-200 dark:border-gray-800">
-        <div className="flex gap-2">
-          {gorjeta && podeEditar && !isPago && (
-            <Button variant="danger" size="sm" onClick={excluir}>Excluir</Button>
-          )}
-          {gorjeta && podeEditar && isPago && (
-            <Button variant="secondary" size="sm" onClick={desfazerPagamento}>↩ Desfazer pagamento</Button>
-          )}
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={onClose}>Fechar</Button>
-          {podeEditar && !isPago && gorjeta && divisaoLive.itens.length > 0 && (
-            <Button variant="secondary" onClick={pagar} disabled={saving}>💰 Marcar como pago</Button>
-          )}
-          {podeEditar && !isPago && (
-            <Button onClick={salvar} disabled={saving}>{saving ? "..." : "Salvar"}</Button>
-          )}
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // GorjetasConfig antigo foi substituído por RegrasDivisaoConfig (Fase 16A).
 // O arquivo RegrasDivisaoConfig.tsx faz CRUD de SplitVersion versionado.
