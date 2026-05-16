@@ -79,6 +79,28 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
 // TAB 1: IDENTIDADE
 // ════════════════════════════════════════════════════════════════
 
+// Monta o link wa.me com mensagem de convite. Retorna null se faltar
+// whatsapp ou email (precisa dos 2 pra fazer sentido).
+function buildConviteWhatsLink(pessoa: Pessoa, subdomain: string | null): string | null {
+  const digits = (pessoa.whatsapp || "").replace(/\D/g, "");
+  if (digits.length < 10) return null;
+  if (!pessoa.email) return null;
+  // Adiciona 55 se for número BR sem código do país
+  const phone = digits.startsWith("55") ? digits : `55${digits}`;
+  const baseUrl = subdomain ? `https://${subdomain}.planejamento.app` : "https://planejamento.app";
+  const signupUrl = `${baseUrl}/signup`;
+  const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
+  const msg =
+    `Oi ${nomePrimeiro}! 👋\n\n` +
+    `Te cadastrei no nosso sistema de gestão. Pra criar sua senha de acesso:\n\n` +
+    `1️⃣ Abre o link: ${signupUrl}\n` +
+    `2️⃣ Coloca o email: ${pessoa.email}\n` +
+    `3️⃣ Cria a senha que quiser (mínimo 6 caracteres)\n\n` +
+    `Pronto, é só usar email + senha pra entrar.\n` +
+    `Qualquer dúvida me chama!`;
+  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+}
+
 function TabIdentidade({
   pessoa, restaurantId, onCreated, onClose,
 }: {
@@ -88,8 +110,11 @@ function TabIdentidade({
   onClose: () => void;
 }) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
   const isNew = !pessoa;
   const isInativa = !!pessoa && pessoa.ativa === false;
+  const subdomainAtivo = restaurants.find((r) => r.id === restaurantId)?.subdomain || null;
+  const conviteUrl = pessoa && !isInativa ? buildConviteWhatsLink(pessoa, subdomainAtivo) : null;
 
   const [form, setForm] = useState({
     nome: pessoa?.nome || "",
@@ -297,9 +322,21 @@ function TabIdentidade({
       {!isNew && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
           {!isInativa ? (
-            <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
-              🚫 Inativar pessoa
-            </Button>
+            <>
+              {conviteUrl && (
+                <Button
+                  size="sm"
+                  onClick={() => window.open(conviteUrl, "_blank", "noopener")}
+                  title="Abre o WhatsApp com uma mensagem pronta pra essa pessoa criar a conta"
+                  className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600"
+                >
+                  💬 Convidar via WhatsApp
+                </Button>
+              )}
+              <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
+                🚫 Inativar pessoa
+              </Button>
+            </>
           ) : (
             <>
               <Button size="sm" onClick={() => setShowReativar(true)}>
@@ -311,6 +348,11 @@ function TabIdentidade({
                 </Button>
               )}
             </>
+          )}
+          {!isInativa && !conviteUrl && (pessoa && (!pessoa.whatsapp || !pessoa.email)) && (
+            <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
+              💬 Convite via WhatsApp: preencha {!pessoa.whatsapp && !pessoa.email ? "email e WhatsApp" : !pessoa.email ? "email" : "WhatsApp"} pra habilitar
+            </span>
           )}
         </div>
       )}
