@@ -55,11 +55,12 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid]);
 
-  // taxRate vigente HOJE — vem da SplitVersion (não mais do Restaurant)
+  // taxRate vigente HOJE — vem da SplitVersion. Sem fallback pro Restaurant
+  // (legado). Se não há regra cobrindo hoje → 0 + UI sinaliza "sem regra".
   const taxRateDefault = useMemo(() => {
     const v = getActiveSplitVersion(splitVersions, `${ano}-${pad2(mes)}-${pad2(new Date().getDate())}`);
-    return v?.taxRate ?? activeRestaurant?.taxRate ?? 0;
-  }, [splitVersions, activeRestaurant, ano, mes]);
+    return v?.taxRate ?? 0;
+  }, [splitVersions, ano, mes]);
 
   // Empregados
   useEffect(() => {

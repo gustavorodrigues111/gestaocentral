@@ -9,7 +9,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes";
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes";
 
 // ─── PERMISSÕES ───
 
@@ -345,6 +345,9 @@ export type SplitVersion = {
   id: string;
   restaurantId: string;
   effectiveFrom: string;       // YYYY-MM-DD — vigência
+  // Preenchido AUTOMATICAMENTE quando uma nova versão sucede esta (= nova.from - 1).
+  // null = vigente indefinidamente. Garante cobertura contínua (sem dia órfão).
+  effectiveUntil?: string | null;
   mode: SplitMode;
 
   // Só preenchido se mode === "area_points"
@@ -375,15 +378,21 @@ export type Gorjeta = {
   // Só unidades de tipo "atendimento" podem arrecadar.
   unidadeId?: string | null;
   valorBruto: number;
-  taxRate: number;              // snapshot do dia
-  valorLiquido: number;
+  // Marca explicitamente "não houve gorjeta hoje". Diferente de "ainda não
+  // lancei" (que é a ausência do doc). Quando true, valorBruto=0 e o dia é
+  // ignorado em qualquer cálculo de divisão.
+  semGorjeta?: boolean;
+  // Visibilidade pro portal do empregado. False (default) = só escritório vê.
+  // True = publicada → empregado vê na sua tela (quando o portal for habilitado).
+  publicada?: boolean;
+  taxRate: number;              // snapshot — usado só pra retrocompat de docs antigos
+  valorLiquido: number;         // snapshot — idem
   observacao?: string;
-  // Quando a gorjeta é PAGA, salvamos o snapshot completo da divisão.
-  // Dia depois, mesmo que o cargo/pontos/empregados mudem, esse pagamento
-  // mantém os valores fixados no momento do pagamento.
+  // Snapshot da divisão. Hoje é populado no fluxo de pagamento (legado por dia)
+  // e vai ser usado pelo novo fluxo de pagamento mensal (gorjetaPagamentos).
   divisaoSnapshot?: DivisaoItem[];
-  paidAt?: string | null;
-  paidBy?: string | null;
+  paidAt?: string | null;       // DEPRECATED: pagamento agora é mensal
+  paidBy?: string | null;       // idem
   createdAt: string;
   createdBy: string;
   updatedAt: string;

@@ -3,16 +3,30 @@
 import type { Area, AreaPercentConfig, Empregado, SplitVersion } from "../../core/types";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 
-// Pega a SplitVersion vigente em uma data (último com effectiveFrom <= date)
+// Pega a SplitVersion vigente em uma data específica.
+//
+// Cobertura: a versão cobre `date` se `effectiveFrom <= date` E
+// (não tem effectiveUntil OU date <= effectiveUntil). Quando uma nova regra
+// é criada, a anterior recebe automaticamente `effectiveUntil = (nova.from - 1)`
+// pra evitar dia sem regra (invariante do produto).
+//
+// Retorna null se nenhuma versão cobre a data (ex: data antes da 1ª regra
+// cadastrada). O caller deve mostrar "⚠ sem regra" e não dividir.
 export function getActiveSplitVersion(
   versions: SplitVersion[] | undefined,
   date: string,
 ): SplitVersion | null {
   if (!versions || versions.length === 0) return null;
-  const sorted = [...versions]
-    .filter(v => v.status === "active" && (!v.effectiveFrom || v.effectiveFrom <= date))
-    .sort((a, b) => (a.effectiveFrom || "").localeCompare(b.effectiveFrom || ""));
-  return sorted[sorted.length - 1] || null;
+  const candidatos = versions.filter(v => {
+    if (v.status !== "active") return false;
+    if (v.effectiveFrom && v.effectiveFrom > date) return false;
+    if (v.effectiveUntil && date > v.effectiveUntil) return false;
+    return true;
+  });
+  if (candidatos.length === 0) return null;
+  // Empate (sobreposição não-prevista): a com effectiveFrom maior vence
+  candidatos.sort((a, b) => (a.effectiveFrom || "").localeCompare(b.effectiveFrom || ""));
+  return candidatos[candidatos.length - 1];
 }
 
 // Conta empregados REGISTRADOS ativos numa área em uma data específica.
