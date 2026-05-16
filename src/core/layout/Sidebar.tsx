@@ -57,6 +57,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <NavLink
             to="/"
             end
+            onClick={onClose}
             className={({ isActive }) => `
               block px-3 py-2 rounded-lg text-sm font-medium
               ${isActive
@@ -70,6 +71,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {souEquipe && rid && (
             <NavLink
               to={`/portal/${rid}`}
+              onClick={onClose}
               className={({ isActive }) => `
                 block px-3 py-2 rounded-lg text-sm font-medium
                 ${isActive
@@ -84,6 +86,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {pessoa?.isMaster && (
             <NavLink
               to="/arquitetura"
+              onClick={onClose}
               className={({ isActive }) => `
                 block px-3 py-2 rounded-lg text-sm font-medium
                 ${isActive
@@ -109,6 +112,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     <NavLink
                       key={m.id}
                       to={rid ? `/r/${rid}/${m.id}` : "#"}
+                      onClick={onClose}
                       className={({ isActive }) => `
                         flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
                         ${isActive
