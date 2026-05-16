@@ -1,8 +1,129 @@
 rules_version = '2';
+// ════════════════════════════════════════════════════════════════════════════
+//  FIRESTORE RULES — Planejamento (gestaocentral-85b13) — Phase 1
+//
+//  Objetivos desta versão:
+//   1. Bloquear escalada de privilégio (ninguém vira master, ninguém altera
+//      permissões alheias).
+//   2. Bloquear alteração estrutural por não-admin (criar restaurante, cargo,
+//      pessoa).
+//   3. Manter leitura ampla (auth-only) — Phase 2 vai escopar por restaurantId.
+//   4. Negar coleções desconhecidas (whitelist).
+//
+//  Master:
+//    Email registrado em /admins/{email}. Hoje: gustavo@quibebe.com.br.
+//    Pra promover outro: criar /admins/<email-do-novo-master> no Console.
+//    Pra revogar: deletar o doc.
+// ════════════════════════════════════════════════════════════════════════════
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if request.auth != null;
+
+    // ── Helpers ───────────────────────────────────────────────────────────
+    function authed()  { return request.auth != null; }
+    function isMaster() {
+      return authed()
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+    // Lista de campos sensíveis que só master pode mexer numa pessoa
+    function pessoaSensitiveChanged() {
+      let sensitive = ['isMaster','permissions','restaurantIds','specialPermissions','ativa','inativadaEm','inativadaPor','motivoInativacao','novosRestaurantes','cadastroIncompleto'];
+      return request.resource.data.diff(resource.data).affectedKeys().hasAny(sensitive);
+    }
+
+    // ── /admins ── lista de masters por email ────────────────────────────
+    match /admins/{email} {
+      allow read:  if authed();
+      allow write: if isMaster();
+    }
+
+    // ── /pessoas ── identidades + permissões ─────────────────────────────
+    match /pessoas/{id} {
+      allow read:   if authed();
+      allow create: if isMaster();
+      // Update: master, OU própria pessoa SÓ mexendo em uidVinculado
+      //        (necessário pro AuthContext linkar uid → pessoa no 1º login)
+      allow update: if isMaster()
+        || (
+          resource.data.email == request.auth.token.email
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['uidVinculado'])
+        )
+        // OU é alteração não-sensível feita por qualquer authed
+        // (deixa admin no app editar nome/email/whatsapp/cpf de pessoas existentes
+        // sem precisar ser master — Phase 2 vai apertar mais)
+        || (authed() && !pessoaSensitiveChanged());
+      allow delete: if isMaster();
+    }
+
+    // ── /restaurants ── estrutura organizacional, só master mexe ─────────
+    match /restaurants/{rid} {
+      allow read:   if authed();
+      allow create, update, delete: if isMaster();
+    }
+
+    // ── /cargos ── definidos pelo admin do restaurante (Phase 1: master) ──
+    match /cargos/{id} {
+      allow read:   if authed();
+      allow create, update, delete: if isMaster();
+    }
+
+    // ── /permissionTemplates ── presets de permissão, só master ─────────
+    match /permissionTemplates/{id} {
+      allow read:   if authed();
+      allow create, update, delete: if isMaster();
+    }
+
+    // ── /auditLog ── append-only ────────────────────────────────────────
+    match /auditLog/{id} {
+      allow read:   if authed();
+      allow create: if authed();
+      allow update, delete: if false;
+    }
+
+    // ── /historico ── histórico de campos (cria livre, deleta só master) ──
+    match /historico/{id} {
+      allow read:   if authed();
+      allow create, update: if authed();
+      allow delete: if isMaster();
+    }
+
+    // ── /mudancasAgendadas ── mudanças futuras agendadas ────────────────
+    match /mudancasAgendadas/{id} {
+      allow read:   if authed();
+      allow create, update, delete: if authed();
+    }
+
+    // ── /splitVersions ── regras de divisão de gorjeta (versionadas) ───
+    match /splitVersions/{id} {
+      allow read:   if authed();
+      allow create, update: if authed();
+      allow delete: if isMaster();
+    }
+
+    // ── Operacional / dia-a-dia (Phase 2: escopar por restaurantId) ──────
+    match /empregados/{id}          { allow read, write: if authed(); }
+    match /escalas/{id}             { allow read, write: if authed(); }
+    match /gorjetas/{id}            { allow read, write: if authed(); }
+    match /vtFolhas/{id}            { allow read, write: if authed(); }
+    match /comunicados/{id}         { allow read, write: if authed(); }
+    match /comunicadoLeituras/{id}  { allow read, write: if authed(); }
+    match /ocorrencias/{id}         { allow read, write: if authed(); }
+    match /ideias/{id}              { allow read, write: if authed(); }
+    match /reunioes/{id}            { allow read, write: if authed(); }
+    match /trilhaEventos/{id}       { allow read, write: if authed(); }
+    match /reservas/{id}            { allow read, write: if authed(); }
+    match /clientes/{id}            { allow read, write: if authed(); }
+    match /mesas/{id}               { allow read, write: if authed(); }
+    match /checklistTemplates/{id}  { allow read, write: if authed(); }
+    match /checklistRuns/{id}       { allow read, write: if authed(); }
+    match /contagens/{id}           { allow read, write: if authed(); }
+    match /insumos/{id}             { allow read, write: if authed(); }
+    match /fornecedores/{id}        { allow read, write: if authed(); }
+    match /pedidos/{id}             { allow read, write: if authed(); }
+
+    // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
+    match /{coll}/{doc} {
+      allow read, write: if false;
     }
   }
 }
