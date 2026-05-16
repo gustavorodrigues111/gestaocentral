@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { collection, query, where, limit, getDocs } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { auth, db } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -28,21 +28,33 @@ export function SignupScreen() {
       return;
     }
     setLoading(true);
+    const emailNorm = email.trim().toLowerCase();
     try {
-      // Confere se existe Pessoa cadastrada com esse email antes de criar a conta
+      // 1) Cria conta no Firebase Auth primeiro — Firebase Auth não depende
+      //    das Firestore Rules. Antes a consulta a pessoas vinha primeiro,
+      //    mas como o user ainda não está autenticado, as Rules bloqueavam
+      //    com "Missing or insufficient permissions".
+      await signUp(emailNorm, password);
+      // 2) Já autenticado → agora consegue ler pessoas. Verifica vínculo.
       const q = query(
         collection(db, "pessoas"),
-        where("email", "==", email.trim().toLowerCase()),
+        where("email", "==", emailNorm),
         limit(1)
       );
       const qsnap = await getDocs(q);
       if (qsnap.empty) {
-        setError("Email não está cadastrado. Peça pro administrador te cadastrar primeiro.");
+        // Não existe pessoa pra esse email → desfaz a criação da conta
+        // (não queremos Firebase Auth órfão sem vínculo)
+        try {
+          await auth.currentUser?.delete();
+        } catch (delErr) {
+          console.warn("Não consegui deletar a conta órfã:", delErr);
+        }
+        setError("Email não está cadastrado no sistema. Peça pro administrador te cadastrar primeiro com este email, e tente de novo.");
         setLoading(false);
         return;
       }
-      // Cria conta no Firebase Auth — AuthContext detecta e vincula automaticamente
-      await signUp(email.trim().toLowerCase(), password);
+      // 3) Pessoa existe → AuthContext detecta e vincula automaticamente
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       if (code === "auth/email-already-in-use") {
