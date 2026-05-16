@@ -607,9 +607,13 @@ function Grade({
   })();
 
   return (
-    <div ref={wrapRef} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+    <div
+      ref={wrapRef}
+      className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-auto max-h-[calc(100vh-260px)] min-h-[400px]"
+    >
       <table className="w-full text-xs border-collapse">
-        <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0 z-10">
+        {/* sticky top-0 funciona porque o wrapper agora tem overflow-y (max-h + overflow-auto) */}
+        <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0 z-10 shadow-[0_2px_0_rgba(0,0,0,0.05)]">
           <tr>
             <th className="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-20 min-w-[200px]">
               Empregado

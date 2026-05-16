@@ -235,16 +235,30 @@ export function validateWorkScheduleDays(
   return { errors, totalContract, diasAtivos: ativos.length };
 }
 
-// Pega o WorkSchedule vigente em uma data específica (último com validFrom <= date)
+// Pega o WorkSchedule vigente em uma data específica.
+//
+// Regra: entre as versões aplicáveis (validFrom <= dateStr), vence a ÚLTIMA
+// CADASTRADA (maior `registradoEm`). Se duas tiverem o mesmo registradoEm,
+// desempate pela maior `validFrom`.
+//
+// Por quê isso e não "último validFrom como ganha"? Porque o usuário às vezes
+// edita uma versão antiga (ex: pra adicionar ciclo de domingo retroativo) e
+// espera que essa edição PASSE A VALER no presente. Se outra versão posterior
+// existe mas sem o ciclo, o "último validFrom vence" ignorava a edição recente.
+// A nova regra respeita a INTENÇÃO do último cadastro.
 export function getActiveWorkSchedule(
   workSchedules: WorkSchedule[] | undefined,
   dateStr: string,
 ): WorkSchedule | null {
   if (!workSchedules || workSchedules.length === 0) return null;
-  const sorted = [...workSchedules]
-    .filter(s => !s.validFrom || s.validFrom <= dateStr)
-    .sort((a, b) => (a.validFrom || "").localeCompare(b.validFrom || ""));
-  return sorted[sorted.length - 1] || null;
+  const applicable = workSchedules.filter(s => !s.validFrom || s.validFrom <= dateStr);
+  if (applicable.length === 0) return null;
+  return [...applicable].sort((a, b) => {
+    const ra = a.registradoEm || a.validFrom || "";
+    const rb = b.registradoEm || b.validFrom || "";
+    if (rb !== ra) return rb.localeCompare(ra);       // mais recente cadastrado primeiro
+    return (b.validFrom || "").localeCompare(a.validFrom || ""); // empate: validFrom maior
+  })[0];
 }
 
 // Cria um conjunto vazio de 7 dias (todos inativos)
