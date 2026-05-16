@@ -25,9 +25,11 @@ service cloud.firestore {
         && request.auth.token.email != null
         && exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
     }
-    // Lista de campos sensíveis que só master pode mexer numa pessoa
+    // Lista de campos GENUINAMENTE sensíveis (escalada de privilégio).
+    // Inativar/reativar, vincular novo restaurante, etc. são ops administrativas
+    // NORMAIS que qualquer admin do app pode fazer — não exigem master.
     function pessoaSensitiveChanged() {
-      let sensitive = ['isMaster','permissions','restaurantIds','specialPermissions','ativa','inativadaEm','inativadaPor','motivoInativacao','novosRestaurantes','cadastroIncompleto'];
+      let sensitive = ['isMaster','permissions','restaurantIds','specialPermissions'];
       return request.resource.data.diff(resource.data).affectedKeys().hasAny(sensitive);
     }
 
