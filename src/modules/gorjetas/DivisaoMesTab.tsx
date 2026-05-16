@@ -52,18 +52,21 @@ export function DivisaoMesTab({
 
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
+      // taxRate: se a gorjeta foi paga, usa o snapshot dela (congelado).
+      // Senão, usa a splitVersion ativa na data — o `g.taxRate` armazenado
+      // pode ser zero/vazio em gorjetas importadas e não deve ser fonte.
+      const taxRate = g.paidAt ? (g.taxRate || 0) : (splitVersion?.taxRate ?? 0);
+      const fator = 1 - taxRate / 100;
+
       // Usa snapshot se gorjeta paga; senão recalcula em tempo real
       let itens: DivisaoItem[];
       if (g.paidAt && g.divisaoSnapshot) {
         itens = g.divisaoSnapshot;
       } else {
-        const liquido = calcularValorLiquido(g.valorBruto, g.taxRate);
+        const liquido = g.valorBruto * fator;
         const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
         itens = r.itens;
       }
-
-      const taxRate = g.taxRate || 0;
-      const fator = 1 - taxRate / 100;
 
       for (const it of itens) {
         if (!acc[it.empregadoId]) {
@@ -101,14 +104,21 @@ export function DivisaoMesTab({
     );
   }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades]);
 
-  // Totais do mês (respeitam filtro)
+  // Totais do mês (respeitam filtro).
+  // Líquido: pra gorjetas pagas usa o snapshot armazenado; pra pendentes
+  // calcula a partir do bruto + splitVersion.taxRate ativa da data.
   const totais = useMemo(() => {
     const bruto = gorjetasFiltradas.reduce((s, g) => s + (g.valorBruto || 0), 0);
-    const liquido = gorjetasFiltradas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
+    const liquido = gorjetasFiltradas.reduce((s, g) => {
+      if (g.paidAt) return s + (g.valorLiquido || 0);
+      const sv = getActiveSplitVersion(splitVersions, g.date);
+      const tax = sv?.taxRate ?? 0;
+      return s + (g.valorBruto || 0) * (1 - tax / 100);
+    }, 0);
     const retencao = bruto - liquido;
     const distribuido = linhas.reduce((s, l) => s + l.liquido, 0);
     return { bruto, liquido, retencao, distribuido };
-  }, [gorjetasFiltradas, linhas]);
+  }, [gorjetasFiltradas, linhas, splitVersions]);
 
   const [exportando, setExportando] = useState(false);
   async function exportar() {
@@ -154,14 +164,23 @@ export function DivisaoMesTab({
     const lancamentosHeader = ["Data", "Bruto", "Retenção (%)", "Líquido", "Pago em", "Observação"];
     const lancamentosRows = [...gorjetas]
       .sort((a, b) => a.date.localeCompare(b.date))
-      .map(g => [
-        g.date,
-        g.valorBruto,
-        g.taxRate,
-        g.valorLiquido,
-        g.paidAt ? new Date(g.paidAt).toLocaleString("pt-BR") : "",
-        g.observacao || "",
-      ]);
+      .map(g => {
+        // Pra gorjetas pagas, usa o snapshot. Pra pendentes, pega da splitVersion ativa.
+        const tax = g.paidAt
+          ? (g.taxRate || 0)
+          : (getActiveSplitVersion(splitVersions, g.date)?.taxRate ?? 0);
+        const liquido = g.paidAt
+          ? (g.valorLiquido || 0)
+          : (g.valorBruto || 0) * (1 - tax / 100);
+        return [
+          g.date,
+          g.valorBruto,
+          tax,
+          liquido,
+          g.paidAt ? new Date(g.paidAt).toLocaleString("pt-BR") : "",
+          g.observacao || "",
+        ];
+      });
     const lancamentosWS = XLSX.utils.aoa_to_sheet([lancamentosHeader, ...lancamentosRows]);
     XLSX.utils.book_append_sheet(wb, lancamentosWS, "Lançamentos");
 

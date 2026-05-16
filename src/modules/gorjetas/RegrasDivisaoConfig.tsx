@@ -121,7 +121,8 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
       setErr("Sem permissão. Pede 'gorjetasConfigurarRegra' pro master.");
       return;
     }
-    const tax = parseFloat(taxRate) || 0;
+    // Aceita vírgula OU ponto (BR + US) — substitui antes do parseFloat
+    const tax = parseFloat((taxRate || "").replace(",", ".")) || 0;
     if (tax < 0 || tax > 100) { setErr("Retenção entre 0 e 100"); return; }
     if (!effectiveFrom) { setErr("Data de vigência obrigatória"); return; }
     setErr("");
@@ -288,11 +289,12 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
                 </select>
                 <div>
                   <input
-                    type="number"
-                    min="0" step="0.01"
-                    value={cfg.type === "fixed" ? cfg.value : cfg.valuePerEmp}
+                    type="text"
+                    inputMode="decimal"
+                    value={String(cfg.type === "fixed" ? cfg.value : cfg.valuePerEmp).replace(".", ",")}
                     onChange={(e) => {
-                      const v = parseFloat(e.target.value) || 0;
+                      // Aceita vírgula OU ponto como separador decimal (BR + US)
+                      const v = parseFloat(e.target.value.replace(",", ".")) || 0;
                       if (cfg.type === "fixed") setAreaConfig(area, { type: "fixed", value: v });
                       else setAreaConfig(area, { type: "perEmployee", valuePerEmp: v });
                     }}
@@ -327,8 +329,8 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
       {/* Retenção */}
       <Input
         label="Retenção da gorjeta (%)"
-        type="number"
-        min="0" max="100" step="0.01"
+        type="text"
+        inputMode="decimal"
         value={taxRate}
         onChange={(e) => setTaxRate(e.target.value)}
         placeholder="ex: 33"

@@ -422,8 +422,13 @@ function GorjetaModal({
   // SplitVersion vigente NA DATA da gorjeta (não hoje)
   const splitVersion = useMemo(() => getActiveSplitVersion(splitVersions, date), [splitVersions, date]);
 
-  // taxRate: snapshot na gorjeta (se existe) OU vigente do dia OU default
-  const tax = gorjeta?.taxRate ?? splitVersion?.taxRate ?? taxRateDefault;
+  // taxRate: se a gorjeta está PAGA, usa o snapshot dela (congelado);
+  // senão usa a splitVersion vigente da data (ou default do restaurante).
+  // Antes priorizava gorjeta.taxRate sempre, o que era ruim pra docs
+  // importados com taxRate em formato decimal (0.2 em vez de 20).
+  const tax = (gorjeta?.paidAt && gorjeta?.taxRate != null)
+    ? gorjeta.taxRate
+    : (splitVersion?.taxRate ?? taxRateDefault);
 
   const bruto = parseFloat(valorBruto.replace(",", ".")) || 0;
   const liquido = calcularValorLiquido(bruto, tax);
