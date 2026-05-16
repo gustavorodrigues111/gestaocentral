@@ -16,7 +16,10 @@ import { AREAS } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
-import { SumarioMesModal } from "./SumarioMesModal";
+// SumarioMesModal removido da Escala — o conteúdo (gorjetas, VT, divergências)
+// vive nas próprias telas de Gorjetas e Vale Transporte. Mantemos o arquivo
+// no repo caso queiramos reaproveitar partes (ex: histórico de versões) no
+// futuro como botão dedicado.
 
 // Tabela de status: cor + label curto + label longo
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
@@ -250,7 +253,6 @@ export function EscalaPage() {
   const [showFeriasLote, setShowFeriasLote] = useState(false);
   const [showFecharMes, setShowFecharMes] = useState(false);
   const [showReabrirMes, setShowReabrirMes] = useState(false);
-  const [showSumario, setShowSumario] = useState(false);
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
 
   // Multi-unidades — derivados. UI multi-unit aparece quando há 2+ unidades
@@ -354,9 +356,6 @@ export function EscalaPage() {
               📋 Copiar Prevista → Real
             </Button>
           )}
-          <Button variant="secondary" size="sm" onClick={() => setShowSumario(true)}>
-            📊 Sumário
-          </Button>
           {!fechada && podeConfig && (
             <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
               🔒 Fechar mês
@@ -464,18 +463,6 @@ export function EscalaPage() {
           mes={mes}
           escala={escala}
           onClose={() => setShowReabrirMes(false)}
-        />
-      )}
-      {showSumario && activeRestaurant && (
-        <SumarioMesModal
-          rid={rid}
-          ano={ano}
-          mes={mes}
-          escala={escala}
-          empregados={empregados}
-          cargos={cargos}
-          restaurant={activeRestaurant}
-          onClose={() => setShowSumario(false)}
         />
       )}
     </div>
