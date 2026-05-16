@@ -380,14 +380,28 @@ export function EscalaPage() {
         </div>
       </div>
 
-      {/* Banners de status */}
-      <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
+      {/* Banner status — info, só desktop (mobile usa o título da versão) */}
+      <div className="hidden md:block">
+        <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
+      </div>
 
-      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+      {/* Hint de atalhos de teclado — desktop only (sem teclado no mobile) */}
+      <div className="hidden md:block text-[11px] text-gray-500 dark:text-gray-400 mb-2">
         💡 <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> limpar
       </div>
 
-      <Legenda />
+      {/* Legenda — desktop only. Mobile usa o botão "?" abaixo */}
+      <div className="hidden md:block">
+        <Legenda />
+      </div>
+      <details className="md:hidden mb-3 text-xs">
+        <summary className="cursor-pointer text-gray-500 dark:text-gray-400 select-none inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+          ❓ Legenda das cores
+        </summary>
+        <div className="mt-2">
+          <Legenda />
+        </div>
+      </details>
 
       {loading ? (
         <div className="text-sm text-gray-500 mt-6">Carregando...</div>
