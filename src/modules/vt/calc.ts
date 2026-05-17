@@ -1,5 +1,6 @@
 import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLoteLinha } from "../../core/types";
 import { nomeMes, shiftMonth } from "../../core/utils/date";
+import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 
 // Status que conta como dia de trabalho pra cálculo de VT (base do mês corrente)
 const STATUS_TRABALHADO: Record<ScheduleStatus, boolean> = {
@@ -54,6 +55,62 @@ export function contarDiasTrabalhados(
   return n;
 }
 
+// Conta dias de trabalho com FALLBACK pra escala derivada do workSchedule.
+// Quando a escala prevista do mês não foi preenchida (doc não existe ou
+// empregado não tem entradas), assume os dias úteis do horário cadastrado
+// (active + sundayCycle). Marca em `fonte` qual fonte foi usada.
+//
+// Regra de combinação quando a escala existe parcialmente pro empregado:
+// - Pega o cadastro como base (todos os dias do mês)
+// - Aplica override da escala dia-a-dia (status real lá manda)
+export type DiasContados = {
+  dias: number;
+  fonte: "escala" | "horario" | "vazio";
+};
+
+export function contarDiasTrabalhadosSmart(
+  empregado: Empregado,
+  escala: EscalaMes | null,
+  ano: number,
+  mes: number,
+  versao: "prevista" | "real" = "prevista",
+): DiasContados {
+  const escalaEmp = escala?.[versao]?.[empregado.id] || {};
+  const temEscala = Object.keys(escalaEmp).length > 0;
+
+  // Cadastro derivado (horário cadastrado)
+  const derivado = derivedScheduleForEmpregado(empregado, ano, mes);
+  const temHorario = Object.keys(derivado).length > 0;
+
+  if (!temEscala && !temHorario) {
+    return { dias: 0, fonte: "vazio" };
+  }
+
+  // Se a escala não foi tocada, usa só o derivado
+  if (!temEscala) {
+    let n = 0;
+    for (const k of Object.keys(derivado)) {
+      if (derivado[k].status === "trabalho") n++;
+    }
+    return { dias: n, fonte: "horario" };
+  }
+
+  // Escala existe — combina: cadastro como base, escala como override.
+  // Pra cada dia do mês ativo no derivado OU presente na escala:
+  const todasDatas = new Set<string>([...Object.keys(derivado), ...Object.keys(escalaEmp)]);
+  let n = 0;
+  for (const date of todasDatas) {
+    const stEscala = escalaEmp[date];
+    if (stEscala !== undefined) {
+      if (STATUS_TRABALHADO[stEscala]) n++;
+    } else {
+      const d = derivado[date];
+      if (d && d.status === "trabalho") n++;
+    }
+  }
+  return { dias: n, fonte: "escala" };
+}
+
 export type VTLinhaCalc = {
   empregadoId: string;
   nome: string;
@@ -104,11 +161,16 @@ export function calcularDescontoSugerido(
   refMes: number,
 ): DescontoSugeridoCalc {
   const refMesYm = `${refAno}-${String(refMes).padStart(2, "0")}`;
+  const mesNomeRef = nomeMes(refMes).slice(0, 3).toLowerCase();
+  const anoCurto = String(refAno).slice(2);
   if (!escalaRef) {
-    return { valor: 0, justificativa: `Sem escala de ${nomeMes(refMes).toLowerCase()}/${String(refAno).slice(2)}`, refMesYm, ocorrencias: [] };
+    return { valor: 0, justificativa: `Sem escala em ${mesNomeRef}/${anoCurto} — desconto = 0`, refMesYm, ocorrencias: [] };
   }
   // Usa a versão REAL do refMes (o mês "passou", então o real é a fonte certa).
   const dias = escalaRef.real?.[empregadoId] || {};
+  if (Object.keys(dias).length === 0) {
+    return { valor: 0, justificativa: `Sem lançamentos em ${mesNomeRef}/${anoCurto} pra esse empregado — desconto = 0`, refMesYm, ocorrencias: [] };
+  }
   const ocorrencias: { dia: number; status: ScheduleStatus }[] = [];
   for (const dateStr of Object.keys(dias)) {
     const st = dias[dateStr];
@@ -120,8 +182,6 @@ export function calcularDescontoSugerido(
   ocorrencias.sort((a, b) => a.dia - b.dia);
   const qtd = ocorrencias.length;
   const valor = Math.round(qtd * passagensPorDia * valorPassagem * 100) / 100;
-  const mesNomeRef = nomeMes(refMes).slice(0, 3).toLowerCase();
-  const anoCurto = String(refAno).slice(2);
   let justificativa = "";
   if (qtd === 0) {
     justificativa = `Sem ocorrências em ${mesNomeRef}/${anoCurto}`;
@@ -196,6 +256,7 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
 
 export type VTLoteLinhaPreview = VTLoteLinha & {
   semConfig?: boolean;             // empregado tem vtAtivo mas falta passagens/valor
+  fonteDias?: "escala" | "horario" | "vazio"; // de onde veio o `diasTrabalhados`
 };
 
 export function montarLinhasLote(
@@ -217,7 +278,13 @@ export function montarLinhasLote(
 
     const passagensPorDia = e.vtPassagensPorDia ?? 0;
     const valorPassagem   = e.vtValorPassagem   ?? 0;
-    const diasTrabalhados = temVt ? contarDiasTrabalhados(e.id, escalaLote, "prevista") : 0;
+    let diasTrabalhados = 0;
+    let fonteDias: "escala" | "horario" | "vazio" = "vazio";
+    if (temVt) {
+      const calc = contarDiasTrabalhadosSmart(e, escalaLote, loteAno, loteMes, "prevista");
+      diasTrabalhados = calc.dias;
+      fonteDias = calc.fonte;
+    }
     const vtBase = Math.round(diasTrabalhados * passagensPorDia * valorPassagem * 100) / 100;
 
     // Desconto sugerido — só se tem VT diário
@@ -257,6 +324,7 @@ export function montarLinhasLote(
       auxPontual: 0,
       total,
       semConfig,
+      fonteDias,
     });
   }
 

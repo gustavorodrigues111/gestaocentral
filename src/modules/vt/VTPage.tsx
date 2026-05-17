@@ -199,7 +199,7 @@ export function VTPage() {
   }, [loteAtivo, empregados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
 
   // Linhas a renderizar: se há lote, usa as do lote; senão, preview
-  const linhas: (VTLoteLinha & { semConfig?: boolean })[] = useMemo(() => {
+  const linhas: (VTLoteLinha & { semConfig?: boolean; fonteDias?: "escala" | "horario" | "vazio" })[] = useMemo(() => {
     if (loteAtivo) return loteAtivo.linhas;
     return linhasPreview || [];
   }, [loteAtivo, linhasPreview]);
@@ -652,7 +652,7 @@ export function VTPage() {
 // ────────────────────────────────────────────────────────────────────────────
 
 type LinhaVTProps = {
-  l: VTLoteLinha & { semConfig?: boolean };
+  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "escala" | "horario" | "vazio" };
   loteRascunho: boolean;
   readonly: boolean;
   editingValorEmpId: string | null;
@@ -722,7 +722,17 @@ function LinhaVT(props: LinhaVTProps) {
 
       <div className="md:text-right tabular-nums md:order-4">
         <span className="md:hidden text-[10px] text-gray-500">Dias: </span>
-        {l.diasTrabalhados}
+        <span className="inline-flex items-center gap-1 justify-end">
+          {l.diasTrabalhados}
+          {l.fonteDias === "horario" && (
+            <span
+              className="text-[10px] text-amber-600 dark:text-amber-400 cursor-help"
+              title="Escala do mês não preenchida — dias estimados pelo horário cadastrado do empregado"
+            >
+              📋
+            </span>
+          )}
+        </span>
       </div>
 
       <div className="md:text-right md:order-5">
