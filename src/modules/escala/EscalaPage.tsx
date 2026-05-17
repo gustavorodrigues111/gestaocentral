@@ -348,7 +348,7 @@ export function EscalaPage() {
   const realVazia = !escala?.real || Object.keys(escala.real).length === 0;
 
   return (
-    <div className="max-w-[1400px]">
+    <div>
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">📅 Escala</h1>
@@ -857,7 +857,7 @@ function Grade({
         {/* sticky top-0 funciona porque o wrapper agora tem overflow-y (max-h + overflow-auto) */}
         <thead className="bg-gray-50 dark:bg-gray-800/50 sticky top-0 z-10 shadow-[0_2px_0_rgba(0,0,0,0.05)]">
           <tr>
-            <th className="text-left px-3 py-2 font-semibold text-gray-700 dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-20 min-w-[200px]">
+            <th className="text-left px-2 py-2 font-semibold text-gray-700 dark:text-gray-300 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-20 w-[140px] min-w-[140px]">
               Empregado
             </th>
             {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
@@ -867,7 +867,8 @@ function Grade({
               return (
                 <th
                   key={dia}
-                  className={`px-1 py-1 text-center font-semibold ${weekend ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}
+                  style={{ width: 28, minWidth: 28 }}
+                  className={`px-0 py-1 text-center font-semibold ${weekend ? "bg-amber-50 dark:bg-amber-900/20" : ""}`}
                 >
                   <div className="text-gray-700 dark:text-gray-300">{dia}</div>
                   <div className="text-[10px] text-gray-400 uppercase">{dowShort(d)}</div>
@@ -891,7 +892,7 @@ function Grade({
               <Fragment key={e.id}>
               {isPrimeiroDaArea && (
                 <tr className="bg-gray-50 dark:bg-gray-800/50">
-                  <td colSpan={dias + 1} className="px-3 py-1 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-10">
+                  <td colSpan={dias + 1} className="px-2 py-1 sticky left-0 bg-gray-50 dark:bg-gray-800/50 z-10">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                       {areaAtual || "Sem área"}
                     </span>
@@ -899,12 +900,12 @@ function Grade({
                 </tr>
               )}
               <tr className="border-t border-gray-100 dark:border-gray-800">
-                <td className="px-3 py-1.5 sticky left-0 bg-white dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-800">
-                  <div className="flex items-center gap-2">
-                    <span className={`inline-block w-2 h-2 rounded-full ${dot}`} />
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-gray-100">{e.nome}</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400">{cargo?.nome || "—"}</div>
+                <td className="px-2 py-1.5 sticky left-0 bg-white dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-800 w-[140px] min-w-[140px] max-w-[140px]">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{cargo?.nome || "—"}</div>
                     </div>
                   </div>
                 </td>
@@ -928,7 +929,7 @@ function Grade({
                     filtroUnidadeId && status === "trabalho" && unidadeIdDoDia !== filtroUnidadeId
                   );
                   return (
-                    <td key={dia} className={`p-0.5 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""} ${ocultaPorFiltro ? "opacity-25" : ""}`}>
+                    <td key={dia} className={`p-0 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""} ${ocultaPorFiltro ? "opacity-25" : ""}`}>
                       <Celula
                         override={override}
                         derived={derived}
