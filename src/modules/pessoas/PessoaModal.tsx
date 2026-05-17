@@ -529,6 +529,22 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   );
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
+  const [erro, setErro] = useState("");
+
+  // Estado "dirty" — true se o user mexeu em algo desde o último save / abertura.
+  // Usado pra evitar resync com snapshot apagando edições locais não salvas.
+  const [dirty, setDirty] = useState(false);
+
+  // Resync com snapshot quando pessoa muda OU quando troca de restaurante,
+  // MAS só se não tem edições locais pendentes (pra não estragar UX do user).
+  useEffect(() => {
+    if (dirty) return;
+    setPerms((pessoa.permissions?.[restaurantId] as Record<string, ModulePermission>) || {});
+    setPessoasExcluir(pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true);
+    setGorjetasConfigurarRegra(pessoa.specialPermissions?.[restaurantId]?.gorjetasConfigurarRegra === true);
+    setEscalaReabrir(pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pessoa.id, restaurantId, pessoa.permissions, pessoa.specialPermissions]);
 
   // Templates do restaurante (pra o seletor "Aplicar template")
   const [templates, setTemplates] = useState<PermissionTemplate[]>([]);
@@ -548,6 +564,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   }, [restaurantId]);
 
   function togglePerm(moduleId: string, kind: "ver" | "configurar") {
+    setDirty(true);
     setPerms(p => {
       const cur = p[moduleId] || { ver: false, configurar: false };
       const next = { ...cur, [kind]: !cur[kind] };
@@ -562,6 +579,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   }
 
   function toggleUnidadePerm(moduleId: string, unidadeId: string) {
+    setDirty(true);
     setPerms(p => {
       const cur = p[moduleId] || { ver: false, configurar: false };
       const atual = cur.unidades || [];
@@ -578,6 +596,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   }
 
   function limparEscopoUnidade(moduleId: string) {
+    setDirty(true);
     setPerms(p => {
       const cur = p[moduleId];
       if (!cur) return p;
@@ -591,6 +610,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
     const t = templates.find(x => x.id === templateId);
     if (!t) return;
     if (!confirm(`Aplicar template "${t.nome}"? Isso SOBRESCREVE as permissões atuais.`)) return;
+    setDirty(true);
     setPerms(t.permissions || {});
     setPessoasExcluir(!!t.specialPermissions?.pessoasExcluir);
     setGorjetasConfigurarRegra(!!t.specialPermissions?.gorjetasConfigurarRegra);
@@ -599,6 +619,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
 
   async function salvar() {
     setSaving(true);
+    setErro("");
     try {
       const limpo: Record<string, ModulePermission> = {};
       Object.entries(perms).forEach(([k, v]) => {
@@ -614,6 +635,16 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
         specialPermissions: newSpecial,
       }, { merge: true });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+      setDirty(false);
+    } catch (e) {
+      console.error("Erro ao salvar permissões:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      // Mensagem amigável pros casos mais comuns
+      if (msg.includes("permission") || msg.includes("Missing or insufficient")) {
+        setErro("Sem permissão pra editar permissões dessa pessoa. Só o master pode mexer aqui.");
+      } else {
+        setErro("Erro ao salvar: " + msg);
+      }
     } finally {
       setSaving(false);
     }
@@ -761,9 +792,20 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
         </div>
       </div>
 
+      {erro && (
+        <div className="rounded-lg bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
+          ⚠️ {erro}
+        </div>
+      )}
+      {dirty && !erro && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+          Você tem alterações não salvas. Clique em <strong>Salvar permissões</strong> abaixo.
+        </div>
+      )}
+
       <div className="flex justify-end gap-3 items-center pt-3 border-t border-gray-200 dark:border-gray-800">
-        <span className="text-xs text-emerald-600">{savedAt && `✓ Salvo às ${savedAt}`}</span>
-        <Button onClick={salvar} disabled={saving}>{saving ? "..." : "Salvar permissões"}</Button>
+        <span className="text-xs text-emerald-600">{savedAt && !dirty && `✓ Salvo às ${savedAt}`}</span>
+        <Button onClick={salvar} disabled={saving || !dirty}>{saving ? "..." : "Salvar permissões"}</Button>
       </div>
     </div>
   );
