@@ -252,11 +252,15 @@ export function DivisaoMesTab({
         </div>
       )}
 
-      {/* Cards de totais */}
-      <div className="grid grid-cols-3 gap-2 md:gap-3">
+      {/* Cards de totais.
+          Desktop: 3 colunas. Mobile: Bruto sozinho na 1ª linha (cabe valor grande);
+          Retenção + Líquido dividem a 2ª linha. */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
         <Card label="Bruto do mês" value={fmtBR(totais.bruto)} />
-        <Card label="Retenção total" value={fmtBR(totais.retencao)} variant="warn" />
-        <Card label="Líquido distribuído" value={fmtBR(totais.distribuido)} variant="ok" />
+        <div className="grid grid-cols-2 gap-2 md:contents">
+          <Card label="Retenção total" value={fmtBR(totais.retencao)} variant="warn" />
+          <Card label="Líquido distribuído" value={fmtBR(totais.distribuido)} variant="ok" />
+        </div>
       </div>
 
       <div className="flex justify-between items-center flex-wrap gap-2">

@@ -73,6 +73,8 @@ export function VTPage() {
   const [confirmandoLote, setConfirmandoLote] = useState(false);
   // Bottom-sheet/modal de edição por linha — guarda o empregadoId
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
+  // Filtro de unidade (multi-unidades) — "" = todas
+  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
 
   // Override local de toggle desc.sugerido / valores manuais (antes de criar lote)
   // Key: empregadoId → { ativo, descontoManual, auxPontual }
@@ -202,11 +204,31 @@ export function VTPage() {
     });
   }, [loteAtivo, empregados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
 
-  // Linhas a renderizar: se há lote, usa as do lote; senão, preview
+  // Unidades ativas do restaurante (pra badge + filtro)
+  const unidadesAtivas = useMemo(
+    () => (activeRestaurant?.unidades || []).filter(u => u.ativa),
+    [activeRestaurant],
+  );
+  const usaMultiUnidades = unidadesAtivas.length > 1;
+  const unidadesById = useMemo(
+    () => Object.fromEntries(unidadesAtivas.map(u => [u.id, u])),
+    [unidadesAtivas],
+  );
+  const empregadosById = useMemo(
+    () => Object.fromEntries(empregados.map(e => [e.id, e])),
+    [empregados],
+  );
+
+  // Linhas a renderizar: se há lote, usa as do lote; senão, preview.
+  // Aplica filtro de unidade (pela unidadePadraoId do empregado) quando há filtro ativo.
   const linhas: (VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" })[] = useMemo(() => {
-    if (loteAtivo) return loteAtivo.linhas;
-    return linhasPreview || [];
-  }, [loteAtivo, linhasPreview]);
+    const base = loteAtivo ? loteAtivo.linhas : (linhasPreview || []);
+    if (!filtroUnidadeId) return base;
+    return base.filter(l => {
+      const emp = empregadosById[l.empregadoId];
+      return emp?.unidadePadraoId === filtroUnidadeId;
+    });
+  }, [loteAtivo, linhasPreview, filtroUnidadeId, empregadosById]);
 
   // Agrupa por área
   const porArea = useMemo(() => {
@@ -489,6 +511,36 @@ export function VTPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {activeRestaurant.nome}
           </p>
+          {/* Filtro de unidade — pills clicáveis quando o restaurante é multi-unidades */}
+          {usaMultiUnidades && (
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFiltroUnidadeId("")}
+                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                  filtroUnidadeId === ""
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+              >
+                Todas
+              </button>
+              {unidadesAtivas.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setFiltroUnidadeId(u.id)}
+                  className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                    filtroUnidadeId === u.id
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  {u.nome}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -638,16 +690,28 @@ export function VTPage() {
 
                     {linhasArea.map(l => (
                       <div key={l.empregadoId}>
-                        {/* Desktop: tabela com 8 colunas + ✏️ no canto direito */}
-                        <LinhaVT
-                          l={l}
-                          onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
-                        />
-                        {/* Mobile: card com ✏️ */}
-                        <LinhaVTCard
-                          l={l}
-                          onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
-                        />
+                        {(() => {
+                          const emp = empregadosById[l.empregadoId];
+                          const unidadeNome = usaMultiUnidades && emp?.unidadePadraoId
+                            ? unidadesById[emp.unidadePadraoId]?.nome
+                            : undefined;
+                          return (
+                            <>
+                              {/* Desktop: tabela com 8 colunas + ✏️ no canto direito */}
+                              <LinhaVT
+                                l={l}
+                                onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
+                                unidadeNome={unidadeNome}
+                              />
+                              {/* Mobile: card com ✏️ */}
+                              <LinhaVTCard
+                                l={l}
+                                onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
+                                unidadeNome={unidadeNome}
+                              />
+                            </>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -729,12 +793,14 @@ type LinhaVTProps = {
   l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   // ✏️ no canto direito — abre o EditLinhaSheet com tabs (valores + ajuste)
   onAbrirSheet?: () => void;
+  // Nome da unidade do empregado (multi-unidades). undefined = single-unidade
+  unidadeNome?: string;
 };
 
 // Desktop: grid horizontal com 8 colunas (tabela). Desc/aux são READ-ONLY —
 // toda edição acontece via ✏️ do canto direito (abre o sheet).
 function LinhaVT(props: LinhaVTProps) {
-  const { l } = props;
+  const { l, unidadeNome } = props;
 
   return (
     <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
@@ -747,6 +813,11 @@ function LinhaVT(props: LinhaVTProps) {
           </span>
         )}
         <span className="ml-2 text-[10px] text-gray-400">{l.cargoNome}</span>
+        {unidadeNome && (
+          <span className="ml-2 text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+            {unidadeNome}
+          </span>
+        )}
       </div>
 
       <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">
@@ -822,11 +893,13 @@ function LinhaVT(props: LinhaVTProps) {
 
 type LinhaVTCardProps = {
   l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
-  // ✏️ no canto direito — abre o EditLinhaSheet com tabs
+  // ✏️ no canto direito — abre o EditLinhaSheet
   onAbrirSheet?: () => void;
+  // Nome da unidade (multi-unidades). undefined = single
+  unidadeNome?: string;
 };
 
-function LinhaVTCard({ l, onAbrirSheet }: LinhaVTCardProps) {
+function LinhaVTCard({ l, onAbrirSheet, unidadeNome }: LinhaVTCardProps) {
   // Resumos compactos — só mostra o que tem valor
   const detalhes: string[] = [];
   if (l.passagensPorDia > 0) {
@@ -854,7 +927,14 @@ function LinhaVTCard({ l, onAbrirSheet }: LinhaVTCardProps) {
               </span>
             )}
           </div>
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate flex items-center gap-1.5">
+            <span>{l.cargoNome}</span>
+            {unidadeNome && (
+              <span className="text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+                {unidadeNome}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
@@ -908,17 +988,19 @@ type EditLinhaSheetProps = {
 };
 
 function EditLinhaSheet(props: EditLinhaSheetProps) {
-  const { l, podeEditarValores, podeLancarAjuste, onClose } = props;
+  const { l, podeEditarValores, onClose } = props;
 
-  // Default: abre na tab que faz mais sentido
-  const [tab, setTab] = useState<"valores" | "ajuste">(podeEditarValores ? "valores" : "ajuste");
+  // Sem tabs — modo único determinado pelo contexto:
+  //   - podeEditarValores=true → modo "valores" (edita o lote vigente)
+  //   - podeEditarValores=false → modo "ajuste" (lote já pago, cria correção)
+  const modo: "valores" | "ajuste" = podeEditarValores ? "valores" : "ajuste";
 
-  // Estado tab "valores"
+  // Estado modo "valores"
   const [descRaw, setDescRaw] = useState(l.descontoManual > 0 ? fmtMoneyInput(l.descontoManual) : "");
   const [auxRaw, setAuxRaw] = useState(l.auxPontual > 0 ? fmtMoneyInput(l.auxPontual) : "");
   const [descAtivo, setDescAtivo] = useState(l.descontoSugeridoAtivo);
 
-  // Estado tab "ajuste"
+  // Estado modo "ajuste"
   const [sinal, setSinal] = useState<"+" | "-">("+");
   const [valorAjusteRaw, setValorAjusteRaw] = useState("");
   const [justificativa, setJustificativa] = useState("");
@@ -954,44 +1036,19 @@ function EditLinhaSheet(props: EditLinhaSheetProps) {
         {/* Header */}
         <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
           <div>
-            <div className="font-bold text-gray-900 dark:text-gray-100">{l.nome}</div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">{l.cargoNome} · {l.area}</div>
+            <div className="font-bold text-gray-900 dark:text-gray-100">
+              {modo === "valores" ? "✏️ " : "⚖ "}{l.nome}
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">
+              {l.cargoNome} · {l.area} {modo === "ajuste" && <span className="ml-1">— lançar ajuste sobre lote pago</span>}
+            </div>
           </div>
           <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
         </div>
 
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-800 shrink-0">
-          <button
-            type="button"
-            onClick={() => podeEditarValores && setTab("valores")}
-            disabled={!podeEditarValores}
-            className={`flex-1 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              tab === "valores"
-                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-            } ${!podeEditarValores ? "opacity-40 cursor-not-allowed" : ""}`}
-            title={!podeEditarValores ? "Lote já pago — só lança ajuste" : undefined}
-          >
-            ✏️ Editar valores
-          </button>
-          <button
-            type="button"
-            onClick={() => podeLancarAjuste && setTab("ajuste")}
-            disabled={!podeLancarAjuste}
-            className={`flex-1 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              tab === "ajuste"
-                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
-            } ${!podeLancarAjuste ? "opacity-40 cursor-not-allowed" : ""}`}
-          >
-            ⚖ Lançar ajuste
-          </button>
-        </div>
-
         {/* Conteúdo */}
         <div className="flex-1 overflow-y-auto p-4">
-          {tab === "valores" ? (
+          {modo === "valores" ? (
             <div className="space-y-4">
               <div className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 text-xs space-y-0.5 tabular-nums">
                 <div className="flex justify-between"><span className="text-gray-500">Auxílio fixo:</span><span>{fmtBR(l.auxFixoMensal)}</span></div>
@@ -1113,7 +1170,7 @@ function EditLinhaSheet(props: EditLinhaSheetProps) {
         {/* Footer */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2 shrink-0">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
-          {tab === "valores" ? (
+          {modo === "valores" ? (
             <Button onClick={aplicarValores} className="flex-1">Aplicar</Button>
           ) : (
             <Button onClick={salvarAjuste} disabled={!podeSalvarAjuste} className="flex-1">
