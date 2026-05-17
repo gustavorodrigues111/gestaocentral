@@ -76,6 +76,8 @@ export function VTPage() {
 
   // Modal de confirmação de lançamento
   const [confirmandoLote, setConfirmandoLote] = useState(false);
+  // Modal de lote de AJUSTE (correção pra mais/menos)
+  const [lancandoAjuste, setLancandoAjuste] = useState(false);
   // Bottom-sheet de edição no mobile — guarda o empregadoId que está sendo editado
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
 
@@ -353,6 +355,54 @@ export function VTPage() {
     }
   }
 
+  // Criar lote de AJUSTE — 1 linha por empregado, valor manual + justificativa.
+  // NÃO valida overlap (é justamente pra corrigir diferenças).
+  async function criarLoteAjuste(empregadoId: string, valor: number, justificativa: string) {
+    if (!rid || !me) return;
+    const emp = empregados.find(e => e.id === empregadoId);
+    if (!emp) { alert("Empregado não encontrado."); return; }
+    const cargo = cargos.find(c => c.id === emp.cargoId);
+    const area: Area = (cargo?.area || "Salão") as Area;
+    const now = new Date().toISOString();
+    const linha: VTLoteLinha = {
+      empregadoId: emp.id,
+      nome: emp.nome,
+      cargoNome: cargo?.nome || "—",
+      area,
+      passagensPorDia: 0,
+      valorPassagem: 0,
+      diasTrabalhados: 0,
+      auxFixoMensal: 0,
+      vtBase: 0,
+      descontoSugeridoAtivo: false,
+      descontoSugerido: 0,
+      descontoManual: 0,
+      auxPontual: 0,
+      total: valor,
+      modo: "ajuste",
+      justificativa,
+    };
+    const totalGeral = valor;
+    const totalPorArea: Record<string, number> = { [area]: valor };
+    const evento: VTLoteEvento = { acao: "criado", em: now, por: me.id, porNome: me.nome, motivo: justificativa };
+    const lote: Omit<VTLote, "id"> = {
+      restaurantId: rid,
+      ano, mes,
+      status: "rascunho",
+      tipo: "ajuste",
+      linhas: [linha],
+      totalGeral,
+      totalPorArea,
+      criadoEm: now,
+      criadoPor: me.id,
+      criadoPorNome: me.nome,
+      historico: [evento],
+      updatedAt: now,
+    };
+    await addDoc(collection(db, "vtLotes"), lote);
+    setLancandoAjuste(false);
+  }
+
   // Marcar lote como pago
   async function marcarPago(lote: VTLote) {
     if (!me) return;
@@ -557,13 +607,26 @@ export function VTPage() {
               <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totais.geral)}</div>
             </div>
             {!loteAtivo && podeConfig && linhasPreview && linhasPreview.length > 0 && (
-              <Button
-                onClick={() => setConfirmandoLote(true)}
-                disabled={!podeLancarLote}
-                title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
-              >
-                💸 Lançar pra pagamento
-              </Button>
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  onClick={() => setConfirmandoLote(true)}
+                  disabled={!podeLancarLote}
+                  title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
+                >
+                  💸 Lançar pra pagamento
+                </Button>
+                <Button variant="secondary" onClick={() => setLancandoAjuste(true)}>
+                  ⚖ Lançar ajuste
+                </Button>
+              </div>
+            )}
+            {loteAtivo && podeConfig && (
+              <div className="flex gap-2 flex-wrap">
+                {/* Botão de ajuste fica sempre disponível, ao lado das ações do lote ativo */}
+                <Button variant="secondary" size="sm" onClick={() => setLancandoAjuste(true)}>
+                  ⚖ Lançar ajuste
+                </Button>
+              </div>
             )}
             {loteAtivo && loteAtivo.status === "rascunho" && podeConfig && (
               <div className="flex gap-2 flex-wrap">
@@ -700,6 +763,17 @@ export function VTPage() {
               salvando={salvando}
             />
           )}
+
+          {/* Modal de lançamento de AJUSTE */}
+          {lancandoAjuste && (
+            <LancarAjusteModal
+              empregados={empregados}
+              ano={ano}
+              mes={mes}
+              onConfirm={criarLoteAjuste}
+              onClose={() => setLancandoAjuste(false)}
+            />
+          )}
         </>
       )}
 
@@ -777,6 +851,11 @@ function LinhaVT(props: LinhaVTProps) {
       <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
         {l.nome}
         {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+        {l.modo === "parcial" && l.periodoInicio && l.periodoFim && (
+          <span className="ml-2 text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+            Parcial {l.periodoInicio.slice(8)}-{l.periodoFim.slice(8)}/{l.periodoFim.slice(5, 7)}
+          </span>
+        )}
         <span className="ml-2 text-[10px] text-gray-400">{l.cargoNome}</span>
       </div>
 
@@ -909,6 +988,8 @@ function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
   if (l.passagensPorDia > 0) {
     detalhes.push(`${l.diasTrabalhados} dias · ${l.passagensPorDia}x ${fmtBR(l.valorPassagem)}`);
   }
+  const isParcial = l.modo === "parcial" && l.periodoInicio && l.periodoFim;
+  const labelParcial = isParcial ? `Parcial ${l.periodoInicio!.slice(8)}-${l.periodoFim!.slice(8)}/${l.periodoFim!.slice(5, 7)}` : "";
 
   const componentes: { label: string; valor: string; cor?: string }[] = [];
   if (l.auxFixoMensal > 0) componentes.push({ label: "Aux.fixo", valor: fmtBR(l.auxFixoMensal) });
@@ -920,9 +1001,14 @@ function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
     <div className={`md:hidden border-t border-gray-100 dark:border-gray-800 px-3 py-2.5 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">
+          <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate flex items-center gap-1.5 flex-wrap">
             {l.nome}
-            {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+            {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+            {isParcial && (
+              <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+                {labelParcial}
+              </span>
+            )}
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
         </div>
@@ -1433,6 +1519,142 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// LancarAjusteModal — lote de correção pra mais ou pra menos (1 empregado)
+// ────────────────────────────────────────────────────────────────────────────
+
+type LancarAjusteModalProps = {
+  empregados: Empregado[];
+  ano: number;
+  mes: number;
+  onConfirm: (empregadoId: string, valor: number, justificativa: string) => Promise<void> | void;
+  onClose: () => void;
+};
+
+function LancarAjusteModal(props: LancarAjusteModalProps) {
+  const [empregadoId, setEmpregadoId] = useState(props.empregados[0]?.id || "");
+  const [sinal, setSinal] = useState<"+" | "-">("+");
+  const [valorRaw, setValorRaw] = useState("");
+  const [justificativa, setJustificativa] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const empregadosOrdenados = useMemo(
+    () => [...props.empregados].sort((a, b) => a.nome.localeCompare(b.nome)),
+    [props.empregados],
+  );
+
+  function parseValor(raw: string): number {
+    const clean = (raw || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    return parseFloat(clean) || 0;
+  }
+
+  const valorAbs = parseValor(valorRaw);
+  const valorFinal = sinal === "+" ? valorAbs : -valorAbs;
+  const podeSalvar = !!empregadoId && valorAbs > 0 && justificativa.trim().length >= 3 && !saving;
+
+  async function salvar() {
+    if (!podeSalvar) return;
+    setSaving(true);
+    try { await props.onConfirm(empregadoId, valorFinal, justificativa.trim()); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={props.onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl w-full max-w-md p-5 shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
+          ⚖ Lançar ajuste
+        </h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          {nomeMes(props.mes)} {props.ano} — correção pra mais (+) ou pra menos (-) num pagamento já feito.
+          <span className="block text-[11px] mt-0.5 italic">Ajustes não validam overlap (é justo pra corrigir diferenças).</span>
+        </p>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+              Empregado *
+            </label>
+            <select
+              value={empregadoId}
+              onChange={(e) => setEmpregadoId(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+            >
+              <option value="">— escolha —</option>
+              {empregadosOrdenados.map(e => (
+                <option key={e.id} value={e.id}>{e.nome}</option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+              Valor (R$) *
+            </label>
+            <div className="flex gap-2">
+              <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setSinal("+")}
+                  className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "+" ? "bg-emerald-500 text-white" : "text-gray-500"}`}
+                >
+                  +
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSinal("-")}
+                  className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "-" ? "bg-rose-500 text-white" : "text-gray-500"}`}
+                >
+                  −
+                </button>
+              </div>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={valorRaw}
+                onChange={(e) => setValorRaw(e.target.value)}
+                placeholder="0,00"
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+              />
+            </div>
+            {valorAbs > 0 && (
+              <div className={`text-[11px] mt-1 text-right tabular-nums ${sinal === "+" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
+                {sinal === "+" ? "Pagar a mais" : "Cobrar / descontar"}: <strong>{sinal}R$ {valorAbs.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+              Justificativa *
+            </label>
+            <textarea
+              value={justificativa}
+              onChange={(e) => setJustificativa(e.target.value)}
+              rows={3}
+              placeholder="Ex: faltou injustificado dia 28 — descontar 2 passagens"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+            />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Obrigatório. Vai pro histórico de auditoria do lote.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="secondary" onClick={props.onClose} disabled={saving}>Cancelar</Button>
+          <Button onClick={salvar} disabled={!podeSalvar}>
+            {saving ? "Criando..." : "✓ Criar lote de ajuste"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // HistoricoTab
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -1457,8 +1679,11 @@ function HistoricoTab(props: HistoricoTabProps) {
   }
   return (
     <div className="space-y-2">
-      {props.lotes.map(l => (
-        <div key={l.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+      {props.lotes.map(l => {
+        const isAjuste = l.tipo === "ajuste";
+        const qtdParciais = l.linhas.filter(x => x.modo === "parcial").length;
+        return (
+        <div key={l.id} className={`bg-white dark:bg-gray-900 border rounded-xl p-3 ${isAjuste ? "border-orange-200 dark:border-orange-900 bg-orange-50/30 dark:bg-orange-900/10" : "border-gray-200 dark:border-gray-800"}`}>
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3 flex-wrap">
               <button
@@ -1468,6 +1693,11 @@ function HistoricoTab(props: HistoricoTabProps) {
               >
                 {nomeMes(l.mes)} {l.ano}
               </button>
+              {isAjuste && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-orange-200 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200">
+                  ⚖ Ajuste
+                </span>
+              )}
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                 l.status === "rascunho" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :
                 l.status === "pago"     ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" :
@@ -1477,12 +1707,20 @@ function HistoricoTab(props: HistoricoTabProps) {
               </span>
               <span className="text-xs text-gray-500 dark:text-gray-400">
                 {l.linhas.length} empregado{l.linhas.length !== 1 ? "s" : ""}
+                {qtdParciais > 0 && (
+                  <> · <span className="text-amber-700 dark:text-amber-400 font-medium">{qtdParciais} parcial{qtdParciais !== 1 ? "is" : ""}</span></>
+                )}
               </span>
             </div>
-            <div className="font-bold tabular-nums text-base text-gray-900 dark:text-gray-100">
-              {fmtBR(l.totalGeral)}
+            <div className={`font-bold tabular-nums text-base ${isAjuste && l.totalGeral < 0 ? "text-rose-700 dark:text-rose-400" : isAjuste ? "text-emerald-700 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100"}`}>
+              {isAjuste && l.totalGeral > 0 ? "+" : ""}{fmtBR(l.totalGeral)}
             </div>
           </div>
+          {isAjuste && l.linhas[0]?.justificativa && (
+            <div className="mt-1.5 text-xs text-orange-800 dark:text-orange-300 italic">
+              "{l.linhas[0].justificativa}" — {l.linhas[0].nome}
+            </div>
+          )}
           <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 flex items-center gap-3 flex-wrap">
             <span>📝 Criado: {new Date(l.criadoEm).toLocaleDateString("pt-BR")} por {l.criadoPorNome || "?"}</span>
             {l.pagoEm && (
@@ -1517,7 +1755,8 @@ function HistoricoTab(props: HistoricoTabProps) {
             )}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
