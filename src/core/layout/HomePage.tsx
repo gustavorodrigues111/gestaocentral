@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
 import { Button } from "../ui/Button";
+import { ModuleBadge } from "../ui/ModuleBadge";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -80,10 +81,15 @@ export function HomePage() {
                   const disabled = m.status !== "ativo";
                   const Card = (
                     <div className={`
-                      bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800
+                      relative bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800
                       rounded-xl p-4 transition-all
                       ${disabled ? "opacity-60" : "hover:shadow-md hover:-translate-y-0.5 cursor-pointer"}
                     `}>
+                      {m.etapa && (
+                        <div className="absolute top-2 right-2">
+                          <ModuleBadge etapa={m.etapa} size="xs" />
+                        </div>
+                      )}
                       <div className="text-3xl mb-2">{m.icon}</div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{m.label}</div>
                       {m.desc && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{m.desc}</div>}

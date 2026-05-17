@@ -32,6 +32,12 @@ export type PessoaSpecialPermissions = {
   escalaReabrir?: boolean;              // pode reabrir mês de escala fechado
 };
 
+// Etapa de maturidade do módulo (independente de `status`).
+// - undefined / null  → estável (sem badge)
+// - "beta"            → funcional, mas em ajuste
+// - "em_desenvolvimento" → pode mudar bastante, expectativa de bugs
+export type ModuleEtapa = "beta" | "em_desenvolvimento";
+
 export type ModuleDef = {
   id: ModuleId;
   area: ModuleArea;
@@ -39,6 +45,7 @@ export type ModuleDef = {
   icon: string;
   desc?: string;
   status: "ativo" | "em-breve" | "planejado";
+  etapa?: ModuleEtapa;
   dependsOn?: ModuleId[];
 };
 

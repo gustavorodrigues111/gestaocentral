@@ -6,6 +6,7 @@ import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
+import { ModuleBadge } from "../ui/ModuleBadge";
 import type { ModuleArea, ModuleId } from "../types";
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -122,9 +123,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       `}
                     >
                       <span>{m.icon}</span>
-                      <span>{m.label}</span>
-                      {m.status === "em-breve" && <span className="ml-auto text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
-                      {m.status === "planejado" && <span className="ml-auto text-[9px] text-gray-400">próx.</span>}
+                      <span className="flex-1 truncate">{m.label}</span>
+                      {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
+                      {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
+                      {m.status === "planejado" && <span className="text-[9px] text-gray-400">próx.</span>}
                     </NavLink>
                   ))}
                 </div>

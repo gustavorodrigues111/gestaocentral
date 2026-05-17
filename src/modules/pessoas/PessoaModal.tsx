@@ -682,71 +682,102 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
         </div>
       )}
 
-      <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
-        <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-semibold text-gray-600 dark:text-gray-400">
-          <div>Módulo</div>
-          <div className="text-center">Ver</div>
-          <div className="text-center">Configurar</div>
-        </div>
-        {modulosAtivos.map(m => {
+      {/* Permissões agrupadas por etapa de maturidade: Estável, Beta, Em desenvolvimento.
+          O agrupamento é só visual — não muda o que é salvo. */}
+      {(["estavel", "beta", "em_desenvolvimento"] as const).map(grupo => {
+        const modulosDoGrupo = modulosAtivos.filter(m => {
           const mod = getModule(m as ModuleId);
-          if (!mod) return null;
-          const p = perms[m] || { ver: false, configurar: false };
-          const temAcessoNoModulo = p.ver || p.configurar;
-          const mostrarEscopo = usaMultiUnidades && temAcessoNoModulo && unidadesAtivas.length > 0;
-          const unidadesEscopoCount = p.unidades?.length || 0;
-          return (
-            <div key={m} className="border-t border-gray-100 dark:border-gray-800">
-              <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center text-sm">
-                <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                  <span className="text-base">{mod.icon}</span>
-                  <span>{mod.label}</span>
-                </div>
-                <div className="text-center">
-                  <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
-                </div>
-                <div className="text-center">
-                  <input type="checkbox" checked={p.configurar} onChange={() => togglePerm(m, "configurar")} />
-                </div>
+          if (!mod) return false;
+          if (grupo === "estavel") return !mod.etapa;
+          return mod.etapa === grupo;
+        });
+        if (modulosDoGrupo.length === 0) return null;
+
+        const grupoLabel = grupo === "estavel"
+          ? "Estável"
+          : grupo === "beta"
+          ? "🧪 Beta"
+          : "🚧 Em desenvolvimento";
+        const grupoDesc = grupo === "estavel"
+          ? "Funcionalidades consolidadas — comportamento previsível"
+          : grupo === "beta"
+          ? "Funcionando, mas ainda recebendo ajustes — feedback bem-vindo"
+          : "Em construção — comportamento pode mudar, bugs esperados";
+
+        return (
+          <div key={grupo} className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
+            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-800">
+              <div className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+                {grupoLabel}
               </div>
-              {mostrarEscopo && (
-                <div className="px-3 pb-2 -mt-1 flex items-center gap-2 flex-wrap text-xs">
-                  <span className="text-gray-500 dark:text-gray-400">🏢 Em:</span>
-                  <button
-                    type="button"
-                    onClick={() => limparEscopoUnidade(m)}
-                    className={`px-2 py-0.5 rounded-full transition-colors ${
-                      unidadesEscopoCount === 0
-                        ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
-                        : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-                    }`}
-                    title="Permite acessar dados de todas as unidades"
-                  >
-                    Todas
-                  </button>
-                  {unidadesAtivas.map(u => {
-                    const selecionada = (p.unidades || []).includes(u.id);
-                    return (
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{grupoDesc}</div>
+            </div>
+            <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 bg-gray-50/50 dark:bg-gray-800/30 text-xs font-semibold text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+              <div>Módulo</div>
+              <div className="text-center">Ver</div>
+              <div className="text-center">Configurar</div>
+            </div>
+            {modulosDoGrupo.map(m => {
+              const mod = getModule(m as ModuleId);
+              if (!mod) return null;
+              const p = perms[m] || { ver: false, configurar: false };
+              const temAcessoNoModulo = p.ver || p.configurar;
+              const mostrarEscopo = usaMultiUnidades && temAcessoNoModulo && unidadesAtivas.length > 0;
+              const unidadesEscopoCount = p.unidades?.length || 0;
+              return (
+                <div key={m} className="border-t border-gray-100 dark:border-gray-800">
+                  <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center text-sm">
+                    <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      <span className="text-base">{mod.icon}</span>
+                      <span>{mod.label}</span>
+                    </div>
+                    <div className="text-center">
+                      <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
+                    </div>
+                    <div className="text-center">
+                      <input type="checkbox" checked={p.configurar} onChange={() => togglePerm(m, "configurar")} />
+                    </div>
+                  </div>
+                  {mostrarEscopo && (
+                    <div className="px-3 pb-2 -mt-1 flex items-center gap-2 flex-wrap text-xs">
+                      <span className="text-gray-500 dark:text-gray-400">🏢 Em:</span>
                       <button
-                        key={u.id}
                         type="button"
-                        onClick={() => toggleUnidadePerm(m, u.id)}
+                        onClick={() => limparEscopoUnidade(m)}
                         className={`px-2 py-0.5 rounded-full transition-colors ${
-                          selecionada
+                          unidadesEscopoCount === 0
                             ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
                             : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
                         }`}
+                        title="Permite acessar dados de todas as unidades"
                       >
-                        {selecionada ? "✓ " : ""}{u.nome}
+                        Todas
                       </button>
-                    );
-                  })}
+                      {unidadesAtivas.map(u => {
+                        const selecionada = (p.unidades || []).includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleUnidadePerm(m, u.id)}
+                            className={`px-2 py-0.5 rounded-full transition-colors ${
+                              selecionada
+                                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
+                                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
+                            }`}
+                          >
+                            {selecionada ? "✓ " : ""}{u.nome}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              );
+            })}
+          </div>
+        );
+      })}
 
       <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-3 bg-rose-50/30 dark:bg-rose-900/10">
         <div className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-2">
