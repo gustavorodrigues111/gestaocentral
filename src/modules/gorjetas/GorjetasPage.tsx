@@ -398,6 +398,21 @@ function ListaDiasInline({
     await gravar(date, unidadeId, { publicada: !g.publicada });
   }
 
+  // Paleta sutil pra diferenciar unidades em restaurantes multi-unidades.
+  // Tons claros que não competem com "fim de semana" (amber) nem "publicada" (emerald).
+  // Border esquerda colorida (mais discreta que background full).
+  const UNIDADE_PALETA: { border: string; bg: string }[] = [
+    { border: "border-l-sky-400 dark:border-l-sky-600",       bg: "bg-sky-50/40 dark:bg-sky-900/10" },
+    { border: "border-l-violet-400 dark:border-l-violet-600", bg: "bg-violet-50/40 dark:bg-violet-900/10" },
+    { border: "border-l-pink-400 dark:border-l-pink-600",     bg: "bg-pink-50/40 dark:bg-pink-900/10" },
+    { border: "border-l-teal-400 dark:border-l-teal-600",     bg: "bg-teal-50/40 dark:bg-teal-900/10" },
+  ];
+  function corUnidade(unidadeId: string): { border: string; bg: string } {
+    if (!usaMultiUnidades || !unidadeId) return { border: "border-l-transparent", bg: "" };
+    const idx = unidadesAtendimento.findIndex(x => x.id === unidadeId);
+    return UNIDADE_PALETA[(idx >= 0 ? idx : 0) % UNIDADE_PALETA.length];
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
       {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
@@ -417,13 +432,19 @@ function ListaDiasInline({
           const hasValor = !!g && g.valorBruto > 0;
 
           const liquido = hasValor && splitVersion ? g.valorBruto * (1 - splitVersion.taxRate / 100) : 0;
+          const corU = corUnidade(u.id);
+          // Reforço visual entre dias: borda topo bem leve no PRIMEIRO row do dia
+          // pra ficar claro que o dia X tem N rows (uma por unidade).
+          const isPrimeiroDoDia = idx === 0;
 
           return (
             <Fragment key={k}>
               {/* Desktop: linha em grid horizontal */}
               <div
-                className={`hidden md:grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${
-                  weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
+                className={`hidden md:grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm ${
+                  isPrimeiroDoDia ? "border-t border-gray-200 dark:border-gray-700" : "border-t border-gray-100/60 dark:border-gray-800/60"
+                } ${usaMultiUnidades ? `border-l-2 ${corU.border} ${corU.bg}` : ""} ${
+                  weekend && !usaMultiUnidades ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
                 } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""} ${
                   isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
                 }`}
@@ -440,8 +461,8 @@ function ListaDiasInline({
                   )}
                 </div>
 
-                {/* Unidade */}
-                <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                {/* Unidade — texto com peso quando há múltiplas pra reforçar a cor da borda */}
+                <div className={`text-xs truncate ${usaMultiUnidades ? "font-semibold text-gray-700 dark:text-gray-300" : "text-gray-600 dark:text-gray-400"}`}>
                   {usaMultiUnidades ? u.nome : <span className="text-gray-400">—</span>}
                 </div>
 
@@ -510,9 +531,11 @@ function ListaDiasInline({
 
               {/* Mobile: card vertical com ✏️ → bottom-sheet */}
               <div
-                className={`md:hidden border-t border-gray-100 dark:border-gray-800 px-3 py-2.5 ${
-                  weekend ? "bg-amber-50/20 dark:bg-amber-900/10" : ""
-                } ${isToday ? "border-l-4 border-l-indigo-400 dark:border-l-indigo-600" : ""} ${
+                className={`md:hidden px-3 py-2.5 ${
+                  isPrimeiroDoDia ? "border-t border-gray-200 dark:border-gray-700" : "border-t border-gray-100/60 dark:border-gray-800/60"
+                } ${usaMultiUnidades ? `border-l-4 ${corU.border} ${corU.bg}` : ""} ${
+                  weekend && !usaMultiUnidades ? "bg-amber-50/20 dark:bg-amber-900/10" : ""
+                } ${isToday && !usaMultiUnidades ? "border-l-4 border-l-indigo-400 dark:border-l-indigo-600" : ""} ${
                   isPublicada ? "bg-emerald-50/30 dark:bg-emerald-900/10" : ""
                 }`}
               >
