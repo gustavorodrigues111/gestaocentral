@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -309,6 +309,8 @@ function ListaDiasInline({
   // Estado local pros inputs (em edição, valor raw que o user está digitando).
   // Quando NÃO está em edição, o display vem formatado com pt-BR (2.953,36).
   const [valorInputs, setValorInputs] = useState<Record<string, string>>({});
+  // Bottom-sheet mobile — guarda { date, unidadeId } sendo editado
+  const [editingMobile, setEditingMobile] = useState<{ date: string; unidadeId: string } | null>(null);
 
   function keyFor(date: string, unidadeId: string) {
     return unidadeId ? `${date}|${unidadeId}` : date;
@@ -401,97 +403,294 @@ function ListaDiasInline({
           const isSemGorjeta = !!g?.semGorjeta;
           const hasValor = !!g && g.valorBruto > 0;
 
+          const liquido = hasValor && splitVersion ? g.valorBruto * (1 - splitVersion.taxRate / 100) : 0;
+
           return (
-            <div
-              key={k}
-              className={`grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${
-                weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
-              } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""} ${
-                isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
-              }`}
-            >
-              {/* Dia */}
-              <div className="font-medium text-gray-900 dark:text-gray-100">
-                {idx === 0 ? (
-                  <>
-                    {pad2(dia)}
-                    <span className="ml-1 text-[10px] text-gray-400 uppercase">{dowShort(d)}</span>
-                  </>
-                ) : (
-                  <span className="text-gray-300 dark:text-gray-700">·</span>
-                )}
+            <Fragment key={k}>
+              {/* Desktop: linha em grid horizontal */}
+              <div
+                className={`hidden md:grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${
+                  weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
+                } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""} ${
+                  isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
+                }`}
+              >
+                {/* Dia */}
+                <div className="font-medium text-gray-900 dark:text-gray-100">
+                  {idx === 0 ? (
+                    <>
+                      {pad2(dia)}
+                      <span className="ml-1 text-[10px] text-gray-400 uppercase">{dowShort(d)}</span>
+                    </>
+                  ) : (
+                    <span className="text-gray-300 dark:text-gray-700">·</span>
+                  )}
+                </div>
+
+                {/* Unidade */}
+                <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                  {usaMultiUnidades ? u.nome : <span className="text-gray-400">—</span>}
+                </div>
+
+                {/* Valor (ou aviso/marker) */}
+                <div className="flex items-center gap-2 min-w-0">
+                  {semRegra ? (
+                    <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded">
+                      ⚠ Sem regra cadastrada — cadastre nas Configurações pra dividir esse dia
+                    </span>
+                  ) : isSemGorjeta ? (
+                    <span className="text-xs text-gray-500 italic">— Sem gorjeta hoje —</span>
+                  ) : (
+                    <>
+                      <span className="text-xs text-gray-500">R$</span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        disabled={!podeEditar}
+                        placeholder="0,00"
+                        value={valorEditado(date, u.id)}
+                        onChange={(e) => setValorInputs(s => ({ ...s, [k]: e.target.value }))}
+                        onBlur={(e) => salvarValor(date, u.id, e.target.value)}
+                        className="w-28 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+                      />
+                      {hasValor && splitVersion && (
+                        <span className="text-[11px] text-gray-500">
+                          retenção {splitVersion.taxRate}% → líquido {fmtBR(liquido)}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Ações */}
+                <div className="flex items-center gap-1">
+                  {podeEditar && !semRegra && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSemGorjeta(date, u.id)}
+                      title={isSemGorjeta ? "Reabrir lançamento" : "Marcar este dia como sem gorjeta"}
+                      className={`px-2 py-1 text-xs rounded border transition-colors ${
+                        isSemGorjeta
+                          ? "bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200"
+                          : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      {isSemGorjeta ? "✓ Sem gorjeta" : "Sem gorjeta"}
+                    </button>
+                  )}
+                  {podeEditar && hasValor && !semRegra && (
+                    <button
+                      type="button"
+                      onClick={() => togglePublicada(date, u.id)}
+                      title={isPublicada ? "Despublicar (volta a ficar só pro escritório)" : "Publicar pra empregados verem"}
+                      className={`px-2 py-1 text-xs rounded border transition-colors ${
+                        isPublicada
+                          ? "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-semibold"
+                          : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                      }`}
+                    >
+                      {isPublicada ? "📢 Publicada" : "Publicar"}
+                    </button>
+                  )}
+                </div>
               </div>
 
-              {/* Unidade */}
-              <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
-                {usaMultiUnidades ? u.nome : <span className="text-gray-400">—</span>}
-              </div>
-
-              {/* Valor (ou aviso/marker) */}
-              <div className="flex items-center gap-2 min-w-0">
+              {/* Mobile: card vertical com ✏️ → bottom-sheet */}
+              <div
+                className={`md:hidden border-t border-gray-100 dark:border-gray-800 px-3 py-2.5 ${
+                  weekend ? "bg-amber-50/20 dark:bg-amber-900/10" : ""
+                } ${isToday ? "border-l-4 border-l-indigo-400 dark:border-l-indigo-600" : ""} ${
+                  isPublicada ? "bg-emerald-50/30 dark:bg-emerald-900/10" : ""
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-baseline gap-2 min-w-0 flex-1">
+                    <span className="font-bold text-base text-gray-900 dark:text-gray-100 tabular-nums">{pad2(dia)}</span>
+                    <span className="text-[10px] text-gray-400 uppercase">{dowShort(d)}</span>
+                    {usaMultiUnidades && idx > 0 && <span className="text-[10px] text-gray-400">·</span>}
+                    {usaMultiUnidades && <span className="text-[11px] text-gray-500 truncate">{u.nome}</span>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {hasValor ? (
+                      <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(g.valorBruto)}</span>
+                    ) : isSemGorjeta ? (
+                      <span className="text-xs text-gray-500 italic">sem gorjeta</span>
+                    ) : (
+                      <span className="text-xs text-gray-400">—</span>
+                    )}
+                    {podeEditar && !semRegra && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingMobile({ date, unidadeId: u.id })}
+                        className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1"
+                        title="Editar"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </div>
+                </div>
                 {semRegra ? (
-                  <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded">
-                    ⚠ Sem regra cadastrada — cadastre nas Configurações pra dividir esse dia
-                  </span>
-                ) : isSemGorjeta ? (
-                  <span className="text-xs text-gray-500 italic">— Sem gorjeta hoje —</span>
-                ) : (
-                  <>
-                    <span className="text-xs text-gray-500">R$</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      disabled={!podeEditar}
-                      placeholder="0,00"
-                      value={valorEditado(date, u.id)}
-                      onChange={(e) => setValorInputs(s => ({ ...s, [k]: e.target.value }))}
-                      onBlur={(e) => salvarValor(date, u.id, e.target.value)}
-                      className="w-28 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
-                    />
-                    {hasValor && splitVersion && (
-                      <span className="text-[11px] text-gray-500">
-                        retenção {splitVersion.taxRate}% → líquido {fmtBR(g.valorBruto * (1 - splitVersion.taxRate / 100))}
+                  <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
+                    ⚠ Sem regra cadastrada — cadastre nas Configurações
+                  </div>
+                ) : hasValor && splitVersion ? (
+                  <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
+                    <span className="text-gray-500 dark:text-gray-400">
+                      retém {splitVersion.taxRate}% → líquido {fmtBR(liquido)}
+                    </span>
+                    {isPublicada && (
+                      <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded text-[10px] font-semibold">
+                        📢 publicada
                       </span>
                     )}
-                  </>
-                )}
+                  </div>
+                ) : null}
               </div>
-
-              {/* Ações */}
-              <div className="flex items-center gap-1">
-                {podeEditar && !semRegra && (
-                  <button
-                    type="button"
-                    onClick={() => toggleSemGorjeta(date, u.id)}
-                    title={isSemGorjeta ? "Reabrir lançamento" : "Marcar este dia como sem gorjeta"}
-                    className={`px-2 py-1 text-xs rounded border transition-colors ${
-                      isSemGorjeta
-                        ? "bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200"
-                        : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    {isSemGorjeta ? "✓ Sem gorjeta" : "Sem gorjeta"}
-                  </button>
-                )}
-                {podeEditar && hasValor && !semRegra && (
-                  <button
-                    type="button"
-                    onClick={() => togglePublicada(date, u.id)}
-                    title={isPublicada ? "Despublicar (volta a ficar só pro escritório)" : "Publicar pra empregados verem"}
-                    className={`px-2 py-1 text-xs rounded border transition-colors ${
-                      isPublicada
-                        ? "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-semibold"
-                        : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-                    }`}
-                  >
-                    {isPublicada ? "📢 Publicada" : "Publicar"}
-                  </button>
-                )}
-              </div>
-            </div>
+            </Fragment>
           );
         });
       })}
+
+      {/* Bottom-sheet mobile pra editar um dia */}
+      {editingMobile && (() => {
+        const { date, unidadeId } = editingMobile;
+        const k = keyFor(date, unidadeId);
+        const g = gorjetaMap[k];
+        const u = unidadesParaRow.find(x => x.id === unidadeId);
+        const splitVersion = getActiveSplitVersion(splitVersions, date);
+        return (
+          <EditDiaSheet
+            date={date}
+            unidadeNome={usaMultiUnidades ? u?.nome : undefined}
+            gorjeta={g}
+            taxRate={splitVersion?.taxRate ?? 0}
+            valorInicialRaw={valorEditado(date, unidadeId)}
+            onSalvarValor={async (raw) => {
+              await salvarValor(date, unidadeId, raw);
+            }}
+            onToggleSemGorjeta={async () => { await toggleSemGorjeta(date, unidadeId); }}
+            onTogglePublicada={async () => { await togglePublicada(date, unidadeId); }}
+            onClose={() => setEditingMobile(null)}
+          />
+        );
+      })()}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EditDiaSheet — bottom-sheet mobile pra editar um dia de gorjeta
+// ────────────────────────────────────────────────────────────────────────────
+
+function EditDiaSheet({
+  date, unidadeNome, gorjeta, taxRate, valorInicialRaw,
+  onSalvarValor, onToggleSemGorjeta, onTogglePublicada, onClose,
+}: {
+  date: string;
+  unidadeNome?: string;
+  gorjeta?: Gorjeta;
+  taxRate: number;
+  valorInicialRaw: string;
+  onSalvarValor: (raw: string) => Promise<void>;
+  onToggleSemGorjeta: () => Promise<void>;
+  onTogglePublicada: () => Promise<void>;
+  onClose: () => void;
+}) {
+  const [raw, setRaw] = useState(valorInicialRaw);
+  const [saving, setSaving] = useState(false);
+  const d = parseYmd(date);
+  const semGorjeta = !!gorjeta?.semGorjeta;
+  const publicada = !!gorjeta?.publicada;
+  const hasValor = !!gorjeta && gorjeta.valorBruto > 0;
+  const parsedValor = (() => {
+    const clean = (raw || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    return parseFloat(clean) || 0;
+  })();
+  const liquido = parsedValor > 0 ? parsedValor * (1 - taxRate / 100) : 0;
+
+  async function aplicar() {
+    setSaving(true);
+    try { await onSalvarValor(raw); onClose(); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="md:hidden fixed inset-0 z-50 flex items-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="relative w-full bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="font-bold text-gray-900 dark:text-gray-100">
+              {pad2(d.getDate())}/{pad2(d.getMonth() + 1)} <span className="text-xs text-gray-400 uppercase ml-1">{dowShort(d)}</span>
+            </div>
+            {unidadeNome && <div className="text-[11px] text-gray-500 dark:text-gray-400">{unidadeNome}</div>}
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {!semGorjeta && (
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                Valor bruto (R$)
+              </label>
+              <input
+                autoFocus
+                type="text"
+                inputMode="decimal"
+                value={raw}
+                onChange={(e) => setRaw(e.target.value)}
+                placeholder="0,00"
+                className="w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+              />
+              {parsedValor > 0 && taxRate > 0 && (
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 text-right">
+                  retém {taxRate}% → líquido <strong>{fmtBR(liquido)}</strong>
+                </div>
+              )}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={async () => { await onToggleSemGorjeta(); onClose(); }}
+            className={`w-full px-3 py-2 text-sm rounded-lg border transition-colors ${
+              semGorjeta
+                ? "bg-gray-200 dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200"
+                : "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            {semGorjeta ? "✓ Marcado como sem gorjeta — toque pra reabrir" : "Marcar como sem gorjeta hoje"}
+          </button>
+
+          {hasValor && !semGorjeta && (
+            <button
+              type="button"
+              onClick={async () => { await onTogglePublicada(); }}
+              className={`w-full px-3 py-2 text-sm rounded-lg border transition-colors ${
+                publicada
+                  ? "bg-emerald-100 dark:bg-emerald-900/30 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 font-semibold"
+                  : "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+              }`}
+            >
+              {publicada ? "📢 Publicada — toque pra despublicar" : "Publicar pra empregados verem"}
+            </button>
+          )}
+        </div>
+
+        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Fechar</Button>
+          {!semGorjeta && (
+            <Button onClick={aplicar} disabled={saving} className="flex-1">
+              {saving ? "Salvando..." : "Salvar valor"}
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

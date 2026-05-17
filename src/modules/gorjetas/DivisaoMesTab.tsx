@@ -253,7 +253,7 @@ export function DivisaoMesTab({
       )}
 
       {/* Cards de totais */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 md:gap-3">
         <Card label="Bruto do mês" value={fmtBR(totais.bruto)} />
         <Card label="Retenção total" value={fmtBR(totais.retencao)} variant="warn" />
         <Card label="Líquido distribuído" value={fmtBR(totais.distribuido)} variant="ok" />
@@ -263,7 +263,8 @@ export function DivisaoMesTab({
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {linhas.length} empregado(s) com recebimento · {gorjetasFiltradas.length} lançamento(s)
         </p>
-        <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
+        {/* Exportar XLSX — só desktop */}
+        <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando} className="hidden md:inline-flex">
           {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
         </Button>
       </div>
@@ -273,7 +274,8 @@ export function DivisaoMesTab({
         <div className="text-[11px] text-gray-500 dark:text-gray-400 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/30">
           💡 Click em qualquer empregado pra ver o dia-a-dia do recebimento.
         </div>
-        <div className="grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+        {/* Desktop: tabela com 6 colunas */}
+        <div className="hidden md:grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
           <div></div>
           <div>Empregado</div>
           <div className="text-right">Dias</div>
@@ -294,10 +296,11 @@ export function DivisaoMesTab({
                   </span>
                 </div>
               )}
+              {/* Desktop: row da tabela */}
               <button
                 type="button"
                 onClick={() => setExpandedEmpId(isExpanded ? null : l.empregadoId)}
-                className={`w-full grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 text-left transition-colors ${
+                className={`hidden md:grid w-full grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 text-left transition-colors ${
                   isExpanded ? "bg-indigo-50/40 dark:bg-indigo-900/20" : ""
                 }`}
                 title={isExpanded ? "Esconder dia-a-dia" : "Ver dia-a-dia"}
@@ -313,13 +316,37 @@ export function DivisaoMesTab({
                 <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
               </button>
 
+              {/* Mobile: card vertical */}
+              <button
+                type="button"
+                onClick={() => setExpandedEmpId(isExpanded ? null : l.empregadoId)}
+                className={`md:hidden w-full px-3 py-2.5 border-t border-gray-100 dark:border-gray-800 text-left transition-colors ${
+                  isExpanded ? "bg-indigo-50/40 dark:bg-indigo-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▼" : "▶"}</span>
+                    <div className="min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">{l.nome}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{l.cargoNome}</div>
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="font-bold tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
+                    <div className="text-[10px] text-gray-500 tabular-nums">{l.diasComRecebimento} dias · {fmtBR(l.bruto)} bruto</div>
+                  </div>
+                </div>
+              </button>
+
               {/* Drill-down: dia-a-dia desse empregado */}
               {isExpanded && l.dias.length > 0 && (
                 <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1.5">
                     📅 Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)
                   </div>
-                  <div className="rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden">
+                  {/* Desktop: tabela 5 colunas */}
+                  <div className="hidden md:block rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden">
                     <div className="grid grid-cols-[100px_1fr_120px_110px_120px] gap-2 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50">
                       <div>Data</div>
                       <div></div>
@@ -345,19 +372,46 @@ export function DivisaoMesTab({
                       );
                     })}
                   </div>
+                  {/* Mobile: lista compacta */}
+                  <div className="md:hidden rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                    {l.dias.map((d) => {
+                      const [, m, dd] = d.date.split("-");
+                      const dayDate = new Date(d.date + "T12:00:00");
+                      const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][dayDate.getDay()];
+                      return (
+                        <div key={d.date} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                          <div className="text-gray-700 dark:text-gray-300 tabular-nums">
+                            {dd}/{m} <span className="text-[10px] text-gray-400">{dow}</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(d.liquido)}</div>
+                            <div className="text-[10px] text-gray-500 tabular-nums">bruto {fmtBR(d.bruto)}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </Fragment>
           );
         })}
-        {/* Linha de total */}
-        <div className="grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
+        {/* Linha de total — desktop */}
+        <div className="hidden md:grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
           <div></div>
           <div>TOTAL</div>
           <div className="text-right tabular-nums">{linhas.reduce((s, l) => s + l.diasComRecebimento, 0)}</div>
           <div className="text-right tabular-nums">{fmtBR(linhas.reduce((s, l) => s + l.bruto, 0))}</div>
           <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(linhas.reduce((s, l) => s + l.retencao, 0))}</div>
           <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhas.reduce((s, l) => s + l.liquido, 0))}</div>
+        </div>
+        {/* Linha de total — mobile */}
+        <div className="md:hidden flex items-center justify-between px-3 py-3 border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold text-sm">
+          <span>TOTAL ({linhas.reduce((s, l) => s + l.diasComRecebimento, 0)} dias)</span>
+          <div className="text-right">
+            <div className="tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhas.reduce((s, l) => s + l.liquido, 0))}</div>
+            <div className="text-[10px] font-normal tabular-nums text-gray-500">bruto {fmtBR(linhas.reduce((s, l) => s + l.bruto, 0))}</div>
+          </div>
         </div>
       </div>
 
