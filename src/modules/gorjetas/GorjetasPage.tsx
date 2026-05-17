@@ -221,10 +221,8 @@ export function GorjetasPage() {
                       ? "bg-indigo-600 text-white"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
-                  title={u.tipo === "producao" ? "Unidade de produção — empregados que dividem gorjeta de todas as unidades de atendimento" : undefined}
                 >
                   {u.nome}
-                  {u.tipo === "producao" && <span className="ml-1 opacity-70">·prod</span>}
                 </button>
               ))}
             </div>

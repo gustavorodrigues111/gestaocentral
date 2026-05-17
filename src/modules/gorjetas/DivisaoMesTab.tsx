@@ -138,12 +138,39 @@ export function DivisaoMesTab({
       liquido: Math.round(l.liquido * 100) / 100,
       dias: [...l.dias].sort((a, b) => a.date.localeCompare(b.date)),
     }));
-    // Filtro por unidade de PRODUÇÃO: aplica DEPOIS do cálculo, em cima
-    // do empregado (não da gorjeta). Mostra só empregados cuja unidadePadraoId
-    // bate com a unidade de produção filtrada.
+    // Filtro por unidade de PRODUÇÃO: aplica DEPOIS do cálculo.
+    // Mostra TODOS os empregados ativos com unidadePadraoId = produção,
+    // mesmo os que NÃO entraram na divisão (porque cargo não tem
+    // recebeProducao=true). Os que não receberam aparecem com R$ 0,00 —
+    // ajuda o user a entender o motivo (cargo provavelmente sem
+    // recebeProducao marcado).
     if (filtroUnidadeId && tipoUnidadeFiltro === "producao") {
-      const empPorId = Object.fromEntries(empregados.map(e => [e.id, e]));
-      resultado = resultado.filter(l => empPorId[l.empregadoId]?.unidadePadraoId === filtroUnidadeId);
+      const cargoPorId = Object.fromEntries(cargos.map(c => [c.id, c]));
+      const empsDestaUnidade = empregados.filter(e =>
+        e.unidadePadraoId === filtroUnidadeId
+        && e.estaAtivo
+      );
+      const idsCalculados = new Set(resultado.map(l => l.empregadoId));
+      // Adiciona empregados desta unidade que ainda não estão em `resultado`
+      // como linhas zeradas
+      for (const e of empsDestaUnidade) {
+        if (idsCalculados.has(e.id)) continue;
+        const cargo = cargoPorId[e.cargoId];
+        resultado.push({
+          empregadoId: e.id,
+          nome: e.nome,
+          cargoNome: cargo?.nome || "—",
+          area: cargo?.area || "",
+          bruto: 0,
+          retencao: 0,
+          liquido: 0,
+          diasComRecebimento: 0,
+          dias: [],
+        });
+      }
+      // Filtra: mantém só empregados da unidade selecionada
+      const idsDaUnidade = new Set(empsDestaUnidade.map(e => e.id));
+      resultado = resultado.filter(l => idsDaUnidade.has(l.empregadoId));
     }
     return resultado.sort((a, b) =>
       (a.area || "").localeCompare(b.area || "")
@@ -278,13 +305,27 @@ export function DivisaoMesTab({
 
       <div className="flex justify-between items-center flex-wrap gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {linhas.length} empregado(s) com recebimento · {gorjetasFiltradas.length} lançamento(s)
+          {linhas.length} empregado(s) {tipoUnidadeFiltro === "producao" ? "nesta unidade" : "com recebimento"} · {gorjetasFiltradas.length} lançamento(s)
         </p>
         {/* Exportar XLSX — só desktop */}
         <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando} className="hidden md:inline-flex">
           {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
         </Button>
       </div>
+
+      {/* Aviso quando filtro=produção e ninguém recebeu — explica que o cargo
+          precisa estar marcado como "Recebe produção" pra entrar na divisão */}
+      {tipoUnidadeFiltro === "producao" && linhas.length > 0 && linhas.every(l => l.liquido === 0) && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+          <span className="text-base">💡</span>
+          <div>
+            Nenhum empregado desta unidade recebeu gorjeta neste mês. Pra que
+            empregados de uma unidade de PRODUÇÃO dividam gorjeta das unidades
+            de atendimento, marque o cargo deles como <strong>"Recebe produção"</strong> em
+            Pessoas → Cargos.
+          </div>
+        </div>
+      )}
 
       {/* Tabela de divisão (cabeçalho com 1 col extra pro chevron expand/collapse) */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
