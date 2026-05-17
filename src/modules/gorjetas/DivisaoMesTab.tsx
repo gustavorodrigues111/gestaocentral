@@ -61,10 +61,20 @@ export function DivisaoMesTab({
     return out;
   }, [usaMultiUnidades, unidades, empregados]);
 
+  // Tipo da unidade filtrada (se houver). Determina como o filtro se aplica:
+  //   - "atendimento" → filtra GORJETAS pelo unidadeId (só os dias daquela unidade)
+  //   - "producao"    → filtra EMPREGADOS pela unidadePadraoId (mas calcula com
+  //                     todas as gorjetas, pois empregado de produção divide
+  //                     com todas as unidades de atendimento)
+  const tipoUnidadeFiltro = useMemo(() => {
+    if (!filtroUnidadeId) return null;
+    return unidades.find(u => u.id === filtroUnidadeId)?.tipo || null;
+  }, [filtroUnidadeId, unidades]);
+
   const gorjetasFiltradas = useMemo(() => {
-    if (!filtroUnidadeId) return gorjetas;
+    if (!filtroUnidadeId || tipoUnidadeFiltro !== "atendimento") return gorjetas;
     return gorjetas.filter(g => g.unidadeId === filtroUnidadeId);
-  }, [gorjetas, filtroUnidadeId]);
+  }, [gorjetas, filtroUnidadeId, tipoUnidadeFiltro]);
 
   // Agrega por empregado: pra cada gorjeta do mês, calcula a divisão.
   // bruto do empregado = liquido / (1 - taxRate/100); retenção = bruto - liquido.
@@ -121,22 +131,39 @@ export function DivisaoMesTab({
     }
 
     // Arredonda totais pra centavos e ordena dias asc
-    return Object.values(acc).map(l => ({
+    let resultado = Object.values(acc).map(l => ({
       ...l,
       bruto: Math.round(l.bruto * 100) / 100,
       retencao: Math.round(l.retencao * 100) / 100,
       liquido: Math.round(l.liquido * 100) / 100,
       dias: [...l.dias].sort((a, b) => a.date.localeCompare(b.date)),
-    })).sort((a, b) =>
+    }));
+    // Filtro por unidade de PRODUÇÃO: aplica DEPOIS do cálculo, em cima
+    // do empregado (não da gorjeta). Mostra só empregados cuja unidadePadraoId
+    // bate com a unidade de produção filtrada.
+    if (filtroUnidadeId && tipoUnidadeFiltro === "producao") {
+      const empPorId = Object.fromEntries(empregados.map(e => [e.id, e]));
+      resultado = resultado.filter(l => empPorId[l.empregadoId]?.unidadePadraoId === filtroUnidadeId);
+    }
+    return resultado.sort((a, b) =>
       (a.area || "").localeCompare(b.area || "")
         || a.nome.localeCompare(b.nome)
     );
-  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades]);
+  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro]);
 
   // Totais do mês (respeitam filtro).
   // Líquido: pra gorjetas pagas usa o snapshot armazenado; pra pendentes
   // calcula a partir do bruto + splitVersion.taxRate ativa da data.
   const totais = useMemo(() => {
+    // Quando o filtro é PRODUÇÃO, "bruto do mês" não tem como ser por unidade
+    // (produção não arrecada). Mostra os totais derivados das LINHAS filtradas
+    // pra ficar coerente (soma do bruto/líquido dos empregados de produção).
+    if (tipoUnidadeFiltro === "producao") {
+      const bruto = linhas.reduce((s, l) => s + l.bruto, 0);
+      const liquido = linhas.reduce((s, l) => s + l.liquido, 0);
+      const retencao = linhas.reduce((s, l) => s + l.retencao, 0);
+      return { bruto, liquido, retencao, distribuido: liquido };
+    }
     const bruto = gorjetasFiltradas.reduce((s, g) => s + (g.valorBruto || 0), 0);
     const liquido = gorjetasFiltradas.reduce((s, g) => {
       if (g.paidAt) return s + (g.valorLiquido || 0);
@@ -147,7 +174,7 @@ export function DivisaoMesTab({
     const retencao = bruto - liquido;
     const distribuido = linhas.reduce((s, l) => s + l.liquido, 0);
     return { bruto, liquido, retencao, distribuido };
-  }, [gorjetasFiltradas, linhas, splitVersions]);
+  }, [gorjetasFiltradas, linhas, splitVersions, tipoUnidadeFiltro]);
 
   const [exportando, setExportando] = useState(false);
   async function exportar() {

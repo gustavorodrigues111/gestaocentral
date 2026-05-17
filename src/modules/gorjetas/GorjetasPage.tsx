@@ -127,6 +127,17 @@ export function GorjetasPage() {
     ? todasUnidades
     : todasUnidades.filter(u => escopoUnidades.includes(u.id));
   const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
+  // Pra filtro: todas as ativas (atendimento + produção). Empregados de
+  // produção dividem gorjeta de TODAS as unidades, então faz sentido filtrar
+  // por eles na Divisão (Cozinha de Produção etc).
+  // Atendimento primeiro pra leitura natural.
+  const unidadesAtivasParaFiltro = useMemo(() => {
+    const ativas = unidades.filter(u => u.ativa);
+    return [
+      ...ativas.filter(u => u.tipo === "atendimento"),
+      ...ativas.filter(u => u.tipo === "producao"),
+    ];
+  }, [unidades]);
 
   // Key da gorjeta na map:
   //   single-unit: date            (gorjetaMap["2026-05-10"])
@@ -184,8 +195,10 @@ export function GorjetasPage() {
             {taxRateDefault === 0 && <> · sem retenção configurada</>}
           </p>
           {/* Filtro de unidade — pills clicáveis quando multi-unidades.
+              Inclui atendimento E produção (empregados de produção dividem
+              gorjeta de ambas as unidades de atendimento).
               Compartilhado entre Lançamentos e Divisão do mês. */}
-          {usaMultiUnidades && unidadesAtendimento.length > 0 && (
+          {usaMultiUnidades && unidadesAtivasParaFiltro.length > 0 && (
             <div className="mt-2 flex items-center gap-1.5 flex-wrap">
               <button
                 type="button"
@@ -198,7 +211,7 @@ export function GorjetasPage() {
               >
                 Todas
               </button>
-              {unidadesAtendimento.map(u => (
+              {unidadesAtivasParaFiltro.map(u => (
                 <button
                   key={u.id}
                   type="button"
@@ -208,8 +221,10 @@ export function GorjetasPage() {
                       ? "bg-indigo-600 text-white"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
+                  title={u.tipo === "producao" ? "Unidade de produção — empregados que dividem gorjeta de todas as unidades de atendimento" : undefined}
                 >
                   {u.nome}
+                  {u.tipo === "producao" && <span className="ml-1 opacity-70">·prod</span>}
                 </button>
               ))}
             </div>
@@ -352,9 +367,18 @@ function ListaDiasInline({
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
   })();
 
+  // No Lançamentos só faz sentido unidades de ATENDIMENTO (produção não arrecada).
+  // Se o filtro do header for de produção, ignora aqui (mostra todas as de
+  // atendimento) — a vista do Lançamentos não tem o que filtrar por produção.
+  const filtroValidoLancamentos = useMemo(() => {
+    if (!filtroUnidadeId) return "";
+    const u = unidadesAtendimento.find(x => x.id === filtroUnidadeId);
+    return u ? filtroUnidadeId : "";  // se não é atendimento, descarta
+  }, [filtroUnidadeId, unidadesAtendimento]);
+
   const unidadesParaRow: { id: string; nome: string }[] = usaMultiUnidades
     ? unidadesAtendimento
-        .filter(u => !filtroUnidadeId || u.id === filtroUnidadeId)
+        .filter(u => !filtroValidoLancamentos || u.id === filtroValidoLancamentos)
         .map(u => ({ id: u.id, nome: u.nome }))
     : [{ id: "", nome: "" }];
 
