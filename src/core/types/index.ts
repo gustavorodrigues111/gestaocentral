@@ -108,6 +108,9 @@ export type Empregado = {
   vtAtivo?: boolean;
   vtPassagensPorDia?: number;
   vtValorPassagem?: number;
+  // Auxílio fixo mensal (R$) — valor cheio adicionado ao VT do mês (não proporcional).
+  // Independente de vtAtivo: pode haver empregado só com auxílio fixo (sem passagens).
+  vtAuxilioFixoMensal?: number;
 
   // Multi-unidades — só faz sentido quando restaurante.multiUnidades = true.
   // Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade

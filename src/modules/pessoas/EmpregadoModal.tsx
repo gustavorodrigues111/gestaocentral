@@ -76,6 +76,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vtValorPassagem, setVtValorPassagem] = useState<string>(
     empregado?.vtValorPassagem ? String(empregado.vtValorPassagem) : ""
   );
+  const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
+    empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
+  );
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -138,6 +141,17 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         valorDepois: `R$ ${novoVtValor.toFixed(2)}`,
         rawValorAntes: empregado.vtValorPassagem ?? 0,
         rawValorDepois: novoVtValor,
+      });
+    }
+    const novoAuxFixo = parseFloat(vtAuxilioFixoMensal) || 0;
+    if ((empregado.vtAuxilioFixoMensal ?? 0) !== novoAuxFixo) {
+      criticas.push({
+        campo: "vtAuxilioFixoMensal",
+        label: "Auxílio fixo mensal",
+        valorAntes: `R$ ${(empregado.vtAuxilioFixoMensal ?? 0).toFixed(2)}`,
+        valorDepois: `R$ ${novoAuxFixo.toFixed(2)}`,
+        rawValorAntes: empregado.vtAuxilioFixoMensal ?? 0,
+        rawValorDepois: novoAuxFixo,
       });
     }
 
@@ -227,6 +241,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           ...(vtAtivo ? {
             vtPassagensPorDia: parseFloat(vtPassagensPorDia),
             vtValorPassagem: parseFloat(vtValorPassagem),
+          } : {}),
+          ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
+            vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
           } : {}),
           email: pessoa?.email || null,
           telefone: pessoa?.whatsapp || null,
@@ -519,29 +536,44 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           />
         </div>
 
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={vtAtivo} onChange={(e) => setVtAtivo(e.target.checked)} />
-            <span className="font-medium">Recebe Vale Transporte</span>
-          </label>
-          {vtAtivo && (
-            <div className="grid grid-cols-2 gap-3 mt-2">
-              <Input
-                label="Passagens/dia *"
-                type="number" min="0" step="1"
-                value={vtPassagensPorDia}
-                onChange={(e) => setVtPassagensPorDia(e.target.value)}
-                placeholder="ex: 2"
-              />
-              <Input
-                label="Valor passagem (R$) *"
-                type="number" min="0" step="0.01"
-                value={vtValorPassagem}
-                onChange={(e) => setVtValorPassagem(e.target.value)}
-                placeholder="ex: 5.00"
-              />
-            </div>
-          )}
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-3">
+          <div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={vtAtivo} onChange={(e) => setVtAtivo(e.target.checked)} />
+              <span className="font-medium">Recebe Vale Transporte</span>
+            </label>
+            {vtAtivo && (
+              <div className="grid grid-cols-2 gap-3 mt-2">
+                <Input
+                  label="Passagens/dia *"
+                  type="number" min="0" step="1"
+                  value={vtPassagensPorDia}
+                  onChange={(e) => setVtPassagensPorDia(e.target.value)}
+                  placeholder="ex: 2"
+                />
+                <Input
+                  label="Valor passagem (R$) *"
+                  type="number" min="0" step="0.01"
+                  value={vtValorPassagem}
+                  onChange={(e) => setVtValorPassagem(e.target.value)}
+                  placeholder="ex: 5.00"
+                />
+              </div>
+            )}
+          </div>
+          <div>
+            <Input
+              label="Auxílio fixo mensal (R$)"
+              type="number" min="0" step="0.01"
+              value={vtAuxilioFixoMensal}
+              onChange={(e) => setVtAuxilioFixoMensal(e.target.value)}
+              placeholder="ex: 150,00"
+            />
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Valor cheio adicionado ao VT do mês (não proporcional aos dias trabalhados).
+              Independente do VT diário — pode haver auxílio fixo sem passagens.
+            </p>
+          </div>
         </div>
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
