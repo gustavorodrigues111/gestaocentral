@@ -428,43 +428,47 @@ export function EscalaPage() {
               </option>
             ))}
           </select>
-          {podeEditar && (
-            <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
-              🏖️ Marcar férias em lote
-            </Button>
-          )}
-          {versao === "real" && realVazia && podeConfig && !fechada && (
-            <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
-              📋 Copiar Prevista → Praticada
-            </Button>
-          )}
-          {/* Fechar prevista — só quando ainda aberta */}
-          {!previstaFechada && !fechada && podeConfig && (
-            <Button size="sm" onClick={fecharPrevista}>
-              🔒 Fechar prevista
-            </Button>
-          )}
-          {/* Reabrir prevista — admin pode se NÃO houver VT pago; depois só master */}
-          {previstaFechada && !fechada && podeConfig && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={reabrirPrevista}
-              title={vtPago ? "VT já pago — só master pode reabrir (cancela o lote VT)" : "Reabrir prevista pra ajustes"}
-            >
-              🔓 Reabrir prevista
-            </Button>
-          )}
-          {!fechada && podeConfig && (
-            <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
-              🔒 Fechar mês
-            </Button>
-          )}
-          {fechada && podeReabrir && (
-            <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
-              🔓 Reabrir mês
-            </Button>
-          )}
+          {/* Ações administrativas — só desktop. No mobile o foco é editar
+              a escala dia-a-dia; fechamentos vivem no desktop. */}
+          <div className="hidden md:flex items-center gap-2 flex-wrap">
+            {podeEditar && (
+              <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
+                🏖️ Marcar férias em lote
+              </Button>
+            )}
+            {versao === "real" && realVazia && podeConfig && !fechada && (
+              <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
+                📋 Copiar Prevista → Praticada
+              </Button>
+            )}
+            {/* Fechar prevista — só quando ainda aberta */}
+            {!previstaFechada && !fechada && podeConfig && (
+              <Button size="sm" onClick={fecharPrevista}>
+                🔒 Fechar prevista
+              </Button>
+            )}
+            {/* Reabrir prevista — admin pode se NÃO houver VT pago; depois só master */}
+            {previstaFechada && !fechada && podeConfig && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={reabrirPrevista}
+                title={vtPago ? "VT já pago — só master pode reabrir (cancela o lote VT)" : "Reabrir prevista pra ajustes"}
+              >
+                🔓 Reabrir prevista
+              </Button>
+            )}
+            {!fechada && podeConfig && (
+              <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
+                🔒 Fechar mês
+              </Button>
+            )}
+            {fechada && podeReabrir && (
+              <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
+                🔓 Reabrir mês
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1301,12 +1305,22 @@ function GradeMobile({
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
 }) {
-  // Semana atual visível: começa na 1ª Seg que cai no mês (ou na Seg da 1ª semana ISO)
-  const [weekStart, setWeekStart] = useState<Date>(() => getSegunda(new Date(ano, mes - 1, 1)));
+  // Semana inicial visível:
+  // - Se está vendo o mês corrente → semana de HOJE (mais útil no dia-a-dia)
+  // - Senão → 1ª segunda que cai no mês
+  function initialWeekStart(): Date {
+    const hoje = new Date();
+    if (hoje.getFullYear() === ano && hoje.getMonth() + 1 === mes) {
+      return getSegunda(hoje);
+    }
+    return getSegunda(new Date(ano, mes - 1, 1));
+  }
+  const [weekStart, setWeekStart] = useState<Date>(() => initialWeekStart());
 
   // Reseta quando o mês/ano muda no header
   useEffect(() => {
-    setWeekStart(getSegunda(new Date(ano, mes - 1, 1)));
+    setWeekStart(initialWeekStart());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ano, mes]);
 
   // 7 datas a partir do weekStart
