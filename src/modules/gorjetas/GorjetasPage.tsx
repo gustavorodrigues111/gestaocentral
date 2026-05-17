@@ -40,6 +40,9 @@ export function GorjetasPage() {
   const [loading, setLoading] = useState(true);
   // Estado de tab (modal por dia foi removido — edição é inline no ListaDiasInline)
   const [tab, setTab] = useState<"lancamentos" | "divisao">("lancamentos");
+  // Filtro de unidade (multi-unidades) — compartilhado entre tabs.
+  // "" = todas
+  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
 
   // SplitVersions do restaurante (regras de divisão)
   useEffect(() => {
@@ -180,6 +183,37 @@ export function GorjetasPage() {
             {taxRateDefault > 0 && <> · retenção {taxRateDefault}%</>}
             {taxRateDefault === 0 && <> · sem retenção configurada</>}
           </p>
+          {/* Filtro de unidade — pills clicáveis quando multi-unidades.
+              Compartilhado entre Lançamentos e Divisão do mês. */}
+          {usaMultiUnidades && unidadesAtendimento.length > 0 && (
+            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFiltroUnidadeId("")}
+                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                  filtroUnidadeId === ""
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+              >
+                Todas
+              </button>
+              {unidadesAtendimento.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => setFiltroUnidadeId(u.id)}
+                  className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                    filtroUnidadeId === u.id
+                      ? "bg-indigo-600 text-white"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
+                >
+                  {u.nome}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -248,6 +282,7 @@ export function GorjetasPage() {
               splitVersions={splitVersions}
               unidadesAtendimento={unidadesAtendimento}
               usaMultiUnidades={usaMultiUnidades}
+              filtroUnidadeId={filtroUnidadeId}
               podeEditar={podeConfig}
               meId={me?.id || ""}
             />
@@ -267,6 +302,7 @@ export function GorjetasPage() {
           restaurantNome={activeRestaurant.nome}
           unidades={unidades}
           usaMultiUnidades={usaMultiUnidades}
+          filtroUnidadeId={filtroUnidadeId}
         />
       )}
 
@@ -299,13 +335,14 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
 // SEM modal, SEM botão "pagar por dia" (pagamento é mensal — feito offline).
 // ════════════════════════════════════════════════════════════════════════════
 function ListaDiasInline({
-  ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, usaMultiUnidades, podeEditar, meId,
+  ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, usaMultiUnidades, filtroUnidadeId, podeEditar, meId,
 }: {
   ano: number; mes: number; rid: string;
   gorjetaMap: Record<string, Gorjeta>;
   splitVersions: SplitVersion[];
   unidadesAtendimento: Unidade[];
   usaMultiUnidades: boolean;
+  filtroUnidadeId: string;
   podeEditar: boolean;
   meId: string;
 }) {
@@ -316,7 +353,9 @@ function ListaDiasInline({
   })();
 
   const unidadesParaRow: { id: string; nome: string }[] = usaMultiUnidades
-    ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
+    ? unidadesAtendimento
+        .filter(u => !filtroUnidadeId || u.id === filtroUnidadeId)
+        .map(u => ({ id: u.id, nome: u.nome }))
     : [{ id: "", nome: "" }];
 
   // Estado local pros inputs (em edição, valor raw que o user está digitando).

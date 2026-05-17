@@ -19,6 +19,7 @@ type Props = {
   restaurantNome: string;
   unidades: Unidade[];
   usaMultiUnidades: boolean;
+  filtroUnidadeId: string;   // controlado pela GorjetasPage (pills do header)
 };
 
 type DiaEmpregado = {
@@ -42,13 +43,23 @@ type LinhaEmpregado = {
 
 export function DivisaoMesTab({
   ano, mes, gorjetas, empregados, cargos, escala, splitVersions, restaurantNome,
-  unidades, usaMultiUnidades,
+  unidades, usaMultiUnidades, filtroUnidadeId,
 }: Props) {
-  // Filtro por unidade (só relevante se multi)
-  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
   // Drill-down: empregadoId atualmente expandido (mostra dia-a-dia)
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null);
-  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
+
+  // Lookup: empregadoId → nome da unidade padrão (pro badge)
+  const unidadeNomePorEmp = useMemo(() => {
+    if (!usaMultiUnidades) return {} as Record<string, string>;
+    const byId = Object.fromEntries(unidades.map(u => [u.id, u.nome]));
+    const out: Record<string, string> = {};
+    for (const e of empregados) {
+      if (e.unidadePadraoId && byId[e.unidadePadraoId]) {
+        out[e.id] = byId[e.unidadePadraoId];
+      }
+    }
+    return out;
+  }, [usaMultiUnidades, unidades, empregados]);
 
   const gorjetasFiltradas = useMemo(() => {
     if (!filtroUnidadeId) return gorjetas;
@@ -224,33 +235,8 @@ export function DivisaoMesTab({
 
   return (
     <div className="space-y-4">
-      {/* Filtro por unidade (só se multi) */}
-      {usaMultiUnidades && unidadesAtendimento.length > 0 && (
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">🏢 Unidade:</span>
-          <button
-            type="button"
-            onClick={() => setFiltroUnidadeId("")}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              !filtroUnidadeId
-                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-            }`}
-          >Todas (soma)</button>
-          {unidadesAtendimento.map(u => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => setFiltroUnidadeId(u.id)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-                filtroUnidadeId === u.id
-                  ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                  : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-              }`}
-            >{u.nome}</button>
-          ))}
-        </div>
-      )}
+      {/* Filtro de unidade vive no header da GorjetasPage (pills compartilhados
+          entre tabs Lançamentos e Divisão do mês). */}
 
       {/* Cards de totais.
           Desktop: 3 colunas. Mobile: Bruto sozinho na 1ª linha (cabe valor grande);
@@ -312,7 +298,14 @@ export function DivisaoMesTab({
                 <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
                 <div className="min-w-0">
                   <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
-                  <div className="text-[10px] text-gray-500">{l.cargoNome}</div>
+                  <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
+                    <span>{l.cargoNome}</span>
+                    {unidadeNomePorEmp[l.empregadoId] && (
+                      <span className="text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+                        {unidadeNomePorEmp[l.empregadoId]}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <div className="text-right tabular-nums text-gray-600 dark:text-gray-400">{l.diasComRecebimento}</div>
                 <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.bruto)}</div>
@@ -333,7 +326,14 @@ export function DivisaoMesTab({
                     <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▼" : "▶"}</span>
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">{l.nome}</div>
-                      <div className="text-[11px] text-gray-500 truncate">{l.cargoNome}</div>
+                      <div className="text-[11px] text-gray-500 truncate flex items-center gap-1.5">
+                        <span>{l.cargoNome}</span>
+                        {unidadeNomePorEmp[l.empregadoId] && (
+                          <span className="text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+                            {unidadeNomePorEmp[l.empregadoId]}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <div className="text-right shrink-0">

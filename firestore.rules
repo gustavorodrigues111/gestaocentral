@@ -82,8 +82,8 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // ── /historico ── histórico de campos (cria livre, deleta só master) ──
-    match /historico/{id} {
+    // ── /historicos ── histórico versionado de campos (versionedChange grava aqui)
+    match /historicos/{id} {
       allow read:   if authed();
       allow create, update: if authed();
       allow delete: if isMaster();
