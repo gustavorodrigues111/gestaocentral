@@ -217,11 +217,16 @@ export function GorjetasPage() {
 
       {tab === "lancamentos" && (
         <>
-          {/* Resumo do mês */}
-          <div className="grid grid-cols-3 gap-3 mb-5">
+          {/* Resumo do mês.
+              Desktop: 3 colunas iguais.
+              Mobile: Bruto sozinho na 1ª linha (valor pode passar de R$ 100k);
+                      Líquido + Dias dividem a 2ª linha. */}
+          <div className="mb-5 grid grid-cols-1 md:grid-cols-3 gap-2 md:gap-3">
             <Card label="Bruto do mês" value={fmtBR(totaisMes.bruto)} />
-            <Card label="Líquido do mês" value={fmtBR(totaisMes.liquido)} highlight />
-            <Card label="Dias lançados" value={`${totaisMes.dias} dia(s)`} />
+            <div className="grid grid-cols-2 gap-2 md:contents">
+              <Card label="Líquido do mês" value={fmtBR(totaisMes.liquido)} highlight />
+              <Card label="Dias lançados" value={`${totaisMes.dias} dia(s)`} />
+            </div>
           </div>
 
           {loading ? (
