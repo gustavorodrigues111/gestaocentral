@@ -76,8 +76,9 @@ export function VTPage() {
 
   // Modal de confirmação de lançamento
   const [confirmandoLote, setConfirmandoLote] = useState(false);
-  // Modal de lote de AJUSTE (correção pra mais/menos)
-  const [lancandoAjuste, setLancandoAjuste] = useState(false);
+  // Modal de lote de AJUSTE (correção pra mais/menos) — guarda o empregado
+  // que disparou a ação. null = modal fechado.
+  const [ajustandoEmpId, setAjustandoEmpId] = useState<string | null>(null);
   // Bottom-sheet de edição no mobile — guarda o empregadoId que está sendo editado
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
 
@@ -400,7 +401,7 @@ export function VTPage() {
       updatedAt: now,
     };
     await addDoc(collection(db, "vtLotes"), lote);
-    setLancandoAjuste(false);
+    setAjustandoEmpId(null);
   }
 
   // Marcar lote como pago
@@ -607,26 +608,13 @@ export function VTPage() {
               <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totais.geral)}</div>
             </div>
             {!loteAtivo && podeConfig && linhasPreview && linhasPreview.length > 0 && (
-              <div className="flex gap-2 flex-wrap">
-                <Button
-                  onClick={() => setConfirmandoLote(true)}
-                  disabled={!podeLancarLote}
-                  title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
-                >
-                  💸 Lançar pra pagamento
-                </Button>
-                <Button variant="secondary" onClick={() => setLancandoAjuste(true)}>
-                  ⚖ Lançar ajuste
-                </Button>
-              </div>
-            )}
-            {loteAtivo && podeConfig && (
-              <div className="flex gap-2 flex-wrap">
-                {/* Botão de ajuste fica sempre disponível, ao lado das ações do lote ativo */}
-                <Button variant="secondary" size="sm" onClick={() => setLancandoAjuste(true)}>
-                  ⚖ Lançar ajuste
-                </Button>
-              </div>
+              <Button
+                onClick={() => setConfirmandoLote(true)}
+                disabled={!podeLancarLote}
+                title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
+              >
+                💸 Lançar pra pagamento
+              </Button>
             )}
             {loteAtivo && loteAtivo.status === "rascunho" && podeConfig && (
               <div className="flex gap-2 flex-wrap">
@@ -710,12 +698,14 @@ export function VTPage() {
                             if (loteAtivo) editarLinhaDoLote(l.empregadoId, { auxPontual: v });
                             else setOverride(l.empregadoId, { auxPontual: v });
                           }}
+                          onLancarAjuste={podeConfig ? () => setAjustandoEmpId(l.empregadoId) : undefined}
                         />
                         {/* Mobile: card com ✏️ pra abrir bottom-sheet */}
                         <LinhaVTCard
                           l={l}
                           readonly={!podeEditarLinhas}
                           onEdit={() => setEditandoMobileEmpId(l.empregadoId)}
+                          onLancarAjuste={podeConfig ? () => setAjustandoEmpId(l.empregadoId) : undefined}
                         />
                       </div>
                     ))}
@@ -764,14 +754,15 @@ export function VTPage() {
             />
           )}
 
-          {/* Modal de lançamento de AJUSTE */}
-          {lancandoAjuste && (
+          {/* Modal de lançamento de AJUSTE — pré-seleciona o empregado clicado */}
+          {ajustandoEmpId && (
             <LancarAjusteModal
               empregados={empregados}
+              empregadoIdInicial={ajustandoEmpId}
               ano={ano}
               mes={mes}
               onConfirm={criarLoteAjuste}
-              onClose={() => setLancandoAjuste(false)}
+              onClose={() => setAjustandoEmpId(null)}
             />
           )}
         </>
@@ -815,6 +806,7 @@ type LinhaVTProps = {
   onChangeDescAtivo: (ativo: boolean) => void;
   onChangeDescManual: (valor: number) => void;
   onChangeAuxPontual: (valor: number) => void;
+  onLancarAjuste?: () => void;
 };
 
 // Desktop: grid horizontal com 8 colunas (tabela)
@@ -966,7 +958,19 @@ function LinhaVT(props: LinhaVTProps) {
       </div>
 
       <div className="text-right font-bold tabular-nums text-gray-900 dark:text-gray-100">
-        {fmtBR(l.total)}
+        <span className="inline-flex items-center gap-1.5 justify-end">
+          {fmtBR(l.total)}
+          {props.onLancarAjuste && (
+            <button
+              type="button"
+              onClick={props.onLancarAjuste}
+              title="Lançar ajuste de pagamento pra este empregado"
+              className="text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 text-xs px-1"
+            >
+              ⚖
+            </button>
+          )}
+        </span>
       </div>
     </div>
   );
@@ -980,9 +984,10 @@ type LinhaVTCardProps = {
   l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   readonly: boolean;
   onEdit: () => void;
+  onLancarAjuste?: () => void;
 };
 
-function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
+function LinhaVTCard({ l, readonly, onEdit, onLancarAjuste }: LinhaVTCardProps) {
   // Resumos compactos — só mostra o que tem valor
   const detalhes: string[] = [];
   if (l.passagensPorDia > 0) {
@@ -1012,7 +1017,7 @@ function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
           {!readonly && (
             <button
@@ -1022,6 +1027,16 @@ function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
               title="Editar descontos / auxílio pontual"
             >
               ✏️
+            </button>
+          )}
+          {onLancarAjuste && (
+            <button
+              type="button"
+              onClick={onLancarAjuste}
+              title="Lançar ajuste de pagamento"
+              className="text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 text-base leading-none px-1"
+            >
+              ⚖
             </button>
           )}
         </div>
@@ -1524,6 +1539,7 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
 
 type LancarAjusteModalProps = {
   empregados: Empregado[];
+  empregadoIdInicial?: string;
   ano: number;
   mes: number;
   onConfirm: (empregadoId: string, valor: number, justificativa: string) => Promise<void> | void;
@@ -1531,7 +1547,9 @@ type LancarAjusteModalProps = {
 };
 
 function LancarAjusteModal(props: LancarAjusteModalProps) {
-  const [empregadoId, setEmpregadoId] = useState(props.empregados[0]?.id || "");
+  const [empregadoId, setEmpregadoId] = useState(
+    props.empregadoIdInicial || props.empregados[0]?.id || ""
+  );
   const [sinal, setSinal] = useState<"+" | "-">("+");
   const [valorRaw, setValorRaw] = useState("");
   const [justificativa, setJustificativa] = useState("");
