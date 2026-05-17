@@ -11,8 +11,8 @@ import { Input } from "../../core/ui/Input";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade } from "../../core/types";
-import { AREAS } from "../../core/types";
+import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade, EscalaFase } from "../../core/types";
+import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
@@ -57,10 +57,10 @@ export function EscalaPage() {
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
 
-  // Quando carrega a escala: se VT já foi pago, abre direto na real
+  // Quando carrega a escala: se prevista fechada, abre direto na praticada (= real)
   useEffect(() => {
-    if (escala?.vtPagoEm) setVersao("real");
-  }, [escala?.vtPagoEm]);
+    if (escala?.previstaFechadaEm) setVersao("real");
+  }, [escala?.previstaFechadaEm]);
 
   // Empregados
   useEffect(() => {
@@ -218,7 +218,7 @@ export function EscalaPage() {
   // Copia o que tem na prevista pra real (útil pra começar o mês a partir do plano)
   async function copiarPrevistaParaReal() {
     if (!rid || !escala?.prevista) return;
-    if (!confirm("Copiar a Prevista pra Real? (sobrescreve o que estiver na Real)")) return;
+    if (!confirm("Copiar a Prevista pra Praticada? (sobrescreve o que estiver lá)")) return;
     await setDoc(doc(db, "escalas", escalaId), {
       id: escalaId,
       restaurantId: rid,
@@ -227,6 +227,77 @@ export function EscalaPage() {
       updatedAt: new Date().toISOString(),
     }, { merge: true });
     setVersao("real");
+  }
+
+  // ── Fechar prevista do mês ─────────────────────────────────────────────────
+  // 1. Materializa o derivado do horário cadastrado nas células ainda vazias
+  //    da prevista (cobertura total).
+  // 2. Grava previstaFechadaEm — vira fotografia oficial.
+  // 3. Auto-popula a Praticada com o conteúdo da prevista (ponto de partida).
+  async function fecharPrevista() {
+    if (!rid || !me) return;
+    const motivo = prompt(
+      "Fechar a prevista de " + nomeMes(mes) + "/" + ano + "?\n\n" +
+      "Isso vai materializar todos os dias derivados do horário cadastrado e travar a prevista.\n" +
+      "Depois disso o VT pode ser lançado.\n\n" +
+      "Motivo / observação (opcional):"
+    );
+    if (motivo === null) return;
+    // Materializa o derivado nas células ainda vazias
+    const prevAtual = escala?.prevista || {};
+    const novaPrevista: { [empregadoId: string]: { [date: string]: ScheduleStatus } } = {};
+    for (const e of empregadosDoMes) {
+      const empCells = prevAtual[e.id] || {};
+      const derivado = derivedScheduleForEmpregado(e, ano, mes);
+      const cellsFinal: { [d: string]: ScheduleStatus } = { ...empCells };
+      for (const date of Object.keys(derivado)) {
+        if (cellsFinal[date] === undefined) {
+          cellsFinal[date] = derivado[date].status;
+        }
+      }
+      novaPrevista[e.id] = cellsFinal;
+    }
+    const now = new Date().toISOString();
+    await setDoc(doc(db, "escalas", escalaId), {
+      id: escalaId,
+      restaurantId: rid,
+      ano, mes,
+      prevista: novaPrevista,
+      // Auto-popula a praticada com o snapshot da prevista (se vazia)
+      ...(!escala?.real || Object.keys(escala.real).length === 0 ? { real: novaPrevista } : {}),
+      previstaFechadaEm: now,
+      previstaFechadaPor: me.id,
+      previstaFechadaPorNome: me.nome,
+      previstaFechadaMotivo: motivo || "",
+      updatedAt: now,
+    }, { merge: true });
+    setVersao("real");
+  }
+
+  async function reabrirPrevista() {
+    if (!rid || !me || !escala) return;
+    const vtPagoLocal = !!escala.vtPagoEm;
+    if (vtPagoLocal && !me.isMaster) {
+      alert("VT já foi lançado pra esse mês. Só o master pode reabrir a prevista (e isso CANCELA o lote VT).");
+      return;
+    }
+    const motivo = prompt("Motivo da reabertura da prevista:");
+    if (motivo === null) return;
+    const now = new Date().toISOString();
+    await updateDoc(doc(db, "escalas", escalaId), {
+      previstaFechadaEm: null,
+      previstaFechadaPor: null,
+      previstaFechadaPorNome: null,
+      previstaFechadaMotivo: "",
+      previstaReabertaEm: now,
+      previstaReabertaPor: me.id,
+      previstaReabertaPorNome: me.nome,
+      previstaReabertaMotivo: motivo || "",
+      // Se VT estava pago, limpa também (master tem que ir no /vt cancelar o lote)
+      ...(vtPagoLocal ? { vtPagoEm: null, vtPagoPor: null } : {}),
+      updatedAt: now,
+    });
+    setVersao("prevista");
   }
 
   function navegarMes(delta: number) {
@@ -249,6 +320,8 @@ export function EscalaPage() {
 
   const fechada = !!escala?.fechadoEm;
   const vtPago = !!escala?.vtPagoEm;
+  const previstaFechada = !!escala?.previstaFechadaEm;
+  const fase: EscalaFase = getEscalaFase(escala);
   const podeReabrir = canReabrirEscala(me, rid);
   const [showFeriasLote, setShowFeriasLote] = useState(false);
   const [showFecharMes, setShowFecharMes] = useState(false);
@@ -269,9 +342,9 @@ export function EscalaPage() {
     : todasUnidadesAtivas.filter(u => escopoUnidades.includes(u.id));
   // Pode editar a versão atualmente selecionada?
   // - Mês fechado → nada editável
-  // - Prevista após VT pago → trava (snapshot pra cálculo)
-  // - Real até o fechamento → editável
-  const podeEditar = podeConfig && !fechada && !(versao === "prevista" && vtPago);
+  // - Prevista após FECHADA (snapshot) → trava (admin/master só via "Reabrir prevista")
+  // - Praticada até o fechamento → editável
+  const podeEditar = podeConfig && !fechada && !(versao === "prevista" && previstaFechada);
   const realVazia = !escala?.real || Object.keys(escala.real).length === 0;
 
   return (
@@ -288,6 +361,15 @@ export function EscalaPage() {
             {nomeMes(mes)} {ano}
           </div>
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
+          {/* Status do mês — fase do lifecycle */}
+          <div className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded ${
+            fase === "em_planejamento"   ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" :
+            fase === "prevista_fechada"  ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" :
+            fase === "vt_pago"           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" :
+            "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+          }`}>
+            {ESCALA_FASE_ICON[fase]} {ESCALA_FASE_LABEL[fase]}
+          </div>
         </div>
       </div>
 
@@ -304,7 +386,7 @@ export function EscalaPage() {
             }`}
           >
             📋 Prevista
-            {vtPago && versao !== "prevista" && <span className="ml-1 text-[10px]">🔒</span>}
+            {previstaFechada && versao !== "prevista" && <span className="ml-1 text-[10px]">🔒</span>}
           </button>
           <button
             type="button"
@@ -315,7 +397,7 @@ export function EscalaPage() {
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
             }`}
           >
-            ✅ Real
+            ✅ Praticada
           </button>
         </div>
 
@@ -353,7 +435,24 @@ export function EscalaPage() {
           )}
           {versao === "real" && realVazia && podeConfig && !fechada && (
             <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
-              📋 Copiar Prevista → Real
+              📋 Copiar Prevista → Praticada
+            </Button>
+          )}
+          {/* Fechar prevista — só quando ainda aberta */}
+          {!previstaFechada && !fechada && podeConfig && (
+            <Button size="sm" onClick={fecharPrevista}>
+              🔒 Fechar prevista
+            </Button>
+          )}
+          {/* Reabrir prevista — admin pode se NÃO houver VT pago; depois só master */}
+          {previstaFechada && !fechada && podeConfig && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={reabrirPrevista}
+              title={vtPago ? "VT já pago — só master pode reabrir (cancela o lote VT)" : "Reabrir prevista pra ajustes"}
+            >
+              🔓 Reabrir prevista
             </Button>
           )}
           {!fechada && podeConfig && (
@@ -366,22 +465,12 @@ export function EscalaPage() {
               🔓 Reabrir mês
             </Button>
           )}
-          {fechada && (
-            <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
-              🔒 Fechada
-            </span>
-          )}
-          {!fechada && vtPago && (
-            <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-              💸 VT pago
-            </span>
-          )}
         </div>
       </div>
 
       {/* Banner status — info, só desktop (mobile usa o título da versão) */}
       <div className="hidden md:block">
-        <BannerStatus versao={versao} vtPago={vtPago} fechada={fechada} />
+        <BannerStatus versao={versao} previstaFechada={previstaFechada} vtPago={vtPago} fechada={fechada} />
       </div>
 
       {/* Hint de atalhos de teclado — desktop only (sem teclado no mobile) */}
@@ -490,35 +579,45 @@ export function EscalaPage() {
 }
 
 function BannerStatus({
-  versao, vtPago, fechada,
-}: { versao: "prevista" | "real"; vtPago: boolean; fechada: boolean }) {
+  versao, previstaFechada, vtPago, fechada,
+}: { versao: "prevista" | "real"; previstaFechada: boolean; vtPago: boolean; fechada: boolean }) {
   if (fechada) {
     return (
       <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
-        🔒 Mês fechado. Tudo read-only — gorjetas e VT consolidados.
+        🔒 <strong>Mês fechado.</strong> Tudo read-only — gorjetas e VT consolidados.
       </div>
     );
   }
   if (versao === "prevista" && vtPago) {
     return (
+      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
+        💸 <strong>VT já foi lançado.</strong> A Prevista está travada permanentemente como snapshot pro cálculo do VT.
+        Pra registrar o que de fato aconteceu, edite a <strong>Praticada</strong>.
+        Reabrir exige master (cancela o lote VT).
+      </div>
+    );
+  }
+  if (versao === "prevista" && previstaFechada) {
+    return (
       <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
-        💸 VT já foi pago. A Prevista ficou travada como snapshot pro cálculo.
-        Pra registrar o que de fato aconteceu (faltas, atestados, mudanças), edite a <strong>Real</strong>.
+        🔒 <strong>Prevista fechada.</strong> Fotografia tirada — virou a base do VT.
+        Pra ajustar, clique em "🔓 Reabrir prevista" no topo.
+        Ou edite a <strong>Praticada</strong> pros ajustes que vão acontecer no mês.
       </div>
     );
   }
   if (versao === "prevista") {
     return (
-      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
-        📋 <strong>Prevista</strong> = planejamento. Edite aqui antes de pagar o VT.
-        Quando pagar VT, esta versão fica congelada como snapshot pro cálculo.
+      <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-300 mb-4">
+        📋 <strong>Prevista</strong> = planejamento do mês. A base vem do <em>horário cadastrado</em> de cada empregado.
+        Ajuste o que precisa (folgas comp, freelas, férias) e clique em <strong>🔒 Fechar prevista</strong> pra travar — só depois disso o VT pode ser lançado.
       </div>
     );
   }
-  // versao === "real"
+  // versao === "real" (Praticada)
   return (
-    <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-300 mb-4">
-      ✅ <strong>Real</strong> = o que de fato aconteceu. Use pra calcular gorjetas
+    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
+      ✅ <strong>Praticada</strong> = o que de fato aconteceu. Use pra calcular gorjetas
       e detectar divergências de VT (a devolver / a receber).
     </div>
   );

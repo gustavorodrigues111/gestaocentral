@@ -55,17 +55,18 @@ export function contarDiasTrabalhados(
   return n;
 }
 
-// Conta dias de trabalho com FALLBACK pra escala derivada do workSchedule.
-// Quando a escala prevista do mês não foi preenchida (doc não existe ou
-// empregado não tem entradas), assume os dias úteis do horário cadastrado
-// (active + sundayCycle). Marca em `fonte` qual fonte foi usada.
+// Conta dias de trabalho usando o snapshot da escala prevista FECHADA.
+// Quando a prevista NÃO está fechada (em planejamento), preview pode mostrar
+// uma estimativa derivada do horário cadastrado — mas o LOTE de pagamento só
+// pode ser criado depois que a prevista for fechada (snapshot oficial).
 //
-// Regra de combinação quando a escala existe parcialmente pro empregado:
-// - Pega o cadastro como base (todos os dias do mês)
-// - Aplica override da escala dia-a-dia (status real lá manda)
+// Estados retornados em `fonte`:
+//   - "snapshot": escala prevista fechada — número definitivo
+//   - "preview":  escala em planejamento — estimativa (escala+derivado)
+//   - "vazio":    nem escala nem horário cadastrado — 0
 export type DiasContados = {
   dias: number;
-  fonte: "escala" | "horario" | "vazio";
+  fonte: "snapshot" | "preview" | "vazio";
 };
 
 export function contarDiasTrabalhadosSmart(
@@ -77,8 +78,19 @@ export function contarDiasTrabalhadosSmart(
 ): DiasContados {
   const escalaEmp = escala?.[versao]?.[empregado.id] || {};
   const temEscala = Object.keys(escalaEmp).length > 0;
+  const previstaFechada = !!escala?.previstaFechadaEm;
 
-  // Cadastro derivado (horário cadastrado)
+  // Se a prevista do empregado já tem dados E a prevista está fechada,
+  // é snapshot oficial — usa só ela.
+  if (versao === "prevista" && previstaFechada && temEscala) {
+    let n = 0;
+    for (const k of Object.keys(escalaEmp)) {
+      if (STATUS_TRABALHADO[escalaEmp[k]]) n++;
+    }
+    return { dias: n, fonte: "snapshot" };
+  }
+
+  // Caso contrário: preview combinando escala (overrides) + derivado (base)
   const derivado = derivedScheduleForEmpregado(empregado, ano, mes);
   const temHorario = Object.keys(derivado).length > 0;
 
@@ -86,17 +98,6 @@ export function contarDiasTrabalhadosSmart(
     return { dias: 0, fonte: "vazio" };
   }
 
-  // Se a escala não foi tocada, usa só o derivado
-  if (!temEscala) {
-    let n = 0;
-    for (const k of Object.keys(derivado)) {
-      if (derivado[k].status === "trabalho") n++;
-    }
-    return { dias: n, fonte: "horario" };
-  }
-
-  // Escala existe — combina: cadastro como base, escala como override.
-  // Pra cada dia do mês ativo no derivado OU presente na escala:
   const todasDatas = new Set<string>([...Object.keys(derivado), ...Object.keys(escalaEmp)]);
   let n = 0;
   for (const date of todasDatas) {
@@ -108,7 +109,7 @@ export function contarDiasTrabalhadosSmart(
       if (d && d.status === "trabalho") n++;
     }
   }
-  return { dias: n, fonte: "escala" };
+  return { dias: n, fonte: "preview" };
 }
 
 export type VTLinhaCalc = {
@@ -256,7 +257,7 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
 
 export type VTLoteLinhaPreview = VTLoteLinha & {
   semConfig?: boolean;             // empregado tem vtAtivo mas falta passagens/valor
-  fonteDias?: "escala" | "horario" | "vazio"; // de onde veio o `diasTrabalhados`
+  fonteDias?: "snapshot" | "preview" | "vazio"; // de onde veio o `diasTrabalhados`
 };
 
 export function montarLinhasLote(
@@ -279,7 +280,7 @@ export function montarLinhasLote(
     const passagensPorDia = e.vtPassagensPorDia ?? 0;
     const valorPassagem   = e.vtValorPassagem   ?? 0;
     let diasTrabalhados = 0;
-    let fonteDias: "escala" | "horario" | "vazio" = "vazio";
+    let fonteDias: "snapshot" | "preview" | "vazio" = "vazio";
     if (temVt) {
       const calc = contarDiasTrabalhadosSmart(e, escalaLote, loteAno, loteMes, "prevista");
       diasTrabalhados = calc.dias;

@@ -199,7 +199,7 @@ export function VTPage() {
   }, [loteAtivo, empregados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
 
   // Linhas a renderizar: se há lote, usa as do lote; senão, preview
-  const linhas: (VTLoteLinha & { semConfig?: boolean; fonteDias?: "escala" | "horario" | "vazio" })[] = useMemo(() => {
+  const linhas: (VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" })[] = useMemo(() => {
     if (loteAtivo) return loteAtivo.linhas;
     return linhasPreview || [];
   }, [loteAtivo, linhasPreview]);
@@ -440,6 +440,9 @@ export function VTPage() {
 
   const podeEditarLinhas = loteAtivo ? (loteAtivo.status === "rascunho" && podeConfig) : podeConfig;
   const statusLote = loteAtivo?.status || null;
+  const previstaFechada = !!escalaLote?.previstaFechadaEm;
+  // Pode lançar lote? Exige prevista fechada (snapshot oficial) e nenhum lote ativo
+  const podeLancarLote = !loteAtivo && previstaFechada;
 
   return (
     <div className="max-w-6xl">
@@ -502,6 +505,21 @@ export function VTPage() {
             )}
           </div>
 
+          {/* Aviso quando a prevista ainda não foi fechada */}
+          {!loteAtivo && !previstaFechada && (
+            <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-2">
+              <span className="text-base">⚠️</span>
+              <div>
+                <strong>Prevista de {nomeMes(mes)}/{ano} ainda não foi fechada.</strong>
+                <div className="mt-1 text-xs">
+                  Os valores abaixo são <em>preview</em> calculado pelo horário cadastrado de cada empregado.
+                  Pra lançar o VT pra pagamento, vá em <strong>📅 Escala</strong> → ajuste o que precisar → clique em <strong>🔒 Fechar prevista</strong>.
+                  Daí volte aqui pra criar o lote oficial.
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Cards de resumo */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
             <Card label="VT base" value={fmtBR(resumos.vtBase)} />
@@ -517,7 +535,11 @@ export function VTPage() {
               <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totais.geral)}</div>
             </div>
             {!loteAtivo && podeConfig && linhasPreview && linhasPreview.length > 0 && (
-              <Button onClick={() => setConfirmandoLote(true)}>
+              <Button
+                onClick={() => setConfirmandoLote(true)}
+                disabled={!podeLancarLote}
+                title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
+              >
                 💸 Lançar pra pagamento
               </Button>
             )}
@@ -652,7 +674,7 @@ export function VTPage() {
 // ────────────────────────────────────────────────────────────────────────────
 
 type LinhaVTProps = {
-  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "escala" | "horario" | "vazio" };
+  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   loteRascunho: boolean;
   readonly: boolean;
   editingValorEmpId: string | null;
@@ -724,10 +746,10 @@ function LinhaVT(props: LinhaVTProps) {
         <span className="md:hidden text-[10px] text-gray-500">Dias: </span>
         <span className="inline-flex items-center gap-1 justify-end">
           {l.diasTrabalhados}
-          {l.fonteDias === "horario" && (
+          {l.fonteDias === "preview" && (
             <span
               className="text-[10px] text-amber-600 dark:text-amber-400 cursor-help"
-              title="Escala do mês não preenchida — dias estimados pelo horário cadastrado do empregado"
+              title="Preview — prevista do mês ainda não foi fechada. Estimado pelo horário cadastrado + ajustes da escala. Feche a prevista pra travar o valor oficial."
             >
               📋
             </span>

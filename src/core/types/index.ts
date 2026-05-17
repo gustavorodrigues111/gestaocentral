@@ -194,7 +194,23 @@ export type EscalaSnapshot = {
 };
 
 // Escala mensal — armazenada como /escalas/{rid}_{yyyy-mm}
-// Tem 2 versões: prevista (planejamento) e real (após o mês passar)
+//
+// Tem 2 versões da mesma escala:
+//   - PREVISTA  (planejamento; trava ao "fechar prevista")
+//   - PRATICADA (= antiga "real"; o que de fato aconteceu)
+//
+// CICLO DE VIDA (lifecycle do mês):
+//   1. "em_planejamento": prevista é derivada do horário cadastrado + overrides.
+//      Pode editar livremente. VT NÃO pode ser lançado.
+//   2. "prevista_fechada": fotografia tirada — materializa o derivado nas células
+//      ainda vazias e grava previstaFechadaEm. VT pode ser lançado.
+//      Praticada começa a ser editada por cima da prevista.
+//   3. "vt_pago": após pagamento do lote VT (vtPagoEm). Prevista vira IMUTÁVEL
+//      permanente (só admin reabre se nenhum lote VT pago; se já pago, só master
+//      e cancela o lote junto).
+//   4. "praticada_fechada": fim de mês (fechadoEm). Trava tudo.
+//
+// O campo `real` no DB mantém o nome legado pra retrocompat — UI mostra "Praticada".
 export type EscalaMes = {
   id: string;
   restaurantId: string;
@@ -203,7 +219,7 @@ export type EscalaMes = {
 
   // PREVISTA: planejamento que vai pra cálculo de VT antecipado
   prevista: { [empregadoId: string]: { [date: string]: ScheduleStatus } };
-  // REAL: o que de fato aconteceu (faltas, atestados, etc)
+  // PRATICADA: o que de fato aconteceu (mantém nome `real` no DB)
   real:     { [empregadoId: string]: { [date: string]: ScheduleStatus } };
 
   // Multi-unidades: pra cada célula "trabalho", em qual unidade o
@@ -212,12 +228,28 @@ export type EscalaMes = {
   unidadesPrevistas?: { [empregadoId: string]: { [date: string]: string } };
   unidadesReais?:     { [empregadoId: string]: { [date: string]: string } };
 
+  // ── Fase 2: PREVISTA FECHADA (snapshot) ──────────────────────────────────
+  // Ao fechar a prevista, todas as células ainda vazias são materializadas com
+  // o status derivado do horário cadastrado. Depois disso, edição da prevista
+  // bloqueia (admin pode reabrir se nenhum lote VT pago; depois disso, master).
+  previstaFechadaEm?: string | null;
+  previstaFechadaPor?: string | null;
+  previstaFechadaPorNome?: string | null;
+  previstaFechadaMotivo?: string;
+  previstaReabertaEm?: string | null;
+  previstaReabertaPor?: string | null;
+  previstaReabertaPorNome?: string | null;
+  previstaReabertaMotivo?: string;
+
+  // ── Fase 3: VT PAGO (consequência de marcar lote VT como pago) ────────────
   vtPagoEm?: string | null;       // ISO — congela "prevista" após pagamento
   vtPagoPor?: string | null;
-  fechadoEm?: string | null;      // ISO — congela "real" no fechamento total
+
+  // ── Fase 4: PRATICADA FECHADA (mês 100% encerrado) ────────────────────────
+  fechadoEm?: string | null;
   fechadoPor?: string | null;
   fechadoMotivo?: string;
-  reabertoEm?: string | null;     // se foi reaberto, registra
+  reabertoEm?: string | null;
   reabertoPor?: string | null;
   reabertoMotivo?: string;
 
@@ -226,6 +258,31 @@ export type EscalaMes = {
 
   updatedAt: string;
 };
+
+// Status derivado do lifecycle pra UI
+export type EscalaFase = "em_planejamento" | "prevista_fechada" | "vt_pago" | "praticada_fechada";
+
+export const ESCALA_FASE_LABEL: Record<EscalaFase, string> = {
+  em_planejamento:     "Em planejamento",
+  prevista_fechada:    "Prevista fechada",
+  vt_pago:             "VT lançado",
+  praticada_fechada:   "Mês fechado",
+};
+
+export const ESCALA_FASE_ICON: Record<EscalaFase, string> = {
+  em_planejamento:     "📋",
+  prevista_fechada:    "🔒",
+  vt_pago:             "💸",
+  praticada_fechada:   "✅",
+};
+
+export function getEscalaFase(escala: { previstaFechadaEm?: string | null; vtPagoEm?: string | null; fechadoEm?: string | null } | null): EscalaFase {
+  if (!escala) return "em_planejamento";
+  if (escala.fechadoEm) return "praticada_fechada";
+  if (escala.vtPagoEm) return "vt_pago";
+  if (escala.previstaFechadaEm) return "prevista_fechada";
+  return "em_planejamento";
+}
 
 // ─── ENTIDADES PRINCIPAIS ───
 
