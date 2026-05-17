@@ -1,4 +1,4 @@
-import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLoteLinha } from "../../core/types";
+import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLote, VTLoteLinha, VTLoteStatus } from "../../core/types";
 import { daysInMonth, nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 
@@ -269,6 +269,138 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
   return shiftMonth(loteAno, loteMes, -2);
 }
 
+// Conta dias de trabalho num RANGE específico do mês (pra pagamento parcial).
+// Usa a mesma lógica do `contarDiasTrabalhadosSmart` — snapshot quando prevista
+// fechada+populada, preview combinando escala+derivado caso contrário — mas
+// limita aos dias entre `inicio` e `fim` (inclusivos, YYYY-MM-DD).
+export function contarDiasTrabalhadosNoRange(
+  empregado: Empregado,
+  escala: EscalaMes | null,
+  ano: number,
+  mes: number,
+  inicio: string,
+  fim: string,
+  versao: "prevista" | "real" = "prevista",
+): DiasContados {
+  const escalaEmp = escala?.[versao]?.[empregado.id] || {};
+  const temEscala = Object.keys(escalaEmp).length > 0;
+  const previstaFechada = !!escala?.previstaFechadaEm;
+
+  // Helper: filtra um mapa de cells pelo range
+  const noRange = (date: string) => date >= inicio && date <= fim;
+
+  if (versao === "prevista" && previstaFechada && temEscala) {
+    let n = 0;
+    for (const k of Object.keys(escalaEmp)) {
+      if (noRange(k) && STATUS_TRABALHADO[escalaEmp[k]]) n++;
+    }
+    return { dias: n, fonte: "snapshot" };
+  }
+
+  const derivado = derivedScheduleForEmpregado(empregado, ano, mes);
+  if (!temEscala && Object.keys(derivado).length === 0) {
+    return { dias: 0, fonte: "vazio" };
+  }
+  const todasDatas = new Set<string>([...Object.keys(derivado), ...Object.keys(escalaEmp)]);
+  let n = 0;
+  for (const date of todasDatas) {
+    if (!noRange(date)) continue;
+    const stEscala = escalaEmp[date];
+    if (stEscala !== undefined) {
+      if (STATUS_TRABALHADO[stEscala]) n++;
+    } else {
+      const d = derivado[date];
+      if (d && d.status === "trabalho") n++;
+    }
+  }
+  return { dias: n, fonte: "preview" };
+}
+
+// ─── OVERLAP DE LOTES — evita pagar duas vezes o mesmo período ──────────────
+// Pra um (empregadoId, ano, mes), retorna os ranges de datas já cobertos por
+// LOTES REGULAR (rascunho + pago; cancelado libera). Ranges em modo "integral"
+// cobrem o mês inteiro. Ranges em modo "parcial" cobrem [inicio..fim].
+// Lotes de tipo "ajuste" NÃO ocupam ranges (são correções, podem se sobrepor).
+
+export type RangeCoberto = {
+  loteId: string;
+  loteStatus: VTLoteStatus;
+  inicio: string;            // YYYY-MM-DD
+  fim: string;               // YYYY-MM-DD
+};
+
+export function rangesJaCobertos(
+  empregadoId: string,
+  ano: number,
+  mes: number,
+  lotes: VTLote[],
+): RangeCoberto[] {
+  const inicioMes = `${ano}-${pad2(mes)}-01`;
+  const fimMes    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+  const out: RangeCoberto[] = [];
+  for (const lote of lotes) {
+    if (lote.ano !== ano || lote.mes !== mes) continue;
+    if (lote.status === "cancelado") continue;
+    if (lote.tipo === "ajuste") continue;
+    const linha = lote.linhas.find(l => l.empregadoId === empregadoId);
+    if (!linha) continue;
+    if (linha.modo === "parcial" && linha.periodoInicio && linha.periodoFim) {
+      out.push({ loteId: lote.id, loteStatus: lote.status, inicio: linha.periodoInicio, fim: linha.periodoFim });
+    } else {
+      // Integral (ou modo undefined → retrocompat) = mês inteiro
+      out.push({ loteId: lote.id, loteStatus: lote.status, inicio: inicioMes, fim: fimMes });
+    }
+  }
+  return out;
+}
+
+// Checa se [novoInicio, novoFim] intersecta algum range já coberto.
+// Retorna lista de overlaps (vazia = sem conflito).
+export function detectarOverlap(
+  novoInicio: string,
+  novoFim: string,
+  cobertos: RangeCoberto[],
+): RangeCoberto[] {
+  return cobertos.filter(c => !(novoFim < c.inicio || novoInicio > c.fim));
+}
+
+// Dado os ranges cobertos, devolve a "lista de gaps" — sub-ranges DENTRO do
+// mês que ainda NÃO foram pagos. Usado pra sugerir auto-complete pro user.
+export function gapsDoMes(
+  ano: number,
+  mes: number,
+  cobertos: RangeCoberto[],
+): { inicio: string; fim: string }[] {
+  const inicioMes = `${ano}-${pad2(mes)}-01`;
+  const fimMes    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+  if (cobertos.length === 0) return [{ inicio: inicioMes, fim: fimMes }];
+  // Ordena ranges + une sobrepostos pra computar union
+  const sorted = [...cobertos].sort((a, b) => a.inicio.localeCompare(b.inicio));
+  const merged: { inicio: string; fim: string }[] = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && r.inicio <= addDay(last.fim, 1)) {
+      if (r.fim > last.fim) last.fim = r.fim;
+    } else {
+      merged.push({ inicio: r.inicio, fim: r.fim });
+    }
+  }
+  const gaps: { inicio: string; fim: string }[] = [];
+  let cursor = inicioMes;
+  for (const r of merged) {
+    if (r.inicio > cursor) gaps.push({ inicio: cursor, fim: addDay(r.inicio, -1) });
+    cursor = addDay(r.fim, 1);
+  }
+  if (cursor <= fimMes) gaps.push({ inicio: cursor, fim: fimMes });
+  return gaps;
+}
+
+function addDay(ymd: string, delta: number): string {
+  const d = new Date(ymd + "T12:00:00");
+  d.setDate(d.getDate() + delta);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 export type VTLoteLinhaPreview = VTLoteLinha & {
   semConfig?: boolean;             // empregado tem vtAtivo mas falta passagens/valor
   fonteDias?: "snapshot" | "preview" | "vazio"; // de onde veio o `diasTrabalhados`
@@ -341,12 +473,85 @@ export function montarLinhasLote(
       descontoManual: 0,
       auxPontual: 0,
       total,
+      modo: "integral",
+      totalMesCompleto: total,
+      diasMesCompleto: diasTrabalhados,
       semConfig,
       fonteDias,
     });
   }
 
   return linhas;
+}
+
+// Recalcula uma linha existente pra modo PARCIAL com novo range.
+// Usado quando o user troca de Integral → Parcial no modal customizado,
+// ou ajusta o range de uma linha parcial.
+// - Mantém auxFixo do mês (proporcional NÃO — é cheio do mês mesmo na parcial)
+// - Recalcula vtBase com dias dentro do range
+// - Mantém descontoSugerido (é do refMes, independente do range corrente)
+// - Recalcula total
+//
+// Retorna nova linha (não muta a entrada).
+export function aplicarModoParcial(
+  linha: VTLoteLinhaPreview,
+  empregado: Empregado,
+  escalaLote: EscalaMes | null,
+  loteAno: number,
+  loteMes: number,
+  inicio: string,
+  fim: string,
+): VTLoteLinhaPreview {
+  const calc = contarDiasTrabalhadosNoRange(empregado, escalaLote, loteAno, loteMes, inicio, fim, "prevista");
+  const vtBase = Math.round(calc.dias * linha.passagensPorDia * linha.valorPassagem * 100) / 100;
+  const total = recalcularTotalLinha({
+    auxFixoMensal: linha.auxFixoMensal,
+    vtBase,
+    descontoSugerido: linha.descontoSugerido,
+    descontoSugeridoAtivo: linha.descontoSugeridoAtivo,
+    descontoManual: linha.descontoManual,
+    auxPontual: linha.auxPontual,
+  });
+  return {
+    ...linha,
+    modo: "parcial",
+    periodoInicio: inicio,
+    periodoFim: fim,
+    diasTrabalhados: calc.dias,
+    vtBase,
+    total,
+    fonteDias: calc.fonte,
+  };
+}
+
+// Volta uma linha pro modo INTEGRAL (mês inteiro). Recalcula vtBase/dias/total.
+export function aplicarModoIntegral(
+  linha: VTLoteLinhaPreview,
+  empregado: Empregado,
+  escalaLote: EscalaMes | null,
+  loteAno: number,
+  loteMes: number,
+): VTLoteLinhaPreview {
+  const calc = contarDiasTrabalhadosSmart(empregado, escalaLote, loteAno, loteMes, "prevista");
+  const vtBase = Math.round(calc.dias * linha.passagensPorDia * linha.valorPassagem * 100) / 100;
+  const total = recalcularTotalLinha({
+    auxFixoMensal: linha.auxFixoMensal,
+    vtBase,
+    descontoSugerido: linha.descontoSugerido,
+    descontoSugeridoAtivo: linha.descontoSugeridoAtivo,
+    descontoManual: linha.descontoManual,
+    auxPontual: linha.auxPontual,
+  });
+  return {
+    ...linha,
+    modo: "integral",
+    periodoInicio: undefined,
+    periodoFim: undefined,
+    diasTrabalhados: calc.dias,
+    vtBase,
+    total,
+    fonteDias: calc.fonte,
+  };
 }
 
 export function round2(n: number): number {

@@ -6,7 +6,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
-import { fmtAnoMes, nomeMes, parseAnoMes, shiftMonth } from "../../core/utils/date";
+import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
 import { AREAS, VT_LOTE_STATUS_LABEL } from "../../core/types";
 import {
@@ -15,6 +15,13 @@ import {
   totaisPorAreaELote,
   refMesDoLote,
   round2,
+  rangesJaCobertos,
+  detectarOverlap,
+  gapsDoMes,
+  aplicarModoIntegral,
+  aplicarModoParcial,
+  type VTLoteLinhaPreview,
+  type RangeCoberto,
 } from "./calc";
 
 const fmtBR = (n: number) =>
@@ -280,30 +287,41 @@ export function VTPage() {
   }
 
   // ─── Criar lote (lançar pra pagamento) ─────────────────────────────────────
-  async function criarLote() {
-    if (!rid || !me || !linhasPreview) return;
-    if (linhasPreview.length === 0) { alert("Nenhum empregado pra lançar."); return; }
+  // Recebe a lista de linhas a INCLUIR (pode ser subset com modos customizados).
+  async function criarLote(linhasParaSalvar: VTLoteLinhaPreview[]) {
+    if (!rid || !me) return;
+    if (linhasParaSalvar.length === 0) { alert("Nenhum empregado pra lançar."); return; }
     setSalvando(true);
     try {
       const now = new Date().toISOString();
-      const linhasFinal: VTLoteLinha[] = linhasPreview.map(l => ({
-        empregadoId: l.empregadoId,
-        nome: l.nome,
-        cargoNome: l.cargoNome,
-        area: l.area,
-        passagensPorDia: l.passagensPorDia,
-        valorPassagem: l.valorPassagem,
-        diasTrabalhados: l.diasTrabalhados,
-        auxFixoMensal: l.auxFixoMensal,
-        vtBase: l.vtBase,
-        descontoSugeridoAtivo: l.descontoSugeridoAtivo,
-        descontoSugerido: l.descontoSugerido,
-        descontoSugeridoJustificativa: l.descontoSugeridoJustificativa,
-        descontoSugeridoRefMes: l.descontoSugeridoRefMes,
-        descontoManual: l.descontoManual,
-        auxPontual: l.auxPontual,
-        total: l.total,
-      }));
+      const linhasFinal: VTLoteLinha[] = linhasParaSalvar.map(l => {
+        const base: VTLoteLinha = {
+          empregadoId: l.empregadoId,
+          nome: l.nome,
+          cargoNome: l.cargoNome,
+          area: l.area,
+          passagensPorDia: l.passagensPorDia,
+          valorPassagem: l.valorPassagem,
+          diasTrabalhados: l.diasTrabalhados,
+          auxFixoMensal: l.auxFixoMensal,
+          vtBase: l.vtBase,
+          descontoSugeridoAtivo: l.descontoSugeridoAtivo,
+          descontoSugerido: l.descontoSugerido,
+          descontoSugeridoJustificativa: l.descontoSugeridoJustificativa,
+          descontoSugeridoRefMes: l.descontoSugeridoRefMes,
+          descontoManual: l.descontoManual,
+          auxPontual: l.auxPontual,
+          total: l.total,
+          modo: l.modo || "integral",
+          totalMesCompleto: l.totalMesCompleto,
+          diasMesCompleto: l.diasMesCompleto,
+        };
+        if (l.modo === "parcial") {
+          base.periodoInicio = l.periodoInicio;
+          base.periodoFim = l.periodoFim;
+        }
+        return base;
+      });
       const tot = totaisPorAreaELote(linhasFinal);
       const evento: VTLoteEvento = {
         acao: "criado",
@@ -315,6 +333,7 @@ export function VTPage() {
         restaurantId: rid,
         ano, mes,
         status: "rascunho",
+        tipo: "regular",
         linhas: linhasFinal,
         totalGeral: tot.geral,
         totalPorArea: tot.porArea,
@@ -670,10 +689,10 @@ export function VTPage() {
           {/* Modal de confirmação de lançamento */}
           {confirmandoLote && linhasPreview && (
             <ConfirmacaoLoteModal
-              linhas={linhasPreview}
-              totalGeral={totais.geral}
-              porArea={totais.porArea}
-              areasComLinhas={areasComLinhas}
+              linhasPreview={linhasPreview}
+              empregados={empregados}
+              escalaLote={escalaLote}
+              lotesExistentes={lotesDoMes}
               mes={mes}
               ano={ano}
               onConfirm={criarLote}
@@ -1062,55 +1081,349 @@ function EditLinhaSheet({ l, onClose, onChangeDescAtivo, onChangeDescManual, onC
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// ConfirmacaoLoteModal
+// ConfirmacaoLoteModal — 2 modos: Todos integral (1 click) ou Customizar lote
 // ────────────────────────────────────────────────────────────────────────────
 
 type ConfirmacaoLoteModalProps = {
-  linhas: VTLoteLinha[];
-  totalGeral: number;
-  porArea: Record<string, number>;
-  areasComLinhas: Area[];
+  linhasPreview: VTLoteLinhaPreview[];
+  empregados: Empregado[];
+  escalaLote: EscalaMes | null;
+  lotesExistentes: VTLote[];          // pra checar overlap
   mes: number;
   ano: number;
-  onConfirm: () => void;
+  onConfirm: (linhas: VTLoteLinhaPreview[]) => Promise<void> | void;
   onClose: () => void;
   salvando: boolean;
 };
 
+// Estado de uma linha durante a edição do modal customizado
+type LinhaEditavel = {
+  incluida: boolean;
+  modo: "integral" | "parcial";
+  inicio: string;        // só faz sentido pra parcial
+  fim: string;
+  linha: VTLoteLinhaPreview;  // resultado calculado (vtBase, total, dias)
+};
+
 function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
+  const inicioMesYmd = `${props.ano}-${pad2(props.mes)}-01`;
+  const fimMesYmd    = `${props.ano}-${pad2(props.mes)}-${pad2(daysInMonth(props.ano, props.mes))}`;
+  const empregadosById = useMemo(
+    () => Object.fromEntries(props.empregados.map(e => [e.id, e])),
+    [props.empregados],
+  );
+
+  const [modoLote, setModoLote] = useState<"simples" | "custom">("simples");
+
+  // Estado por linha (só usado em modoLote === "custom")
+  const [estado, setEstado] = useState<Record<string, LinhaEditavel>>(() => {
+    const inicial: Record<string, LinhaEditavel> = {};
+    for (const l of props.linhasPreview) {
+      // Cobertura de overlap PRE-EXISTENTE: se já há lote regular com esse
+      // empregado, sugere o gap restante como modo parcial inicial.
+      const cobertos = rangesJaCobertos(l.empregadoId, props.ano, props.mes, props.lotesExistentes);
+      const gaps = gapsDoMes(props.ano, props.mes, cobertos);
+      const gap = gaps[0];
+      const totalmenteCoberto = gaps.length === 0;
+      inicial[l.empregadoId] = {
+        incluida: !totalmenteCoberto,  // não inclui por default se já pago
+        modo: cobertos.length > 0 && gap ? "parcial" : "integral",
+        inicio: gap?.inicio || inicioMesYmd,
+        fim: gap?.fim || fimMesYmd,
+        linha: l,
+      };
+    }
+    return inicial;
+  });
+
+  // Recalcula linha quando modo/range mudam
+  function atualizarLinha(empId: string, patch: Partial<LinhaEditavel>) {
+    setEstado(prev => {
+      const cur = prev[empId];
+      if (!cur) return prev;
+      const next: LinhaEditavel = { ...cur, ...patch };
+      const emp = empregadosById[empId];
+      if (!emp) return { ...prev, [empId]: next };
+      // Recalcula a linha de acordo com o modo
+      if (next.modo === "parcial") {
+        next.linha = aplicarModoParcial(cur.linha, emp, props.escalaLote, props.ano, props.mes, next.inicio, next.fim);
+      } else if (cur.modo === "parcial" && next.modo === "integral") {
+        next.linha = aplicarModoIntegral(cur.linha, emp, props.escalaLote, props.ano, props.mes);
+      }
+      return { ...prev, [empId]: next };
+    });
+  }
+
+  // ── Validação de overlap ──
+  // Por linha, lista os ranges já cobertos por outros lotes regulares.
+  // Detecta conflito da linha CORRENTE (estado) com esses cobertos.
+  const overlapsPorEmp = useMemo(() => {
+    const out: Record<string, RangeCoberto[]> = {};
+    for (const empId of Object.keys(estado)) {
+      const linhaEditavel = estado[empId];
+      if (!linhaEditavel.incluida) { out[empId] = []; continue; }
+      const cobertos = rangesJaCobertos(empId, props.ano, props.mes, props.lotesExistentes);
+      const inicioCheck = linhaEditavel.modo === "parcial" ? linhaEditavel.inicio : inicioMesYmd;
+      const fimCheck    = linhaEditavel.modo === "parcial" ? linhaEditavel.fim    : fimMesYmd;
+      out[empId] = detectarOverlap(inicioCheck, fimCheck, cobertos);
+    }
+    return out;
+  }, [estado, props.lotesExistentes, props.ano, props.mes, inicioMesYmd, fimMesYmd]);
+
+  const temOverlap = Object.values(overlapsPorEmp).some(arr => arr.length > 0);
+
+  // ── Linhas finais a salvar (subset incluído) ──
+  const linhasFinais: VTLoteLinhaPreview[] = useMemo(() => {
+    if (modoLote === "simples") return props.linhasPreview;
+    return Object.values(estado).filter(e => e.incluida).map(e => e.linha);
+  }, [modoLote, estado, props.linhasPreview]);
+
+  const totaisFinais = useMemo(() => {
+    const tot = totaisPorAreaELote(linhasFinais);
+    return tot;
+  }, [linhasFinais]);
+
+  // No modo simples, vai overlap de PEC pré-existente? Só avisamos no modo simples
+  // se há gaps ZERADOS pra algum empregado (pagaria duas vezes inteiro).
+  const conflitoModoSimples = useMemo(() => {
+    if (modoLote !== "simples") return [] as string[];
+    const conflitos: string[] = [];
+    for (const l of props.linhasPreview) {
+      const cobertos = rangesJaCobertos(l.empregadoId, props.ano, props.mes, props.lotesExistentes);
+      if (cobertos.length > 0) conflitos.push(l.nome);
+    }
+    return conflitos;
+  }, [modoLote, props.linhasPreview, props.lotesExistentes, props.ano, props.mes]);
+
+  // Linhas agrupadas por área pra UI do custom
+  const linhasPorArea = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const l of props.linhasPreview) {
+      if (!m[l.area]) m[l.area] = [];
+      m[l.area].push(l.empregadoId);
+    }
+    return m;
+  }, [props.linhasPreview]);
+  const areasOrdenadas = AREAS.filter(a => linhasPorArea[a]?.length);
+
+  const podeConfirmar = !props.salvando
+    && linhasFinais.length > 0
+    && (modoLote === "custom" ? !temOverlap : conflitoModoSimples.length === 0);
+
+  async function confirmar() {
+    if (!podeConfirmar) return;
+    await props.onConfirm(linhasFinais);
+  }
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={props.onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-lg p-5 shadow-xl" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
-          💸 Lançar pra pagamento
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-          Lote de <strong>{nomeMes(props.mes)} {props.ano}</strong> com <strong>{props.linhas.length}</strong> empregados.
-        </p>
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={props.onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-5 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            💸 Lançar pra pagamento
+          </h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
+            Lote de <strong>{nomeMes(props.mes)} {props.ano}</strong>
+          </p>
 
-        <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 mb-3 max-h-60 overflow-y-auto">
-          <div className="space-y-1.5">
-            {props.areasComLinhas.map(a => (
-              <div key={a} className="flex justify-between text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5 last:border-0">
-                <span className="text-gray-700 dark:text-gray-300">{AREA_ICON[a]} {a}</span>
-                <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(props.porArea[a] || 0)}</span>
+          {/* Switch de modo */}
+          <div className="mt-3 inline-flex items-center bg-gray-100 dark:bg-gray-800/60 p-0.5 rounded-lg text-xs">
+            <button
+              type="button"
+              onClick={() => setModoLote("simples")}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                modoLote === "simples"
+                  ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
+                  : "text-gray-600 dark:text-gray-400"
+              }`}
+            >
+              Todos integral
+            </button>
+            <button
+              type="button"
+              onClick={() => setModoLote("custom")}
+              className={`px-3 py-1.5 rounded-md font-medium transition-colors ${
+                modoLote === "custom"
+                  ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
+                  : "text-gray-600 dark:text-gray-400"
+              }`}
+            >
+              Customizar lote
+            </button>
+          </div>
+        </div>
+
+        {/* Corpo */}
+        <div className="flex-1 overflow-y-auto px-5 py-3">
+          {modoLote === "simples" ? (
+            <>
+              <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                <strong>{props.linhasPreview.length}</strong> empregados serão pagos pelo mês inteiro.
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between text-base font-bold pt-2 mt-2 border-t-2 border-gray-200 dark:border-gray-800">
-            <span className="text-gray-900 dark:text-gray-100">Total geral</span>
-            <span className="tabular-nums text-indigo-700 dark:text-indigo-400">{fmtBR(props.totalGeral)}</span>
-          </div>
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 mb-3">
+                <div className="space-y-1.5">
+                  {areasOrdenadas.map(a => (
+                    <div key={a} className="flex justify-between text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5 last:border-0">
+                      <span className="text-gray-700 dark:text-gray-300">{AREA_ICON[a]} {a}</span>
+                      <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(totaisFinais.porArea[a] || 0)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-base font-bold pt-2 mt-2 border-t-2 border-gray-200 dark:border-gray-800">
+                  <span className="text-gray-900 dark:text-gray-100">Total geral</span>
+                  <span className="tabular-nums text-indigo-700 dark:text-indigo-400">{fmtBR(totaisFinais.geral)}</span>
+                </div>
+              </div>
+
+              {conflitoModoSimples.length > 0 && (
+                <div className="text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-2 mb-2">
+                  ⚠ <strong>Conflito de pagamento duplicado</strong> para: {conflitoModoSimples.join(", ")}.<br />
+                  Esses empregados já têm lote(s) cobrindo este mês. Use <strong>Customizar lote</strong> pra pagar só o saldo
+                  ou exclua-os do lote.
+                </div>
+              )}
+
+              <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
+                ⚠ O lote será criado em <strong>rascunho</strong>. Você pode editar valores antes de marcar como pago.
+                Depois de pago, só o master pode reabrir.
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                Marque quem entra no lote, e escolha o modo de cada um. <strong>Integral</strong> = mês inteiro.
+                <strong className="ml-1">Parcial</strong> = só um intervalo de datas (o saldo fica pra outro lote).
+              </div>
+
+              <div className="space-y-3">
+                {areasOrdenadas.map(area => (
+                  <div key={area} className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+                      {AREA_ICON[area]} {area}
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {linhasPorArea[area].map(empId => {
+                        const e = estado[empId];
+                        if (!e) return null;
+                        const overlaps = overlapsPorEmp[empId] || [];
+                        const cobertos = rangesJaCobertos(empId, props.ano, props.mes, props.lotesExistentes);
+                        const temCobertura = cobertos.length > 0;
+                        return (
+                          <div key={empId} className={`px-3 py-2 ${overlaps.length > 0 ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
+                            <div className="flex items-start gap-2">
+                              <input
+                                type="checkbox"
+                                checked={e.incluida}
+                                onChange={(ev) => atualizarLinha(empId, { incluida: ev.target.checked })}
+                                className="mt-1"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center justify-between gap-2 flex-wrap">
+                                  <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                                    {e.linha.nome}
+                                    <span className="ml-2 text-[10px] text-gray-400">{e.linha.cargoNome}</span>
+                                  </div>
+                                  <div className="font-bold tabular-nums text-sm text-gray-900 dark:text-gray-100">
+                                    {fmtBR(e.linha.total)}
+                                  </div>
+                                </div>
+
+                                {e.incluida && (
+                                  <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                                    <label className="text-xs flex items-center gap-1">
+                                      <input
+                                        type="radio"
+                                        checked={e.modo === "integral"}
+                                        onChange={() => atualizarLinha(empId, { modo: "integral" })}
+                                      /> Integral
+                                    </label>
+                                    <label className="text-xs flex items-center gap-1">
+                                      <input
+                                        type="radio"
+                                        checked={e.modo === "parcial"}
+                                        onChange={() => atualizarLinha(empId, { modo: "parcial" })}
+                                      /> Parcial
+                                    </label>
+                                    {e.modo === "parcial" && (
+                                      <>
+                                        <input
+                                          type="date"
+                                          value={e.inicio}
+                                          min={inicioMesYmd}
+                                          max={fimMesYmd}
+                                          onChange={(ev) => atualizarLinha(empId, { inicio: ev.target.value })}
+                                          className="text-xs px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                                        />
+                                        <span className="text-xs text-gray-500">a</span>
+                                        <input
+                                          type="date"
+                                          value={e.fim}
+                                          min={inicioMesYmd}
+                                          max={fimMesYmd}
+                                          onChange={(ev) => atualizarLinha(empId, { fim: ev.target.value })}
+                                          className="text-xs px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                                        />
+                                        <span className="text-[10px] text-gray-500 tabular-nums">
+                                          {e.linha.diasTrabalhados} dia{e.linha.diasTrabalhados !== 1 ? "s" : ""}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+
+                                {temCobertura && (
+                                  <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
+                                    ⚠ Já tem pagamento em {cobertos.map(c => `${c.inicio.slice(8)}-${c.fim.slice(8)}/${pad2(props.mes)}`).join(", ")}
+                                    {" "}({cobertos[0].loteStatus})
+                                  </div>
+                                )}
+                                {overlaps.length > 0 && (
+                                  <div className="mt-1 text-[10px] font-semibold text-rose-700 dark:text-rose-300">
+                                    ✕ Conflito: o range escolhido sobrepõe pagamento existente — ajuste pra continuar.
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Resumo do total */}
+              <div className="mt-3 rounded-lg border-2 border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2 flex justify-between items-center">
+                <div>
+                  <div className="text-[10px] uppercase font-bold text-indigo-700 dark:text-indigo-300 tracking-wider">Total do lote</div>
+                  <div className="text-xs text-indigo-700 dark:text-indigo-300">
+                    {linhasFinais.length} empregado{linhasFinais.length !== 1 ? "s" : ""}
+                    {" · "}
+                    {linhasFinais.filter(l => l.modo === "parcial").length} parcial(is)
+                  </div>
+                </div>
+                <div className="text-xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">
+                  {fmtBR(totaisFinais.geral)}
+                </div>
+              </div>
+
+              {temOverlap && (
+                <div className="mt-2 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-2">
+                  ⚠ Existe conflito de overlap em uma ou mais linhas. Ajuste os ranges ou desmarque os empregados em conflito pra liberar o salvamento.
+                </div>
+              )}
+            </>
+          )}
         </div>
 
-        <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2 mb-4">
-          ⚠ O lote será criado em <strong>rascunho</strong>. Você ainda pode editar valores antes de marcar como pago.
-          Depois de pago, só o master pode reabrir ou cancelar.
-        </div>
-
-        <div className="flex justify-end gap-2">
+        {/* Footer */}
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
           <Button variant="secondary" onClick={props.onClose} disabled={props.salvando}>Cancelar</Button>
-          <Button onClick={props.onConfirm} disabled={props.salvando}>
+          <Button onClick={confirmar} disabled={!podeConfirmar}>
             {props.salvando ? "Criando..." : "✓ Confirmar e criar lote"}
           </Button>
         </div>

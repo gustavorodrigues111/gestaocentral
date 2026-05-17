@@ -509,6 +509,14 @@ export const VT_LOTE_STATUS_LABEL: Record<VTLoteStatus, string> = {
   cancelado: "Cancelado",
 };
 
+// Modo da linha dentro do lote.
+//   - "integral": mês inteiro (default; vtBase = todos os dias trabalhados)
+//   - "parcial":  cobre só um range de datas (periodoInicio / periodoFim);
+//                 vtBase = dias trabalhados nesse range
+//   - "ajuste":   linha de correção (lote.tipo === "ajuste"); valor manual,
+//                 não respeita o cálculo automático
+export type VTLoteLinhaModo = "integral" | "parcial" | "ajuste";
+
 // 1 linha por empregado no lote. Tudo gravado por valor (snapshot).
 export type VTLoteLinha = {
   empregadoId: string;
@@ -519,7 +527,7 @@ export type VTLoteLinha = {
   // VT diário (snapshot do cadastro no momento da criação)
   passagensPorDia: number;
   valorPassagem: number;
-  diasTrabalhados: number;       // contados da escala prevista do mês do lote
+  diasTrabalhados: number;       // contados da escala prevista do mês (range do `modo`)
 
   // Componentes do total
   auxFixoMensal: number;         // R$ — auxílio fixo (snapshot do cadastro)
@@ -536,6 +544,18 @@ export type VTLoteLinha = {
   auxPontual: number;            // R$
 
   total: number;                 // calculado: auxFixo + vtBase − descontoSugerido(se ativo) − descontoManual + auxPontual
+
+  // ── Modo da linha (novo — pra suporte a parcial + ajuste) ───────────────
+  // Default "integral" pra retrocompat (lotes antigos sem esse campo).
+  modo?: VTLoteLinhaModo;
+  // Só pra modo "parcial" — range fechado de datas YYYY-MM-DD
+  periodoInicio?: string;
+  periodoFim?: string;
+  // Snapshots do mês COMPLETO (pra mostrar quanto ainda resta pagar)
+  totalMesCompleto?: number;
+  diasMesCompleto?: number;
+  // Pra modo "ajuste" — texto livre da justificativa
+  justificativa?: string;
 };
 
 // Histórico de eventos do lote (criar → pago → cancelar → reabrir → ...)
@@ -547,12 +567,21 @@ export type VTLoteEvento = {
   motivo?: string;
 };
 
+// Tipo do lote.
+//   - "regular": fluxo normal — calcula automaticamente, valida overlap
+//                contra outros lotes do mesmo mês (sem pagar duas vezes)
+//   - "ajuste":  só linhas manuais (valores arbitrários, com justificativa).
+//                NÃO valida overlap (é justamente pra corrigir diferenças).
+//                Pode ter total positivo ou negativo.
+export type VTLoteTipo = "regular" | "ajuste";
+
 export type VTLote = {
   id: string;                    // auto-id Firestore
   restaurantId: string;
   ano: number;                   // mês de competência
   mes: number;
   status: VTLoteStatus;
+  tipo?: VTLoteTipo;             // default "regular" pra retrocompat
 
   // Linhas snapshot
   linhas: VTLoteLinha[];
