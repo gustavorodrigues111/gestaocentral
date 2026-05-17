@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -625,15 +625,16 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
       Object.entries(perms).forEach(([k, v]) => {
         if (v.ver || v.configurar) limpo[k] = v;
       });
-      const newPermissions = { ...(pessoa.permissions || {}), [restaurantId]: limpo };
-      const newSpecial = {
-        ...(pessoa.specialPermissions || {}),
-        [restaurantId]: { pessoasExcluir, gorjetasConfigurarRegra, escalaReabrir },
-      };
-      await setDoc(doc(db, "pessoas", pessoa.id), {
-        permissions: newPermissions,
-        specialPermissions: newSpecial,
-      }, { merge: true });
+      // BUG histórico: setDoc com merge: true faz DEEP MERGE nos sub-mapas, então
+      // chaves omitidas no novo `limpo` ficavam intactas no Firestore (impossível
+      // "desmarcar" uma permissão). Usar dot-notation `permissions.<rid>` faz o
+      // Firestore SUBSTITUIR o sub-mapa inteiro, mantendo outros restaurantes
+      // intactos (merge ainda funciona no top-level pros outros campos do doc).
+      const especiais = { pessoasExcluir, gorjetasConfigurarRegra, escalaReabrir };
+      await updateDoc(doc(db, "pessoas", pessoa.id), {
+        [`permissions.${restaurantId}`]: limpo,
+        [`specialPermissions.${restaurantId}`]: especiais,
+      });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
       setDirty(false);
     } catch (e) {
@@ -642,6 +643,8 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
       // Mensagem amigável pros casos mais comuns
       if (msg.includes("permission") || msg.includes("Missing or insufficient")) {
         setErro("Sem permissão pra editar permissões dessa pessoa. Só o master pode mexer aqui.");
+      } else if (msg.includes("not-found") || msg.includes("No document to update")) {
+        setErro("Pessoa não encontrada no banco. Feche e abra de novo.");
       } else {
         setErro("Erro ao salvar: " + msg);
       }
