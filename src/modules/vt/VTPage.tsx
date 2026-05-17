@@ -69,17 +69,9 @@ export function VTPage() {
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
-  // Edição inline do valor da passagem (persiste em empregado.vtValorPassagem)
-  const [editingValorEmpId, setEditingValorEmpId] = useState<string | null>(null);
-  const [editingValorRaw, setEditingValorRaw] = useState<string>("");
-  const [savingValor, setSavingValor] = useState(false);
-
   // Modal de confirmação de lançamento
   const [confirmandoLote, setConfirmandoLote] = useState(false);
-  // Modal de lote de AJUSTE (correção pra mais/menos) — guarda o empregado
-  // que disparou a ação. null = modal fechado.
-  const [ajustandoEmpId, setAjustandoEmpId] = useState<string | null>(null);
-  // Bottom-sheet de edição no mobile — guarda o empregadoId que está sendo editado
+  // Bottom-sheet/modal de edição por linha — guarda o empregadoId
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
 
   // Override local de toggle desc.sugerido / valores manuais (antes de criar lote)
@@ -258,36 +250,8 @@ export function VTPage() {
     };
   }, [linhas]);
 
-  // ─── Edição inline do valor da passagem ────────────────────────────────────
-  function iniciarEdicaoValor(empId: string, valorAtual: number) {
-    if (loteAtivo) return; // não edita cadastro depois de lote criado
-    setEditingValorEmpId(empId);
-    setEditingValorRaw(valorAtual > 0 ? fmtMoneyInput(valorAtual) : "");
-  }
-  function cancelarEdicaoValor() {
-    setEditingValorEmpId(null);
-    setEditingValorRaw("");
-  }
-  async function salvarValorEditado() {
-    if (!editingValorEmpId) return;
-    const emp = empregados.find(e => e.id === editingValorEmpId);
-    if (!emp) return;
-    const novo = round2(parseMoneyInput(editingValorRaw));
-    if (novo === (emp.vtValorPassagem || 0)) { cancelarEdicaoValor(); return; }
-    setSavingValor(true);
-    try {
-      const updates: Partial<Empregado> = { vtValorPassagem: novo };
-      if (!emp.vtPassagensPorDia || emp.vtPassagensPorDia <= 0) updates.vtPassagensPorDia = 1;
-      if (novo > 0 && !emp.vtAtivo) updates.vtAtivo = true;
-      await updateDoc(doc(db, "empregados", editingValorEmpId), updates);
-      cancelarEdicaoValor();
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?"));
-    } finally {
-      setSavingValor(false);
-    }
-  }
+  // Edição inline de valorPassagem foi removida — pra editar o cadastro do
+  // empregado, vá em Pessoas. A coluna "Pass/dia" do VT é só visualização.
 
   // ─── Criar lote (lançar pra pagamento) ─────────────────────────────────────
   // Recebe a lista de linhas a INCLUIR (pode ser subset com modos customizados).
@@ -401,7 +365,7 @@ export function VTPage() {
       updatedAt: now,
     };
     await addDoc(collection(db, "vtLotes"), lote);
-    setAjustandoEmpId(null);
+    setEditandoMobileEmpId(null);
   }
 
   // Marcar lote como pago
@@ -674,38 +638,15 @@ export function VTPage() {
 
                     {linhasArea.map(l => (
                       <div key={l.empregadoId}>
-                        {/* Desktop: tabela com 8 colunas */}
+                        {/* Desktop: tabela com 8 colunas + ✏️ no canto direito */}
                         <LinhaVT
                           l={l}
-                          loteRascunho={loteAtivo?.status === "rascunho"}
-                          readonly={!podeEditarLinhas}
-                          editingValorEmpId={editingValorEmpId}
-                          editingValorRaw={editingValorRaw}
-                          setEditingValorRaw={setEditingValorRaw}
-                          iniciarEdicaoValor={iniciarEdicaoValor}
-                          cancelarEdicaoValor={cancelarEdicaoValor}
-                          salvarValorEditado={salvarValorEditado}
-                          savingValor={savingValor}
-                          onChangeDescAtivo={(ativo) => {
-                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { ativo });
-                            else setOverride(l.empregadoId, { ativo });
-                          }}
-                          onChangeDescManual={(v) => {
-                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { descontoManual: v });
-                            else setOverride(l.empregadoId, { descontoManual: v });
-                          }}
-                          onChangeAuxPontual={(v) => {
-                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { auxPontual: v });
-                            else setOverride(l.empregadoId, { auxPontual: v });
-                          }}
-                          onLancarAjuste={podeConfig ? () => setAjustandoEmpId(l.empregadoId) : undefined}
+                          onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
                         />
-                        {/* Mobile: card com ✏️ pra abrir bottom-sheet */}
+                        {/* Mobile: card com ✏️ */}
                         <LinhaVTCard
                           l={l}
-                          readonly={!podeEditarLinhas}
-                          onEdit={() => setEditandoMobileEmpId(l.empregadoId)}
-                          onLancarAjuste={podeConfig ? () => setAjustandoEmpId(l.empregadoId) : undefined}
+                          onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
                         />
                       </div>
                     ))}
@@ -715,13 +656,15 @@ export function VTPage() {
             </div>
           )}
 
-          {/* Bottom-sheet mobile pra editar uma linha */}
+          {/* Sheet/modal por linha (mobile + desktop) — 2 tabs: editar valores e lançar ajuste */}
           {editandoMobileEmpId && (() => {
             const linha = linhas.find(x => x.empregadoId === editandoMobileEmpId);
             if (!linha) return null;
             return (
               <EditLinhaSheet
                 l={linha}
+                podeEditarValores={podeEditarLinhas}
+                podeLancarAjuste={podeConfig}
                 onClose={() => setEditandoMobileEmpId(null)}
                 onChangeDescAtivo={(ativo) => {
                   if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { ativo });
@@ -735,6 +678,7 @@ export function VTPage() {
                   if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { auxPontual: v });
                   else setOverride(linha.empregadoId, { auxPontual: v });
                 }}
+                onLancarAjuste={(valor, just) => criarLoteAjuste(linha.empregadoId, valor, just)}
               />
             );
           })()}
@@ -754,17 +698,6 @@ export function VTPage() {
             />
           )}
 
-          {/* Modal de lançamento de AJUSTE — pré-seleciona o empregado clicado */}
-          {ajustandoEmpId && (
-            <LancarAjusteModal
-              empregados={empregados}
-              empregadoIdInicial={ajustandoEmpId}
-              ano={ano}
-              mes={mes}
-              onConfirm={criarLoteAjuste}
-              onClose={() => setAjustandoEmpId(null)}
-            />
-          )}
         </>
       )}
 
@@ -794,49 +727,14 @@ export function VTPage() {
 
 type LinhaVTProps = {
   l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
-  loteRascunho: boolean;
-  readonly: boolean;
-  editingValorEmpId: string | null;
-  editingValorRaw: string;
-  setEditingValorRaw: (s: string) => void;
-  iniciarEdicaoValor: (empId: string, valorAtual: number) => void;
-  cancelarEdicaoValor: () => void;
-  salvarValorEditado: () => void;
-  savingValor: boolean;
-  onChangeDescAtivo: (ativo: boolean) => void;
-  onChangeDescManual: (valor: number) => void;
-  onChangeAuxPontual: (valor: number) => void;
-  onLancarAjuste?: () => void;
+  // ✏️ no canto direito — abre o EditLinhaSheet com tabs (valores + ajuste)
+  onAbrirSheet?: () => void;
 };
 
-// Desktop: grid horizontal com 8 colunas (tabela)
+// Desktop: grid horizontal com 8 colunas (tabela). Desc/aux são READ-ONLY —
+// toda edição acontece via ✏️ do canto direito (abre o sheet).
 function LinhaVT(props: LinhaVTProps) {
-  const { l, readonly, onChangeDescAtivo, onChangeDescManual, onChangeAuxPontual } = props;
-  const [editDesc, setEditDesc] = useState(false);
-  const [descRaw, setDescRaw] = useState("");
-  const [editAux, setEditAux] = useState(false);
-  const [auxRaw, setAuxRaw] = useState("");
-
-  function startEditDesc() {
-    if (readonly) return;
-    setEditDesc(true);
-    setDescRaw(l.descontoManual > 0 ? fmtMoneyInput(l.descontoManual) : "");
-  }
-  function commitDesc() {
-    const v = round2(parseMoneyInput(descRaw));
-    if (v !== l.descontoManual) onChangeDescManual(v);
-    setEditDesc(false);
-  }
-  function startEditAux() {
-    if (readonly) return;
-    setEditAux(true);
-    setAuxRaw(l.auxPontual > 0 ? fmtMoneyInput(l.auxPontual) : "");
-  }
-  function commitAux() {
-    const v = round2(parseMoneyInput(auxRaw));
-    if (v !== l.auxPontual) onChangeAuxPontual(v);
-    setEditAux(false);
-  }
+  const { l } = props;
 
   return (
     <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
@@ -872,15 +770,7 @@ function LinhaVT(props: LinhaVTProps) {
 
       <div className="text-right">
         {l.descontoSugerido > 0 ? (
-          <span className="inline-flex items-center gap-1.5 justify-end">
-            <input
-              type="checkbox"
-              disabled={readonly}
-              checked={!!l.descontoSugeridoAtivo}
-              onChange={(e) => onChangeDescAtivo(e.target.checked)}
-              title={l.descontoSugeridoJustificativa || ""}
-              className="cursor-pointer"
-            />
+          <span className="inline-flex items-center gap-1 justify-end">
             <span
               className={`tabular-nums text-xs ${l.descontoSugeridoAtivo ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400 line-through"}`}
               title={l.descontoSugeridoJustificativa || ""}
@@ -899,75 +789,25 @@ function LinhaVT(props: LinhaVTProps) {
         )}
       </div>
 
-      <div className="text-right">
-        {editDesc ? (
-          <input
-            autoFocus
-            type="text"
-            inputMode="decimal"
-            value={descRaw}
-            onChange={(e) => setDescRaw(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitDesc();
-              else if (e.key === "Escape") setEditDesc(false);
-            }}
-            onBlur={commitDesc}
-            className="w-20 px-1 py-0.5 text-xs rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-right tabular-nums"
-            placeholder="0,00"
-          />
-        ) : (
-          <button
-            type="button"
-            disabled={readonly}
-            onClick={startEditDesc}
-            className={`text-xs px-1 py-0.5 rounded tabular-nums ${l.descontoManual > 0 ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400"} ${readonly ? "cursor-default" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
-            title="Clique pra editar"
-          >
-            {l.descontoManual > 0 ? `-${fmtBR(l.descontoManual)}` : "—"}
-          </button>
-        )}
+      <div className={`text-right text-xs tabular-nums ${l.descontoManual > 0 ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400"}`}>
+        {l.descontoManual > 0 ? `-${fmtBR(l.descontoManual)}` : "—"}
       </div>
 
-      <div className="text-right">
-        {editAux ? (
-          <input
-            autoFocus
-            type="text"
-            inputMode="decimal"
-            value={auxRaw}
-            onChange={(e) => setAuxRaw(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitAux();
-              else if (e.key === "Escape") setEditAux(false);
-            }}
-            onBlur={commitAux}
-            className="w-20 px-1 py-0.5 text-xs rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 text-right tabular-nums"
-            placeholder="0,00"
-          />
-        ) : (
-          <button
-            type="button"
-            disabled={readonly}
-            onClick={startEditAux}
-            className={`text-xs px-1 py-0.5 rounded tabular-nums ${l.auxPontual > 0 ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-gray-400"} ${readonly ? "cursor-default" : "hover:bg-gray-100 dark:hover:bg-gray-800"}`}
-            title="Clique pra editar"
-          >
-            {l.auxPontual > 0 ? `+${fmtBR(l.auxPontual)}` : "—"}
-          </button>
-        )}
+      <div className={`text-right text-xs tabular-nums ${l.auxPontual > 0 ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-gray-400"}`}>
+        {l.auxPontual > 0 ? `+${fmtBR(l.auxPontual)}` : "—"}
       </div>
 
       <div className="text-right font-bold tabular-nums text-gray-900 dark:text-gray-100">
         <span className="inline-flex items-center gap-1.5 justify-end">
           {fmtBR(l.total)}
-          {props.onLancarAjuste && (
+          {props.onAbrirSheet && (
             <button
               type="button"
-              onClick={props.onLancarAjuste}
-              title="Lançar ajuste de pagamento pra este empregado"
-              className="text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 text-xs px-1"
+              onClick={props.onAbrirSheet}
+              title="Editar valores ou lançar ajuste"
+              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm px-1"
             >
-              ⚖
+              ✏️
             </button>
           )}
         </span>
@@ -982,12 +822,11 @@ function LinhaVT(props: LinhaVTProps) {
 
 type LinhaVTCardProps = {
   l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
-  readonly: boolean;
-  onEdit: () => void;
-  onLancarAjuste?: () => void;
+  // ✏️ no canto direito — abre o EditLinhaSheet com tabs
+  onAbrirSheet?: () => void;
 };
 
-function LinhaVTCard({ l, readonly, onEdit, onLancarAjuste }: LinhaVTCardProps) {
+function LinhaVTCard({ l, onAbrirSheet }: LinhaVTCardProps) {
   // Resumos compactos — só mostra o que tem valor
   const detalhes: string[] = [];
   if (l.passagensPorDia > 0) {
@@ -1017,26 +856,16 @@ function LinhaVTCard({ l, readonly, onEdit, onLancarAjuste }: LinhaVTCardProps) 
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
-          {!readonly && (
+          {onAbrirSheet && (
             <button
               type="button"
-              onClick={onEdit}
+              onClick={onAbrirSheet}
               className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1"
-              title="Editar descontos / auxílio pontual"
+              title="Editar valores ou lançar ajuste"
             >
               ✏️
-            </button>
-          )}
-          {onLancarAjuste && (
-            <button
-              type="button"
-              onClick={onLancarAjuste}
-              title="Lançar ajuste de pagamento"
-              className="text-gray-400 hover:text-orange-600 dark:hover:text-orange-400 text-base leading-none px-1"
-            >
-              ⚖
             </button>
           )}
         </div>
@@ -1063,39 +892,67 @@ function LinhaVTCard({ l, readonly, onEdit, onLancarAjuste }: LinhaVTCardProps) 
 }
 
 // ────────────────────────────────────────────────────────────────────────────
-// EditLinhaSheet — bottom-sheet pra editar uma linha no mobile
+// EditLinhaSheet — ações por linha (editar valores + lançar ajuste)
+// Bottom-sheet no mobile, modal centralizado no desktop. 2 tabs.
 // ────────────────────────────────────────────────────────────────────────────
 
 type EditLinhaSheetProps = {
   l: VTLoteLinha;
+  podeEditarValores: boolean;                                        // false = só tab Ajuste
+  podeLancarAjuste: boolean;                                         // master sempre, admin se podeConfig
   onClose: () => void;
   onChangeDescAtivo: (ativo: boolean) => void;
   onChangeDescManual: (valor: number) => void;
   onChangeAuxPontual: (valor: number) => void;
+  onLancarAjuste: (valor: number, justificativa: string) => Promise<void> | void;
 };
 
-function EditLinhaSheet({ l, onClose, onChangeDescAtivo, onChangeDescManual, onChangeAuxPontual }: EditLinhaSheetProps) {
+function EditLinhaSheet(props: EditLinhaSheetProps) {
+  const { l, podeEditarValores, podeLancarAjuste, onClose } = props;
+
+  // Default: abre na tab que faz mais sentido
+  const [tab, setTab] = useState<"valores" | "ajuste">(podeEditarValores ? "valores" : "ajuste");
+
+  // Estado tab "valores"
   const [descRaw, setDescRaw] = useState(l.descontoManual > 0 ? fmtMoneyInput(l.descontoManual) : "");
   const [auxRaw, setAuxRaw] = useState(l.auxPontual > 0 ? fmtMoneyInput(l.auxPontual) : "");
   const [descAtivo, setDescAtivo] = useState(l.descontoSugeridoAtivo);
 
-  function aplicar() {
+  // Estado tab "ajuste"
+  const [sinal, setSinal] = useState<"+" | "-">("+");
+  const [valorAjusteRaw, setValorAjusteRaw] = useState("");
+  const [justificativa, setJustificativa] = useState("");
+  const [savingAjuste, setSavingAjuste] = useState(false);
+
+  function aplicarValores() {
     const novoDesc = round2(parseMoneyInput(descRaw));
     const novoAux = round2(parseMoneyInput(auxRaw));
-    if (descAtivo !== l.descontoSugeridoAtivo) onChangeDescAtivo(descAtivo);
-    if (novoDesc !== l.descontoManual) onChangeDescManual(novoDesc);
-    if (novoAux !== l.auxPontual) onChangeAuxPontual(novoAux);
+    if (descAtivo !== l.descontoSugeridoAtivo) props.onChangeDescAtivo(descAtivo);
+    if (novoDesc !== l.descontoManual) props.onChangeDescManual(novoDesc);
+    if (novoAux !== l.auxPontual) props.onChangeAuxPontual(novoAux);
     onClose();
   }
 
+  const valorAjusteAbs = round2(parseMoneyInput(valorAjusteRaw));
+  const valorAjusteFinal = sinal === "+" ? valorAjusteAbs : -valorAjusteAbs;
+  const podeSalvarAjuste = valorAjusteAbs > 0 && justificativa.trim().length >= 3 && !savingAjuste;
+
+  async function salvarAjuste() {
+    if (!podeSalvarAjuste) return;
+    setSavingAjuste(true);
+    try { await props.onLancarAjuste(valorAjusteFinal, justificativa.trim()); }
+    finally { setSavingAjuste(false); }
+  }
+
   return (
-    <div className="md:hidden fixed inset-0 z-50 flex items-end" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/40" />
       <div
-        className="relative w-full bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl max-h-[85vh] overflow-y-auto"
+        className="relative w-full md:max-w-md bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl shadow-2xl max-h-[85vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
+        {/* Header */}
+        <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
           <div>
             <div className="font-bold text-gray-900 dark:text-gray-100">{l.nome}</div>
             <div className="text-[11px] text-gray-500 dark:text-gray-400">{l.cargoNome} · {l.area}</div>
@@ -1103,78 +960,166 @@ function EditLinhaSheet({ l, onClose, onChangeDescAtivo, onChangeDescManual, onC
           <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
         </div>
 
-        <div className="p-4 space-y-4">
-          {/* Resumo informativo */}
-          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 text-xs space-y-0.5 tabular-nums">
-            <div className="flex justify-between"><span className="text-gray-500">Auxílio fixo:</span><span>{fmtBR(l.auxFixoMensal)}</span></div>
-            <div className="flex justify-between"><span className="text-gray-500">VT base ({l.diasTrabalhados} dias):</span><span>{fmtBR(l.vtBase)}</span></div>
-          </div>
-
-          {/* Desconto sugerido — toggle */}
-          {l.descontoSugerido > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={descAtivo}
-                  onChange={(e) => setDescAtivo(e.target.checked)}
-                  className="mt-0.5"
-                />
-                <div className="flex-1">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-sm">Desconto sugerido</span>
-                    <span className={`tabular-nums font-bold ${descAtivo ? "text-rose-700 dark:text-rose-400" : "text-gray-400 line-through"}`}>
-                      -{fmtBR(l.descontoSugerido)}
-                    </span>
-                  </div>
-                  {l.descontoSugeridoJustificativa && (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{l.descontoSugeridoJustificativa}</div>
-                  )}
-                </div>
-              </label>
-            </div>
-          )}
-
-          {/* Desconto manual */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-              Desconto adicional (R$)
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={descRaw}
-              onChange={(e) => setDescRaw(e.target.value)}
-              placeholder="0,00"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            />
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-              Use pra desconto manual além do sugerido. Pra zerar, deixe vazio.
-            </div>
-          </div>
-
-          {/* Auxílio pontual */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-              Auxílio pontual (R$)
-            </label>
-            <input
-              type="text"
-              inputMode="decimal"
-              value={auxRaw}
-              onChange={(e) => setAuxRaw(e.target.value)}
-              placeholder="0,00"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            />
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-              Valor extra a pagar nesse mês (acréscimo, ajuda de custo etc).
-            </div>
-          </div>
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-gray-800 shrink-0">
+          <button
+            type="button"
+            onClick={() => podeEditarValores && setTab("valores")}
+            disabled={!podeEditarValores}
+            className={`flex-1 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === "valores"
+                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+            } ${!podeEditarValores ? "opacity-40 cursor-not-allowed" : ""}`}
+            title={!podeEditarValores ? "Lote já pago — só lança ajuste" : undefined}
+          >
+            ✏️ Editar valores
+          </button>
+          <button
+            type="button"
+            onClick={() => podeLancarAjuste && setTab("ajuste")}
+            disabled={!podeLancarAjuste}
+            className={`flex-1 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              tab === "ajuste"
+                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+            } ${!podeLancarAjuste ? "opacity-40 cursor-not-allowed" : ""}`}
+          >
+            ⚖ Lançar ajuste
+          </button>
         </div>
 
-        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2">
+        {/* Conteúdo */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {tab === "valores" ? (
+            <div className="space-y-4">
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 text-xs space-y-0.5 tabular-nums">
+                <div className="flex justify-between"><span className="text-gray-500">Auxílio fixo:</span><span>{fmtBR(l.auxFixoMensal)}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">VT base ({l.diasTrabalhados} dias):</span><span>{fmtBR(l.vtBase)}</span></div>
+              </div>
+
+              {l.descontoSugerido > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={descAtivo}
+                      onChange={(e) => setDescAtivo(e.target.checked)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold text-sm">Desconto sugerido</span>
+                        <span className={`tabular-nums font-bold ${descAtivo ? "text-rose-700 dark:text-rose-400" : "text-gray-400 line-through"}`}>
+                          -{fmtBR(l.descontoSugerido)}
+                        </span>
+                      </div>
+                      {l.descontoSugeridoJustificativa && (
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{l.descontoSugeridoJustificativa}</div>
+                      )}
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  Desconto adicional (R$)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={descRaw}
+                  onChange={(e) => setDescRaw(e.target.value)}
+                  placeholder="0,00"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Use pra desconto manual além do sugerido. Pra zerar, deixe vazio.
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+                  Auxílio pontual (R$)
+                </label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={auxRaw}
+                  onChange={(e) => setAuxRaw(e.target.value)}
+                  placeholder="0,00"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Valor extra a pagar nesse mês (acréscimo, ajuda de custo etc).
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-2.5">
+                ⚖ Cria um lote separado de <strong>ajuste</strong>. Use pra corrigir uma diferença (faltou descontar, pagar a mais, etc) sobre um lote já pago. Não valida overlap com outros pagamentos.
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Valor (R$) *</label>
+                <div className="flex gap-2">
+                  <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setSinal("+")}
+                      className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "+" ? "bg-emerald-500 text-white" : "text-gray-500"}`}
+                    >+</button>
+                    <button
+                      type="button"
+                      onClick={() => setSinal("-")}
+                      className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "-" ? "bg-rose-500 text-white" : "text-gray-500"}`}
+                    >−</button>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={valorAjusteRaw}
+                    onChange={(e) => setValorAjusteRaw(e.target.value)}
+                    placeholder="0,00"
+                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
+                  />
+                </div>
+                {valorAjusteAbs > 0 && (
+                  <div className={`text-[11px] mt-1 text-right tabular-nums ${sinal === "+" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
+                    {sinal === "+" ? "Pagar a mais" : "Cobrar / descontar"}: <strong>{sinal}{fmtBR(valorAjusteAbs)}</strong>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Justificativa *</label>
+                <textarea
+                  value={justificativa}
+                  onChange={(e) => setJustificativa(e.target.value)}
+                  rows={3}
+                  placeholder="Ex: faltou injustificado dia 28 — descontar 2 passagens"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                />
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Obrigatório (mín 3 caracteres). Vai pro histórico do lote.
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2 shrink-0">
           <Button variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
-          <Button onClick={aplicar} className="flex-1">Aplicar</Button>
+          {tab === "valores" ? (
+            <Button onClick={aplicarValores} className="flex-1">Aplicar</Button>
+          ) : (
+            <Button onClick={salvarAjuste} disabled={!podeSalvarAjuste} className="flex-1">
+              {savingAjuste ? "Criando..." : "✓ Criar lote de ajuste"}
+            </Button>
+          )}
         </div>
       </div>
     </div>
@@ -1526,145 +1471,6 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
           <Button variant="secondary" onClick={props.onClose} disabled={props.salvando}>Cancelar</Button>
           <Button onClick={confirmar} disabled={!podeConfirmar}>
             {props.salvando ? "Criando..." : "✓ Confirmar e criar lote"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// LancarAjusteModal — lote de correção pra mais ou pra menos (1 empregado)
-// ────────────────────────────────────────────────────────────────────────────
-
-type LancarAjusteModalProps = {
-  empregados: Empregado[];
-  empregadoIdInicial?: string;
-  ano: number;
-  mes: number;
-  onConfirm: (empregadoId: string, valor: number, justificativa: string) => Promise<void> | void;
-  onClose: () => void;
-};
-
-function LancarAjusteModal(props: LancarAjusteModalProps) {
-  const [empregadoId, setEmpregadoId] = useState(
-    props.empregadoIdInicial || props.empregados[0]?.id || ""
-  );
-  const [sinal, setSinal] = useState<"+" | "-">("+");
-  const [valorRaw, setValorRaw] = useState("");
-  const [justificativa, setJustificativa] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const empregadosOrdenados = useMemo(
-    () => [...props.empregados].sort((a, b) => a.nome.localeCompare(b.nome)),
-    [props.empregados],
-  );
-
-  function parseValor(raw: string): number {
-    const clean = (raw || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
-    return parseFloat(clean) || 0;
-  }
-
-  const valorAbs = parseValor(valorRaw);
-  const valorFinal = sinal === "+" ? valorAbs : -valorAbs;
-  const podeSalvar = !!empregadoId && valorAbs > 0 && justificativa.trim().length >= 3 && !saving;
-
-  async function salvar() {
-    if (!podeSalvar) return;
-    setSaving(true);
-    try { await props.onConfirm(empregadoId, valorFinal, justificativa.trim()); }
-    finally { setSaving(false); }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/40 flex items-end md:items-center justify-center p-0 md:p-4" onClick={props.onClose}>
-      <div
-        className="bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl w-full max-w-md p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
-          ⚖ Lançar ajuste
-        </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-          {nomeMes(props.mes)} {props.ano} — correção pra mais (+) ou pra menos (-) num pagamento já feito.
-          <span className="block text-[11px] mt-0.5 italic">Ajustes não validam overlap (é justo pra corrigir diferenças).</span>
-        </p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-              Empregado *
-            </label>
-            <select
-              value={empregadoId}
-              onChange={(e) => setEmpregadoId(e.target.value)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            >
-              <option value="">— escolha —</option>
-              {empregadosOrdenados.map(e => (
-                <option key={e.id} value={e.id}>{e.nome}</option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-              Valor (R$) *
-            </label>
-            <div className="flex gap-2">
-              <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
-                <button
-                  type="button"
-                  onClick={() => setSinal("+")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "+" ? "bg-emerald-500 text-white" : "text-gray-500"}`}
-                >
-                  +
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSinal("-")}
-                  className={`px-3 py-1.5 rounded-md text-sm font-bold ${sinal === "-" ? "bg-rose-500 text-white" : "text-gray-500"}`}
-                >
-                  −
-                </button>
-              </div>
-              <input
-                type="text"
-                inputMode="decimal"
-                value={valorRaw}
-                onChange={(e) => setValorRaw(e.target.value)}
-                placeholder="0,00"
-                className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums"
-              />
-            </div>
-            {valorAbs > 0 && (
-              <div className={`text-[11px] mt-1 text-right tabular-nums ${sinal === "+" ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>
-                {sinal === "+" ? "Pagar a mais" : "Cobrar / descontar"}: <strong>{sinal}R$ {valorAbs.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
-              Justificativa *
-            </label>
-            <textarea
-              value={justificativa}
-              onChange={(e) => setJustificativa(e.target.value)}
-              rows={3}
-              placeholder="Ex: faltou injustificado dia 28 — descontar 2 passagens"
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            />
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-              Obrigatório. Vai pro histórico de auditoria do lote.
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 mt-5">
-          <Button variant="secondary" onClick={props.onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={salvar} disabled={!podeSalvar}>
-            {saving ? "Criando..." : "✓ Criar lote de ajuste"}
           </Button>
         </div>
       </div>
