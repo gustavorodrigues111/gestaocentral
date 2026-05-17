@@ -454,6 +454,23 @@ export function VTPage() {
             {activeRestaurant.nome}
           </p>
         </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
+          <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
+            {nomeMes(mes)} {ano}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
+          {statusLote && (
+            <div className={`text-xs px-2 py-1 rounded-full font-medium ${
+              statusLote === "rascunho" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :
+              statusLote === "pago" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" :
+              "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
+            }`}>
+              {VT_LOTE_STATUS_LABEL[statusLote]}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -484,25 +501,9 @@ export function VTPage() {
 
       {aba === "mes" && (
         <>
-          {/* Navegador de mês */}
-          <div className="flex items-center gap-2 mb-4">
-            <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
-            <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
-              {nomeMes(mes)} {ano}
-            </div>
-            <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-            <div className="ml-3 text-[11px] text-gray-500 dark:text-gray-400">
-              Desconto ref: <strong>{nomeMes(refMes.mes).slice(0,3).toLowerCase()}/{String(refMes.ano).slice(2)}</strong>
-            </div>
-            {statusLote && (
-              <div className={`ml-auto text-xs px-2 py-1 rounded-full font-medium ${
-                statusLote === "rascunho" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :
-                statusLote === "pago" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" :
-                "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-              }`}>
-                {VT_LOTE_STATUS_LABEL[statusLote]}
-              </div>
-            )}
+          {/* Indicador do refMes do desconto sugerido */}
+          <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
+            Desconto sugerido — mês de referência: <strong>{nomeMes(refMes.mes).slice(0,3).toLowerCase()}/{String(refMes.ano).slice(2)}</strong>
           </div>
 
           {/* Aviso quando a prevista ainda não foi fechada */}
