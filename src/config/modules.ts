@@ -19,7 +19,7 @@ export const MODULES: ModuleDef[] = [
   { id: "pessoas",          area: "escritorio", label: "Pessoas",          icon: "👤", status: "ativo",     desc: "Pessoas, empregados, cargos e templates de permissão" },
   { id: "configuracoes",    area: "escritorio", label: "Configurações",    icon: "⚙️", status: "ativo",     desc: "Configurações do restaurante" },
   { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     etapa: "beta",               desc: "Lançamento e divisão de gorjetas",       dependsOn: ["pessoas", "escala"] },
-  { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     etapa: "beta",               desc: "Cálculo e pagamento de VT",              dependsOn: ["pessoas", "escala"] },
+  { id: "vt",               area: "escritorio", label: "Benefícios",       icon: "🚌", status: "ativo",     etapa: "beta",               desc: "VT, auxílios fixos e benefícios pontuais por empregado",              dependsOn: ["pessoas", "escala"] },
   { id: "excecoes",         area: "escritorio", label: "Relatório de Exceções", icon: "⚠️", status: "ativo", etapa: "em_desenvolvimento", desc: "Não-conformidades de ponto (Sólides) vs escala prevista", dependsOn: ["escala", "pessoas"] },
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
   { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },

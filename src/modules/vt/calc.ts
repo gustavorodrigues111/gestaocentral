@@ -403,6 +403,7 @@ function addDay(ymd: string, delta: number): string {
 
 export type VTLoteLinhaPreview = VTLoteLinha & {
   semConfig?: boolean;             // empregado tem vtAtivo mas falta passagens/valor
+  semBeneficioCadastrado?: boolean; // empregado SEM nada: nem VT nem aux fixo
   fonteDias?: "snapshot" | "preview" | "vazio"; // de onde veio o `diasTrabalhados`
 };
 
@@ -419,12 +420,16 @@ export function montarLinhasLote(
   const linhas: VTLoteLinhaPreview[] = [];
 
   for (const e of empregados) {
-    const auxFixo = e.vtAuxilioFixoMensal ?? 0;
-    const temVt = !!e.vtAtivo;
-    if (!temVt && auxFixo <= 0) continue;
     // Filtra demitidos: só inclui empregados que estavam ativos em algum dia
     // do mês visualizado (admitido <= último dia, e não demitido antes do 1º)
     if (!ativoEmAlgumDiaDoMes(e, loteAno, loteMes)) continue;
+
+    const auxFixo = e.vtAuxilioFixoMensal ?? 0;
+    const temVt = !!e.vtAtivo;
+    // Empregado sem VT diário E sem aux fixo → linha "ZERADA" mas APARECE,
+    // pra que o user possa ver e eventualmente lançar aux.pontual ou desconto
+    // pontual mesmo pra quem não tem benefício cadastrado.
+    const semBeneficioCadastrado = !temVt && auxFixo <= 0;
 
     const passagensPorDia = e.vtPassagensPorDia ?? 0;
     const valorPassagem   = e.vtValorPassagem   ?? 0;
@@ -454,6 +459,7 @@ export function montarLinhasLote(
     const descontoSugeridoAtivo = descontoSugerido > 0; // só ativa se tem desconto > 0
     const total = round2(auxFixo + vtBase - (descontoSugeridoAtivo ? descontoSugerido : 0));
 
+    // "Sem config" = tem vtAtivo mas falta passagens/valor (config incompleta)
     const semConfig = temVt && (passagensPorDia <= 0 || valorPassagem <= 0);
 
     linhas.push({
@@ -477,6 +483,7 @@ export function montarLinhasLote(
       totalMesCompleto: total,
       diasMesCompleto: diasTrabalhados,
       semConfig,
+      semBeneficioCadastrado,
       fonteDias,
     });
   }

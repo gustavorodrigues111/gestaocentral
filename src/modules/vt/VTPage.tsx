@@ -221,7 +221,7 @@ export function VTPage() {
 
   // Linhas a renderizar: se há lote, usa as do lote; senão, preview.
   // Aplica filtro de unidade (pela unidadePadraoId do empregado) quando há filtro ativo.
-  const linhas: (VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" })[] = useMemo(() => {
+  const linhas: (VTLoteLinha & { semConfig?: boolean; semBeneficioCadastrado?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" })[] = useMemo(() => {
     const base = loteAtivo ? loteAtivo.linhas : (linhasPreview || []);
     if (!filtroUnidadeId) return base;
     return base.filter(l => {
@@ -507,7 +507,7 @@ export function VTPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🚌 Vale Transporte</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🚌 Benefícios</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {activeRestaurant.nome}
           </p>
@@ -790,7 +790,7 @@ export function VTPage() {
 // ────────────────────────────────────────────────────────────────────────────
 
 type LinhaVTProps = {
-  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
+  l: VTLoteLinha & { semConfig?: boolean; semBeneficioCadastrado?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   // ✏️ no canto direito — abre o EditLinhaSheet com tabs (valores + ajuste)
   onAbrirSheet?: () => void;
   // Nome da unidade do empregado (multi-unidades). undefined = single-unidade
@@ -803,10 +803,13 @@ function LinhaVT(props: LinhaVTProps) {
   const { l, unidadeNome } = props;
 
   return (
-    <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
-      <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+    <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : l.semBeneficioCadastrado ? "bg-gray-50/40 dark:bg-gray-900/10" : ""}`}>
+      <div className={`font-medium truncate ${l.semBeneficioCadastrado ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
         {l.nome}
         {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+        {l.semBeneficioCadastrado && (
+          <span className="ml-2 text-[10px] italic text-gray-500 dark:text-gray-400">— sem vale transporte cadastrado</span>
+        )}
         {l.modo === "parcial" && l.periodoInicio && l.periodoFim && (
           <span className="ml-2 text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
             Parcial {l.periodoInicio.slice(8)}-{l.periodoFim.slice(8)}/{l.periodoFim.slice(5, 7)}
@@ -892,7 +895,7 @@ function LinhaVT(props: LinhaVTProps) {
 // ────────────────────────────────────────────────────────────────────────────
 
 type LinhaVTCardProps = {
-  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
+  l: VTLoteLinha & { semConfig?: boolean; semBeneficioCadastrado?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   // ✏️ no canto direito — abre o EditLinhaSheet
   onAbrirSheet?: () => void;
   // Nome da unidade (multi-unidades). undefined = single
@@ -951,21 +954,28 @@ function LinhaVTCard({ l, onAbrirSheet, unidadeNome }: LinhaVTCardProps) {
         </div>
       </div>
 
-      {detalhes.length > 0 && (
-        <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 tabular-nums">
-          {detalhes.join(" · ")}
+      {l.semBeneficioCadastrado && componentes.length === 0 ? (
+        <div className="mt-1 text-[11px] italic text-gray-500 dark:text-gray-400">
+          Sem vale transporte cadastrado
         </div>
-      )}
-
-      {componentes.length > 0 && (
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
-          {componentes.map(c => (
-            <span key={c.label} className={c.cor || "text-gray-600 dark:text-gray-400"}>
-              <span className="text-gray-500 dark:text-gray-500">{c.label}: </span>
-              {c.valor}
-            </span>
-          ))}
-        </div>
+      ) : (
+        <>
+          {detalhes.length > 0 && (
+            <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 tabular-nums">
+              {detalhes.join(" · ")}
+            </div>
+          )}
+          {componentes.length > 0 && (
+            <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
+              {componentes.map(c => (
+                <span key={c.label} className={c.cor || "text-gray-600 dark:text-gray-400"}>
+                  <span className="text-gray-500 dark:text-gray-500">{c.label}: </span>
+                  {c.valor}
+                </span>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
