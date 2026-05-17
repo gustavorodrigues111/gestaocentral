@@ -1,6 +1,20 @@
 import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLoteLinha } from "../../core/types";
-import { nomeMes, shiftMonth } from "../../core/utils/date";
+import { daysInMonth, nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
+
+// Empregado estava ativo em ALGUM dia do mês? (mesma regra usada em /escala)
+// Demitido antes/no 1º dia → demissao <= inicio → fora. Admitido depois do
+// último dia → admissao > fim → fora.
+function ativoEmAlgumDiaDoMes(emp: Empregado, ano: number, mes: number): boolean {
+  const inicio = `${ano}-${pad2(mes)}-01`;
+  const fim    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+  for (const p of emp.periodos || []) {
+    if (p.admissao > fim) continue;
+    if (p.demissao && p.demissao <= inicio) continue;
+    return true;
+  }
+  return false;
+}
 
 // Status que conta como dia de trabalho pra cálculo de VT (base do mês corrente)
 const STATUS_TRABALHADO: Record<ScheduleStatus, boolean> = {
@@ -276,6 +290,9 @@ export function montarLinhasLote(
     const auxFixo = e.vtAuxilioFixoMensal ?? 0;
     const temVt = !!e.vtAtivo;
     if (!temVt && auxFixo <= 0) continue;
+    // Filtra demitidos: só inclui empregados que estavam ativos em algum dia
+    // do mês visualizado (admitido <= último dia, e não demitido antes do 1º)
+    if (!ativoEmAlgumDiaDoMes(e, loteAno, loteMes)) continue;
 
     const passagensPorDia = e.vtPassagensPorDia ?? 0;
     const valorPassagem   = e.vtValorPassagem   ?? 0;
