@@ -69,6 +69,8 @@ export function VTPage() {
 
   // Modal de confirmação de lançamento
   const [confirmandoLote, setConfirmandoLote] = useState(false);
+  // Bottom-sheet de edição no mobile — guarda o empregadoId que está sendo editado
+  const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
 
   // Override local de toggle desc.sugerido / valores manuais (antes de criar lote)
   // Key: empregadoId → { ativo, descontoManual, auxPontual }
@@ -601,37 +603,69 @@ export function VTPage() {
                     </div>
 
                     {linhasArea.map(l => (
-                      <LinhaVT
-                        key={l.empregadoId}
-                        l={l}
-                        loteRascunho={loteAtivo?.status === "rascunho"}
-                        readonly={!podeEditarLinhas}
-                        editingValorEmpId={editingValorEmpId}
-                        editingValorRaw={editingValorRaw}
-                        setEditingValorRaw={setEditingValorRaw}
-                        iniciarEdicaoValor={iniciarEdicaoValor}
-                        cancelarEdicaoValor={cancelarEdicaoValor}
-                        salvarValorEditado={salvarValorEditado}
-                        savingValor={savingValor}
-                        onChangeDescAtivo={(ativo) => {
-                          if (loteAtivo) editarLinhaDoLote(l.empregadoId, { ativo });
-                          else setOverride(l.empregadoId, { ativo });
-                        }}
-                        onChangeDescManual={(v) => {
-                          if (loteAtivo) editarLinhaDoLote(l.empregadoId, { descontoManual: v });
-                          else setOverride(l.empregadoId, { descontoManual: v });
-                        }}
-                        onChangeAuxPontual={(v) => {
-                          if (loteAtivo) editarLinhaDoLote(l.empregadoId, { auxPontual: v });
-                          else setOverride(l.empregadoId, { auxPontual: v });
-                        }}
-                      />
+                      <div key={l.empregadoId}>
+                        {/* Desktop: tabela com 8 colunas */}
+                        <LinhaVT
+                          l={l}
+                          loteRascunho={loteAtivo?.status === "rascunho"}
+                          readonly={!podeEditarLinhas}
+                          editingValorEmpId={editingValorEmpId}
+                          editingValorRaw={editingValorRaw}
+                          setEditingValorRaw={setEditingValorRaw}
+                          iniciarEdicaoValor={iniciarEdicaoValor}
+                          cancelarEdicaoValor={cancelarEdicaoValor}
+                          salvarValorEditado={salvarValorEditado}
+                          savingValor={savingValor}
+                          onChangeDescAtivo={(ativo) => {
+                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { ativo });
+                            else setOverride(l.empregadoId, { ativo });
+                          }}
+                          onChangeDescManual={(v) => {
+                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { descontoManual: v });
+                            else setOverride(l.empregadoId, { descontoManual: v });
+                          }}
+                          onChangeAuxPontual={(v) => {
+                            if (loteAtivo) editarLinhaDoLote(l.empregadoId, { auxPontual: v });
+                            else setOverride(l.empregadoId, { auxPontual: v });
+                          }}
+                        />
+                        {/* Mobile: card com ✏️ pra abrir bottom-sheet */}
+                        <LinhaVTCard
+                          l={l}
+                          readonly={!podeEditarLinhas}
+                          onEdit={() => setEditandoMobileEmpId(l.empregadoId)}
+                        />
+                      </div>
                     ))}
                   </div>
                 );
               })}
             </div>
           )}
+
+          {/* Bottom-sheet mobile pra editar uma linha */}
+          {editandoMobileEmpId && (() => {
+            const linha = linhas.find(x => x.empregadoId === editandoMobileEmpId);
+            if (!linha) return null;
+            return (
+              <EditLinhaSheet
+                l={linha}
+                onClose={() => setEditandoMobileEmpId(null)}
+                onChangeDescAtivo={(ativo) => {
+                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { ativo });
+                  else setOverride(linha.empregadoId, { ativo });
+                }}
+                onChangeDescManual={(v) => {
+                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { descontoManual: v });
+                  else setOverride(linha.empregadoId, { descontoManual: v });
+                }}
+                onChangeAuxPontual={(v) => {
+                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { auxPontual: v });
+                  else setOverride(linha.empregadoId, { auxPontual: v });
+                }}
+              />
+            );
+          })()}
 
           {/* Modal de confirmação de lançamento */}
           {confirmandoLote && linhasPreview && (
@@ -690,6 +724,7 @@ type LinhaVTProps = {
   onChangeAuxPontual: (valor: number) => void;
 };
 
+// Desktop: grid horizontal com 8 colunas (tabela)
 function LinhaVT(props: LinhaVTProps) {
   const { l, readonly, onChangeDescAtivo, onChangeDescManual, onChangeAuxPontual } = props;
   const [editDesc, setEditDesc] = useState(false);
@@ -719,20 +754,18 @@ function LinhaVT(props: LinhaVTProps) {
   }
 
   return (
-    <div className={`grid grid-cols-1 md:grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 gap-1 md:gap-0 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
-      <div className="font-medium text-gray-900 dark:text-gray-100 truncate md:order-1">
+    <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
+      <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
         {l.nome}
         {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
         <span className="ml-2 text-[10px] text-gray-400">{l.cargoNome}</span>
       </div>
 
-      <div className="md:text-right tabular-nums text-gray-700 dark:text-gray-300 md:order-2">
-        <span className="md:hidden text-[10px] text-gray-500">Aux.fixo: </span>
+      <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">
         {l.auxFixoMensal > 0 ? fmtBR(l.auxFixoMensal) : "—"}
       </div>
 
-      <div className="md:text-right tabular-nums text-gray-700 dark:text-gray-300 md:order-3">
-        <span className="md:hidden text-[10px] text-gray-500">Pass/dia: </span>
+      <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">
         {l.passagensPorDia > 0 ? (
           <span>
             {l.passagensPorDia}x{" "}
@@ -743,13 +776,11 @@ function LinhaVT(props: LinhaVTProps) {
         )}
       </div>
 
-      <div className="md:text-right tabular-nums md:order-4">
-        <span className="md:hidden text-[10px] text-gray-500">Dias: </span>
+      <div className="text-right tabular-nums">
         {l.diasTrabalhados}
       </div>
 
-      <div className="md:text-right md:order-5">
-        <span className="md:hidden text-[10px] text-gray-500">Desc.sug: </span>
+      <div className="text-right">
         {l.descontoSugerido > 0 ? (
           <span className="inline-flex items-center gap-1.5 justify-end">
             <input
@@ -778,8 +809,7 @@ function LinhaVT(props: LinhaVTProps) {
         )}
       </div>
 
-      <div className="md:text-right md:order-6">
-        <span className="md:hidden text-[10px] text-gray-500">Desconto: </span>
+      <div className="text-right">
         {editDesc ? (
           <input
             autoFocus
@@ -808,8 +838,7 @@ function LinhaVT(props: LinhaVTProps) {
         )}
       </div>
 
-      <div className="md:text-right md:order-7">
-        <span className="md:hidden text-[10px] text-gray-500">Aux.pontual: </span>
+      <div className="text-right">
         {editAux ? (
           <input
             autoFocus
@@ -838,9 +867,195 @@ function LinhaVT(props: LinhaVTProps) {
         )}
       </div>
 
-      <div className="md:text-right md:order-8 font-bold tabular-nums text-gray-900 dark:text-gray-100">
-        <span className="md:hidden text-[10px] text-gray-500 font-normal">Total: </span>
+      <div className="text-right font-bold tabular-nums text-gray-900 dark:text-gray-100">
         {fmtBR(l.total)}
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// LinhaVTCard — versão mobile (card vertical, edição via bottom-sheet)
+// ────────────────────────────────────────────────────────────────────────────
+
+type LinhaVTCardProps = {
+  l: VTLoteLinha & { semConfig?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
+  readonly: boolean;
+  onEdit: () => void;
+};
+
+function LinhaVTCard({ l, readonly, onEdit }: LinhaVTCardProps) {
+  // Resumos compactos — só mostra o que tem valor
+  const detalhes: string[] = [];
+  if (l.passagensPorDia > 0) {
+    detalhes.push(`${l.diasTrabalhados} dias · ${l.passagensPorDia}x ${fmtBR(l.valorPassagem)}`);
+  }
+
+  const componentes: { label: string; valor: string; cor?: string }[] = [];
+  if (l.auxFixoMensal > 0) componentes.push({ label: "Aux.fixo", valor: fmtBR(l.auxFixoMensal) });
+  if (l.descontoSugeridoAtivo && l.descontoSugerido > 0) componentes.push({ label: "Desc.sug", valor: `-${fmtBR(l.descontoSugerido)}`, cor: "text-rose-600 dark:text-rose-400" });
+  if (l.descontoManual > 0) componentes.push({ label: "Desconto", valor: `-${fmtBR(l.descontoManual)}`, cor: "text-rose-600 dark:text-rose-400" });
+  if (l.auxPontual > 0) componentes.push({ label: "Aux.pontual", valor: `+${fmtBR(l.auxPontual)}`, cor: "text-emerald-600 dark:text-emerald-400" });
+
+  return (
+    <div className={`md:hidden border-t border-gray-100 dark:border-gray-800 px-3 py-2.5 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">
+            {l.nome}
+            {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+          </div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
+          {!readonly && (
+            <button
+              type="button"
+              onClick={onEdit}
+              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1"
+              title="Editar descontos / auxílio pontual"
+            >
+              ✏️
+            </button>
+          )}
+        </div>
+      </div>
+
+      {detalhes.length > 0 && (
+        <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 tabular-nums">
+          {detalhes.join(" · ")}
+        </div>
+      )}
+
+      {componentes.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
+          {componentes.map(c => (
+            <span key={c.label} className={c.cor || "text-gray-600 dark:text-gray-400"}>
+              <span className="text-gray-500 dark:text-gray-500">{c.label}: </span>
+              {c.valor}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EditLinhaSheet — bottom-sheet pra editar uma linha no mobile
+// ────────────────────────────────────────────────────────────────────────────
+
+type EditLinhaSheetProps = {
+  l: VTLoteLinha;
+  onClose: () => void;
+  onChangeDescAtivo: (ativo: boolean) => void;
+  onChangeDescManual: (valor: number) => void;
+  onChangeAuxPontual: (valor: number) => void;
+};
+
+function EditLinhaSheet({ l, onClose, onChangeDescAtivo, onChangeDescManual, onChangeAuxPontual }: EditLinhaSheetProps) {
+  const [descRaw, setDescRaw] = useState(l.descontoManual > 0 ? fmtMoneyInput(l.descontoManual) : "");
+  const [auxRaw, setAuxRaw] = useState(l.auxPontual > 0 ? fmtMoneyInput(l.auxPontual) : "");
+  const [descAtivo, setDescAtivo] = useState(l.descontoSugeridoAtivo);
+
+  function aplicar() {
+    const novoDesc = round2(parseMoneyInput(descRaw));
+    const novoAux = round2(parseMoneyInput(auxRaw));
+    if (descAtivo !== l.descontoSugeridoAtivo) onChangeDescAtivo(descAtivo);
+    if (novoDesc !== l.descontoManual) onChangeDescManual(novoDesc);
+    if (novoAux !== l.auxPontual) onChangeAuxPontual(novoAux);
+    onClose();
+  }
+
+  return (
+    <div className="md:hidden fixed inset-0 z-50 flex items-end" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div
+        className="relative w-full bg-white dark:bg-gray-900 rounded-t-2xl shadow-2xl max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between">
+          <div>
+            <div className="font-bold text-gray-900 dark:text-gray-100">{l.nome}</div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{l.cargoNome} · {l.area}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
+        </div>
+
+        <div className="p-4 space-y-4">
+          {/* Resumo informativo */}
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 text-xs space-y-0.5 tabular-nums">
+            <div className="flex justify-between"><span className="text-gray-500">Auxílio fixo:</span><span>{fmtBR(l.auxFixoMensal)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">VT base ({l.diasTrabalhados} dias):</span><span>{fmtBR(l.vtBase)}</span></div>
+          </div>
+
+          {/* Desconto sugerido — toggle */}
+          {l.descontoSugerido > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={descAtivo}
+                  onChange={(e) => setDescAtivo(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm">Desconto sugerido</span>
+                    <span className={`tabular-nums font-bold ${descAtivo ? "text-rose-700 dark:text-rose-400" : "text-gray-400 line-through"}`}>
+                      -{fmtBR(l.descontoSugerido)}
+                    </span>
+                  </div>
+                  {l.descontoSugeridoJustificativa && (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{l.descontoSugeridoJustificativa}</div>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
+
+          {/* Desconto manual */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+              Desconto adicional (R$)
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={descRaw}
+              onChange={(e) => setDescRaw(e.target.value)}
+              placeholder="0,00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+            />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Use pra desconto manual além do sugerido. Pra zerar, deixe vazio.
+            </div>
+          </div>
+
+          {/* Auxílio pontual */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">
+              Auxílio pontual (R$)
+            </label>
+            <input
+              type="text"
+              inputMode="decimal"
+              value={auxRaw}
+              onChange={(e) => setAuxRaw(e.target.value)}
+              placeholder="0,00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+            />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Valor extra a pagar nesse mês (acréscimo, ajuda de custo etc).
+            </div>
+          </div>
+        </div>
+
+        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
+          <Button onClick={aplicar} className="flex-1">Aplicar</Button>
+        </div>
       </div>
     </div>
   );
