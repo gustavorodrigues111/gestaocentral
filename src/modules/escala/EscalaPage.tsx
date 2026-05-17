@@ -429,7 +429,9 @@ export function EscalaPage() {
             ))}
           </select>
           {/* Ações administrativas — só desktop. No mobile o foco é editar
-              a escala dia-a-dia; fechamentos vivem no desktop. */}
+              a escala dia-a-dia; fechamentos vivem no desktop.
+              Botões aparecem só na versão correspondente (Prevista ou Praticada)
+              pra não poluir a barra com ações irrelevantes ao contexto. */}
           <div className="hidden md:flex items-center gap-2 flex-wrap">
             {podeEditar && (
               <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
@@ -441,14 +443,13 @@ export function EscalaPage() {
                 📋 Copiar Prevista → Praticada
               </Button>
             )}
-            {/* Fechar prevista — só quando ainda aberta */}
-            {!previstaFechada && !fechada && podeConfig && (
+            {/* PREVISTA: Fechar / Reabrir prevista — só quando versao === "prevista" */}
+            {versao === "prevista" && !previstaFechada && !fechada && podeConfig && (
               <Button size="sm" onClick={fecharPrevista}>
                 🔒 Fechar prevista
               </Button>
             )}
-            {/* Reabrir prevista — admin pode se NÃO houver VT pago; depois só master */}
-            {previstaFechada && !fechada && podeConfig && (
+            {versao === "prevista" && previstaFechada && !fechada && podeConfig && (
               <Button
                 variant="secondary"
                 size="sm"
@@ -458,14 +459,15 @@ export function EscalaPage() {
                 🔓 Reabrir prevista
               </Button>
             )}
-            {!fechada && podeConfig && (
+            {/* PRATICADA: Fechar / Reabrir praticada (= fechar mês) — só quando versao === "real" */}
+            {versao === "real" && !fechada && podeConfig && (
               <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
-                🔒 Fechar mês
+                🔒 Fechar praticada
               </Button>
             )}
-            {fechada && podeReabrir && (
+            {versao === "real" && fechada && podeReabrir && (
               <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
-                🔓 Reabrir mês
+                🔓 Reabrir praticada
               </Button>
             )}
           </div>
@@ -479,7 +481,7 @@ export function EscalaPage() {
 
       {/* Hint de atalhos de teclado — desktop only (sem teclado no mobile) */}
       <div className="hidden md:block text-[11px] text-gray-500 dark:text-gray-400 mb-2">
-        💡 <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> limpar
+        💡 <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> fechar
       </div>
 
       {/* Legenda — desktop only. Mobile usa o botão "?" abaixo */}
@@ -596,8 +598,8 @@ function BannerStatus({
         <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Prevista — mês fechado (read-only)">
           <p>
             O mês foi encerrado. Tudo travado pra preservar o histórico de gorjetas e VT.
-            Pra alterar alguma coisa aqui, é preciso reabrir o mês (botão "🔓 Reabrir mês" no topo —
-            só aparece pra quem tem permissão de reabertura).
+            Pra alterar alguma coisa aqui, é preciso reabrir a Praticada (botão "🔓 Reabrir praticada"
+            no topo — só aparece pra quem tem permissão de reabertura).
           </p>
         </PainelExplicativo>
       );
@@ -683,7 +685,7 @@ function BannerStatus({
       </p>
       <p>
         É a fonte usada pra calcular gorjetas e pra detectar divergências de VT (dias a devolver
-        ou a receber). No fim do mês, trave ela com <strong>🔒 Fechar mês</strong> pra consolidar
+        ou a receber). No fim do mês, trave ela com <strong>🔒 Fechar praticada</strong> pra consolidar
         gorjetas e VT.
       </p>
     </PainelExplicativo>
@@ -951,9 +953,10 @@ function Grade({
           pra cima pra não ficar atrás da barra. */}
       {selecionadas.size > 0 && podeEditar && (
         <>
-          <div className="h-24" aria-hidden />
+          <div className="h-32" aria-hidden />
           <BulkActionBar
-            count={selecionadas.size}
+            selecionadas={selecionadas}
+            empregados={empregados}
             onApply={aplicarBulk}
             onClear={() => setSelecionadas(new Set())}
             unidadesAtivas={unidadesAtivas}
@@ -1065,10 +1068,11 @@ const STATUS_KEY: Partial<Record<ScheduleStatus, string>> = {
 };
 
 function BulkActionBar({
-  count, onApply, onClear,
+  selecionadas, empregados, onApply, onClear,
   unidadesAtivas, usaMultiUnidades, unidadeOverride, onChangeUnidadeOverride,
 }: {
-  count: number;
+  selecionadas: Set<string>;
+  empregados: Empregado[];
   onApply: (status: ScheduleStatus | null) => void;
   onClear: () => void;
   unidadesAtivas: Unidade[];
@@ -1076,6 +1080,31 @@ function BulkActionBar({
   unidadeOverride: string;
   onChangeUnidadeOverride: (v: string) => void;
 }) {
+  // Agrupa células selecionadas por empregado pra mostrar breakdown:
+  //   - João Silva: dias 12, 15, 18
+  //   - Maria: dia 20
+  const breakdown = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    for (const key of selecionadas) {
+      const [empId, date] = key.split("|");
+      const dia = parseInt(date.slice(-2), 10);
+      if (!map[empId]) map[empId] = [];
+      map[empId].push(dia);
+    }
+    const lista = Object.entries(map).map(([empId, dias]) => {
+      const emp = empregados.find(e => e.id === empId);
+      return {
+        empId,
+        nome: emp?.nome || "(?)",
+        dias: dias.sort((a, b) => a - b),
+      };
+    });
+    lista.sort((a, b) => a.nome.localeCompare(b.nome));
+    return lista;
+  }, [selecionadas, empregados]);
+
+  const count = selecionadas.size;
+
   return (
     <>
       {/* Keyframe da animação de entrada da barra */}
@@ -1084,12 +1113,24 @@ function BulkActionBar({
         className="fixed bottom-0 left-0 md:left-60 right-0 z-30 bg-indigo-50/95 dark:bg-indigo-900/80 backdrop-blur-sm border-t-2 border-indigo-400 dark:border-indigo-600 shadow-[0_-8px_24px_rgba(79,70,229,0.18)]"
         style={{ animation: "slideUpBar 0.2s ease-out" }}
       >
-        <div className="px-4 py-2.5 flex items-center gap-3 flex-wrap">
-          {/* Contador prominente */}
-          <div className="flex items-center gap-1.5 bg-indigo-600 dark:bg-indigo-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-md">
-            <span className="text-base leading-none">✨</span>
-            <span className="text-sm">{count} dia{count > 1 ? "s" : ""}</span>
+        {/* Breakdown — quem + quais dias */}
+        <div className="px-4 pt-2 pb-1 max-h-24 overflow-y-auto">
+          <div className="flex items-start gap-2">
+            <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 uppercase tracking-wider shrink-0">
+              Selecionados ({count}):
+            </span>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-800 dark:text-gray-200 min-w-0">
+              {breakdown.map(b => (
+                <span key={b.empId} className="inline-flex items-center gap-1 whitespace-nowrap">
+                  <strong className="text-indigo-700 dark:text-indigo-300">{b.nome}:</strong>
+                  <span className="tabular-nums">{b.dias.join(", ")}</span>
+                </span>
+              ))}
+            </div>
           </div>
+        </div>
+
+        <div className="px-4 pb-2.5 flex items-center gap-3 flex-wrap">
 
           {/* Dropdown de unidade — só aparece se multi-unidades */}
           {usaMultiUnidades && unidadesAtivas.length > 0 && (
@@ -1137,13 +1178,13 @@ function BulkActionBar({
             </button>
           </div>
 
-          {/* Limpar */}
+          {/* Fechar barra de ações */}
           <button
             type="button"
             onClick={onClear}
             className="inline-flex items-center gap-1.5 pl-2 pr-1 py-1 rounded-lg text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 font-medium"
           >
-            <span className="whitespace-nowrap">✕ Limpar</span>
+            <span className="whitespace-nowrap">✕ Fechar</span>
             <kbd className="text-[10px] font-mono font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded leading-none">ESC</kbd>
           </button>
         </div>

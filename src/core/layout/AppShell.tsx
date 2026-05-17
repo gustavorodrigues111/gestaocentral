@@ -5,7 +5,13 @@ import { Sidebar } from "./Sidebar";
 import { applyPendingChanges } from "../audit/pendingChangesJob";
 
 export function AppShell({ children }: { children?: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Sidebar aberta por default no desktop, recolhida no mobile.
+  // O Home/Início no mobile já tem os ícones de atalho — o menu lateral
+  // gigante atrapalha mais do que ajuda na primeira impressão.
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return window.matchMedia("(min-width: 768px)").matches;
+  });
 
   // Roda 1x ao montar — aplica mudanças que estavam agendadas pra hoje ou antes
   useEffect(() => {
