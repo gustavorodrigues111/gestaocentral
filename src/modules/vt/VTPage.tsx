@@ -513,7 +513,7 @@ export function VTPage() {
               <div>
                 <strong>Prevista de {nomeMes(mes)}/{ano} ainda não foi fechada.</strong>
                 <div className="mt-1 text-xs">
-                  Os valores abaixo são <em>preview</em> calculado pelo horário cadastrado de cada empregado.
+                  Os valores abaixo são <em>preview</em> da escala prevista — podem mudar até ela ser fechada.
                   Pra lançar o VT pra pagamento, vá em <strong>📅 Escala</strong> → ajuste o que precisar → clique em <strong>🔒 Fechar prevista</strong>.
                   Daí volte aqui pra criar o lote oficial.
                 </div>
