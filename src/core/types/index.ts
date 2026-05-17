@@ -432,6 +432,89 @@ export type VTFolha = {
   updatedAt: string;
 };
 
+// ─── VT — LOTE DE PAGAMENTO (novo modelo) ───────────────────────────────────
+// Substitui VTFolha. 1 lote = 1 fechamento de VT por restaurante/mês.
+// Linhas são snapshots — depois de criado, valores não mudam mesmo se o
+// empregado for editado ou a escala for ajustada.
+
+export type VTLoteStatus = "rascunho" | "pago" | "cancelado";
+
+export const VT_LOTE_STATUS_LABEL: Record<VTLoteStatus, string> = {
+  rascunho:  "Aguardando pagamento",
+  pago:      "Pago",
+  cancelado: "Cancelado",
+};
+
+// 1 linha por empregado no lote. Tudo gravado por valor (snapshot).
+export type VTLoteLinha = {
+  empregadoId: string;
+  nome: string;                  // snapshot
+  cargoNome: string;             // snapshot
+  area: Area;                    // snapshot (pra agrupar mesmo se mudar depois)
+
+  // VT diário (snapshot do cadastro no momento da criação)
+  passagensPorDia: number;
+  valorPassagem: number;
+  diasTrabalhados: number;       // contados da escala prevista do mês do lote
+
+  // Componentes do total
+  auxFixoMensal: number;         // R$ — auxílio fixo (snapshot do cadastro)
+  vtBase: number;                // dias × pass/dia × valor (snapshot, pré-desconto)
+
+  // Desconto sugerido (calculado a partir do refMes = mês do lote − 2)
+  descontoSugeridoAtivo: boolean;          // toggle por linha — default true
+  descontoSugerido: number;                // R$ — sempre ≥ 0
+  descontoSugeridoJustificativa?: string;  // ex: "2 ausências em mar/26: 12 (falta_j), 25 (falta_i)"
+  descontoSugeridoRefMes?: string;         // "YYYY-MM" do mês de referência
+
+  // Lançamentos manuais
+  descontoManual: number;        // R$
+  auxPontual: number;            // R$
+
+  total: number;                 // calculado: auxFixo + vtBase − descontoSugerido(se ativo) − descontoManual + auxPontual
+};
+
+// Histórico de eventos do lote (criar → pago → cancelar → reabrir → ...)
+export type VTLoteEvento = {
+  acao: "criado" | "pago" | "reaberto" | "cancelado";
+  em: string;                    // ISO
+  por: string;                   // pessoaId
+  porNome?: string;              // snapshot
+  motivo?: string;
+};
+
+export type VTLote = {
+  id: string;                    // auto-id Firestore
+  restaurantId: string;
+  ano: number;                   // mês de competência
+  mes: number;
+  status: VTLoteStatus;
+
+  // Linhas snapshot
+  linhas: VTLoteLinha[];
+
+  // Totais snapshot
+  totalGeral: number;
+  totalPorArea: { [area: string]: number };
+
+  // Timestamps + auditoria
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  pagoEm?: string | null;
+  pagoPor?: string | null;
+  pagoPorNome?: string | null;
+  canceladoEm?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNome?: string | null;
+  motivoCancelamento?: string;
+
+  // Histórico completo
+  historico: VTLoteEvento[];
+
+  updatedAt: string;
+};
+
 // ─── COMUNICADOS ────────────────────────────────────────────────────────────
 
 export type ComunicadoPrioridade = "info" | "aviso" | "urgente";
