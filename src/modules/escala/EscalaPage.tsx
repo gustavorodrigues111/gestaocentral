@@ -578,47 +578,139 @@ export function EscalaPage() {
   );
 }
 
+// Painel explicativo da versão escolhida — muda conforme a fase do mês.
+// Substitui o BannerStatus enxuto por um "explicador" didático sempre visível,
+// que ensina o conceito enquanto o user usa.
 function BannerStatus({
   versao, previstaFechada, vtPago, fechada,
 }: { versao: "prevista" | "real"; previstaFechada: boolean; vtPago: boolean; fechada: boolean }) {
+
+  // ── PREVISTA ───────────────────────────────────────────────────────────
+  if (versao === "prevista") {
+    if (fechada) {
+      return (
+        <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Prevista — mês fechado (read-only)">
+          <p>
+            O mês foi encerrado. Tudo travado pra preservar o histórico de gorjetas e VT.
+            Pra alterar alguma coisa aqui, é preciso reabrir o mês (botão "🔓 Reabrir mês" no topo —
+            só aparece pra quem tem permissão de reabertura).
+          </p>
+        </PainelExplicativo>
+      );
+    }
+    if (vtPago) {
+      return (
+        <PainelExplicativo cor="emerald" icone="💸" titulo="Escala Prevista — lote VT lançado (travada permanentemente)">
+          <p>
+            A prevista foi usada pra criar o lote VT do mês, que <strong>já foi marcado como pago</strong>.
+            Por isso ela está travada como prova do que foi pago.
+          </p>
+          <p>
+            Pra mexer aqui agora, o master precisa primeiro <strong>cancelar o lote VT</strong> no
+            menu 🚌 Vale Transporte. Os ajustes do dia-a-dia (faltas, atestados, trocas, freelas
+            cobrindo) vão na <strong>Praticada</strong>, não aqui.
+          </p>
+        </PainelExplicativo>
+      );
+    }
+    if (previstaFechada) {
+      return (
+        <PainelExplicativo cor="amber" icone="🔒" titulo="Escala Prevista — fechada (fotografia tirada)">
+          <p>
+            A prevista foi fechada e virou a <strong>base oficial</strong> pro cálculo do VT do mês.
+            Agora o botão "💸 Lançar pra pagamento" no menu 🚌 Vale Transporte está liberado.
+          </p>
+          <p>
+            Pra editar ainda, clique em <strong>🔓 Reabrir prevista</strong> no topo — volta o mês
+            pra estado de planejamento. Se você só quer registrar o que está acontecendo no
+            dia-a-dia (faltas, atestados, trocas), vá na <strong>Praticada</strong>.
+          </p>
+        </PainelExplicativo>
+      );
+    }
+    return (
+      <PainelExplicativo cor="blue" icone="📋" titulo="Escala Prevista — planejamento do mês">
+        <p>
+          É a versão que você monta <strong>antes</strong> do mês acontecer: folgas, escalas de
+          trabalho, freelas previstos, férias programadas. A base vem do horário cadastrado de
+          cada empregado — você só ajusta as exceções.
+        </p>
+        <p>
+          Quando terminar, clique em <strong>🔒 Fechar prevista</strong> no topo. A prevista vira
+          fotografia oficial, libera o lançamento do VT, e a edição passa pra <strong>Praticada</strong>.
+          Antes de fechar, o VT não pode ser lançado pra pagamento.
+        </p>
+      </PainelExplicativo>
+    );
+  }
+
+  // ── PRATICADA ──────────────────────────────────────────────────────────
   if (fechada) {
     return (
-      <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
-        🔒 <strong>Mês fechado.</strong> Tudo read-only — gorjetas e VT consolidados.
-      </div>
+      <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Praticada — registro final do mês">
+        <p>
+          Versão consolidada do que aconteceu no mês. Read-only, preservada pra histórico de
+          gorjetas e VT. Pra editar, é preciso reabrir o mês (só com permissão de reabertura).
+        </p>
+      </PainelExplicativo>
     );
   }
-  if (versao === "prevista" && vtPago) {
+  if (!previstaFechada) {
     return (
-      <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
-        💸 <strong>VT já foi lançado.</strong> A Prevista está travada permanentemente como snapshot pro cálculo do VT.
-        Pra registrar o que de fato aconteceu, edite a <strong>Praticada</strong>.
-        Reabrir exige master (cancela o lote VT).
-      </div>
+      <PainelExplicativo cor="gray" icone="✅" titulo="Escala Praticada — registro de execução">
+        <p>
+          É onde você marca o que <strong>de fato</strong> acontece no dia-a-dia: faltas,
+          atestados, trocas de folga, freelas cobrindo buraco, hora extra.
+        </p>
+        <p>
+          A Prevista do mês ainda não foi fechada. Quando você fechar a Prevista, a Praticada
+          nasce como cópia dela e vira o foco dos ajustes do mês. Até lá você pode até mexer
+          aqui, mas é mais natural ajustar a Prevista primeiro.
+        </p>
+      </PainelExplicativo>
     );
   }
-  if (versao === "prevista" && previstaFechada) {
-    return (
-      <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
-        🔒 <strong>Prevista fechada.</strong> Fotografia tirada — virou a base do VT.
-        Pra ajustar, clique em "🔓 Reabrir prevista" no topo.
-        Ou edite a <strong>Praticada</strong> pros ajustes que vão acontecer no mês.
-      </div>
-    );
-  }
-  if (versao === "prevista") {
-    return (
-      <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-sm text-blue-800 dark:text-blue-300 mb-4">
-        📋 <strong>Prevista</strong> = planejamento do mês. A base vem do <em>horário cadastrado</em> de cada empregado.
-        Ajuste o que precisa (folgas comp, freelas, férias) e clique em <strong>🔒 Fechar prevista</strong> pra travar — só depois disso o VT pode ser lançado.
-      </div>
-    );
-  }
-  // versao === "real" (Praticada)
   return (
-    <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-800 dark:text-emerald-300 mb-4">
-      ✅ <strong>Praticada</strong> = o que de fato aconteceu. Use pra calcular gorjetas
-      e detectar divergências de VT (a devolver / a receber).
+    <PainelExplicativo cor="emerald" icone="✅" titulo="Escala Praticada — realidade do dia-a-dia">
+      <p>
+        É a versão da realidade do mês. Nasceu como cópia da Prevista no momento que ela foi
+        fechada, e vai sendo ajustada conforme as coisas acontecem: <strong>falta, atestado,
+        troca de folga, freela cobrindo, hora extra</strong>.
+      </p>
+      <p>
+        É a fonte usada pra calcular gorjetas e pra detectar divergências de VT (dias a devolver
+        ou a receber). No fim do mês, trave ela com <strong>🔒 Fechar mês</strong> pra consolidar
+        gorjetas e VT.
+      </p>
+    </PainelExplicativo>
+  );
+}
+
+// Painel didático colorido por fase.
+function PainelExplicativo({
+  cor, icone, titulo, children,
+}: {
+  cor: "blue" | "amber" | "emerald" | "rose" | "gray";
+  icone: string;
+  titulo: string;
+  children: React.ReactNode;
+}) {
+  const classes: Record<typeof cor, string> = {
+    blue:    "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-900 dark:text-blue-200",
+    amber:   "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200",
+    emerald: "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200",
+    rose:    "bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-900 dark:text-rose-200",
+    gray:    "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300",
+  };
+  return (
+    <div className={`rounded-lg border p-3 mb-4 ${classes[cor]}`}>
+      <div className="flex items-start gap-2">
+        <span className="text-base shrink-0">{icone}</span>
+        <div className="flex-1 min-w-0">
+          <div className="font-bold text-sm mb-1.5">{titulo}</div>
+          <div className="text-xs space-y-1.5 leading-relaxed">{children}</div>
+        </div>
+      </div>
     </div>
   );
 }
