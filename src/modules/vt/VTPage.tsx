@@ -744,17 +744,7 @@ function LinhaVT(props: LinhaVTProps) {
 
       <div className="md:text-right tabular-nums md:order-4">
         <span className="md:hidden text-[10px] text-gray-500">Dias: </span>
-        <span className="inline-flex items-center gap-1 justify-end">
-          {l.diasTrabalhados}
-          {l.fonteDias === "preview" && (
-            <span
-              className="text-[10px] text-amber-600 dark:text-amber-400 cursor-help"
-              title="Preview — prevista do mês ainda não foi fechada. Estimado pelo horário cadastrado + ajustes da escala. Feche a prevista pra travar o valor oficial."
-            >
-              📋
-            </span>
-          )}
-        </span>
+        {l.diasTrabalhados}
       </div>
 
       <div className="md:text-right md:order-5">
