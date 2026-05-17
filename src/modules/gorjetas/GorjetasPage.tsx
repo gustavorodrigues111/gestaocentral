@@ -152,19 +152,30 @@ export function GorjetasPage() {
   }, [gorjetas]);
 
   const totaisMes = useMemo(() => {
-    const bruto = gorjetas.reduce((s, g) => s + (g.valorBruto || 0), 0);
+    // Aplica o filtro de unidade do header — quando filtra por uma unidade
+    // de ATENDIMENTO, só considera as gorjetas daquela unidade.
+    // Filtro de PRODUÇÃO é ignorado aqui (produção não arrecada, então não
+    // faz sentido limitar bruto/líquido por ela).
+    const tipoFiltro = filtroUnidadeId
+      ? unidades.find(u => u.id === filtroUnidadeId)?.tipo
+      : undefined;
+    const fonte = (filtroUnidadeId && tipoFiltro === "atendimento")
+      ? gorjetas.filter(g => g.unidadeId === filtroUnidadeId)
+      : gorjetas;
+
+    const bruto = fonte.reduce((s, g) => s + (g.valorBruto || 0), 0);
     // Líquido é DERIVADO da regra vigente no DIA, não do snapshot `g.valorLiquido`
     // (que é legado e fica 0 nos docs novos). Usa a splitVersion da data pra
     // pegar a taxRate vigente — robusto se a regra muda retroativamente.
-    const liquido = gorjetas.reduce((s, g) => {
+    const liquido = fonte.reduce((s, g) => {
       if (!g.valorBruto || g.semGorjeta) return s;
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
       const taxRate = splitVersion?.taxRate ?? 0;
       return s + g.valorBruto * (1 - taxRate / 100);
     }, 0);
-    const datasUnicas = new Set(gorjetas.map(g => g.date));
-    return { bruto, liquido, dias: datasUnicas.size, lancamentos: gorjetas.length };
-  }, [gorjetas, splitVersions]);
+    const datasUnicas = new Set(fonte.map(g => g.date));
+    return { bruto, liquido, dias: datasUnicas.size, lancamentos: fonte.length };
+  }, [gorjetas, splitVersions, filtroUnidadeId, unidades]);
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
