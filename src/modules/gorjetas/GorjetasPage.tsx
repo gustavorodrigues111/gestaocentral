@@ -139,10 +139,18 @@ export function GorjetasPage() {
 
   const totaisMes = useMemo(() => {
     const bruto = gorjetas.reduce((s, g) => s + (g.valorBruto || 0), 0);
-    const liquido = gorjetas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
+    // Líquido é DERIVADO da regra vigente no DIA, não do snapshot `g.valorLiquido`
+    // (que é legado e fica 0 nos docs novos). Usa a splitVersion da data pra
+    // pegar a taxRate vigente — robusto se a regra muda retroativamente.
+    const liquido = gorjetas.reduce((s, g) => {
+      if (!g.valorBruto || g.semGorjeta) return s;
+      const splitVersion = getActiveSplitVersion(splitVersions, g.date);
+      const taxRate = splitVersion?.taxRate ?? 0;
+      return s + g.valorBruto * (1 - taxRate / 100);
+    }, 0);
     const datasUnicas = new Set(gorjetas.map(g => g.date));
     return { bruto, liquido, dias: datasUnicas.size, lancamentos: gorjetas.length };
-  }, [gorjetas]);
+  }, [gorjetas, splitVersions]);
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
