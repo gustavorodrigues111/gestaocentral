@@ -1,0 +1,154 @@
+// ════════════════════════════════════════════════════════════════════════════
+//  generateReport — orquestrador. Junta marcações da Sólides + empregados do
+//  Planejamento + escala prevista, roda o motor de regras e devolve a lista de
+//  exceções pronta. Função PURA (sem I/O).
+//
+//  Casamento Sólides ↔ Planejamento: chave = CPF (só dígitos).
+// ════════════════════════════════════════════════════════════════════════════
+
+import type { Empregado, ScheduleStatus } from "../types";
+import type { DayContext, DayMetrics, ExceptionRecord, SolidesPunch } from "./types";
+import { computeDayMetrics, emptyDayMetrics, groupByEmployeeDay, onlyDigits } from "./dayMetrics";
+import { runAllRules } from "./rules";
+
+export type GenerateReportInput = {
+  punches: SolidesPunch[];
+  empregados: Empregado[]; // empregados do restaurante
+  // empregadoId → (date → status planejado). Vem da escala prevista do Planejamento.
+  escalaPorEmpregado: Record<string, Record<string, ScheduleStatus>>;
+  startDate: string; // YYYY-MM-DD
+  endDate: string; // YYYY-MM-DD
+};
+
+export type UnmatchedEntry = {
+  cpf: string;
+  nome: string;
+  dias: number; // qtd de dias com marcação que não casaram com nenhum empregado
+};
+
+export type GenerateReportResult = {
+  exceptions: ExceptionRecord[];
+  unmatched: UnmatchedEntry[]; // marcações da Sólides sem empregado correspondente
+  diasAnalisados: number;
+};
+
+// "2026-05-10" + n → "2026-05-1X" (lida com virada de mês/ano via Date local)
+function addDays(ymd: string, n: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, m - 1, d + n);
+  const yy = dt.getFullYear();
+  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(dt.getDate()).padStart(2, "0");
+  return `${yy}-${mm}-${dd}`;
+}
+
+export function generateExceptionsReport(input: GenerateReportInput): GenerateReportResult {
+  const { punches, empregados, escalaPorEmpregado, startDate, endDate } = input;
+
+  // ── Agrupa marcações por (employeeId da Sólides, date) e consolida métricas ──
+  const grouped = groupByEmployeeDay(punches);
+  const metricsPorSolidesId = new Map<number, Map<string, DayMetrics>>(); // sid → date → metrics
+  const infoPorSolidesId = new Map<number, { cpf: string; nome: string }>();
+
+  for (const blocks of grouped.values()) {
+    const metrics = computeDayMetrics(blocks);
+    if (!metrics.date) continue;
+    let byDate = metricsPorSolidesId.get(metrics.employeeId);
+    if (!byDate) {
+      byDate = new Map();
+      metricsPorSolidesId.set(metrics.employeeId, byDate);
+    }
+    byDate.set(metrics.date, metrics);
+    if (!infoPorSolidesId.has(metrics.employeeId)) {
+      infoPorSolidesId.set(metrics.employeeId, { cpf: metrics.cpf, nome: metrics.employeeName });
+    }
+  }
+
+  // CPF (só dígitos) → solidesId. Em caso de CPF repetido, fica o primeiro.
+  const solidesIdPorCpf = new Map<string, number>();
+  for (const [sid, info] of infoPorSolidesId) {
+    if (info.cpf && !solidesIdPorCpf.has(info.cpf)) solidesIdPorCpf.set(info.cpf, sid);
+  }
+
+  const exceptions: ExceptionRecord[] = [];
+  const matchedSolidesIds = new Set<number>();
+  let diasAnalisados = 0;
+
+  // ── 1) Processa cada empregado do Planejamento ──
+  for (const emp of empregados) {
+    const cpf = onlyDigits(emp.cpf);
+    const escalaEmp = escalaPorEmpregado[emp.id] || {};
+
+    const solidesId = cpf ? solidesIdPorCpf.get(cpf) : undefined;
+    const metricsByDate = solidesId != null ? metricsPorSolidesId.get(solidesId) : undefined;
+    if (solidesId != null) matchedSolidesIds.add(solidesId);
+
+    // Datas a analisar: união de dias COM marcação + dias escalados como "trabalho"
+    const datas = new Set<string>();
+    if (metricsByDate) {
+      for (const d of metricsByDate.keys()) {
+        if (d >= startDate && d <= endDate) datas.add(d);
+      }
+    }
+    for (const [d, st] of Object.entries(escalaEmp)) {
+      if (d >= startDate && d <= endDate && st === "trabalho") datas.add(d);
+    }
+    if (datas.size === 0) continue;
+
+    const datasOrdenadas = [...datas].sort();
+    let consecutiveWorkDays = 0;
+    let lastDate = "";
+
+    for (const date of datasOrdenadas) {
+      // Buraco no calendário → zera a contagem de dias consecutivos
+      if (lastDate && addDays(lastDate, 1) !== date) consecutiveWorkDays = 0;
+      lastDate = date;
+
+      const metrics =
+        metricsByDate?.get(date) ?? emptyDayMetrics(solidesId ?? 0, cpf, emp.nome, date);
+      // Nome do Planejamento é mais confiável que o da Sólides
+      metrics.employeeName = emp.nome;
+
+      const temPunch = metrics.blocks.length > 0;
+      consecutiveWorkDays = temPunch ? consecutiveWorkDays + 1 : 0;
+
+      // Interjornada: saída do dia anterior — só conta se o dia anterior teve punch
+      const prevMetrics = metricsByDate?.get(addDays(date, -1));
+      const prevDayLastOut = prevMetrics?.lastOut ?? null;
+
+      const ctx: DayContext = {
+        metrics,
+        escalaStatus: escalaEmp[date] ?? null,
+        prevDayLastOut,
+        consecutiveWorkDays,
+      };
+      exceptions.push(...runAllRules(ctx));
+      diasAnalisados += 1;
+    }
+  }
+
+  // ── 2) Marcações da Sólides sem empregado correspondente no Planejamento ──
+  const unmatched: UnmatchedEntry[] = [];
+  for (const [sid, info] of infoPorSolidesId) {
+    if (matchedSolidesIds.has(sid)) continue;
+    const byDate = metricsPorSolidesId.get(sid);
+    let dias = 0;
+    if (byDate) {
+      for (const d of byDate.keys()) {
+        if (d >= startDate && d <= endDate) dias += 1;
+      }
+    }
+    if (dias > 0) unmatched.push({ cpf: info.cpf, nome: info.nome, dias });
+  }
+  unmatched.sort((a, b) => a.nome.localeCompare(b.nome));
+
+  // ── Ordena exceções por colaborador → data → regra ──
+  exceptions.sort(
+    (a, b) =>
+      a.employeeName.localeCompare(b.employeeName) ||
+      a.date.localeCompare(b.date) ||
+      a.ruleId.localeCompare(b.ruleId),
+  );
+
+  return { exceptions, unmatched, diasAnalisados };
+}
