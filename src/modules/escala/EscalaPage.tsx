@@ -16,6 +16,7 @@ import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase } from "../..
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
+import { InversaoDomingoModal } from "./InversaoDomingoModal";
 // SumarioMesModal removido da Escala — o conteúdo (gorjetas, VT, divergências)
 // vive nas próprias telas de Gorjetas e Vale Transporte. Mantemos o arquivo
 // no repo caso queiramos reaproveitar partes (ex: histórico de versões) no
@@ -328,6 +329,7 @@ export function EscalaPage() {
   const [showFeriasLote, setShowFeriasLote] = useState(false);
   const [showFecharMes, setShowFecharMes] = useState(false);
   const [showReabrirMes, setShowReabrirMes] = useState(false);
+  const [showInversao, setShowInversao] = useState(false);
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
 
   // Multi-unidades — derivados. UI multi-unit aparece quando há 2+ unidades
@@ -438,6 +440,11 @@ export function EscalaPage() {
             {podeEditar && (
               <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
                 🏖️ Marcar férias em lote
+              </Button>
+            )}
+            {podeConfig && (
+              <Button variant="secondary" size="sm" onClick={() => setShowInversao(true)}>
+                ↔️ Inversão de domingo
               </Button>
             )}
             {versao === "real" && realVazia && podeConfig && !fechada && (
@@ -580,6 +587,18 @@ export function EscalaPage() {
           mes={mes}
           escala={escala}
           onClose={() => setShowReabrirMes(false)}
+        />
+      )}
+      {showInversao && me && (
+        <InversaoDomingoModal
+          restaurantId={rid}
+          ano={ano}
+          mes={mes}
+          empregados={empregadosOrdenados}
+          escala={escala}
+          meId={me.id}
+          meNome={me.nome}
+          onClose={() => setShowInversao(false)}
         />
       )}
     </div>

@@ -187,6 +187,26 @@ export type ScheduleStatus =
   | "comp" | "comp_trab"
   | "ferias" | "falta_j" | "falta_i";
 
+// Inversão informal de domingo entre dois empregados.
+// Conceito: A trabalhou no domingo X (era pra folgar) e B folgou (era pra
+// trabalhar); na recíproca, no domingo Y, A folga e B trabalha. Cálculos
+// (escala/gorjeta/VT) NÃO são afetados — é só registro de auditoria pra
+// reconhecer a combinação que rolou entre os empregados.
+export type SundaySwap = {
+  id: string;
+  restaurantId: string;
+  empAId: string;
+  empANome: string;        // snapshot
+  empBId: string;
+  empBNome: string;        // snapshot
+  date1: string;           // YYYY-MM-DD — domingo da troca (A trabalha, B folga)
+  date2: string;           // YYYY-MM-DD — domingo da recíproca (A folga, B trabalha)
+  motivo?: string;         // texto livre opcional
+  criadoEm: string;
+  criadoPor: string;       // pessoaId
+  criadoPorNome?: string;  // snapshot
+};
+
 // Snapshot de uma versão antiga da escala (gravado ao fechar/reabrir)
 export type EscalaSnapshot = {
   snapshotEm: string;             // ISO
