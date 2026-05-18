@@ -54,13 +54,6 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid]);
 
-  // taxRate vigente HOJE — vem da SplitVersion. Sem fallback pro Restaurant
-  // (legado). Se não há regra cobrindo hoje → 0 + UI sinaliza "sem regra".
-  const taxRateDefault = useMemo(() => {
-    const v = getActiveSplitVersion(splitVersions, `${ano}-${pad2(mes)}-${pad2(new Date().getDate())}`);
-    return v?.taxRate ?? 0;
-  }, [splitVersions, ano, mes]);
-
   // Empregados
   useEffect(() => {
     if (!rid) return;
@@ -199,45 +192,44 @@ export function GorjetasPage() {
     <div className="max-w-6xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">💸 Gorjetas</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {activeRestaurant.nome}
-            {taxRateDefault > 0 && <> · retenção {taxRateDefault}%</>}
-            {taxRateDefault === 0 && <> · sem retenção configurada</>}
-          </p>
-          {/* Filtro de unidade — pills clicáveis quando multi-unidades.
-              Inclui atendimento E produção (empregados de produção dividem
-              gorjeta de ambas as unidades de atendimento).
-              Compartilhado entre Lançamentos e Divisão do mês. */}
-          {usaMultiUnidades && unidadesAtivasParaFiltro.length > 0 && (
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setFiltroUnidadeId("")}
-                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                  filtroUnidadeId === ""
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                }`}
-              >
-                Todas
-              </button>
-              {unidadesAtivasParaFiltro.map(u => (
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">💸 Gorjetas</h1>
+          {/* Filtro de unidades. Multi-unidades → pills (Todas + cada uma).
+              Single-unidade → 1 pill com o nome do restaurante (sempre ativa). */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {usaMultiUnidades && unidadesAtivasParaFiltro.length > 0 ? (
+              <>
                 <button
-                  key={u.id}
                   type="button"
-                  onClick={() => setFiltroUnidadeId(u.id)}
+                  onClick={() => setFiltroUnidadeId("")}
                   className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                    filtroUnidadeId === u.id
+                    filtroUnidadeId === ""
                       ? "bg-indigo-600 text-white"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
                 >
-                  {u.nome}
+                  Todas
                 </button>
-              ))}
-            </div>
-          )}
+                {unidadesAtivasParaFiltro.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setFiltroUnidadeId(u.id)}
+                    className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                      filtroUnidadeId === u.id
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    {u.nome}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span className="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white cursor-default">
+                {activeRestaurant.nome}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

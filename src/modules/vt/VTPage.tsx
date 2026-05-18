@@ -507,40 +507,44 @@ export function VTPage() {
       {/* Header */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🚌 Benefícios</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            {activeRestaurant.nome}
-          </p>
-          {/* Filtro de unidade — pills clicáveis quando o restaurante é multi-unidades */}
-          {usaMultiUnidades && (
-            <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setFiltroUnidadeId("")}
-                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                  filtroUnidadeId === ""
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                }`}
-              >
-                Todas
-              </button>
-              {unidadesAtivas.map(u => (
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">🚌 Benefícios</h1>
+          {/* Filtro de unidades. Multi-unidades → pills (Todas + cada uma).
+              Single-unidade → 1 pill com o nome do restaurante (sempre ativa). */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {usaMultiUnidades ? (
+              <>
                 <button
-                  key={u.id}
                   type="button"
-                  onClick={() => setFiltroUnidadeId(u.id)}
+                  onClick={() => setFiltroUnidadeId("")}
                   className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                    filtroUnidadeId === u.id
+                    filtroUnidadeId === ""
                       ? "bg-indigo-600 text-white"
                       : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                   }`}
                 >
-                  {u.nome}
+                  Todas
                 </button>
-              ))}
-            </div>
-          )}
+                {unidadesAtivas.map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() => setFiltroUnidadeId(u.id)}
+                    className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                      filtroUnidadeId === u.id
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                  >
+                    {u.nome}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span className="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white cursor-default">
+                {activeRestaurant.nome}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
