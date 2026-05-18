@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { addDoc, collection } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -15,6 +15,7 @@ type Props = {
   escala: EscalaMes | null;       // escala do mês visível (pra status do date1)
   meId: string;
   meNome: string;
+  isMaster: boolean;
   onClose: () => void;
 };
 
@@ -27,8 +28,9 @@ type Props = {
 //
 // Cria 1 doc em /sundaySwaps. NÃO mexe na escala — só audita a combinação.
 export function InversaoDomingoModal({
-  restaurantId, ano, mes, empregados, escala, meId, meNome, onClose,
+  restaurantId, ano, mes, empregados, escala, meId, meNome, isMaster, onClose,
 }: Props) {
+  const [aba, setAba] = useState<"novo" | "historico">("novo");
   const [date1, setDate1] = useState<string>("");
   const [empBId, setEmpBId] = useState<string>("");
   const [empAId, setEmpAId] = useState<string>("");
@@ -36,6 +38,28 @@ export function InversaoDomingoModal({
   const [motivo, setMotivo] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  // Histórico de swaps do restaurante (todas as inversões já registradas)
+  const [swaps, setSwaps] = useState<SundaySwap[]>([]);
+  useEffect(() => {
+    const q = query(collection(db, "sundaySwaps"), where("restaurantId", "==", restaurantId));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as SundaySwap);
+      list.sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+      setSwaps(list);
+    });
+    return () => unsub();
+  }, [restaurantId]);
+
+  async function excluirSwap(swap: SundaySwap) {
+    const podeExcluir = isMaster || swap.criadoPor === meId;
+    if (!podeExcluir) {
+      alert("Só o master ou quem criou pode excluir esta inversão.");
+      return;
+    }
+    if (!confirm(`Excluir registro de inversão entre ${swap.empANome} ↔ ${swap.empBNome}?`)) return;
+    await deleteDoc(doc(db, "sundaySwaps", swap.id));
+  }
 
   // Step atual
   const step: 1 | 2 | 3 | 4 | 5 =
@@ -177,12 +201,89 @@ export function InversaoDomingoModal({
   }
 
   return (
-    <Modal title="↔️ Registrar inversão de domingo" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title="↔️ Inversões de domingo" onClose={onClose} maxWidth="max-w-lg">
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
         Registro de auditoria — escala, gorjeta e VT NÃO são afetados.
-        Só serve pra documentar a combinação entre dois empregados.
+        Só documenta a combinação entre dois empregados.
       </p>
 
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 -mx-2 px-2">
+        <button
+          type="button"
+          onClick={() => setAba("novo")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            aba === "novo"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          }`}
+        >
+          ↔️ Nova
+        </button>
+        <button
+          type="button"
+          onClick={() => setAba("historico")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            aba === "historico"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-800"
+          }`}
+        >
+          📋 Histórico ({swaps.length})
+        </button>
+      </div>
+
+      {aba === "historico" ? (
+        <div>
+          {swaps.length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-500">
+              Nenhuma inversão registrada ainda.
+            </div>
+          ) : (
+            <div className="max-h-[60vh] overflow-y-auto space-y-2">
+              {swaps.map(s => {
+                const podeExcluir = isMaster || s.criadoPor === meId;
+                return (
+                  <div key={s.id} className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-sm">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {s.empANome} ↔ {s.empBNome}
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                          📅 <strong>{fmtData(s.date1)}</strong>: {s.empANome.split(" ")[0]} trabalhou, {s.empBNome.split(" ")[0]} folgou
+                        </div>
+                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                          ↩️ <strong>{fmtData(s.date2)}</strong>: recíproca
+                        </div>
+                        {s.motivo && (
+                          <div className="text-[11px] italic text-gray-500 dark:text-gray-400 mt-1">
+                            "{s.motivo}"
+                          </div>
+                        )}
+                        <div className="text-[10px] text-gray-400 mt-1">
+                          Registrado por {s.criadoPorNome || "?"} em {new Date(s.criadoEm).toLocaleDateString("pt-BR")}
+                        </div>
+                      </div>
+                      {podeExcluir && (
+                        <button
+                          type="button"
+                          onClick={() => excluirSwap(s)}
+                          className="text-gray-400 hover:text-rose-600 text-sm px-1"
+                          title="Excluir registro"
+                        >
+                          🗑
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 mb-4 text-[11px] font-mono text-gray-500 flex-wrap">
         <Crumb active={step === 1} done={!!date1} label="1·Domingo" value={date1 ? fmtData(date1) : ""} />
@@ -344,6 +445,8 @@ export function InversaoDomingoModal({
           </Button>
         )}
       </div>
+      </>
+      )}
     </Modal>
   );
 }

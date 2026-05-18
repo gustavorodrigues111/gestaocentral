@@ -11,7 +11,7 @@ import { Input } from "../../core/ui/Input";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, Unidade, EscalaFase } from "../../core/types";
+import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase } from "../../core/types";
 import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
@@ -56,6 +56,7 @@ export function EscalaPage() {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
+  const [sundaySwaps, setSundaySwaps] = useState<SundaySwap[]>([]);
   const [loading, setLoading] = useState(true);
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
@@ -103,6 +104,29 @@ export function EscalaPage() {
     });
     return () => unsub();
   }, [rid, escalaId]);
+
+  // Inversões de domingo do restaurante (todas — filtramos por data no map)
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "sundaySwaps"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setSundaySwaps(snap.docs.map(d => ({ id: d.id, ...d.data() }) as SundaySwap));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  // Indexa swaps por chave "empregadoId|date" pra lookup O(1) na renderização
+  // de cada célula. Cada swap gera 2 entradas: A em date1 e B em date2.
+  const swapsPorCelula = useMemo(() => {
+    const m: Record<string, SundaySwap> = {};
+    for (const s of sundaySwaps) {
+      m[`${s.empAId}|${s.date1}`] = s;
+      m[`${s.empBId}|${s.date1}`] = s;
+      m[`${s.empAId}|${s.date2}`] = s;
+      m[`${s.empBId}|${s.date2}`] = s;
+    }
+    return m;
+  }, [sundaySwaps]);
 
   // Filtra empregados que estiveram ATIVOS em algum dia do mês
   // (algum dos periodos cobre alguma data do intervalo)
@@ -534,6 +558,7 @@ export function EscalaPage() {
               unidadesAtivas={unidadesAtivas}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
+              swapsPorCelula={swapsPorCelula}
             />
           </div>
 
@@ -549,6 +574,7 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
+              swapsPorCelula={swapsPorCelula}
             />
           </div>
         </>
@@ -598,6 +624,7 @@ export function EscalaPage() {
           escala={escala}
           meId={me.id}
           meNome={me.nome}
+          isMaster={!!me.isMaster}
           onClose={() => setShowInversao(false)}
         />
       )}
@@ -759,7 +786,7 @@ function Legenda() {
 
 function Grade({
   ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
-  unidadesAtivas, usaMultiUnidades, filtroUnidadeId,
+  unidadesAtivas, usaMultiUnidades, filtroUnidadeId, swapsPorCelula,
 }: {
   ano: number; mes: number; dias: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
@@ -770,6 +797,7 @@ function Grade({
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
+  swapsPorCelula: Record<string, SundaySwap>;
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
@@ -949,6 +977,7 @@ function Grade({
                   const ocultaPorFiltro = !!(
                     filtroUnidadeId && status === "trabalho" && unidadeIdDoDia !== filtroUnidadeId
                   );
+                  const swap = swapsPorCelula[`${e.id}|${d}`];
                   return (
                     <td key={dia} className={`p-0 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""} ${ocultaPorFiltro ? "opacity-25" : ""}`}>
                       <Celula
@@ -959,6 +988,8 @@ function Grade({
                         isSelected={isSelected}
                         onClick={() => toggleSelecao(e.id, d)}
                         unidadeBadge={unidadeBadge}
+                        swap={swap}
+                        empregadoId={e.id}
                       />
                     </td>
                   );
@@ -998,7 +1029,7 @@ function Grade({
 // - Sem nada (sem horário cadastrado): célula vazia (subentende "trabalho implícito").
 // - Selecionada (multi-select): ring indigo
 function Celula({
-  override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge,
+  override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge, swap, empregadoId,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
@@ -1007,6 +1038,8 @@ function Celula({
   isSelected: boolean;
   onClick: (ev: React.MouseEvent) => void;
   unidadeBadge?: string;     // letra única da unidade (ex: "M", "F", "P")
+  swap?: SundaySwap;         // se a célula tem inversão de domingo registrada
+  empregadoId?: string;      // pra montar o tooltip do swap
 }) {
   // Resolve display
   const displayStatus = override ?? derived?.status;
@@ -1026,6 +1059,20 @@ function Celula({
     </span>
   ) : null;
 
+  // Badge ↔ no canto superior esquerdo quando há inversão de domingo registrada
+  const swapBadge = swap ? (() => {
+    const par = empregadoId === swap.empAId ? swap.empBNome : swap.empANome;
+    return (
+      <span
+        className="absolute -top-0.5 -left-0.5 text-[8px] leading-none px-0.5 rounded bg-indigo-600 text-white border border-indigo-700"
+        title={`Inversão com ${par}${swap.motivo ? ` — ${swap.motivo}` : ""}`}
+        style={{ minWidth: "10px", textAlign: "center" }}
+      >
+        ↔
+      </span>
+    );
+  })() : null;
+
   // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
   // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
   if (!displayStatus || (isImplicito)) {
@@ -1041,6 +1088,7 @@ function Celula({
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
+        {swapBadge}
       </button>
     );
   }
@@ -1059,6 +1107,7 @@ function Celula({
       >
         {info.short}
         {unidadeSubscript}
+        {swapBadge}
       </button>
     );
   }
@@ -1075,6 +1124,7 @@ function Celula({
     >
       {info.short}
       {unidadeSubscript}
+      {swapBadge}
     </button>
   );
 }
@@ -1359,7 +1409,7 @@ function getSegunda(date: Date): Date {
 }
 
 function GradeMobile({
-  ano, mes, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
+  ano, mes, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, swapsPorCelula,
 }: {
   ano: number; mes: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
@@ -1367,6 +1417,7 @@ function GradeMobile({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
+  swapsPorCelula: Record<string, SundaySwap>;
 }) {
   // Semana inicial visível:
   // - Se está vendo o mês corrente → semana de HOJE (mais útil no dia-a-dia)
@@ -1486,6 +1537,7 @@ function GradeMobile({
                   const isFromOverride = !!override;
                   const isImplicito = !override && derived?.fonte === "implicito";
                   const info = status ? STATUS_INFO[status] : null;
+                  const swap = swapsPorCelula[`${e.id}|${iso}`];
                   return (
                     <button
                       key={iso}
@@ -1503,6 +1555,14 @@ function GradeMobile({
                       } ${podeEditar && inMes ? "active:scale-95 transition-transform" : ""}`}
                     >
                       {!inMes ? "—" : (isImplicito ? "·" : (info?.short || ""))}
+                      {swap && inMes && (
+                        <span
+                          className="absolute -top-0.5 -left-0.5 text-[9px] leading-none px-0.5 rounded bg-indigo-600 text-white border border-indigo-700"
+                          title={`Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}`}
+                        >
+                          ↔
+                        </span>
+                      )}
                     </button>
                   );
                 })}
