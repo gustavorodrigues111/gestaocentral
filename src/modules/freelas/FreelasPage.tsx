@@ -13,12 +13,14 @@ import type {
   Pessoa,
 } from "../../core/types";
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
+import { AgendarTab } from "./AgendarTab";
+import { LancamentoTab } from "./LancamentoTab";
 
 type TabId = "agendar" | "lancamento" | "fechamento" | "historico";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "agendar",     label: "Agendar",    icon: "📅" },
   { id: "lancamento",  label: "Lançamento", icon: "📝" },
+  { id: "agendar",     label: "Agendar",    icon: "📅" },
   { id: "fechamento",  label: "Fechamento", icon: "💰" },
   { id: "historico",   label: "Histórico",  icon: "🗂️" },
 ];
@@ -35,7 +37,6 @@ export function FreelasPage() {
   const [tab, setTab] = useState<TabId>("lancamento");
   const [showCadastro, setShowCadastro] = useState(false);
 
-  // Dados base (carregados aqui pra usar entre tabs)
   const [shifts, setShifts] = useState<FreelaShift[]>([]);
   const [pagamentos, setPagamentos] = useState<FreelaPagamento[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -83,10 +84,11 @@ export function FreelasPage() {
     );
   }
 
-  const totalAgendados   = shifts.filter((s) => s.status === "agendado").length;
-  const totalAbertos     = shifts.filter((s) => s.status === "aberto" || s.status === "fechamento").length;
-  const totalPendentes   = shifts.filter((s) => s.status === "fechamento" && !s.lotePagamentoId).length;
-  const totalHistorico   = shifts.filter((s) => s.status === "pago" || s.status === "nao_compareceu").length;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const totalAgendados = shifts.filter((s) => s.status === "agendado" && s.date >= hoje).length;
+  const totalAbertos   = shifts.filter((s) => (s.status === "aberto" || s.status === "agendado") && s.date <= hoje).length;
+  const totalPendentes = shifts.filter((s) => s.status === "fechamento" && !s.lotePagamentoId).length;
+  const totalHistorico = shifts.filter((s) => s.status === "pago" || s.status === "nao_compareceu").length;
 
   return (
     <div className="max-w-6xl">
@@ -143,48 +145,38 @@ export function FreelasPage() {
         })}
       </div>
 
-      {/* Tab content — esqueletos por enquanto. Commits 2 e 3 implementam. */}
-      {tab === "agendar" && (
-        <Placeholder
-          icon="📅"
-          title="Agendar freelas"
-          subtitle="Lista de turnos com data futura — em construção no próximo commit."
-          counts={{
-            shifts: shifts.length,
-            empregados: empregados.length,
-            pessoas: pessoas.length,
-          }}
+      {tab === "lancamento" && (
+        <LancamentoTab
+          restaurantId={rid}
+          shifts={shifts}
+          empregados={empregados}
+          pessoas={pessoas}
+          podeEditar={podeConfig}
         />
       )}
-      {tab === "lancamento" && (
-        <Placeholder
-          icon="📝"
-          title="Lançamento do dia"
-          subtitle="Lança turnos novos e edita os abertos — em construção no próximo commit."
-          counts={{
-            shifts: shifts.length,
-            empregados: empregados.length,
-            pessoas: pessoas.length,
-          }}
+      {tab === "agendar" && (
+        <AgendarTab
+          restaurantId={rid}
+          shifts={shifts}
+          empregados={empregados}
+          pessoas={pessoas}
+          podeEditar={podeConfig}
         />
       )}
       {tab === "fechamento" && (
         <Placeholder
           icon="💰"
           title="Fechamento e pagamento"
-          subtitle="Agrupa turnos em lotes e marca como pago — em construção."
-          counts={{
-            shifts: shifts.length,
-            pagamentos: pagamentos.length,
-          }}
+          subtitle="Agrupa turnos em fechamento em lotes de pagamento — em construção no próximo commit."
+          counts={{ pendentes: totalPendentes }}
         />
       )}
       {tab === "historico" && (
         <Placeholder
           icon="🗂️"
           title="Histórico"
-          subtitle="Lotes pagos e turnos arquivados — em construção."
-          counts={{ shifts: shifts.length, pagamentos: pagamentos.length }}
+          subtitle="Lotes pagos e turnos arquivados — em construção no próximo commit."
+          counts={{ pagos: pagamentos.length, "turnos arquivados": totalHistorico }}
         />
       )}
 
