@@ -1035,11 +1035,17 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-                  // Quando prevista ainda não foi fechada, a Praticada ESPELHA
-                  // a Prevista (não tem vida própria ainda).
-                  const fonteVersao: "prevista" | "real" =
-                    versao === "real" && !escala?.previstaFechadaEm ? "prevista" : versao;
-                  const override = escala?.[fonteVersao]?.[e.id]?.[d];
+                  // Na PRATICADA, célula sem entry específica cai pra prevista
+                  // como fallback. Isso cobre:
+                  //   - Prevista aberta (praticada espelha prevista)
+                  //   - Prevista fechada mas praticada vazia (migração / 1ª vez)
+                  //   - Prevista fechada e praticada parcialmente preenchida
+                  //     (dias intocados continuam vindo da prevista)
+                  const realCell = escala?.real?.[e.id]?.[d];
+                  const previstaCell = escala?.prevista?.[e.id]?.[d];
+                  const override = versao === "real"
+                    ? (realCell ?? previstaCell)
+                    : previstaCell;
                   const derived = derivados[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const cellKey = `${e.id}|${d}`;
@@ -1615,10 +1621,13 @@ function GradeMobile({
                   <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
                 </div>
                 {dates.map(({ iso, inMes }) => {
-                  // Praticada espelha prevista quando esta ainda não foi fechada
-                  const fonteVersao: "prevista" | "real" =
-                    versao === "real" && !escala?.previstaFechadaEm ? "prevista" : versao;
-                  const override = escala?.[fonteVersao]?.[e.id]?.[iso];
+                  // Praticada: célula vazia cai pra prevista como fallback (cobre
+                  // prevista aberta, praticada nunca preenchida, e dias intocados).
+                  const realCell = escala?.real?.[e.id]?.[iso];
+                  const previstaCell = escala?.prevista?.[e.id]?.[iso];
+                  const override = versao === "real"
+                    ? (realCell ?? previstaCell)
+                    : previstaCell;
                   const derived = derivados[e.id]?.[iso];
                   const status = override ?? derived?.status;
                   const isFromOverride = !!override;
