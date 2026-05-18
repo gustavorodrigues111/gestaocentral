@@ -388,6 +388,7 @@ export type Pessoa = {
   nome: string;
   cpf?: string;                // obrigatório na UI nova; opcional só pra docs migrados sem CPF
   whatsapp?: string;
+  pix?: string;                // chave PIX (CPF, email, telefone ou chave aleatória) — obrigatório pra freelas
   isMaster: boolean;
   restaurantIds: string[];
   permissions: { [restaurantId: string]: RestaurantPermissions };
@@ -1171,4 +1172,116 @@ export type MudancaAgendada = {
   registradoEm: string;
   registradoPor: string;
   aplicadoEm?: string | null;    // ISO quando foi aplicado (após chegar a data)
+};
+
+// ─── FREELAS ────────────────────────────────────────────────────────────────
+// Freela = pessoa contratada pontualmente pra um turno (não-CLT, paga avulsa).
+// Pode ser cadastrada por dentro do módulo (cadastro rápido) ou ser empregado
+// existente cobrindo um turno extra.
+//
+// CICLO DE VIDA do turno (FreelaShift):
+//   1. "agendado"       → agendado pra data futura, ainda não rolou
+//   2. "aberto"         → dia chegou, freela compareceu; lançamento aberto
+//                         (horas/valor podem ser editados até confirmar)
+//   3. "fechamento"     → confirmado pelo gestor; pronto pra entrar em lote
+//   4. "pago"           → incluído em FreelaPagamento.status="pago"
+//   5. "nao_compareceu" → freela não veio; turno fica registrado pra histórico
+//                         mas não gera pagamento
+
+export type FreelaShiftStatus =
+  | "agendado"
+  | "aberto"
+  | "fechamento"
+  | "pago"
+  | "nao_compareceu";
+
+export const FREELA_SHIFT_STATUS_LABEL: Record<FreelaShiftStatus, string> = {
+  agendado:       "Agendado",
+  aberto:         "Aberto",
+  fechamento:     "Em fechamento",
+  pago:           "Pago",
+  nao_compareceu: "Não compareceu",
+};
+
+export type FreelaShift = {
+  id: string;
+  restaurantId: string;
+  unidadeId?: string | null;       // multi-unidades
+  // Identificação do freela. Pode referenciar empregado existente, pessoa
+  // existente (do app), ou só nome (cadastro só-nome legado). Sempre carrega
+  // snapshot do nome pra exibição estável.
+  empregadoId?: string | null;     // empregado que cobriu turno extra
+  pessoaId?: string | null;        // pessoa cadastrada (com CPF/PIX/WhatsApp)
+  nomeSnapshot: string;
+  cpfSnapshot?: string;
+  pixSnapshot?: string;
+  whatsappSnapshot?: string;
+
+  date: string;                    // YYYY-MM-DD — data efetiva (lançamento)
+  scheduledDate?: string;          // YYYY-MM-DD — data originalmente agendada (== date se não trocou)
+  area?: Area;                     // área de atuação naquele turno
+
+  // Lançamento (preenchido a partir de "aberto")
+  entrada?: string;                // "HH:MM"
+  saida?: string;                  // "HH:MM" (pode ser do dia seguinte)
+  intervalo?: number;              // minutos
+  horas?: number;                  // total decimal de horas trabalhadas
+  valorTipo?: "hora" | "diaria";   // como é cobrado
+  valorUnit?: number;              // R$ por hora OU diária fixa
+  totalCalc?: number;              // R$ total do turno (calculado)
+
+  status: FreelaShiftStatus;
+  lotePagamentoId?: string | null; // preenchido quando entra num FreelaPagamento
+
+  observacao?: string;
+
+  // Auditoria
+  lancadoPor: string;              // pessoaId
+  lancadoPorNome: string;
+  lancadoEm: string;               // ISO
+  confirmadoEm?: string; confirmadoPor?: string;
+  encerradoEm?: string; encerradoPor?: string;
+  noShowEm?: string; noShowPor?: string;
+  pagoEm?: string;
+  updatedAt: string;
+};
+
+export type FreelaPagamentoStatus = "pendente" | "pago";
+
+export const FREELA_PAGAMENTO_STATUS_LABEL: Record<FreelaPagamentoStatus, string> = {
+  pendente: "Pendente",
+  pago:     "Pago",
+};
+
+// Resumo por pessoa dentro do lote (pra render rápido na lista + PDF)
+export type FreelaPagamentoResumoPessoa = {
+  pessoaId?: string | null;
+  empregadoId?: string | null;
+  nome: string;
+  pix?: string;
+  cpf?: string;
+  whatsapp?: string;
+  qtdShifts: number;
+  totalHoras: number;
+  totalValor: number;
+};
+
+export type FreelaPagamento = {
+  id: string;
+  restaurantId: string;
+  numero: string;                  // ex: "LOTE-2026-05-001"
+  observacao?: string;
+  shiftIds: string[];              // FreelaShift.id contidos no lote
+  pessoasResumo: FreelaPagamentoResumoPessoa[];
+  totalGeral: number;
+  qtdShifts: number;
+  qtdPessoas: number;
+  status: FreelaPagamentoStatus;
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome: string;
+  pagoEm?: string;
+  pagoPor?: string;
+  pagoPorNome?: string;
+  formaPagamento?: string;
 };

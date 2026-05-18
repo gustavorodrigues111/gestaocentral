@@ -12,6 +12,7 @@ import { isWelcomePageHost } from "./core/restaurant/subdomain";
 import { PessoasPage } from "./modules/pessoas/PessoasPage";
 import { ConfiguracoesPage } from "./modules/configuracoes/ConfiguracoesPage";
 import { EscalaPage } from "./modules/escala/EscalaPage";
+import { FreelasPage } from "./modules/freelas/FreelasPage";
 import { GorjetasPage } from "./modules/gorjetas/GorjetasPage";
 import { VTPage } from "./modules/vt/VTPage";
 import { ComunicadosPage } from "./modules/comunicados/ComunicadosPage";
@@ -23,6 +24,7 @@ import { ChecklistsPage } from "./modules/checklists/ChecklistsPage";
 import { ReservasPage } from "./modules/reservas/ReservasPage";
 import { ContagensPage } from "./modules/contagens/ContagensPage";
 import { ComprasPage } from "./modules/compras/ComprasPage";
+import { ExcecoesPage } from "./modules/excecoes/ExcecoesPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -49,6 +51,7 @@ function ModuleRouter() {
     case "pessoas":       return <PessoasPage key={k} />;
     case "configuracoes": return <ConfiguracoesPage key={k} />;
     case "escala":        return <EscalaPage key={k} />;
+    case "freelas":       return <FreelasPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
     case "vt":            return <VTPage key={k} />;
     case "comunicados":   return <ComunicadosPage key={k} />;
@@ -60,6 +63,7 @@ function ModuleRouter() {
     case "reservas":      return <ReservasPage key={k} />;
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
+    case "excecoes":      return <ExcecoesPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

@@ -29,7 +29,7 @@ export const MODULES: ModuleDef[] = [
 
   // ═══ TIME (azul) ═══
   { id: "escala",           area: "time", label: "Escala",                icon: "📅", status: "ativo",     etapa: "beta",               desc: "Planejamento de escalas mensais",       dependsOn: ["pessoas"] },
-  { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "planejado", etapa: "em_desenvolvimento", desc: "Controle de freelas",                   dependsOn: ["pessoas", "escala"] },
+  { id: "freelas",          area: "time", label: "Freelas",                icon: "🎒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
   { id: "reunioes",         area: "time", label: "Reuniões",               icon: "🗣️", status: "ativo",     etapa: "em_desenvolvimento", desc: "Reuniões de líderes e equipe",          dependsOn: ["pessoas"] },
   { id: "trilha",           area: "time", label: "Trilha do Empregado",    icon: "🎯", status: "ativo",     etapa: "em_desenvolvimento", desc: "Desenvolvimento e histórico",            dependsOn: ["pessoas"] },
   { id: "ideias",           area: "time", label: "Banco de Ideias",        icon: "💡", status: "ativo",     etapa: "em_desenvolvimento", desc: "Ideias para discutir em reuniões",       dependsOn: ["reunioes"] },

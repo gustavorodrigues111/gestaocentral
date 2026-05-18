@@ -106,6 +106,8 @@ service cloud.firestore {
     match /empregados/{id}          { allow read, write: if authed(); }
     match /escalas/{id}             { allow read, write: if authed(); }
     match /sundaySwaps/{id}         { allow read, write: if authed(); }
+    match /freelaShifts/{id}        { allow read, write: if authed(); }
+    match /freelaPagamentos/{id}    { allow read, write: if authed(); }
     match /gorjetas/{id}            { allow read, write: if authed(); }
     match /vtFolhas/{id}            { allow read, write: if authed(); }
     match /vtLotes/{id}             { allow read, write: if authed(); }
