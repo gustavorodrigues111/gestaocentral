@@ -463,16 +463,19 @@ function ListaDiasInline({
   }
 
   // Paleta sutil pra diferenciar unidades em restaurantes multi-unidades.
-  // Tons claros que não competem com "fim de semana" (amber) nem "publicada" (emerald).
-  // Border esquerda colorida (mais discreta que background full).
-  const UNIDADE_PALETA: { border: string; bg: string }[] = [
-    { border: "border-l-sky-400 dark:border-l-sky-600",       bg: "bg-sky-50/40 dark:bg-sky-900/10" },
-    { border: "border-l-violet-400 dark:border-l-violet-600", bg: "bg-violet-50/40 dark:bg-violet-900/10" },
-    { border: "border-l-pink-400 dark:border-l-pink-600",     bg: "bg-pink-50/40 dark:bg-pink-900/10" },
-    { border: "border-l-teal-400 dark:border-l-teal-600",     bg: "bg-teal-50/40 dark:bg-teal-900/10" },
+  // SÓ borda esquerda — sem background colorido. Assim as cores semânticas
+  // (weekend amber, publicada emerald, today indigo-ring) continuam funcionando
+  // exatamente como num restaurante single-unidade. A diferença visual entre
+  // single e multi vira: um "rabicho" colorido fininho na esquerda + nome da
+  // unidade na coluna. Nada mais.
+  const UNIDADE_PALETA: { border: string }[] = [
+    { border: "border-l-sky-400 dark:border-l-sky-600" },
+    { border: "border-l-violet-400 dark:border-l-violet-600" },
+    { border: "border-l-pink-400 dark:border-l-pink-600" },
+    { border: "border-l-teal-400 dark:border-l-teal-600" },
   ];
-  function corUnidade(unidadeId: string): { border: string; bg: string } {
-    if (!usaMultiUnidades || !unidadeId) return { border: "border-l-transparent", bg: "" };
+  function corUnidade(unidadeId: string): { border: string } {
+    if (!usaMultiUnidades || !unidadeId) return { border: "border-l-transparent" };
     const idx = unidadesAtendimento.findIndex(x => x.id === unidadeId);
     return UNIDADE_PALETA[(idx >= 0 ? idx : 0) % UNIDADE_PALETA.length];
   }
@@ -503,12 +506,15 @@ function ListaDiasInline({
 
           return (
             <Fragment key={k}>
-              {/* Desktop: linha em grid horizontal */}
+              {/* Desktop: linha em grid horizontal.
+                  Cores semânticas (weekend/publicada/today) funcionam IGUAL
+                  no single e no multi. A única diferença visual em multi é a
+                  borda esquerda colorida com a cor da unidade. */}
               <div
                 className={`hidden md:grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm ${
                   isPrimeiroDoDia ? "border-t border-gray-200 dark:border-gray-700" : "border-t border-gray-100/60 dark:border-gray-800/60"
-                } ${usaMultiUnidades ? `border-l-2 ${corU.border} ${corU.bg}` : ""} ${
-                  weekend && !usaMultiUnidades ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
+                } ${usaMultiUnidades ? `border-l-2 ${corU.border}` : ""} ${
+                  weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
                 } ${isToday ? "ring-1 ring-indigo-300 dark:ring-indigo-700 ring-inset" : ""} ${
                   isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
                 }`}
@@ -593,14 +599,15 @@ function ListaDiasInline({
                 </div>
               </div>
 
-              {/* Mobile: card vertical com ✏️ → bottom-sheet */}
+              {/* Mobile: card vertical com ✏️ → bottom-sheet.
+                  Mesma lógica do desktop: cores semânticas iguais em single
+                  e multi. Borda esquerda colorida só no multi (sutil). */}
               <div
                 className={`md:hidden px-3 py-2.5 ${
                   isPrimeiroDoDia ? "border-t border-gray-200 dark:border-gray-700" : "border-t border-gray-100/60 dark:border-gray-800/60"
-                } ${usaMultiUnidades ? `border-l-4 ${corU.border} ${corU.bg}` : ""} ${
-                  weekend && !usaMultiUnidades ? "bg-amber-50/20 dark:bg-amber-900/10" : ""
-                } ${isToday && !usaMultiUnidades ? "border-l-4 border-l-indigo-400 dark:border-l-indigo-600" : ""} ${
-                  isPublicada ? "bg-emerald-50/30 dark:bg-emerald-900/10" : ""
+                } ${usaMultiUnidades ? `border-l-4 ${corU.border}` : isToday ? "border-l-4 border-l-indigo-400 dark:border-l-indigo-600" : ""} ${
+                  weekend ? "bg-amber-50/20 dark:bg-amber-900/10" : ""
+                } ${isPublicada ? "bg-emerald-50/30 dark:bg-emerald-900/10" : ""
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
