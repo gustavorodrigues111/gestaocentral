@@ -635,6 +635,10 @@ export function EscalaPage() {
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
               swapsPorCelula={swapsPorCelula}
+              onMesChange={(novoAno, novoMes) => {
+                setAno(novoAno);
+                setMes(novoMes);
+              }}
             />
           </div>
         </>
@@ -1500,6 +1504,7 @@ function getSegunda(date: Date): Date {
 
 function GradeMobile({
   ano, mes, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, swapsPorCelula,
+  onMesChange,
 }: {
   ano: number; mes: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
@@ -1508,6 +1513,10 @@ function GradeMobile({
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
   swapsPorCelula: Record<string, SundaySwap>;
+  // Callback pra avisar a EscalaPage quando a semana visualizada cai num
+  // outro mês (atravessou virada). A página recarrega escala/derivados do
+  // novo mês — fluxo de navegação por semana fica contínuo entre meses.
+  onMesChange: (novoAno: number, novoMes: number) => void;
 }) {
   // Semana inicial visível:
   // - Se está vendo o mês corrente → semana de HOJE (mais útil no dia-a-dia)
@@ -1521,9 +1530,20 @@ function GradeMobile({
   }
   const [weekStart, setWeekStart] = useState<Date>(() => initialWeekStart());
 
-  // Reseta quando o mês/ano muda no header
+  // Reseta quando o mês/ano muda no header (mas só se a semana atual NÃO
+  // está dentro do novo mês — senão fica perdendo a posição quando o
+  // header é atualizado pelo próprio efeito de "semana atravessou o mês").
   useEffect(() => {
-    setWeekStart(initialWeekStart());
+    const semanaAno = weekStart.getFullYear();
+    const semanaMes = weekStart.getMonth() + 1;
+    // Se algum dia da semana atual está no novo mês, mantém a semana
+    const dataFim = new Date(weekStart);
+    dataFim.setDate(dataFim.getDate() + 6);
+    const fimAno = dataFim.getFullYear();
+    const fimMes = dataFim.getMonth() + 1;
+    const semanaTocaNovoMes =
+      (semanaAno === ano && semanaMes === mes) || (fimAno === ano && fimMes === mes);
+    if (!semanaTocaNovoMes) setWeekStart(initialWeekStart());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ano, mes]);
 
@@ -1535,6 +1555,30 @@ function GradeMobile({
     const iso = `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
     dates.push({ iso, date: d, inMes: d.getMonth() === mes - 1 && d.getFullYear() === ano });
   }
+
+  // Sempre que mudar de semana, vê se a maior parte da semana caiu em outro
+  // mês. Se sim, dispara onMesChange pra EscalaPage trocar de mês e
+  // recarregar tudo (escala + derivados + empregados).
+  useEffect(() => {
+    // Conta dias por mês na semana
+    const contagem: Record<string, number> = {};
+    for (const { date } of dates) {
+      const k = `${date.getFullYear()}-${date.getMonth() + 1}`;
+      contagem[k] = (contagem[k] || 0) + 1;
+    }
+    // Mês com mais dias
+    let majAno = ano, majMes = mes, majCount = 0;
+    for (const [k, v] of Object.entries(contagem)) {
+      if (v > majCount) {
+        const [a, m] = k.split("-").map(Number);
+        majAno = a; majMes = m; majCount = v;
+      }
+    }
+    if (majAno !== ano || majMes !== mes) {
+      onMesChange(majAno, majMes);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekStart.getTime()]);
 
   const [picker, setPicker] = useState<{ empId: string; date: string } | null>(null);
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
@@ -1634,25 +1678,26 @@ function GradeMobile({
                   const isImplicito = !override && derived?.fonte === "implicito";
                   const info = status ? STATUS_INFO[status] : null;
                   const swap = swapsPorCelula[`${e.id}|${iso}`];
+                  // Dia fora do mês majoritário: visualmente mais opaco, mas
+                  // continua clicável (abre picker). O auto-switch do useEffect
+                  // já troca de mês quando 4+ dias da semana caem no outro.
                   return (
                     <button
                       key={iso}
                       type="button"
-                      disabled={!podeEditar || !inMes}
+                      disabled={!podeEditar}
                       onClick={() => setPicker({ empId: e.id, date: iso })}
                       className={`relative aspect-square w-full max-w-[44px] mx-auto rounded text-[11px] font-bold ${
-                        !inMes
-                          ? "bg-transparent text-gray-300 dark:text-gray-700 cursor-not-allowed"
-                          : !status || isImplicito
-                            ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
-                            : isFromOverride
-                              ? `${info!.bg} ${info!.text}`
-                              : `${info!.bg} ${info!.text} opacity-50 border border-dashed border-gray-300 dark:border-gray-600`
-                      } ${swap && inMes ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${podeEditar && inMes ? "active:scale-95 transition-transform" : ""}`}
+                        !status || isImplicito
+                          ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
+                          : isFromOverride
+                            ? `${info!.bg} ${info!.text}`
+                            : `${info!.bg} ${info!.text} opacity-50 border border-dashed border-gray-300 dark:border-gray-600`
+                      } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
                       title={swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined}
                     >
-                      {!inMes ? "—" : (isImplicito ? "·" : (info?.short || ""))}
-                      {swap && inMes && (
+                      {isImplicito ? "·" : (info?.short || "")}
+                      {swap && (
                         <span
                           className="absolute -top-1 -left-1 text-[10px] leading-none px-0.5 rounded bg-violet-600 text-white font-bold border border-violet-700 shadow-sm"
                           style={{ minWidth: "12px", textAlign: "center" }}
