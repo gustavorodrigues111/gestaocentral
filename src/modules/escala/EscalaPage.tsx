@@ -26,8 +26,10 @@ const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: st
   trabalho:  { label: "Trabalho",                short: "T",  bg: "bg-emerald-500",  text: "text-white" },
   folga:     { label: "Folga",                   short: "F",  bg: "bg-gray-300 dark:bg-gray-700",  text: "text-gray-700 dark:text-gray-200" },
   freela:    { label: "Freela",                  short: "FR", bg: "bg-purple-500",   text: "text-white" },
-  comp:      { label: "Compensação (folgou)",    short: "C",  bg: "bg-amber-400",    text: "text-amber-950" },
-  comp_trab: { label: "Comp. trabalhado",        short: "CT", bg: "bg-amber-600",    text: "text-white" },
+  // comp e comp_trab: variantes ESCURAS dos seus pares (folga/trabalho) — pra que
+  // a "família" da compensação fique visualmente próxima do estado original.
+  comp:      { label: "Compensação (folgou)",    short: "C",  bg: "bg-gray-500 dark:bg-gray-500",  text: "text-white" },
+  comp_trab: { label: "Comp. trabalhado",        short: "CT", bg: "bg-emerald-800",  text: "text-white" },
   ferias:    { label: "Férias",                  short: "FE", bg: "bg-sky-500",      text: "text-white" },
   falta_j:   { label: "Falta justificada",       short: "FJ", bg: "bg-rose-300",     text: "text-rose-900" },
   falta_i:   { label: "Falta injustificada",     short: "FI", bg: "bg-rose-600",     text: "text-white" },
