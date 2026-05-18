@@ -1059,19 +1059,24 @@ function Celula({
     </span>
   ) : null;
 
-  // Badge ↔ no canto superior esquerdo quando há inversão de domingo registrada
-  const swapBadge = swap ? (() => {
-    const par = empregadoId === swap.empAId ? swap.empBNome : swap.empANome;
-    return (
-      <span
-        className="absolute -top-0.5 -left-0.5 text-[8px] leading-none px-0.5 rounded bg-indigo-600 text-white border border-indigo-700"
-        title={`Inversão com ${par}${swap.motivo ? ` — ${swap.motivo}` : ""}`}
-        style={{ minWidth: "10px", textAlign: "center" }}
-      >
-        ↔
-      </span>
-    );
-  })() : null;
+  // Inversão de domingo: borda violet sólida 2px (cor única no sistema —
+  // nenhum outro estado/status usa violet) + badge ↔ pequeno no canto.
+  // O hover do botão mostra o nome do par e motivo via title.
+  const swapPar = swap
+    ? (empregadoId === swap.empAId ? swap.empBNome : swap.empANome)
+    : null;
+  const swapTitle = swap
+    ? `Inversão com ${swapPar}${swap.motivo ? ` — ${swap.motivo}` : ""}`
+    : null;
+  const swapClass = swap ? "ring-2 ring-violet-500 ring-offset-1" : "";
+  const swapBadge = swap ? (
+    <span
+      className="absolute -top-1 -left-1 text-[9px] leading-none px-0.5 rounded bg-violet-600 text-white font-bold border border-violet-700 shadow-sm"
+      style={{ minWidth: "11px", textAlign: "center" }}
+    >
+      ↔
+    </span>
+  ) : null;
 
   // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
   // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
@@ -1083,8 +1088,8 @@ function Celula({
         onClick={onClick}
         className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
-        title={isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio"}
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
+        title={swapTitle || (isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio")}
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
@@ -1102,8 +1107,8 @@ function Celula({
         onClick={onClick}
         className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing}`}
-        title={`${info.label} (override manual)`}
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
+        title={swapTitle || `${info.label} (override manual)`}
       >
         {info.short}
         {unidadeSubscript}
@@ -1119,8 +1124,8 @@ function Celula({
       onClick={onClick}
       className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
         podeEditar ? "cursor-pointer hover:opacity-80 hover:scale-110" : "cursor-default"
-      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""} ${selRing}`}
-      title={`${info.label} (do horário cadastrado)`}
+      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""} ${selRing} ${swapClass}`}
+      title={swapTitle || `${info.label} (do horário cadastrado)`}
     >
       {info.short}
       {unidadeSubscript}
@@ -1552,13 +1557,14 @@ function GradeMobile({
                             : isFromOverride
                               ? `${info!.bg} ${info!.text}`
                               : `${info!.bg} ${info!.text} opacity-50 border border-dashed border-gray-300 dark:border-gray-600`
-                      } ${podeEditar && inMes ? "active:scale-95 transition-transform" : ""}`}
+                      } ${swap && inMes ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${podeEditar && inMes ? "active:scale-95 transition-transform" : ""}`}
+                      title={swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined}
                     >
                       {!inMes ? "—" : (isImplicito ? "·" : (info?.short || ""))}
                       {swap && inMes && (
                         <span
-                          className="absolute -top-0.5 -left-0.5 text-[9px] leading-none px-0.5 rounded bg-indigo-600 text-white border border-indigo-700"
-                          title={`Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}`}
+                          className="absolute -top-1 -left-1 text-[10px] leading-none px-0.5 rounded bg-violet-600 text-white font-bold border border-violet-700 shadow-sm"
+                          style={{ minWidth: "12px", textAlign: "center" }}
                         >
                           ↔
                         </span>
