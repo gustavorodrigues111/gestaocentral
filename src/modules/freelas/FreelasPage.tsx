@@ -15,6 +15,8 @@ import type {
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
 import { AgendarTab } from "./AgendarTab";
 import { LancamentoTab } from "./LancamentoTab";
+import { FechamentoTab } from "./FechamentoTab";
+import { HistoricoTab } from "./HistoricoTab";
 
 type TabId = "agendar" | "lancamento" | "fechamento" | "historico";
 
@@ -164,19 +166,18 @@ export function FreelasPage() {
         />
       )}
       {tab === "fechamento" && (
-        <Placeholder
-          icon="💰"
-          title="Fechamento e pagamento"
-          subtitle="Agrupa turnos em fechamento em lotes de pagamento — em construção no próximo commit."
-          counts={{ pendentes: totalPendentes }}
+        <FechamentoTab
+          restaurantId={rid}
+          shifts={shifts}
+          pagamentos={pagamentos}
+          podeEditar={podeConfig}
         />
       )}
       {tab === "historico" && (
-        <Placeholder
-          icon="🗂️"
-          title="Histórico"
-          subtitle="Lotes pagos e turnos arquivados — em construção no próximo commit."
-          counts={{ pagos: pagamentos.length, "turnos arquivados": totalHistorico }}
+        <HistoricoTab
+          shifts={shifts}
+          pagamentos={pagamentos}
+          restaurant={activeRestaurant}
         />
       )}
 
@@ -187,33 +188,6 @@ export function FreelasPage() {
           onClose={() => setShowCadastro(false)}
         />
       )}
-    </div>
-  );
-}
-
-function Placeholder({
-  icon,
-  title,
-  subtitle,
-  counts,
-}: {
-  icon: string;
-  title: string;
-  subtitle: string;
-  counts: Record<string, number>;
-}) {
-  return (
-    <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center bg-white/50 dark:bg-gray-900/30">
-      <div className="text-4xl mb-2">{icon}</div>
-      <h2 className="text-lg font-bold text-gray-800 dark:text-gray-100">{title}</h2>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{subtitle}</p>
-      <div className="mt-4 flex justify-center gap-4 text-[11px] text-gray-500 dark:text-gray-500">
-        {Object.entries(counts).map(([k, v]) => (
-          <div key={k}>
-            <strong className="text-gray-700 dark:text-gray-300">{v}</strong> {k}
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

@@ -96,6 +96,20 @@ export function listarCandidatos(
   return cands;
 }
 
+// Gera próximo número de lote: "LOTE-YYYY-MM-XXX" (XXX = sequencial do mês)
+export function proximoNumeroLote(pagamentosExistentes: { numero?: string }[], hoje = new Date()): string {
+  const ano = hoje.getFullYear();
+  const mes = String(hoje.getMonth() + 1).padStart(2, "0");
+  const prefix = `LOTE-${ano}-${mes}`;
+  let max = 0;
+  for (const p of pagamentosExistentes) {
+    if (!p.numero || !p.numero.startsWith(prefix)) continue;
+    const n = parseInt(p.numero.split("-").pop() || "0", 10);
+    if (!Number.isNaN(n) && n > max) max = n;
+  }
+  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
+}
+
 export function resolverPixWhats(
   cand: FreelaCandidato,
   pessoas: Pessoa[],
