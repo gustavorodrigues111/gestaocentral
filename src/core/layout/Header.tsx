@@ -23,7 +23,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   }
 
   return (
-    <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 overflow-hidden">
+    <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 [overflow-x:clip] relative z-30">
       <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 text-xl leading-none">
         ☰
       </button>
