@@ -173,6 +173,8 @@ export function InversaoDomingoModal({
     try {
       const empA = empregados.find(e => e.id === empAId);
       const empB = empregados.find(e => e.id === empBId);
+      // Firestore não aceita undefined — só inclui motivo se preenchido
+      const motivoTrim = motivo.trim();
       const payload: Omit<SundaySwap, "id"> = {
         restaurantId,
         empAId,
@@ -181,10 +183,10 @@ export function InversaoDomingoModal({
         empBNome: empB?.nome || "",
         date1,
         date2,
-        motivo: motivo.trim() || undefined,
         criadoEm: new Date().toISOString(),
         criadoPor: meId,
         criadoPorNome: meNome,
+        ...(motivoTrim ? { motivo: motivoTrim } : {}),
       };
       await addDoc(collection(db, "sundaySwaps"), payload);
       onClose();
