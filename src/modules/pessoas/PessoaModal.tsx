@@ -791,7 +791,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
             <input
               type="checkbox"
               checked={pessoasExcluir}
-              onChange={(e) => setPessoasExcluir(e.target.checked)}
+              onChange={(e) => { setDirty(true); setPessoasExcluir(e.target.checked); }}
               className="mt-0.5"
             />
             <span className="flex-1">
@@ -803,7 +803,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
             <input
               type="checkbox"
               checked={gorjetasConfigurarRegra}
-              onChange={(e) => setGorjetasConfigurarRegra(e.target.checked)}
+              onChange={(e) => { setDirty(true); setGorjetasConfigurarRegra(e.target.checked); }}
               className="mt-0.5"
             />
             <span className="flex-1">
@@ -815,7 +815,7 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
             <input
               type="checkbox"
               checked={escalaReabrir}
-              onChange={(e) => setEscalaReabrir(e.target.checked)}
+              onChange={(e) => { setDirty(true); setEscalaReabrir(e.target.checked); }}
               className="mt-0.5"
             />
             <span className="flex-1">
