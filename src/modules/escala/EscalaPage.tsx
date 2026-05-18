@@ -105,6 +105,40 @@ export function EscalaPage() {
     return () => unsub();
   }, [rid, escalaId]);
 
+  // Escalas adjacentes (mês anterior + próximo) — necessárias pro mobile que
+  // navega por semana atravessando meses. Cada doc tem onSnapshot próprio.
+  // Resultado consolidado num map "YYYY-MM" → EscalaMes.
+  const [escalaPrev, setEscalaPrev] = useState<EscalaMes | null>(null);
+  const [escalaNext, setEscalaNext] = useState<EscalaMes | null>(null);
+  const mesPrev = useMemo(() => shiftMonth(ano, mes, -1), [ano, mes]);
+  const mesNext = useMemo(() => shiftMonth(ano, mes, +1), [ano, mes]);
+  useEffect(() => {
+    if (!rid) return;
+    const id = `${rid}_${fmtAnoMes(mesPrev.ano, mesPrev.mes)}`;
+    const unsub = onSnapshot(doc(db, "escalas", id), (snap) => {
+      setEscalaPrev(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null);
+    });
+    return () => unsub();
+  }, [rid, mesPrev.ano, mesPrev.mes]);
+  useEffect(() => {
+    if (!rid) return;
+    const id = `${rid}_${fmtAnoMes(mesNext.ano, mesNext.mes)}`;
+    const unsub = onSnapshot(doc(db, "escalas", id), (snap) => {
+      setEscalaNext(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null);
+    });
+    return () => unsub();
+  }, [rid, mesNext.ano, mesNext.mes]);
+
+  // Mapa "YYYY-MM" → EscalaMes (atual + prev + next). Usado pelo mobile pra
+  // ler de qualquer mês na semana visível.
+  const escalaPorMes = useMemo(() => {
+    const m: Record<string, EscalaMes | null> = {};
+    m[fmtAnoMes(ano, mes)] = escala;
+    m[fmtAnoMes(mesPrev.ano, mesPrev.mes)] = escalaPrev;
+    m[fmtAnoMes(mesNext.ano, mesNext.mes)] = escalaNext;
+    return m;
+  }, [escala, escalaPrev, escalaNext, ano, mes, mesPrev, mesNext]);
+
   // Inversões de domingo do restaurante (todas — filtramos por data no map)
   useEffect(() => {
     if (!rid) return;
@@ -151,6 +185,29 @@ export function EscalaPage() {
     }
     return m;
   }, [empregadosDoMes, ano, mes]);
+
+  // Derivados estendidos: também calcula pros meses anterior/próximo, pra
+  // suportar a navegação por semana do mobile que atravessa meses.
+  // Resultado: empId → date → DerivedDay (incluindo datas dos 3 meses).
+  const derivadosEstendidos = useMemo(() => {
+    const m: Record<string, { [date: string]: DerivedDay }> = {};
+    for (const e of empregados) {
+      // Empregado precisa estar ativo em pelo menos um dos 3 meses
+      const inicioJ = `${mesPrev.ano}-${pad2(mesPrev.mes)}-01`;
+      const fimJ = `${mesNext.ano}-${pad2(mesNext.mes)}-${pad2(daysInMonth(mesNext.ano, mesNext.mes))}`;
+      const ativo = (e.periodos || []).some(p => {
+        if (p.admissao > fimJ) return false;
+        if (p.demissao && p.demissao <= inicioJ) return false;
+        return true;
+      });
+      if (!ativo) continue;
+      const dPrev = derivedScheduleForEmpregado(e, mesPrev.ano, mesPrev.mes);
+      const dCur  = derivedScheduleForEmpregado(e, ano, mes);
+      const dNext = derivedScheduleForEmpregado(e, mesNext.ano, mesNext.mes);
+      m[e.id] = { ...dPrev, ...dCur, ...dNext };
+    }
+    return m;
+  }, [empregados, ano, mes, mesPrev, mesNext]);
 
   // Ordena por área (alfabética) + nome do empregado (alfabético).
   // Filtra por escopo de permissão de unidade — se a pessoa tem permissão
@@ -249,13 +306,18 @@ export function EscalaPage() {
     });
     if (issues.length > 0) return issues;
 
-    const ref = doc(db, "escalas", escalaId);
+    // Pode estar editando um dia de OUTRO mês (semana atravessou no mobile).
+    // Resolve o doc da escala pelo mês do `ymdDate`, não pelo mês do header.
+    const dayAno = parseInt(ymdDate.slice(0, 4), 10);
+    const dayMes = parseInt(ymdDate.slice(5, 7), 10);
+    const escalaIdDoDia = `${rid}_${fmtAnoMes(dayAno, dayMes)}`;
+    const ref = doc(db, "escalas", escalaIdDoDia);
     const snap = await getDoc(ref);
     if (!snap.exists()) {
       await setDoc(ref, {
-        id: escalaId,
+        id: escalaIdDoDia,
         restaurantId: rid,
-        ano, mes,
+        ano: dayAno, mes: dayMes,
         prevista: {},
         real: {},
         updatedAt: new Date().toISOString(),
@@ -630,7 +692,8 @@ export function EscalaPage() {
               empregados={empregadosOrdenados}
               cargos={cargos}
               escala={escala}
-              derivados={derivados}
+              escalaPorMes={escalaPorMes}
+              derivados={derivadosEstendidos}
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
@@ -1503,11 +1566,14 @@ function getSegunda(date: Date): Date {
 }
 
 function GradeMobile({
-  ano, mes, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, swapsPorCelula,
+  ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus, swapsPorCelula,
   onMesChange,
 }: {
   ano: number; mes: number;
   empregados: Empregado[]; cargos: Cargo[]; escala: EscalaMes | null;
+  // Mapa "YYYY-MM" → EscalaMes pra ler escalas de meses adjacentes
+  // (semana atravessando o mês).
+  escalaPorMes: Record<string, EscalaMes | null>;
   derivados: Record<string, { [date: string]: DerivedDay }>;
   versao: "prevista" | "real";
   podeEditar: boolean;
@@ -1518,6 +1584,11 @@ function GradeMobile({
   // novo mês — fluxo de navegação por semana fica contínuo entre meses.
   onMesChange: (novoAno: number, novoMes: number) => void;
 }) {
+  // Helper: pega a escala do mês a que o `iso` pertence
+  function escalaDoIso(iso: string): EscalaMes | null {
+    const ym = iso.slice(0, 7); // "YYYY-MM"
+    return escalaPorMes[ym] ?? null;
+  }
   // Semana inicial visível:
   // - Se está vendo o mês corrente → semana de HOJE (mais útil no dia-a-dia)
   // - Senão → 1ª segunda que cai no mês
@@ -1665,10 +1736,11 @@ function GradeMobile({
                   <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
                 </div>
                 {dates.map(({ iso, inMes }) => {
-                  // Praticada: célula vazia cai pra prevista como fallback (cobre
-                  // prevista aberta, praticada nunca preenchida, e dias intocados).
-                  const realCell = escala?.real?.[e.id]?.[iso];
-                  const previstaCell = escala?.prevista?.[e.id]?.[iso];
+                  // Lê da escala do mês a que o dia pertence (suporta semana
+                  // atravessando virada de mês).
+                  const escDoDia = escalaDoIso(iso);
+                  const realCell = escDoDia?.real?.[e.id]?.[iso];
+                  const previstaCell = escDoDia?.prevista?.[e.id]?.[iso];
                   const override = versao === "real"
                     ? (realCell ?? previstaCell)
                     : previstaCell;
