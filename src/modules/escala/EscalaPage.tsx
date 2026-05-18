@@ -187,6 +187,35 @@ export function EscalaPage() {
 
   const dias = daysInMonth(ano, mes);
 
+  // ─── Regras temporais do lifecycle ──────────────────────────────────────
+  // Mês FUTURO: prevista editável livre. Praticada bloqueada (prevista aberta).
+  // Mês ATUAL/PASSADO: prevista NÃO editável (só pode ser fechada). Master
+  //   bypassa esse bloqueio. Praticada idem (depende de prevista fechada).
+  const isMesFuturo = useMemo(() => {
+    const hoje = new Date();
+    const refAtual = hoje.getFullYear() * 12 + hoje.getMonth();
+    const refMes   = ano * 12 + (mes - 1);
+    return refMes > refAtual;
+  }, [ano, mes]);
+
+  // Praticada tem edição MANUAL (diferente da prevista célula-a-célula)?
+  // Usado pra bloquear reabertura da prevista quando praticada "começou a viver"
+  // por conta própria — significa que praticada não é mais espelho da prevista,
+  // então reabrir e mexer na prevista perde sentido.
+  const praticadaTemEdicaoManual = useMemo(() => {
+    if (!escala) return false;
+    const real = escala.real || {};
+    const prev = escala.prevista || {};
+    for (const empId of Object.keys(real)) {
+      const cellsR = real[empId] || {};
+      const cellsP = prev[empId] || {};
+      for (const date of Object.keys(cellsR)) {
+        if (cellsR[date] !== cellsP[date]) return true;
+      }
+    }
+    return false;
+  }, [escala]);
+
   async function setStatusCelula(
     empregadoId: string,
     ymdDate: string,
@@ -194,6 +223,22 @@ export function EscalaPage() {
     unidadeId?: string | null,
   ): Promise<ValidacaoEscalaIssue[]> {
     if (!rid) return [];
+    const isMaster = !!me?.isMaster;
+
+    // ── BLOQUEIOS DO LIFECYCLE ──
+    // Praticada só edita após prevista fechada
+    if (versao === "real" && !escala?.previstaFechadaEm) {
+      alert("🔒 Pra editar a Praticada, primeiro feche a Prevista do mês.");
+      return [];
+    }
+    // Prevista só edita em mês FUTURO (a não ser que seja master)
+    if (versao === "prevista" && !isMesFuturo && !isMaster && !escala?.previstaFechadaEm) {
+      alert(
+        "⏰ O mês já começou — a Prevista não pode mais ser editada.\n\n" +
+        "Pra ajustar o que está acontecendo, clique em '🔒 Fechar prevista' e edite a Praticada."
+      );
+      return [];
+    }
 
     // ── VALIDAÇÃO CLT ──
     // Antes de aplicar, simula o estado novo e checa DSR.
@@ -242,19 +287,8 @@ export function EscalaPage() {
     return [];
   }
 
-  // Copia o que tem na prevista pra real (útil pra começar o mês a partir do plano)
-  async function copiarPrevistaParaReal() {
-    if (!rid || !escala?.prevista) return;
-    if (!confirm("Copiar a Prevista pra Praticada? (sobrescreve o que estiver lá)")) return;
-    await setDoc(doc(db, "escalas", escalaId), {
-      id: escalaId,
-      restaurantId: rid,
-      ano, mes,
-      real: { ...escala.prevista },
-      updatedAt: new Date().toISOString(),
-    }, { merge: true });
-    setVersao("real");
-  }
+  // `copiarPrevistaParaReal` removida — agora cópia é automática no 1º
+  // fechamento da prevista.
 
   // ── Fechar prevista do mês ─────────────────────────────────────────────────
   // 1. Materializa o derivado do horário cadastrado nas células ainda vazias
@@ -285,13 +319,17 @@ export function EscalaPage() {
       novaPrevista[e.id] = cellsFinal;
     }
     const now = new Date().toISOString();
+    // PRIMEIRO fechamento: copia a prevista pra praticada (espelho inicial).
+    // Re-fechamentos (após reabrir+ajustar): NÃO sobrescreve a praticada
+    // (preserva edições). Detecta "primeiro fechamento" por previstaReabertaEm
+    // ainda não existir — ou seja, nunca foi reaberta antes.
+    const isPrimeiroFechamento = !escala?.previstaReabertaEm;
     await setDoc(doc(db, "escalas", escalaId), {
       id: escalaId,
       restaurantId: rid,
       ano, mes,
       prevista: novaPrevista,
-      // Auto-popula a praticada com o snapshot da prevista (se vazia)
-      ...(!escala?.real || Object.keys(escala.real).length === 0 ? { real: novaPrevista } : {}),
+      ...(isPrimeiroFechamento ? { real: novaPrevista } : {}),
       previstaFechadaEm: now,
       previstaFechadaPor: me.id,
       previstaFechadaPorNome: me.nome,
@@ -304,7 +342,24 @@ export function EscalaPage() {
   async function reabrirPrevista() {
     if (!rid || !me || !escala) return;
     const vtPagoLocal = !!escala.vtPagoEm;
-    if (vtPagoLocal && !me.isMaster) {
+    const isMaster = !!me.isMaster;
+    // Bloqueio 1: Praticada já tem edição manual → reabrir prevista perde sentido
+    // (a praticada não é mais espelho da prevista). Master pode forçar com aviso.
+    if (praticadaTemEdicaoManual && !isMaster) {
+      alert(
+        "🔒 A Praticada já tem edições manuais — ela não é mais espelho da Prevista.\n\n" +
+        "Reabrir a Prevista agora não faz sentido. Pra continuar, ajuste diretamente a Praticada."
+      );
+      return;
+    }
+    if (praticadaTemEdicaoManual && isMaster) {
+      if (!confirm(
+        "⚠ A Praticada já tem edições manuais.\n\n" +
+        "Reabrir a Prevista mesmo assim? A Praticada NÃO será zerada — vai continuar como está."
+      )) return;
+    }
+    // Bloqueio 2: VT pago → só master pode reabrir (já existia)
+    if (vtPagoLocal && !isMaster) {
       alert("VT já foi lançado pra esse mês. Só o master pode reabrir a prevista (e isso CANCELA o lote VT).");
       return;
     }
@@ -372,8 +427,16 @@ export function EscalaPage() {
   // - Mês fechado → nada editável
   // - Prevista após FECHADA (snapshot) → trava (admin/master só via "Reabrir prevista")
   // - Praticada até o fechamento → editável
-  const podeEditar = podeConfig && !fechada && !(versao === "prevista" && previstaFechada);
-  const realVazia = !escala?.real || Object.keys(escala.real).length === 0;
+  // Pode editar a versão atualmente selecionada?
+  //   - Mês fechado → nada editável
+  //   - Prevista após FECHADA → trava (precisa reabrir)
+  //   - Prevista em mês ATUAL ou PASSADO → trava (não-master); master bypassa
+  //   - Praticada com prevista AINDA aberta → trava (precisa fechar prevista primeiro)
+  const podeEditar = podeConfig
+    && !fechada
+    && !(versao === "prevista" && previstaFechada)
+    && !(versao === "prevista" && !isMesFuturo && !me?.isMaster && !previstaFechada)
+    && !(versao === "real" && !previstaFechada);
 
   return (
     <div>
@@ -471,11 +534,8 @@ export function EscalaPage() {
                 ↔️ Inversão de domingo
               </Button>
             )}
-            {versao === "real" && realVazia && podeConfig && !fechada && (
-              <Button variant="secondary" size="sm" onClick={copiarPrevistaParaReal}>
-                📋 Copiar Prevista → Praticada
-              </Button>
-            )}
+            {/* "Copiar Prevista → Praticada" removido — agora é automático
+                no 1º fechamento da prevista (lifecycle unificado). */}
             {/* PREVISTA: Fechar / Reabrir prevista — só quando versao === "prevista" */}
             {versao === "prevista" && !previstaFechada && !fechada && podeConfig && (
               <Button size="sm" onClick={fecharPrevista}>
@@ -509,7 +569,7 @@ export function EscalaPage() {
 
       {/* Banner status — info, só desktop (mobile usa o título da versão) */}
       <div className="hidden md:block">
-        <BannerStatus versao={versao} previstaFechada={previstaFechada} vtPago={vtPago} fechada={fechada} />
+        <BannerStatus versao={versao} previstaFechada={previstaFechada} vtPago={vtPago} fechada={fechada} isMesFuturo={isMesFuturo} />
       </div>
 
       {/* Hint de atalhos de teclado — desktop only (sem teclado no mobile) */}
@@ -636,8 +696,8 @@ export function EscalaPage() {
 // Substitui o BannerStatus enxuto por um "explicador" didático sempre visível,
 // que ensina o conceito enquanto o user usa.
 function BannerStatus({
-  versao, previstaFechada, vtPago, fechada,
-}: { versao: "prevista" | "real"; previstaFechada: boolean; vtPago: boolean; fechada: boolean }) {
+  versao, previstaFechada, vtPago, fechada, isMesFuturo,
+}: { versao: "prevista" | "real"; previstaFechada: boolean; vtPago: boolean; fechada: boolean; isMesFuturo: boolean }) {
 
   // ── PREVISTA ───────────────────────────────────────────────────────────
   if (versao === "prevista") {
@@ -682,6 +742,21 @@ function BannerStatus({
         </PainelExplicativo>
       );
     }
+    if (!isMesFuturo) {
+      return (
+        <PainelExplicativo cor="amber" icone="⏰" titulo="Escala Prevista — mês já começou">
+          <p>
+            <strong>O mês atual já está em curso</strong> — a Prevista não pode mais ser editada
+            (não-master). Pra registrar o que está acontecendo, clique em <strong>🔒 Fechar prevista</strong>
+            no topo. A partir daí, todos os ajustes vão pra Praticada.
+          </p>
+          <p>
+            Ao fechar, o sistema materializa o derivado do horário cadastrado nas células ainda
+            vazias e libera o lançamento do VT.
+          </p>
+        </PainelExplicativo>
+      );
+    }
     return (
       <PainelExplicativo cor="blue" icone="📋" titulo="Escala Prevista — planejamento do mês">
         <p>
@@ -711,15 +786,15 @@ function BannerStatus({
   }
   if (!previstaFechada) {
     return (
-      <PainelExplicativo cor="gray" icone="✅" titulo="Escala Praticada — registro de execução">
+      <PainelExplicativo cor="gray" icone="🔒" titulo="Escala Praticada — bloqueada (Prevista aberta)">
         <p>
-          É onde você marca o que <strong>de fato</strong> acontece no dia-a-dia: faltas,
-          atestados, trocas de folga, freelas cobrindo buraco, hora extra.
+          A Praticada <strong>espelha a Prevista</strong> até ela ser fechada. Nada do que está
+          aqui é editável — pra mexer, primeiro feche a Prevista (botão <strong>🔒 Fechar prevista</strong>
+          no topo).
         </p>
         <p>
-          A Prevista do mês ainda não foi fechada. Quando você fechar a Prevista, a Praticada
-          nasce como cópia dela e vira o foco dos ajustes do mês. Até lá você pode até mexer
-          aqui, mas é mais natural ajustar a Prevista primeiro.
+          Depois que a Prevista for fechada, a Praticada vira cópia exata dela e se torna o foco
+          dos ajustes do dia-a-dia (faltas, atestados, trocas, hora extra).
         </p>
       </PainelExplicativo>
     );
@@ -960,7 +1035,11 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
-                  const override = escala?.[versao]?.[e.id]?.[d];
+                  // Quando prevista ainda não foi fechada, a Praticada ESPELHA
+                  // a Prevista (não tem vida própria ainda).
+                  const fonteVersao: "prevista" | "real" =
+                    versao === "real" && !escala?.previstaFechadaEm ? "prevista" : versao;
+                  const override = escala?.[fonteVersao]?.[e.id]?.[d];
                   const derived = derivados[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const cellKey = `${e.id}|${d}`;
@@ -1536,7 +1615,10 @@ function GradeMobile({
                   <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
                 </div>
                 {dates.map(({ iso, inMes }) => {
-                  const override = escala?.[versao]?.[e.id]?.[iso];
+                  // Praticada espelha prevista quando esta ainda não foi fechada
+                  const fonteVersao: "prevista" | "real" =
+                    versao === "real" && !escala?.previstaFechadaEm ? "prevista" : versao;
+                  const override = escala?.[fonteVersao]?.[e.id]?.[iso];
                   const derived = derivados[e.id]?.[iso];
                   const status = override ?? derived?.status;
                   const isFromOverride = !!override;
