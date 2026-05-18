@@ -1,6 +1,5 @@
 import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLote, VTLoteLinha, VTLoteStatus } from "../../core/types";
 import { daysInMonth, nomeMes, pad2, shiftMonth } from "../../core/utils/date";
-import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 
 // Empregado estava ativo em ALGUM dia do mês? (mesma regra usada em /escala)
 // Demitido antes/no 1º dia → demissao <= inicio → fora. Admitido depois do
@@ -16,11 +15,14 @@ function ativoEmAlgumDiaDoMes(emp: Empregado, ano: number, mes: number): boolean
   return false;
 }
 
-// Status que conta como dia de trabalho pra cálculo de VT (base do mês corrente)
+// Status que conta como dia de trabalho pra cálculo de VT.
+// Regra: empregado USA o transporte se de fato trabalhou no dia. Freela NÃO
+// recebe VT (relação não é CLT, é por dia trabalhado). Comp também não (não
+// veio no dia, tá compensando trabalho anterior).
 const STATUS_TRABALHADO: Record<ScheduleStatus, boolean> = {
   trabalho:  true,
-  comp_trab: true,
-  freela:    true,
+  comp_trab: true,   // veio trabalhar pra compensar
+  freela:    false,
   folga:     false,
   comp:      false,
   ferias:    false,
@@ -69,15 +71,17 @@ export function contarDiasTrabalhados(
   return n;
 }
 
-// Conta dias de trabalho usando o snapshot da escala prevista FECHADA.
-// Quando a prevista NÃO está fechada (em planejamento), preview pode mostrar
-// uma estimativa derivada do horário cadastrado — mas o LOTE de pagamento só
-// pode ser criado depois que a prevista for fechada (snapshot oficial).
+// Conta dias de trabalho usando a ESCALA como ÚNICA fonte.
+// VT e Gorjetas seguem a mesma regra: o que conta é o que está na escala
+// (prevista ou real). Horário cadastrado é insumo só do módulo Escala —
+// quando o user clica "Fechar prevista", o sistema materializa o derivado
+// nas células ainda vazias. Daí em diante a escala é a verdade.
 //
 // Estados retornados em `fonte`:
 //   - "snapshot": escala prevista fechada — número definitivo
-//   - "preview":  escala em planejamento — estimativa (escala+derivado)
-//   - "vazio":    nem escala nem horário cadastrado — 0
+//   - "preview":  escala em planejamento (só células explícitas, sem fallback
+//                 derivado — pra preview ser igual ao final)
+//   - "vazio":    nada na escala → 0 dias
 export type DiasContados = {
   dias: number;
   fonte: "snapshot" | "preview" | "vazio";
@@ -86,44 +90,20 @@ export type DiasContados = {
 export function contarDiasTrabalhadosSmart(
   empregado: Empregado,
   escala: EscalaMes | null,
-  ano: number,
-  mes: number,
+  _ano: number,
+  _mes: number,
   versao: "prevista" | "real" = "prevista",
 ): DiasContados {
   const escalaEmp = escala?.[versao]?.[empregado.id] || {};
   const temEscala = Object.keys(escalaEmp).length > 0;
   const previstaFechada = !!escala?.previstaFechadaEm;
 
-  // Se a prevista do empregado já tem dados E a prevista está fechada,
-  // é snapshot oficial — usa só ela.
-  if (versao === "prevista" && previstaFechada && temEscala) {
-    let n = 0;
-    for (const k of Object.keys(escalaEmp)) {
-      if (STATUS_TRABALHADO[escalaEmp[k]]) n++;
-    }
-    return { dias: n, fonte: "snapshot" };
-  }
-
-  // Caso contrário: preview combinando escala (overrides) + derivado (base)
-  const derivado = derivedScheduleForEmpregado(empregado, ano, mes);
-  const temHorario = Object.keys(derivado).length > 0;
-
-  if (!temEscala && !temHorario) {
-    return { dias: 0, fonte: "vazio" };
-  }
-
-  const todasDatas = new Set<string>([...Object.keys(derivado), ...Object.keys(escalaEmp)]);
+  if (!temEscala) return { dias: 0, fonte: "vazio" };
   let n = 0;
-  for (const date of todasDatas) {
-    const stEscala = escalaEmp[date];
-    if (stEscala !== undefined) {
-      if (STATUS_TRABALHADO[stEscala]) n++;
-    } else {
-      const d = derivado[date];
-      if (d && d.status === "trabalho") n++;
-    }
+  for (const k of Object.keys(escalaEmp)) {
+    if (STATUS_TRABALHADO[escalaEmp[k]]) n++;
   }
-  return { dias: n, fonte: "preview" };
+  return { dias: n, fonte: versao === "prevista" && previstaFechada ? "snapshot" : "preview" };
 }
 
 export type VTLinhaCalc = {
@@ -269,15 +249,13 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
   return shiftMonth(loteAno, loteMes, -2);
 }
 
-// Conta dias de trabalho num RANGE específico do mês (pra pagamento parcial).
-// Usa a mesma lógica do `contarDiasTrabalhadosSmart` — snapshot quando prevista
-// fechada+populada, preview combinando escala+derivado caso contrário — mas
-// limita aos dias entre `inicio` e `fim` (inclusivos, YYYY-MM-DD).
+// Conta dias de trabalho num RANGE específico (pra pagamento parcial).
+// Mesma regra: só lê da escala, sem fallback derivado.
 export function contarDiasTrabalhadosNoRange(
   empregado: Empregado,
   escala: EscalaMes | null,
-  ano: number,
-  mes: number,
+  _ano: number,
+  _mes: number,
   inicio: string,
   fim: string,
   versao: "prevista" | "real" = "prevista",
@@ -286,34 +264,13 @@ export function contarDiasTrabalhadosNoRange(
   const temEscala = Object.keys(escalaEmp).length > 0;
   const previstaFechada = !!escala?.previstaFechadaEm;
 
-  // Helper: filtra um mapa de cells pelo range
+  if (!temEscala) return { dias: 0, fonte: "vazio" };
   const noRange = (date: string) => date >= inicio && date <= fim;
-
-  if (versao === "prevista" && previstaFechada && temEscala) {
-    let n = 0;
-    for (const k of Object.keys(escalaEmp)) {
-      if (noRange(k) && STATUS_TRABALHADO[escalaEmp[k]]) n++;
-    }
-    return { dias: n, fonte: "snapshot" };
-  }
-
-  const derivado = derivedScheduleForEmpregado(empregado, ano, mes);
-  if (!temEscala && Object.keys(derivado).length === 0) {
-    return { dias: 0, fonte: "vazio" };
-  }
-  const todasDatas = new Set<string>([...Object.keys(derivado), ...Object.keys(escalaEmp)]);
   let n = 0;
-  for (const date of todasDatas) {
-    if (!noRange(date)) continue;
-    const stEscala = escalaEmp[date];
-    if (stEscala !== undefined) {
-      if (STATUS_TRABALHADO[stEscala]) n++;
-    } else {
-      const d = derivado[date];
-      if (d && d.status === "trabalho") n++;
-    }
+  for (const k of Object.keys(escalaEmp)) {
+    if (noRange(k) && STATUS_TRABALHADO[escalaEmp[k]]) n++;
   }
-  return { dias: n, fonte: "preview" };
+  return { dias: n, fonte: versao === "prevista" && previstaFechada ? "snapshot" : "preview" };
 }
 
 // ─── OVERLAP DE LOTES — evita pagar duas vezes o mesmo período ──────────────

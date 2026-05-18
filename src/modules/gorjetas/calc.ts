@@ -10,13 +10,19 @@ import { computeAreaPercentages, countEmpregadosRegistradosNaArea } from "./spli
 // Re-export pra retrocompatibilidade (módulos antigos importam daqui)
 export { empregadoAtivoEm };
 
-// Status que faz o empregado RECEBER gorjeta naquele dia (se cargo tem pontos)
+// Status que faz o empregado RECEBER gorjeta naquele dia (se cargo tem pontos).
+// Regra alinhada com VT — única fonte é a ESCALA (sem fallback do horário
+// cadastrado). Diferenças intencionais entre VT e Gorjetas:
+//   - "comp" (folgou compensando outro dia trabalhado) → RECEBE gorjeta porque
+//     a folga é "paga" pelo trabalho que já fez antes — em VT não conta
+//     (não usou transporte), mas em gorjeta sim.
+//   - "freela" → NÃO recebe nem em VT nem em Gorjeta (relação não-CLT).
 const STATUS_RECEBE: Record<ScheduleStatus, boolean> = {
   trabalho:  true,
-  freela:    true,
   comp_trab: true,   // trabalhou compensando outro dia
+  comp:      true,   // folgou compensando — recebe na divisão
+  freela:    false,
   folga:     false,
-  comp:      false,
   ferias:    false,
   falta_j:   false,
   falta_i:   false,
@@ -67,21 +73,20 @@ export function calcularDivisaoDia(
   );
   const isMultiUnidades = !!gorjetaUnidadeId;
 
-  // Pra cada empregado, resolve status do dia com fallback chain:
-  //   1. override em escala.real (o que aconteceu)
-  //   2. override em escala.prevista (planejamento — usado quando real ainda vazia)
-  //   3. derivado do horário cadastrado (workSchedule)
   const [yStr, mStr] = date.split("-");
   const yNum = parseInt(yStr, 10);
   const mNum = parseInt(mStr, 10);
 
+  // Pra cada empregado, resolve status do dia.
+  // Fonte ÚNICA: a escala. Sem fallback pro horário cadastrado.
+  // Ordem: real (o que aconteceu) tem precedência sobre prevista (planejamento).
+  // Se a escala não tem entry pro dia → undefined → empregado NÃO recebe.
   function resolverStatus(emp: Empregado): ScheduleStatus | undefined {
     const real = escala?.real?.[emp.id]?.[date];
     if (real) return real;
     const prevista = escala?.prevista?.[emp.id]?.[date];
     if (prevista) return prevista;
-    const derived = derivedScheduleForEmpregado(emp, yNum, mNum);
-    return derived[date]?.status;
+    return undefined;
   }
 
   // Resolve unidade onde o empregado trabalhou no dia.
