@@ -99,8 +99,9 @@ const RAW: FormField[] = [
   }),
 
   // ─── Transporte ───
+  f("vt_nao_utiliza",  "Não utilizo transporte público (vou a pé, de carro, moto, bicicleta etc — abro mão do VT)", "boolean", G_TRANS, false),
   f("transporte",      "Vale-transporte",     "lista_transporte", G_TRANS, false, {
-    ajuda: "Adicione cada trecho (ida/volta separadas se necessário).",
+    ajuda: "Adicione cada trecho (ida/volta separadas se necessário). Pule este bloco se você marcou que não utiliza transporte público acima.",
   }),
 ];
 

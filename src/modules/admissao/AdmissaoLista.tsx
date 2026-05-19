@@ -134,7 +134,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       await marcarLinkEnviado(adm.id, prazoDias);
       admissao = { ...adm, enviadoEm: new Date().toISOString(), expiraEm: new Date(Date.now() + prazoDias * 86400000).toISOString() };
     }
-    const url = urlPublicaAdmissao(admissao.token);
+    const url = urlPublicaAdmissao(admissao.token, activeRestaurant.subdomain);
     const msg = montarMensagemEnvioLink(
       admissao.candidato.nome,
       activeRestaurant.nome,
@@ -155,7 +155,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     const prazoDias = getPrazoDias(activeRestaurant);
     const { token } = await reenviarAdmissao(adm, prazoDias, me);
     // Abre wa.me com o novo link
-    const url = urlPublicaAdmissao(token);
+    const url = urlPublicaAdmissao(token, activeRestaurant.subdomain);
     const msg = montarMensagemEnvioLink(
       adm.candidato.nome,
       activeRestaurant.nome,
@@ -167,7 +167,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   }
 
   async function handleCopiarLink(adm: Admissao) {
-    const url = urlPublicaAdmissao(adm.token);
+    const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
     try {
       await navigator.clipboard.writeText(url);
       alert("Link copiado pra área de transferência.");

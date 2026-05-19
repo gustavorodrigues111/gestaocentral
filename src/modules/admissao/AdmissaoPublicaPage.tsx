@@ -437,6 +437,9 @@ export function AdmissaoPublicaPage() {
     const n = typeof v === "number" ? v : parseInt(String(v || ""), 10);
     return Number.isFinite(n) && n > 0 ? n : 0;
   })();
+  // Candidato pode marcar que não usa transporte público — esconde a lista
+  // de transportes e ignora obrigatoriedade.
+  const vtNaoUtiliza = dados.vt_nao_utiliza === true;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -484,7 +487,7 @@ export function AdmissaoPublicaPage() {
                 bloqueado={isConfirmado(f.id)}
                 value={dados[f.id]}
                 onChange={(v) => updateCampo(f.id, v)}
-                ctx={{ numFilhosDeclarados }}
+                ctx={{ numFilhosDeclarados, vtNaoUtiliza }}
               />
             ))}
           </section>
@@ -539,7 +542,10 @@ function agruparPorGrupo(schema: FormField[]): { grupo: string; campos: FormFiel
   return Array.from(map.entries()).map(([grupo, campos]) => ({ grupo, campos }));
 }
 
-type RenderCtx = { numFilhosDeclarados?: number };
+type RenderCtx = {
+  numFilhosDeclarados?: number;
+  vtNaoUtiliza?: boolean;
+};
 
 function CampoRender({
   field,
@@ -619,6 +625,14 @@ function CampoRender({
     );
   }
   if (field.tipo === "lista_transporte") {
+    if (ctx?.vtNaoUtiliza) {
+      return (
+        <div className="text-xs text-gray-500 italic bg-gray-50 border border-gray-200 rounded-lg p-2">
+          ✓ Você marcou que não utiliza transporte público — bloco do
+          vale-transporte não precisa ser preenchido.
+        </div>
+      );
+    }
     return <ListaTransporteField field={field} value={value} onChange={onChange} />;
   }
   // text/email/telefone/cpf/data/numero — todos input padrão

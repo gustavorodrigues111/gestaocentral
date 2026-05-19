@@ -23,9 +23,16 @@ function gerarToken(): string {
   return `tk_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
 }
 
-// URL pública do formulário. Origem é capturada em runtime — funciona em
-// admin.planejamento.app, em previews da Vercel, em localhost.
-export function urlPublicaAdmissao(token: string): string {
+// URL pública do formulário. Prioridade:
+//   1. subdomain do restaurante → `https://<sub>.planejamento.app/admissao/:token`
+//   2. fallback: origin atual (admin/preview/localhost)
+//
+// Usar o subdomínio do restaurante reforça pro candidato que o link é da
+// empresa específica e não da plataforma genérica.
+export function urlPublicaAdmissao(token: string, subdomain?: string): string {
+  if (subdomain && subdomain.trim()) {
+    return `https://${subdomain.trim()}.planejamento.app/admissao/${token}`;
+  }
   const origin = typeof window !== "undefined" ? window.location.origin : "https://admin.planejamento.app";
   return `${origin}/admissao/${token}`;
 }
