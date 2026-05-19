@@ -197,6 +197,25 @@ export function AdmissaoPublicaPage() {
       alert(`Preencha os campos obrigatórios:\n• ${faltando.slice(0, 8).join("\n• ")}${faltando.length > 8 ? `\n… +${faltando.length - 8}` : ""}`);
       return;
     }
+    // Cross-field: se declarou filhos, exige pelo menos N dependentes COM
+    // nome+nascimento+parentesco preenchidos (menores obrigatórios por lei).
+    const nf = (() => {
+      const v = dados.num_filhos;
+      const n = typeof v === "number" ? v : parseInt(String(v || ""), 10);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    })();
+    if (nf > 0) {
+      const deps = (Array.isArray(dados.dependentes) ? dados.dependentes : []) as Dependente[];
+      const validos = deps.filter((d) => d?.nome?.trim() && d?.nascimento && d?.parentesco?.trim());
+      if (validos.length < nf) {
+        alert(
+          `Você declarou ${nf} filho(s) mas só preencheu ${validos.length} dependente(s) com nome, data de nascimento e parentesco completos.\n\n` +
+          `Por lei, filhos menores precisam ser declarados na admissão. ` +
+          `Adicione os dados de todos os filhos no bloco "Dependentes".`,
+        );
+        return;
+      }
+    }
     setEnviando(true);
     try {
       const now = new Date().toISOString();
@@ -349,6 +368,14 @@ export function AdmissaoPublicaPage() {
   // ─── Form completo (já authenticated) ────────────────────────────────────
   const gruposOrdenados = agruparPorGrupo(admissao.schemaUsado);
 
+  // Cross-field context: número de filhos declarado afeta validação dos
+  // dependentes (lei: menores obrigatórios na admissão).
+  const numFilhosDeclarados = (() => {
+    const v = dados.num_filhos;
+    const n = typeof v === "number" ? v : parseInt(String(v || ""), 10);
+    return Number.isFinite(n) && n > 0 ? n : 0;
+  })();
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header com timer */}
@@ -395,6 +422,7 @@ export function AdmissaoPublicaPage() {
                 bloqueado={isConfirmado(f.id)}
                 value={dados[f.id]}
                 onChange={(v) => updateCampo(f.id, v)}
+                ctx={{ numFilhosDeclarados }}
               />
             ))}
           </section>
@@ -436,16 +464,20 @@ function agruparPorGrupo(schema: FormField[]): { grupo: string; campos: FormFiel
   return Array.from(map.entries()).map(([grupo, campos]) => ({ grupo, campos }));
 }
 
+type RenderCtx = { numFilhosDeclarados?: number };
+
 function CampoRender({
   field,
   value,
   onChange,
   bloqueado = false,
+  ctx,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
   bloqueado?: boolean;
+  ctx?: RenderCtx;
 }) {
   // Campos bloqueados sempre mostram cadeado. Label com asterisco se obrigatório.
   const labelBase = field.obrigatorio ? `${field.label} *` : field.label;
@@ -502,7 +534,14 @@ function CampoRender({
     );
   }
   if (field.tipo === "lista_dependentes") {
-    return <ListaDependentesField field={field} value={value} onChange={onChange} />;
+    return (
+      <ListaDependentesField
+        field={field}
+        value={value}
+        onChange={onChange}
+        numFilhosDeclarados={ctx?.numFilhosDeclarados || 0}
+      />
+    );
   }
   if (field.tipo === "lista_transporte") {
     return <ListaTransporteField field={field} value={value} onChange={onChange} />;
@@ -534,10 +573,12 @@ function ListaDependentesField({
   field,
   value,
   onChange,
+  numFilhosDeclarados,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
+  numFilhosDeclarados: number;
 }) {
   const lista = (Array.isArray(value) ? value : []) as Dependente[];
   function add() {
@@ -550,10 +591,38 @@ function ListaDependentesField({
   function rm(i: number) {
     onChange(lista.filter((_, idx) => idx !== i));
   }
+
+  // Quando candidato declara filhos, vira obrigatório informar dados dos
+  // dependentes (menores são obrigatórios na admissão por lei).
+  const exigeObrigatorio = numFilhosDeclarados > 0;
+  const faltam = exigeObrigatorio ? Math.max(0, numFilhosDeclarados - lista.length) : 0;
+
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-semibold text-gray-600">{field.label}</label>
+      <label className="text-xs font-semibold text-gray-600">
+        {field.label}{exigeObrigatorio ? " *" : ""}
+      </label>
       {field.ajuda && <span className="text-[11px] text-gray-500">{field.ajuda}</span>}
+      {exigeObrigatorio && (
+        <div className={`rounded-lg p-2 text-[11px] ${
+          faltam > 0
+            ? "bg-amber-50 border border-amber-200 text-amber-800"
+            : "bg-emerald-50 border border-emerald-200 text-emerald-800"
+        }`}>
+          {faltam > 0 ? (
+            <>
+              ⚠ Você declarou <strong>{numFilhosDeclarados} filho(s)</strong> — adicione os dados de cada um.
+              {faltam === numFilhosDeclarados
+                ? " Nenhum cadastrado ainda."
+                : ` Faltam ${faltam}.`}
+              <br />
+              <span className="text-[10px] italic">Filhos menores são obrigatórios na admissão por lei.</span>
+            </>
+          ) : (
+            <>✓ {numFilhosDeclarados} filho(s) declarado(s) e {lista.length} dependente(s) informado(s). Confirme os dados.</>
+          )}
+        </div>
+      )}
       <div className="space-y-2">
         {lista.map((d, i) => (
           <div key={i} className="border border-gray-200 rounded-lg p-2 space-y-1.5 bg-gray-50/50">
