@@ -15,6 +15,12 @@ type Props = {
   empregados: Empregado[];
   pessoas: Pessoa[];
   podeOperar: boolean;
+  // Controle do modal "+ Novo turno" vindo do FreelasPage (botão fica no
+  // header da página, do lado de "+ Cadastrar freela", pra ficar acessível
+  // mesmo no mobile sem precisar rolar). Quando undefined, mostra o botão
+  // local como fallback.
+  showNovo?: boolean;
+  onCloseNovo?: () => void;
 };
 
 type FiltroData = "todos" | "futuros" | "hoje" | "passado";
@@ -35,10 +41,15 @@ const AREA_ICONE: Record<Area, string> = {
 //   ✅ FECHADO   (verde leve) — aguarda DP precificar
 export function LancamentoTab({
   restaurantId, shifts, empregados, pessoas, podeOperar,
+  showNovo: showNovoExt, onCloseNovo,
 }: Props) {
   const [filtroData, setFiltroData] = useState<FiltroData>("todos");
   const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
-  const [showNovo, setShowNovo] = useState(false);
+  const [showNovoLocal, setShowNovoLocal] = useState(false);
+  // Quando o caller (FreelasPage) controla o modal, usa o estado externo
+  const usaExterno = showNovoExt !== undefined;
+  const showNovo = usaExterno ? !!showNovoExt : showNovoLocal;
+  const fecharNovo = () => { if (usaExterno) onCloseNovo?.(); else setShowNovoLocal(false); };
 
   const hoje = todayYmd();
   const visiveis = useMemo(() => {
@@ -96,8 +107,8 @@ export function LancamentoTab({
           <span className="text-xs text-gray-500 dark:text-gray-400">
             {visiveis.length} turno(s)
           </span>
-          {podeOperar && (
-            <Button size="sm" onClick={() => setShowNovo(true)}>+ Novo turno</Button>
+          {podeOperar && !usaExterno && (
+            <Button size="sm" onClick={() => setShowNovoLocal(true)}>+ Novo turno</Button>
           )}
         </div>
       </div>
@@ -127,8 +138,8 @@ export function LancamentoTab({
           restaurantId={restaurantId}
           empregados={empregados}
           pessoas={pessoas}
-          onClose={() => setShowNovo(false)}
-          onSaved={() => setShowNovo(false)}
+          onClose={fecharNovo}
+          onSaved={fecharNovo}
         />
       )}
     </div>

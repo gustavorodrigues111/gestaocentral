@@ -50,6 +50,7 @@ export function FreelasPage() {
 
   const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
+  const [showNovoTurno, setShowNovoTurno] = useState(false);
 
   // Se a aba atual sumir (mudou permissão), pula pra primeira disponível
   useEffect(() => {
@@ -118,9 +119,14 @@ export function FreelasPage() {
             Cadastro, agendamento, lançamento e pagamento de freelas.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {podeOperar && tab === "lancamentos" && (
+            <Button onClick={() => setShowNovoTurno(true)}>
+              + Novo turno
+            </Button>
+          )}
           {podeOperar && (
-            <Button onClick={() => setShowCadastro(true)}>
+            <Button variant="secondary" onClick={() => setShowCadastro(true)}>
               + Cadastrar freela
             </Button>
           )}
@@ -169,6 +175,8 @@ export function FreelasPage() {
           empregados={empregados}
           pessoas={pessoas}
           podeOperar={podeOperar}
+          showNovo={showNovoTurno}
+          onCloseNovo={() => setShowNovoTurno(false)}
         />
       )}
       {tab === "fechamento" && podeDp && (
