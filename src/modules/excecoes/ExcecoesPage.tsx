@@ -18,6 +18,7 @@ import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type { Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
+import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import {
   generateExceptionsReport,
@@ -207,6 +208,8 @@ export function ExcecoesPage() {
     primeiros5SemSchedule?: string[];
     errosEndpoint?: unknown;
     sampleProbe?: unknown;
+    ajustesAplicados?: number;
+    sampleProbeAdj?: unknown;
   };
   const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
@@ -307,6 +310,35 @@ export function ExcecoesPage() {
           escalaPorEmpregado[empId] = perDate;
         }
       }
+
+      // Ajustes aprovados (FOLGA, ATESTADO, ABONO, FÉRIAS, etc) sobrescrevem
+      // dias da escala oficial pra "folga" — evita falsos positivos de "Falta
+      // sem ajuste" em dias em que o RH justificou ausência. Falta NÃO
+      // justificada é deixada como "trabalho" pra a regra continuar disparando.
+      try {
+        const [y1, m1, d1] = startDate.split("-").map(Number);
+        const [y2, m2, d2] = endDate.split("-").map(Number);
+        const startMs = Date.UTC(y1, m1 - 1, d1, 0, 0, 0, 0);
+        const endMs   = Date.UTC(y2, m2 - 1, d2, 23, 59, 59, 999);
+        const adjRes = await fetchSolidesAdjustments(startMs, endMs, shortCode);
+        // mapa empregadoId Planejamento → sid Sólides
+        const sidByCpfMap = new Map<string, number>();
+        for (const e of adjRes.employees) {
+          if (e.cpf) sidByCpfMap.set(e.cpf, e.id);
+        }
+        const sidByEmpId: Record<string, number> = {};
+        for (const emp of empregados) {
+          const c = onlyDigits(emp.cpf);
+          const sid = c ? sidByCpfMap.get(c) : undefined;
+          if (sid != null) sidByEmpId[emp.id] = sid;
+        }
+        aplicarAjustesNaEscala(adjRes.adjustments, sidByEmpId, escalaPorEmpregado);
+        debugInfo.ajustesAplicados = adjRes.count;
+        debugInfo.sampleProbeAdj = adjRes.sampleProbe;
+      } catch (e) {
+        console.warn("Sólides adjustments falhou:", e);
+      }
+
       // Atualiza debug — pega a escala FINAL (depois do merge) pro Allan
       const allanFinal = empregados.find((e) => e.nome.toLowerCase().includes("allan"));
       if (allanFinal && escalaPorEmpregado[allanFinal.id]) {
@@ -463,6 +495,12 @@ export function ExcecoesPage() {
                 )}
                 {escalaDebug.sampleProbe ? (
                   <div className="text-[10px] mt-1 text-amber-700">🔍 Amostra Sólides: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbe)}</pre></div>
+                ) : null}
+                {typeof escalaDebug.ajustesAplicados === "number" && (
+                  <div className="text-[10px] mt-1 text-emerald-700">🏷️ Ajustes aplicados: <strong>{escalaDebug.ajustesAplicados}</strong></div>
+                )}
+                {escalaDebug.sampleProbeAdj ? (
+                  <div className="text-[10px] mt-1 text-amber-700">🔍 Amostra Ajuste: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbeAdj)}</pre></div>
                 ) : null}
                 <div className="mt-1">🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong> · dateUsed=<strong>{escalaDebug.dateUsedAllan || "—"}</strong></div>
                 <div>📅 Escala final (após merge):</div>
