@@ -1321,27 +1321,58 @@ export type ExcecaoHistoricoEntry = {
   observacao?: string;
 };
 
-// Apontamento por empregado dentro da semana — o líder usa pra anotar coisas
-// como "já foi avisado pra ajustar", "prazo até sex", "só pra ciência (não
-// dá pra editar registro retroativo)". Pode ser auto-gerado a partir de uma
-// inconformidade detectada ou criado manualmente como anotação livre.
+// Apontamento de inconformidade pra o empregado — gerado quando o líder marca
+// o checkbox de uma inconformidade ou clica "Ciência" no relatório.
 //
-// `enviar` marca o item pra ser incluído na mensagem de WhatsApp pro empregado
-// (líder escolhe via checkbox quais são pra ação e quais são só pra log).
+// Status:
+//   - "pendente": marcado pra ser enviado, ainda não saiu o WhatsApp
+//   - "enviado":  já foi enviado pro empregado via WhatsApp (com enviadoEm)
+//   - "ciencia":  apontamento não-tratável (ex: intervalo a menos que já
+//                 passou) — fica registrado mas NÃO vai pro empregado
+//
+// Sempre é vinculado a uma inconformidade detectada (origem="inconformidade").
+// Anotações livres (notas nossas sobre o empregado) vivem em `notasInternas`,
+// não aqui — elas NÃO vão pro WhatsApp.
+export type ApontamentoStatus = "pendente" | "enviado" | "ciencia";
+
 export type ApontamentoFuncionario = {
   id: string;
   empregadoId: string;
   empregadoNome: string;
   cpf?: string;
   texto: string;
-  data?: string;         // YYYY-MM-DD do fato (opcional — pra apontamento livre pode não ter)
-  // Origem: a partir de uma inconformidade detectada (auto) ou anotação livre (manual)
-  origem: "inconformidade" | "manual";
+  data?: string;         // YYYY-MM-DD do fato
+  origem: "inconformidade" | "manual";  // "manual" legado; novos apontamentos sempre "inconformidade"
   ruleId?: string;       // id da regra original (quando origem === "inconformidade")
-  enviar: boolean;       // checkbox "enviar via WhatsApp"
-  enviadoEm?: string;    // ISO — preenchido quando o líder clica em "Enviar via WhatsApp"
-  criadoEm: string;      // ISO
-  criadoPor: string;     // pessoaId
+  status: ApontamentoStatus;
+  enviadoEm?: string;    // ISO — preenchido quando vai status pra "enviado"
+  cienciaEm?: string;    // ISO — preenchido quando vai status pra "ciencia"
+  cienciaPor?: string;
+  cienciaPorNome?: string;
+  /** @deprecated usado por docs antigos — sempre derivar de `status` daqui pra frente */
+  enviar?: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome: string;
+};
+
+// Nota interna sobre o empregado — INVISÍVEL pro empregado. São observações
+// nossas tipo "já avisei pessoalmente, prazo até sex", "veio falar comigo,
+// vai justificar via atestado". Pode ser:
+//   - manual: digitada pelo líder via "+ nota interna"
+//   - envio_whatsapp: auto-gerada quando o líder dispara o WhatsApp com a
+//                     lista de apontamentos (registra quando + o que foi
+//                     avisado, pra histórico interno)
+export type NotaInterna = {
+  id: string;
+  empregadoId: string;
+  empregadoNome: string;
+  texto: string;
+  origem: "manual" | "envio_whatsapp";
+  // Quando origem === "envio_whatsapp", guarda os IDs dos apontamentos avisados
+  apontamentoIds?: string[];
+  criadoEm: string;
+  criadoPor: string;
   criadoPorNome: string;
 };
 
@@ -1353,5 +1384,6 @@ export type ExcecaoStatusSemana = {
   status: ExcecaoStatusValor;
   historico: ExcecaoHistoricoEntry[];
   apontamentos?: ApontamentoFuncionario[];
+  notasInternas?: NotaInterna[];
   updatedAt: string;
 };

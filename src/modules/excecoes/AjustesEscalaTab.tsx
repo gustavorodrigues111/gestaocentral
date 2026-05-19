@@ -127,9 +127,21 @@ export function AjustesEscalaTab({ rid }: Props) {
     [semanas],
   );
 
+  // Alterna entre "pendente" (vai pro WhatsApp) e remoção total. Itens já
+  // enviados/ciência aparecem read-only — a UI mostra status badge.
   async function toggleEnviar(s: ExcecaoStatusSemana, ap: ApontamentoFuncionario) {
     try {
-      await atualizarApontamento(rid, s.weekStart, s.weekEnd, ap.id, { enviar: !ap.enviar });
+      if (ap.status === "pendente") {
+        // Desmarcar pendente → remove
+        await removerApontamento(rid, s.weekStart, s.weekEnd, ap.id);
+      } else if (ap.status === "enviado" || ap.status === "ciencia") {
+        // Não-pendente: não permite toggle (read-only)
+        alert("Item já finalizado. Use a aba Inconformidades pra reabrir.");
+        return;
+      } else {
+        // legado sem status: força pendente
+        await atualizarApontamento(rid, s.weekStart, s.weekEnd, ap.id, { status: "pendente" });
+      }
       await recarregar();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
@@ -147,9 +159,9 @@ export function AjustesEscalaTab({ rid }: Props) {
   }
 
   async function enviarWhats(s: ExcecaoStatusSemana, empregadoId: string, aps: ApontamentoFuncionario[]) {
-    const enviaveis = aps.filter((a) => a.enviar);
+    const enviaveis = aps.filter((a) => a.status === "pendente");
     if (enviaveis.length === 0) {
-      alert("Marque pelo menos 1 apontamento como 'enviar'.");
+      alert("Não há apontamentos pendentes pra enviar (todos já foram enviados ou marcados como ciência).");
       return;
     }
     const whatsapp = whatsByEmpId.get(empregadoId);
@@ -301,7 +313,7 @@ function SemanaBlock({
         {grupos.map((g) => {
           const whatsapp = whatsByEmpId.get(g.empregadoId);
           const semWhats = !whatsapp;
-          const enviaveisCount = g.lista.filter((a) => a.enviar).length;
+          const pendentesCount = g.lista.filter((a) => a.status === "pendente").length;
           return (
             <div key={g.empregadoId} className="px-4 py-3">
               <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
@@ -321,35 +333,39 @@ function SemanaBlock({
                 </div>
                 <Button
                   size="sm"
-                  variant={enviaveisCount > 0 && !semWhats ? "primary" : "secondary"}
-                  disabled={enviaveisCount === 0 || semWhats || !restNome}
+                  variant={pendentesCount > 0 && !semWhats ? "primary" : "secondary"}
+                  disabled={pendentesCount === 0 || semWhats || !restNome}
                   onClick={() => onEnviarWhats(g.empregadoId, g.lista)}
                   title={
                     semWhats ? "Sem WhatsApp cadastrado" :
-                    enviaveisCount === 0 ? "Marque ao menos 1 item pra enviar" :
-                    `Enviar ${enviaveisCount} item(ns) via WhatsApp`
+                    pendentesCount === 0 ? "Nenhum pendente — todos enviados/ciência" :
+                    `Enviar ${pendentesCount} pendente(s) via WhatsApp`
                   }
                 >
-                  💬 Enviar {enviaveisCount > 0 && `(${enviaveisCount})`}
+                  💬 Enviar {pendentesCount > 0 && `(${pendentesCount})`}
                 </Button>
               </div>
 
               <ol className="space-y-1.5">
-                {g.lista.map((a, i) => (
+                {g.lista.map((a, i) => {
+                  const pendente = a.status === "pendente";
+                  const enviado = a.status === "enviado";
+                  const ciencia = a.status === "ciencia";
+                  return (
                   <li key={a.id} className="flex items-start gap-2 text-sm">
                     <input
                       type="checkbox"
-                      checked={a.enviar}
+                      checked={pendente}
                       onChange={() => onToggleEnviar(a)}
                       className="mt-1 accent-indigo-600"
-                      title={a.enviar ? "Não enviar via WhatsApp" : "Incluir no envio"}
-                      disabled={!podeEditar}
+                      title={pendente ? "Desmarcar (remove)" : enviado ? "Já enviado" : ciencia ? "Já marcado como ciência" : "Marcar"}
+                      disabled={!podeEditar || enviado || ciencia}
                     />
                     <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5 text-[11px]">
                       {i + 1}.
                     </span>
                     <div className="flex-1 min-w-0">
-                      <div className={`text-gray-800 dark:text-gray-200 ${a.enviar ? "" : "opacity-60"}`}>
+                      <div className={`text-gray-800 dark:text-gray-200 ${pendente ? "" : "opacity-60"}`}>
                         {a.texto}
                         {a.data && (
                           <span className="text-[11px] text-gray-500 dark:text-gray-400 ml-1">
@@ -362,9 +378,14 @@ function SemanaBlock({
                           {a.origem === "inconformidade" ? "🔗 da inconformidade" : "✍ manual"} ·{" "}
                           {a.criadoPorNome}
                         </span>
-                        {a.enviadoEm && (
+                        {enviado && a.enviadoEm && (
                           <span className="text-emerald-600 dark:text-emerald-400">
-                            ✓ enviado
+                            📨 enviado
+                          </span>
+                        )}
+                        {ciencia && (
+                          <span className="text-sky-600 dark:text-sky-400">
+                            👁 ciência
                           </span>
                         )}
                       </div>
@@ -380,7 +401,8 @@ function SemanaBlock({
                       </button>
                     )}
                   </li>
-                ))}
+                  );
+                })}
               </ol>
             </div>
           );

@@ -5,7 +5,8 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  ApontamentoFuncionario, ExcecaoHistoricoEntry, ExcecaoStatusSemana, ExcecaoStatusValor, Pessoa,
+  ApontamentoFuncionario, ApontamentoStatus, ExcecaoHistoricoEntry, ExcecaoStatusSemana,
+  ExcecaoStatusValor, NotaInterna, Pessoa,
 } from "../types";
 
 export function statusDocId(restaurantId: string, weekStart: string): string {
@@ -127,6 +128,7 @@ async function upsertSemana(
     status: existing?.status || "em_tratamento",
     historico: existing?.historico || [],
     ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
+    ...(existing?.notasInternas ? { notasInternas: existing.notasInternas } : {}),
     ...patch,
     updatedAt: now,
   };
@@ -138,16 +140,21 @@ export async function adicionarApontamento(
   restaurantId: string,
   weekStart: string,
   weekEnd: string,
-  base: Omit<ApontamentoFuncionario, "id" | "criadoEm" | "criadoPor" | "criadoPorNome" | "enviar">,
+  base: Omit<
+    ApontamentoFuncionario,
+    "id" | "criadoEm" | "criadoPor" | "criadoPorNome" | "status" | "enviar"
+  >,
   pessoa: Pessoa,
-  enviar = true,
+  status: ApontamentoStatus = "pendente",
 ): Promise<ExcecaoStatusSemana> {
   const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const now = new Date().toISOString();
   const novo: ApontamentoFuncionario = {
     ...base,
     id: uidApont(),
-    enviar,
-    criadoEm: new Date().toISOString(),
+    status,
+    ...(status === "ciencia" ? { cienciaEm: now, cienciaPor: pessoa.id, cienciaPorNome: pessoa.nome } : {}),
+    criadoEm: now,
     criadoPor: pessoa.id,
     criadoPorNome: pessoa.nome,
   };
@@ -160,7 +167,7 @@ export async function atualizarApontamento(
   weekStart: string,
   weekEnd: string,
   apontamentoId: string,
-  patch: Partial<Pick<ApontamentoFuncionario, "texto" | "enviar" | "enviadoEm">>,
+  patch: Partial<Pick<ApontamentoFuncionario, "texto" | "status" | "enviadoEm" | "cienciaEm">>,
 ): Promise<ExcecaoStatusSemana> {
   const existing = await carregarStatusSemana(restaurantId, weekStart);
   const apontamentos = (existing?.apontamentos || []).map((a) =>
@@ -180,8 +187,8 @@ export async function removerApontamento(
   return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
 }
 
-// Marca todos os apontamentos de um empregado (que estão `enviar: true`) como
-// enviados — usado quando o líder dispara o WhatsApp do empregado.
+// Marca os IDs informados como "enviado" (status + enviadoEm). Usado quando o
+// líder dispara o WhatsApp do empregado.
 export async function marcarApontamentosEnviados(
   restaurantId: string,
   weekStart: string,
@@ -192,7 +199,68 @@ export async function marcarApontamentosEnviados(
   const now = new Date().toISOString();
   const set = new Set(apontamentoIds);
   const apontamentos = (existing?.apontamentos || []).map((a) =>
-    set.has(a.id) ? { ...a, enviadoEm: now } : a,
+    set.has(a.id) ? { ...a, status: "enviado" as ApontamentoStatus, enviadoEm: now } : a,
   );
   return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+}
+
+// Marca apontamento como "ciencia" (não vai pro WhatsApp, fica registrado).
+// Usado pra apontamentos não-tratáveis (ex: intervalo a menos que já passou).
+export async function marcarApontamentoCiencia(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoId: string,
+  pessoa: Pessoa,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const now = new Date().toISOString();
+  const apontamentos = (existing?.apontamentos || []).map((a) =>
+    a.id === apontamentoId
+      ? {
+          ...a,
+          status: "ciencia" as ApontamentoStatus,
+          cienciaEm: now,
+          cienciaPor: pessoa.id,
+          cienciaPorNome: pessoa.nome,
+        }
+      : a,
+  );
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+}
+
+// ─── Notas internas (não visíveis pro empregado) ────────────────────────────
+
+function uidNota(): string {
+  return `nt_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export async function adicionarNotaInterna(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  base: Omit<NotaInterna, "id" | "criadoEm" | "criadoPor" | "criadoPorNome">,
+  pessoa: Pessoa,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const nova: NotaInterna = {
+    ...base,
+    id: uidNota(),
+    criadoEm: new Date().toISOString(),
+    criadoPor: pessoa.id,
+    criadoPorNome: pessoa.nome,
+  };
+  const notasInternas = [...(existing?.notasInternas || []), nova];
+  return upsertSemana(restaurantId, weekStart, weekEnd, { notasInternas });
+}
+
+export async function removerNotaInterna(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  notaId: string,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const notasInternas = (existing?.notasInternas || []).filter((n) => n.id !== notaId);
+  return upsertSemana(restaurantId, weekStart, weekEnd, { notasInternas });
 }
