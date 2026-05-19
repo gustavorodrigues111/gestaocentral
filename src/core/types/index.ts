@@ -1266,22 +1266,6 @@ export type FreelaPagamentoResumoPessoa = {
   totalValor: number;
 };
 
-// Configuração de valores padrão por restaurante.
-// 2 valores principais cobrem ~90% dos casos (base/pleno).
-// thresholdTurnos serve só pra mostrar contagem como info contextual na
-// precificação — não há pré-seleção automática.
-export type FreelaConfig = {
-  id: string;                  // = restaurantId
-  restaurantId: string;
-  baseHora?: number;           // R$/h — valor de entrada
-  plenoHora?: number;          // R$/h — valor pleno
-  baseDiaria?: number;         // R$/diária — entrada
-  plenoDiaria?: number;        // R$/diária — pleno
-  thresholdTurnos: number;     // default 3
-  updatedAt: string;
-  updatedBy: string;
-};
-
 export type FreelaPagamento = {
   id: string;
   restaurantId: string;

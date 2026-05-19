@@ -4,19 +4,18 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
-  AREAS, type Area, type FreelaConfig, type FreelaPagamento,
+  AREAS, type Area, type FreelaPagamento,
   type FreelaPagamentoResumoPessoa, type FreelaShift,
 } from "../../core/types";
 import {
+  VALORES_DIARIA, VALORES_HORA,
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
-  rotulaValor,
 } from "./helpers";
 
 type Props = {
   restaurantId: string;
   shifts: FreelaShift[];
   pagamentos: FreelaPagamento[];
-  freelaConfig: FreelaConfig | null;
   podeEditar: boolean;
 };
 
@@ -33,7 +32,7 @@ const AREA_ICONE: Record<Area, string> = {
 //     1. Lotes pendentes (banner amarelo)
 //     2. Aguardando precificação (status=aberto + entrada+saída)
 //     3. Prontos pra lote      (status=fechamento sem lote)
-export function FechamentoTab({ restaurantId, shifts, pagamentos, freelaConfig, podeEditar }: Props) {
+export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: Props) {
   const { pessoa: me } = useAuth();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [obs, setObs] = useState("");
@@ -171,19 +170,13 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, freelaConfig, 
             ({aPrecificar.length} — operacional fechou, falta DP precificar)
           </span>
         </h3>
-        {!freelaConfig && podeEditar && (
-          <div className="mb-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
-            💡 Configure <strong>Valores padrão</strong> (botão no topo) pra
-            ter chips Base/Pleno no lugar do input livre.
-          </div>
-        )}
         {aPrecificar.length === 0 ? (
           <EmptyState texto="Nenhum turno aguardando precificação." />
         ) : (
           <AreaGroups
             shifts={aPrecificar}
-            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} config={freelaConfig} todosShifts={shifts} />}
-            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} config={freelaConfig} todosShifts={shifts} />}
+            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} />}
+            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} />}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
                 <th className="px-4 py-2 w-24">Data</th>
@@ -365,17 +358,38 @@ function fmtDataCurta(ymd: string): string {
 }
 
 // ─── Linhas: Aguardando precificação ─────────────────────────────────────
-function usePrecificar(shift: FreelaShift) {
+
+// Tarifas predeterminadas — auto-inicialização pela última do mesmo freela.
+// Se valor não bate com nenhum preset, ativa modo "Outro" automaticamente.
+function valoresPraTipo(tipo: "hora" | "diaria"): readonly number[] {
+  return tipo === "hora" ? VALORES_HORA : VALORES_DIARIA;
+}
+
+function usePrecificar(shift: FreelaShift, todosShifts: FreelaShift[]) {
   const { pessoa: me } = useAuth();
-  const [valorTipo, setValorTipo] = useState<"hora" | "diaria">(shift.valorTipo || "hora");
-  const [valorUnit, setValorUnit] = useState<number>(shift.valorUnit || 0);
-  const [outroAtivo, setOutroAtivo] = useState<boolean>(false);
+  const hist = historicoDaPessoa(shift, todosShifts);
+
+  // Inicialização: se shift já tem valor → usa ele.
+  // Senão → puxa último valor do mesmo freela como sugestão automática.
+  const tipoInicial: "hora" | "diaria" =
+    shift.valorTipo || hist.ultimoTipo || "hora";
+  const valorInicial: number =
+    shift.valorUnit || (hist.ultimoTipo === tipoInicial ? hist.ultimoValor || 0 : 0);
+
+  const [valorTipo, setValorTipo] = useState<"hora" | "diaria">(tipoInicial);
+  const [valorUnit, setValorUnit] = useState<number>(valorInicial);
   const [saving, setSaving] = useState(false);
 
+  // "Outro" ativo quando valor não bate com nenhum preset do tipo atual
+  const presets = valoresPraTipo(valorTipo);
+  const outroAtivo =
+    valorUnit > 0 && !presets.some((p) => Math.abs(p - valorUnit) < 0.01);
+
   useEffect(() => {
-    setValorTipo(shift.valorTipo || "hora");
-    setValorUnit(shift.valorUnit || 0);
-  }, [shift.id, shift.valorTipo, shift.valorUnit]);
+    setValorTipo(shift.valorTipo || hist.ultimoTipo || "hora");
+    setValorUnit(shift.valorUnit || (hist.ultimoTipo && (shift.valorTipo || hist.ultimoTipo) === hist.ultimoTipo ? hist.ultimoValor || 0 : 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shift.id]);
 
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const total = calcTotal(valorTipo, valorUnit, horas);
@@ -404,99 +418,83 @@ function usePrecificar(shift: FreelaShift) {
     });
   }
 
-  // Setters auto-persistem (chip = ato discreto)
-  async function aplicarTarifa(tipo: "hora" | "diaria", v: number, marcarOutro: boolean) {
+  async function aplicarTarifa(tipo: "hora" | "diaria", v: number) {
     setValorTipo(tipo);
     setValorUnit(v);
-    setOutroAtivo(marcarOutro);
     const novoTotal = calcTotal(tipo, v, horas);
     await persistir({ valorTipo: tipo, valorUnit: v, totalCalc: novoTotal });
   }
 
-  return { valorTipo, valorUnit, total, saving, confirmar, aplicarTarifa, outroAtivo, setOutroAtivo, setValorUnit };
+  return {
+    valorTipo, valorUnit, total, saving, hist, outroAtivo,
+    setValorUnit, confirmar, aplicarTarifa,
+  };
 }
 
-// Componente reutilizável: chips Base/Pleno/Outro + toggle Hora/Diária
+// Chips de tarifa com valores predeterminados (hardcoded).
 function TarifaPicker({
-  shift, config, todosShifts, onAplicar, valorTipo, valorUnit, outroAtivo,
-  setOutroAtivo, setValorUnit, disabled,
+  hist, valorTipo, valorUnit, outroAtivo, onAplicar, setValorUnit, disabled,
 }: {
-  shift: FreelaShift;
-  config: FreelaConfig | null;
-  todosShifts: FreelaShift[];
-  onAplicar: (tipo: "hora" | "diaria", v: number, marcarOutro: boolean) => void;
+  hist: ReturnType<typeof historicoDaPessoa>;
   valorTipo: "hora" | "diaria";
   valorUnit: number;
   outroAtivo: boolean;
-  setOutroAtivo: (b: boolean) => void;
+  onAplicar: (tipo: "hora" | "diaria", v: number) => void;
   setValorUnit: (n: number) => void;
   disabled?: boolean;
 }) {
-  const hist = historicoDaPessoa(shift, todosShifts);
-  const rotulo = rotulaValor(valorUnit, valorTipo, config);
+  const presets = valoresPraTipo(valorTipo);
 
-  // Valores base/pleno conforme tipo selecionado
-  const base  = valorTipo === "hora" ? config?.baseHora   : config?.baseDiaria;
-  const pleno = valorTipo === "hora" ? config?.plenoHora  : config?.plenoDiaria;
-
-  function chipCls(ativo: boolean, cor: "blue" | "emerald" | "gray") {
+  function chipCls(ativo: boolean) {
     const baseCls = "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors border";
-    if (ativo) {
-      if (cor === "blue")    return `${baseCls} bg-blue-600 text-white border-blue-600`;
-      if (cor === "emerald") return `${baseCls} bg-emerald-600 text-white border-emerald-600`;
-      return                 `${baseCls} bg-gray-700 text-white border-gray-700`;
-    }
+    if (ativo) return `${baseCls} bg-indigo-600 text-white border-indigo-600`;
     return `${baseCls} bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800`;
   }
 
   return (
     <div className="space-y-2">
-      {/* Toggle Hora/Diária */}
       <div className="inline-flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 text-[11px]">
         <button
           type="button" disabled={disabled}
-          onClick={() => onAplicar("hora", valorTipo === "hora" ? valorUnit : 0, false)}
+          onClick={() => onAplicar("hora", 0)}
           className={`px-2 py-1 ${valorTipo === "hora" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
         >Hora</button>
         <button
           type="button" disabled={disabled}
-          onClick={() => onAplicar("diaria", valorTipo === "diaria" ? valorUnit : 0, false)}
+          onClick={() => onAplicar("diaria", 0)}
           className={`px-2 py-1 ${valorTipo === "diaria" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
         >Diária</button>
       </div>
 
-      {/* Chips de tarifa */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        {base ? (
-          <button type="button" disabled={disabled}
-            onClick={() => onAplicar(valorTipo, base, false)}
-            className={chipCls(rotulo === "base" && !outroAtivo, "blue")}
-            title="Valor de entrada (base)"
-          >
-            Base {fmtBR(base)}
-          </button>
-        ) : null}
-        {pleno ? (
-          <button type="button" disabled={disabled}
-            onClick={() => onAplicar(valorTipo, pleno, false)}
-            className={chipCls(rotulo === "pleno" && !outroAtivo, "emerald")}
-            title="Valor pleno"
-          >
-            Pleno {fmtBR(pleno)}
-          </button>
-        ) : null}
-        <button type="button" disabled={disabled}
-          onClick={() => setOutroAtivo(true)}
-          className={chipCls(outroAtivo || (rotulo === "outro"), "gray")}
+        {presets.map((p) => {
+          const ativo = !outroAtivo && Math.abs(p - valorUnit) < 0.01;
+          return (
+            <button
+              key={p}
+              type="button"
+              disabled={disabled}
+              onClick={() => onAplicar(valorTipo, p)}
+              className={chipCls(ativo)}
+            >
+              {fmtBR(p)}{valorTipo === "hora" ? "/h" : ""}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => setValorUnit(0.01)}
+          className={chipCls(outroAtivo)}
         >
           Outro
         </button>
-        {(outroAtivo || rotulo === "outro") && (
+        {outroAtivo && (
           <input
             type="number" min={0} step="0.01"
-            value={valorUnit || ""}
-            onChange={(e) => setValorUnit(parseFloat(e.target.value) || 0)}
-            onBlur={() => onAplicar(valorTipo, valorUnit, true)}
+            value={valorUnit > 0.01 ? valorUnit : ""}
+            onChange={(e) => setValorUnit(parseFloat(e.target.value) || 0.01)}
+            onBlur={() => onAplicar(valorTipo, valorUnit)}
             disabled={disabled}
             placeholder="R$"
             autoFocus
@@ -505,35 +503,19 @@ function TarifaPicker({
         )}
       </div>
 
-      {/* Info contextual — nº de turnos + última escolha */}
+      {/* Info contextual: último valor pago a esse freela */}
       <div className="text-[11px] text-gray-500 dark:text-gray-400">
-        📊 {hist.anteriores === 0
-          ? "1º turno"
-          : `${hist.anteriores + 1}º turno`}
-        {hist.ultimoValor ? (
-          <>
-            {" · "}último: {hist.ultimoTipo === "diaria" ? "diária " : "R$/h "}
-            {fmtBR(hist.ultimoValor)}
-            {(() => {
-              const r = rotulaValor(hist.ultimoValor, hist.ultimoTipo, config);
-              if (r === "base")  return <span className="ml-1 text-blue-600 dark:text-blue-400">(base)</span>;
-              if (r === "pleno") return <span className="ml-1 text-emerald-700 dark:text-emerald-400">(pleno)</span>;
-              return null;
-            })()}
-          </>
-        ) : null}
-        {config && hist.anteriores >= config.thresholdTurnos && (
-          <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
-            · ≥{config.thresholdTurnos} turnos
-          </span>
-        )}
+        {hist.anteriores === 0
+          ? "📊 1º turno"
+          : <>📊 {hist.anteriores + 1}º turno · último: {hist.ultimoTipo === "diaria" ? "diária " : ""}{fmtBR(hist.ultimoValor || 0)}{hist.ultimoTipo === "hora" ? "/h" : ""}</>
+        }
       </div>
     </div>
   );
 }
 
-function PrecificarRowDesktop({ shift, podeEditar, config, todosShifts }: { shift: FreelaShift; podeEditar: boolean; config: FreelaConfig | null; todosShifts: FreelaShift[] }) {
-  const s = usePrecificar(shift);
+function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
+  const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
     <tr className="border-t border-gray-100 dark:border-gray-800 align-top">
@@ -550,10 +532,9 @@ function PrecificarRowDesktop({ shift, podeEditar, config, todosShifts }: { shif
       </td>
       <td className="px-2 py-3">
         <TarifaPicker
-          shift={shift} config={config} todosShifts={todosShifts}
-          onAplicar={s.aplicarTarifa}
-          valorTipo={s.valorTipo} valorUnit={s.valorUnit}
-          outroAtivo={s.outroAtivo} setOutroAtivo={s.setOutroAtivo} setValorUnit={s.setValorUnit}
+          hist={s.hist}
+          valorTipo={s.valorTipo} valorUnit={s.valorUnit} outroAtivo={s.outroAtivo}
+          onAplicar={s.aplicarTarifa} setValorUnit={s.setValorUnit}
           disabled={!podeEditar || s.saving}
         />
       </td>
@@ -567,8 +548,8 @@ function PrecificarRowDesktop({ shift, podeEditar, config, todosShifts }: { shif
   );
 }
 
-function PrecificarRowMobile({ shift, podeEditar, config, todosShifts }: { shift: FreelaShift; podeEditar: boolean; config: FreelaConfig | null; todosShifts: FreelaShift[] }) {
-  const s = usePrecificar(shift);
+function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
+  const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
     <div className="px-3 py-3">
@@ -584,10 +565,9 @@ function PrecificarRowMobile({ shift, podeEditar, config, todosShifts }: { shift
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
       </div>
       <TarifaPicker
-        shift={shift} config={config} todosShifts={todosShifts}
-        onAplicar={s.aplicarTarifa}
-        valorTipo={s.valorTipo} valorUnit={s.valorUnit}
-        outroAtivo={s.outroAtivo} setOutroAtivo={s.setOutroAtivo} setValorUnit={s.setValorUnit}
+        hist={s.hist}
+        valorTipo={s.valorTipo} valorUnit={s.valorUnit} outroAtivo={s.outroAtivo}
+        onAplicar={s.aplicarTarifa} setValorUnit={s.setValorUnit}
         disabled={!podeEditar || s.saving}
       />
       {podeEditar && (

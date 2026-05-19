@@ -142,23 +142,10 @@ export function historicoDaPessoa(
   };
 }
 
-// Identifica qual "rótulo" um valor representa dado o config:
-// "base" | "pleno" | "outro" | null (sem valor).
-export function rotulaValor(
-  valor: number | undefined,
-  tipo: "hora" | "diaria" | undefined,
-  config: { baseHora?: number; plenoHora?: number; baseDiaria?: number; plenoDiaria?: number } | null,
-): "base" | "pleno" | "outro" | null {
-  if (!valor || !tipo || !config) return valor ? "outro" : null;
-  if (tipo === "hora") {
-    if (config.baseHora  && Math.abs(valor - config.baseHora)  < 0.01) return "base";
-    if (config.plenoHora && Math.abs(valor - config.plenoHora) < 0.01) return "pleno";
-  } else {
-    if (config.baseDiaria  && Math.abs(valor - config.baseDiaria)  < 0.01) return "base";
-    if (config.plenoDiaria && Math.abs(valor - config.plenoDiaria) < 0.01) return "pleno";
-  }
-  return "outro";
-}
+// Valores pré-definidos pra precificação (hardcoded até virar config).
+// Mudar aqui se a política mudar.
+export const VALORES_HORA   = [18.75, 22.50] as const;
+export const VALORES_DIARIA = [150, 180]     as const;
 
 export function resolverPixWhats(
   cand: FreelaCandidato,
