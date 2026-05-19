@@ -70,7 +70,10 @@ export function NovoTurnoModal({
 
   async function salvar() {
     setErr("");
-    if (!me) return;
+    if (!me) {
+      setErr("Você não está autenticado. Faça login novamente.");
+      return;
+    }
     if (!selecionado) { setErr("Selecione um freela."); return; }
     if (!date) { setErr("Data obrigatória."); return; }
     if (!area) { setErr("Área obrigatória."); return; }
@@ -109,14 +112,16 @@ export function NovoTurnoModal({
         lancadoEm: now,
         updatedAt: now,
       };
-      await addDoc(collection(db, "freelaShifts"), payload);
+      console.log("[NovoTurno] payload pronto, gravando...", payload);
+      const ref = await addDoc(collection(db, "freelaShifts"), payload);
+      console.log("[NovoTurno] gravado OK, id =", ref.id);
 
       if (isEmp) {
         await marcarFreelaNaEscala(restaurantId, selecionado.emp.id, date);
       }
       onSaved();
     } catch (e) {
-      console.error(e);
+      console.error("[NovoTurno] ERRO:", e);
       setErr(`Erro ao salvar: ${e instanceof Error ? e.message : String(e)}`);
       setSaving(false);
     }
