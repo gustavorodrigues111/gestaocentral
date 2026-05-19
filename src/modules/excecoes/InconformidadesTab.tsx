@@ -19,7 +19,7 @@ import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/exceco
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
-import { carregarStatusSemana, marcarStatus, podeMarcarStatus } from "../../core/excecoes/statusSemana";
+import { adicionarApontamento, carregarStatusSemana, marcarStatus, podeMarcarStatus } from "../../core/excecoes/statusSemana";
 import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
 import {
   generateExceptionsReport,
@@ -261,6 +261,80 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Erro ao salvar status: " + (e instanceof Error ? e.message : "?"));
     }
   }
+
+  // ─── Apontamentos por empregado ────────────────────────────────────────────
+  // Líder usa pra anotar coisas como "já avisei, prazo X" ou converter uma
+  // inconformidade num item de ação. Cada apontamento fica preso à semana
+  // ativa (statusSemana). Se a semana já foi conferida, não dá pra adicionar.
+  const semanaConferida = statusSemana?.status === "conferido_gerente";
+
+  async function criarApontamento(opts: {
+    empregadoId: string;
+    empregadoNome: string;
+    cpf?: string;
+    texto: string;
+    data?: string;
+    origem: "inconformidade" | "manual";
+    ruleId?: string;
+  }) {
+    if (!me || !semanaAtiva) return;
+    if (semanaConferida) {
+      alert("Semana já conferida — não dá pra adicionar apontamento.");
+      return;
+    }
+    try {
+      const updated = await adicionarApontamento(
+        rid,
+        semanaAtiva.weekStart,
+        semanaAtiva.weekEnd,
+        opts,
+        me,
+        true,
+      );
+      setStatusSemana(updated);
+    } catch (e) {
+      alert("Erro ao adicionar apontamento: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  function anotarExcecao(exc: ExceptionRecord) {
+    const meta = RULES_META[exc.ruleId];
+    const sugerido = `${meta.label} em ${fmtDataBr(exc.date)}: ${exc.description}${
+      exc.detail ? ` (${exc.detail})` : ""
+    }`;
+    const final = prompt("Texto do apontamento (edite se quiser):", sugerido);
+    if (!final || !final.trim()) return;
+    void criarApontamento({
+      empregadoId: exc.employeeId,
+      empregadoNome: exc.employeeName,
+      cpf: exc.cpf,
+      texto: final.trim(),
+      data: exc.date,
+      origem: "inconformidade",
+      ruleId: exc.ruleId,
+    });
+  }
+
+  function anotacaoLivre(empregadoId: string, empregadoNome: string, cpf?: string) {
+    const txt = prompt(`Anotação pra ${empregadoNome} (ex: "avisado, ajustar até sex"):`, "");
+    if (!txt || !txt.trim()) return;
+    void criarApontamento({
+      empregadoId,
+      empregadoNome,
+      cpf,
+      texto: txt.trim(),
+      origem: "manual",
+    });
+  }
+
+  // Conta apontamentos já criados (pra UI mostrar contador)
+  const apontamentosPorEmpregado = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of statusSemana?.apontamentos || []) {
+      m.set(a.empregadoId, (m.get(a.empregadoId) || 0) + 1);
+    }
+    return m;
+  }, [statusSemana?.apontamentos]);
 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
@@ -726,7 +800,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           ) : (
             <div className="space-y-4">
               {agruparPorColabDate(excecoesFiltradas).map((grupo) => (
-                <ColaboradorBlock key={grupo.key} grupo={grupo} />
+                <ColaboradorBlock
+                  key={grupo.key}
+                  grupo={grupo}
+                  podeAnotar={!semanaConferida}
+                  apontamentosCount={apontamentosPorEmpregado.get(grupo.empregadoId) || 0}
+                  onAnotarExcecao={anotarExcecao}
+                  onAnotacaoLivre={() => anotacaoLivre(grupo.empregadoId, grupo.nome, grupo.cpf)}
+                />
               ))}
             </div>
           )}
@@ -771,6 +852,7 @@ function ResumoCard({
 // ─── Agrupamento Colaborador → Data → exceções ─────────────────────────────
 type GrupoColab = {
   key: string;
+  empregadoId: string;
   nome: string;
   cpf: string;
   totalExc: number;
@@ -779,13 +861,13 @@ type GrupoColab = {
 };
 
 function agruparPorColabDate(rows: ExceptionRecord[]): GrupoColab[] {
-  type Acc = { nome: string; cpf: string; porData: Map<string, ExceptionRecord[]> };
+  type Acc = { empregadoId: string; nome: string; cpf: string; porData: Map<string, ExceptionRecord[]> };
   const map = new Map<string, Acc>();
   for (const e of rows) {
     const k = `${e.employeeId}_${e.cpf}`;
     let g = map.get(k);
     if (!g) {
-      g = { nome: e.employeeName, cpf: e.cpf, porData: new Map() };
+      g = { empregadoId: e.employeeId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
       map.set(k, g);
     }
     let arr = g.porData.get(e.date);
@@ -805,7 +887,7 @@ function agruparPorColabDate(rows: ExceptionRecord[]): GrupoColab[] {
         (s, d) => s + d.exc.filter((e) => e.severity === "grave").length,
         0,
       );
-      return { key, nome: g.nome, cpf: g.cpf, totalExc: total, totalGraves: graves, porData };
+      return { key, empregadoId: g.empregadoId, nome: g.nome, cpf: g.cpf, totalExc: total, totalGraves: graves, porData };
     })
     .sort((a, b) => a.nome.localeCompare(b.nome));
 }
@@ -829,7 +911,19 @@ function diaDaSemana(ymd: string): string {
   return dt.toLocaleDateString("pt-BR", { weekday: "long" });
 }
 
-function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
+function ColaboradorBlock({
+  grupo,
+  podeAnotar,
+  apontamentosCount,
+  onAnotarExcecao,
+  onAnotacaoLivre,
+}: {
+  grupo: GrupoColab;
+  podeAnotar: boolean;
+  apontamentosCount: number;
+  onAnotarExcecao: (exc: ExceptionRecord) => void;
+  onAnotacaoLivre: () => void;
+}) {
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
       <header className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2">
@@ -841,7 +935,7 @@ function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2 text-[11px]">
+        <div className="flex items-center gap-2 text-[11px] flex-wrap">
           <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
             {grupo.totalExc} exc.
           </span>
@@ -849,6 +943,24 @@ function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
             <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-semibold">
               {grupo.totalGraves} grave(s)
             </span>
+          )}
+          {apontamentosCount > 0 && (
+            <span
+              className="px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-semibold"
+              title="Apontamentos já criados pra esse empregado nesta semana"
+            >
+              📝 {apontamentosCount}
+            </span>
+          )}
+          {podeAnotar && (
+            <button
+              type="button"
+              onClick={onAnotacaoLivre}
+              className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700"
+              title="Adicionar anotação livre pra este empregado"
+            >
+              + anotar
+            </button>
           )}
         </div>
       </header>
@@ -871,7 +983,7 @@ function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
                 return (
                   <li
                     key={`${e.ruleId}_${i}`}
-                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 group"
                   >
                     <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5">
                       {i + 1}.
@@ -888,6 +1000,16 @@ function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
                         <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
                       )}
                     </span>
+                    {podeAnotar && (
+                      <button
+                        type="button"
+                        onClick={() => onAnotarExcecao(e)}
+                        className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap opacity-60 group-hover:opacity-100 transition-opacity"
+                        title="Criar apontamento a partir desta inconformidade"
+                      >
+                        📝 anotar
+                      </button>
+                    )}
                   </li>
                 );
               })}

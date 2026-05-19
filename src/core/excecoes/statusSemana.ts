@@ -5,7 +5,7 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  ExcecaoHistoricoEntry, ExcecaoStatusSemana, ExcecaoStatusValor, Pessoa,
+  ApontamentoFuncionario, ExcecaoHistoricoEntry, ExcecaoStatusSemana, ExcecaoStatusValor, Pessoa,
 } from "../types";
 
 export function statusDocId(restaurantId: string, weekStart: string): string {
@@ -93,8 +93,106 @@ export async function marcarStatus(
     weekEnd,
     status: novoStatus,
     historico: [...(existing?.historico || []), entry],
+    ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
     updatedAt: now,
   };
   await setDoc(doc(db, "excecoesStatusSemana", id), next);
   return next;
+}
+
+// ─── Apontamentos por empregado dentro da semana ────────────────────────────
+//
+// Quando o status da semana ainda não existe (1ª anotação antes de "marcar
+// em tratamento"), criamos o doc com status="em_tratamento" e o apontamento.
+// Isso mantém um único doc por semana com todo o tracking junto.
+
+function uidApont(): string {
+  return `ap_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function upsertSemana(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  patch: Partial<ExcecaoStatusSemana>,
+): Promise<ExcecaoStatusSemana> {
+  const id = statusDocId(restaurantId, weekStart);
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const now = new Date().toISOString();
+  const next: ExcecaoStatusSemana = {
+    id,
+    restaurantId,
+    weekStart,
+    weekEnd,
+    status: existing?.status || "em_tratamento",
+    historico: existing?.historico || [],
+    ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
+    ...patch,
+    updatedAt: now,
+  };
+  await setDoc(doc(db, "excecoesStatusSemana", id), next);
+  return next;
+}
+
+export async function adicionarApontamento(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  base: Omit<ApontamentoFuncionario, "id" | "criadoEm" | "criadoPor" | "criadoPorNome" | "enviar">,
+  pessoa: Pessoa,
+  enviar = true,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const novo: ApontamentoFuncionario = {
+    ...base,
+    id: uidApont(),
+    enviar,
+    criadoEm: new Date().toISOString(),
+    criadoPor: pessoa.id,
+    criadoPorNome: pessoa.nome,
+  };
+  const apontamentos = [...(existing?.apontamentos || []), novo];
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+}
+
+export async function atualizarApontamento(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoId: string,
+  patch: Partial<Pick<ApontamentoFuncionario, "texto" | "enviar" | "enviadoEm">>,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const apontamentos = (existing?.apontamentos || []).map((a) =>
+    a.id === apontamentoId ? { ...a, ...patch } : a,
+  );
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+}
+
+export async function removerApontamento(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoId: string,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const apontamentos = (existing?.apontamentos || []).filter((a) => a.id !== apontamentoId);
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+}
+
+// Marca todos os apontamentos de um empregado (que estão `enviar: true`) como
+// enviados — usado quando o líder dispara o WhatsApp do empregado.
+export async function marcarApontamentosEnviados(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoIds: string[],
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const now = new Date().toISOString();
+  const set = new Set(apontamentoIds);
+  const apontamentos = (existing?.apontamentos || []).map((a) =>
+    set.has(a.id) ? { ...a, enviadoEm: now } : a,
+  );
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
 }

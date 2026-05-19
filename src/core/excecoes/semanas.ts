@@ -31,36 +31,60 @@ export function fimDaSemana(date: Date): Date {
 
 export type SemanaInfo = {
   index: number;        // 1-based dentro do mês (1ª semana = 1)
-  weekStart: string;    // YYYY-MM-DD (segunda)
-  weekEnd: string;      // YYYY-MM-DD (domingo)
-  label: string;        // "Sem 1 (28abr–4mai)"
+  weekStart: string;    // YYYY-MM-DD — clampado ao 1º dia do mês quando truncada
+  weekEnd: string;      // YYYY-MM-DD — clampado ao último dia do mês quando truncada
+  label: string;        // "Sem 1 (1–3 mai)" — truncada mostra "✂" no tooltip
   containsToday: boolean;
+  truncadaInicio: boolean;  // true quando a semana cronológica começa no mês anterior
+  truncadaFim: boolean;     // true quando termina no mês seguinte
 };
 
-// Retorna todas as semanas que SOBREPÕEM o mês [ano, mes]. Cada semana é
-// indexada pela ordem (1, 2, 3...). Uma semana é incluída se algum dia dela
-// cai no mês solicitado.
+// Retorna todas as semanas que TOCAM o mês [ano, mes]. CADA SEMANA É
+// CLAMPADA aos limites do mês — semana que cruza a virada de mês é cortada
+// pra não atravessar fechamento de folha. Isso significa:
+//   - Se 1º do mês é uma quarta, a "Sem 1" vai de qua a dom (5 dias, truncada).
+//   - Se o último dia é uma terça, a última "semana" vai de seg a ter (2 dias).
+//   - A mesma semana cronológica pode aparecer como 2 entradas separadas em
+//     meses diferentes (1 doc de status por entrada, fechando o mês limpo).
 export function semanasDoMes(ano: number, mes: number, hoje = new Date()): SemanaInfo[] {
   const primeiroDia = new Date(ano, mes - 1, 1);
   const ultimoDia = new Date(ano, mes, 0); // dia 0 do próximo mês = último dia deste
+  const primeiroYmd = fmtYmd(primeiroDia);
+  const ultimoYmd = fmtYmd(ultimoDia);
   const inicio = inicioDaSemana(primeiroDia);
-  const fimMes = fimDaSemana(ultimoDia);
 
   const out: SemanaInfo[] = [];
   let cur = new Date(inicio);
   let idx = 1;
   const todayYmd = fmtYmd(hoje);
   let guard = 0;
-  while (cur <= fimMes && guard < 10) {
+  while (guard < 10) {
     const start = new Date(cur);
     const end = new Date(cur);
     end.setDate(end.getDate() + 6);
+    const startYmd = fmtYmd(start);
+    const endYmd = fmtYmd(end);
+    // Se a semana inteira ficou antes do mês, pula
+    if (endYmd < primeiroYmd) {
+      cur.setDate(cur.getDate() + 7);
+      guard += 1;
+      continue;
+    }
+    // Se a semana começa depois do mês, encerra
+    if (startYmd > ultimoYmd) break;
+
+    const truncadaInicio = startYmd < primeiroYmd;
+    const truncadaFim    = endYmd   > ultimoYmd;
+    const startClamp = truncadaInicio ? primeiroYmd : startYmd;
+    const endClamp   = truncadaFim    ? ultimoYmd   : endYmd;
     out.push({
       index: idx,
-      weekStart: fmtYmd(start),
-      weekEnd: fmtYmd(end),
-      label: fmtLabelSemana(idx, start, end),
-      containsToday: todayYmd >= fmtYmd(start) && todayYmd <= fmtYmd(end),
+      weekStart: startClamp,
+      weekEnd: endClamp,
+      label: fmtLabelSemana(idx, parseYmd(startClamp), parseYmd(endClamp), truncadaInicio || truncadaFim),
+      containsToday: todayYmd >= startClamp && todayYmd <= endClamp,
+      truncadaInicio,
+      truncadaFim,
     });
     cur.setDate(cur.getDate() + 7);
     idx += 1;
@@ -74,15 +98,16 @@ const MESES_ABREV = [
   "jul", "ago", "set", "out", "nov", "dez",
 ];
 
-function fmtLabelSemana(idx: number, start: Date, end: Date): string {
+function fmtLabelSemana(idx: number, start: Date, end: Date, truncada: boolean): string {
   const d1 = start.getDate();
   const d2 = end.getDate();
   const m1 = MESES_ABREV[start.getMonth()];
   const m2 = MESES_ABREV[end.getMonth()];
+  const marca = truncada ? "✂" : "";
   if (start.getMonth() === end.getMonth()) {
-    return `Sem ${idx} (${d1}–${d2} ${m1})`;
+    return `Sem ${idx} (${d1}–${d2} ${m1})${marca}`;
   }
-  return `Sem ${idx} (${d1}${m1}–${d2}${m2})`;
+  return `Sem ${idx} (${d1}${m1}–${d2}${m2})${marca}`;
 }
 
 // Encontra a semana que contém hoje, dentro do array de semanas.

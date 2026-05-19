@@ -1321,6 +1321,30 @@ export type ExcecaoHistoricoEntry = {
   observacao?: string;
 };
 
+// Apontamento por empregado dentro da semana — o líder usa pra anotar coisas
+// como "já foi avisado pra ajustar", "prazo até sex", "só pra ciência (não
+// dá pra editar registro retroativo)". Pode ser auto-gerado a partir de uma
+// inconformidade detectada ou criado manualmente como anotação livre.
+//
+// `enviar` marca o item pra ser incluído na mensagem de WhatsApp pro empregado
+// (líder escolhe via checkbox quais são pra ação e quais são só pra log).
+export type ApontamentoFuncionario = {
+  id: string;
+  empregadoId: string;
+  empregadoNome: string;
+  cpf?: string;
+  texto: string;
+  data?: string;         // YYYY-MM-DD do fato (opcional — pra apontamento livre pode não ter)
+  // Origem: a partir de uma inconformidade detectada (auto) ou anotação livre (manual)
+  origem: "inconformidade" | "manual";
+  ruleId?: string;       // id da regra original (quando origem === "inconformidade")
+  enviar: boolean;       // checkbox "enviar via WhatsApp"
+  enviadoEm?: string;    // ISO — preenchido quando o líder clica em "Enviar via WhatsApp"
+  criadoEm: string;      // ISO
+  criadoPor: string;     // pessoaId
+  criadoPorNome: string;
+};
+
 export type ExcecaoStatusSemana = {
   id: string;            // = `${restaurantId}_${weekStart}` (weekStart YYYY-MM-DD)
   restaurantId: string;
@@ -1328,5 +1352,6 @@ export type ExcecaoStatusSemana = {
   weekEnd: string;       // domingo
   status: ExcecaoStatusValor;
   historico: ExcecaoHistoricoEntry[];
+  apontamentos?: ApontamentoFuncionario[];
   updatedAt: string;
 };
