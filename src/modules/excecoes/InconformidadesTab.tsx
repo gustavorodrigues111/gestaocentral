@@ -1,20 +1,19 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Relatório de Exceções — compara as marcações de ponto reais (Sólides /
+//  Aba "Inconformidades" — compara as marcações de ponto reais (Sólides /
 //  Tangerino) com a escala prevista cadastrada no Planejamento e lista as
 //  não-conformidades. Casamento de colaborador por CPF.
+//
+//  Recebe rid + activeRestaurant da page-shell (RegistrosPontoPage).
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
-import type { Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
+import type { Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
@@ -181,13 +180,13 @@ function exportCsv(rows: ExceptionRecord[], restNome: string, start: string, end
 
 // ════════════════════════════════════════════════════════════════════════════
 
-export function ExcecoesPage() {
+type Props = {
+  rid: string;
+  activeRestaurant: Restaurant;
+};
+
+export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
-  const { restaurants } = useRestaurant();
-  const { rid: ridParam } = useParams<{ rid: string }>();
-  const rid = ridParam || "";
-  const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "excecoes");
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
 
@@ -454,27 +453,8 @@ export function ExcecoesPage() {
     return base;
   }, [result]);
 
-  if (!activeRestaurant) {
-    return <div className="text-gray-500">Selecione um restaurante.</div>;
-  }
-  if (!podeVer) {
-    return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="max-w-6xl">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-        ⚠️ Relatório de Exceções
-      </h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        {activeRestaurant.nome} · marcações de ponto (Sólides) vs escala prevista
-      </p>
-
+    <div>
       {/* ── Seleção de semana + ação ── */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 mb-4 space-y-3">
         {/* Navegação de mês */}

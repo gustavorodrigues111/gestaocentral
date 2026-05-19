@@ -24,7 +24,7 @@ import { ChecklistsPage } from "./modules/checklists/ChecklistsPage";
 import { ReservasPage } from "./modules/reservas/ReservasPage";
 import { ContagensPage } from "./modules/contagens/ContagensPage";
 import { ComprasPage } from "./modules/compras/ComprasPage";
-import { ExcecoesPage } from "./modules/excecoes/ExcecoesPage";
+import { RegistrosPontoPage } from "./modules/excecoes/RegistrosPontoPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -63,7 +63,7 @@ function ModuleRouter() {
     case "reservas":      return <ReservasPage key={k} />;
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
-    case "excecoes":      return <ExcecoesPage key={k} />;
+    case "excecoes":      return <RegistrosPontoPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
