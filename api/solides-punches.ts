@@ -25,7 +25,7 @@
 
 const PUNCH_API = "https://api.tangerino.com.br/api/punch/";
 const PAGE_SIZE = 200;
-const MAX_PAGES = 200; // trava de segurança (200 × 200 = 40k marcações)
+const MAX_PAGES = 50; // trava de segurança (50 × 200 = 10k marcações por restaurante por período)
 const REQ_TIMEOUT_MS = 20_000;
 
 // Tipos estruturais mínimos do req/res da Vercel (evita depender de @vercel/node)
@@ -195,6 +195,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const pageSizes: number[] = [];
     const responsesMeta: Array<{ requested: number; number?: number; last?: boolean; totalPages?: number; size: number }> = [];
 
+    // Paginação cautelosa: a API Sólides às vezes ignora o `page` informado e
+    // devolve a primeira página repetida (visto em 2026-05). NÃO confiar em
+    // `totalPages` pra decidir o fim — paginar até receber explicitamente
+    // `last: true` ou uma página parcial (< PAGE_SIZE). Dedupe por id remove
+    // as repetições antes de devolver pro front.
     while (page < MAX_PAGES) {
       const data = await fetchPage(token, startMs, endMs, page);
       const content = Array.isArray(data.content) ? data.content : [];
@@ -211,8 +216,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
       const isLast =
         data.last === true ||
-        (typeof data.totalPages === "number" && page + 1 >= data.totalPages) ||
-        content.length === 0;
+        content.length === 0 ||
+        content.length < PAGE_SIZE;
       if (isLast) break;
       page += 1;
     }
