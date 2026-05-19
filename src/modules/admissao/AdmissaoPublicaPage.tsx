@@ -263,7 +263,7 @@ export function AdmissaoPublicaPage() {
       return;
     }
     if (!selfieDataUrl) {
-      alert("Tire uma selfie pra validar o envio.");
+      alert("Tire a foto pra ficha cadastral pra concluir o envio.");
       return;
     }
     setEnviando(true);
@@ -897,27 +897,33 @@ function DeclaracaoFinalBlock({
   return (
     <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-4">
       <h2 className="font-bold text-amber-900">
-        🛡️ Validação final
+        🛡️ Finalização da ficha
       </h2>
 
-      {/* Selfie */}
+      {/* Foto da ficha (também serve como validação de que é você preenchendo) */}
       <div className="space-y-2">
         <div className="text-sm font-semibold text-amber-900">
-          📸 Selfie de validação *
+          📷 Foto pra ficha cadastral *
         </div>
         <p className="text-xs text-amber-900/80">
-          Tire uma selfie ao vivo pra confirmar que é você preenchendo. Use a câmera
-          frontal do seu celular — não envie foto antiga nem foto de outra pessoa.
+          Essa foto vai pra a sua <strong>ficha oficial na empresa</strong> e também serve
+          pra validar que é você preenchendo. Tire ao vivo, com o rosto centralizado e
+          bem iluminado — não envie foto antiga, nem foto de outra pessoa, nem com
+          óculos escuros ou boné.
         </p>
         {selfieDataUrl ? (
           <div className="flex items-start gap-3">
             <img
               src={selfieDataUrl}
-              alt="Selfie"
-              className="w-24 h-24 rounded-lg object-cover border border-amber-300"
+              alt="Foto"
+              className="w-28 h-28 rounded-lg object-cover border border-amber-300"
             />
             <div className="text-xs">
-              <div className="text-emerald-700 font-semibold">✓ Selfie capturada</div>
+              <div className="text-emerald-700 font-semibold">✓ Foto capturada</div>
+              <p className="text-amber-900/70 mt-1">
+                Confira se está nítida e mostra bem o seu rosto. Se não estiver boa,
+                tire outra.
+              </p>
               <button
                 type="button"
                 onClick={() => onSelfieChange(null)}
@@ -937,7 +943,7 @@ function DeclaracaoFinalBlock({
               className="hidden"
               disabled={processando}
             />
-            {processando ? "Processando…" : "📷 Tirar selfie"}
+            {processando ? "Processando…" : "📷 Tirar foto"}
           </label>
         )}
         {erro && <div className="text-xs text-rose-600">{erro}</div>}
