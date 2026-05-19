@@ -194,7 +194,7 @@ export function ExcecoesPage() {
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
-  const [escalaDebug, setEscalaDebug] = useState<{
+  type EscalaDebugInfo = {
     allanId?: string;
     escala?: Record<string, string>;
     sidEncontrado?: number | null;
@@ -206,7 +206,8 @@ export function ExcecoesPage() {
     empsSemSchedule?: number;
     primeiros5SemSchedule?: string[];
     errosEndpoint?: unknown;
-  } | null>(null);
+  };
+  const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
 
   // Filtros da tabela
@@ -245,7 +246,7 @@ export function ExcecoesPage() {
       // Planejamento que tenha CPF, busca o sid Sólides e o quadro do meio
       // do mês — usado como template recorrente pro range todo.
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
-      const debugInfo: { allanId?: string; escala?: Record<string, string>; sidEncontrado?: number | null; cpf?: string; quadroSolides?: unknown } = {};
+      const debugInfo: EscalaDebugInfo = {};
       try {
         // Várias datas em ordem de prioridade — workaround pro bug da Sólides
         // que às vezes retorna null pra uma data específica mesmo o quadro
