@@ -72,6 +72,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     res.status(400).json({ error: "date é obrigatório (YYYY-MM-DD)." });
     return;
   }
+  // Sólides espera o `date` em epoch ms (Long), não em YYYY-MM-DD.
+  const [y, mo, d] = date.split("-").map(Number);
+  const dateMs = Date.UTC(y, mo - 1, d, 0, 0, 0, 0);
+  if (!Number.isFinite(dateMs)) {
+    res.status(400).json({ error: "date inválido." });
+    return;
+  }
 
   const tokenResult = resolveToken(restaurantKey);
   if ("error" in tokenResult) {
@@ -80,7 +87,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const token = tokenResult.token;
 
-  const url = `${BASE_URL}/${encodeURIComponent(employeeId)}?date=${encodeURIComponent(date)}`;
+  const url = `${BASE_URL}/${encodeURIComponent(employeeId)}?date=${dateMs}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
 
