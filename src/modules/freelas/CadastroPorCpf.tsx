@@ -114,7 +114,7 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
       });
     } catch (e) {
       console.error(e);
-      setErr("Erro ao cadastrar.");
+      setErr(`Erro ao cadastrar: ${e instanceof Error ? e.message : String(e)}`);
       setSaving(false);
     }
   }
@@ -148,7 +148,7 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
       onConcluido(final);
     } catch (e) {
       console.error(e);
-      setErr("Erro ao vincular.");
+      setErr(`Erro ao vincular: ${e instanceof Error ? e.message : String(e)}`);
       setSaving(false);
     }
   }

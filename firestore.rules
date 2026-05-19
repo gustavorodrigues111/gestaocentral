@@ -42,7 +42,11 @@ service cloud.firestore {
     // ── /pessoas ── identidades + permissões ─────────────────────────────
     match /pessoas/{id} {
       allow read:   if authed();
-      allow create: if isMaster();
+      // Create: qualquer admin authed pode criar Pessoa, mas NÃO pode criar
+      // como master (defesa contra escalada de privilégio). Caso de uso
+      // principal: cadastro rápido de freela pelo módulo Freelas.
+      allow create: if isMaster()
+        || (authed() && request.resource.data.isMaster == false);
       // Update: master, OU própria pessoa SÓ mexendo em uidVinculado
       //        (necessário pro AuthContext linkar uid → pessoa no 1º login)
       allow update: if isMaster()
