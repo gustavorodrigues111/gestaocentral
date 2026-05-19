@@ -86,6 +86,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "⏱️",
     descricaoRegra: "Primeira entrada do dia mais de 10min após o horário previsto no quadro da Sólides.",
   },
+  entradaProvavelFaltante: {
+    id: "entradaProvavelFaltante",
+    label: "Entrada provavelmente faltante",
+    severity: "aviso",
+    icon: "🚧",
+    descricaoRegra: "Primeira batida do dia muito depois do horário previsto (>3h). Provavelmente o empregado esqueceu de bater a entrada inicial e o sistema confundiu a batida seguinte com 'entrada'.",
+  },
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
@@ -97,6 +104,10 @@ const JORNADA_EXIGE_INTERVALO = 6 * 60; // 360 min
 // Atraso na entrada: tolerância de 10min sobre o horário previsto no quadro
 // Sólides — só vira apontamento acima disso.
 const TOLERANCIA_ATRASO = 10; // min
+// Acima desse limiar, "atraso" deixa de fazer sentido — é quase certo que
+// o empregado esqueceu de bater a entrada inicial. Dispara a regra
+// `entradaProvavelFaltante` em vez de `atrasoEntrada`.
+const ATRASO_MAX_PROVAVEL = 3 * 60; // 3h
 
 // minutos → "8h30"
 function fmtH(min: number): string {
@@ -261,7 +272,10 @@ const ruleBlocoSuspeito: Rule = (ctx) => {
 
 // 9) Atraso na entrada — firstIn > horário previsto + 10min de tolerância.
 // Compara a primeira entrada real (epoch ms) com o `in` do quadro cadastrado
-// na Sólides (HH:MM). Não usa escala prevista do Planejamento.
+// na Sólides (HH:MM). Não usa escala prevista do Planejamento. Suprime-se
+// quando o atraso passa de 3h — esse caso vira `entradaProvavelFaltante`
+// (caso clássico: empregado esqueceu de bater a entrada inicial, e o que o
+// sistema vê como "E1" é na verdade a saída do almoço ou similar).
 const ruleAtrasoEntrada: Rule = (ctx) => {
   const { firstIn, blocks } = ctx.metrics;
   const previsto = ctx.horarioPrevisto;
@@ -270,11 +284,35 @@ const ruleAtrasoEntrada: Rule = (ctx) => {
   const previstoMin = parseHHMM(previsto.in);
   if (realMin == null || previstoMin == null) return null;
   const diff = realMin - previstoMin;
-  if (diff > TOLERANCIA_ATRASO) {
+  if (diff > TOLERANCIA_ATRASO && diff <= ATRASO_MAX_PROVAVEL) {
     return mk(
       "atrasoEntrada",
       ctx,
       `Entrada às ${fmtHora(firstIn)} (previsto ${previsto.in}) — ${diff}min de atraso.`,
+    );
+  }
+  return null;
+};
+
+// 10) Entrada provavelmente faltante — atraso "absurdo" (>3h) indica que o
+// empregado esqueceu de bater a entrada inicial. A linha do tempo tipicamente
+// fica: [batida no meio do dia → saída do almoço → entrada do almoço → saída].
+// Sólides interpreta como [E1 → S1 → E2 → S2 aberto] e dispara "atraso" +
+// "ponto aberto". Mais útil pro líder é uma exceção dedicada apontando que
+// PRECISA AJUSTAR MANUALMENTE a primeira batida.
+const ruleEntradaProvavelFaltante: Rule = (ctx) => {
+  const { firstIn, blocks } = ctx.metrics;
+  const previsto = ctx.horarioPrevisto;
+  if (!previsto || firstIn == null || blocks.length === 0) return null;
+  const realMin = brtMinutesFromEpoch(firstIn);
+  const previstoMin = parseHHMM(previsto.in);
+  if (realMin == null || previstoMin == null) return null;
+  const diff = realMin - previstoMin;
+  if (diff > ATRASO_MAX_PROVAVEL) {
+    return mk(
+      "entradaProvavelFaltante",
+      ctx,
+      `Primeira batida só às ${fmtHora(firstIn)} (previsto ${previsto.in}) — ${fmtH(diff)} depois. Provavelmente faltou bater a entrada inicial; ajustar manualmente.`,
     );
   }
   return null;
@@ -306,6 +344,7 @@ export const ALL_RULES: Rule[] = [
   ruleMarcacaoForaDaEscala,
   ruleBlocoSuspeito,
   ruleAtrasoEntrada,
+  ruleEntradaProvavelFaltante,
 ];
 
 // Roda todas as regras sobre um contexto e devolve as exceções encontradas.

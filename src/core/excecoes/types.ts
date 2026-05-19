@@ -58,7 +58,8 @@ export type ExceptionRuleId =
   | "faltaSemAjuste"
   | "marcacaoForaDaEscala"
   | "blocoSuspeito"
-  | "atrasoEntrada";
+  | "atrasoEntrada"
+  | "entradaProvavelFaltante";
 
 export type ExceptionRecord = {
   ruleId: ExceptionRuleId;

@@ -293,9 +293,10 @@ function stripUndefined<T>(v: T): T {
 // jornada >10h, ponto aberto, etc) não viram apontamento de escala — são
 // problemas de ponto, não de escala.
 const REGRAS_QUE_AFETAM_ESCALA = new Set<string>([
-  "faltaSemAjuste",       // escalado pra trabalho mas não veio → lançar falta
-  "marcacaoForaDaEscala", // veio em dia previsto pra folga → trocar pra trabalho
-  "atrasoEntrada",        // entrou tarde → registrar atraso na praticada
+  "faltaSemAjuste",          // escalado pra trabalho mas não veio → lançar falta
+  "marcacaoForaDaEscala",    // veio em dia previsto pra folga → trocar pra trabalho
+  "atrasoEntrada",           // entrou tarde → registrar atraso na praticada
+  "entradaProvavelFaltante", // esqueceu de bater entrada → ajustar manualmente
 ]);
 
 function uidApEsc(): string {

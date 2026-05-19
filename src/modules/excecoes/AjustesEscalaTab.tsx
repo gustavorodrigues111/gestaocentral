@@ -41,9 +41,10 @@ function fmtDataHora(iso: string): string {
 
 // Labels amigáveis pros ruleIds que afetam escala.
 const REGRA_LABEL: Record<string, { label: string; icon: string }> = {
-  faltaSemAjuste:       { label: "Falta sem ajuste",       icon: "❓" },
-  marcacaoForaDaEscala: { label: "Marcação fora da escala", icon: "📍" },
-  atrasoEntrada:        { label: "Atraso na entrada",      icon: "⏱️" },
+  faltaSemAjuste:          { label: "Falta sem ajuste",              icon: "❓" },
+  marcacaoForaDaEscala:    { label: "Marcação fora da escala",       icon: "📍" },
+  atrasoEntrada:           { label: "Atraso na entrada",             icon: "⏱️" },
+  entradaProvavelFaltante: { label: "Entrada provavelmente faltante", icon: "🚧" },
 };
 
 export function AjustesEscalaTab({ rid }: Props) {
