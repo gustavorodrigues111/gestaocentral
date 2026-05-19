@@ -19,7 +19,13 @@ import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/exceco
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
-import { adicionarApontamento, carregarStatusSemana, marcarStatus, podeMarcarStatus } from "../../core/excecoes/statusSemana";
+import {
+  adicionarApontamento,
+  carregarStatusSemana,
+  marcarStatus,
+  podeMarcarStatus,
+  removerApontamento,
+} from "../../core/excecoes/statusSemana";
 import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
 import {
   generateExceptionsReport,
@@ -309,31 +315,84 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [empregados]);
 
-  function anotarExcecao(exc: ExceptionRecord) {
+  // Toggle do checkbox "enviar pro WhatsApp" em cada inconformidade da lista.
+  // Idempotente: se já existe apontamento (origem=inconformidade) com a mesma
+  // tripla (empregadoId, data, ruleId), só atualiza/remove; senão, cria.
+  // Desmarcar REMOVE o apontamento (a inconformidade ainda existe no
+  // relatório original — não perde info).
+  async function toggleEnviarExcecao(exc: ExceptionRecord) {
+    if (!me || !semanaAtiva) return;
+    if (semanaConferida) {
+      alert("Semana já conferida — não dá pra mexer em apontamento.");
+      return;
+    }
     const cpfD = (exc.cpf || "").replace(/\D/g, "");
     const empId = empIdByCpf.get(cpfD);
     if (!empId) {
-      alert(`Não achei empregado com CPF ${exc.cpf} no Planejamento. Cadastre em Pessoas pra poder anotar.`);
+      alert(`Não achei empregado com CPF ${exc.cpf} no Planejamento. Cadastre em Pessoas pra poder enviar.`);
       return;
     }
-    const meta = RULES_META[exc.ruleId];
-    const sugerido = `${meta.label} em ${fmtDataBr(exc.date)}: ${exc.description}${
-      exc.detail ? ` (${exc.detail})` : ""
-    }`;
-    const final = prompt("Texto do apontamento (edite se quiser):", sugerido);
-    if (!final || !final.trim()) return;
-    void criarApontamento({
-      empregadoId: empId,
-      empregadoNome: exc.employeeName,
-      cpf: exc.cpf,
-      texto: final.trim(),
-      data: exc.date,
-      origem: "inconformidade",
-      ruleId: exc.ruleId,
-    });
+    const existente = (statusSemana?.apontamentos || []).find(
+      (a) =>
+        a.origem === "inconformidade" &&
+        a.empregadoId === empId &&
+        a.data === exc.date &&
+        a.ruleId === exc.ruleId,
+    );
+    try {
+      if (existente) {
+        const updated = await removerApontamento(
+          rid,
+          semanaAtiva.weekStart,
+          semanaAtiva.weekEnd,
+          existente.id,
+        );
+        setStatusSemana(updated);
+      } else {
+        const meta = RULES_META[exc.ruleId];
+        const texto = `${meta.label} em ${fmtDataBr(exc.date)}: ${exc.description}${
+          exc.detail ? ` (${exc.detail})` : ""
+        }`;
+        const updated = await adicionarApontamento(
+          rid,
+          semanaAtiva.weekStart,
+          semanaAtiva.weekEnd,
+          {
+            empregadoId: empId,
+            empregadoNome: exc.employeeName,
+            cpf: exc.cpf,
+            texto,
+            data: exc.date,
+            origem: "inconformidade",
+            ruleId: exc.ruleId,
+          },
+          me,
+          true,
+        );
+        setStatusSemana(updated);
+      }
+    } catch (e) {
+      alert("Erro: " + (e instanceof Error ? e.message : "?"));
+    }
   }
 
+  // Set de "chaves" (empregadoId_data_ruleId) de inconformidades que já viraram
+  // apontamento → checkbox marcado.
+  const enviadosKeys = useMemo(() => {
+    const s = new Set<string>();
+    for (const a of statusSemana?.apontamentos || []) {
+      if (a.origem === "inconformidade" && a.ruleId && a.data) {
+        s.add(`${a.empregadoId}_${a.data}_${a.ruleId}`);
+      }
+    }
+    return s;
+  }, [statusSemana?.apontamentos]);
+
   function anotacaoLivre(empregadoId: string, empregadoNome: string, cpf?: string) {
+    if (!empregadoId) {
+      alert(`Não achei empregado com CPF ${cpf || "?"} no Planejamento.`);
+      return;
+    }
     const txt = prompt(`Anotação pra ${empregadoNome} (ex: "avisado, ajustar até sex"):`, "");
     if (!txt || !txt.trim()) return;
     void criarApontamento({
@@ -823,7 +882,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   grupo={grupo}
                   podeAnotar={!semanaConferida}
                   apontamentosCount={apontamentosPorEmpregado.get(grupo.empregadoId) || 0}
-                  onAnotarExcecao={anotarExcecao}
+                  enviadosKeys={enviadosKeys}
+                  onToggleEnviar={toggleEnviarExcecao}
                   onAnotacaoLivre={() => anotacaoLivre(grupo.empregadoId, grupo.nome, grupo.cpf)}
                 />
               ))}
@@ -942,13 +1002,15 @@ function ColaboradorBlock({
   grupo,
   podeAnotar,
   apontamentosCount,
-  onAnotarExcecao,
+  enviadosKeys,
+  onToggleEnviar,
   onAnotacaoLivre,
 }: {
   grupo: GrupoColab;
   podeAnotar: boolean;
   apontamentosCount: number;
-  onAnotarExcecao: (exc: ExceptionRecord) => void;
+  enviadosKeys: Set<string>;
+  onToggleEnviar: (exc: ExceptionRecord) => void;
   onAnotacaoLivre: () => void;
 }) {
   return (
@@ -1007,11 +1069,28 @@ function ColaboradorBlock({
               {exc.map((e, i) => {
                 const meta = RULES_META[e.ruleId];
                 const sev = SEVERITY_INFO[e.severity];
+                const key = `${grupo.empregadoId}_${e.date}_${e.ruleId}`;
+                const marcado = enviadosKeys.has(key);
                 return (
                   <li
                     key={`${e.ruleId}_${i}`}
-                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 group"
+                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
                   >
+                    {podeAnotar ? (
+                      <input
+                        type="checkbox"
+                        checked={marcado}
+                        onChange={() => onToggleEnviar(e)}
+                        className="mt-1 accent-indigo-600"
+                        title={
+                          marcado
+                            ? "Marcado pra enviar via WhatsApp — clique pra remover"
+                            : "Marcar pra enviar pro empregado via WhatsApp"
+                        }
+                      />
+                    ) : (
+                      <span className="w-4 mt-0.5" />
+                    )}
                     <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5">
                       {i + 1}.
                     </span>
@@ -1021,21 +1100,19 @@ function ColaboradorBlock({
                     >
                       {meta.icon} {meta.label}
                     </span>
-                    <span className="flex-1 min-w-0">
+                    <span className={`flex-1 min-w-0 ${marcado ? "font-medium text-gray-900 dark:text-gray-100" : ""}`}>
                       {e.description}
                       {e.detail && (
                         <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
                       )}
                     </span>
-                    {podeAnotar && (
-                      <button
-                        type="button"
-                        onClick={() => onAnotarExcecao(e)}
-                        className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap opacity-60 group-hover:opacity-100 transition-opacity"
-                        title="Criar apontamento a partir desta inconformidade"
+                    {marcado && (
+                      <span
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 whitespace-nowrap"
+                        title="Vai pro WhatsApp do empregado quando você disparar na aba Ajustes"
                       >
-                        📝 anotar
-                      </button>
+                        💬 enviar
+                      </span>
                     )}
                   </li>
                 );
