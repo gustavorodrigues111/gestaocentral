@@ -478,6 +478,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     if (!empId) return;
     const existente = acharApontamento(empId, exc.date, exc.ruleId);
     try {
+      let apontamentoId: string;
       if (existente) {
         const updated = await marcarApontamentoCiencia(
           rid,
@@ -486,6 +487,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           existente.id,
           me,
         );
+        apontamentoId = existente.id;
         setStatusSemana(updated);
       } else {
         const updated = await adicionarApontamento(
@@ -504,7 +506,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           me,
           "ciencia",
         );
+        // Pega o id que acabou de criar (último apontamento)
+        apontamentoId = (updated.apontamentos || []).slice(-1)[0]?.id || "";
         setStatusSemana(updated);
+      }
+      // Cria nota interna automática registrando a ciência → timeline completa
+      try {
+        const updated = await adicionarNotaInterna(
+          rid,
+          semanaAtiva.weekStart,
+          semanaAtiva.weekEnd,
+          {
+            empregadoId: empId,
+            empregadoNome: exc.employeeName,
+            texto: `👁 Ciência tomada (não-tratável retroativo): ${gerarTextoApontamento(exc)}`,
+            origem: "ciencia",
+            apontamentoIds: [apontamentoId],
+          },
+          me,
+        );
+        setStatusSemana(updated);
+      } catch (e) {
+        console.warn("Erro criando nota auto de ciência:", e);
       }
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
@@ -871,9 +894,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       setFiltroRegra("");
       setFiltroSeveridade("");
 
-      // Salva o snapshot no doc da semana se já está em tratamento+ —
-      // mantém memória pro líder não precisar regerar toda vez que abre.
-      if (semanaAtiva && statusSemana && statusSemana.status !== "aberto") {
+      // Salva o snapshot no doc da semana SEMPRE — assim o líder pode gerar,
+      // sair, e voltar depois sem perder o que já tinha visto. Ao mudar pra
+      // "em_tratamento", o cache vira o ponto de partida do tratamento.
+      if (semanaAtiva) {
         try {
           const updated = await salvarRelatorioCache(
             rid,
@@ -1020,6 +1044,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         statusSemana={statusSemana}
         carregando={carregandoStatus}
         semanaAtiva={semanaAtiva}
+        temRelatorio={!!result}
         podeMarcar={(s) => podeMarcarStatus(me, rid, s, statusSemana?.status || "aberto")}
         onMarcar={aplicarStatus}
         showHistorico={showHistoricoStatus}
@@ -1508,36 +1533,41 @@ function ColaboradorBlock({
         ))}
       </div>
 
-      {/* Box de notas internas — não vai pro WhatsApp, só pro nosso registro */}
+      {/* Log do tratamento — timeline interna do que foi feito com o empregado
+          nessa semana: envios via WhatsApp, ciências marcadas e notas manuais.
+          NÃO VAI PRO EMPREGADO — é só pro registro interno (pra duas pessoas
+          trabalharem no mesmo ponto sem se perder). */}
       {notas.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-800 bg-amber-50/40 dark:bg-amber-900/10 px-4 py-3">
           <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
-            🔒 Notas internas ({notas.length})
+            📋 Log do tratamento ({notas.length}) — interno
           </div>
           <ul className="space-y-1.5">
-            {notas.map((n) => (
-              <li key={n.id} className="flex items-start gap-2 text-[12px] text-gray-700 dark:text-gray-300">
-                <span className="text-gray-400 dark:text-gray-500 mt-0.5 shrink-0">
-                  {n.origem === "envio_whatsapp" ? "📨" : "✍"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="whitespace-pre-wrap">{n.texto}</div>
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                    {n.criadoPorNome} · {fmtDataHora(n.criadoEm)}
+            {[...notas]
+              .sort((a, b) => b.criadoEm.localeCompare(a.criadoEm))
+              .map((n) => (
+                <li key={n.id} className="flex items-start gap-2 text-[12px] text-gray-700 dark:text-gray-300">
+                  <span className="text-gray-400 dark:text-gray-500 mt-0.5 shrink-0">
+                    {n.origem === "envio_whatsapp" ? "📨" : n.origem === "ciencia" ? "👁" : "✍"}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="whitespace-pre-wrap">{n.texto}</div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {n.criadoPorNome} · {fmtDataHora(n.criadoEm)}
+                    </div>
                   </div>
-                </div>
-                {podeAnotar && n.origem === "manual" && (
-                  <button
-                    type="button"
-                    onClick={() => onApagarNota(n.id)}
-                    className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline whitespace-nowrap"
-                    title="Apagar nota interna"
-                  >
-                    ✕
-                  </button>
-                )}
-              </li>
-            ))}
+                  {podeAnotar && n.origem === "manual" && (
+                    <button
+                      type="button"
+                      onClick={() => onApagarNota(n.id)}
+                      className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline whitespace-nowrap"
+                      title="Apagar nota interna"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </li>
+              ))}
           </ul>
         </div>
       )}
@@ -1564,11 +1594,12 @@ function fmtDataHora(iso: string): string {
 }
 
 function StatusSemanaCard({
-  statusSemana, carregando, semanaAtiva, podeMarcar, onMarcar, showHistorico, onToggleHistorico,
+  statusSemana, carregando, semanaAtiva, temRelatorio, podeMarcar, onMarcar, showHistorico, onToggleHistorico,
 }: {
   statusSemana: ExcecaoStatusSemana | null;
   carregando: boolean;
   semanaAtiva: SemanaInfo | undefined;
+  temRelatorio: boolean;
   podeMarcar: (s: ExcecaoStatusValor) => boolean;
   onMarcar: (s: ExcecaoStatusValor) => void;
   showHistorico: boolean;
@@ -1581,10 +1612,21 @@ function StatusSemanaCard({
 
   // Botões disponíveis baseados em status atual + permissão.
   // Cada estado oferece ações de avançar (primary) e voltar (secondary).
-  const acoes: { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary" }[] = [];
+  type Acao = { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary"; disabled?: boolean; tooltip?: string };
+  const acoes: Acao[] = [];
   if (status === "aberto") {
-    if (podeMarcar("em_tratamento")) acoes.push({ proximo: "em_tratamento", label: "Iniciar tratamento" });
-    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
+    if (podeMarcar("em_tratamento")) acoes.push({
+      proximo: "em_tratamento",
+      label: "Iniciar tratamento",
+      disabled: !temRelatorio,
+      tooltip: !temRelatorio ? "Gere o relatório antes de iniciar o tratamento" : undefined,
+    });
+    if (podeMarcar("tratado_lider")) acoes.push({
+      proximo: "tratado_lider",
+      label: "✅ Tratado pelo líder",
+      disabled: !temRelatorio,
+      tooltip: !temRelatorio ? "Gere o relatório antes de marcar como tratado" : undefined,
+    });
   } else if (status === "em_tratamento") {
     if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
     if (podeMarcar("aberto"))        acoes.push({ proximo: "aberto",        label: "↩ Reabrir", variant: "secondary" });
@@ -1625,7 +1667,9 @@ function StatusSemanaCard({
               key={a.proximo + a.label}
               variant={a.variant === "secondary" ? "secondary" : "primary"}
               size="sm"
+              disabled={a.disabled}
               onClick={() => onMarcar(a.proximo)}
+              title={a.tooltip}
             >
               {a.label}
             </Button>

@@ -202,9 +202,10 @@ export function AjustesEscalaTab({ rid }: Props) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-800 dark:text-blue-300">
-        💡 Lista dos <strong>apontamentos por empregado</strong> agrupados por semana. Marque os que vão pro
-        WhatsApp do empregado e clique em <strong>"Enviar via WhatsApp"</strong>. Os que não estiverem marcados ficam só
-        como log/ciência (não dá pra editar registro retroativo de intervalo, por exemplo).
+        💡 Lista dos <strong>apontamentos por empregado</strong> que precisam virar ajustes
+        manuais na <strong>escala praticada</strong> (semana já conferida pelo gerente). Use
+        como roteiro pra atualizar a praticada — faltas justificadas/injustificadas, atestados,
+        trocas etc. <em>No futuro vamos conectar essa atualização automática; por enquanto é manual.</em>
       </div>
 
       {semanasComApontamentos.length === 0 && (

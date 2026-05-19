@@ -22,7 +22,7 @@ type TabId = "inconformidades" | "ajustes" | "compatibilidade";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "inconformidades", label: "Inconformidades",              icon: "⚠️" },
-  { id: "ajustes",         label: "Ajustes de escala",            icon: "🛠️" },
+  { id: "ajustes",         label: "Apontamentos de Escala",       icon: "🛠️" },
   { id: "compatibilidade", label: "Compatibilidade de cadastros", icon: "🪪" },
 ];
 

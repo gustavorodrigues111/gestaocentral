@@ -1356,20 +1356,21 @@ export type ApontamentoFuncionario = {
   criadoPorNome: string;
 };
 
-// Nota interna sobre o empregado — INVISÍVEL pro empregado. São observações
-// nossas tipo "já avisei pessoalmente, prazo até sex", "veio falar comigo,
-// vai justificar via atestado". Pode ser:
-//   - manual: digitada pelo líder via "+ nota interna"
-//   - envio_whatsapp: auto-gerada quando o líder dispara o WhatsApp com a
-//                     lista de apontamentos (registra quando + o que foi
-//                     avisado, pra histórico interno)
+// Nota interna sobre o empregado — INVISÍVEL pro empregado. Funciona como
+// timeline do tratamento daquela semana. Pode ser:
+//   - manual:          digitada pelo líder via "+ nota interna"
+//   - envio_whatsapp:  auto-gerada quando o líder dispara o WhatsApp pro
+//                      empregado com a lista de apontamentos
+//   - ciencia:         auto-gerada quando o líder marca uma inconformidade
+//                      como "ciência" (não-tratável retroativo)
 export type NotaInterna = {
   id: string;
   empregadoId: string;
   empregadoNome: string;
   texto: string;
-  origem: "manual" | "envio_whatsapp";
-  // Quando origem === "envio_whatsapp", guarda os IDs dos apontamentos avisados
+  origem: "manual" | "envio_whatsapp" | "ciencia";
+  // Quando origem === "envio_whatsapp", guarda os IDs dos apontamentos avisados.
+  // Quando origem === "ciencia", guarda o ID do apontamento marcado como ciência.
   apontamentoIds?: string[];
   criadoEm: string;
   criadoPor: string;
