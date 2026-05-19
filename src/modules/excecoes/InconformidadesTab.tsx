@@ -236,15 +236,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
   async function aplicarStatus(novoStatus: ExcecaoStatusValor) {
     if (!me || !semanaAtiva) return;
-    if (!podeMarcarStatus(me, rid, novoStatus)) {
+    const statusAtual = statusSemana?.status || "aberto";
+    if (!podeMarcarStatus(me, rid, novoStatus, statusAtual)) {
       alert("Sem permissão pra marcar esse status.");
       return;
     }
-    const obs = (novoStatus === "em_tratamento"
-      ? prompt("Observação (opcional) — o que foi pedido pra ajustar?")
-      : null) || undefined;
+    // Pede observação quando líder coloca em tratamento (anotando o que vai
+    // ajustar) ou quando reverte (justificativa).
+    const ehRegressao =
+      (statusAtual === "conferido_gerente" && novoStatus !== "conferido_gerente") ||
+      (statusAtual === "tratado_lider"     && novoStatus === "em_tratamento")    ||
+      (statusAtual === "em_tratamento"     && novoStatus === "aberto");
+    let obs: string | undefined;
+    if (novoStatus === "em_tratamento" && !ehRegressao) {
+      obs = prompt("Observação (opcional) — o que foi pedido pra ajustar?") || undefined;
+    } else if (ehRegressao) {
+      const r = prompt("Por que você está revertendo? (opcional)");
+      obs = r ? `[reverter] ${r}` : undefined;
+    }
     try {
-      const updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs ?? undefined);
+      const updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs);
       setStatusSemana(updated);
     } catch (e) {
       alert("Erro ao salvar status: " + (e instanceof Error ? e.message : "?"));
@@ -543,7 +554,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         statusSemana={statusSemana}
         carregando={carregandoStatus}
         semanaAtiva={semanaAtiva}
-        podeMarcar={(s) => podeMarcarStatus(me, rid, s)}
+        podeMarcar={(s) => podeMarcarStatus(me, rid, s, statusSemana?.status || "aberto")}
         onMarcar={aplicarStatus}
         showHistorico={showHistoricoStatus}
         onToggleHistorico={() => setShowHistoricoStatus((v) => !v)}
@@ -922,20 +933,20 @@ function StatusSemanaCard({
   const c = STATUS_COR[status];
   const label = EXCECAO_STATUS_LABEL[status];
 
-  // Botões disponíveis baseados em status atual + permissão
+  // Botões disponíveis baseados em status atual + permissão.
+  // Cada estado oferece ações de avançar (primary) e voltar (secondary).
   const acoes: { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary" }[] = [];
-  if (status === "aberto" && podeMarcar("em_tratamento")) {
-    acoes.push({ proximo: "em_tratamento", label: "Marcar em tratamento" });
-  }
-  if ((status === "em_tratamento" || status === "aberto") && podeMarcar("tratado_lider")) {
-    acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
-  }
-  if (status === "tratado_lider" && podeMarcar("conferido_gerente")) {
-    acoes.push({ proximo: "conferido_gerente", label: "✓✓ Conferir e fechar" });
-  }
-  // Permite voltar pra "em_tratamento" se o gerente discordou
-  if (status === "tratado_lider" && podeMarcar("em_tratamento")) {
-    acoes.push({ proximo: "em_tratamento", label: "↩ Reabrir tratamento", variant: "secondary" });
+  if (status === "aberto") {
+    if (podeMarcar("em_tratamento")) acoes.push({ proximo: "em_tratamento", label: "Iniciar tratamento" });
+    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
+  } else if (status === "em_tratamento") {
+    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
+    if (podeMarcar("aberto"))        acoes.push({ proximo: "aberto",        label: "↩ Reabrir", variant: "secondary" });
+  } else if (status === "tratado_lider") {
+    if (podeMarcar("conferido_gerente")) acoes.push({ proximo: "conferido_gerente", label: "✓✓ Conferir e fechar" });
+    if (podeMarcar("em_tratamento"))     acoes.push({ proximo: "em_tratamento",     label: "↩ Reabrir tratamento", variant: "secondary" });
+  } else if (status === "conferido_gerente") {
+    if (podeMarcar("tratado_lider"))     acoes.push({ proximo: "tratado_lider",     label: "↩ Reabrir conferência", variant: "secondary" });
   }
 
   return (

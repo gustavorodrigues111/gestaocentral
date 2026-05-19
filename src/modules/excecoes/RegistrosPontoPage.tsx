@@ -16,11 +16,13 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { InconformidadesTab } from "./InconformidadesTab";
 import { CompatibilidadeTab } from "./CompatibilidadeTab";
+import { AjustesEscalaTab } from "./AjustesEscalaTab";
 
-type TabId = "inconformidades" | "compatibilidade";
+type TabId = "inconformidades" | "ajustes" | "compatibilidade";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "inconformidades", label: "Inconformidades",            icon: "⚠️" },
+  { id: "inconformidades", label: "Inconformidades",              icon: "⚠️" },
+  { id: "ajustes",         label: "Ajustes de escala",            icon: "🛠️" },
   { id: "compatibilidade", label: "Compatibilidade de cadastros", icon: "🪪" },
 ];
 
@@ -80,6 +82,7 @@ export function RegistrosPontoPage() {
       {tab === "inconformidades" && (
         <InconformidadesTab rid={rid} activeRestaurant={activeRestaurant} />
       )}
+      {tab === "ajustes" && <AjustesEscalaTab rid={rid} />}
       {tab === "compatibilidade" && <CompatibilidadeTab rid={rid} />}
     </div>
   );
