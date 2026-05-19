@@ -152,7 +152,6 @@ export function FreelasPage() {
           empregados={empregados}
           pessoas={pessoas}
           podeOperar={podeOperar}
-          podeDp={podeDp}
         />
       )}
       {tab === "fechamento" && (
