@@ -7,8 +7,8 @@ type Props = {
   max?: number;                  // default 240 (4h)
 };
 
-// Stepper de intervalo em minutos. Default step 5min. Mobile-friendly:
-// botões grandes nas laterais + display central.
+// Stepper de intervalo em minutos. Step 5 default. Botões circulares
+// destacados em indigo. Valor central grande. Sempre centralizado.
 export function IntervaloStepper({
   value, onChange, disabled, step = 5, min = 0, max = 240,
 }: Props) {
@@ -20,26 +20,38 @@ export function IntervaloStepper({
     if (disabled) return;
     onChange(Math.min(max, value + step));
   }
+  const baseBtn =
+    "h-12 w-12 rounded-full flex items-center justify-center text-2xl font-bold transition-colors select-none " +
+    "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 " +
+    "hover:bg-indigo-200 dark:hover:bg-indigo-800/60 " +
+    "active:bg-indigo-300 dark:active:bg-indigo-800 " +
+    "disabled:opacity-30 disabled:cursor-not-allowed";
+
   return (
-    <div className={`inline-flex items-stretch rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden ${disabled ? "opacity-50" : ""}`}>
+    <div className={`flex items-center justify-center gap-5 py-1 ${disabled ? "opacity-60" : ""}`}>
       <button
         type="button"
         onClick={dec}
         disabled={disabled || value <= min}
         aria-label="Diminuir intervalo"
-        className="px-4 py-2 text-lg font-bold bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-700 dark:text-gray-200"
+        className={baseBtn}
       >
         −
       </button>
-      <div className="px-4 py-2 min-w-[80px] text-center text-sm font-semibold text-gray-800 dark:text-gray-100 bg-white dark:bg-gray-900 border-x border-gray-200 dark:border-gray-700 select-none">
-        {value} min
+      <div className="min-w-[88px] text-center select-none">
+        <div className="text-3xl font-bold leading-none text-gray-900 dark:text-gray-100 tabular-nums">
+          {value}
+        </div>
+        <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mt-1">
+          minutos
+        </div>
       </div>
       <button
         type="button"
         onClick={inc}
         disabled={disabled || value >= max}
         aria-label="Aumentar intervalo"
-        className="px-4 py-2 text-lg font-bold bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-30 disabled:cursor-not-allowed text-gray-700 dark:text-gray-200"
+        className={baseBtn}
       >
         +
       </button>
