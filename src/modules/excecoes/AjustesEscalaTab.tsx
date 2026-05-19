@@ -26,6 +26,7 @@ import {
   type ApontamentoFuncionario,
   type Empregado,
   type ExcecaoStatusSemana,
+  type Pessoa,
 } from "../../core/types";
 
 type Props = {
@@ -71,23 +72,45 @@ function montarMensagem(empregadoNome: string, restNome: string, ap: Apontamento
 export function AjustesEscalaTab({ rid }: Props) {
   const { pessoa: me } = useAuth();
   const [semanas, setSemanas] = useState<ExcecaoStatusSemana[]>([]);
-  const [empregadosMap, setEmpregadosMap] = useState<Map<string, Empregado>>(new Map());
+  // Mapa empregadoId → whatsapp (resolvido cruzando empregados[].pessoaId →
+  // pessoas[].whatsapp; o whatsapp vive na Pessoa, não no Empregado).
+  const [whatsByEmpId, setWhatsByEmpId] = useState<Map<string, string>>(new Map());
   const [restNome, setRestNome] = useState("");
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
   const [mostrarVazias, setMostrarVazias] = useState(false);
 
-  // Carrega empregados pra puxar whatsapp na hora de gerar o link
+  // Carrega empregados + pessoas pra puxar whatsapp pelo cruzamento pessoaId.
   useEffect(() => {
     if (!rid) return;
-    const q = query(collection(db, "empregados"), where("restaurantId", "==", rid));
-    return onSnapshot(q, (snap) => {
-      const m = new Map<string, Empregado>();
-      snap.docs.forEach((d) => {
-        m.set(d.id, { id: d.id, ...d.data() } as Empregado);
-      });
-      setEmpregadosMap(m);
-    });
+    let empregados: Empregado[] = [];
+    let pessoas: Pessoa[] = [];
+    function reconstruirMapa() {
+      const pessoaPorId = new Map<string, Pessoa>();
+      for (const p of pessoas) pessoaPorId.set(p.id, p);
+      const m = new Map<string, string>();
+      for (const emp of empregados) {
+        const pid = emp.pessoaId;
+        const w = pid ? pessoaPorId.get(pid)?.whatsapp : undefined;
+        if (w) m.set(emp.id, w);
+      }
+      setWhatsByEmpId(m);
+    }
+    const unsubEmp = onSnapshot(
+      query(collection(db, "empregados"), where("restaurantId", "==", rid)),
+      (snap) => {
+        empregados = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empregado));
+        reconstruirMapa();
+      },
+    );
+    const unsubPes = onSnapshot(
+      query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
+      (snap) => {
+        pessoas = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Pessoa));
+        reconstruirMapa();
+      },
+    );
+    return () => { unsubEmp(); unsubPes(); };
   }, [rid]);
 
   // Nome do restaurante
@@ -158,9 +181,8 @@ export function AjustesEscalaTab({ rid }: Props) {
       alert("Marque pelo menos 1 apontamento como 'enviar'.");
       return;
     }
-    const emp = empregadosMap.get(empregadoId);
-    const whatsapp = emp?.whatsapp;
-    const nome = aps[0].empregadoNome;
+    const whatsapp = whatsByEmpId.get(empregadoId);
+    const nome = aps[0]?.empregadoNome ?? "";
     const msg = montarMensagem(nome, restNome || "restaurante", enviaveis);
     const link = whatsLink(whatsapp, msg);
     if (!link) {
@@ -214,7 +236,7 @@ export function AjustesEscalaTab({ rid }: Props) {
         <SemanaBlock
           key={s.id}
           semana={s}
-          empregadosMap={empregadosMap}
+          whatsByEmpId={whatsByEmpId}
           restNome={restNome}
           podeEditar={!!me}
           onToggleEnviar={(ap) => toggleEnviar(s, ap)}
@@ -252,7 +274,7 @@ export function AjustesEscalaTab({ rid }: Props) {
 
 function SemanaBlock({
   semana,
-  empregadosMap,
+  whatsByEmpId,
   restNome,
   podeEditar,
   onToggleEnviar,
@@ -260,7 +282,7 @@ function SemanaBlock({
   onEnviarWhats,
 }: {
   semana: ExcecaoStatusSemana;
-  empregadosMap: Map<string, Empregado>;
+  whatsByEmpId: Map<string, string>;
   restNome: string;
   podeEditar: boolean;
   onToggleEnviar: (ap: ApontamentoFuncionario) => void;
@@ -279,8 +301,8 @@ function SemanaBlock({
     return Array.from(m.entries())
       .map(([empregadoId, lista]) => ({
         empregadoId,
-        empregadoNome: lista[0].empregadoNome,
-        cpf: lista[0].cpf,
+        empregadoNome: lista[0]?.empregadoNome ?? "",
+        cpf: lista[0]?.cpf,
         lista: lista.sort((a, b) => (a.data || "").localeCompare(b.data || "")),
       }))
       .sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome));
@@ -300,8 +322,8 @@ function SemanaBlock({
 
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {grupos.map((g) => {
-          const emp = empregadosMap.get(g.empregadoId);
-          const semWhats = !emp?.whatsapp;
+          const whatsapp = whatsByEmpId.get(g.empregadoId);
+          const semWhats = !whatsapp;
           const enviaveisCount = g.lista.filter((a) => a.enviar).length;
           return (
             <div key={g.empregadoId} className="px-4 py-3">
@@ -311,8 +333,8 @@ function SemanaBlock({
                     {g.empregadoNome}
                   </div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                    {emp?.whatsapp ? (
-                      <>📱 {emp.whatsapp}</>
+                    {whatsapp ? (
+                      <>📱 {whatsapp}</>
                     ) : (
                       <span className="text-amber-700 dark:text-amber-400">
                         ⚠ sem WhatsApp cadastrado

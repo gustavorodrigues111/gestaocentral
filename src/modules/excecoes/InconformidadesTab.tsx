@@ -297,7 +297,25 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // Cruza CPF → empregadoId do Planejamento. exc.employeeId é o ID da Sólides
+  // (number), não casa com /empregados/{id} — precisamos do ID local pra
+  // ancorar o apontamento e cruzar com Pessoa.whatsapp depois.
+  const empIdByCpf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const e of empregados) {
+      const cpf = (e.cpf || "").replace(/\D/g, "");
+      if (cpf) m.set(cpf, e.id);
+    }
+    return m;
+  }, [empregados]);
+
   function anotarExcecao(exc: ExceptionRecord) {
+    const cpfD = (exc.cpf || "").replace(/\D/g, "");
+    const empId = empIdByCpf.get(cpfD);
+    if (!empId) {
+      alert(`Não achei empregado com CPF ${exc.cpf} no Planejamento. Cadastre em Pessoas pra poder anotar.`);
+      return;
+    }
     const meta = RULES_META[exc.ruleId];
     const sugerido = `${meta.label} em ${fmtDataBr(exc.date)}: ${exc.description}${
       exc.detail ? ` (${exc.detail})` : ""
@@ -305,7 +323,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const final = prompt("Texto do apontamento (edite se quiser):", sugerido);
     if (!final || !final.trim()) return;
     void criarApontamento({
-      empregadoId: exc.employeeId,
+      empregadoId: empId,
       empregadoNome: exc.employeeName,
       cpf: exc.cpf,
       texto: final.trim(),
@@ -799,7 +817,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
-              {agruparPorColabDate(excecoesFiltradas).map((grupo) => (
+              {agruparPorColabDate(excecoesFiltradas, empIdByCpf).map((grupo) => (
                 <ColaboradorBlock
                   key={grupo.key}
                   grupo={grupo}
@@ -860,22 +878,31 @@ type GrupoColab = {
   porData: { date: string; exc: ExceptionRecord[] }[];
 };
 
-function agruparPorColabDate(rows: ExceptionRecord[]): GrupoColab[] {
-  type Acc = { empregadoId: string; nome: string; cpf: string; porData: Map<string, ExceptionRecord[]> };
+// `empIdByCpf` resolve o ID do Planejamento (string) — exc.employeeId é o
+// ID da Sólides (number), inadequado pra ancorar apontamentos.
+function agruparPorColabDate(
+  rows: ExceptionRecord[],
+  empIdByCpf: Map<string, string>,
+): GrupoColab[] {
+  type Acc = {
+    empregadoId: string;
+    nome: string;
+    cpf: string;
+    porData: Map<string, ExceptionRecord[]>;
+  };
   const map = new Map<string, Acc>();
   for (const e of rows) {
+    const cpfD = (e.cpf || "").replace(/\D/g, "");
+    const empId = empIdByCpf.get(cpfD) ?? "";
     const k = `${e.employeeId}_${e.cpf}`;
     let g = map.get(k);
     if (!g) {
-      g = { empregadoId: e.employeeId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
+      g = { empregadoId: empId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
       map.set(k, g);
     }
-    let arr = g.porData.get(e.date);
-    if (!arr) {
-      arr = [];
-      g.porData.set(e.date, arr);
-    }
+    const arr = g.porData.get(e.date) ?? [];
     arr.push(e);
+    g.porData.set(e.date, arr);
   }
   return Array.from(map.entries())
     .map<GrupoColab>(([key, g]) => {
