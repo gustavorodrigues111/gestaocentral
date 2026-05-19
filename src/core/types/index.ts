@@ -9,7 +9,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes";
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao";
 
 // ─── PERMISSÕES ───
 
@@ -369,6 +369,12 @@ export type Restaurant = {
 
   // Configs internas de módulos (alteráveis via ⚙️ do módulo)
   taxRate?: number;            // % retenção da gorjeta
+
+  // ─── Admissão (módulo Admissão) ───
+  admissaoPrazoDias?: number;            // 1-7, default 1
+  whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
+  admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
+  admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)
@@ -1430,4 +1436,127 @@ export type ExcecaoStatusSemana = {
   relatorioCache?: RelatorioSnapshot;
   apontamentosEscala?: ApontamentoEscala[];
   updatedAt: string;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Módulo Admissão — fluxo de admissão de novos empregados.
+//  Schema configurável por restaurante (FormField[]). Cada admissão tira um
+//  snapshot do schema na criação pra preservar consistência se o schema mudar.
+//  Token público + email confirmation pra candidato preencher sem login.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type FormFieldTipo =
+  | "text" | "email" | "telefone" | "cpf" | "data" | "numero"
+  | "select" | "multiselect" | "textarea" | "boolean"
+  | "lista_dependentes" | "lista_transporte";
+
+export type FormField = {
+  id: string;                  // ex: "nome_completo" — gerado da label, único no schema
+  label: string;
+  tipo: FormFieldTipo;
+  obrigatorio: boolean;
+  opcoes?: string[];           // pra select/multiselect
+  placeholder?: string;
+  ajuda?: string;
+  grupo: string;               // "Dados pessoais", "Endereço", etc — agrupa visualmente
+  ordem: number;
+  ativo: boolean;              // soft-delete (não quebra admissões antigas)
+};
+
+export type AdmissaoStatus =
+  | "formulario_enviado"      // RH criou e mandou WhatsApp pro candidato
+  | "formulario_preenchido"   // candidato submeteu o form
+  | "documentos_recebidos"    // RH confirmou recebimento dos docs via WhatsApp
+  | "admitido"                // aprovado, Pessoa+Empregado criados
+  | "cancelada"               // RH cancelou
+  | "expirada";               // token expirou sem preenchimento
+
+export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
+  formulario_enviado:    "Formulário enviado",
+  formulario_preenchido: "Formulário preenchido",
+  documentos_recebidos:  "Documentos recebidos",
+  admitido:              "Admitido",
+  cancelada:             "Cancelada",
+  expirada:              "Expirada",
+};
+
+export type AdmissaoReenvio = {
+  em: string;            // ISO
+  por: string;           // pessoaId
+  porNome: string;
+};
+
+export type Admissao = {
+  id: string;
+  restaurantId: string;
+  status: AdmissaoStatus;
+
+  // ─── Etapa 1: RH inicia ───
+  iniciadoPor: { id: string; nome: string };
+  iniciadoEm: string;          // ISO
+  candidato: {
+    nome: string;
+    cpf: string;               // só dígitos
+    email: string;             // OBRIGATÓRIO — vira auth do form público
+    whatsapp: string;          // só dígitos
+  };
+  cargoId: string;
+
+  // Opcionais na etapa 1
+  horariosCadastrados?: Record<string, { in: string; out: string } | { folga: true }>;
+  salario?: number;
+  dataAdmissao?: string;       // YYYY-MM-DD
+  cargoConfianca?: boolean;
+
+  // ─── Token público ───
+  token: string;               // UUID
+  enviadoEm?: string;          // ISO — quando RH clicou "enviar WhatsApp" (timer inicia)
+  expiraEm?: string;           // ISO — enviadoEm + prazoDias × 86400000
+  reenvios?: AdmissaoReenvio[];
+
+  // Snapshot do schema na hora da criação (congela)
+  schemaUsado: FormField[];
+
+  // Snapshot de dados do restaurante necessários na página pública. Evita
+  // exigir leitura aberta de /restaurants. Atualizado a cada reenvio.
+  restaurantSnapshot?: {
+    nome: string;
+    whatsappDP?: string;
+    prazoDias: number;
+  };
+
+  // ─── Etapa 2: candidato preenche ───
+  dadosPreenchidos?: Record<string, unknown>;
+  preenchidoEm?: string;       // ISO
+
+  // ─── Etapa 3: RH confirma recebimento dos docs via WhatsApp ───
+  documentosRecebidosEm?: string;
+  documentosRecebidosPor?: { id: string; nome: string };
+
+  // ─── Etapa 4: aprovação ───
+  aprovadoPor?: { id: string; nome: string };
+  aprovadoEm?: string;
+  pessoaIdCriada?: string;
+  empregadoIdCriado?: string;
+
+  // ─── Cancelamento ───
+  canceladoPor?: { id: string; nome: string };
+  canceladoEm?: string;
+  motivoCancelamento?: string;
+
+  // ─── Kanban: override manual da coluna (default: derivado do status) ───
+  kanbanColunaId?: string;
+
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type KanbanColuna = {
+  id: string;
+  nome: string;
+  ordem: number;
+  // Status que automaticamente cai nessa coluna quando admissão muda de status
+  // (mapping default: status → coluna correspondente). Manual drag sobrescreve.
+  statusAuto?: AdmissaoStatus;
+  cor?: string;                // hex sem # — pra header da coluna
 };

@@ -25,6 +25,8 @@ import { ReservasPage } from "./modules/reservas/ReservasPage";
 import { ContagensPage } from "./modules/contagens/ContagensPage";
 import { ComprasPage } from "./modules/compras/ComprasPage";
 import { RegistrosPontoPage } from "./modules/excecoes/RegistrosPontoPage";
+import { AdmissaoPage } from "./modules/admissao/AdmissaoPage";
+import { AdmissaoPublicaPage } from "./modules/admissao/AdmissaoPublicaPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -64,6 +66,7 @@ function ModuleRouter() {
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
     case "excecoes":      return <RegistrosPontoPage key={k} />;
+    case "admissao":      return <AdmissaoPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
@@ -179,6 +182,8 @@ function App() {
       <AuthProvider>
         <Routes>
           <Route path="/signup" element={<PublicSignup />} />
+          {/* Página pública de admissão — sem auth, validação por token+email */}
+          <Route path="/admissao/:token" element={<AdmissaoPublicaPage />} />
           <Route path="*" element={<RootOrShell />} />
         </Routes>
       </AuthProvider>

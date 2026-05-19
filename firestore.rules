@@ -132,6 +132,31 @@ service cloud.firestore {
     match /fornecedores/{id}        { allow read, write: if authed(); }
     match /pedidos/{id}             { allow read, write: if authed(); }
 
+    // ── /admissoes ── candidato preenche o form via link público (sem auth)
+    // Read: aberto (precisa pra a página pública carregar pelo token)
+    // Update: aberto SOMENTE pra:
+    //   - dadosPreenchidos / preenchidoEm / status (formulario_preenchido)
+    //   - updatedAt
+    //   Status só pode ir pra "formulario_preenchido" se estava
+    //   "formulario_enviado". Restante (criação, aprovação, cancelamento) só
+    //   por authed. Iteração futura: migrar pra endpoint Vercel com admin SDK.
+    match /admissoes/{id} {
+      allow read: if true;
+      allow create, delete: if authed();
+      allow update: if authed()
+        || (
+          // Caminho público: candidato preenchendo
+          (resource.data.status == "formulario_enviado")
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(["dadosPreenchidos", "preenchidoEm", "status", "updatedAt"])
+          && (
+            // Só pode manter status atual OU mudar pra "formulario_preenchido"
+            request.resource.data.status == "formulario_enviado"
+            || request.resource.data.status == "formulario_preenchido"
+          )
+        );
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
