@@ -62,6 +62,7 @@ export function NovoTurnoModal({
     if (!me) return;
     if (!candidato) { setErr("Selecione um freela."); return; }
     if (!date) { setErr("Data obrigatória."); return; }
+    if (!area) { setErr("Área obrigatória."); return; }
     // Entrada obrigatória pra turno que JÁ começou (data ≤ hoje)
     if (!isFutura && !entrada) {
       setErr("Hora de início é obrigatória pra turno que já começou.");
@@ -166,14 +167,14 @@ export function NovoTurnoModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              Área (opcional)
+              Área *
             </label>
             <select
               value={area}
               onChange={(e) => setArea(e.target.value as Area | "")}
               className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
             >
-              <option value="">—</option>
+              <option value="">— selecione —</option>
               {AREAS.map((a) => (
                 <option key={a} value={a}>{a}</option>
               ))}
