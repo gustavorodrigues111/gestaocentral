@@ -21,14 +21,19 @@ export type FetchSchedulesResult = {
   employees: SolidesEmployee[];
   schedules: Record<string, SolidesSchedule | null>;
   count: number;
+  dateUsed?: Record<string, string | null>;
   errors: { employeeId: number; name: string; error: string }[];
 };
 
+// Aceita uma OU várias datas (em ordem de prioridade). A 1ª que retornar
+// um quadro real é mantida pro empregado. Workaround pro bug da Sólides
+// que devolve null inconsistente.
 export async function fetchSolidesSchedules(
-  date: string,
+  dates: string | string[],
   restaurantKey: string,
 ): Promise<FetchSchedulesResult> {
-  const params = new URLSearchParams({ date });
+  const list = Array.isArray(dates) ? dates : [dates];
+  const params = new URLSearchParams({ dates: list.join(",") });
   if (restaurantKey) params.set("restaurant", restaurantKey);
   const resp = await fetch(`/api/solides-work-schedules?${params.toString()}`);
   const text = await resp.text();

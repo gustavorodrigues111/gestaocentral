@@ -192,8 +192,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const restaurantKey = String(req.query.restaurant ?? "").trim();
   const date = String(req.query.date ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    res.status(400).json({ error: "date obrigatório (YYYY-MM-DD)." });
+  const datesRaw = String(req.query.dates ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) && !datesRaw) {
+    res.status(400).json({ error: "Informe date= (YYYY-MM-DD) ou dates= (CSV)." });
     return;
   }
   const tokenResult = resolveToken(restaurantKey);
@@ -202,32 +203,59 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     return;
   }
   const token = tokenResult.token;
-  const [y, mo, d] = date.split("-").map(Number);
-  const dateMs = Date.UTC(y, mo - 1, d, 0, 0, 0, 0);
+  function ymdToMs(ymd: string): number {
+    const [yy, mm, dd] = ymd.split("-").map(Number);
+    return Date.UTC(yy, mm - 1, dd, 0, 0, 0, 0);
+  }
+  // A Sólides retorna o quadro vigente NA data informada — mas devolve null
+  // de forma inconsistente pra algumas datas mesmo quando o quadro existe
+  // (bug observado em produção). Solução: tentar várias datas em ordem,
+  // pegar a primeira que retornar um quadro real.
+  const datesToTry: string[] = datesRaw
+    ? datesRaw.split(",").map((s) => s.trim()).filter((s) => /^\d{4}-\d{2}-\d{2}$/.test(s))
+    : [date];
+  if (datesToTry.length === 0) {
+    res.status(400).json({ error: "Nenhuma data válida em dates=." });
+    return;
+  }
 
   try {
     const employees = await listEmployees(token);
-    // Busca em paralelo, com concorrência limitada (Sólides pode rate-limit).
     const results: Record<string, NormalizedSchedule | null> = {};
-    const errors: { employeeId: number; name: string; error: string }[] = [];
+    const errors: { employeeId: number; name: string; error: string; triedDates?: string[] }[] = [];
+    const dateUsed: Record<string, string | null> = {};
     const CONCURRENCY = 5;
     let idx = 0;
     async function worker() {
       while (idx < employees.length) {
         const i = idx++;
         const emp = employees[i];
-        const url = `${WORK_SCHEDULE_API}/${emp.id}?date=${dateMs}`;
-        try {
-          const raw = await fetchJson(url, token);
-          results[String(emp.id)] = normalizeSchedule(raw);
-        } catch (e) {
-          errors.push({
-            employeeId: emp.id,
-            name: emp.name,
-            error: e instanceof Error ? e.message : String(e),
-          });
-          results[String(emp.id)] = null;
+        let schedule: NormalizedSchedule | null = null;
+        let usedDate: string | null = null;
+        const tried: string[] = [];
+        for (const tryDate of datesToTry) {
+          tried.push(tryDate);
+          const ms = ymdToMs(tryDate);
+          const url = `${WORK_SCHEDULE_API}/${emp.id}?date=${ms}`;
+          try {
+            const raw = await fetchJson(url, token);
+            const norm = normalizeSchedule(raw);
+            if (norm) {
+              schedule = norm;
+              usedDate = tryDate;
+              break;
+            }
+          } catch (e) {
+            errors.push({
+              employeeId: emp.id,
+              name: emp.name,
+              error: e instanceof Error ? e.message : String(e),
+              triedDates: [...tried],
+            });
+          }
         }
+        results[String(emp.id)] = schedule;
+        dateUsed[String(emp.id)] = usedDate;
       }
     }
     await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
@@ -236,6 +264,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       employees,
       schedules: results,
       count: Object.keys(results).length,
+      dateUsed,
       errors,
     });
   } catch (e) {

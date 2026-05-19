@@ -235,7 +235,11 @@ export function ExcecoesPage() {
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
       const debugInfo: { allanId?: string; escala?: Record<string, string>; sidEncontrado?: number | null; cpf?: string; quadroSolides?: unknown } = {};
       try {
-        const schedRes = await fetchSolidesSchedules(midDate(startDate, endDate), shortCode);
+        // Várias datas em ordem de prioridade — workaround pro bug da Sólides
+        // que às vezes retorna null pra uma data específica mesmo o quadro
+        // existindo. Tenta endDate, depois meio, depois startDate, depois hoje.
+        const datasTry = [endDate, midDate(startDate, endDate), startDate, todayYmd()];
+        const schedRes = await fetchSolidesSchedules(datasTry, shortCode);
         const sidByCpf = new Map<string, number>();
         for (const e of schedRes.employees) {
           if (e.cpf) sidByCpf.set(e.cpf, e.id);
