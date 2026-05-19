@@ -7,6 +7,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
 import { AREAS, type Area, type Empregado, type Pessoa } from "../../core/types";
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
@@ -179,12 +180,12 @@ export function NovoTurnoModal({
             </select>
           </div>
 
-          <Input
-            label={isFutura ? "Hora de início (opcional)" : "Hora de início *"}
-            type="time"
-            value={entrada}
-            onChange={(e) => setEntrada(e.target.value)}
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+              {isFutura ? "Hora de início (opcional)" : "Hora de início *"}
+            </label>
+            <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+          </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">

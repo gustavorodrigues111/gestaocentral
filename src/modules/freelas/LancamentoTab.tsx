@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -6,6 +6,7 @@ import { Button } from "../../core/ui/Button";
 import type { Empregado, FreelaShift, Pessoa } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
 import { NovoTurnoModal } from "./NovoTurnoModal";
+import { HorarioModal } from "./HorarioModal";
 import { calcHoras, fmtHoras } from "./helpers";
 
 type Props = {
@@ -19,16 +20,16 @@ type Props = {
 type FiltroData = "todos" | "futuros" | "hoje" | "passado";
 
 // Tab Lançamentos — exclusivamente OPERACIONAL.
-// Cria turno e edita horário (entrada/saída/intervalo). Não vê nem mexe em
-// valor / tipo / total — isso é responsabilidade do DP na aba Fechamento.
-// Status pela data:
-//   data > hoje  → agendado
-//   data ≤ hoje  → aberto
+// Mostra os 3 estados visuais distintos:
+//   📅 AGENDADO (data futura, sem entrada)
+//   🟡 ABERTO   (com entrada, sem saída — turno rolando)
+//   ✅ FECHADO  (entrada+saída — aguarda DP precificar na aba Fechamento)
+// Edição de horário só via modal (Iniciar / Fechar / Editar).
 export function LancamentoTab({
   restaurantId, shifts, empregados, pessoas, podeOperar,
 }: Props) {
   const [filtro, setFiltro] = useState<FiltroData>("todos");
-  const [showModal, setShowModal] = useState(false);
+  const [showNovo, setShowNovo] = useState(false);
 
   const hoje = todayYmd();
   const abertos = useMemo(() => {
@@ -71,7 +72,7 @@ export function LancamentoTab({
             {abertos.length} turno(s)
           </span>
           {podeOperar && (
-            <Button size="sm" onClick={() => setShowModal(true)}>+ Novo turno</Button>
+            <Button size="sm" onClick={() => setShowNovo(true)}>+ Novo turno</Button>
           )}
         </div>
       </div>
@@ -84,10 +85,10 @@ export function LancamentoTab({
           )}
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-5">
           {porData.map(([date, list]) => (
             <div key={date}>
-              <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1.5 px-1">
+              <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-2 px-1">
                 {formatDataBR(date)}
                 {date === hoje && (
                   <span className="ml-2 text-indigo-600 dark:text-indigo-400">· hoje</span>
@@ -106,13 +107,13 @@ export function LancamentoTab({
         </div>
       )}
 
-      {showModal && (
+      {showNovo && (
         <NovoTurnoModal
           restaurantId={restaurantId}
           empregados={empregados}
           pessoas={pessoas}
-          onClose={() => setShowModal(false)}
-          onSaved={() => setShowModal(false)}
+          onClose={() => setShowNovo(false)}
+          onSaved={() => setShowNovo(false)}
         />
       )}
     </div>
@@ -135,26 +136,32 @@ function FiltroBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () =
   );
 }
 
+type EstadoCard = "agendado" | "aberto" | "fechado_ops";
+
+function inferirEstado(s: FreelaShift): EstadoCard {
+  if (s.status === "agendado") return "agendado";
+  if (s.entrada && s.saida)    return "fechado_ops";
+  return "aberto";
+}
+
+// ── Card único que se adapta ao estado ────────────────────────────────────
 function ShiftCard({ shift, podeOperar }: { shift: FreelaShift; podeOperar: boolean }) {
   const { pessoa: me } = useAuth();
-  const [entrada, setEntrada]     = useState(shift.entrada || "");
-  const [saida, setSaida]         = useState(shift.saida || "");
-  const [intervalo, setIntervalo] = useState<number>(shift.intervalo || 0);
+  const [horarioMode, setHorarioMode] = useState<"iniciar" | "fechar" | "editar" | null>(null);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    setEntrada(shift.entrada || "");
-    setSaida(shift.saida || "");
-    setIntervalo(shift.intervalo || 0);
-  }, [shift.id, shift.entrada, shift.saida, shift.intervalo]);
+  const estado = inferirEstado(shift);
+  const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
 
-  const horas = calcHoras(entrada, saida, intervalo);
-
-  async function persistir(updates: Partial<FreelaShift>) {
+  async function naoCompareceu() {
+    if (!me) return;
+    if (!confirm(`Marcar ${shift.nomeSnapshot} como NÃO COMPARECEU?\nEsse turno não gera pagamento.`)) return;
     setSaving(true);
     try {
       await updateDoc(doc(db, "freelaShifts", shift.id), {
-        ...updates,
+        status: "nao_compareceu",
+        noShowEm: new Date().toISOString(),
+        noShowPor: me.id,
         updatedAt: new Date().toISOString(),
       });
     } finally {
@@ -162,127 +169,131 @@ function ShiftCard({ shift, podeOperar }: { shift: FreelaShift; podeOperar: bool
     }
   }
 
-  async function onBlurHoras() {
-    if (!podeOperar) return;
-    // Se editou horário em turno "agendado" passado → vira "aberto"
-    const flip = (shift.status === "agendado" && entrada) ? { status: "aberto" as const } : {};
-    await persistir({
-      entrada: entrada || undefined,
-      saida: saida || undefined,
-      intervalo,
-      horas,
-      // recalcula total se já houver valor (preservar coerência caso DP já tenha precificado)
-      ...(shift.valorUnit ? { totalCalc: shift.valorTipo === "diaria" ? shift.valorUnit : shift.valorUnit * horas } : {}),
-      ...flip,
-    });
-  }
-
-  async function naoCompareceu() {
-    if (!me) return;
-    if (!confirm(`Marcar ${shift.nomeSnapshot} como NÃO COMPARECEU? Esse turno não gera pagamento.`)) return;
-    await persistir({
-      status: "nao_compareceu",
-      noShowEm: new Date().toISOString(),
-      noShowPor: me.id,
-    });
-  }
-
   async function excluir() {
-    if (!confirm(`Excluir turno de ${shift.nomeSnapshot} em ${shift.date}? Essa ação não pode ser desfeita.`)) return;
-    await deleteDoc(doc(db, "freelaShifts", shift.id));
+    if (!confirm(`Excluir turno de ${shift.nomeSnapshot} em ${shift.date}?\nEssa ação não pode ser desfeita.`)) return;
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, "freelaShifts", shift.id));
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const statusBadge =
-    shift.status === "agendado"
-      ? { label: "Agendado", c: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" }
-      : { label: "Aberto",   c: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" };
+  // Estilos por estado
+  const estilo =
+    estado === "agendado"     ? "border-blue-200 dark:border-blue-900 bg-blue-50/40 dark:bg-blue-900/10" :
+    estado === "aberto"       ? "border-amber-300 dark:border-amber-900 bg-amber-50/50 dark:bg-amber-900/15" :
+                                "border-emerald-300 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-900/15";
+
+  const badge =
+    estado === "agendado"   ? { txt: "📅 AGENDADO", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" } :
+    estado === "aberto"     ? { txt: "🟡 ABERTO",   cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" } :
+                              { txt: "✅ FECHADO",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
 
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900">
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="min-w-0 flex-1">
-          <div className="font-medium text-gray-800 dark:text-gray-100 truncate">
-            {shift.nomeSnapshot}
-            <span className={`ml-2 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${statusBadge.c}`}>
-              {statusBadge.label}
-            </span>
-            {shift.empregadoId && (
-              <span className="ml-1.5 text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                Empregado
+    <>
+      <div className={`rounded-xl border ${estilo} p-3`}>
+        {/* Header — nome + badges */}
+        <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold text-gray-900 dark:text-gray-100">
+              {shift.nomeSnapshot}
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+              <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded ${badge.cls}`}>
+                {badge.txt}
               </span>
+              {shift.empregadoId && (
+                <span className="text-[10px] uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-100/70 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                  Empregado
+                </span>
+              )}
+              {shift.area && (
+                <span className="text-[11px] text-gray-600 dark:text-gray-400">· {shift.area}</span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Observação */}
+        {shift.observacao && (
+          <div className="text-[11px] text-gray-600 dark:text-gray-400 italic mb-2">
+            "{shift.observacao}"
+          </div>
+        )}
+
+        {/* Bloco principal — varia por estado */}
+        {estado === "agendado" && (
+          <div className="mb-3 text-sm text-gray-700 dark:text-gray-300">
+            {shift.entrada ? (
+              <>⏰ Hora prevista: <strong>{shift.entrada}</strong></>
+            ) : (
+              <span className="text-gray-500">Sem hora prevista. Marque ao iniciar.</span>
             )}
           </div>
-          {(shift.area || shift.observacao) && (
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">
-              {shift.area && <span className="mr-2">{shift.area}</span>}
-              {shift.observacao && <span className="italic">"{shift.observacao}"</span>}
-            </div>
-          )}
-        </div>
-        <div className="text-right">
-          <div className="text-[11px] text-gray-500 dark:text-gray-400">
-            {fmtHoras(horas)}
+        )}
+
+        {estado === "aberto" && (
+          <div className="mb-3 text-sm text-gray-800 dark:text-gray-100">
+            ⏰ Iniciou às <strong className="text-base">{shift.entrada}</strong>
           </div>
-        </div>
+        )}
+
+        {estado === "fechado_ops" && (
+          <div className="mb-3">
+            <div className="text-sm text-gray-800 dark:text-gray-100">
+              ⏰ <strong>{shift.entrada}</strong> → <strong>{shift.saida}</strong>
+              {shift.intervalo ? <span className="text-gray-500"> (intervalo {shift.intervalo}min)</span> : null}
+              {" "}= <strong className="text-emerald-700 dark:text-emerald-400">{fmtHoras(horas)}</strong>
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Aguardando DP precificar
+            </div>
+          </div>
+        )}
+
+        {/* CTA primário + ações secundárias */}
+        {podeOperar && (
+          <>
+            {estado === "agendado" && (
+              <Button onClick={() => setHorarioMode("iniciar")} disabled={saving} className="w-full">
+                🟢 Iniciar turno
+              </Button>
+            )}
+            {estado === "aberto" && (
+              <Button onClick={() => setHorarioMode("fechar")} disabled={saving} className="w-full">
+                🔴 Fechar turno
+              </Button>
+            )}
+
+            <div className="flex flex-wrap gap-3 justify-end mt-2 text-[11px]">
+              {estado === "fechado_ops" && (
+                <button type="button" disabled={saving} onClick={() => setHorarioMode("editar")} className="text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50">
+                  ✏️ Editar horário
+                </button>
+              )}
+              {estado !== "fechado_ops" && (
+                <button type="button" disabled={saving} onClick={naoCompareceu} className="text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50">
+                  🚫 Não compareceu
+                </button>
+              )}
+              <button type="button" disabled={saving} onClick={excluir} className="text-red-600 dark:text-red-400 hover:underline disabled:opacity-50">
+                🗑 Excluir
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 mb-3">
-        <Field label="Entrada">
-          <input
-            type="time"
-            value={entrada}
-            disabled={!podeOperar || saving}
-            onChange={(e) => setEntrada(e.target.value)}
-            onBlur={onBlurHoras}
-            className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50"
-          />
-        </Field>
-        <Field label="Saída">
-          <input
-            type="time"
-            value={saida}
-            disabled={!podeOperar || saving}
-            onChange={(e) => setSaida(e.target.value)}
-            onBlur={onBlurHoras}
-            className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50"
-          />
-        </Field>
-        <Field label="Intervalo (min)">
-          <input
-            type="number"
-            min={0}
-            value={intervalo || ""}
-            disabled={!podeOperar || saving}
-            onChange={(e) => setIntervalo(parseInt(e.target.value, 10) || 0)}
-            onBlur={onBlurHoras}
-            className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50"
-            placeholder="0"
-          />
-        </Field>
-      </div>
-
-      {podeOperar && (
-        <div className="flex flex-wrap gap-2 justify-end">
-          <Button size="sm" variant="secondary" onClick={naoCompareceu} disabled={saving}>
-            🚫 Não compareceu
-          </Button>
-          <Button size="sm" variant="danger" onClick={excluir} disabled={saving}>
-            🗑 Excluir
-          </Button>
-        </div>
+      {horarioMode && (
+        <HorarioModal
+          shift={shift}
+          mode={horarioMode}
+          onClose={() => setHorarioMode(null)}
+          onSaved={() => setHorarioMode(null)}
+        />
       )}
-    </div>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-col gap-0.5">
-      <label className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400">
-        {label}
-      </label>
-      {children}
-    </div>
+    </>
   );
 }
 
