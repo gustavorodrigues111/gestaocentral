@@ -84,7 +84,7 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
       onSaved();
     } catch (e) {
       console.error(e);
-      setErr("Erro ao salvar. Tente de novo.");
+      setErr(`Erro ao salvar: ${e instanceof Error ? e.message : String(e)}`);
       setSaving(false);
     }
   }
