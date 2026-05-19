@@ -11,6 +11,7 @@ import type {
   ExceptionRecord,
   ExceptionRuleId,
   ExceptionSeverity,
+  SolidesPunch,
 } from "./types";
 
 export type RuleMeta = {
@@ -34,7 +35,7 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     label: "Intervalo abaixo do legal",
     severity: "grave",
     icon: "🍽️",
-    descricaoRegra: "Jornada acima de 6h com intervalo menor que 60min (CLT Art. 71).",
+    descricaoRegra: "Jornada acima de 6h com intervalo menor que 55min (CLT Art. 71 — tolerância 5min sobre 60min legais).",
   },
   interjornadaCurta: {
     id: "interjornadaCurta",
@@ -81,7 +82,9 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
-const MIN_INTERVALO = 60; // min
+// Intervalo intrajornada legal é 60min (CLT Art. 71). Aceitamos uma tolerância
+// de 5min — só faz apontamento abaixo de 55min de intervalo.
+const MIN_INTERVALO = 55; // min
 const JORNADA_MAX = 10 * 60; // 600 min
 const JORNADA_EXIGE_INTERVALO = 6 * 60; // 360 min
 
@@ -94,7 +97,33 @@ function fmtH(min: number): string {
   return `${sign}${h}h${String(m).padStart(2, "0")}`;
 }
 
-// Helper pra montar um ExceptionRecord a partir do contexto.
+// epoch ms (UTC) → "HH:MM" em BRT (UTC-3, sem horário de verão).
+function fmtHora(ms: number | undefined | null): string {
+  if (typeof ms !== "number" || ms <= 0) return "—";
+  const d = new Date(ms);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const brtMin = (utcMin - 180 + 1440) % 1440;
+  const h = Math.floor(brtMin / 60);
+  const m = brtMin % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// Formata todas as batidas do dia: "E1 08:00 → S1 12:00 · E2 13:00 → S2 17:30".
+// Bloco sem saída fica como "aberto".
+function fmtBlocosDoDia(blocks: SolidesPunch[]): string {
+  if (!blocks || blocks.length === 0) return "sem batidas";
+  return blocks
+    .map((b, i) => {
+      const ent = fmtHora(b.dateIn);
+      const sai = b.dateOut && b.dateOut > b.dateIn ? fmtHora(b.dateOut) : "aberto";
+      return `E${i + 1} ${ent} → S${i + 1} ${sai}`;
+    })
+    .join(" · ");
+}
+
+// Helper pra montar um ExceptionRecord a partir do contexto. Sempre inclui o
+// resumo dos blocos do dia no `detail` (concatenado ao detail específico da
+// regra, se houver) pra facilitar a análise do líder.
 function mk(
   ruleId: ExceptionRuleId,
   ctx: DayContext,
@@ -102,6 +131,8 @@ function mk(
   detail?: string,
 ): ExceptionRecord {
   const meta = RULES_META[ruleId];
+  const batidas = fmtBlocosDoDia(ctx.metrics.blocks);
+  const detailFinal = detail ? `${detail} · 🕐 ${batidas}` : `🕐 ${batidas}`;
   return {
     ruleId,
     severity: meta.severity,
@@ -110,7 +141,7 @@ function mk(
     cpf: ctx.metrics.cpf,
     employeeName: ctx.metrics.employeeName,
     description,
-    detail,
+    detail: detailFinal,
   };
 }
 
@@ -125,7 +156,8 @@ const ruleJornadaAcimaDe10h: Rule = (ctx) => {
   return null;
 };
 
-// 2) Intervalo intrajornada abaixo do mínimo legal
+// 2) Intervalo intrajornada abaixo do mínimo legal (com tolerância de 5min
+//    sobre os 60min do Art. 71 — só dispara abaixo de 55min)
 const ruleIntervaloMenorQueLegal: Rule = (ctx) => {
   const { totalMinutes, maxGapMinutes, blocks } = ctx.metrics;
   if (blocks.length === 0) return null;
@@ -133,7 +165,7 @@ const ruleIntervaloMenorQueLegal: Rule = (ctx) => {
     return mk(
       "intervaloMenorQueLegal",
       ctx,
-      `Jornada de ${fmtH(totalMinutes)} com intervalo de apenas ${maxGapMinutes}min (mínimo 60min).`,
+      `Jornada de ${fmtH(totalMinutes)} com intervalo de apenas ${maxGapMinutes}min (mínimo 60min, tolerância 5min).`,
     );
   }
   return null;
