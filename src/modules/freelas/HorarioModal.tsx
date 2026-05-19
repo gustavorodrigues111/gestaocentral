@@ -66,21 +66,21 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
     setSaving(true);
     try {
       const total = calcTotal(shift.valorTipo, shift.valorUnit, horas);
-      const updates: Partial<FreelaShift> = {
-        entrada: entrada || undefined,
-        saida:   saida || undefined,
+      // Firestore não aceita `undefined` em valores — omite campos vazios.
+      // Pra LIMPAR campos no doc (ex: ao reabrir um fechamento), use deleteField.
+      const updates: Record<string, unknown> = {
         intervalo,
         horas,
-        ...(shift.valorUnit ? { totalCalc: total } : {}),
+        updatedAt: new Date().toISOString(),
       };
+      if (entrada) updates.entrada = entrada;
+      if (saida) updates.saida = saida;
+      if (shift.valorUnit) updates.totalCalc = total;
       // Flip de status agendado → aberto quando registra entrada
       if (shift.status === "agendado" && entrada) {
         updates.status = "aberto";
       }
-      await updateDoc(doc(db, "freelaShifts", shift.id), {
-        ...updates,
-        updatedAt: new Date().toISOString(),
-      });
+      await updateDoc(doc(db, "freelaShifts", shift.id), updates);
       onSaved();
     } catch (e) {
       console.error(e);
