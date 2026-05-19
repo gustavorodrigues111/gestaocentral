@@ -23,6 +23,42 @@ import {
 } from "../../core/admissao/admissaoHelpers";
 import type { Admissao, FormField } from "../../core/types";
 
+// Texto da declaração de veracidade — salvo junto da admissão como snapshot
+// pra histórico jurídico (se mudar o texto futuramente, admissões antigas
+// mantêm o texto que o candidato realmente leu).
+const TEXTO_DECLARACAO =
+  "Declaro que todas as informações preenchidas neste formulário são verdadeiras e corretas. " +
+  "Estou ciente de que sou totalmente responsável pelos dados informados e que informações falsas " +
+  "podem acarretar em consequências legais, incluindo o cancelamento do processo de admissão " +
+  "e demais providências cabíveis.";
+
+// Redimensiona uma imagem File pro tamanho máximo + qualidade JPEG e devolve
+// como data URL base64. Mantém aspect ratio. Default: 800px lado maior, qty 0.7.
+async function comprimirImagem(file: File, maxLado = 800, quality = 0.7): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = url;
+    });
+    let w = img.width;
+    let h = img.height;
+    if (w > h && w > maxLado) { h = Math.round((h * maxLado) / w); w = maxLado; }
+    else if (h > maxLado)     { w = Math.round((w * maxLado) / h); h = maxLado; }
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponível");
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", quality);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 // IDs do schema cujos valores vêm do cadastro inicial do RH e NÃO podem ser
 // editados pelo candidato. Se a admissão usa um schema customizado que não
 // inclui esses ids, simplesmente não há lock (campos só do candidato).
@@ -93,6 +129,11 @@ export function AdmissaoPublicaPage() {
   const [dados, setDados] = useState<Record<string, unknown>>({});
   const [enviando, setEnviando] = useState(false);
   const [salvandoAuto, setSalvandoAuto] = useState(false);
+
+  // Declaração final + selfie de validação (não fazem parte do schema —
+  // sempre obrigatórios)
+  const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
+  const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
 
   // ─── Carrega admissão pelo token + restaurante ───────────────────────────
   useEffect(() => {
@@ -216,20 +257,41 @@ export function AdmissaoPublicaPage() {
         return;
       }
     }
+    // Bloco final: declaração + selfie
+    if (!declaracaoAceita) {
+      alert("Você precisa aceitar a declaração de veracidade pra enviar a ficha.");
+      return;
+    }
+    if (!selfieDataUrl) {
+      alert("Tire uma selfie pra validar o envio.");
+      return;
+    }
     setEnviando(true);
     try {
       const now = new Date().toISOString();
+      const validacao = {
+        selfieDataUrl,
+        declaracaoEm: now,
+        declaracaoTexto: TEXTO_DECLARACAO,
+      };
       await setDoc(
         doc(db, "admissoes", admissao.id),
         {
           dadosPreenchidos: dados,
           status: "formulario_preenchido",
           preenchidoEm: now,
+          validacao,
           updatedAt: now,
         },
         { merge: true },
       );
-      setAdmissao({ ...admissao, dadosPreenchidos: dados, status: "formulario_preenchido", preenchidoEm: now });
+      setAdmissao({
+        ...admissao,
+        dadosPreenchidos: dados,
+        status: "formulario_preenchido",
+        preenchidoEm: now,
+        validacao,
+      });
     } catch (e) {
       alert("Erro ao enviar: " + (e instanceof Error ? e.message : "?"));
     } finally {
@@ -437,8 +499,21 @@ export function AdmissaoPublicaPage() {
           />
         )}
 
+        {/* Bloco final: selfie + declaração de veracidade */}
+        <DeclaracaoFinalBlock
+          selfieDataUrl={selfieDataUrl}
+          onSelfieChange={setSelfieDataUrl}
+          declaracaoAceita={declaracaoAceita}
+          onDeclaracaoChange={setDeclaracaoAceita}
+          candidatoNome={admissao.candidato.nome}
+        />
+
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <Button onClick={submeter} disabled={enviando} className="w-full">
+          <Button
+            onClick={submeter}
+            disabled={enviando || !selfieDataUrl || !declaracaoAceita}
+            className="w-full"
+          >
             {enviando ? "Enviando…" : "✅ Enviar ficha"}
           </Button>
           <p className="text-[11px] text-gray-500 text-center mt-2">
@@ -780,3 +855,108 @@ function DocumentosWhatsBlock({
 // Helper pra silenciar warning de import (fmtDataBr reservado pra evoluções)
 void fmtDataBr;
 void onlyDigits;
+
+// ─── Bloco final: selfie + declaração ────────────────────────────────────
+
+function DeclaracaoFinalBlock({
+  selfieDataUrl,
+  onSelfieChange,
+  declaracaoAceita,
+  onDeclaracaoChange,
+  candidatoNome,
+}: {
+  selfieDataUrl: string | null;
+  onSelfieChange: (v: string | null) => void;
+  declaracaoAceita: boolean;
+  onDeclaracaoChange: (v: boolean) => void;
+  candidatoNome: string;
+}) {
+  const [processando, setProcessando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function onFile(file: File | undefined) {
+    if (!file) return;
+    setErro("");
+    setProcessando(true);
+    try {
+      const dataUrl = await comprimirImagem(file, 800, 0.7);
+      // Sanity check: data URL não deve passar ~500KB (já bem comprimida).
+      // Se passar, comprime de novo com qty menor.
+      let final = dataUrl;
+      if (final.length > 500_000) {
+        final = await comprimirImagem(file, 600, 0.55);
+      }
+      onSelfieChange(final);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao processar a imagem.");
+    } finally {
+      setProcessando(false);
+    }
+  }
+
+  return (
+    <section className="bg-amber-50 border-2 border-amber-300 rounded-xl p-4 space-y-4">
+      <h2 className="font-bold text-amber-900">
+        🛡️ Validação final
+      </h2>
+
+      {/* Selfie */}
+      <div className="space-y-2">
+        <div className="text-sm font-semibold text-amber-900">
+          📸 Selfie de validação *
+        </div>
+        <p className="text-xs text-amber-900/80">
+          Tire uma selfie ao vivo pra confirmar que é você preenchendo. Use a câmera
+          frontal do seu celular — não envie foto antiga nem foto de outra pessoa.
+        </p>
+        {selfieDataUrl ? (
+          <div className="flex items-start gap-3">
+            <img
+              src={selfieDataUrl}
+              alt="Selfie"
+              className="w-24 h-24 rounded-lg object-cover border border-amber-300"
+            />
+            <div className="text-xs">
+              <div className="text-emerald-700 font-semibold">✓ Selfie capturada</div>
+              <button
+                type="button"
+                onClick={() => onSelfieChange(null)}
+                className="text-rose-600 hover:underline mt-1"
+              >
+                Tirar outra
+              </button>
+            </div>
+          </div>
+        ) : (
+          <label className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-sm cursor-pointer">
+            <input
+              type="file"
+              accept="image/*"
+              capture="user"
+              onChange={(e) => onFile(e.target.files?.[0])}
+              className="hidden"
+              disabled={processando}
+            />
+            {processando ? "Processando…" : "📷 Tirar selfie"}
+          </label>
+        )}
+        {erro && <div className="text-xs text-rose-600">{erro}</div>}
+      </div>
+
+      {/* Declaração */}
+      <div className="space-y-2 pt-3 border-t border-amber-200">
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={declaracaoAceita}
+            onChange={(e) => onDeclaracaoChange(e.target.checked)}
+            className="mt-1 accent-amber-700"
+          />
+          <span className="text-xs text-amber-900 leading-relaxed">
+            <strong>Eu, {candidatoNome}, {TEXTO_DECLARACAO.charAt(0).toLowerCase() + TEXTO_DECLARACAO.slice(1)}</strong>
+          </span>
+        </label>
+      </div>
+    </section>
+  );
+}

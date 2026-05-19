@@ -1529,6 +1529,13 @@ export type Admissao = {
   dadosPreenchidos?: Record<string, unknown>;
   preenchidoEm?: string;       // ISO
 
+  // Declaração de veracidade + selfie de validação. Submetida junto com o form.
+  validacao?: {
+    selfieDataUrl?: string;    // base64 (JPEG comprimido, max ~250KB)
+    declaracaoEm: string;      // ISO — quando o candidato marcou o checkbox
+    declaracaoTexto: string;   // snapshot do texto da declaração (pra histórico jurídico)
+  };
+
   // ─── Etapa 3: RH confirma recebimento dos docs via WhatsApp ───
   documentosRecebidosEm?: string;
   documentosRecebidosPor?: { id: string; nome: string };
