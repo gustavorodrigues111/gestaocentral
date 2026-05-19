@@ -17,6 +17,8 @@ import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type { Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
+import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
+import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import {
   generateExceptionsReport,
   type GenerateReportResult,
@@ -37,6 +39,22 @@ function todayYmd(): string {
 function firstDayOfCurrentMonth(): string {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
+}
+
+// Data do "meio" do range [start, end] em YYYY-MM-DD. Usado pra buscar o
+// quadro Sólides representativo do período (a Sólides retorna o quadro
+// vigente naquela data; pra ranges longos com troca de quadro no meio o
+// resultado pode ser parcial — fica como melhoria futura).
+function midDate(start: string, end: string): string {
+  const [ya, ma, da] = start.split("-").map(Number);
+  const [yb, mb, db] = end.split("-").map(Number);
+  const a = new Date(ya, ma - 1, da).getTime();
+  const b = new Date(yb, mb - 1, db).getTime();
+  const mid = new Date((a + b) / 2);
+  const y = mid.getFullYear();
+  const m = String(mid.getMonth() + 1).padStart(2, "0");
+  const d = String(mid.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
 }
 
 // Lista de { ano, mes } cobertos pelo intervalo [start, end] (inclusive).
@@ -207,8 +225,40 @@ export function ExcecoesPage() {
     setErro("");
     setResult(null);
     try {
-      const { punches, debug: dbg } = await fetchPunches(startDate, endDate, activeRestaurant?.shortCode);
-      const escalaPorEmpregado = await buildEscalaContext(empregados, rid, startDate, endDate);
+      const shortCode = activeRestaurant?.shortCode || "";
+      const { punches, debug: dbg } = await fetchPunches(startDate, endDate, shortCode);
+
+      // Escala vinda da Sólides (fonte primária). Pra cada empregado do
+      // Planejamento que tenha CPF, busca o sid Sólides e o quadro do meio
+      // do mês — usado como template recorrente pro range todo.
+      let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
+      try {
+        const schedRes = await fetchSolidesSchedules(midDate(startDate, endDate), shortCode);
+        const sidByCpf = new Map<string, number>();
+        for (const e of schedRes.employees) {
+          if (e.cpf) sidByCpf.set(e.cpf, e.id);
+        }
+        const empIdByCpf = new Map<string, string>();
+        for (const e of empregados) {
+          if (e.cpf) empIdByCpf.set(onlyDigits(e.cpf), e.id);
+        }
+        escalaPorEmpregado = buildEscalaFromSolides(
+          schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
+        );
+      } catch (e) {
+        // Falha em buscar Sólides → cai pra fallback do Planejamento
+        console.warn("Sólides schedules falhou, usando fallback do Planejamento:", e);
+      }
+
+      // Fallback / merge: pra empregados que NÃO tiveram escala vinda da
+      // Sólides (sem CPF, sem quadro), usa a escala do Planejamento.
+      const fallback = await buildEscalaContext(empregados, rid, startDate, endDate);
+      for (const [empId, perDate] of Object.entries(fallback)) {
+        if (!escalaPorEmpregado[empId]) {
+          escalaPorEmpregado[empId] = perDate;
+        }
+      }
+
       const report = generateExceptionsReport({
         punches,
         empregados,
