@@ -15,6 +15,8 @@ import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type {
   ApontamentoFuncionario,
+  Area,
+  Cargo,
   Empregado,
   EscalaMes,
   NotaInterna,
@@ -22,6 +24,7 @@ import type {
   Restaurant,
   ScheduleStatus,
 } from "../../core/types";
+import { AREAS } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
@@ -780,6 +783,40 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [empregados, pessoas]);
 
+  // Cargos do restaurante — usado pra resolver a ÁREA do empregado (via
+  // empregado.cargoId → cargo.area). Permite filtrar o relatório por área pra
+  // cada líder ver só a sua.
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "cargos"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  const areaByEmpId = useMemo(() => {
+    const cargoPorId = new Map<string, Cargo>();
+    for (const c of cargos) cargoPorId.set(c.id, c);
+    const m = new Map<string, Area>();
+    for (const emp of empregados) {
+      const a = cargoPorId.get(emp.cargoId)?.area;
+      if (a) m.set(emp.id, a);
+    }
+    return m;
+  }, [empregados, cargos]);
+
+  // Áreas que aparecem nos empregados deste restaurante (pode ter restaurante
+  // que não usa todas as 4 padrão). Ordenadas conforme constante AREAS.
+  const areasDisponiveis = useMemo(() => {
+    const set = new Set<Area>();
+    for (const a of areaByEmpId.values()) set.add(a);
+    return AREAS.filter((a) => set.has(a));
+  }, [areaByEmpId]);
+
+  const [filtroArea, setFiltroArea] = useState<Area | "">("");
+
   async function gerar() {
     if (!rid) return;
     if (!startDate || !endDate) {
@@ -952,12 +989,19 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const excecoesFiltradas = useMemo(() => {
     if (!result) return [];
     return result.exceptions.filter((e) => {
+      if (filtroArea) {
+        // Resolve área pelo CPF → empregadoId Planejamento → área do cargo.
+        const cpfD = (e.cpf || "").replace(/\D/g, "");
+        const empId = empIdByCpf.get(cpfD);
+        const area = empId ? areaByEmpId.get(empId) : undefined;
+        if (area !== filtroArea) return false;
+      }
       if (filtroColaborador && e.employeeName !== filtroColaborador) return false;
       if (filtroRegra && e.ruleId !== filtroRegra) return false;
       if (filtroSeveridade && e.severity !== filtroSeveridade) return false;
       return true;
     });
-  }, [result, filtroColaborador, filtroRegra, filtroSeveridade]);
+  }, [result, filtroArea, filtroColaborador, filtroRegra, filtroSeveridade, areaByEmpId, empIdByCpf]);
 
   // Contagem por severidade (do total, não do filtrado)
   const resumo = useMemo(() => {
@@ -1183,6 +1227,19 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
           {/* ── Filtros ── */}
           <div className="flex flex-wrap gap-2 mb-3">
+            <select
+              value={filtroArea}
+              onChange={(e) => setFiltroArea(e.target.value as Area | "")}
+              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-semibold"
+              title="Filtra por área (cada líder vê só a sua)"
+            >
+              <option value="">🗂️ Todas as áreas</option>
+              {areasDisponiveis.map((a) => (
+                <option key={a} value={a}>
+                  {a}
+                </option>
+              ))}
+            </select>
             <select
               value={filtroColaborador}
               onChange={(e) => setFiltroColaborador(e.target.value)}

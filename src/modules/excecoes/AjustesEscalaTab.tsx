@@ -13,6 +13,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
@@ -20,7 +22,8 @@ import {
   marcarApontamentoEscalaAjustado,
   reabrirApontamentoEscala,
 } from "../../core/excecoes/statusSemana";
-import type { ApontamentoEscala, ExcecaoStatusSemana } from "../../core/types";
+import type { ApontamentoEscala, Area, Cargo, Empregado, ExcecaoStatusSemana } from "../../core/types";
+import { AREAS } from "../../core/types";
 
 type Props = { rid: string };
 
@@ -47,6 +50,44 @@ export function AjustesEscalaTab({ rid }: Props) {
   const [semanas, setSemanas] = useState<ExcecaoStatusSemana[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
+  const [filtroArea, setFiltroArea] = useState<Area | "">("");
+
+  // Carrega empregados + cargos pra resolver área via CPF do apontamento.
+  // O ApontamentoEscala guarda CPF no campo empregadoId (decisão histórica
+  // do helper de geração) — daí o cruzamento é por CPF.
+  const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const u1 = onSnapshot(
+      query(collection(db, "empregados"), where("restaurantId", "==", rid)),
+      (snap) => setEmpregados(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)),
+    );
+    const u2 = onSnapshot(
+      query(collection(db, "cargos"), where("restaurantId", "==", rid)),
+      (snap) => setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)),
+    );
+    return () => { u1(); u2(); };
+  }, [rid]);
+
+  // Mapa CPF (só dígitos) → Area
+  const areaByCpf = useMemo(() => {
+    const cargoPorId = new Map<string, Cargo>();
+    for (const c of cargos) cargoPorId.set(c.id, c);
+    const m = new Map<string, Area>();
+    for (const emp of empregados) {
+      const cpfD = (emp.cpf || "").replace(/\D/g, "");
+      const area = cargoPorId.get(emp.cargoId)?.area;
+      if (cpfD && area) m.set(cpfD, area);
+    }
+    return m;
+  }, [empregados, cargos]);
+
+  const areasDisponiveis = useMemo(() => {
+    const set = new Set<Area>();
+    for (const a of areaByCpf.values()) set.add(a);
+    return AREAS.filter((a) => set.has(a));
+  }, [areaByCpf]);
 
   async function recarregar() {
     if (!rid) return;
@@ -115,6 +156,23 @@ export function AjustesEscalaTab({ rid }: Props) {
         de lançar na praticada. <em>No futuro vamos conectar isso automaticamente.</em>
       </div>
 
+      {/* Filtro por área — líder vê só a área dele */}
+      <div className="flex flex-wrap gap-2">
+        <select
+          value={filtroArea}
+          onChange={(e) => setFiltroArea(e.target.value as Area | "")}
+          className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-semibold"
+          title="Filtra por área (cada líder vê só a sua)"
+        >
+          <option value="">🗂️ Todas as áreas</option>
+          {areasDisponiveis.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+      </div>
+
       {semanasConferidas.length === 0 && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">📭</div>
@@ -132,6 +190,8 @@ export function AjustesEscalaTab({ rid }: Props) {
         <SemanaBlock
           key={s.id}
           semana={s}
+          areaByCpf={areaByCpf}
+          filtroArea={filtroArea}
           onAjustar={(ap) => marcarAjustado(s, ap)}
           onReabrir={(ap) => reabrir(s, ap)}
         />
@@ -142,18 +202,28 @@ export function AjustesEscalaTab({ rid }: Props) {
 
 function SemanaBlock({
   semana,
+  areaByCpf,
+  filtroArea,
   onAjustar,
   onReabrir,
 }: {
   semana: ExcecaoStatusSemana;
+  areaByCpf: Map<string, Area>;
+  filtroArea: Area | "";
   onAjustar: (ap: ApontamentoEscala) => void;
   onReabrir: (ap: ApontamentoEscala) => void;
 }) {
   const aps = semana.apontamentosEscala || [];
-  // Agrupa por empregado
+  // Agrupa por empregado e aplica filtro de área. ApontamentoEscala guarda
+  // CPF no campo empregadoId (decisão histórica do helper) — daí o lookup
+  // por CPF pra resolver área.
   const grupos = useMemo(() => {
     const m = new Map<string, ApontamentoEscala[]>();
     for (const a of aps) {
+      if (filtroArea) {
+        const area = areaByCpf.get(a.empregadoId);
+        if (area !== filtroArea) continue;
+      }
       const arr = m.get(a.empregadoId) || [];
       arr.push(a);
       m.set(a.empregadoId, arr);
@@ -165,7 +235,10 @@ function SemanaBlock({
         lista: lista.sort((a, b) => a.data.localeCompare(b.data)),
       }))
       .sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome));
-  }, [aps]);
+  }, [aps, areaByCpf, filtroArea]);
+
+  // Se o filtro deixou a semana sem itens, esconde o card inteiro
+  if (filtroArea && grupos.length === 0) return null;
 
   const pendentes = aps.filter((a) => a.status === "pendente").length;
   const ajustados = aps.filter((a) => a.status === "ajustado").length;
