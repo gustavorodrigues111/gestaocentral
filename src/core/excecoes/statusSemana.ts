@@ -260,6 +260,12 @@ export async function adicionarNotaInterna(
 // Salva o snapshot do último relatório gerado no doc da semana. Usado quando
 // o líder está em tratamento e quer manter memória entre sessões.
 //
+// Quando a semana já tem status (não-aberto), adiciona uma entrada de
+// `tipo: "atualizacao"` no histórico — assim o time vê quem regerou o
+// relatório e quando. Quem chama passa a pessoa pra atribuir; se não passar,
+// só salva o cache sem entrada de histórico (caso da chamada interna do
+// próprio marcarStatus, que já registra a transição).
+//
 // `upsertSemana` aplica stripUndefined antes de gravar — Firestore rejeita
 // `undefined` em qualquer campo, e ExceptionRecord.detail é opcional.
 export async function salvarRelatorioCache(
@@ -267,8 +273,23 @@ export async function salvarRelatorioCache(
   weekStart: string,
   weekEnd: string,
   relatorio: RelatorioSnapshot,
+  pessoa?: Pessoa,
 ): Promise<ExcecaoStatusSemana> {
-  return upsertSemana(restaurantId, weekStart, weekEnd, { relatorioCache: relatorio });
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const patch: Partial<ExcecaoStatusSemana> = { relatorioCache: relatorio };
+  // Só registra evento de atualização se: tem pessoa identificada E a semana
+  // já tem status (não-aberto, ou seja, tratamento iniciado).
+  if (pessoa && existing && existing.status !== "aberto") {
+    const entry: ExcecaoHistoricoEntry = {
+      status: existing.status,
+      em: new Date().toISOString(),
+      por: pessoa.id,
+      porNome: pessoa.nome,
+      tipo: "atualizacao",
+    };
+    patch.historico = [...(existing.historico || []), entry];
+  }
+  return upsertSemana(restaurantId, weekStart, weekEnd, patch);
 }
 
 // Remove recursivamente chaves com valor `undefined` — necessário pro

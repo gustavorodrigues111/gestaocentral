@@ -1314,11 +1314,16 @@ export const EXCECAO_STATUS_LABEL: Record<ExcecaoStatusValor, string> = {
 };
 
 export type ExcecaoHistoricoEntry = {
+  // Status que a semana entrou após essa ação. Pra entradas do tipo
+  // "atualizacao" (regerar relatório), repete o status atual.
   status: ExcecaoStatusValor;
   em: string;            // ISO
   por: string;           // pessoaId
   porNome: string;
   observacao?: string;
+  // Tipo do evento. Default (undefined) = mudança de status (comportamento
+  // legado). "atualizacao" = relatório foi regerado/atualizado pela Sólides.
+  tipo?: "atualizacao";
 };
 
 // Apontamento de inconformidade pra o empregado — gerado quando o líder marca

@@ -974,6 +974,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               unmatched: report.unmatched,
               diasAnalisados: report.diasAnalisados,
             },
+            me || undefined, // registra evento no histórico se semana já estiver em tratamento
           );
           setStatusSemana(updated);
         } catch (e) {
@@ -1768,7 +1769,13 @@ function StatusSemanaCard({
           <ol className="space-y-1 text-[11px] text-gray-700 dark:text-gray-300">
             {[...statusSemana.historico].reverse().map((h, i) => (
               <li key={i} className="tabular-nums">
-                <span className="text-gray-500">{fmtDataHora(h.em)}</span> · <strong>{EXCECAO_STATUS_LABEL[h.status]}</strong> · {h.porNome}
+                <span className="text-gray-500">{fmtDataHora(h.em)}</span> ·{" "}
+                {h.tipo === "atualizacao" ? (
+                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">🔄 Relatório atualizado</span>
+                ) : (
+                  <strong>{EXCECAO_STATUS_LABEL[h.status]}</strong>
+                )}{" "}
+                · {h.porNome}
                 {h.observacao && <span className="italic text-gray-500"> — "{h.observacao}"</span>}
               </li>
             ))}
