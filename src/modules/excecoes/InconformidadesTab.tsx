@@ -6,7 +6,7 @@
 //  Recebe rid + activeRestaurant da page-shell (RegistrosPontoPage).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -197,38 +197,6 @@ async function buildEscalaContext(
   return ctx;
 }
 
-// ─── Export CSV ─────────────────────────────────────────────────────────────
-
-function exportCsv(rows: ExceptionRecord[], restNome: string, start: string, end: string) {
-  const header = ["Colaborador", "CPF", "Data", "Tipo", "Severidade", "Descrição", "Detalhe"];
-  const esc = (v: string) => `"${(v || "").replace(/"/g, '""')}"`;
-  const lines = [header.map(esc).join(",")];
-  for (const r of rows) {
-    lines.push(
-      [
-        r.employeeName,
-        r.cpf,
-        r.date,
-        RULES_META[r.ruleId].label,
-        SEVERITY_INFO[r.severity].label,
-        r.description,
-        r.detail || "",
-      ]
-        .map((v) => esc(String(v)))
-        .join(","),
-    );
-  }
-  // BOM (﻿) pro Excel abrir como UTF-8
-  const csv = "﻿" + lines.join("\r\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `excecoes_${restNome.replace(/\s+/g, "-")}_${start}_a_${end}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 // ════════════════════════════════════════════════════════════════════════════
 
 type Props = {
@@ -294,7 +262,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     setDebug(null);
     setEscalaDebug(null);
     setErro("");
-    setGeradoEm(null);
     setFiltroColaborador("");
     setFiltroRegra("");
     setFiltroSeveridade("");
@@ -312,13 +279,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             unmatched: c.unmatched as GenerateReportResult["unmatched"],
             diasAnalisados: c.diasAnalisados,
           });
-          setGeradoEm({ start: s.weekStart, end: s.weekEnd });
         }
       })
       .catch(() => { if (!cancelled) setStatusSemana(null); })
       .finally(() => { if (!cancelled) setCarregandoStatus(false); });
     return () => { cancelled = true; };
   }, [rid, semanaAtiva?.weekStart]);
+
+  // Auto-gerar relatório ao entrar numa semana SEM cache. Roda uma vez por
+  // chip — depois disso, o botão "🔄 Atualizar" toca de novo manualmente.
+  // Precisa esperar empregados estarem carregados (senão dá relatório vazio).
+  const autoGeradoParaSemana = useRef<string | null>(null);
+  useEffect(() => {
+    if (!semanaAtiva || !rid || empregados.length === 0) return;
+    if (carregandoStatus) return; // espera o load do status terminar
+    // Tem cache → não gera (restaurar é responsabilidade do outro useEffect)
+    if (statusSemana?.relatorioCache) return;
+    // Já tentou auto-gerar essa semana nessa sessão → não repete
+    if (autoGeradoParaSemana.current === semanaAtiva.weekStart) return;
+    autoGeradoParaSemana.current = semanaAtiva.weekStart;
+    void gerar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [semanaAtiva?.weekStart, rid, empregados.length, carregandoStatus, statusSemana?.relatorioCache]);
 
   function navegaMes(delta: number) {
     setAnoMes((cur) => {
@@ -747,7 +729,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     sampleProbeAdj?: unknown;
   };
   const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
-  const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
 
   // Filtros da tabela
   const [filtroColaborador, setFiltroColaborador] = useState("");
@@ -953,7 +934,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       });
       setResult(report);
       setDebug(dbg || null);
-      setGeradoEm({ start: startDate, end: endDate });
       // Reseta filtros
       setFiltroColaborador("");
       setFiltroRegra("");
@@ -1054,36 +1034,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline ml-1"
             >hoje</button>
           </div>
-          <div className="flex items-center gap-2">
-            <Button onClick={gerar} disabled={loading || empregados.length === 0}>
-              {loading
-                ? (statusSemana?.relatorioCache ? "Atualizando..." : "Gerando...")
-                : statusSemana?.relatorioCache
-                ? "🔄 Atualizar relatório"
-                : "🔍 Gerar relatório"}
-            </Button>
-            {result && (
-              <Button
-                variant="secondary"
-                onClick={() =>
-                  exportCsv(
-                    excecoesFiltradas,
-                    activeRestaurant.nome,
-                    geradoEm?.start || startDate,
-                    geradoEm?.end || endDate,
-                  )
-                }
-                disabled={excecoesFiltradas.length === 0}
-              >
-                ⬇️ Exportar CSV
-              </Button>
-            )}
-          </div>
         </div>
 
         {/* Chips de semana — cor reflete o status do tratamento:
             aberto → cinza claro; em_tratamento → amarelo; tratado_lider →
-            verde; conferido_gerente → azul */}
+            verde; conferido_gerente → azul.
+            O último chip é "🔄 Atualizar" — força regerar via Sólides
+            (auto-gera é por semana na 1ª visita; depois é manual). */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {semanasMes.map((w) => {
             const ativo = w.index === semanaIdx;
@@ -1103,6 +1060,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               </button>
             );
           })}
+          <button
+            type="button"
+            onClick={gerar}
+            disabled={loading || empregados.length === 0}
+            className="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            title={statusSemana?.relatorioCache ? "Atualizar pela Sólides (sobrescreve o cache)" : "Gerar relatório dessa semana"}
+          >
+            {loading ? "⏳ atualizando…" : "🔄 atualizar"}
+          </button>
         </div>
 
         {empregados.length === 0 && (
