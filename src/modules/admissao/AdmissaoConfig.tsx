@@ -11,6 +11,7 @@ import {
   getWhatsappDP,
   salvarConfigAdmissao,
 } from "../../core/admissao/admissaoHelpers";
+import { EditorKanbanColunas } from "./EditorKanbanColunas";
 import type { Restaurant } from "../../core/types";
 
 type Props = {
@@ -93,6 +94,16 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         )}
       </div>
 
+      <div className="flex items-center gap-2">
+        <Button onClick={salvar} disabled={salvando}>
+          {salvando ? "Salvando…" : "💾 Salvar prazo + WhatsApp"}
+        </Button>
+        {msg && <span className="text-xs">{msg}</span>}
+      </div>
+
+      {/* Editor de colunas Kanban — tem seu próprio botão de salvar */}
+      <EditorKanbanColunas rid={rid} activeRestaurant={activeRestaurant} />
+
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
           📝 Schema do formulário
@@ -100,18 +111,11 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           O formulário do candidato usa o template padrão (baseado na ficha Senador Contábil).
           A edição do schema (adicionar/remover/reordenar campos, marcar obrigatório) virá na
-          próxima atualização do módulo. Por enquanto o schema é o default.
+          próxima atualização do módulo.
         </p>
         <div className="text-[11px] text-gray-500 dark:text-gray-400 italic">
           📌 Em desenvolvimento — editor de schema chega na próxima iteração.
         </div>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Button onClick={salvar} disabled={salvando}>
-          {salvando ? "Salvando…" : "💾 Salvar configurações"}
-        </Button>
-        {msg && <span className="text-xs">{msg}</span>}
       </div>
     </div>
   );
