@@ -56,8 +56,8 @@ const RAW: FormField[] = [
   // `whatsapp` é pré-preenchido pela página pública (vem do cadastro do RH)
   f("whatsapp",        "WhatsApp",            "telefone", G_CONTATO, true),
   f("tel_residencial", "Telefone residencial", "telefone", G_CONTATO, false),
-  f("tel_emergencia",  "Telefone de emergência", "telefone", G_CONTATO, false),
-  f("contato_emergencia_nome", "Nome do contato de emergência", "text", G_CONTATO, false),
+  f("tel_emergencia",  "Telefone de emergência", "telefone", G_CONTATO, true),
+  f("contato_emergencia_nome", "Nome do contato de emergência", "text", G_CONTATO, true),
 
   // ─── Endereço ───
   f("endereco_logradouro", "Endereço (rua, número)", "text", G_END, true),
