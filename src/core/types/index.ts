@@ -1448,7 +1448,8 @@ export type ExcecaoStatusSemana = {
 export type FormFieldTipo =
   | "text" | "email" | "telefone" | "cpf" | "data" | "numero"
   | "select" | "multiselect" | "textarea" | "boolean"
-  | "lista_dependentes" | "lista_transporte";
+  | "lista_dependentes" | "lista_transporte"
+  | "naturalidade";       // composto: UF (select) + cidade (select dinâmico via IBGE)
 
 export type FormField = {
   id: string;                  // ex: "nome_completo" — gerado da label, único no schema

@@ -86,6 +86,18 @@ function isConfirmado(fieldId: string): boolean {
   return (IDS_CONFIRMADOS as readonly string[]).includes(fieldId);
 }
 
+// Verifica se um valor está "vazio" pra fim de validação obrigatória.
+// Considera tipo do campo: naturalidade exige uf + cidade preenchidos.
+function vazio(v: unknown, tipo: string): boolean {
+  if (v == null || v === "") return true;
+  if (Array.isArray(v)) return v.length === 0;
+  if (tipo === "naturalidade" && typeof v === "object") {
+    const o = v as { uf?: string; cidade?: string };
+    return !o.uf || !o.cidade;
+  }
+  return false;
+}
+
 function fmtDataBr(ymd: string): string {
   const [a, m, d] = ymd.split("-");
   if (!a || !m || !d) return ymd;
@@ -230,9 +242,7 @@ export function AdmissaoPublicaPage() {
     for (const f of admissao.schemaUsado) {
       if (!f.obrigatorio || !f.ativo) continue;
       const v = dados[f.id];
-      if (v == null || v === "" || (Array.isArray(v) && v.length === 0)) {
-        faltando.push(f.label);
-      }
+      if (vazio(v, f.tipo)) faltando.push(f.label);
     }
     if (faltando.length > 0) {
       alert(`Preencha os campos obrigatórios:\n• ${faltando.slice(0, 8).join("\n• ")}${faltando.length > 8 ? `\n… +${faltando.length - 8}` : ""}`);
@@ -614,6 +624,9 @@ function CampoRender({
       </label>
     );
   }
+  if (field.tipo === "naturalidade") {
+    return <NaturalidadeField field={field} value={value} onChange={onChange} />;
+  }
   if (field.tipo === "lista_dependentes") {
     return (
       <ListaDependentesField
@@ -653,6 +666,104 @@ function CampoRender({
       readOnly={bloqueado}
       className={bloqueado ? "bg-gray-100 text-gray-600 cursor-not-allowed" : ""}
     />
+  );
+}
+
+// ─── Naturalidade (UF + cidade via IBGE) ─────────────────────────────────
+
+const UFS = [
+  "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
+  "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+];
+
+// Cache local de cidades por UF — IBGE retorna a mesma lista, evita ir 2x na API
+const cidadesCache = new Map<string, string[]>();
+
+async function fetchCidades(uf: string): Promise<string[]> {
+  const cached = cidadesCache.get(uf);
+  if (cached) return cached;
+  try {
+    const r = await fetch(`https://servicodados.ibge.gov.br/api/v1/localidades/estados/${uf}/municipios`);
+    if (!r.ok) return [];
+    const data = await r.json() as { nome: string }[];
+    const nomes = data.map((d) => d.nome).sort((a, b) => a.localeCompare(b, "pt-BR"));
+    cidadesCache.set(uf, nomes);
+    return nomes;
+  } catch {
+    return [];
+  }
+}
+
+type Naturalidade = { uf: string; cidade: string };
+
+function NaturalidadeField({
+  field,
+  value,
+  onChange,
+}: {
+  field: FormField;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const v = (value || {}) as Partial<Naturalidade>;
+  const [cidades, setCidades] = useState<string[]>([]);
+  const [carregando, setCarregando] = useState(false);
+
+  useEffect(() => {
+    if (!v.uf) {
+      setCidades([]);
+      return;
+    }
+    let cancelled = false;
+    setCarregando(true);
+    fetchCidades(v.uf).then((lista) => {
+      if (!cancelled) {
+        setCidades(lista);
+        setCarregando(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [v.uf]);
+
+  function setUf(uf: string) {
+    onChange({ uf, cidade: "" });
+  }
+  function setCidade(cidade: string) {
+    onChange({ uf: v.uf || "", cidade });
+  }
+
+  const labelComObr = field.obrigatorio ? `${field.label} *` : field.label;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-gray-600">{labelComObr}</label>
+      {field.ajuda && <span className="text-[11px] text-gray-500">{field.ajuda}</span>}
+      <div className="grid grid-cols-2 gap-2">
+        <select
+          value={v.uf || ""}
+          onChange={(e) => setUf(e.target.value)}
+          className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
+        >
+          <option value="">— UF —</option>
+          {UFS.map((u) => (
+            <option key={u} value={u}>{u}</option>
+          ))}
+        </select>
+        <select
+          value={v.cidade || ""}
+          onChange={(e) => setCidade(e.target.value)}
+          disabled={!v.uf || carregando}
+          className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white disabled:bg-gray-100"
+        >
+          <option value="">
+            {!v.uf ? "— escolha a UF primeiro —" : carregando ? "carregando cidades…" : "— cidade —"}
+          </option>
+          {cidades.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+      </div>
+    </div>
   );
 }
 

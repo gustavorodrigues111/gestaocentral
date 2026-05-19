@@ -40,8 +40,20 @@ const RAW: FormField[] = [
   // ─── Dados pessoais ───
   f("nome_completo",   "Nome completo",       "text",     G_PESSOAL, true),
   f("data_nascimento", "Data de nascimento",  "data",     G_PESSOAL, true),
-  f("naturalidade",    "Naturalidade (Município/UF)", "text", G_PESSOAL, true),
-  f("nacionalidade",   "Nacionalidade",       "text",     G_PESSOAL, true, { placeholder: "Brasileira" }),
+  f("nacionalidade",   "Nacionalidade",       "select",   G_PESSOAL, true, {
+    opcoes: [
+      "Brasileira", "Argentina", "Boliviana", "Chilena", "Colombiana",
+      "Cubana", "Equatoriana", "Espanhola", "Francesa", "Haitiana",
+      "Italiana", "Japonesa", "Mexicana", "Norte-americana", "Paraguaia",
+      "Peruana", "Portuguesa", "Senegalesa", "Uruguaia", "Venezuelana",
+      "Angolana", "Cabo-verdiana", "Guineense", "Moçambicana",
+      "Sul-coreana", "Chinesa", "Libanesa", "Marroquina",
+      "Britânica", "Alemã", "Outra",
+    ],
+  }),
+  f("naturalidade",    "Naturalidade", "naturalidade", G_PESSOAL, true, {
+    ajuda: "Estado e cidade onde você nasceu (se nasceu no Brasil).",
+  }),
   f("sexo",            "Sexo",                "select",   G_PESSOAL, true, { opcoes: ["Masculino", "Feminino", "Outro"] }),
   f("cor",             "Cor/Raça",            "select",   G_PESSOAL, false, { opcoes: ["Branca", "Preta", "Parda", "Amarela", "Indígena", "Prefiro não informar"] }),
   f("escolaridade",    "Escolaridade",        "select",   G_PESSOAL, false, {
