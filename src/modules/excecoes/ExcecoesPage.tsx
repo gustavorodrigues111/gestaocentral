@@ -409,7 +409,7 @@ export function ExcecoesPage() {
             </span>
           </div>
 
-          {/* ── Tabela ── */}
+          {/* ── Lista agrupada por colaborador → data ── */}
           {result.exceptions.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="text-4xl mb-3">✅</div>
@@ -421,63 +421,10 @@ export function ExcecoesPage() {
               </p>
             </div>
           ) : (
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-gray-50 dark:bg-gray-800/50 text-left">
-                  <tr>
-                    <th className="px-3 py-2 font-semibold text-gray-700 dark:text-gray-300">
-                      Colaborador
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-gray-700 dark:text-gray-300">
-                      Data
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-gray-700 dark:text-gray-300">
-                      Tipo
-                    </th>
-                    <th className="px-3 py-2 font-semibold text-gray-700 dark:text-gray-300">
-                      Descrição
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {excecoesFiltradas.map((e, i) => {
-                    const meta = RULES_META[e.ruleId];
-                    const sev = SEVERITY_INFO[e.severity];
-                    return (
-                      <tr
-                        key={`${e.employeeId}_${e.date}_${e.ruleId}_${i}`}
-                        className="border-t border-gray-100 dark:border-gray-800"
-                      >
-                        <td className="px-3 py-2">
-                          <div className="font-medium text-gray-900 dark:text-gray-100">
-                            {e.employeeName}
-                          </div>
-                          {e.cpf && (
-                            <div className="text-[10px] text-gray-400">CPF {e.cpf}</div>
-                          )}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap text-gray-700 dark:text-gray-300">
-                          {e.date}
-                        </td>
-                        <td className="px-3 py-2 whitespace-nowrap">
-                          <span
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium ${sev.badge}`}
-                            title={meta.descricaoRegra}
-                          >
-                            {meta.icon} {meta.label}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-gray-700 dark:text-gray-300">
-                          {e.description}
-                          {e.detail && (
-                            <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              {agruparPorColabDate(excecoesFiltradas).map((grupo) => (
+                <ColaboradorBlock key={grupo.key} grupo={grupo} />
+              ))}
             </div>
           )}
         </>
@@ -515,5 +462,136 @@ function ResumoCard({
         {label}
       </div>
     </div>
+  );
+}
+
+// ─── Agrupamento Colaborador → Data → exceções ─────────────────────────────
+type GrupoColab = {
+  key: string;
+  nome: string;
+  cpf: string;
+  totalExc: number;
+  totalGraves: number;
+  porData: { date: string; exc: ExceptionRecord[] }[];
+};
+
+function agruparPorColabDate(rows: ExceptionRecord[]): GrupoColab[] {
+  type Acc = { nome: string; cpf: string; porData: Map<string, ExceptionRecord[]> };
+  const map = new Map<string, Acc>();
+  for (const e of rows) {
+    const k = `${e.employeeId}_${e.cpf}`;
+    let g = map.get(k);
+    if (!g) {
+      g = { nome: e.employeeName, cpf: e.cpf, porData: new Map() };
+      map.set(k, g);
+    }
+    let arr = g.porData.get(e.date);
+    if (!arr) {
+      arr = [];
+      g.porData.set(e.date, arr);
+    }
+    arr.push(e);
+  }
+  return Array.from(map.entries())
+    .map<GrupoColab>(([key, g]) => {
+      const porData = Array.from(g.porData.entries())
+        .map(([date, exc]) => ({ date, exc }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+      const total = porData.reduce((s, d) => s + d.exc.length, 0);
+      const graves = porData.reduce(
+        (s, d) => s + d.exc.filter((e) => e.severity === "grave").length,
+        0,
+      );
+      return { key, nome: g.nome, cpf: g.cpf, totalExc: total, totalGraves: graves, porData };
+    })
+    .sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+function fmtCpf(d: string): string {
+  const x = (d || "").replace(/\D/g, "");
+  if (x.length !== 11) return d;
+  return `${x.slice(0, 3)}.${x.slice(3, 6)}.${x.slice(6, 9)}-${x.slice(9)}`;
+}
+
+function fmtDataBr(ymd: string): string {
+  const [a, m, d] = ymd.split("-");
+  if (!a || !m || !d) return ymd;
+  return `${d}/${m}/${a}`;
+}
+
+function diaDaSemana(ymd: string): string {
+  const [a, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+  if (!a || !m || !d) return "";
+  const dt = new Date(a, m - 1, d);
+  return dt.toLocaleDateString("pt-BR", { weekday: "long" });
+}
+
+function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
+  return (
+    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+      <header className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2">
+        <div className="min-w-0">
+          <div className="font-bold text-gray-900 dark:text-gray-100">{grupo.nome}</div>
+          {grupo.cpf && (
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+              CPF {fmtCpf(grupo.cpf)}
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 text-[11px]">
+          <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
+            {grupo.totalExc} exc.
+          </span>
+          {grupo.totalGraves > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-semibold">
+              {grupo.totalGraves} grave(s)
+            </span>
+          )}
+        </div>
+      </header>
+
+      <div className="divide-y divide-gray-100 dark:divide-gray-800">
+        {grupo.porData.map(({ date, exc }) => (
+          <div key={date} className="px-4 py-3">
+            <div className="flex items-baseline gap-2 mb-1.5">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
+                {fmtDataBr(date)}
+              </span>
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">
+                {diaDaSemana(date)}
+              </span>
+            </div>
+            <ol className="space-y-1.5 ml-0">
+              {exc.map((e, i) => {
+                const meta = RULES_META[e.ruleId];
+                const sev = SEVERITY_INFO[e.severity];
+                return (
+                  <li
+                    key={`${e.ruleId}_${i}`}
+                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                  >
+                    <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5">
+                      {i + 1}.
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap shrink-0 mt-0.5 ${sev.badge}`}
+                      title={meta.descricaoRegra}
+                    >
+                      {meta.icon} {meta.label}
+                    </span>
+                    <span className="flex-1 min-w-0">
+                      {e.description}
+                      {e.detail && (
+                        <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
+                      )}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
