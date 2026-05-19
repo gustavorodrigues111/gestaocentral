@@ -1064,10 +1064,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             type="button"
             onClick={gerar}
             disabled={loading || empregados.length === 0}
-            className="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-900/50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ml-auto text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             title={statusSemana?.relatorioCache ? "Atualizar pela Sólides (sobrescreve o cache)" : "Gerar relatório dessa semana"}
           >
-            {loading ? "⏳ atualizando…" : "🔄 atualizar"}
+            {loading ? "⏳ atualizando…" : "🔄 Atualizar"}
           </button>
         </div>
 
