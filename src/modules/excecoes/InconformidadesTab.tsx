@@ -1347,18 +1347,25 @@ function ColaboradorBlock({
   onEnviarWhats: () => void;
   onApagarNota: (notaId: string) => void;
 }) {
+  const [expandido, setExpandido] = useState(false);
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-      <header className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2">
-        <div className="min-w-0">
-          <div className="font-bold text-gray-900 dark:text-gray-100">{grupo.nome}</div>
-          {grupo.cpf && (
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
-              CPF {fmtCpf(grupo.cpf)}
-            </div>
-          )}
+      <header
+        className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2 cursor-pointer"
+        onClick={() => setExpandido((v) => !v)}
+      >
+        <div className="min-w-0 flex items-center gap-2">
+          <span className="text-gray-400">{expandido ? "▼" : "▶"}</span>
+          <div>
+            <div className="font-bold text-gray-900 dark:text-gray-100">{grupo.nome}</div>
+            {grupo.cpf && (
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
+                CPF {fmtCpf(grupo.cpf)}
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2 text-[11px] flex-wrap">
+        <div className="flex items-center gap-2 text-[11px] flex-wrap" onClick={(e) => e.stopPropagation()}>
           <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
             {grupo.totalExc} exc.
           </span>
@@ -1401,6 +1408,7 @@ function ColaboradorBlock({
         </div>
       </header>
 
+      {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {grupo.porData.map(({ date, exc }) => (
           <div key={date} className="px-4 py-3">
@@ -1546,6 +1554,8 @@ function ColaboradorBlock({
               ))}
           </ul>
         </div>
+      )}
+      </>
       )}
     </section>
   );
