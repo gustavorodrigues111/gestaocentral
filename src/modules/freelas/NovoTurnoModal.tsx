@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   addDoc, collection, deleteField, doc, getDoc, setDoc, updateDoc,
 } from "firebase/firestore";
@@ -43,6 +43,27 @@ export function NovoTurnoModal({
 
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Click-outside: clicar fora da seção "Quem é o freela?" reseta a etapa
+  // (fecha lista expandida OU desfaz seleção já feita). Não fecha o modal.
+  // Só ativa quando há algo pra resetar: lista aberta, cadastro aberto, ou
+  // alguém já selecionado.
+  const secaoRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const ativo = escolhaTipo !== null || selecionado !== null || mostrarCadastro;
+    if (!ativo) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const el = secaoRef.current;
+      if (!el) return;
+      if (e.target instanceof Node && !el.contains(e.target)) {
+        setEscolhaTipo(null);
+        setSelecionado(null);
+        setMostrarCadastro(false);
+      }
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [escolhaTipo, selecionado, mostrarCadastro]);
 
   const isFutura = date > todayYmd();
   const statusAlvo: "agendado" | "aberto" = isFutura ? "agendado" : "aberto";
@@ -138,7 +159,7 @@ export function NovoTurnoModal({
         </div>
 
         {/* ─── Quem é o freela: etapa progressiva ─── */}
-        <div className="flex flex-col gap-1">
+        <div ref={secaoRef} className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
             Quem é o freela? *
           </label>
