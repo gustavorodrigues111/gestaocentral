@@ -233,14 +233,38 @@ export function temDadosFinaisCompletos(adm: Admissao): boolean {
 export async function marcarDocumentosRecebidos(
   admissaoId: string,
   pessoa: Pessoa,
+  checklistItens: { id: string; nome: string; recebido: boolean; observacao?: string }[],
 ): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, "admissoes", admissaoId), {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
     status: "documentos_recebidos",
     documentosRecebidosEm: now,
     documentosRecebidosPor: { id: pessoa.id, nome: pessoa.nome },
+    checklistDocumentos: {
+      itens: checklistItens,
+      atualizadoEm: now,
+      atualizadoPor: { id: pessoa.id, nome: pessoa.nome },
+    },
     updatedAt: now,
-  });
+  }));
+}
+
+// Atualiza só o checklist (sem mudar status). Usado pra revisar pendências
+// depois de já ter marcado docs recebidos.
+export async function atualizarChecklistDocumentos(
+  admissaoId: string,
+  pessoa: Pessoa,
+  checklistItens: { id: string; nome: string; recebido: boolean; observacao?: string }[],
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    checklistDocumentos: {
+      itens: checklistItens,
+      atualizadoEm: now,
+      atualizadoPor: { id: pessoa.id, nome: pessoa.nome },
+    },
+    updatedAt: now,
+  }));
 }
 
 // Move manual no Kanban (não muda status).

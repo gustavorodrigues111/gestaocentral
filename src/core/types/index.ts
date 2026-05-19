@@ -1561,6 +1561,13 @@ export type Admissao = {
   // ─── Etapa 3: RH confirma recebimento dos docs via WhatsApp ───
   documentosRecebidosEm?: string;
   documentosRecebidosPor?: { id: string; nome: string };
+  // Checklist por documento (recebido/pendente). RH marca no modal de
+  // confirmação. Permite avançar com pendências — fica salvo pra depois.
+  checklistDocumentos?: {
+    itens: { id: string; nome: string; recebido: boolean; observacao?: string }[];
+    atualizadoEm: string;
+    atualizadoPor: { id: string; nome: string };
+  };
 
   // ─── Etapa 4: aprovação ───
   aprovadoPor?: { id: string; nome: string };

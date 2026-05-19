@@ -33,6 +33,8 @@ import {
 } from "../../core/admissao/admissaoHelpers";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
+import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
+import { atualizarChecklistDocumentos } from "../../core/admissao/admissaoHelpers";
 
 type Props = {
   rid: string;
@@ -199,11 +201,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     await avancarStatus(adm.id, prox);
   }
 
-  async function handleConfirmarDocs(adm: Admissao) {
-    if (!me) return;
-    if (!confirm("Confirma que os documentos foram recebidos via WhatsApp?")) return;
-    await marcarDocumentosRecebidos(adm.id, me);
-  }
+  // Abre o modal de checklist. Reutilizado tanto pra primeira confirmação
+  // (status preenchido → documentos_recebidos) quanto pra revisar pendências
+  // depois (status já é documentos_recebidos+, mas tem itens em aberto).
+  const [admChecklist, setAdmChecklist] = useState<Admissao | null>(null);
 
   return (
     <div className="space-y-4">
@@ -274,7 +275,19 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       <div className="text-sky-700 dark:text-sky-400">✓ Formulário preenchido em {fmtDataHora(adm.preenchidoEm)}</div>
                     )}
                     {adm.documentosRecebidosEm && (
-                      <div className="text-emerald-700 dark:text-emerald-400">✓ Documentos recebidos em {fmtDataHora(adm.documentosRecebidosEm)} por {adm.documentosRecebidosPor?.nome}</div>
+                      <div className="text-emerald-700 dark:text-emerald-400">
+                        ✓ Documentos recebidos em {fmtDataHora(adm.documentosRecebidosEm)} por {adm.documentosRecebidosPor?.nome}
+                        {adm.checklistDocumentos && (() => {
+                          const total = adm.checklistDocumentos.itens.length;
+                          const ok = adm.checklistDocumentos.itens.filter((i) => i.recebido).length;
+                          const pend = total - ok;
+                          return (
+                            <span className={`ml-1 ${pend > 0 ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                              · 📄 {ok}/{total} {pend > 0 && `(${pend} pendente${pend > 1 ? "s" : ""})`}
+                            </span>
+                          );
+                        })()}
+                      </div>
                     )}
                     {adm.aprovadoEm && (
                       <div className="text-indigo-700 dark:text-indigo-400">✓ Admitido em {fmtDataHora(adm.aprovadoEm)} por {adm.aprovadoPor?.nome}</div>
@@ -302,8 +315,17 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     </Button>
                   )}
                   {st === "formulario_preenchido" && (
-                    <Button size="sm" onClick={() => handleConfirmarDocs(adm)}>
-                      ✓ Confirmar docs recebidos
+                    <Button size="sm" onClick={() => setAdmChecklist(adm)}>
+                      📄 Confirmar docs recebidos
+                    </Button>
+                  )}
+                  {/* Reabrir checklist quando já recebido pra revisar pendências */}
+                  {(st === "documentos_recebidos"
+                    || st === "dados_finais_preenchidos"
+                    || st === "solicitacao_contabilidade"
+                    || st === "pronto_admissao") && (
+                    <Button size="sm" variant="secondary" onClick={() => setAdmChecklist(adm)}>
+                      📄 Checklist
                     </Button>
                   )}
                   {/* Avançar etapa — só se há próxima e status não é terminal */}
@@ -343,6 +365,25 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
             if (!me) return;
             await cancelarAdmissao(admCancelando.id, motivos, texto, me);
             setAdmCancelando(null);
+          }}
+        />
+      )}
+
+      {admChecklist && (
+        <ConfirmarDocumentosModal
+          candidatoNome={admChecklist.candidato.nome}
+          itensIniciais={admChecklist.checklistDocumentos?.itens}
+          onClose={() => setAdmChecklist(null)}
+          onConfirm={async (itens) => {
+            if (!me) return;
+            // Se ainda não passou pra documentos_recebidos, faz transição.
+            // Senão, só atualiza o checklist sem mexer no status.
+            if (admChecklist.status === "formulario_preenchido") {
+              await marcarDocumentosRecebidos(admChecklist.id, me, itens);
+            } else {
+              await atualizarChecklistDocumentos(admChecklist.id, me, itens);
+            }
+            setAdmChecklist(null);
           }}
         />
       )}

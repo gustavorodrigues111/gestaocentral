@@ -131,6 +131,23 @@ export const GRUPOS_ADMISSAO_DEFAULT = [
   G_TRANS,
 ];
 
+// Lista padrão de documentos pra checklist de recebimento via WhatsApp.
+// Itens "comuns" pra admissão CLT. Cada restaurante pode customizar depois.
+export const CHECKLIST_DOCUMENTOS_DEFAULT = [
+  { id: "rg_frente",     nome: "RG (frente)" },
+  { id: "rg_verso",      nome: "RG (verso)" },
+  { id: "cpf",           nome: "CPF" },
+  { id: "comprovante_residencia", nome: "Comprovante de residência" },
+  { id: "foto_3x4",      nome: "Foto 3x4" },
+  { id: "ctps_rosto",    nome: "CTPS (página de rosto)" },
+  { id: "ctps_qualif",   nome: "CTPS (qualificação civil)" },
+  { id: "titulo_eleitor",nome: "Título de eleitor" },
+  { id: "comprovante_pis", nome: "Comprovante de PIS/PASEP" },
+  { id: "reservista",    nome: "Certificado de reservista (homens)" },
+  { id: "comprovante_escolaridade", nome: "Comprovante de escolaridade" },
+  { id: "dependentes_certidao", nome: "Certidão de nascimento dos dependentes (se houver)" },
+];
+
 // Colunas default do Kanban — fluxo completo da admissão.
 // Cards seguem aqui da esquerda pra direita conforme o status muda.
 // "Cancelados e Expirados" combina os dois status terminais com badges
