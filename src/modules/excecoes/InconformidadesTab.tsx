@@ -31,12 +31,14 @@ import {
   adicionarApontamento,
   adicionarNotaInterna,
   carregarStatusSemana,
+  listarStatusDoRestaurante,
   marcarApontamentoCiencia,
   marcarApontamentosEnviados,
   marcarStatus,
   podeMarcarStatus,
   removerApontamento,
   removerNotaInterna,
+  salvarRelatorioCache,
 } from "../../core/excecoes/statusSemana";
 import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
 import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
@@ -116,6 +118,28 @@ const SEVERITY_INFO: Record<
     label: "Info",
     badge: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
     dot: "bg-sky-500",
+  },
+};
+
+// ─── Cores dos chips de semana conforme status do tratamento ───────────────
+// aberto: cinza claro (default); em_tratamento: amarelo; tratado_lider: verde;
+// conferido_gerente: azul. Quando ativo (chip selecionado), versão saturada.
+const CHIP_COR_POR_STATUS: Record<ExcecaoStatusValor, { ativo: string; inativo: string }> = {
+  aberto: {
+    ativo:   "bg-indigo-600 text-white",
+    inativo: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
+  },
+  em_tratamento: {
+    ativo:   "bg-amber-500 text-white",
+    inativo: "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50",
+  },
+  tratado_lider: {
+    ativo:   "bg-emerald-600 text-white",
+    inativo: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50",
+  },
+  conferido_gerente: {
+    ativo:   "bg-sky-600 text-white",
+    inativo: "bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300 hover:bg-sky-200 dark:hover:bg-sky-900/50",
   },
 };
 
@@ -233,13 +257,56 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const [carregandoStatus, setCarregandoStatus] = useState(false);
   const [showHistoricoStatus, setShowHistoricoStatus] = useState(false);
 
-  // Carrega status da semana selecionada
+  // Status DE TODAS as semanas do mês — alimenta a cor dos chips. Recarregado
+  // quando muda o mês ou quando o status da semana ativa muda.
+  const [statusPorWeekStart, setStatusPorWeekStart] = useState<Map<string, ExcecaoStatusValor>>(new Map());
+  useEffect(() => {
+    if (!rid) return;
+    let cancelled = false;
+    listarStatusDoRestaurante(rid)
+      .then((rows) => {
+        if (cancelled) return;
+        const m = new Map<string, ExcecaoStatusValor>();
+        for (const r of rows) m.set(r.weekStart, r.status);
+        setStatusPorWeekStart(m);
+      })
+      .catch(() => { if (!cancelled) setStatusPorWeekStart(new Map()); });
+    return () => { cancelled = true; };
+  }, [rid, anoMes.ano, anoMes.mes, statusSemana?.status]);
+
+  // Carrega status da semana selecionada. Quando muda de semana, ZERA o
+  // relatório atualmente exibido — depois, se a semana já tem cache salvo
+  // (porque está em tratamento+), restaura o snapshot.
   useEffect(() => {
     if (!rid || !semanaAtiva) return;
     let cancelled = false;
+    // Reset visual imediato
+    setStatusSemana(null);
+    setResult(null);
+    setDebug(null);
+    setEscalaDebug(null);
+    setErro("");
+    setGeradoEm(null);
+    setFiltroColaborador("");
+    setFiltroRegra("");
+    setFiltroSeveridade("");
     setCarregandoStatus(true);
     carregarStatusSemana(rid, semanaAtiva.weekStart)
-      .then((s) => { if (!cancelled) setStatusSemana(s); })
+      .then((s) => {
+        if (cancelled) return;
+        setStatusSemana(s);
+        // Restaura relatório cacheado (só faz sentido se semana está em
+        // tratamento+, mas o cache só é salvo nesses casos, então confia)
+        if (s?.relatorioCache) {
+          const c = s.relatorioCache;
+          setResult({
+            exceptions: c.exceptions as ExceptionRecord[],
+            unmatched: c.unmatched as GenerateReportResult["unmatched"],
+            diasAnalisados: c.diasAnalisados,
+          });
+          setGeradoEm({ start: s.weekStart, end: s.weekEnd });
+        }
+      })
       .catch(() => { if (!cancelled) setStatusSemana(null); })
       .finally(() => { if (!cancelled) setCarregandoStatus(false); });
     return () => { cancelled = true; };
@@ -274,7 +341,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       obs = r ? `[reverter] ${r}` : undefined;
     }
     try {
-      const updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs);
+      let updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs);
+      // Ao iniciar tratamento (saída de "aberto"), congelar o relatório
+      // atual no doc pra manter memória entre sessões.
+      if (statusAtual === "aberto" && novoStatus !== "aberto" && result) {
+        try {
+          updated = await salvarRelatorioCache(
+            rid,
+            semanaAtiva.weekStart,
+            semanaAtiva.weekEnd,
+            {
+              geradoEm: new Date().toISOString(),
+              exceptions: result.exceptions,
+              unmatched: result.unmatched,
+              diasAnalisados: result.diasAnalisados,
+            },
+          );
+        } catch (e) {
+          console.warn("Erro salvando cache do relatório no início do tratamento:", e);
+        }
+      }
       setStatusSemana(updated);
     } catch (e) {
       alert("Erro ao salvar status: " + (e instanceof Error ? e.message : "?"));
@@ -784,6 +870,27 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       setFiltroColaborador("");
       setFiltroRegra("");
       setFiltroSeveridade("");
+
+      // Salva o snapshot no doc da semana se já está em tratamento+ —
+      // mantém memória pro líder não precisar regerar toda vez que abre.
+      if (semanaAtiva && statusSemana && statusSemana.status !== "aberto") {
+        try {
+          const updated = await salvarRelatorioCache(
+            rid,
+            semanaAtiva.weekStart,
+            semanaAtiva.weekEnd,
+            {
+              geradoEm: new Date().toISOString(),
+              exceptions: report.exceptions,
+              unmatched: report.unmatched,
+              diasAnalisados: report.diasAnalisados,
+            },
+          );
+          setStatusSemana(updated);
+        } catch (e) {
+          console.warn("Erro salvando cache do relatório:", e);
+        }
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao gerar o relatório.");
     } finally {
@@ -851,7 +958,11 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           </div>
           <div className="flex items-center gap-2">
             <Button onClick={gerar} disabled={loading || empregados.length === 0}>
-              {loading ? "Gerando..." : "🔍 Gerar relatório"}
+              {loading
+                ? (statusSemana?.relatorioCache ? "Atualizando..." : "Gerando...")
+                : statusSemana?.relatorioCache
+                ? "🔄 Atualizar relatório"
+                : "🔍 Gerar relatório"}
             </Button>
             {result && (
               <Button
@@ -872,21 +983,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           </div>
         </div>
 
-        {/* Chips de semana */}
+        {/* Chips de semana — cor reflete o status do tratamento:
+            aberto → cinza claro; em_tratamento → amarelo; tratado_lider →
+            verde; conferido_gerente → azul */}
         <div className="flex items-center gap-1.5 flex-wrap">
           {semanasMes.map((w) => {
             const ativo = w.index === semanaIdx;
+            const status = statusPorWeekStart.get(w.weekStart) || "aberto";
+            const cor = CHIP_COR_POR_STATUS[status];
             return (
               <button
                 key={w.index}
                 type="button"
                 onClick={() => setSemanaIdx(w.index)}
                 className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                  ativo
-                    ? "bg-indigo-600 text-white"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  ativo ? cor.ativo : cor.inativo
                 } ${w.containsToday && !ativo ? "ring-1 ring-indigo-400 dark:ring-indigo-500" : ""}`}
-                title={`${w.weekStart} a ${w.weekEnd}`}
+                title={`${w.weekStart} a ${w.weekEnd} · ${EXCECAO_STATUS_LABEL[status]}`}
               >
                 {w.label}
               </button>

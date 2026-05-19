@@ -1376,6 +1376,18 @@ export type NotaInterna = {
   criadoPorNome: string;
 };
 
+// Snapshot do último relatório gerado, persistido pra manter memória do
+// tratamento entre sessões — quando o líder sai da tela e volta, restaura
+// o relatório anterior em vez de exigir nova geração. O conteúdo é
+// estruturalmente o GenerateReportResult de core/excecoes/generateReport,
+// mas tipamos como unknown[] aqui pra não criar ciclo de import.
+export type RelatorioSnapshot = {
+  geradoEm: string;       // ISO
+  exceptions: unknown[];  // ExceptionRecord[]
+  unmatched: unknown[];   // UnmatchedEntry[]
+  diasAnalisados: number;
+};
+
 export type ExcecaoStatusSemana = {
   id: string;            // = `${restaurantId}_${weekStart}` (weekStart YYYY-MM-DD)
   restaurantId: string;
@@ -1385,5 +1397,6 @@ export type ExcecaoStatusSemana = {
   historico: ExcecaoHistoricoEntry[];
   apontamentos?: ApontamentoFuncionario[];
   notasInternas?: NotaInterna[];
+  relatorioCache?: RelatorioSnapshot;
   updatedAt: string;
 };

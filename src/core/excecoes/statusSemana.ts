@@ -6,7 +6,7 @@ import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase
 import { db } from "../firebase/config";
 import type {
   ApontamentoFuncionario, ApontamentoStatus, ExcecaoHistoricoEntry, ExcecaoStatusSemana,
-  ExcecaoStatusValor, NotaInterna, Pessoa,
+  ExcecaoStatusValor, NotaInterna, Pessoa, RelatorioSnapshot,
 } from "../types";
 
 export function statusDocId(restaurantId: string, weekStart: string): string {
@@ -252,6 +252,17 @@ export async function adicionarNotaInterna(
   };
   const notasInternas = [...(existing?.notasInternas || []), nova];
   return upsertSemana(restaurantId, weekStart, weekEnd, { notasInternas });
+}
+
+// Salva o snapshot do último relatório gerado no doc da semana. Usado quando
+// o líder está em tratamento e quer manter memória entre sessões.
+export async function salvarRelatorioCache(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  relatorio: RelatorioSnapshot,
+): Promise<ExcecaoStatusSemana> {
+  return upsertSemana(restaurantId, weekStart, weekEnd, { relatorioCache: relatorio });
 }
 
 export async function removerNotaInterna(
