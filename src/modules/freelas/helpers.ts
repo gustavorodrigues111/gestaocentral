@@ -110,6 +110,56 @@ export function proximoNumeroLote(pagamentosExistentes: { numero?: string }[], h
   return `${prefix}-${String(max + 1).padStart(3, "0")}`;
 }
 
+// Retorna info histórica da pessoa pra exibir como dica na precificação.
+// "anteriores" = shifts confirmados (fechamento) ou pagos, da mesma pessoa,
+// excluindo o turno atual. "ultimoValor" e "ultimoTipo" vêm do mais recente.
+export function historicoDaPessoa(
+  shiftAtual: FreelaShift,
+  todosShifts: FreelaShift[],
+): { anteriores: number; ultimoValor?: number; ultimoTipo?: "hora" | "diaria"; ultimoTotal?: number } {
+  const mesmaPessoa = (a: FreelaShift, b: FreelaShift) =>
+    (a.pessoaId && a.pessoaId === b.pessoaId) ||
+    (a.empregadoId && a.empregadoId === b.empregadoId) ||
+    (a.cpfSnapshot && a.cpfSnapshot === b.cpfSnapshot && !!a.cpfSnapshot);
+
+  const candidatos = todosShifts.filter(
+    (s) =>
+      s.id !== shiftAtual.id &&
+      mesmaPessoa(s, shiftAtual) &&
+      (s.status === "fechamento" || s.status === "pago"),
+  );
+  candidatos.sort((a, b) =>
+    (b.confirmadoEm || b.pagoEm || b.lancadoEm || "").localeCompare(
+      a.confirmadoEm || a.pagoEm || a.lancadoEm || "",
+    ),
+  );
+  const ultimo = candidatos[0];
+  return {
+    anteriores: candidatos.length,
+    ultimoValor: ultimo?.valorUnit,
+    ultimoTipo: ultimo?.valorTipo,
+    ultimoTotal: ultimo?.totalCalc,
+  };
+}
+
+// Identifica qual "rótulo" um valor representa dado o config:
+// "base" | "pleno" | "outro" | null (sem valor).
+export function rotulaValor(
+  valor: number | undefined,
+  tipo: "hora" | "diaria" | undefined,
+  config: { baseHora?: number; plenoHora?: number; baseDiaria?: number; plenoDiaria?: number } | null,
+): "base" | "pleno" | "outro" | null {
+  if (!valor || !tipo || !config) return valor ? "outro" : null;
+  if (tipo === "hora") {
+    if (config.baseHora  && Math.abs(valor - config.baseHora)  < 0.01) return "base";
+    if (config.plenoHora && Math.abs(valor - config.plenoHora) < 0.01) return "pleno";
+  } else {
+    if (config.baseDiaria  && Math.abs(valor - config.baseDiaria)  < 0.01) return "base";
+    if (config.plenoDiaria && Math.abs(valor - config.plenoDiaria) < 0.01) return "pleno";
+  }
+  return "outro";
+}
+
 export function resolverPixWhats(
   cand: FreelaCandidato,
   pessoas: Pessoa[],

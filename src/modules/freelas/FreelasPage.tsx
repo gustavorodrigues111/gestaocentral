@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -8,6 +8,7 @@ import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import type {
   Empregado,
+  FreelaConfig,
   FreelaPagamento,
   FreelaShift,
   Pessoa,
@@ -16,6 +17,7 @@ import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
 import { LancamentoTab } from "./LancamentoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
+import { ValoresPadraoModal } from "./ValoresPadraoModal";
 
 type TabId = "lancamentos" | "fechamento" | "historico";
 
@@ -40,11 +42,13 @@ export function FreelasPage() {
 
   const [tab, setTab] = useState<TabId>("lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
+  const [showValores, setShowValores] = useState(false);
 
   const [shifts, setShifts] = useState<FreelaShift[]>([]);
   const [pagamentos, setPagamentos] = useState<FreelaPagamento[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [freelaConfig, setFreelaConfig] = useState<FreelaConfig | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -78,6 +82,13 @@ export function FreelasPage() {
     });
   }, [rid]);
 
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(doc(db, "freelaConfig", rid), (snap) => {
+      setFreelaConfig(snap.exists() ? ({ id: snap.id, ...snap.data() } as FreelaConfig) : null);
+    });
+  }, [rid]);
+
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeOperar) {
     return (
@@ -102,6 +113,11 @@ export function FreelasPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {podeDp && (
+            <Button variant="secondary" size="sm" onClick={() => setShowValores(true)}>
+              ⚙️ Valores padrão
+            </Button>
+          )}
           {podeOperar && (
             <Button onClick={() => setShowCadastro(true)}>
               + Cadastrar freela
@@ -159,6 +175,7 @@ export function FreelasPage() {
           restaurantId={rid}
           shifts={shifts}
           pagamentos={pagamentos}
+          freelaConfig={freelaConfig}
           podeEditar={podeDp}
         />
       )}
@@ -175,6 +192,14 @@ export function FreelasPage() {
           restaurantId={rid}
           onSaved={() => setShowCadastro(false)}
           onClose={() => setShowCadastro(false)}
+        />
+      )}
+      {showValores && (
+        <ValoresPadraoModal
+          restaurantId={rid}
+          config={freelaConfig}
+          onClose={() => setShowValores(false)}
+          onSaved={() => setShowValores(false)}
         />
       )}
     </div>

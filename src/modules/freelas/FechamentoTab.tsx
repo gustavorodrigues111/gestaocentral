@@ -4,17 +4,19 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
-  AREAS, type Area, type FreelaPagamento, type FreelaPagamentoResumoPessoa,
-  type FreelaShift,
+  AREAS, type Area, type FreelaConfig, type FreelaPagamento,
+  type FreelaPagamentoResumoPessoa, type FreelaShift,
 } from "../../core/types";
 import {
-  calcHoras, calcTotal, fmtBR, fmtHoras, proximoNumeroLote,
+  calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
+  rotulaValor,
 } from "./helpers";
 
 type Props = {
   restaurantId: string;
   shifts: FreelaShift[];
   pagamentos: FreelaPagamento[];
+  freelaConfig: FreelaConfig | null;
   podeEditar: boolean;
 };
 
@@ -31,7 +33,7 @@ const AREA_ICONE: Record<Area, string> = {
 //     1. Lotes pendentes (banner amarelo)
 //     2. Aguardando precificação (status=aberto + entrada+saída)
 //     3. Prontos pra lote      (status=fechamento sem lote)
-export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: Props) {
+export function FechamentoTab({ restaurantId, shifts, pagamentos, freelaConfig, podeEditar }: Props) {
   const { pessoa: me } = useAuth();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [obs, setObs] = useState("");
@@ -169,20 +171,25 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: 
             ({aPrecificar.length} — operacional fechou, falta DP precificar)
           </span>
         </h3>
+        {!freelaConfig && podeEditar && (
+          <div className="mb-3 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
+            💡 Configure <strong>Valores padrão</strong> (botão no topo) pra
+            ter chips Base/Pleno no lugar do input livre.
+          </div>
+        )}
         {aPrecificar.length === 0 ? (
           <EmptyState texto="Nenhum turno aguardando precificação." />
         ) : (
           <AreaGroups
             shifts={aPrecificar}
-            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} />}
-            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} />}
+            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} config={freelaConfig} todosShifts={shifts} />}
+            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} config={freelaConfig} todosShifts={shifts} />}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
                 <th className="px-4 py-2 w-24">Data</th>
                 <th className="px-2 py-2">Pessoa</th>
                 <th className="px-2 py-2">Horário</th>
-                <th className="px-2 py-2 w-32">Tipo</th>
-                <th className="px-2 py-2 w-28">Valor</th>
+                <th className="px-2 py-2">Tarifa</th>
                 <th className="px-2 py-2 w-24 text-right">Total</th>
                 <th className="px-4 py-2 w-32 text-right">Ação</th>
               </tr>
@@ -362,6 +369,7 @@ function usePrecificar(shift: FreelaShift) {
   const { pessoa: me } = useAuth();
   const [valorTipo, setValorTipo] = useState<"hora" | "diaria">(shift.valorTipo || "hora");
   const [valorUnit, setValorUnit] = useState<number>(shift.valorUnit || 0);
+  const [outroAtivo, setOutroAtivo] = useState<boolean>(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -372,11 +380,12 @@ function usePrecificar(shift: FreelaShift) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const total = calcTotal(valorTipo, valorUnit, horas);
 
-  async function onBlur() {
+  async function persistir(extras: Partial<FreelaShift> = {}) {
     setSaving(true);
     try {
       await updateDoc(doc(db, "freelaShifts", shift.id), {
         valorTipo, valorUnit, horas, totalCalc: total,
+        ...extras,
         updatedAt: new Date().toISOString(),
       });
     } finally {
@@ -386,54 +395,170 @@ function usePrecificar(shift: FreelaShift) {
 
   async function confirmar() {
     if (!me) return;
-    if (!valorUnit) { alert("Preencha o valor."); return; }
+    if (!valorUnit) { alert("Selecione uma tarifa antes de confirmar."); return; }
     if (!confirm(`Confirmar ${shift.nomeSnapshot}? Total ${fmtBR(total)}.`)) return;
-    setSaving(true);
-    try {
-      await updateDoc(doc(db, "freelaShifts", shift.id), {
-        valorTipo, valorUnit, horas, totalCalc: total,
-        status: "fechamento",
-        confirmadoEm: new Date().toISOString(),
-        confirmadoPor: me.id,
-        updatedAt: new Date().toISOString(),
-      });
-    } finally {
-      setSaving(false);
-    }
+    await persistir({
+      status: "fechamento",
+      confirmadoEm: new Date().toISOString(),
+      confirmadoPor: me.id,
+    });
   }
 
-  return { valorTipo, setValorTipo, valorUnit, setValorUnit, horas, total, saving, onBlur, confirmar };
+  // Setters auto-persistem (chip = ato discreto)
+  async function aplicarTarifa(tipo: "hora" | "diaria", v: number, marcarOutro: boolean) {
+    setValorTipo(tipo);
+    setValorUnit(v);
+    setOutroAtivo(marcarOutro);
+    const novoTotal = calcTotal(tipo, v, horas);
+    await persistir({ valorTipo: tipo, valorUnit: v, totalCalc: novoTotal });
+  }
+
+  return { valorTipo, valorUnit, total, saving, confirmar, aplicarTarifa, outroAtivo, setOutroAtivo, setValorUnit };
 }
 
-function PrecificarRowDesktop({ shift, podeEditar }: { shift: FreelaShift; podeEditar: boolean }) {
-  const s = usePrecificar(shift);
+// Componente reutilizável: chips Base/Pleno/Outro + toggle Hora/Diária
+function TarifaPicker({
+  shift, config, todosShifts, onAplicar, valorTipo, valorUnit, outroAtivo,
+  setOutroAtivo, setValorUnit, disabled,
+}: {
+  shift: FreelaShift;
+  config: FreelaConfig | null;
+  todosShifts: FreelaShift[];
+  onAplicar: (tipo: "hora" | "diaria", v: number, marcarOutro: boolean) => void;
+  valorTipo: "hora" | "diaria";
+  valorUnit: number;
+  outroAtivo: boolean;
+  setOutroAtivo: (b: boolean) => void;
+  setValorUnit: (n: number) => void;
+  disabled?: boolean;
+}) {
+  const hist = historicoDaPessoa(shift, todosShifts);
+  const rotulo = rotulaValor(valorUnit, valorTipo, config);
+
+  // Valores base/pleno conforme tipo selecionado
+  const base  = valorTipo === "hora" ? config?.baseHora   : config?.baseDiaria;
+  const pleno = valorTipo === "hora" ? config?.plenoHora  : config?.plenoDiaria;
+
+  function chipCls(ativo: boolean, cor: "blue" | "emerald" | "gray") {
+    const baseCls = "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors border";
+    if (ativo) {
+      if (cor === "blue")    return `${baseCls} bg-blue-600 text-white border-blue-600`;
+      if (cor === "emerald") return `${baseCls} bg-emerald-600 text-white border-emerald-600`;
+      return                 `${baseCls} bg-gray-700 text-white border-gray-700`;
+    }
+    return `${baseCls} bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800`;
+  }
+
   return (
-    <tr className="border-t border-gray-100 dark:border-gray-800">
-      <td className="px-4 py-2 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
-      <td className="px-2 py-2">
+    <div className="space-y-2">
+      {/* Toggle Hora/Diária */}
+      <div className="inline-flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 text-[11px]">
+        <button
+          type="button" disabled={disabled}
+          onClick={() => onAplicar("hora", valorTipo === "hora" ? valorUnit : 0, false)}
+          className={`px-2 py-1 ${valorTipo === "hora" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
+        >Hora</button>
+        <button
+          type="button" disabled={disabled}
+          onClick={() => onAplicar("diaria", valorTipo === "diaria" ? valorUnit : 0, false)}
+          className={`px-2 py-1 ${valorTipo === "diaria" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
+        >Diária</button>
+      </div>
+
+      {/* Chips de tarifa */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {base ? (
+          <button type="button" disabled={disabled}
+            onClick={() => onAplicar(valorTipo, base, false)}
+            className={chipCls(rotulo === "base" && !outroAtivo, "blue")}
+            title="Valor de entrada (base)"
+          >
+            Base {fmtBR(base)}
+          </button>
+        ) : null}
+        {pleno ? (
+          <button type="button" disabled={disabled}
+            onClick={() => onAplicar(valorTipo, pleno, false)}
+            className={chipCls(rotulo === "pleno" && !outroAtivo, "emerald")}
+            title="Valor pleno"
+          >
+            Pleno {fmtBR(pleno)}
+          </button>
+        ) : null}
+        <button type="button" disabled={disabled}
+          onClick={() => setOutroAtivo(true)}
+          className={chipCls(outroAtivo || (rotulo === "outro"), "gray")}
+        >
+          Outro
+        </button>
+        {(outroAtivo || rotulo === "outro") && (
+          <input
+            type="number" min={0} step="0.01"
+            value={valorUnit || ""}
+            onChange={(e) => setValorUnit(parseFloat(e.target.value) || 0)}
+            onBlur={() => onAplicar(valorTipo, valorUnit, true)}
+            disabled={disabled}
+            placeholder="R$"
+            autoFocus
+            className="w-24 px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50"
+          />
+        )}
+      </div>
+
+      {/* Info contextual — nº de turnos + última escolha */}
+      <div className="text-[11px] text-gray-500 dark:text-gray-400">
+        📊 {hist.anteriores === 0
+          ? "1º turno"
+          : `${hist.anteriores + 1}º turno`}
+        {hist.ultimoValor ? (
+          <>
+            {" · "}último: {hist.ultimoTipo === "diaria" ? "diária " : "R$/h "}
+            {fmtBR(hist.ultimoValor)}
+            {(() => {
+              const r = rotulaValor(hist.ultimoValor, hist.ultimoTipo, config);
+              if (r === "base")  return <span className="ml-1 text-blue-600 dark:text-blue-400">(base)</span>;
+              if (r === "pleno") return <span className="ml-1 text-emerald-700 dark:text-emerald-400">(pleno)</span>;
+              return null;
+            })()}
+          </>
+        ) : null}
+        {config && hist.anteriores >= config.thresholdTurnos && (
+          <span className="ml-1 text-emerald-700 dark:text-emerald-400 font-medium">
+            · ≥{config.thresholdTurnos} turnos
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PrecificarRowDesktop({ shift, podeEditar, config, todosShifts }: { shift: FreelaShift; podeEditar: boolean; config: FreelaConfig | null; todosShifts: FreelaShift[] }) {
+  const s = usePrecificar(shift);
+  const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+  return (
+    <tr className="border-t border-gray-100 dark:border-gray-800 align-top">
+      <td className="px-4 py-3 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
+      <td className="px-2 py-3">
         <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</div>
         {!shift.pixSnapshot && (
           <div className="text-[10px] text-red-600">⚠ sem PIX</div>
         )}
       </td>
-      <td className="px-2 py-2 text-xs text-gray-700 dark:text-gray-300">
-        {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(s.horas)}
+      <td className="px-2 py-3 text-xs text-gray-700 dark:text-gray-300">
+        {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""}
+        <div className="text-[11px] text-gray-500">{fmtHoras(horas)}</div>
       </td>
-      <td className="px-2 py-2">
-        <select value={s.valorTipo} onChange={(e) => s.setValorTipo(e.target.value as "hora" | "diaria")} onBlur={s.onBlur} disabled={!podeEditar || s.saving}
-          className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50">
-          <option value="hora">R$/hora</option>
-          <option value="diaria">Diária</option>
-        </select>
+      <td className="px-2 py-3">
+        <TarifaPicker
+          shift={shift} config={config} todosShifts={todosShifts}
+          onAplicar={s.aplicarTarifa}
+          valorTipo={s.valorTipo} valorUnit={s.valorUnit}
+          outroAtivo={s.outroAtivo} setOutroAtivo={s.setOutroAtivo} setValorUnit={s.setValorUnit}
+          disabled={!podeEditar || s.saving}
+        />
       </td>
-      <td className="px-2 py-2">
-        <input type="number" min={0} step="0.01" value={s.valorUnit || ""}
-          onChange={(e) => s.setValorUnit(parseFloat(e.target.value) || 0)} onBlur={s.onBlur}
-          disabled={!podeEditar || s.saving} placeholder="0,00"
-          className="w-full px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50" />
-      </td>
-      <td className="px-2 py-2 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</td>
-      <td className="px-4 py-2 text-right">
+      <td className="px-2 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</td>
+      <td className="px-4 py-3 text-right">
         {podeEditar && (
           <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
         )}
@@ -442,8 +567,9 @@ function PrecificarRowDesktop({ shift, podeEditar }: { shift: FreelaShift; podeE
   );
 }
 
-function PrecificarRowMobile({ shift, podeEditar }: { shift: FreelaShift; podeEditar: boolean }) {
+function PrecificarRowMobile({ shift, podeEditar, config, todosShifts }: { shift: FreelaShift; podeEditar: boolean; config: FreelaConfig | null; todosShifts: FreelaShift[] }) {
   const s = usePrecificar(shift);
+  const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
     <div className="px-3 py-3">
       <div className="flex items-center justify-between gap-2 mb-1">
@@ -455,21 +581,17 @@ function PrecificarRowMobile({ shift, podeEditar }: { shift: FreelaShift; podeEd
         <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</div>
       </div>
       <div className="text-xs text-gray-700 dark:text-gray-300 mb-2">
-        {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(s.horas)}
+        {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-2">
-        <select value={s.valorTipo} onChange={(e) => s.setValorTipo(e.target.value as "hora" | "diaria")} onBlur={s.onBlur} disabled={!podeEditar || s.saving}
-          className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50">
-          <option value="hora">R$/hora</option>
-          <option value="diaria">Diária</option>
-        </select>
-        <input type="number" min={0} step="0.01" value={s.valorUnit || ""}
-          onChange={(e) => s.setValorUnit(parseFloat(e.target.value) || 0)} onBlur={s.onBlur}
-          disabled={!podeEditar || s.saving} placeholder="Valor"
-          className="w-full px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50" />
-      </div>
+      <TarifaPicker
+        shift={shift} config={config} todosShifts={todosShifts}
+        onAplicar={s.aplicarTarifa}
+        valorTipo={s.valorTipo} valorUnit={s.valorUnit}
+        outroAtivo={s.outroAtivo} setOutroAtivo={s.setOutroAtivo} setValorUnit={s.setValorUnit}
+        disabled={!podeEditar || s.saving}
+      />
       {podeEditar && (
-        <div className="flex justify-end">
+        <div className="flex justify-end mt-2">
           <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
         </div>
       )}
