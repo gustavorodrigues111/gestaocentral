@@ -206,6 +206,7 @@ export function ExcecoesPage() {
     empsSemSchedule?: number;
     primeiros5SemSchedule?: string[];
     errosEndpoint?: unknown;
+    sampleProbe?: unknown;
   };
   const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
@@ -279,6 +280,7 @@ export function ExcecoesPage() {
         debugInfo.empsSemSchedule = empsSemSchedule;
         debugInfo.primeiros5SemSchedule = primeiros5SemSchedule;
         debugInfo.errosEndpoint = schedRes.errors;
+        debugInfo.sampleProbe = schedRes.sampleProbe;
 
         const allan = empregados.find((e) => e.nome.toLowerCase().includes("allan"));
         if (allan) {
@@ -459,6 +461,9 @@ export function ExcecoesPage() {
                 {Array.isArray(escalaDebug.errosEndpoint) && (escalaDebug.errosEndpoint as unknown[]).length > 0 && (
                   <div className="text-[10px] text-rose-600">⚠ Erros endpoint: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.errosEndpoint).slice(0, 500)}</pre></div>
                 )}
+                {escalaDebug.sampleProbe ? (
+                  <div className="text-[10px] mt-1 text-amber-700">🔍 Amostra Sólides: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbe)}</pre></div>
+                ) : null}
                 <div className="mt-1">🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong> · dateUsed=<strong>{escalaDebug.dateUsedAllan || "—"}</strong></div>
                 <div>📅 Escala final (após merge):</div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-0.5 text-[10px]">

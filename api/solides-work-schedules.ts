@@ -67,6 +67,15 @@ function resolveToken(restaurantKey: string): { token: string } | { error: strin
 }
 
 async function fetchJson(url: string, token: string): Promise<unknown> {
+  const r = await fetchJsonWithMeta(url, token);
+  return r.data;
+}
+
+// Versão que devolve também status HTTP e amostra do body pra debug.
+async function fetchJsonWithMeta(
+  url: string,
+  token: string,
+): Promise<{ data: unknown; status: number; bodyPreview: string }> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
@@ -76,14 +85,15 @@ async function fetchJson(url: string, token: string): Promise<unknown> {
       signal: ctrl.signal,
     });
     const text = await resp.text();
-    if (resp.status === 404) return null;
+    const bodyPreview = text.slice(0, 200);
+    if (resp.status === 404) return { data: null, status: resp.status, bodyPreview };
     if (!resp.ok) {
-      throw new HttpError(502, `HTTP ${resp.status} em ${url}. ${text.slice(0, 200)}`);
+      throw new HttpError(502, `HTTP ${resp.status} em ${url}. ${bodyPreview}`);
     }
     try {
-      return JSON.parse(text);
+      return { data: JSON.parse(text), status: resp.status, bodyPreview };
     } catch {
-      throw new HttpError(502, `Resposta não-JSON em ${url}: ${text.slice(0, 150)}`);
+      throw new HttpError(502, `Resposta não-JSON em ${url}: ${bodyPreview}`);
     }
   } finally {
     clearTimeout(timer);
@@ -224,6 +234,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const results: Record<string, NormalizedSchedule | null> = {};
     const errors: { employeeId: number; name: string; error: string; triedDates?: string[] }[] = [];
     const dateUsed: Record<string, string | null> = {};
+    // Debug: amostra da resposta crua pra UM empregado-chave (o 1º que tentar)
+    let sampleProbe: { employeeId: number; name: string; tryDate: string; url: string; status: number; bodyPreview: string; parsedShape: string } | null = null;
     const CONCURRENCY = 5;
     let idx = 0;
     async function worker() {
@@ -238,8 +250,33 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
           const ms = ymdToMs(tryDate);
           const url = `${WORK_SCHEDULE_API}/${emp.id}?date=${ms}`;
           try {
-            const raw = await fetchJson(url, token);
-            const norm = normalizeSchedule(raw);
+            const meta = await fetchJsonWithMeta(url, token);
+            // Captura amostra da PRIMEIRA chamada do PRIMEIRO empregado pro debug
+            if (!sampleProbe) {
+              const d = meta.data;
+              let parsedShape = "null/undefined";
+              if (d && typeof d === "object") {
+                const keys = Object.keys(d as Record<string, unknown>);
+                parsedShape = `object com keys: [${keys.join(", ")}]`;
+                const sched = (d as { schedule?: unknown }).schedule;
+                if (sched === undefined) parsedShape += " (schedule UNDEFINED)";
+                else if (sched === null) parsedShape += " (schedule NULL)";
+                else if (typeof sched === "object") {
+                  const sk = Object.keys(sched as Record<string, unknown>);
+                  parsedShape += ` (schedule é objeto com keys: [${sk.join(", ")}])`;
+                }
+              }
+              sampleProbe = {
+                employeeId: emp.id,
+                name: emp.name,
+                tryDate,
+                url,
+                status: meta.status,
+                bodyPreview: meta.bodyPreview,
+                parsedShape,
+              };
+            }
+            const norm = normalizeSchedule(meta.data);
             if (norm) {
               schedule = norm;
               usedDate = tryDate;
@@ -266,6 +303,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       count: Object.keys(results).length,
       dateUsed,
       errors,
+      sampleProbe,
     });
   } catch (e) {
     if (e instanceof HttpError) {

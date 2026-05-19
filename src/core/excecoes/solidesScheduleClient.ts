@@ -23,6 +23,15 @@ export type FetchSchedulesResult = {
   count: number;
   dateUsed?: Record<string, string | null>;
   errors: { employeeId: number; name: string; error: string }[];
+  sampleProbe?: {
+    employeeId: number;
+    name: string;
+    tryDate: string;
+    url: string;
+    status: number;
+    bodyPreview: string;
+    parsedShape: string;
+  } | null;
 };
 
 // Aceita uma OU várias datas (em ordem de prioridade). A 1ª que retornar
