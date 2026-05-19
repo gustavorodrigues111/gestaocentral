@@ -129,10 +129,12 @@ async function upsertSemana(
     historico: existing?.historico || [],
     ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
     ...(existing?.notasInternas ? { notasInternas: existing.notasInternas } : {}),
+    ...(existing?.relatorioCache ? { relatorioCache: existing.relatorioCache } : {}),
     ...patch,
     updatedAt: now,
   };
-  await setDoc(doc(db, "excecoesStatusSemana", id), next);
+  // Firestore rejeita `undefined` em qualquer campo. Limpamos antes de gravar.
+  await setDoc(doc(db, "excecoesStatusSemana", id), stripUndefined(next));
   return next;
 }
 
@@ -256,6 +258,9 @@ export async function adicionarNotaInterna(
 
 // Salva o snapshot do último relatório gerado no doc da semana. Usado quando
 // o líder está em tratamento e quer manter memória entre sessões.
+//
+// `upsertSemana` aplica stripUndefined antes de gravar — Firestore rejeita
+// `undefined` em qualquer campo, e ExceptionRecord.detail é opcional.
 export async function salvarRelatorioCache(
   restaurantId: string,
   weekStart: string,
@@ -263,6 +268,22 @@ export async function salvarRelatorioCache(
   relatorio: RelatorioSnapshot,
 ): Promise<ExcecaoStatusSemana> {
   return upsertSemana(restaurantId, weekStart, weekEnd, { relatorioCache: relatorio });
+}
+
+// Remove recursivamente chaves com valor `undefined` — necessário pro
+// Firestore não rejeitar o objeto. Array é mapeado; primitivos passam direto.
+function stripUndefined<T>(v: T): T {
+  if (Array.isArray(v)) {
+    return v.map((x) => stripUndefined(x)) as unknown as T;
+  }
+  if (v && typeof v === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+      if (val !== undefined) out[k] = stripUndefined(val);
+    }
+    return out as T;
+  }
+  return v;
 }
 
 export async function removerNotaInterna(

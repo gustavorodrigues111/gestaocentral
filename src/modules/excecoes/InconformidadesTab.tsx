@@ -358,7 +358,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             },
           );
         } catch (e) {
-          console.warn("Erro salvando cache do relatório no início do tratamento:", e);
+          console.error("Erro salvando cache do relatório no início do tratamento:", e);
+          alert("Status atualizado, mas o cache do relatório não foi salvo: " + (e instanceof Error ? e.message : "?"));
         }
       }
       setStatusSemana(updated);
@@ -912,7 +913,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           );
           setStatusSemana(updated);
         } catch (e) {
-          console.warn("Erro salvando cache do relatório:", e);
+          console.error("Erro salvando cache do relatório:", e);
+          alert("Relatório gerado mas o cache não foi salvo: " + (e instanceof Error ? e.message : "?"));
         }
       }
     } catch (e) {
