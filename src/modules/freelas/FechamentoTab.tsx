@@ -230,7 +230,8 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: 
                 <th className="px-2 py-2">Pessoa</th>
                 <th className="px-2 py-2">Horário</th>
                 <th className="px-2 py-2 w-24">Tarifa</th>
-                <th className="px-4 py-2 w-28 text-right">Total</th>
+                <th className="px-2 py-2 w-28 text-right">Total</th>
+                <th className="px-4 py-2 w-24 text-right">Ação</th>
               </tr>
             }
           />
@@ -580,6 +581,16 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
 }
 
 // ─── Linhas: Prontos pra lote ─────────────────────────────────────────────
+async function reabrirShift(shift: FreelaShift) {
+  if (!confirm(`Reabrir turno de ${shift.nomeSnapshot}? Volta pra "Aguardando precificação" pra DP precificar de novo.`)) return;
+  await updateDoc(doc(db, "freelaShifts", shift.id), {
+    status: "aberto",
+    confirmadoEm: null,
+    confirmadoPor: null,
+    updatedAt: new Date().toISOString(),
+  });
+}
+
 function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void }) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
@@ -595,7 +606,19 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle }: { shift:
       <td className="px-2 py-2 text-xs text-gray-600 dark:text-gray-400">
         {shift.valorTipo === "diaria" ? "diária" : "R$/h"} {fmtBR(shift.valorUnit || 0)}
       </td>
-      <td className="px-4 py-2 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(shift.totalCalc || 0)}</td>
+      <td className="px-2 py-2 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(shift.totalCalc || 0)}</td>
+      <td className="px-4 py-2 text-right">
+        {podeEditar && (
+          <button
+            type="button"
+            onClick={() => reabrirShift(shift)}
+            className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
+            title="Reabrir e voltar pra precificação"
+          >
+            ↩ Reabrir
+          </button>
+        )}
+      </td>
     </tr>
   );
 }
@@ -603,7 +626,7 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle }: { shift:
 function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void }) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
-    <label className="px-3 py-3 flex items-start gap-3 cursor-pointer">
+    <div className="px-3 py-3 flex items-start gap-3">
       <input type="checkbox" checked={checked} onChange={onToggle} disabled={!podeEditar} className="mt-1" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
@@ -616,11 +639,22 @@ function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle }: { shift: 
         <div className="text-xs text-gray-700 dark:text-gray-300">
           {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
         </div>
-        <div className="text-[11px] text-gray-500">
-          {shift.valorTipo === "diaria" ? "diária" : "R$/h"} {fmtBR(shift.valorUnit || 0)}
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <div className="text-[11px] text-gray-500">
+            {shift.valorTipo === "diaria" ? "diária" : "R$/h"} {fmtBR(shift.valorUnit || 0)}
+          </div>
+          {podeEditar && (
+            <button
+              type="button"
+              onClick={() => reabrirShift(shift)}
+              className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
+            >
+              ↩ Reabrir
+            </button>
+          )}
         </div>
       </div>
-    </label>
+    </div>
   );
 }
 
