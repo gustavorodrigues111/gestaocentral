@@ -1591,12 +1591,8 @@ function StatusSemanaCard({
   type Acao = { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary"; disabled?: boolean; tooltip?: string };
   const acoes: Acao[] = [];
   if (status === "aberto") {
-    if (podeMarcar("em_tratamento")) acoes.push({
-      proximo: "em_tratamento",
-      label: "Iniciar tratamento",
-      disabled: !temRelatorio,
-      tooltip: !temRelatorio ? "Gere o relatório antes de iniciar o tratamento" : undefined,
-    });
+    // "Iniciar tratamento" não existe mais como botão — vira automático
+    // quando o líder faz a 1ª ação (marcar checkbox, ciência ou +nota).
     if (podeMarcar("tratado_lider")) acoes.push({
       proximo: "tratado_lider",
       label: "✅ Conferido pelo líder",

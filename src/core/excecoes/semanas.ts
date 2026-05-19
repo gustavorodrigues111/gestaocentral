@@ -123,3 +123,43 @@ export function mesDaSemanaContendoData(ymd: string): { ano: number; mes: number
   const start = inicioDaSemana(parseYmd(ymd));
   return { ano: start.getFullYear(), mes: start.getMonth() + 1 };
 }
+
+// Janela de N semanas contadas pra TRÁS a partir de uma data de referência.
+// Exemplo: janelaSemanas(hoje, 4) → semana atual + 3 anteriores (4 entradas).
+// Cada entrada tem weekStart (segunda), weekEnd (domingo) e label.
+// Usado pela view "Por Empregado" — não está ligada a mês, atravessa virada.
+export function janelaSemanas(referenciaYmd: string, n: number = 4): SemanaInfo[] {
+  const ref = parseYmd(referenciaYmd);
+  const atual = inicioDaSemana(ref);
+  const todayYmd = fmtYmd(new Date());
+  const out: SemanaInfo[] = [];
+  for (let i = 0; i < n; i++) {
+    const start = new Date(atual);
+    start.setDate(start.getDate() - 7 * (n - 1 - i)); // do mais antigo pro mais recente
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    const startYmd = fmtYmd(start);
+    const endYmd = fmtYmd(end);
+    out.push({
+      index: i + 1,
+      weekStart: startYmd,
+      weekEnd: endYmd,
+      label: fmtLabelSemanaSimples(start, end),
+      containsToday: todayYmd >= startYmd && todayYmd <= endYmd,
+      truncadaInicio: false,
+      truncadaFim: false,
+    });
+  }
+  return out;
+}
+
+function fmtLabelSemanaSimples(start: Date, end: Date): string {
+  const d1 = start.getDate();
+  const d2 = end.getDate();
+  const m1 = MESES_ABREV[start.getMonth()];
+  const m2 = MESES_ABREV[end.getMonth()];
+  if (start.getMonth() === end.getMonth()) {
+    return `${d1}–${d2} ${m1}`;
+  }
+  return `${d1}${m1}–${d2}${m2}`;
+}

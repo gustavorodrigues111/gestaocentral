@@ -56,3 +56,43 @@ export function montarMensagemAjustes(opts: {
   ];
   return linhas.join("\n");
 }
+
+// Versão cross-semana — junta apontamentos de várias semanas numa mensagem só,
+// com bloco separado por período. Usado pela view "Por Empregado".
+export type GrupoSemana = {
+  weekStart: string;
+  weekEnd: string;
+  apontamentos: ApontamentoFuncionario[];
+};
+
+export function montarMensagemAjustesCrossSemana(opts: {
+  empregadoNome: string;
+  restNome?: string;
+  grupos: GrupoSemana[]; // só semanas com apontamentos
+}): string {
+  const { empregadoNome, restNome, grupos } = opts;
+  const primeiroNome = empregadoNome.split(" ")[0] || empregadoNome;
+  const restPart = restNome ? `, da equipe de gestão do ${restNome}` : "";
+  const total = grupos.reduce((s, g) => s + g.apontamentos.length, 0);
+  const linhas: string[] = [
+    `Olá, ${primeiroNome}! Tudo bem?`,
+    "",
+    `Aqui é${restPart}. Identifiquei ${total} ajuste(s) a fazer no seu ponto:`,
+    "",
+  ];
+  let counter = 0;
+  for (const g of grupos) {
+    if (g.apontamentos.length === 0) continue;
+    linhas.push(`📅 *Semana de ${fmtDataBr(g.weekStart)} a ${fmtDataBr(g.weekEnd)}*`);
+    for (const a of g.apontamentos) {
+      counter += 1;
+      linhas.push(`${counter}. ${a.texto}${a.data ? ` (${fmtDataBr(a.data)})` : ""}`);
+    }
+    linhas.push("");
+  }
+  linhas.push("Por favor, faça os ajustes *ainda hoje* — é urgente pro fechamento da folha.");
+  linhas.push("Se algum desses pontos tiver justificativa ou estiver errado, me avisa por aqui.");
+  linhas.push("");
+  linhas.push("Obrigado!");
+  return linhas.join("\n");
+}

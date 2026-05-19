@@ -116,17 +116,34 @@ async function upsertSemana(
   weekStart: string,
   weekEnd: string,
   patch: Partial<ExcecaoStatusSemana>,
+  autoStart?: Pessoa,
 ): Promise<ExcecaoStatusSemana> {
   const id = statusDocId(restaurantId, weekStart);
   const existing = await carregarStatusSemana(restaurantId, weekStart);
   const now = new Date().toISOString();
+  // Auto-transição: se semana ainda em "aberto" (ou inexistente) E quem
+  // chamou pediu autoStart (1ª ação de tratamento), marca em_tratamento e
+  // registra no histórico — evita exigir clique manual "Iniciar tratamento".
+  let status = existing?.status || "em_tratamento";
+  let historico = existing?.historico || [];
+  if (autoStart && (!existing || existing.status === "aberto")) {
+    status = "em_tratamento";
+    const entry: ExcecaoHistoricoEntry = {
+      status: "em_tratamento",
+      em: now,
+      por: autoStart.id,
+      porNome: autoStart.nome,
+      observacao: "[auto] início pelo registro da 1ª ação",
+    };
+    historico = [...historico, entry];
+  }
   const next: ExcecaoStatusSemana = {
     id,
     restaurantId,
     weekStart,
     weekEnd,
-    status: existing?.status || "em_tratamento",
-    historico: existing?.historico || [],
+    status,
+    historico,
     ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
     ...(existing?.notasInternas ? { notasInternas: existing.notasInternas } : {}),
     ...(existing?.relatorioCache ? { relatorioCache: existing.relatorioCache } : {}),
@@ -162,7 +179,7 @@ export async function adicionarApontamento(
     criadoPorNome: pessoa.nome,
   };
   const apontamentos = [...(existing?.apontamentos || []), novo];
-  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos }, pessoa);
 }
 
 export async function atualizarApontamento(
@@ -229,7 +246,7 @@ export async function marcarApontamentoCiencia(
         }
       : a,
   );
-  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos });
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentos }, pessoa);
 }
 
 // ─── Notas internas (não visíveis pro empregado) ────────────────────────────
@@ -254,7 +271,7 @@ export async function adicionarNotaInterna(
     criadoPorNome: pessoa.nome,
   };
   const notasInternas = [...(existing?.notasInternas || []), nova];
-  return upsertSemana(restaurantId, weekStart, weekEnd, { notasInternas });
+  return upsertSemana(restaurantId, weekStart, weekEnd, { notasInternas }, pessoa);
 }
 
 // Salva o snapshot do último relatório gerado no doc da semana. Usado quando
