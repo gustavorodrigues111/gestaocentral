@@ -657,7 +657,7 @@ function EmpregadoCard({
   onApagarNota: (sw: SemanaInfo, notaId: string) => void;
   onEnviarWhats: () => void;
 }) {
-  const [expandido, setExpandido] = useState(true);
+  const [expandido, setExpandido] = useState(false);
   const podeAcoes = !agg.semanas.every((s) => s.statusSemana === "conferido_gerente");
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
