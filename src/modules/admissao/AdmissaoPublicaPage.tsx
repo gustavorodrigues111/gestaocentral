@@ -23,6 +23,33 @@ import {
 } from "../../core/admissao/admissaoHelpers";
 import type { Admissao, FormField } from "../../core/types";
 
+// IDs do schema cujos valores vêm do cadastro inicial do RH e NÃO podem ser
+// editados pelo candidato. Se a admissão usa um schema customizado que não
+// inclui esses ids, simplesmente não há lock (campos só do candidato).
+const IDS_CONFIRMADOS = ["nome_completo", "cpf", "email_recibo", "whatsapp"] as const;
+
+function mapaConfirmados(adm: Admissao): Record<string, string> {
+  // CPF formatado pra leitura. Mantém só dígitos quando submeter — Firestore
+  // recebe o que estiver em dados[id], então preserva como string fmt aqui.
+  const cpfFmt = adm.candidato.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  const whatsFmt = (() => {
+    const d = adm.candidato.whatsapp.replace(/\D/g, "");
+    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    return d;
+  })();
+  return {
+    nome_completo: adm.candidato.nome,
+    cpf: cpfFmt,
+    email_recibo: adm.candidato.email,
+    whatsapp: whatsFmt,
+  };
+}
+
+function isConfirmado(fieldId: string): boolean {
+  return (IDS_CONFIRMADOS as readonly string[]).includes(fieldId);
+}
+
 function fmtDataBr(ymd: string): string {
   const [a, m, d] = ymd.split("-");
   if (!a || !m || !d) return ymd;
@@ -85,7 +112,14 @@ export function AdmissaoPublicaPage() {
         const adm = { id: snap.docs[0].id, ...snap.docs[0].data() } as Admissao;
         if (cancelled) return;
         setAdmissao(adm);
-        setDados((adm.dadosPreenchidos as Record<string, unknown>) || {});
+        // Pré-preenche os campos confirmados pelo RH. Se já tinha valor antigo
+        // no dadosPreenchidos, o do RH sobrescreve — fonte de verdade do
+        // cadastro inicial é a admissão.candidato.
+        const inicial: Record<string, unknown> = {
+          ...((adm.dadosPreenchidos as Record<string, unknown>) || {}),
+          ...mapaConfirmados(adm),
+        };
+        setDados(inicial);
       } catch (e) {
         if (!cancelled) setErro(e instanceof Error ? e.message : "Erro ao carregar.");
       } finally {
@@ -311,6 +345,14 @@ export function AdmissaoPublicaPage() {
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+        {/* Aviso geral sobre os dados pré-confirmados */}
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900">
+          🔒 Os campos com cadeado já foram preenchidos pela empresa
+          (<strong>nome, CPF, e-mail, WhatsApp</strong>). Se algum estiver errado,
+          {whatsappDP ? <> avise pelo WhatsApp no botão "Enviar documentos" abaixo</> : <> avise a equipe que está cuidando da sua admissão</>}
+          {" "}— eles corrigem aqui e o seu link continua válido.
+        </div>
+
         {gruposOrdenados.map(({ grupo, campos }) => (
           <section key={grupo} className="bg-white border border-gray-200 rounded-xl p-4 space-y-3">
             <h2 className="font-bold text-sm text-gray-900 border-b border-gray-100 pb-2">
@@ -320,6 +362,7 @@ export function AdmissaoPublicaPage() {
               <CampoRender
                 key={f.id}
                 field={f}
+                bloqueado={isConfirmado(f.id)}
                 value={dados[f.id]}
                 onChange={(v) => updateCampo(f.id, v)}
               />
@@ -367,12 +410,16 @@ function CampoRender({
   field,
   value,
   onChange,
+  bloqueado = false,
 }: {
   field: FormField;
   value: unknown;
   onChange: (v: unknown) => void;
+  bloqueado?: boolean;
 }) {
-  const labelComObr = field.obrigatorio ? `${field.label} *` : field.label;
+  // Campos bloqueados sempre mostram cadeado. Label com asterisco se obrigatório.
+  const labelBase = field.obrigatorio ? `${field.label} *` : field.label;
+  const labelComObr = bloqueado ? `🔒 ${labelBase}` : labelBase;
   const v = value == null ? "" : value;
 
   if (field.tipo === "textarea") {
@@ -384,7 +431,8 @@ function CampoRender({
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder}
           rows={3}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
+          readOnly={bloqueado}
+          className={`px-3 py-2 text-sm rounded-lg border border-gray-300 ${bloqueado ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-white"}`}
         />
         {field.ajuda && <span className="text-[11px] text-gray-500">{field.ajuda}</span>}
       </div>
@@ -397,7 +445,8 @@ function CampoRender({
         <select
           value={v as string}
           onChange={(e) => onChange(e.target.value)}
-          className="px-3 py-2 text-sm rounded-lg border border-gray-300 bg-white"
+          disabled={bloqueado}
+          className={`px-3 py-2 text-sm rounded-lg border border-gray-300 ${bloqueado ? "bg-gray-100 text-gray-600 cursor-not-allowed" : "bg-white"}`}
         >
           <option value="">— selecione —</option>
           {(field.opcoes || []).map((opt) => (
@@ -410,11 +459,12 @@ function CampoRender({
   }
   if (field.tipo === "boolean") {
     return (
-      <label className="flex items-center gap-2 text-sm select-none">
+      <label className={`flex items-center gap-2 text-sm select-none ${bloqueado ? "opacity-70" : ""}`}>
         <input
           type="checkbox"
           checked={!!v}
           onChange={(e) => onChange(e.target.checked)}
+          disabled={bloqueado}
           className="accent-indigo-600"
         />
         <span>{labelComObr}</span>
@@ -442,6 +492,8 @@ function CampoRender({
       onChange={(e) => onChange(e.target.value)}
       placeholder={field.placeholder}
       inputMode={field.tipo === "numero" ? "decimal" : field.tipo === "telefone" || field.tipo === "cpf" ? "numeric" : undefined}
+      readOnly={bloqueado}
+      className={bloqueado ? "bg-gray-100 text-gray-600 cursor-not-allowed" : ""}
     />
   );
 }
