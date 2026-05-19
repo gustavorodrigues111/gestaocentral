@@ -137,12 +137,15 @@ type NormalizedSchedule = {
 
 function normalizeSchedule(raw: unknown): NormalizedSchedule | null {
   if (!raw || typeof raw !== "object") return null;
-  const obj = raw as { schedule?: { id?: unknown; name?: unknown; workScheduleTimetableList?: unknown } };
-  const sched = obj.schedule;
-  if (!sched) return null;
-  const list = Array.isArray(sched.workScheduleTimetableList)
-    ? (sched.workScheduleTimetableList as Timetable[])
-    : [];
+  // A Tangerino /employee-work-schedule/{id} retorna o WorkSchedule DIRETO,
+  // sem wrapper. Mas pra compatibilidade aceita também o formato com wrapper
+  // `{schedule: WorkSchedule}` caso a API mude no futuro.
+  const direct = raw as { id?: unknown; name?: unknown; workScheduleTimetableList?: unknown; schedule?: unknown };
+  const sched = (direct.schedule && typeof direct.schedule === "object")
+    ? (direct.schedule as { id?: unknown; name?: unknown; workScheduleTimetableList?: unknown })
+    : direct;
+  if (!sched || !Array.isArray(sched.workScheduleTimetableList)) return null;
+  const list = sched.workScheduleTimetableList as Timetable[];
   const byDay: Record<number, NormalizedDay> = {
     0: { active: false }, 1: { active: false }, 2: { active: false },
     3: { active: false }, 4: { active: false }, 5: { active: false },
