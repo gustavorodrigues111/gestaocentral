@@ -11,6 +11,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import {
   ADMISSAO_STATUS_LABEL,
+  MOTIVO_CANCELAMENTO_LABEL,
   type Admissao,
   type Cargo,
   type KanbanColuna,
@@ -35,14 +36,20 @@ type Props = {
 };
 
 // Resolve a coluna que cada admissão ocupa: override manual prevalece sobre
-// statusAuto.
+// statusAuto. statusAuto pode ser string (1 status) ou string[] (vários).
+function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
+  if (!col.statusAuto) return false;
+  if (Array.isArray(col.statusAuto)) return col.statusAuto.includes(st as never);
+  return col.statusAuto === st;
+}
+
 function colunaDaAdmissao(adm: Admissao, colunas: KanbanColuna[]): string | null {
   if (adm.kanbanColunaId) {
     const c = colunas.find((c) => c.id === adm.kanbanColunaId);
     if (c) return c.id;
   }
   const st = statusEfetivo(adm);
-  const c = colunas.find((c) => c.statusAuto === st);
+  const c = colunas.find((c) => colunaCapturaStatus(c, st));
   return c?.id || null;
 }
 
@@ -174,26 +181,42 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                         {cargo?.nome || "—"} · {ADMISSAO_STATUS_LABEL[st]}
                       </div>
-                      {/* Badge de cancelamento — só pra cards com status cancelada */}
-                      {a.status === "cancelada" && a.canceladoEm && (
-                        <div className="mt-1.5 pt-1.5 border-t border-rose-100 dark:border-rose-900/40">
-                          <div className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold">
-                            ✕ Cancelada em {fmtDataHora(a.canceladoEm)}
+                      {/* Cancelada/Expirada: badges cumulativas dos motivos + data + autor */}
+                      {(a.status === "cancelada" || a.status === "expirada") && (
+                        <div className="mt-1.5 pt-1.5 border-t border-rose-100 dark:border-rose-900/40 space-y-1">
+                          <div className="flex flex-wrap gap-1">
+                            {(a.motivosCancelamento || []).map((m) => (
+                              <span
+                                key={m}
+                                className="inline-flex items-center text-[9px] px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold"
+                              >
+                                {MOTIVO_CANCELAMENTO_LABEL[m]}
+                              </span>
+                            ))}
+                            {/* Fallback pra cards antigos sem motivosCancelamento[] */}
+                            {a.status === "cancelada" && !a.motivosCancelamento?.length && (
+                              <span className="inline-flex items-center text-[9px] px-1.5 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold">
+                                Cancelado pela empresa
+                              </span>
+                            )}
+                            {a.status === "expirada" && !a.motivosCancelamento?.length && (
+                              <span className="inline-flex items-center text-[9px] px-1.5 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold">
+                                Expirado sem resposta
+                              </span>
+                            )}
                           </div>
-                          <div className="text-[10px] text-rose-700/80 dark:text-rose-300/70 mt-0.5">
-                            por {a.canceladoPor?.nome}
+                          <div className="text-[10px] text-gray-500 dark:text-gray-400">
+                            {a.canceladoEm
+                              ? <>em {fmtDataHora(a.canceladoEm)} {a.canceladoPor?.nome ? `· ${a.canceladoPor.nome}` : ""}</>
+                              : a.expiraEm
+                              ? <>expirou em {fmtDataHora(a.expiraEm)}</>
+                              : null}
                           </div>
                           {a.motivoCancelamento && (
-                            <div className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5">
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 italic">
                               "{a.motivoCancelamento}"
                             </div>
                           )}
-                        </div>
-                      )}
-                      {/* Expirada: badge similar */}
-                      {a.status === "expirada" && a.expiraEm && (
-                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold">
-                          ⏱️ Expirou em {fmtDataHora(a.expiraEm)}
                         </div>
                       )}
                       {/* Exclusão definitiva: SÓ master, SÓ em cards cancelados ou expirados */}

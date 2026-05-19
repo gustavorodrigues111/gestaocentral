@@ -29,10 +29,19 @@ const STATUS_OPCOES: AdmissaoStatus[] = [
   "formulario_enviado",
   "formulario_preenchido",
   "documentos_recebidos",
+  "dados_finais_preenchidos",
+  "solicitacao_contabilidade",
+  "pronto_admissao",
   "admitido",
   "cancelada",
   "expirada",
 ];
+
+// Normaliza statusAuto pra array (suporta legado de string única)
+function statusAsArray(sa: AdmissaoStatus | AdmissaoStatus[] | undefined): AdmissaoStatus[] {
+  if (!sa) return [];
+  return Array.isArray(sa) ? sa : [sa];
+}
 
 const CORES_SUGERIDAS = [
   "94a3b8", // cinza
@@ -112,9 +121,7 @@ export function EditorKanbanColunas({ rid, activeRestaurant }: Props) {
       }
     }
     // Avisa se algum statusAuto duplicado (não bloqueia — mas avisa)
-    const statusUsados = colunas
-      .map((c) => c.statusAuto)
-      .filter((s): s is AdmissaoStatus => !!s);
+    const statusUsados: AdmissaoStatus[] = colunas.flatMap((c) => statusAsArray(c.statusAuto));
     const duplicados = statusUsados.filter((s, i) => statusUsados.indexOf(s) !== i);
     if (duplicados.length > 0) {
       const ok = confirm(
@@ -143,7 +150,7 @@ export function EditorKanbanColunas({ rid, activeRestaurant }: Props) {
 
   // Detecta status sem coluna pra dar aviso (cards vão sumir do Kanban)
   const statusSemColuna = STATUS_OPCOES.filter(
-    (s) => !colunas.some((c) => c.statusAuto === s),
+    (s) => !colunas.some((c) => statusAsArray(c.statusAuto).includes(s)),
   );
 
   return (
@@ -256,26 +263,36 @@ function ColunaRow({
           />
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              Migra automaticamente quando status =
+              Status que esta coluna captura
             </label>
-            <select
-              value={coluna.statusAuto || ""}
-              onChange={(e) =>
-                onUpdate({
-                  statusAuto: e.target.value
-                    ? (e.target.value as AdmissaoStatus)
-                    : undefined,
-                })
-              }
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">— sem regra automática (só manual) —</option>
-              {STATUS_OPCOES.map((s) => (
-                <option key={s} value={s}>
-                  {ADMISSAO_STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
+            <span className="text-[10px] text-gray-500">
+              Multi-select. Cards mudam pra cá automaticamente quando assumem qualquer um desses status.
+            </span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {STATUS_OPCOES.map((s) => {
+                const ativos = statusAsArray(coluna.statusAuto);
+                const ativo = ativos.includes(s);
+                return (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      const next = ativo
+                        ? ativos.filter((x) => x !== s)
+                        : [...ativos, s];
+                      onUpdate({ statusAuto: next.length === 0 ? undefined : next.length === 1 ? next[0] : next });
+                    }}
+                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${
+                      ativo
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
+                    }`}
+                  >
+                    {ADMISSAO_STATUS_LABEL[s]}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Cores */}

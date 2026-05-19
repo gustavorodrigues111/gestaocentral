@@ -119,14 +119,17 @@ export const GRUPOS_ADMISSAO_DEFAULT = [
   G_TRANS,
 ];
 
-// Colunas default do Kanban — mapeamento default status→coluna pra automação.
-// Cancelada/Expirada vão no fim como terminais negativas. Master pode apagar
-// cards definitivamente nessas colunas (vide AdmissaoKanban).
+// Colunas default do Kanban — fluxo completo da admissão.
+// Cards seguem aqui da esquerda pra direita conforme o status muda.
+// "Cancelados e Expirados" combina os dois status terminais com badges
+// cumulativas pra explicar o motivo.
 export const KANBAN_COLUNAS_DEFAULT = [
-  { id: "col_enviado",      nome: "Formulário enviado",      ordem: 1, statusAuto: "formulario_enviado" as const,    cor: "94a3b8" },
-  { id: "col_preenchido",   nome: "Formulário preenchido",   ordem: 2, statusAuto: "formulario_preenchido" as const, cor: "f59e0b" },
-  { id: "col_documentos",   nome: "Documentos recebidos",    ordem: 3, statusAuto: "documentos_recebidos" as const,  cor: "10b981" },
-  { id: "col_admitido",     nome: "Admitido",                ordem: 4, statusAuto: "admitido" as const,              cor: "0ea5e9" },
-  { id: "col_expirada",     nome: "Expirada",                ordem: 5, statusAuto: "expirada" as const,              cor: "6b7280" },
-  { id: "col_cancelada",    nome: "Cancelada",               ordem: 6, statusAuto: "cancelada" as const,             cor: "ef4444" },
+  { id: "col_enviado",        nome: "Aguardando preenchimento",   ordem: 1, statusAuto: "formulario_enviado" as const,        cor: "94a3b8" },
+  { id: "col_preenchido",     nome: "Formulário preenchido",      ordem: 2, statusAuto: "formulario_preenchido" as const,     cor: "f59e0b" },
+  { id: "col_documentos",     nome: "Documentos recebidos",       ordem: 3, statusAuto: "documentos_recebidos" as const,      cor: "10b981" },
+  { id: "col_dados_finais",   nome: "Dados finais preenchidos",   ordem: 4, statusAuto: "dados_finais_preenchidos" as const,  cor: "14b8a6" },
+  { id: "col_contabilidade",  nome: "Enviado pra contabilidade",  ordem: 5, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
+  { id: "col_pronto",         nome: "Pronto pra admitir",         ordem: 6, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
+  { id: "col_admitido",       nome: "Admitido",                   ordem: 7, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
+  { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 8, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
 ];

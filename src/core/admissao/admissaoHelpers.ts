@@ -8,7 +8,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  Admissao, AdmissaoStatus, FormField, Pessoa, Restaurant,
+  Admissao, AdmissaoStatus, FormField, MotivoCancelamento, Pessoa, Restaurant,
 } from "../types";
 import { TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT } from "./formTemplate";
 
@@ -175,7 +175,8 @@ export async function excluirAdmissaoDefinitivamente(id: string): Promise<void> 
 
 export async function cancelarAdmissao(
   admissaoId: string,
-  motivo: string,
+  motivosTags: MotivoCancelamento[],
+  motivoTexto: string,
   pessoa: Pessoa,
 ): Promise<void> {
   const now = new Date().toISOString();
@@ -183,9 +184,50 @@ export async function cancelarAdmissao(
     status: "cancelada",
     canceladoPor: { id: pessoa.id, nome: pessoa.nome },
     canceladoEm: now,
-    motivoCancelamento: motivo,
+    motivoCancelamento: motivoTexto || undefined,
+    motivosCancelamento: motivosTags.length > 0 ? motivosTags : undefined,
     updatedAt: now,
   }));
+}
+
+// Avança o status pra a próxima etapa do fluxo. Validação básica: não permite
+// pular múltiplas etapas. Sucessor: status → próximo status.
+const ORDEM_FLUXO: AdmissaoStatus[] = [
+  "formulario_enviado",
+  "formulario_preenchido",
+  "documentos_recebidos",
+  "dados_finais_preenchidos",
+  "solicitacao_contabilidade",
+  "pronto_admissao",
+  "admitido",
+];
+
+export function proximoStatus(s: AdmissaoStatus): AdmissaoStatus | null {
+  const i = ORDEM_FLUXO.indexOf(s);
+  if (i < 0 || i >= ORDEM_FLUXO.length - 1) return null;
+  return ORDEM_FLUXO[i + 1];
+}
+
+export async function avancarStatus(
+  admissaoId: string,
+  novoStatus: AdmissaoStatus,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    status: novoStatus,
+    updatedAt: now,
+  });
+}
+
+// Valida se a admissão tem todos os dados finais preenchidos (pelo RH no
+// momento de Iniciar Admissão ou em edição posterior). Necessário pra avançar
+// pra Solicitação Contabilidade.
+export function temDadosFinaisCompletos(adm: Admissao): boolean {
+  if (!adm.cargoId) return false;
+  if (!adm.dataAdmissao) return false;
+  if (typeof adm.salario !== "number") return false;
+  if (!adm.horariosCadastrados || Object.keys(adm.horariosCadastrados).length === 0) return false;
+  return true;
 }
 
 export async function marcarDocumentosRecebidos(

@@ -16,6 +16,7 @@ import {
   type Restaurant,
 } from "../../core/types";
 import {
+  avancarStatus,
   cancelarAdmissao,
   getPrazoDias,
   getSchemaAdmissao,
@@ -24,11 +25,14 @@ import {
   marcarDocumentosRecebidos,
   marcarLinkEnviado,
   montarMensagemEnvioLink,
+  proximoStatus,
   reenviarAdmissao,
   statusEfetivo,
+  temDadosFinaisCompletos,
   urlPublicaAdmissao,
 } from "../../core/admissao/admissaoHelpers";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
+import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 
 type Props = {
   rid: string;
@@ -176,11 +180,23 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     }
   }
 
-  async function handleCancelar(adm: Admissao) {
-    if (!me) return;
-    const motivo = prompt("Motivo do cancelamento:");
-    if (motivo == null) return;
-    await cancelarAdmissao(adm.id, motivo, me);
+  const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
+
+  async function handleAvancar(adm: Admissao) {
+    const prox = proximoStatus(adm.status);
+    if (!prox) return;
+    // Pra passar de documentos_recebidos → dados_finais_preenchidos exige
+    // que os 4 campos (cargo, data admissão, salário, horários) estejam ok.
+    if (prox === "dados_finais_preenchidos" && !temDadosFinaisCompletos(adm)) {
+      alert(
+        "Pra avançar pra 'Dados finais preenchidos' é preciso ter: cargo, data " +
+        "de admissão, salário e horários cadastrados. Edite os dados básicos da " +
+        "admissão pra completar (em iteração futura).",
+      );
+      return;
+    }
+    if (!confirm(`Avançar pra "${ADMISSAO_STATUS_LABEL[prox]}"?`)) return;
+    await avancarStatus(adm.id, prox);
   }
 
   async function handleConfirmarDocs(adm: Admissao) {
@@ -290,14 +306,15 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       ✓ Confirmar docs recebidos
                     </Button>
                   )}
-                  {/* TODO: aprovação cria Pessoa+Empregado — implementado na Fase 4 */}
-                  {st === "documentos_recebidos" && (
-                    <Button size="sm" disabled title="Aprovação será implementada na próxima fase">
-                      🪪 Aprovar (em breve)
+                  {/* Avançar etapa — só se há próxima e status não é terminal */}
+                  {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && st !== "formulario_preenchido" && (
+                    <Button size="sm" onClick={() => handleAvancar(adm)}>
+                      ▶ Avançar
                     </Button>
                   )}
-                  {(st === "formulario_enviado" || st === "formulario_preenchido" || st === "expirada") && (
-                    <Button size="sm" variant="secondary" onClick={() => handleCancelar(adm)}>
+                  {/* Cancelar — disponível enquanto não foi admitido nem cancelado */}
+                  {st !== "admitido" && st !== "cancelada" && (
+                    <Button size="sm" variant="secondary" onClick={() => setAdmCancelando(adm)}>
                       ✕ Cancelar
                     </Button>
                   )}
@@ -315,6 +332,18 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           schemaUsado={getSchemaAdmissao(activeRestaurant)}
           onClose={() => setShowIniciar(false)}
           onConfirm={handleIniciar}
+        />
+      )}
+
+      {admCancelando && (
+        <CancelarAdmissaoModal
+          candidatoNome={admCancelando.candidato.nome}
+          onClose={() => setAdmCancelando(null)}
+          onConfirm={async (motivos, texto) => {
+            if (!me) return;
+            await cancelarAdmissao(admCancelando.id, motivos, texto, me);
+            setAdmCancelando(null);
+          }}
         />
       )}
     </div>

@@ -1464,20 +1464,41 @@ export type FormField = {
 };
 
 export type AdmissaoStatus =
-  | "formulario_enviado"      // RH criou e mandou WhatsApp pro candidato
-  | "formulario_preenchido"   // candidato submeteu o form
-  | "documentos_recebidos"    // RH confirmou recebimento dos docs via WhatsApp
-  | "admitido"                // aprovado, Pessoa+Empregado criados
-  | "cancelada"               // RH cancelou
-  | "expirada";               // token expirou sem preenchimento
+  | "formulario_enviado"          // RH criou e mandou WhatsApp pro candidato
+  | "formulario_preenchido"       // candidato submeteu o form
+  | "documentos_recebidos"        // RH confirmou recebimento dos docs via WhatsApp
+  | "dados_finais_preenchidos"    // horário, data, salário, etc — empresa preencheu tudo
+  | "solicitacao_contabilidade"   // pedido enviado pra contabilidade processar
+  | "pronto_admissao"             // contabilidade confirmou; admissão futura
+  | "admitido"                    // processo finalizado (Pessoa+Empregado criados)
+  | "cancelada"                   // qualquer motivo de cancelamento
+  | "expirada";                   // token expirou sem preenchimento
 
 export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
-  formulario_enviado:    "Formulário enviado",
-  formulario_preenchido: "Formulário preenchido",
-  documentos_recebidos:  "Documentos recebidos",
-  admitido:              "Admitido",
-  cancelada:             "Cancelada",
-  expirada:              "Expirada",
+  formulario_enviado:        "Aguardando preenchimento",
+  formulario_preenchido:     "Formulário preenchido",
+  documentos_recebidos:      "Documentos recebidos",
+  dados_finais_preenchidos:  "Dados finais preenchidos",
+  solicitacao_contabilidade: "Enviado pra contabilidade",
+  pronto_admissao:           "Pronto pra admitir",
+  admitido:                  "Admitido",
+  cancelada:                 "Cancelada",
+  expirada:                  "Expirada",
+};
+
+// Motivos de cancelamento/expiração — podem ser cumulativos. Ex: empresa
+// cancelou após o candidato desistir.
+export type MotivoCancelamento =
+  | "cancelado_empresa"          // empresa decidiu cancelar
+  | "expirado_sem_envio"         // empresa não enviou link a tempo
+  | "expirado_sem_resposta"      // candidato não preencheu no prazo
+  | "desistencia_candidato";     // candidato avisou que desistiu
+
+export const MOTIVO_CANCELAMENTO_LABEL: Record<MotivoCancelamento, string> = {
+  cancelado_empresa:     "Cancelado pela empresa",
+  expirado_sem_envio:    "Expirado antes do envio",
+  expirado_sem_resposta: "Expirado sem resposta",
+  desistencia_candidato: "Desistência do candidato",
 };
 
 export type AdmissaoReenvio = {
@@ -1546,10 +1567,11 @@ export type Admissao = {
   pessoaIdCriada?: string;
   empregadoIdCriado?: string;
 
-  // ─── Cancelamento ───
+  // ─── Cancelamento / Expiração ───
   canceladoPor?: { id: string; nome: string };
   canceladoEm?: string;
-  motivoCancelamento?: string;
+  motivoCancelamento?: string;             // texto livre (legado)
+  motivosCancelamento?: MotivoCancelamento[]; // tags cumulativas (cancelado_empresa, desistencia, etc)
 
   // ─── Kanban: override manual da coluna (default: derivado do status) ───
   kanbanColunaId?: string;
@@ -1562,8 +1584,11 @@ export type KanbanColuna = {
   id: string;
   nome: string;
   ordem: number;
-  // Status que automaticamente cai nessa coluna quando admissão muda de status
-  // (mapping default: status → coluna correspondente). Manual drag sobrescreve.
-  statusAuto?: AdmissaoStatus;
+  // Status que automaticamente caem nessa coluna. Pode ser:
+  //   - undefined         → só drop manual (sem regra)
+  //   - "<status>"        → 1 status só (legado)
+  //   - ["<status>", ...] → vários status (ex: Cancelada+Expirada juntas)
+  // Manual drag sempre sobrescreve.
+  statusAuto?: AdmissaoStatus | AdmissaoStatus[];
   cor?: string;                // hex sem # — pra header da coluna
 };
