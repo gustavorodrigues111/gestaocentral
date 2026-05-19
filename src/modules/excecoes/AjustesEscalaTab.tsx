@@ -43,6 +43,7 @@ function fmtDataHora(iso: string): string {
 const REGRA_LABEL: Record<string, { label: string; icon: string }> = {
   faltaSemAjuste:       { label: "Falta sem ajuste",       icon: "❓" },
   marcacaoForaDaEscala: { label: "Marcação fora da escala", icon: "📍" },
+  atrasoEntrada:        { label: "Atraso na entrada",      icon: "⏱️" },
 };
 
 export function AjustesEscalaTab({ rid }: Props) {

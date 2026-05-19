@@ -295,6 +295,7 @@ function stripUndefined<T>(v: T): T {
 const REGRAS_QUE_AFETAM_ESCALA = new Set<string>([
   "faltaSemAjuste",       // escalado pra trabalho mas não veio → lançar falta
   "marcacaoForaDaEscala", // veio em dia previsto pra folga → trocar pra trabalho
+  "atrasoEntrada",        // entrou tarde → registrar atraso na praticada
 ]);
 
 function uidApEsc(): string {
