@@ -12,7 +12,6 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
-import { Input } from "../../core/ui/Input";
 import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type { Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
@@ -20,6 +19,9 @@ import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClie
 import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
+import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
+import { carregarStatusSemana, marcarStatus, podeMarcarStatus } from "../../core/excecoes/statusSemana";
+import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
 import {
   generateExceptionsReport,
   type GenerateReportResult,
@@ -188,8 +190,67 @@ export function ExcecoesPage() {
   const podeVer = canVer(me, rid, "excecoes");
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [startDate, setStartDate] = useState(firstDayOfCurrentMonth());
-  const [endDate, setEndDate] = useState(todayYmd());
+
+  // Mês selecionado (default = mês atual) + semana selecionada dentro do mês.
+  const hojeRef = new Date();
+  const [anoMes, setAnoMes] = useState<{ ano: number; mes: number }>({
+    ano: hojeRef.getFullYear(),
+    mes: hojeRef.getMonth() + 1,
+  });
+  const semanasMes = useMemo<SemanaInfo[]>(
+    () => semanasDoMes(anoMes.ano, anoMes.mes),
+    [anoMes.ano, anoMes.mes],
+  );
+  // Default: semana que contém hoje (se mês corrente) ou 1ª semana (se outro mês)
+  const [semanaIdx, setSemanaIdx] = useState<number>(() => {
+    const s = semanasMes.find((w) => w.containsToday);
+    return s ? s.index : 1;
+  });
+  const semanaAtiva = semanasMes.find((w) => w.index === semanaIdx) || semanasMes[0];
+  const startDate = semanaAtiva?.weekStart || firstDayOfCurrentMonth();
+  const endDate = semanaAtiva?.weekEnd || todayYmd();
+
+  // Status da semana selecionada (persistido em /excecoesStatusSemana)
+  const [statusSemana, setStatusSemana] = useState<ExcecaoStatusSemana | null>(null);
+  const [carregandoStatus, setCarregandoStatus] = useState(false);
+  const [showHistoricoStatus, setShowHistoricoStatus] = useState(false);
+
+  // Carrega status da semana selecionada
+  useEffect(() => {
+    if (!rid || !semanaAtiva) return;
+    let cancelled = false;
+    setCarregandoStatus(true);
+    carregarStatusSemana(rid, semanaAtiva.weekStart)
+      .then((s) => { if (!cancelled) setStatusSemana(s); })
+      .catch(() => { if (!cancelled) setStatusSemana(null); })
+      .finally(() => { if (!cancelled) setCarregandoStatus(false); });
+    return () => { cancelled = true; };
+  }, [rid, semanaAtiva?.weekStart]);
+
+  function navegaMes(delta: number) {
+    setAnoMes((cur) => {
+      const d = new Date(cur.ano, cur.mes - 1 + delta, 1);
+      return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
+    });
+    setSemanaIdx(1);
+  }
+
+  async function aplicarStatus(novoStatus: ExcecaoStatusValor) {
+    if (!me || !semanaAtiva) return;
+    if (!podeMarcarStatus(me, rid, novoStatus)) {
+      alert("Sem permissão pra marcar esse status.");
+      return;
+    }
+    const obs = (novoStatus === "em_tratamento"
+      ? prompt("Observação (opcional) — o que foi pedido pra ajustar?")
+      : null) || undefined;
+    try {
+      const updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs ?? undefined);
+      setStatusSemana(updated);
+    } catch (e) {
+      alert("Erro ao salvar status: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
@@ -414,48 +475,99 @@ export function ExcecoesPage() {
         {activeRestaurant.nome} · marcações de ponto (Sólides) vs escala prevista
       </p>
 
-      {/* ── Período + ação ── */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 mb-4">
-        <div className="flex items-end gap-3 flex-wrap">
-          <Input
-            label="Data inicial"
-            type="date"
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-          <Input
-            label="Data final"
-            type="date"
-            value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
-          />
-          <Button onClick={gerar} disabled={loading || empregados.length === 0}>
-            {loading ? "Gerando..." : "🔍 Gerar relatório"}
-          </Button>
-          {result && (
-            <Button
-              variant="secondary"
-              onClick={() =>
-                exportCsv(
-                  excecoesFiltradas,
-                  activeRestaurant.nome,
-                  geradoEm?.start || startDate,
-                  geradoEm?.end || endDate,
-                )
-              }
-              disabled={excecoesFiltradas.length === 0}
-            >
-              ⬇️ Exportar CSV
+      {/* ── Seleção de semana + ação ── */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 mb-4 space-y-3">
+        {/* Navegação de mês */}
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navegaMes(-1)}
+              aria-label="Mês anterior"
+              className="text-lg leading-none px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+            >←</button>
+            <div className="font-semibold text-sm text-gray-800 dark:text-gray-100 capitalize min-w-[140px] text-center">
+              {new Date(anoMes.ano, anoMes.mes - 1, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            </div>
+            <button
+              type="button"
+              onClick={() => navegaMes(1)}
+              aria-label="Próximo mês"
+              className="text-lg leading-none px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300"
+            >→</button>
+            <button
+              type="button"
+              onClick={() => {
+                const h = new Date();
+                setAnoMes({ ano: h.getFullYear(), mes: h.getMonth() + 1 });
+                setSemanaIdx(semanasDoMes(h.getFullYear(), h.getMonth() + 1).find((w) => w.containsToday)?.index || 1);
+              }}
+              className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline ml-1"
+            >hoje</button>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button onClick={gerar} disabled={loading || empregados.length === 0}>
+              {loading ? "Gerando..." : "🔍 Gerar relatório"}
             </Button>
-          )}
+            {result && (
+              <Button
+                variant="secondary"
+                onClick={() =>
+                  exportCsv(
+                    excecoesFiltradas,
+                    activeRestaurant.nome,
+                    geradoEm?.start || startDate,
+                    geradoEm?.end || endDate,
+                  )
+                }
+                disabled={excecoesFiltradas.length === 0}
+              >
+                ⬇️ Exportar CSV
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Chips de semana */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {semanasMes.map((w) => {
+            const ativo = w.index === semanaIdx;
+            return (
+              <button
+                key={w.index}
+                type="button"
+                onClick={() => setSemanaIdx(w.index)}
+                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                  ativo
+                    ? "bg-indigo-600 text-white"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                } ${w.containsToday && !ativo ? "ring-1 ring-indigo-400 dark:ring-indigo-500" : ""}`}
+                title={`${w.weekStart} a ${w.weekEnd}`}
+              >
+                {w.label}
+              </button>
+            );
+          })}
+        </div>
+
         {empregados.length === 0 && (
-          <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+          <p className="text-xs text-amber-600 dark:text-amber-400">
             Nenhum empregado cadastrado neste restaurante — cadastre em Pessoas pra poder casar as
             marcações.
           </p>
         )}
       </div>
+
+      {/* ── Card de Status da Semana (workflow líder → gerente) ── */}
+      <StatusSemanaCard
+        statusSemana={statusSemana}
+        carregando={carregandoStatus}
+        semanaAtiva={semanaAtiva}
+        podeMarcar={(s) => podeMarcarStatus(me, rid, s)}
+        onMarcar={aplicarStatus}
+        showHistorico={showHistoricoStatus}
+        onToggleHistorico={() => setShowHistoricoStatus((v) => !v)}
+      />
 
       {erro && (
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
@@ -793,5 +905,109 @@ function ColaboradorBlock({ grupo }: { grupo: GrupoColab }) {
         ))}
       </div>
     </section>
+  );
+}
+
+// ─── Card de Status da Semana ───────────────────────────────────────────────
+const STATUS_COR: Record<ExcecaoStatusValor, { bg: string; border: string; emoji: string; cor: string }> = {
+  aberto:            { bg: "bg-gray-50 dark:bg-gray-900/40",        border: "border-gray-300 dark:border-gray-700",       emoji: "⚪",  cor: "text-gray-700 dark:text-gray-200" },
+  em_tratamento:     { bg: "bg-amber-50 dark:bg-amber-900/20",      border: "border-amber-300 dark:border-amber-800",     emoji: "🟡",  cor: "text-amber-800 dark:text-amber-300" },
+  tratado_lider:     { bg: "bg-sky-50 dark:bg-sky-900/20",          border: "border-sky-300 dark:border-sky-800",         emoji: "🔵",  cor: "text-sky-800 dark:text-sky-300" },
+  conferido_gerente: { bg: "bg-emerald-50 dark:bg-emerald-900/20",  border: "border-emerald-300 dark:border-emerald-800", emoji: "🟢",  cor: "text-emerald-800 dark:text-emerald-300" },
+};
+
+function fmtDataBrCurta(ymd: string): string {
+  const [_a, m, d] = ymd.split("-");
+  return `${d}/${m}`;
+}
+
+function fmtDataHora(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+function StatusSemanaCard({
+  statusSemana, carregando, semanaAtiva, podeMarcar, onMarcar, showHistorico, onToggleHistorico,
+}: {
+  statusSemana: ExcecaoStatusSemana | null;
+  carregando: boolean;
+  semanaAtiva: SemanaInfo | undefined;
+  podeMarcar: (s: ExcecaoStatusValor) => boolean;
+  onMarcar: (s: ExcecaoStatusValor) => void;
+  showHistorico: boolean;
+  onToggleHistorico: () => void;
+}) {
+  if (!semanaAtiva) return null;
+  const status: ExcecaoStatusValor = statusSemana?.status || "aberto";
+  const c = STATUS_COR[status];
+  const label = EXCECAO_STATUS_LABEL[status];
+
+  // Botões disponíveis baseados em status atual + permissão
+  const acoes: { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary" }[] = [];
+  if (status === "aberto" && podeMarcar("em_tratamento")) {
+    acoes.push({ proximo: "em_tratamento", label: "Marcar em tratamento" });
+  }
+  if ((status === "em_tratamento" || status === "aberto") && podeMarcar("tratado_lider")) {
+    acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
+  }
+  if (status === "tratado_lider" && podeMarcar("conferido_gerente")) {
+    acoes.push({ proximo: "conferido_gerente", label: "✓✓ Conferir e fechar" });
+  }
+  // Permite voltar pra "em_tratamento" se o gerente discordou
+  if (status === "tratado_lider" && podeMarcar("em_tratamento")) {
+    acoes.push({ proximo: "em_tratamento", label: "↩ Reabrir tratamento", variant: "secondary" });
+  }
+
+  return (
+    <div className={`rounded-xl border ${c.border} ${c.bg} p-3 mb-4`}>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="min-w-0">
+          <div className={`text-sm font-bold ${c.cor}`}>
+            {c.emoji} Status: {label}
+          </div>
+          <div className="text-[11px] text-gray-600 dark:text-gray-400">
+            Semana de {fmtDataBrCurta(semanaAtiva.weekStart)} a {fmtDataBrCurta(semanaAtiva.weekEnd)}
+            {carregando ? " · carregando…" : ""}
+            {statusSemana?.historico && statusSemana.historico.length > 0 && (
+              <>
+                {" · "}
+                <button
+                  type="button"
+                  onClick={onToggleHistorico}
+                  className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  {showHistorico ? "ocultar histórico" : `${statusSemana.historico.length} evento(s) no histórico`}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {acoes.map((a) => (
+            <Button
+              key={a.proximo + a.label}
+              variant={a.variant === "secondary" ? "secondary" : "primary"}
+              size="sm"
+              onClick={() => onMarcar(a.proximo)}
+            >
+              {a.label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {showHistorico && statusSemana?.historico && statusSemana.historico.length > 0 && (
+        <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <ol className="space-y-1 text-[11px] text-gray-700 dark:text-gray-300">
+            {[...statusSemana.historico].reverse().map((h, i) => (
+              <li key={i} className="tabular-nums">
+                <span className="text-gray-500">{fmtDataHora(h.em)}</span> · <strong>{EXCECAO_STATUS_LABEL[h.status]}</strong> · {h.porNome}
+                {h.observacao && <span className="italic text-gray-500"> — "{h.observacao}"</span>}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+    </div>
   );
 }

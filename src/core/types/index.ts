@@ -1285,3 +1285,48 @@ export type FreelaPagamento = {
   pagoPorNome?: string;
   formaPagamento?: string;
 };
+
+// ─── EXCEÇÕES — STATUS DA SEMANA ────────────────────────────────────────────
+// Workflow de tratamento das exceções de ponto. 1 doc por (restaurante, semana).
+//
+// Fluxo:
+//   "aberto" → líder de área puxa, identifica exceções
+//   "em_tratamento" → líder de área pediu ajustes na Sólides, aguarda processamento
+//   "tratado_lider" → líder confirma que ajustes foram feitos; aguarda conferência
+//   "conferido_gerente" → gerente fez 2ª conferência, semana encerrada
+//
+// Permissões:
+//   - `ver` (líder): pode marcar em_tratamento e tratado_lider
+//   - `configurar` (gerente): pode marcar conferido_gerente (e tudo abaixo)
+//   - master: tudo
+
+export type ExcecaoStatusValor =
+  | "aberto"
+  | "em_tratamento"
+  | "tratado_lider"
+  | "conferido_gerente";
+
+export const EXCECAO_STATUS_LABEL: Record<ExcecaoStatusValor, string> = {
+  aberto:            "Aberto",
+  em_tratamento:     "Em tratamento",
+  tratado_lider:     "Tratado pelo líder",
+  conferido_gerente: "Conferido pelo gerente",
+};
+
+export type ExcecaoHistoricoEntry = {
+  status: ExcecaoStatusValor;
+  em: string;            // ISO
+  por: string;           // pessoaId
+  porNome: string;
+  observacao?: string;
+};
+
+export type ExcecaoStatusSemana = {
+  id: string;            // = `${restaurantId}_${weekStart}` (weekStart YYYY-MM-DD)
+  restaurantId: string;
+  weekStart: string;     // segunda-feira da semana
+  weekEnd: string;       // domingo
+  status: ExcecaoStatusValor;
+  historico: ExcecaoHistoricoEntry[];
+  updatedAt: string;
+};
