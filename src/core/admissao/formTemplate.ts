@@ -90,7 +90,7 @@ const RAW: FormField[] = [
   f("banco_nome",      "Banco",               "text",     G_BANCO, true),
   f("banco_agencia",   "Agência",             "text",     G_BANCO, true),
   f("banco_conta",     "Conta",               "text",     G_BANCO, true),
-  f("pix",             "Chave PIX",           "text",     G_BANCO, false, { placeholder: "CPF, e-mail, telefone ou chave aleatória" }),
+  f("pix",             "Chave PIX",           "text",     G_BANCO, true,  { placeholder: "CPF, e-mail, telefone ou chave aleatória" }),
   f("email_recibo",    "E-mail para recibo de pagamento", "email", G_BANCO, true),
 
   // ─── Dependentes (lista repetível) ───
