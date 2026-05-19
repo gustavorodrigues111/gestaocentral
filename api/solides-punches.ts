@@ -192,11 +192,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const punches: unknown[] = [];
     let page = 0;
     let totalElements = 0;
+    const pageSizes: number[] = [];
 
     while (page < MAX_PAGES) {
       const data = await fetchPage(token, startMs, endMs, page);
       const content = Array.isArray(data.content) ? data.content : [];
       punches.push(...content);
+      pageSizes.push(content.length);
       totalElements = typeof data.totalElements === "number" ? data.totalElements : punches.length;
 
       const isLast =
@@ -207,7 +209,51 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       page += 1;
     }
 
-    res.status(200).json({ punches, totalElements });
+    // ── Dedupe por punch.id ──────────────────────────────────────────────
+    // Defesa contra páginas que retornam os mesmos elementos (já visto: API
+    // ignorando `page` e devolvendo sempre a 1ª página, o que dobrava todas
+    // as durações). Mantém o 1º match e descarta repetições.
+    const dedupedById = new Map<unknown, unknown>();
+    const noId: unknown[] = [];
+    for (const p of punches) {
+      const id = (p as { id?: unknown })?.id;
+      if (id === null || id === undefined) {
+        noId.push(p);
+      } else if (!dedupedById.has(id)) {
+        dedupedById.set(id, p);
+      }
+    }
+    const deduped: unknown[] = [...dedupedById.values(), ...noId];
+    const duplicatesRemoved = punches.length - deduped.length;
+
+    // ── Log de diagnóstico (temporário) ──────────────────────────────────
+    // Conta por (date, employeeId) e por status pra ajudar a debugar Bugs
+    // de "punches sumindo" e "jornada errada". Visível em Vercel → Logs.
+    type Bucket = { date?: unknown; employeeId?: unknown; excluded?: unknown; edited?: unknown; adjustmentReason?: unknown };
+    const porDiaEmp: Record<string, number> = {};
+    const flags = { excluded: 0, edited: 0, withAdjustment: 0, total: deduped.length };
+    for (const p of deduped) {
+      const b = p as Bucket;
+      const key = `${String(b.date ?? "?")}|${String(b.employeeId ?? "?")}`;
+      porDiaEmp[key] = (porDiaEmp[key] || 0) + 1;
+      if (b.excluded === true) flags.excluded += 1;
+      if (b.edited === true)   flags.edited += 1;
+      if (b.adjustmentReason != null) flags.withAdjustment += 1;
+    }
+    console.log(JSON.stringify({
+      tag: "solides-punches",
+      restaurant: restaurantKey || null,
+      range: { startDate, endDate },
+      pages: { count: pageSizes.length, sizes: pageSizes },
+      totalElementsReported: totalElements,
+      raw: punches.length,
+      dedupedTotal: deduped.length,
+      duplicatesRemoved,
+      flags,
+      perDateEmployee: porDiaEmp,
+    }));
+
+    res.status(200).json({ punches: deduped, totalElements: deduped.length });
   } catch (e) {
     if (e instanceof HttpError) {
       res.status(e.status).json({ error: e.message });
