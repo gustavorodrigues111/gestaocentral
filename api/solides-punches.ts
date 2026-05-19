@@ -236,8 +236,19 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         dedupedById.set(id, p);
       }
     }
-    const deduped: unknown[] = [...dedupedById.values(), ...noId];
-    const duplicatesRemoved = punches.length - deduped.length;
+    const dedupedBeforeRange: unknown[] = [...dedupedById.values(), ...noId];
+    const duplicatesRemoved = punches.length - dedupedBeforeRange.length;
+
+    // ── Filtra por range de data ────────────────────────────────────────
+    // A Sólides às vezes inclui punches do dia anterior ou seguinte (efeito
+    // de timezone — servidor Vercel em UTC, Sólides em BRT, 01/05 00:00 UTC =
+    // 30/04 21:00 BRT). Descarta punches cujo `date` está fora do range
+    // pedido pelo usuário.
+    const deduped = dedupedBeforeRange.filter((p) => {
+      const d = (p as { date?: unknown })?.date;
+      return typeof d === "string" && d >= startDate && d <= endDate;
+    });
+    const outOfRange = dedupedBeforeRange.length - deduped.length;
 
     // ── Log de diagnóstico (temporário) ──────────────────────────────────
     // Conta por (date, employeeId) e por status pra ajudar a debugar Bugs
@@ -262,6 +273,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       raw: punches.length,
       dedupedTotal: deduped.length,
       duplicatesRemoved,
+      outOfRange,
       flags,
       perDateEmployee: porDiaEmp,
     };

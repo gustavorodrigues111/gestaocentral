@@ -22,6 +22,7 @@ export type SolidesDebug = {
   raw: number;
   dedupedTotal: number;
   duplicatesRemoved: number;
+  outOfRange?: number;
   flags: { excluded: number; edited: number; withAdjustment: number; total: number };
   perDateEmployee: Record<string, number>;
 };
