@@ -194,7 +194,19 @@ export function ExcecoesPage() {
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
-  const [escalaDebug, setEscalaDebug] = useState<{ allanId?: string; escala?: Record<string, string>; sidEncontrado?: number | null; cpf?: string; quadroSolides?: unknown } | null>(null);
+  const [escalaDebug, setEscalaDebug] = useState<{
+    allanId?: string;
+    escala?: Record<string, string>;
+    sidEncontrado?: number | null;
+    cpf?: string;
+    quadroSolides?: unknown;
+    dateUsedAllan?: string | null;
+    totalEmps?: number;
+    empsComSchedule?: number;
+    empsSemSchedule?: number;
+    primeiros5SemSchedule?: string[];
+    errosEndpoint?: unknown;
+  } | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
 
   // Filtros da tabela
@@ -251,7 +263,22 @@ export function ExcecoesPage() {
         escalaPorEmpregado = buildEscalaFromSolides(
           schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
         );
-        // Debug pro Allan
+        // Debug pro Allan + agregados
+        const totalEmps = Object.keys(schedRes.schedules).length;
+        const empsComSchedule = Object.values(schedRes.schedules).filter((s) => s != null).length;
+        const empsSemSchedule = totalEmps - empsComSchedule;
+        const primeiros5SemSchedule: string[] = [];
+        for (const e of schedRes.employees) {
+          if (!schedRes.schedules[String(e.id)] && primeiros5SemSchedule.length < 5) {
+            primeiros5SemSchedule.push(`${e.name} (sid ${e.id})`);
+          }
+        }
+        debugInfo.totalEmps = totalEmps;
+        debugInfo.empsComSchedule = empsComSchedule;
+        debugInfo.empsSemSchedule = empsSemSchedule;
+        debugInfo.primeiros5SemSchedule = primeiros5SemSchedule;
+        debugInfo.errosEndpoint = schedRes.errors;
+
         const allan = empregados.find((e) => e.nome.toLowerCase().includes("allan"));
         if (allan) {
           const cpf = onlyDigits(allan.cpf);
@@ -260,6 +287,7 @@ export function ExcecoesPage() {
           debugInfo.cpf = cpf;
           debugInfo.sidEncontrado = sid ?? null;
           debugInfo.quadroSolides = sid != null ? schedRes.schedules[String(sid)] : null;
+          debugInfo.dateUsedAllan = sid != null && schedRes.dateUsed ? schedRes.dateUsed[String(sid)] : null;
           debugInfo.escala = escalaPorEmpregado[allan.id]
             ? Object.fromEntries(Object.entries(escalaPorEmpregado[allan.id]))
             : undefined;
@@ -423,7 +451,14 @@ export function ExcecoesPage() {
             )}
             {escalaDebug && (
               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <div>🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong></div>
+                <div>📊 Empregados: total=<strong>{escalaDebug.totalEmps}</strong> · com schedule=<strong className="text-emerald-700">{escalaDebug.empsComSchedule}</strong> · SEM schedule=<strong className={escalaDebug.empsSemSchedule && escalaDebug.empsSemSchedule > 0 ? "text-rose-600" : ""}>{escalaDebug.empsSemSchedule}</strong></div>
+                {escalaDebug.primeiros5SemSchedule && escalaDebug.primeiros5SemSchedule.length > 0 && (
+                  <div className="text-[10px] text-gray-500">Primeiros sem schedule: {escalaDebug.primeiros5SemSchedule.join(" · ")}</div>
+                )}
+                {Array.isArray(escalaDebug.errosEndpoint) && (escalaDebug.errosEndpoint as unknown[]).length > 0 && (
+                  <div className="text-[10px] text-rose-600">⚠ Erros endpoint: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.errosEndpoint).slice(0, 500)}</pre></div>
+                )}
+                <div className="mt-1">🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong> · dateUsed=<strong>{escalaDebug.dateUsedAllan || "—"}</strong></div>
                 <div>📅 Escala final (após merge):</div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-0.5 text-[10px]">
                   {escalaDebug.escala && Object.entries(escalaDebug.escala).sort((a, b) => a[0].localeCompare(b[0])).map(([d, st]) => (
