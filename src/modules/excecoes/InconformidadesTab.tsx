@@ -1203,7 +1203,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           <div className="flex flex-wrap items-center gap-1.5 mb-3">
             <button
               type="button"
-              onClick={() => setFiltroAreas(new Set())}
+              onClick={() => {
+                setFiltroAreas(new Set());
+                // Voltar pra "Todas" também limpa o filtro de empregado —
+                // chips de empregado somem quando não há área filtrada,
+                // o Set residual filtraria silenciosamente o relatório.
+                setFiltroEmpregados(new Set());
+              }}
               className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
                 filtroAreas.size === 0
                   ? "bg-indigo-600 text-white shadow-sm"
