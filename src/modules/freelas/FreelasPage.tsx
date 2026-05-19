@@ -13,18 +13,16 @@ import type {
   Pessoa,
 } from "../../core/types";
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
-import { AgendarTab } from "./AgendarTab";
 import { LancamentoTab } from "./LancamentoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
 
-type TabId = "agendar" | "lancamento" | "fechamento" | "historico";
+type TabId = "lancamentos" | "fechamento" | "historico";
 
 const TABS: { id: TabId; label: string; icon: string }[] = [
-  { id: "lancamento",  label: "Lançamento", icon: "📝" },
-  { id: "agendar",     label: "Agendar",    icon: "📅" },
-  { id: "fechamento",  label: "Fechamento", icon: "💰" },
-  { id: "historico",   label: "Histórico",  icon: "🗂️" },
+  { id: "lancamentos", label: "Lançamentos", icon: "📝" },
+  { id: "fechamento",  label: "Fechamento",  icon: "💰" },
+  { id: "historico",   label: "Histórico",   icon: "🗂️" },
 ];
 
 export function FreelasPage() {
@@ -33,10 +31,14 @@ export function FreelasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
-  const podeUsar = canUse(me, rid, "freelas");
-  const podeConfig = canConfig(me, rid, "freelas");
 
-  const [tab, setTab] = useState<TabId>("lancamento");
+  // 2 papéis distintos:
+  //   - Operacional (ver): cria turno, mexe em entrada/saída/intervalo, marca no-show
+  //   - DP (configurar): precifica (tipo + valor), confirma fechamento, gera lote, marca pago
+  const podeOperar = canUse(me, rid, "freelas");
+  const podeDp     = canConfig(me, rid, "freelas");
+
+  const [tab, setTab] = useState<TabId>("lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
 
   const [shifts, setShifts] = useState<FreelaShift[]>([]);
@@ -77,7 +79,7 @@ export function FreelasPage() {
   }, [rid]);
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeUsar) {
+  if (!podeOperar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -86,9 +88,7 @@ export function FreelasPage() {
     );
   }
 
-  const hoje = new Date().toISOString().slice(0, 10);
-  const totalAgendados = shifts.filter((s) => s.status === "agendado" && s.date >= hoje).length;
-  const totalAbertos   = shifts.filter((s) => (s.status === "aberto" || s.status === "agendado") && s.date <= hoje).length;
+  const totalAbertos   = shifts.filter((s) => s.status === "aberto" || s.status === "agendado" || s.status === "fechamento").length;
   const totalPendentes = shifts.filter((s) => s.status === "fechamento" && !s.lotePagamentoId).length;
   const totalHistorico = shifts.filter((s) => s.status === "pago" || s.status === "nao_compareceu").length;
 
@@ -102,7 +102,7 @@ export function FreelasPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {podeConfig && (
+          {podeOperar && (
             <Button onClick={() => setShowCadastro(true)}>
               + Cadastrar freela
             </Button>
@@ -110,13 +110,11 @@ export function FreelasPage() {
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {TABS.map((t) => {
           const active = tab === t.id;
           const count =
-            t.id === "agendar"     ? totalAgendados :
-            t.id === "lancamento"  ? totalAbertos :
+            t.id === "lancamentos" ? totalAbertos :
             t.id === "fechamento"  ? totalPendentes :
                                      totalHistorico;
           return (
@@ -147,22 +145,14 @@ export function FreelasPage() {
         })}
       </div>
 
-      {tab === "lancamento" && (
+      {tab === "lancamentos" && (
         <LancamentoTab
           restaurantId={rid}
           shifts={shifts}
           empregados={empregados}
           pessoas={pessoas}
-          podeEditar={podeConfig}
-        />
-      )}
-      {tab === "agendar" && (
-        <AgendarTab
-          restaurantId={rid}
-          shifts={shifts}
-          empregados={empregados}
-          pessoas={pessoas}
-          podeEditar={podeConfig}
+          podeOperar={podeOperar}
+          podeDp={podeDp}
         />
       )}
       {tab === "fechamento" && (
@@ -170,7 +160,7 @@ export function FreelasPage() {
           restaurantId={rid}
           shifts={shifts}
           pagamentos={pagamentos}
-          podeEditar={podeConfig}
+          podeEditar={podeDp}
         />
       )}
       {tab === "historico" && (

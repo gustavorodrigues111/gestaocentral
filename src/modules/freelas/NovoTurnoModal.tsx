@@ -21,27 +21,31 @@ type Props = {
   empregados: Empregado[];
   pessoas: Pessoa[];
   initialDate?: string;
-  // Quando true, modal abre direto pra "lançamento" (status="aberto") em vez
-  // de "agendamento" (status="agendado"). Usado pela tab Lançamento.
-  modoLancamento?: boolean;
   onClose: () => void;
   onSaved: () => void;
 };
 
-// Modal pra criar 1 turno de freela. Pode ser:
-// - Agendamento (data futura, status="agendado"): só seleciona pessoa + data + área
-// - Lançamento direto (status="aberto"): pode já preencher entrada/saída/valor
-export function AgendarFreelaModal({
-  restaurantId, empregados, pessoas, initialDate, modoLancamento, onClose, onSaved,
+// Modal único de criação de turno. Status definido pela DATA:
+//   - Data futura  → "agendado" (entrada/saída opcionais — preencher quando rolar)
+//   - Data ≤ hoje  → "aberto"   (entrada obrigatória — turno já começou)
+//
+// Operador (qualquer permissão `ver`) preenche aqui. Valor (hora/diária + R$)
+// é responsabilidade do DP — preenchido depois, na tab Lançamentos.
+export function NovoTurnoModal({
+  restaurantId, empregados, pessoas, initialDate, onClose, onSaved,
 }: Props) {
   const { pessoa: me } = useAuth();
   const [date, setDate] = useState(initialDate || todayYmd());
   const [area, setArea] = useState<Area | "">("");
   const [candidatoId, setCandidatoId] = useState("");
+  const [entrada, setEntrada] = useState("");
   const [obs, setObs] = useState("");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [showCadastro, setShowCadastro] = useState(false);
+
+  const isFutura = date > todayYmd();
+  const statusAlvo: "agendado" | "aberto" = isFutura ? "agendado" : "aberto";
 
   const candidatos = useMemo(
     () => listarCandidatos(empregados, pessoas, restaurantId),
@@ -57,31 +61,33 @@ export function AgendarFreelaModal({
     if (!me) return;
     if (!candidato) { setErr("Selecione um freela."); return; }
     if (!date) { setErr("Data obrigatória."); return; }
-    if (candidato.tipo === "freela") {
-      // freela cadastrado precisa ter PIX (já filtrado nos candidatos)
-      if (!candidato.pix) {
-        setErr("Esse freela está sem PIX. Complete o cadastro em Pessoas.");
-        return;
-      }
+    // Entrada obrigatória pra turno que JÁ começou (data ≤ hoje)
+    if (!isFutura && !entrada) {
+      setErr("Hora de início é obrigatória pra turno que já começou.");
+      return;
+    }
+    if (candidato.tipo === "freela" && !candidato.pix) {
+      setErr("Esse freela está sem PIX. Complete o cadastro em Pessoas.");
+      return;
     }
     setSaving(true);
     try {
       const extras = resolverPixWhats(candidato, pessoas);
       const now = new Date().toISOString();
-      const status = modoLancamento ? "aberto" : "agendado";
 
       const payload = {
         restaurantId,
         empregadoId: candidato.tipo === "empregado" ? candidato.id : null,
-        pessoaId: candidato.tipo === "freela" ? candidato.id : null,
+        pessoaId:    candidato.tipo === "freela"    ? candidato.id : null,
         nomeSnapshot: candidato.nome,
-        ...(candidato.cpf ? { cpfSnapshot: candidato.cpf } : {}),
-        ...(extras.pix ? { pixSnapshot: extras.pix } : {}),
-        ...(extras.whatsapp ? { whatsappSnapshot: extras.whatsapp } : {}),
+        ...(candidato.cpf  ? { cpfSnapshot: candidato.cpf } : {}),
+        ...(extras.pix     ? { pixSnapshot: extras.pix } : {}),
+        ...(extras.whatsapp? { whatsappSnapshot: extras.whatsapp } : {}),
         date,
         scheduledDate: date,
-        ...(area ? { area } : {}),
-        status,
+        ...(area    ? { area } : {}),
+        ...(entrada ? { entrada } : {}),
+        status: statusAlvo,
         lotePagamentoId: null,
         ...(obs.trim() ? { observacao: obs.trim() } : {}),
         lancadoPor: me.id,
@@ -91,13 +97,10 @@ export function AgendarFreelaModal({
       };
       await addDoc(collection(db, "freelaShifts"), payload);
 
-      // Se for empregado, marca "freela" na escala daquele dia (Praticada)
-      // — só faz sentido em modo Lançamento (dia já chegou) ou Agendamento
-      // pra data futura. Em ambos os casos, é "freela" na escala.
+      // Empregado registrado cobrindo turno extra → marca "freela" na escala
       if (candidato.tipo === "empregado") {
         await marcarFreelaNaEscala(restaurantId, candidato.id, date);
       }
-
       onSaved();
     } catch (e) {
       console.error(e);
@@ -109,7 +112,7 @@ export function AgendarFreelaModal({
   return (
     <>
       <Modal
-        title={modoLancamento ? "📝 Lançar turno de freela" : "📅 Agendar freela"}
+        title={isFutura ? "📅 Agendar turno de freela" : "📝 Lançar turno de freela"}
         onClose={onClose}
         maxWidth="max-w-md"
       >
@@ -120,6 +123,11 @@ export function AgendarFreelaModal({
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 -mt-2">
+            {isFutura
+              ? "Data futura — vai criar como agendado. Quando o dia chegar, edite e preencha entrada/saída."
+              : "Data já chegou — vai criar como aberto. Preencha pelo menos a hora de início."}
+          </p>
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
@@ -128,7 +136,7 @@ export function AgendarFreelaModal({
             <select
               value={candidatoId}
               onChange={(e) => setCandidatoId(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500"
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
             >
               <option value="">— selecione —</option>
               <optgroup label="🧑‍💼 Empregados (turno extra)">
@@ -171,6 +179,13 @@ export function AgendarFreelaModal({
             </select>
           </div>
 
+          <Input
+            label={isFutura ? "Hora de início (opcional)" : "Hora de início *"}
+            type="time"
+            value={entrada}
+            onChange={(e) => setEntrada(e.target.value)}
+          />
+
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
               Observação (opcional)
@@ -180,14 +195,19 @@ export function AgendarFreelaModal({
               onChange={(e) => setObs(e.target.value)}
               rows={2}
               className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
-              placeholder="Ex: cobertura de cobertura noite de quinta…"
+              placeholder="Ex: cobertura de noite de quinta…"
             />
+          </div>
+
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded p-2">
+            💡 Valor (R$/h ou diária) e tipo de cobrança são preenchidos pelo
+            <strong> DP</strong> depois — não preencha aqui.
           </div>
 
           {candidato?.tipo === "empregado" && (
             <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
-              Esse é um empregado registrado — ao salvar, o dia <strong>{date}</strong> dele será
-              automaticamente marcado como <strong>"freela"</strong> na escala (Praticada).
+              Empregado registrado — ao salvar, o dia <strong>{date}</strong> será
+              marcado como <strong>"freela"</strong> na escala (Praticada).
             </div>
           )}
 
@@ -196,7 +216,7 @@ export function AgendarFreelaModal({
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
             <Button onClick={salvar} disabled={saving}>
-              {saving ? "Salvando…" : modoLancamento ? "Lançar" : "Agendar"}
+              {saving ? "Salvando…" : (isFutura ? "Agendar" : "Lançar")}
             </Button>
           </div>
         </div>
@@ -206,7 +226,6 @@ export function AgendarFreelaModal({
         <CadastroRapidoFreelaModal
           restaurantId={restaurantId}
           onSaved={(p) => {
-            // Auto-seleciona o freela recém-criado
             setCandidatoId(`freela:${p.id}`);
             setShowCadastro(false);
           }}
@@ -217,11 +236,6 @@ export function AgendarFreelaModal({
   );
 }
 
-// Marca "freela" na escala Praticada (real) do empregado naquele dia.
-// Usa lifecycle relaxado: tenta gravar; se ainda não existe doc escala do mês, cria;
-// se prevista não está fechada, escreve mesmo assim em `real` (admin pode ajustar
-// depois). Isso é deliberadamente permissivo — freela é evento operacional, escala
-// se acomoda.
 async function marcarFreelaNaEscala(rid: string, empregadoId: string, ymdDate: string) {
   const d = parseYmd(ymdDate);
   const ano = d.getFullYear();
@@ -246,7 +260,6 @@ async function marcarFreelaNaEscala(rid: string, empregadoId: string, ymdDate: s
   });
 }
 
-// (Reservado pra "desmarcar" caso o turno seja cancelado depois — não usado ainda)
 export async function limparFreelaDaEscala(rid: string, empregadoId: string, ymdDate: string) {
   const d = parseYmd(ymdDate);
   const ano = d.getFullYear();
