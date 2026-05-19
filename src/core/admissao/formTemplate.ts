@@ -59,12 +59,14 @@ const RAW: FormField[] = [
   f("tel_emergencia",  "Telefone de emergência", "telefone", G_CONTATO, true),
   f("contato_emergencia_nome", "Nome do contato de emergência", "text", G_CONTATO, true),
 
-  // ─── Endereço ───
-  f("endereco_logradouro", "Endereço (rua, número)", "text", G_END, true),
-  f("endereco_bairro",     "Bairro",          "text",     G_END, true),
-  f("endereco_cidade",     "Cidade",          "text",     G_END, true),
-  f("endereco_estado",     "Estado (UF)",     "text",     G_END, true, { placeholder: "SP" }),
-  f("endereco_cep",        "CEP",             "text",     G_END, true, { placeholder: "00000-000" }),
+  // ─── Endereço — CEP primeiro, auto-preenche os demais via ViaCEP ───
+  f("endereco_cep",         "CEP",         "text", G_END, true,  { placeholder: "00000-000", ajuda: "Ao preencher, completa rua, bairro, cidade e estado automaticamente." }),
+  f("endereco_logradouro",  "Rua",         "text", G_END, true),
+  f("endereco_numero",      "Número",      "text", G_END, true),
+  f("endereco_complemento", "Complemento", "text", G_END, false, { placeholder: "Apto, bloco, fundos…" }),
+  f("endereco_bairro",      "Bairro",      "text", G_END, true),
+  f("endereco_cidade",      "Cidade",      "text", G_END, true),
+  f("endereco_estado",      "Estado (UF)", "text", G_END, true,  { placeholder: "SP" }),
 
   // ─── Documentos (números, não fotos — fotos vão por WhatsApp) ───
   f("rg",              "RG",                  "text",     G_DOCS, true),

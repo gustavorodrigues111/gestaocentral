@@ -220,6 +220,36 @@ export function AdmissaoPublicaPage() {
 
   function updateCampo(id: string, value: unknown) {
     setDados((cur) => ({ ...cur, [id]: value }));
+    // Ao terminar de digitar um CEP (8 dígitos), busca ViaCEP e auto-preenche
+    // rua/bairro/cidade/estado. Sem bloqueio nem aviso pesado se falhar.
+    if (id === "endereco_cep" && typeof value === "string") {
+      const d = value.replace(/\D/g, "");
+      if (d.length === 8) void buscarCep(d);
+    }
+  }
+
+  async function buscarCep(cep: string) {
+    try {
+      const r = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      if (!r.ok) return;
+      const data = await r.json() as {
+        erro?: boolean;
+        logradouro?: string;
+        bairro?: string;
+        localidade?: string;
+        uf?: string;
+      };
+      if (data.erro) return;
+      setDados((cur) => ({
+        ...cur,
+        endereco_logradouro: data.logradouro || cur.endereco_logradouro || "",
+        endereco_bairro:     data.bairro     || cur.endereco_bairro     || "",
+        endereco_cidade:     data.localidade || cur.endereco_cidade     || "",
+        endereco_estado:     data.uf         || cur.endereco_estado     || "",
+      }));
+    } catch {
+      // Sem internet ou ViaCEP fora do ar — candidato preenche manualmente
+    }
   }
 
   // ─── Render: estados especiais ───────────────────────────────────────────
