@@ -194,6 +194,7 @@ export function ExcecoesPage() {
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
+  const [escalaDebug, setEscalaDebug] = useState<{ allanId?: string; escala?: Record<string, string>; sidEncontrado?: number | null; cpf?: string; quadroSolides?: unknown } | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
 
   // Filtros da tabela
@@ -232,6 +233,7 @@ export function ExcecoesPage() {
       // Planejamento que tenha CPF, busca o sid Sólides e o quadro do meio
       // do mês — usado como template recorrente pro range todo.
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
+      const debugInfo: { allanId?: string; escala?: Record<string, string>; sidEncontrado?: number | null; cpf?: string; quadroSolides?: unknown } = {};
       try {
         const schedRes = await fetchSolidesSchedules(midDate(startDate, endDate), shortCode);
         const sidByCpf = new Map<string, number>();
@@ -245,8 +247,20 @@ export function ExcecoesPage() {
         escalaPorEmpregado = buildEscalaFromSolides(
           schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
         );
+        // Debug pro Allan
+        const allan = empregados.find((e) => e.nome.toLowerCase().includes("allan"));
+        if (allan) {
+          const cpf = onlyDigits(allan.cpf);
+          const sid = cpf ? sidByCpf.get(cpf) : undefined;
+          debugInfo.allanId = allan.id;
+          debugInfo.cpf = cpf;
+          debugInfo.sidEncontrado = sid ?? null;
+          debugInfo.quadroSolides = sid != null ? schedRes.schedules[String(sid)] : null;
+          debugInfo.escala = escalaPorEmpregado[allan.id]
+            ? Object.fromEntries(Object.entries(escalaPorEmpregado[allan.id]))
+            : undefined;
+        }
       } catch (e) {
-        // Falha em buscar Sólides → cai pra fallback do Planejamento
         console.warn("Sólides schedules falhou, usando fallback do Planejamento:", e);
       }
 
@@ -258,6 +272,12 @@ export function ExcecoesPage() {
           escalaPorEmpregado[empId] = perDate;
         }
       }
+      // Atualiza debug — pega a escala FINAL (depois do merge) pro Allan
+      const allanFinal = empregados.find((e) => e.nome.toLowerCase().includes("allan"));
+      if (allanFinal && escalaPorEmpregado[allanFinal.id]) {
+        debugInfo.escala = Object.fromEntries(Object.entries(escalaPorEmpregado[allanFinal.id]));
+      }
+      setEscalaDebug(debugInfo);
 
       const report = generateExceptionsReport({
         punches,
@@ -396,6 +416,20 @@ export function ExcecoesPage() {
               <div>📑 Respostas da Sólides: {debug.responsesMeta.map((r, i) => (
                 <span key={i} className="ml-1">[pedido={r.requested}, number={r.number ?? "—"}, last={String(r.last)}, totalPages={r.totalPages ?? "—"}, size={r.size}]</span>
               ))}</div>
+            )}
+            {escalaDebug && (
+              <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div>🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong></div>
+                <div>📅 Escala final (após merge):</div>
+                <div className="grid grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-0.5 text-[10px]">
+                  {escalaDebug.escala && Object.entries(escalaDebug.escala).sort((a, b) => a[0].localeCompare(b[0])).map(([d, st]) => (
+                    <div key={d} className="tabular-nums">
+                      <span className="text-gray-500">{d}</span> · <strong className={st === "folga" ? "text-blue-600" : st === "trabalho" ? "text-emerald-700" : ""}>{st}</strong>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-1">📜 Quadro raw da Sólides pro Allan: <pre className="inline whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(escalaDebug.quadroSolides)}</pre></div>
+              </div>
             )}
             <div className="mt-2">
               <div className="text-gray-500 dark:text-gray-400 mb-1">Punches por (data, empregadoId Sólides):</div>
