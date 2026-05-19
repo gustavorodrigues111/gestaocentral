@@ -405,6 +405,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
         <PreencherDadosBasicosModal
           admissao={admDadosBasicos}
           cargos={cargos}
+          activeRestaurant={activeRestaurant}
           onClose={() => setAdmDadosBasicos(null)}
           onSaved={() => setAdmDadosBasicos(null)}
         />

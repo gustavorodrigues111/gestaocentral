@@ -9,13 +9,17 @@
 //  sem alternating (single only — admissão MVP).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
-import type { Admissao, Cargo, HorarioDia } from "../../core/types";
+import type { Admissao, Cargo, HorarioDia, Restaurant } from "../../core/types";
 import { atualizarDadosBasicos } from "../../core/admissao/admissaoHelpers";
+import {
+  fmtHHMM,
+  validateWorkScheduleDays,
+} from "../../core/escala/horarios";
 
 const DIAS_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -38,11 +42,16 @@ function diasIniciais(salvos?: Record<string, unknown>): DiasState {
 type Props = {
   admissao: Admissao;
   cargos: Cargo[];
+  activeRestaurant: Restaurant;
   onClose: () => void;
   onSaved: () => void;
 };
 
-export function PreencherDadosBasicosModal({ admissao, cargos, onClose, onSaved }: Props) {
+export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant, onClose, onSaved }: Props) {
+  // Mesma config do módulo Pessoas: limites de carga semanal do restaurante.
+  // Default CLT 44h/sem (entre 43h55 e 44h00).
+  const cargaMinMin = activeRestaurant.horarioConfig?.cargaSemanalMinMin ?? 2635;
+  const cargaMaxMin = activeRestaurant.horarioConfig?.cargaSemanalMaxMin ?? 2640;
   const [cargoId, setCargoId] = useState(admissao.cargoId || "");
   const [salario, setSalario] = useState(
     typeof admissao.salario === "number" ? String(admissao.salario).replace(".", ",") : "",
@@ -59,6 +68,14 @@ export function PreencherDadosBasicosModal({ admissao, cargos, onClose, onSaved 
     setDias((cur) => ({ ...cur, [idx]: { ...cur[idx], ...patch } }));
   }
 
+  // Validação CLT em tempo real (reusa motor do módulo Pessoas/Escala).
+  // Roda em todo render — barato porque são só 7 dias.
+  const validacao = useMemo(
+    () => validateWorkScheduleDays(dias, cargaMinMin, cargaMaxMin),
+    [dias, cargaMinMin, cargaMaxMin],
+  );
+  const algumAtivo = Object.values(dias).some((d) => d.active);
+
   async function salvar() {
     setErro("");
     if (!cargoId) { setErro("Selecione o cargo."); return; }
@@ -66,12 +83,12 @@ export function PreencherDadosBasicosModal({ admissao, cargos, onClose, onSaved 
     if (salario && (!salarioNum || Number.isNaN(salarioNum))) {
       setErro("Salário inválido."); return;
     }
-    // Validação leve: pelo menos 1 dia ativo com entrada/saída
-    const algumValido = Object.values(dias).some(
-      (d) => d.active && d.in && d.out,
-    );
-    if (!algumValido && Object.values(dias).some((d) => d.active)) {
-      setErro("Preencha entrada e saída nos dias ativos.");
+    if (!algumAtivo) {
+      setErro("Marque pelo menos 1 dia ativo no horário.");
+      return;
+    }
+    if (validacao.errors.length > 0) {
+      setErro("Há violações CLT no horário — resolva pra salvar.");
       return;
     }
 
@@ -218,13 +235,53 @@ export function PreencherDadosBasicosModal({ admissao, cargos, onClose, onSaved 
           </div>
         </div>
 
+        {/* Resumo da carga semanal + lista de violações CLT */}
+        {algumAtivo && (
+          <div className="flex items-center justify-between gap-2 text-xs px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40">
+            <div>
+              <span className="text-gray-500 dark:text-gray-400">Carga semanal: </span>
+              <strong className={
+                validacao.errors.some((e) => e.tipo === "carga_semanal")
+                  ? "text-rose-600 dark:text-rose-400"
+                  : "text-emerald-700 dark:text-emerald-400"
+              }>
+                {fmtHHMM(validacao.totalContract)}
+              </strong>
+              <span className="text-gray-400"> (limite {fmtHHMM(cargaMinMin)}–{fmtHHMM(cargaMaxMin)})</span>
+            </div>
+            <div className="text-gray-500 dark:text-gray-400">
+              {validacao.diasAtivos} dia(s) ativo(s)
+            </div>
+          </div>
+        )}
+
+        {validacao.errors.length > 0 && (
+          <div className="rounded-lg border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-900/20 p-3 space-y-1.5">
+            <div className="text-xs font-bold text-rose-800 dark:text-rose-300">
+              ⚠ {validacao.errors.length} violação(ões) CLT — bloqueia salvar:
+            </div>
+            <ul className="space-y-1">
+              {validacao.errors.map((er, i) => (
+                <li key={i} className="text-[11px] text-rose-800 dark:text-rose-300 flex items-start gap-1.5">
+                  <span className="font-mono text-[10px] text-rose-700/80 dark:text-rose-400/70 shrink-0 pt-0.5">{er.artigo}</span>
+                  <span>{er.mensagem}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {erro && <div className="text-xs text-rose-600 dark:text-rose-400">{erro}</div>}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={salvando}>
+          <Button
+            onClick={salvar}
+            disabled={salvando || validacao.errors.length > 0}
+            title={validacao.errors.length > 0 ? "Resolva as violações CLT antes de salvar" : undefined}
+          >
             {salvando ? "Salvando…" : "💾 Salvar dados básicos"}
           </Button>
         </div>
