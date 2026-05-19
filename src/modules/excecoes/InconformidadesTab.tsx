@@ -57,7 +57,6 @@ import {
 import { RULES_META } from "../../core/excecoes/rules";
 import type {
   ExceptionRecord,
-  ExceptionRuleId,
   ExceptionSeverity,
 } from "../../core/excecoes/types";
 
@@ -262,9 +261,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     setDebug(null);
     setEscalaDebug(null);
     setErro("");
-    setFiltroColaborador("");
-    setFiltroRegra("");
-    setFiltroSeveridade("");
     setCarregandoStatus(true);
     carregarStatusSemana(rid, semanaAtiva.weekStart)
       .then((s) => {
@@ -730,10 +726,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   };
   const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
 
-  // Filtros da tabela
-  const [filtroColaborador, setFiltroColaborador] = useState("");
-  const [filtroRegra, setFiltroRegra] = useState<ExceptionRuleId | "">("");
-  const [filtroSeveridade, setFiltroSeveridade] = useState<ExceptionSeverity | "">("");
 
   // Carrega empregados do restaurante
   useEffect(() => {
@@ -800,7 +792,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return AREAS.filter((a) => set.has(a));
   }, [areaByEmpId]);
 
-  const [filtroArea, setFiltroArea] = useState<Area | "">("");
+  // Multi-select de áreas. Set vazio = "Todas" (sem filtro). Cada chip
+  // alterna inclusão/exclusão.
+  const [filtroAreas, setFiltroAreas] = useState<Set<Area>>(new Set());
+  function toggleArea(a: Area) {
+    setFiltroAreas((cur) => {
+      const next = new Set(cur);
+      if (next.has(a)) next.delete(a);
+      else next.add(a);
+      return next;
+    });
+  }
 
   async function gerar() {
     if (!rid) return;
@@ -934,10 +936,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       });
       setResult(report);
       setDebug(dbg || null);
-      // Reseta filtros
-      setFiltroColaborador("");
-      setFiltroRegra("");
-      setFiltroSeveridade("");
 
       // Salva o snapshot no doc da semana SEMPRE — assim o líder pode gerar,
       // sair, e voltar depois sem perder o que já tinha visto. Ao mudar pra
@@ -969,38 +967,18 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
-  // Lista de colaboradores que aparecem nas exceções (pro filtro)
-  const colaboradoresNasExcecoes = useMemo(() => {
-    if (!result) return [];
-    const nomes = new Set(result.exceptions.map((e) => e.employeeName));
-    return [...nomes].sort((a, b) => a.localeCompare(b));
-  }, [result]);
-
-  // Exceções após aplicar filtros
+  // Exceções após aplicar filtro de áreas (multi-select). Set vazio = todas.
   const excecoesFiltradas = useMemo(() => {
     if (!result) return [];
+    if (filtroAreas.size === 0) return result.exceptions;
     return result.exceptions.filter((e) => {
-      if (filtroArea) {
-        // Resolve área pelo CPF → empregadoId Planejamento → área do cargo.
-        const cpfD = (e.cpf || "").replace(/\D/g, "");
-        const empId = empIdByCpf.get(cpfD);
-        const area = empId ? areaByEmpId.get(empId) : undefined;
-        if (area !== filtroArea) return false;
-      }
-      if (filtroColaborador && e.employeeName !== filtroColaborador) return false;
-      if (filtroRegra && e.ruleId !== filtroRegra) return false;
-      if (filtroSeveridade && e.severity !== filtroSeveridade) return false;
-      return true;
+      // Resolve área pelo CPF → empregadoId Planejamento → área do cargo.
+      const cpfD = (e.cpf || "").replace(/\D/g, "");
+      const empId = empIdByCpf.get(cpfD);
+      const area = empId ? areaByEmpId.get(empId) : undefined;
+      return area != null && filtroAreas.has(area);
     });
-  }, [result, filtroArea, filtroColaborador, filtroRegra, filtroSeveridade, areaByEmpId, empIdByCpf]);
-
-  // Contagem por severidade (do total, não do filtrado)
-  const resumo = useMemo(() => {
-    const base = { grave: 0, aviso: 0, info: 0 };
-    if (!result) return base;
-    for (const e of result.exceptions) base[e.severity] += 1;
-    return base;
-  }, [result]);
+  }, [result, filtroAreas, areaByEmpId, empIdByCpf]);
 
   return (
     <div>
@@ -1166,23 +1144,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
       {result && !loading && (
         <>
-          {/* ── Resumo ── */}
-          <div className="flex flex-wrap gap-3 mb-4">
-            <ResumoCard
-              label="Total de exceções"
-              value={result.exceptions.length}
-              color="text-gray-900 dark:text-gray-100"
-            />
-            <ResumoCard label="Graves" value={resumo.grave} color="text-rose-600 dark:text-rose-400" />
-            <ResumoCard label="Avisos" value={resumo.aviso} color="text-amber-600 dark:text-amber-400" />
-            <ResumoCard label="Info" value={resumo.info} color="text-sky-600 dark:text-sky-400" />
-            <ResumoCard
-              label="Dias analisados"
-              value={result.diasAnalisados}
-              color="text-gray-500 dark:text-gray-400"
-            />
-          </div>
-
           {/* ── Aviso de não-casados ── */}
           {result.unmatched.length > 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
@@ -1202,58 +1163,39 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             </div>
           )}
 
-          {/* ── Filtros ── */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            <select
-              value={filtroArea}
-              onChange={(e) => setFiltroArea(e.target.value as Area | "")}
-              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-semibold"
-              title="Filtra por área (cada líder vê só a sua)"
+          {/* ── Filtro de áreas (multi-select). 1º botão "Todas" limpa o
+              set; demais são toggles cumulativos. ── */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-3">
+            <button
+              type="button"
+              onClick={() => setFiltroAreas(new Set())}
+              className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                filtroAreas.size === 0
+                  ? "bg-indigo-600 text-white shadow-sm"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+              }`}
+              title="Mostrar todas as áreas"
             >
-              <option value="">🗂️ Todas as áreas</option>
-              {areasDisponiveis.map((a) => (
-                <option key={a} value={a}>
+              Todas
+            </button>
+            {areasDisponiveis.map((a) => {
+              const ativo = filtroAreas.has(a);
+              return (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => toggleArea(a)}
+                  className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                    ativo
+                      ? "bg-indigo-600 text-white shadow-sm"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                  }`}
+                  title={ativo ? `Remover ${a} do filtro` : `Adicionar ${a} ao filtro`}
+                >
                   {a}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filtroColaborador}
-              onChange={(e) => setFiltroColaborador(e.target.value)}
-              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">👤 Todos os colaboradores</option>
-              {colaboradoresNasExcecoes.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filtroRegra}
-              onChange={(e) => setFiltroRegra(e.target.value as ExceptionRuleId | "")}
-              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">🏷️ Todos os tipos</option>
-              {Object.values(RULES_META).map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.icon} {m.label}
-                </option>
-              ))}
-            </select>
-            <select
-              value={filtroSeveridade}
-              onChange={(e) => setFiltroSeveridade(e.target.value as ExceptionSeverity | "")}
-              className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
-            >
-              <option value="">🚦 Todas as severidades</option>
-              <option value="grave">Grave</option>
-              <option value="aviso">Aviso</option>
-              <option value="info">Info</option>
-            </select>
-            <span className="text-xs text-gray-500 dark:text-gray-400 self-center">
-              {excecoesFiltradas.length} de {result.exceptions.length}
-            </span>
+                </button>
+              );
+            })}
           </div>
 
           {/* ── Lista agrupada por colaborador → data ── */}
@@ -1303,25 +1245,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           </p>
         </div>
       )}
-    </div>
-  );
-}
-
-function ResumoCard({
-  label,
-  value,
-  color,
-}: {
-  label: string;
-  value: number;
-  color: string;
-}) {
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl px-4 py-3 min-w-[120px]">
-      <div className={`text-2xl font-bold ${color}`}>{value}</div>
-      <div className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        {label}
-      </div>
     </div>
   );
 }
