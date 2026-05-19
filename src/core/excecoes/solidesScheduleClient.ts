@@ -88,6 +88,37 @@ export function buildEscalaFromSolides(
   return out;
 }
 
+// Versão "horários" do buildEscalaFromSolides — em vez de devolver só
+// status (trabalho/folga), devolve os HORÁRIOS previstos por data:
+//   empId → date → { in: "HH:MM"; out: "HH:MM" }
+// Pra dias inativos no quadro, não cria entrada (não tem horário previsto).
+export function buildHorariosPrevistosFromSolides(
+  schedules: Record<string, SolidesSchedule | null>,
+  empSolidesIdByCpf: Map<string, number>,
+  empregadoIdsByCpf: Map<string, string>,
+  startDate: string,
+  endDate: string,
+): Record<string, Record<string, { in: string; out: string }>> {
+  const out: Record<string, Record<string, { in: string; out: string }>> = {};
+  const dates = listDatesInRange(startDate, endDate);
+  for (const [cpf, empId] of empregadoIdsByCpf) {
+    const sid = empSolidesIdByCpf.get(cpf);
+    if (sid == null) continue;
+    const sched = schedules[String(sid)];
+    if (!sched) continue;
+    const perDate: Record<string, { in: string; out: string }> = {};
+    for (const date of dates) {
+      const dow = parseDateLocal(date).getDay();
+      const d = sched.byDay[dow];
+      if (d?.active) {
+        perDate[date] = { in: d.in, out: d.out };
+      }
+    }
+    if (Object.keys(perDate).length > 0) out[empId] = perDate;
+  }
+  return out;
+}
+
 function parseDateLocal(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number);
   return new Date(y, m - 1, d);

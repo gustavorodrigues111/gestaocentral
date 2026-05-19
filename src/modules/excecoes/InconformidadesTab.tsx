@@ -26,7 +26,11 @@ import type {
 } from "../../core/types";
 import { AREAS } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
-import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
+import {
+  buildEscalaFromSolides,
+  buildHorariosPrevistosFromSolides,
+  fetchSolidesSchedules,
+} from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
@@ -838,6 +842,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // Planejamento que tenha CPF, busca o sid Sólides e o quadro do meio
       // do mês — usado como template recorrente pro range todo.
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
+      let horariosPrevistos: Record<string, Record<string, { in: string; out: string }>> = {};
       const debugInfo: EscalaDebugInfo = {};
       try {
         // Várias datas em ordem de prioridade — workaround pro bug da Sólides
@@ -854,6 +859,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           if (e.cpf) empIdByCpf.set(onlyDigits(e.cpf), e.id);
         }
         escalaPorEmpregado = buildEscalaFromSolides(
+          schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
+        );
+        // Horários previstos por data (alimenta a regra de atraso)
+        horariosPrevistos = buildHorariosPrevistosFromSolides(
           schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
         );
         // Debug pro Allan + agregados
@@ -938,6 +947,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         punches,
         empregados,
         escalaPorEmpregado,
+        horariosPrevistos,
         startDate,
         endDate,
       });

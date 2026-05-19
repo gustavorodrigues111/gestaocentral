@@ -16,6 +16,9 @@ export type GenerateReportInput = {
   empregados: Empregado[]; // empregados do restaurante
   // empregadoId → (date → status planejado). Vem da escala prevista do Planejamento.
   escalaPorEmpregado: Record<string, Record<string, ScheduleStatus>>;
+  // empregadoId → (date → horário previsto NA SÓLIDES — opcional). Quando
+  // presente, alimenta a regra de atraso (firstIn real vs in previsto).
+  horariosPrevistos?: Record<string, Record<string, { in: string; out: string }>>;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
 };
@@ -43,7 +46,7 @@ function addDays(ymd: string, n: number): string {
 }
 
 export function generateExceptionsReport(input: GenerateReportInput): GenerateReportResult {
-  const { punches, empregados, escalaPorEmpregado, startDate, endDate } = input;
+  const { punches, empregados, escalaPorEmpregado, horariosPrevistos, startDate, endDate } = input;
 
   // ── Agrupa marcações por (employeeId da Sólides, date) e consolida métricas ──
   const grouped = groupByEmployeeDay(punches);
@@ -116,11 +119,13 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       const prevMetrics = metricsByDate?.get(addDays(date, -1));
       const prevDayLastOut = prevMetrics?.lastOut ?? null;
 
+      const horarioPrevisto = horariosPrevistos?.[emp.id]?.[date];
       const ctx: DayContext = {
         metrics,
         escalaStatus: escalaEmp[date] ?? null,
         prevDayLastOut,
         consecutiveWorkDays,
+        ...(horarioPrevisto ? { horarioPrevisto } : {}),
       };
       exceptions.push(...runAllRules(ctx));
       diasAnalisados += 1;

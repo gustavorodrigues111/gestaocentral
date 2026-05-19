@@ -57,7 +57,8 @@ export type ExceptionRuleId =
   | "pontoAberto"
   | "faltaSemAjuste"
   | "marcacaoForaDaEscala"
-  | "blocoSuspeito";
+  | "blocoSuspeito"
+  | "atrasoEntrada";
 
 export type ExceptionRecord = {
   ruleId: ExceptionRuleId;
@@ -76,4 +77,7 @@ export type DayContext = {
   escalaStatus: ScheduleStatus | null; // status planejado no Planejamento (null = desconhecido)
   prevDayLastOut: number | null; // epoch ms — saída do dia anterior (pra interjornada)
   consecutiveWorkDays: number; // nº de dias consecutivos com punch, incluindo este
+  // Horário previsto NA SÓLIDES (cadastro do quadro do empregado). Não confundir
+  // com escala prevista do Planejamento.app. Usado pra regra de atraso.
+  horarioPrevisto?: { in: string; out: string };
 };

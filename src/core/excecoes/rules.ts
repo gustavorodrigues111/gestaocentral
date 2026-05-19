@@ -79,6 +79,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "🔍",
     descricaoRegra: "Bloco de trabalho com duração menor que 10 minutos.",
   },
+  atrasoEntrada: {
+    id: "atrasoEntrada",
+    label: "Atraso na entrada",
+    severity: "aviso",
+    icon: "⏱️",
+    descricaoRegra: "Primeira entrada do dia mais de 10min após o horário previsto no quadro da Sólides.",
+  },
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
@@ -87,6 +94,9 @@ const MIN_INTERJORNADA = 11 * 60; // 660 min
 const MIN_INTERVALO = 55; // min
 const JORNADA_MAX = 10 * 60; // 600 min
 const JORNADA_EXIGE_INTERVALO = 6 * 60; // 360 min
+// Atraso na entrada: tolerância de 10min sobre o horário previsto no quadro
+// Sólides — só vira apontamento acima disso.
+const TOLERANCIA_ATRASO = 10; // min
 
 // minutos → "8h30"
 function fmtH(min: number): string {
@@ -249,6 +259,43 @@ const ruleBlocoSuspeito: Rule = (ctx) => {
   return null;
 };
 
+// 9) Atraso na entrada — firstIn > horário previsto + 10min de tolerância.
+// Compara a primeira entrada real (epoch ms) com o `in` do quadro cadastrado
+// na Sólides (HH:MM). Não usa escala prevista do Planejamento.
+const ruleAtrasoEntrada: Rule = (ctx) => {
+  const { firstIn, blocks } = ctx.metrics;
+  const previsto = ctx.horarioPrevisto;
+  if (!previsto || firstIn == null || blocks.length === 0) return null;
+  const realMin = brtMinutesFromEpoch(firstIn);
+  const previstoMin = parseHHMM(previsto.in);
+  if (realMin == null || previstoMin == null) return null;
+  const diff = realMin - previstoMin;
+  if (diff > TOLERANCIA_ATRASO) {
+    return mk(
+      "atrasoEntrada",
+      ctx,
+      `Entrada às ${fmtHora(firstIn)} (previsto ${previsto.in}) — ${diff}min de atraso.`,
+    );
+  }
+  return null;
+};
+
+// epoch ms (UTC) → minutos desde 00:00 em BRT (UTC-3, sem horário de verão)
+function brtMinutesFromEpoch(ms: number): number | null {
+  if (typeof ms !== "number" || ms <= 0) return null;
+  const d = new Date(ms);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  return (utcMin - 180 + 1440) % 1440;
+}
+
+// "HH:MM" → minutos desde 00:00. Retorna null se inválido.
+function parseHHMM(s: string): number | null {
+  if (!s) return null;
+  const [h, m] = s.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
 export const ALL_RULES: Rule[] = [
   ruleJornadaAcimaDe10h,
   ruleIntervaloMenorQueLegal,
@@ -258,6 +305,7 @@ export const ALL_RULES: Rule[] = [
   ruleFaltaSemAjuste,
   ruleMarcacaoForaDaEscala,
   ruleBlocoSuspeito,
+  ruleAtrasoEntrada,
 ];
 
 // Roda todas as regras sobre um contexto e devolve as exceções encontradas.
