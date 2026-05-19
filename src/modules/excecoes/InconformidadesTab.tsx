@@ -13,7 +13,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
-import type { Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
+import type { Empregado, EscalaMes, Pessoa, Restaurant, ScheduleStatus } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import { fetchSolidesSchedules, buildEscalaFromSolides } from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
@@ -22,10 +22,12 @@ import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
 import {
   adicionarApontamento,
   carregarStatusSemana,
+  marcarApontamentosEnviados,
   marcarStatus,
   podeMarcarStatus,
   removerApontamento,
 } from "../../core/excecoes/statusSemana";
+import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
 import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
 import {
   generateExceptionsReport,
@@ -413,6 +415,59 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [statusSemana?.apontamentos]);
 
+  // Conta marcados pra enviar (checkbox ON) por empregado — alimenta o botão
+  // "Enviar via WhatsApp (N)" no header do bloco.
+  const enviaveisPorEmpregado = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const a of statusSemana?.apontamentos || []) {
+      if (a.enviar) m.set(a.empregadoId, (m.get(a.empregadoId) || 0) + 1);
+    }
+    return m;
+  }, [statusSemana?.apontamentos]);
+
+  // Envia em UMA mensagem todos os apontamentos marcados (`enviar: true`) do
+  // empregado pra a semana ativa. Junta inconformidades + anotações livres
+  // num resumo só, com saudação + período + tom de urgência.
+  async function enviarWhatsDoEmpregado(empregadoId: string, empregadoNome: string) {
+    if (!semanaAtiva || !statusSemana) return;
+    const enviaveis = (statusSemana.apontamentos || []).filter(
+      (a) => a.empregadoId === empregadoId && a.enviar,
+    );
+    if (enviaveis.length === 0) {
+      alert("Marque pelo menos 1 inconformidade pra enviar.");
+      return;
+    }
+    const whatsapp = whatsByEmpId.get(empregadoId);
+    if (!whatsapp) {
+      alert(`${empregadoNome} não tem WhatsApp cadastrado em Pessoas.`);
+      return;
+    }
+    const msg = montarMensagemAjustes({
+      empregadoNome,
+      restNome: activeRestaurant.nome,
+      weekStart: semanaAtiva.weekStart,
+      weekEnd: semanaAtiva.weekEnd,
+      apontamentos: enviaveis,
+    });
+    const link = whatsLink(whatsapp, msg);
+    if (!link) {
+      alert(`WhatsApp de ${empregadoNome} inválido (precisa ter DDD + número).`);
+      return;
+    }
+    window.open(link, "_blank");
+    try {
+      const updated = await marcarApontamentosEnviados(
+        rid,
+        semanaAtiva.weekStart,
+        semanaAtiva.weekEnd,
+        enviaveis.map((a) => a.id),
+      );
+      setStatusSemana(updated);
+    } catch (e) {
+      console.warn("Erro marcando enviados:", e);
+    }
+  }
+
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
@@ -450,6 +505,29 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     });
     return () => unsub();
   }, [rid]);
+
+  // Pessoas do restaurante — usado pra resolver whatsapp (vive em Pessoa, não
+  // em Empregado) e mapear empregadoId → whatsapp pro envio em massa.
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setPessoas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  const whatsByEmpId = useMemo(() => {
+    const pessoaPorId = new Map<string, Pessoa>();
+    for (const p of pessoas) pessoaPorId.set(p.id, p);
+    const m = new Map<string, string>();
+    for (const emp of empregados) {
+      const w = emp.pessoaId ? pessoaPorId.get(emp.pessoaId)?.whatsapp : undefined;
+      if (w) m.set(emp.id, w);
+    }
+    return m;
+  }, [empregados, pessoas]);
 
   async function gerar() {
     if (!rid) return;
@@ -882,9 +960,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   grupo={grupo}
                   podeAnotar={!semanaConferida}
                   apontamentosCount={apontamentosPorEmpregado.get(grupo.empregadoId) || 0}
+                  enviaveisCount={enviaveisPorEmpregado.get(grupo.empregadoId) || 0}
+                  temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
                   enviadosKeys={enviadosKeys}
                   onToggleEnviar={toggleEnviarExcecao}
                   onAnotacaoLivre={() => anotacaoLivre(grupo.empregadoId, grupo.nome, grupo.cpf)}
+                  onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
                 />
               ))}
             </div>
@@ -1002,16 +1083,22 @@ function ColaboradorBlock({
   grupo,
   podeAnotar,
   apontamentosCount,
+  enviaveisCount,
+  temWhatsapp,
   enviadosKeys,
   onToggleEnviar,
   onAnotacaoLivre,
+  onEnviarWhats,
 }: {
   grupo: GrupoColab;
   podeAnotar: boolean;
   apontamentosCount: number;
+  enviaveisCount: number;
+  temWhatsapp: boolean;
   enviadosKeys: Set<string>;
   onToggleEnviar: (exc: ExceptionRecord) => void;
   onAnotacaoLivre: () => void;
+  onEnviarWhats: () => void;
 }) {
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
@@ -1045,10 +1132,31 @@ function ColaboradorBlock({
             <button
               type="button"
               onClick={onAnotacaoLivre}
-              className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-semibold hover:bg-indigo-700"
+              className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-[11px] font-semibold hover:bg-gray-200 dark:hover:bg-gray-600"
               title="Adicionar anotação livre pra este empregado"
             >
               + anotar
+            </button>
+          )}
+          {podeAnotar && (
+            <button
+              type="button"
+              onClick={onEnviarWhats}
+              disabled={enviaveisCount === 0 || !temWhatsapp}
+              className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                enviaveisCount > 0 && temWhatsapp
+                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                  : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              }`}
+              title={
+                !temWhatsapp
+                  ? "Sem WhatsApp cadastrado em Pessoas pra este empregado"
+                  : enviaveisCount === 0
+                  ? "Marque ao menos 1 inconformidade pra enviar"
+                  : `Enviar ${enviaveisCount} item(ns) num resumo único via WhatsApp`
+              }
+            >
+              💬 Enviar via WhatsApp {enviaveisCount > 0 && `(${enviaveisCount})`}
             </button>
           )}
         </div>
@@ -1106,14 +1214,6 @@ function ColaboradorBlock({
                         <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
                       )}
                     </span>
-                    {marcado && (
-                      <span
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 whitespace-nowrap"
-                        title="Vai pro WhatsApp do empregado quando você disparar na aba Ajustes"
-                      >
-                        💬 enviar
-                      </span>
-                    )}
                   </li>
                 );
               })}

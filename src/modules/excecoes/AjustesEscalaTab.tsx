@@ -21,6 +21,7 @@ import {
   marcarApontamentosEnviados,
   removerApontamento,
 } from "../../core/excecoes/statusSemana";
+import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
 import {
   EXCECAO_STATUS_LABEL,
   type ApontamentoFuncionario,
@@ -37,36 +38,6 @@ function fmtDataBr(ymd: string): string {
   const [a, m, d] = ymd.split("-");
   if (!a || !m || !d) return ymd;
   return `${d}/${m}/${a}`;
-}
-
-function onlyDigits(s: string): string {
-  return (s || "").replace(/\D/g, "");
-}
-
-// Monta o número internacional pra wa.me. Brasil → 55. Aceita whatsapp já
-// com ou sem código do país. Retorna null se não conseguir.
-function whatsLink(whatsapp: string | undefined, texto: string): string | null {
-  if (!whatsapp) return null;
-  let d = onlyDigits(whatsapp);
-  if (!d) return null;
-  // Se já vier com 55 + DDD (13 dígitos com 9, 12 sem 9), deixa. Senão,
-  // assume Brasil e prefixa 55.
-  if (d.length === 10 || d.length === 11) d = `55${d}`;
-  if (d.length < 12) return null;
-  return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`;
-}
-
-function montarMensagem(empregadoNome: string, restNome: string, ap: ApontamentoFuncionario[]): string {
-  const linhas = [
-    `Olá, ${empregadoNome.split(" ")[0]}! Tudo bem?`,
-    "",
-    `Sou da equipe de gestão do ${restNome}. Identifiquei alguns ajustes nos registros de ponto da semana e queria sua ajuda pra alinhar:`,
-    "",
-    ...ap.map((a, i) => `${i + 1}. ${a.texto}${a.data ? ` (${fmtDataBr(a.data)})` : ""}`),
-    "",
-    "Se algum desses pontos tiver justificativa ou estiver errado, me avisa por aqui. Obrigado!",
-  ];
-  return linhas.join("\n");
 }
 
 export function AjustesEscalaTab({ rid }: Props) {
@@ -183,7 +154,13 @@ export function AjustesEscalaTab({ rid }: Props) {
     }
     const whatsapp = whatsByEmpId.get(empregadoId);
     const nome = aps[0]?.empregadoNome ?? "";
-    const msg = montarMensagem(nome, restNome || "restaurante", enviaveis);
+    const msg = montarMensagemAjustes({
+      empregadoNome: nome,
+      restNome,
+      weekStart: s.weekStart,
+      weekEnd: s.weekEnd,
+      apontamentos: enviaveis,
+    });
     const link = whatsLink(whatsapp, msg);
     if (!link) {
       alert(`Sem WhatsApp cadastrado pra ${nome}. Cadastre em Pessoas pra usar essa ação.`);
