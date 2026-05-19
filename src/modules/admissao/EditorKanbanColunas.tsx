@@ -5,7 +5,7 @@
 //  automaticamente naquela coluna.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import {
@@ -66,6 +66,14 @@ export function EditorKanbanColunas({ rid, activeRestaurant }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // Ressincroniza quando o restaurante muda externamente (ex: outra aba salvou).
+  // Comparação por JSON evita loop quando o próprio editor salvou e o
+  // listener disparou.
+  useEffect(() => {
+    const fresh = [...getKanbanColunas(activeRestaurant)].sort((a, b) => a.ordem - b.ordem);
+    setColunas((cur) => (JSON.stringify(cur) === JSON.stringify(fresh) ? cur : fresh));
+  }, [activeRestaurant]);
+
   function atualizarColuna(id: string, patch: Partial<KanbanColuna>) {
     setColunas((cur) => cur.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
@@ -102,9 +110,24 @@ export function EditorKanbanColunas({ rid, activeRestaurant }: Props) {
     ]);
   }
 
-  function restaurarDefault() {
-    if (!confirm("Restaurar as 4 colunas padrão? Você perde as personalizações.")) return;
-    setColunas([...KANBAN_COLUNAS_DEFAULT]);
+  async function restaurarDefault() {
+    if (!confirm(
+      "Restaurar as colunas padrão do Kanban?\n\n" +
+      "Você perde as personalizações atuais. Vai salvar imediatamente no servidor.",
+    )) return;
+    const defaults = [...KANBAN_COLUNAS_DEFAULT];
+    setColunas(defaults);
+    // Salva NA HORA — evita o caso "restaurei mas esqueci de salvar"
+    setSalvando(true);
+    setMsg("");
+    try {
+      await salvarConfigAdmissao(rid, { admissaoKanbanColunas: defaults });
+      setMsg("✓ Colunas padrão restauradas e salvas. Confira o Kanban.");
+    } catch (e) {
+      setMsg("❌ " + (e instanceof Error ? e.message : "Erro ao salvar"));
+    } finally {
+      setSalvando(false);
+    }
   }
 
   async function salvar() {
