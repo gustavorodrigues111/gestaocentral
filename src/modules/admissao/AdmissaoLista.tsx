@@ -34,6 +34,7 @@ import {
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
+import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { atualizarChecklistDocumentos } from "../../core/admissao/admissaoHelpers";
 
 type Props = {
@@ -183,6 +184,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   }
 
   const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
+  const [admDadosBasicos, setAdmDadosBasicos] = useState<Admissao | null>(null);
 
   async function handleAvancar(adm: Admissao) {
     const prox = proximoStatus(adm.status);
@@ -298,6 +300,17 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* Preencher/editar dados básicos da vaga — disponível em
+                      qualquer momento (exceto terminais), sinaliza completude */}
+                  {st !== "admitido" && st !== "cancelada" && (
+                    <Button
+                      size="sm"
+                      variant={temDadosFinaisCompletos(adm) ? "secondary" : "primary"}
+                      onClick={() => setAdmDadosBasicos(adm)}
+                    >
+                      {temDadosFinaisCompletos(adm) ? "✏️ Dados básicos" : "📝 Preencher dados básicos"}
+                    </Button>
+                  )}
                   {/* Ações conforme status */}
                   {(st === "formulario_enviado" || (!adm.enviadoEm)) && (
                     <Button size="sm" onClick={() => handleEnviarWhats(adm)}>
@@ -385,6 +398,15 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
             }
             setAdmChecklist(null);
           }}
+        />
+      )}
+
+      {admDadosBasicos && (
+        <PreencherDadosBasicosModal
+          admissao={admDadosBasicos}
+          cargos={cargos}
+          onClose={() => setAdmDadosBasicos(null)}
+          onSaved={() => setAdmDadosBasicos(null)}
         />
       )}
     </div>

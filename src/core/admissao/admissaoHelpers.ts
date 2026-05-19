@@ -226,8 +226,15 @@ export function temDadosFinaisCompletos(adm: Admissao): boolean {
   if (!adm.cargoId) return false;
   if (!adm.dataAdmissao) return false;
   if (typeof adm.salario !== "number") return false;
-  if (!adm.horariosCadastrados || Object.keys(adm.horariosCadastrados).length === 0) return false;
-  return true;
+  const h = adm.horariosCadastrados;
+  if (!h || Object.keys(h).length === 0) return false;
+  // Pelo menos 1 dia ativo no horário (validação leve — RH pode revisar
+  // depois). Aceita estrutura HorarioDia ({ active, in, out, break }).
+  const algumAtivo = Object.values(h).some((d) => {
+    if (typeof d !== "object" || d == null) return false;
+    return (d as { active?: boolean }).active === true;
+  });
+  return algumAtivo;
 }
 
 export async function marcarDocumentosRecebidos(
@@ -264,6 +271,25 @@ export async function atualizarChecklistDocumentos(
       atualizadoPor: { id: pessoa.id, nome: pessoa.nome },
     },
     updatedAt: now,
+  }));
+}
+
+// Atualiza dados básicos da vaga (cargo, salário, data admissão, horários).
+// Pode ser chamado em qualquer etapa pra completar/corrigir dados. Não mexe
+// no status — RH avança manualmente quando estiver tudo preenchido.
+export async function atualizarDadosBasicos(
+  admissaoId: string,
+  patch: {
+    cargoId?: string;
+    salario?: number;
+    dataAdmissao?: string;
+    cargoConfianca?: boolean;
+    horariosCadastrados?: Record<string, unknown>;
+  },
+): Promise<void> {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    ...patch,
+    updatedAt: new Date().toISOString(),
   }));
 }
 
