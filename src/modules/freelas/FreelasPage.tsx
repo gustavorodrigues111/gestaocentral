@@ -1,10 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfig, canUse } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import type {
   Empregado,
@@ -19,7 +18,7 @@ import { HistoricoTab } from "./HistoricoTab";
 
 type TabId = "lancamentos" | "fechamento" | "historico";
 
-const TABS: { id: TabId; label: string; icon: string }[] = [
+const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "lancamentos", label: "Lançamentos", icon: "📝" },
   { id: "fechamento",  label: "Fechamento",  icon: "💰" },
   { id: "historico",   label: "Histórico",   icon: "🗂️" },
@@ -32,14 +31,32 @@ export function FreelasPage() {
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
 
-  // 2 papéis distintos:
-  //   - Operacional (ver): cria turno, mexe em entrada/saída/intervalo, marca no-show
-  //   - DP (configurar): precifica (tipo + valor), confirma fechamento, gera lote, marca pago
-  const podeOperar = canUse(me, rid, "freelas");
-  const podeDp     = canConfig(me, rid, "freelas");
+  // Permissões EXPLÍCITAS por checkbox da matriz (não usar canVer/canConfig
+  // aqui — canVer dá true quando só "configurar" está marcado, e queremos
+  // distinguir os 2 papéis):
+  //   - "ver"        → acesso completo à tela LANÇAMENTOS
+  //   - "configurar" → acesso completo a FECHAMENTO + HISTÓRICO
+  //   - master → tudo
+  const isMaster = !!me?.isMaster;
+  const podeOperar = isMaster || me?.permissions?.[rid]?.freelas?.ver === true;
+  const podeDp     = isMaster || me?.permissions?.[rid]?.freelas?.configurar === true;
 
-  const [tab, setTab] = useState<TabId>("lancamentos");
+  const tabsVisiveis = useMemo<TabId[]>(() => {
+    const out: TabId[] = [];
+    if (podeOperar) out.push("lancamentos");
+    if (podeDp)     out.push("fechamento", "historico");
+    return out;
+  }, [podeOperar, podeDp]);
+
+  const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
+
+  // Se a aba atual sumir (mudou permissão), pula pra primeira disponível
+  useEffect(() => {
+    if (!tabsVisiveis.includes(tab) && tabsVisiveis.length > 0) {
+      setTab(tabsVisiveis[0]);
+    }
+  }, [tabsVisiveis, tab]);
 
   const [shifts, setShifts] = useState<FreelaShift[]>([]);
   const [pagamentos, setPagamentos] = useState<FreelaPagamento[]>([]);
@@ -79,7 +96,7 @@ export function FreelasPage() {
   }, [rid]);
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeOperar) {
+  if (!podeOperar && !podeDp) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -111,7 +128,7 @@ export function FreelasPage() {
       </div>
 
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        {TABS.map((t) => {
+        {TABS_DEF.filter((t) => tabsVisiveis.includes(t.id)).map((t) => {
           const active = tab === t.id;
           const count =
             t.id === "lancamentos" ? totalAbertos :
@@ -145,7 +162,7 @@ export function FreelasPage() {
         })}
       </div>
 
-      {tab === "lancamentos" && (
+      {tab === "lancamentos" && podeOperar && (
         <LancamentoTab
           restaurantId={rid}
           shifts={shifts}
@@ -154,7 +171,7 @@ export function FreelasPage() {
           podeOperar={podeOperar}
         />
       )}
-      {tab === "fechamento" && (
+      {tab === "fechamento" && podeDp && (
         <FechamentoTab
           restaurantId={rid}
           shifts={shifts}
@@ -162,7 +179,7 @@ export function FreelasPage() {
           podeEditar={podeDp}
         />
       )}
-      {tab === "historico" && (
+      {tab === "historico" && podeDp && (
         <HistoricoTab
           shifts={shifts}
           pagamentos={pagamentos}
