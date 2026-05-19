@@ -5,16 +5,25 @@
 
 import type { ScheduleStatus } from "../types";
 
+// Shape real confirmado via /v2/adjustments/employees/{id}:
+//   { id, startDate (ISO), endDate (ISO), recordDate, type ("FOLGA"|...),
+//     allDay, status }
+// O campo descritivo é `type` (não `reason`). `reason` mantido como
+// fallback opcional pra compat com possíveis versões antigas.
 export type SolidesAdjustment = {
   id: number;
-  reason: string;       // ex: "FOLGA", "ATESTADO MÉDICO", "FALTA NÃO JUSTIFICADA"
-  type?: string;
+  type?: string;        // ex: "FOLGA", "ATESTADO MÉDICO", "FALTA NÃO JUSTIFICADA"
+  reason?: string;
   status: "APROVADO" | "PENDENTE" | "REPROVADO";
-  startDate: string;    // shape exato a confirmar — pode ser ISO, DD/MM ou ms
+  startDate: string;    // ISO "2026-05-04T00:00:00" — parseAdjustmentDate cobre
   endDate: string;
   recordDate?: string;
   allDay?: boolean;
 };
+
+function razaoDoAjuste(aj: SolidesAdjustment): string {
+  return String(aj.type || aj.reason || "");
+}
 
 export type FetchAdjustmentsResult = {
   employees: { id: number; name: string; cpf: string }[];
@@ -119,7 +128,7 @@ export function aplicarAjustesNaEscala(
     if (!perDate) continue;
     for (const aj of ajs) {
       if (aj.status !== "APROVADO") continue;
-      if (eFaltaNaoJustificada(aj.reason)) continue;
+      if (eFaltaNaoJustificada(razaoDoAjuste(aj))) continue;
       const a = parseAdjustmentDate(aj.startDate);
       const b = parseAdjustmentDate(aj.endDate);
       if (!a || !b) continue;
