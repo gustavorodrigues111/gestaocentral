@@ -4,7 +4,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import {
-  addDoc, collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
+  addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
@@ -163,6 +163,14 @@ export async function carregarAdmissao(id: string): Promise<Admissao | null> {
   const snap = await getDoc(doc(db, "admissoes", id));
   if (!snap.exists()) return null;
   return { id: snap.id, ...snap.data() } as Admissao;
+}
+
+// Exclui definitivamente uma admissão do Firestore. Operação irreversível —
+// só master deve poder chamar. O caller deve verificar isso na UI; a regra
+// Firestore exige authed() (qualquer usuário logado pode delete via API, mas
+// a UI só expõe o botão pra master).
+export async function excluirAdmissaoDefinitivamente(id: string): Promise<void> {
+  await deleteDoc(doc(db, "admissoes", id));
 }
 
 export async function cancelarAdmissao(

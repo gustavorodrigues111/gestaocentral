@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useAuth } from "../../core/auth/AuthContext";
 import {
   ADMISSAO_STATUS_LABEL,
   type Admissao,
@@ -16,10 +17,17 @@ import {
   type Restaurant,
 } from "../../core/types";
 import {
+  excluirAdmissaoDefinitivamente,
   getKanbanColunas,
   moverColunaKanban,
   statusEfetivo,
 } from "../../core/admissao/admissaoHelpers";
+
+function fmtDataHora(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+  });
+}
 
 type Props = {
   rid: string;
@@ -39,6 +47,7 @@ function colunaDaAdmissao(adm: Admissao, colunas: KanbanColuna[]): string | null
 }
 
 export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
+  const { pessoa: me } = useAuth();
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -97,6 +106,22 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     }
   }
 
+  async function excluirCard(adm: Admissao) {
+    if (!me?.isMaster) return;
+    const ok = confirm(
+      `EXCLUSÃO DEFINITIVA\n\n` +
+      `Você vai apagar pra sempre o card da admissão de ${adm.candidato.nome} ` +
+      `(CPF ${adm.candidato.cpf}). Essa ação não pode ser desfeita.\n\n` +
+      `Confirma?`,
+    );
+    if (!ok) return;
+    try {
+      await excluirAdmissaoDefinitivamente(adm.id);
+    } catch (e) {
+      alert("Erro ao excluir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   return (
     <div>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
@@ -149,6 +174,39 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                         {cargo?.nome || "—"} · {ADMISSAO_STATUS_LABEL[st]}
                       </div>
+                      {/* Badge de cancelamento — só pra cards com status cancelada */}
+                      {a.status === "cancelada" && a.canceladoEm && (
+                        <div className="mt-1.5 pt-1.5 border-t border-rose-100 dark:border-rose-900/40">
+                          <div className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 font-semibold">
+                            ✕ Cancelada em {fmtDataHora(a.canceladoEm)}
+                          </div>
+                          <div className="text-[10px] text-rose-700/80 dark:text-rose-300/70 mt-0.5">
+                            por {a.canceladoPor?.nome}
+                          </div>
+                          {a.motivoCancelamento && (
+                            <div className="text-[10px] text-gray-500 dark:text-gray-400 italic mt-0.5">
+                              "{a.motivoCancelamento}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* Expirada: badge similar */}
+                      {a.status === "expirada" && a.expiraEm && (
+                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 font-semibold">
+                          ⏱️ Expirou em {fmtDataHora(a.expiraEm)}
+                        </div>
+                      )}
+                      {/* Exclusão definitiva: SÓ master, SÓ em cards cancelados ou expirados */}
+                      {me?.isMaster && (a.status === "cancelada" || a.status === "expirada") && (
+                        <button
+                          type="button"
+                          onClick={() => excluirCard(a)}
+                          className="block mt-1 text-[10px] text-rose-600 dark:text-rose-400 hover:underline"
+                          title="Apaga o card pra sempre (irreversível, só master)"
+                        >
+                          🗑️ excluir definitivamente
+                        </button>
+                      )}
                     </div>
                   );
                 })}

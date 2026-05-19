@@ -120,9 +120,13 @@ export const GRUPOS_ADMISSAO_DEFAULT = [
 ];
 
 // Colunas default do Kanban — mapeamento default status→coluna pra automação.
+// Cancelada/Expirada vão no fim como terminais negativas. Master pode apagar
+// cards definitivamente nessas colunas (vide AdmissaoKanban).
 export const KANBAN_COLUNAS_DEFAULT = [
   { id: "col_enviado",      nome: "Formulário enviado",      ordem: 1, statusAuto: "formulario_enviado" as const,    cor: "94a3b8" },
   { id: "col_preenchido",   nome: "Formulário preenchido",   ordem: 2, statusAuto: "formulario_preenchido" as const, cor: "f59e0b" },
   { id: "col_documentos",   nome: "Documentos recebidos",    ordem: 3, statusAuto: "documentos_recebidos" as const,  cor: "10b981" },
   { id: "col_admitido",     nome: "Admitido",                ordem: 4, statusAuto: "admitido" as const,              cor: "0ea5e9" },
+  { id: "col_expirada",     nome: "Expirada",                ordem: 5, statusAuto: "expirada" as const,              cor: "6b7280" },
+  { id: "col_cancelada",    nome: "Cancelada",               ordem: 6, statusAuto: "cancelada" as const,             cor: "ef4444" },
 ];
