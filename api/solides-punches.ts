@@ -240,8 +240,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (b.edited === true)   flags.edited += 1;
       if (b.adjustmentReason != null) flags.withAdjustment += 1;
     }
-    console.log(JSON.stringify({
-      tag: "solides-punches",
+    const debug = {
       restaurant: restaurantKey || null,
       range: { startDate, endDate },
       pages: { count: pageSizes.length, sizes: pageSizes },
@@ -251,9 +250,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       duplicatesRemoved,
       flags,
       perDateEmployee: porDiaEmp,
-    }));
+    };
+    console.log(JSON.stringify({ tag: "solides-punches", ...debug }));
 
-    res.status(200).json({ punches: deduped, totalElements: deduped.length });
+    res.status(200).json({ punches: deduped, totalElements: deduped.length, _debug: debug });
   } catch (e) {
     if (e instanceof HttpError) {
       res.status(e.status).json({ error: e.message });

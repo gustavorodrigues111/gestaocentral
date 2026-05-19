@@ -16,7 +16,7 @@ import { Input } from "../../core/ui/Input";
 import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type { Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
-import { fetchPunches } from "../../core/excecoes/solidesClient";
+import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import {
   generateExceptionsReport,
   type GenerateReportResult,
@@ -175,6 +175,7 @@ export function ExcecoesPage() {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
+  const [debug, setDebug] = useState<SolidesDebug | null>(null);
   const [geradoEm, setGeradoEm] = useState<{ start: string; end: string } | null>(null);
 
   // Filtros da tabela
@@ -206,7 +207,7 @@ export function ExcecoesPage() {
     setErro("");
     setResult(null);
     try {
-      const { punches } = await fetchPunches(startDate, endDate, activeRestaurant?.shortCode);
+      const { punches, debug: dbg } = await fetchPunches(startDate, endDate, activeRestaurant?.shortCode);
       const escalaPorEmpregado = await buildEscalaContext(empregados, rid, startDate, endDate);
       const report = generateExceptionsReport({
         punches,
@@ -216,6 +217,7 @@ export function ExcecoesPage() {
         endDate,
       });
       setResult(report);
+      setDebug(dbg || null);
       setGeradoEm({ start: startDate, end: endDate });
       // Reseta filtros
       setFiltroColaborador("");
@@ -328,6 +330,32 @@ export function ExcecoesPage() {
         <div className="text-sm text-gray-500 dark:text-gray-400">
           Consultando a Sólides e cruzando com a escala...
         </div>
+      )}
+
+      {/* ── Painel de debug (só master) ── */}
+      {me?.isMaster && debug && (
+        <details className="mb-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 select-none">
+            🛠️ Debug API Sólides (só master)
+          </summary>
+          <div className="px-3 py-2 text-[11px] space-y-1.5 text-gray-700 dark:text-gray-300 font-mono">
+            <div>📦 <strong>{debug.pages.count}</strong> página(s) consultada(s) — tamanhos: [{debug.pages.sizes.join(", ")}]</div>
+            <div>📊 Total reportado: <strong>{debug.totalElementsReported}</strong> · Raw: <strong>{debug.raw}</strong> · Após dedupe: <strong>{debug.dedupedTotal}</strong> · Duplicatas removidas: <strong className={debug.duplicatesRemoved > 0 ? "text-rose-600" : ""}>{debug.duplicatesRemoved}</strong></div>
+            <div>🏷️ Flags: excluded={debug.flags.excluded} · edited={debug.flags.edited} · com adjustment={debug.flags.withAdjustment}</div>
+            <div className="mt-2">
+              <div className="text-gray-500 dark:text-gray-400 mb-1">Punches por (data, empregadoId Sólides):</div>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-0.5 text-[10px]">
+                {Object.entries(debug.perDateEmployee)
+                  .sort((a, b) => a[0].localeCompare(b[0]))
+                  .map(([k, v]) => (
+                    <div key={k} className="tabular-nums">
+                      <span className="text-gray-500">{k}</span> · <strong>{v}</strong>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          </div>
+        </details>
       )}
 
       {result && !loading && (

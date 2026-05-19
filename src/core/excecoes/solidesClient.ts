@@ -8,6 +8,21 @@ import type { SolidesPunch } from "./types";
 export type FetchPunchesResult = {
   punches: SolidesPunch[];
   totalElements: number;
+  debug?: SolidesDebug;
+};
+
+// Diagnóstico temporário — vem do payload da API Route quando o front pede
+// punches. Útil pra investigar bugs sem precisar de acesso aos Vercel Logs.
+export type SolidesDebug = {
+  restaurant: string | null;
+  range: { startDate: string; endDate: string };
+  pages: { count: number; sizes: number[] };
+  totalElementsReported: number;
+  raw: number;
+  dedupedTotal: number;
+  duplicatesRemoved: number;
+  flags: { excluded: number; edited: number; withAdjustment: number; total: number };
+  perDateEmployee: Record<string, number>;
 };
 
 // Busca todas as marcações de ponto no intervalo [startDate, endDate].
@@ -51,10 +66,11 @@ export async function fetchPunches(
     throw new Error(msg);
   }
 
-  const data = json as { punches?: unknown; totalElements?: number };
+  const data = json as { punches?: unknown; totalElements?: number; _debug?: SolidesDebug };
   const punches = Array.isArray(data.punches) ? (data.punches as SolidesPunch[]) : [];
   return {
     punches,
     totalElements: typeof data.totalElements === "number" ? data.totalElements : punches.length,
+    debug: data._debug,
   };
 }
