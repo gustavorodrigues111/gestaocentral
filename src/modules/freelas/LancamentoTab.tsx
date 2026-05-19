@@ -147,7 +147,7 @@ function inferirEstado(s: FreelaShift): EstadoCard {
 // ── Card único que se adapta ao estado ────────────────────────────────────
 function ShiftCard({ shift, podeOperar }: { shift: FreelaShift; podeOperar: boolean }) {
   const { pessoa: me } = useAuth();
-  const [horarioMode, setHorarioMode] = useState<"iniciar" | "fechar" | "editar" | null>(null);
+  const [horarioMode, setHorarioMode] = useState<"iniciar" | "fechar" | "editar" | "lancar" | null>(null);
   const [saving, setSaving] = useState(false);
 
   const estado = inferirEstado(shift);
@@ -256,8 +256,8 @@ function ShiftCard({ shift, podeOperar }: { shift: FreelaShift; podeOperar: bool
         {podeOperar && (
           <>
             {estado === "agendado" && (
-              <Button onClick={() => setHorarioMode("iniciar")} disabled={saving} className="w-full">
-                🟢 Iniciar turno
+              <Button onClick={() => setHorarioMode("lancar")} disabled={saving} className="w-full">
+                🟢 Lançar turno
               </Button>
             )}
             {estado === "aberto" && (
