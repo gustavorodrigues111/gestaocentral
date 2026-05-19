@@ -802,7 +802,34 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       else next.add(a);
       return next;
     });
+    // Ao mudar filtro de área, limpa o filtro de empregado — empregado
+    // selecionado pode não estar na nova área. Mais previsível.
+    setFiltroEmpregados(new Set());
   }
+
+  // Multi-select de empregados. Aparece como linha secundária quando ao menos
+  // 1 área está filtrada. Set vazio = "Todos da(s) área(s) filtrada(s)".
+  const [filtroEmpregados, setFiltroEmpregados] = useState<Set<string>>(new Set());
+  function toggleEmpregado(empId: string) {
+    setFiltroEmpregados((cur) => {
+      const next = new Set(cur);
+      if (next.has(empId)) next.delete(empId);
+      else next.add(empId);
+      return next;
+    });
+  }
+
+  // Empregados das áreas filtradas, com seu nome resolvido. Usado pra renderar
+  // os chips. Ordenado por nome.
+  const empregadosFiltraveis = useMemo(() => {
+    if (filtroAreas.size === 0) return [];
+    return empregados
+      .filter((e) => {
+        const area = areaByEmpId.get(e.id);
+        return area != null && filtroAreas.has(area);
+      })
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [empregados, areaByEmpId, filtroAreas]);
 
   async function gerar() {
     if (!rid) return;
@@ -967,18 +994,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
-  // Exceções após aplicar filtro de áreas (multi-select). Set vazio = todas.
+  // Exceções após aplicar filtros (área + empregado, multi-select). Sets
+  // vazios = "todos". Filtro de empregado só age quando ao menos 1 está
+  // selecionado.
   const excecoesFiltradas = useMemo(() => {
     if (!result) return [];
-    if (filtroAreas.size === 0) return result.exceptions;
+    if (filtroAreas.size === 0 && filtroEmpregados.size === 0) return result.exceptions;
     return result.exceptions.filter((e) => {
       // Resolve área pelo CPF → empregadoId Planejamento → área do cargo.
       const cpfD = (e.cpf || "").replace(/\D/g, "");
       const empId = empIdByCpf.get(cpfD);
-      const area = empId ? areaByEmpId.get(empId) : undefined;
-      return area != null && filtroAreas.has(area);
+      if (filtroAreas.size > 0) {
+        const area = empId ? areaByEmpId.get(empId) : undefined;
+        if (area == null || !filtroAreas.has(area)) return false;
+      }
+      if (filtroEmpregados.size > 0) {
+        if (!empId || !filtroEmpregados.has(empId)) return false;
+      }
+      return true;
     });
-  }, [result, filtroAreas, areaByEmpId, empIdByCpf]);
+  }, [result, filtroAreas, filtroEmpregados, areaByEmpId, empIdByCpf]);
 
   return (
     <div>
@@ -1197,6 +1232,43 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               );
             })}
           </div>
+
+          {/* ── Filtro de empregados — só aparece quando 1+ área filtrada.
+              Mostra os empregados das áreas filtradas (multi-select). ── */}
+          {empregadosFiltraveis.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mb-3">
+              <button
+                type="button"
+                onClick={() => setFiltroEmpregados(new Set())}
+                className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+                  filtroEmpregados.size === 0
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                }`}
+                title="Mostrar todos da(s) área(s) filtrada(s)"
+              >
+                Todos
+              </button>
+              {empregadosFiltraveis.map((emp) => {
+                const ativo = filtroEmpregados.has(emp.id);
+                return (
+                  <button
+                    key={emp.id}
+                    type="button"
+                    onClick={() => toggleEmpregado(emp.id)}
+                    className={`text-[11px] font-medium px-2.5 py-1 rounded-full transition-colors whitespace-nowrap ${
+                      ativo
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    }`}
+                    title={ativo ? `Remover ${emp.nome} do filtro` : `Filtrar só ${emp.nome}`}
+                  >
+                    {emp.nome}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* ── Lista agrupada por colaborador → data ── */}
           {result.exceptions.length === 0 ? (

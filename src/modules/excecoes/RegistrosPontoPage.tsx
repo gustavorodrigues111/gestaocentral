@@ -15,15 +15,13 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { InconformidadesTab } from "./InconformidadesTab";
-import { PorEmpregadoTab } from "./PorEmpregadoTab";
 import { CompatibilidadeTab } from "./CompatibilidadeTab";
 import { AjustesEscalaTab } from "./AjustesEscalaTab";
 
-type TabId = "inconformidades" | "porempregado" | "ajustes" | "compatibilidade";
+type TabId = "inconformidades" | "ajustes" | "compatibilidade";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "inconformidades", label: "Por Semana",                   icon: "📅" },
-  { id: "porempregado",    label: "Por Empregado",                icon: "👤" },
+  { id: "inconformidades", label: "Inconformidades",              icon: "⚠️" },
   { id: "ajustes",         label: "Apontamentos de Escala",       icon: "🛠️" },
   { id: "compatibilidade", label: "Compatibilidade de cadastros", icon: "🪪" },
 ];
@@ -83,9 +81,6 @@ export function RegistrosPontoPage() {
 
       {tab === "inconformidades" && (
         <InconformidadesTab rid={rid} activeRestaurant={activeRestaurant} />
-      )}
-      {tab === "porempregado" && (
-        <PorEmpregadoTab rid={rid} restNome={activeRestaurant.nome} />
       )}
       {tab === "ajustes" && <AjustesEscalaTab rid={rid} />}
       {tab === "compatibilidade" && <CompatibilidadeTab rid={rid} />}
