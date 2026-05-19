@@ -819,17 +819,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     });
   }
 
-  // Empregados das áreas filtradas, com seu nome resolvido. Usado pra renderar
-  // os chips. Ordenado por nome.
+  // Empregados das áreas filtradas QUE TÊM inconformidade no relatório atual.
+  // Esconde dos chips quem não aparece — evita prometer ao líder que ele pode
+  // filtrar por X quando X nem está na lista do dia. Usa o relatório bruto
+  // (sem o filtro de empregado aplicado), pra não esvaziar o próprio chip
+  // selecionado.
   const empregadosFiltraveis = useMemo(() => {
     if (filtroAreas.size === 0) return [];
+    if (!result) return [];
+    const comExcecao = new Set<string>();
+    for (const exc of result.exceptions) {
+      const cpfD = (exc.cpf || "").replace(/\D/g, "");
+      const empId = empIdByCpf.get(cpfD);
+      if (empId) comExcecao.add(empId);
+    }
     return empregados
       .filter((e) => {
+        if (!comExcecao.has(e.id)) return false;
         const area = areaByEmpId.get(e.id);
         return area != null && filtroAreas.has(area);
       })
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [empregados, areaByEmpId, filtroAreas]);
+  }, [empregados, areaByEmpId, filtroAreas, result, empIdByCpf]);
 
   async function gerar() {
     if (!rid) return;
