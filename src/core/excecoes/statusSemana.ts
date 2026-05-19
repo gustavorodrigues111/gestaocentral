@@ -5,8 +5,8 @@
 import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  ApontamentoFuncionario, ApontamentoStatus, ExcecaoHistoricoEntry, ExcecaoStatusSemana,
-  ExcecaoStatusValor, NotaInterna, Pessoa, RelatorioSnapshot,
+  ApontamentoEscala, ApontamentoFuncionario, ApontamentoStatus, ExcecaoHistoricoEntry,
+  ExcecaoStatusSemana, ExcecaoStatusValor, NotaInterna, Pessoa, RelatorioSnapshot,
 } from "../types";
 
 export function statusDocId(restaurantId: string, weekStart: string): string {
@@ -130,6 +130,7 @@ async function upsertSemana(
     ...(existing?.apontamentos ? { apontamentos: existing.apontamentos } : {}),
     ...(existing?.notasInternas ? { notasInternas: existing.notasInternas } : {}),
     ...(existing?.relatorioCache ? { relatorioCache: existing.relatorioCache } : {}),
+    ...(existing?.apontamentosEscala ? { apontamentosEscala: existing.apontamentosEscala } : {}),
     ...patch,
     updatedAt: now,
   };
@@ -284,6 +285,113 @@ function stripUndefined<T>(v: T): T {
     return out as T;
   }
   return v;
+}
+
+// ─── Apontamentos de Escala (gerados quando o gerente confere) ─────────────
+
+// Regras de exceção que afetam ESCALA PRATICADA. Outras (intervalo curto,
+// jornada >10h, ponto aberto, etc) não viram apontamento de escala — são
+// problemas de ponto, não de escala.
+const REGRAS_QUE_AFETAM_ESCALA = new Set<string>([
+  "faltaSemAjuste",       // escalado pra trabalho mas não veio → lançar falta
+  "marcacaoForaDaEscala", // veio em dia previsto pra folga → trocar pra trabalho
+]);
+
+function uidApEsc(): string {
+  return `aes_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Gera os apontamentos de escala a partir do snapshot do relatório. Cada
+// exceção que afeta escala vira 1 apontamento. PRESERVA o status (`ajustado`)
+// de itens equivalentes que já existiam, identificados pela tripla
+// (empregadoId, data, ruleId) — não reseta progresso quando o gerente reabre
+// e re-confere a semana.
+export async function gerarApontamentosEscala(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  if (!existing?.relatorioCache) {
+    throw new Error("Sem snapshot do relatório — gere o relatório antes de conferir.");
+  }
+  // Mapa do que já estava ajustado pra preservar progresso
+  const previous = new Map<string, ApontamentoEscala>();
+  for (const a of existing.apontamentosEscala || []) {
+    previous.set(`${a.empregadoId}_${a.data}_${a.ruleId}`, a);
+  }
+  const now = new Date().toISOString();
+  const novos: ApontamentoEscala[] = [];
+  type ExcSlim = {
+    ruleId: string; date?: string; cpf?: string; employeeName?: string;
+    description?: string; detail?: string;
+  };
+  for (const exc of (existing.relatorioCache.exceptions as ExcSlim[])) {
+    if (!REGRAS_QUE_AFETAM_ESCALA.has(exc.ruleId)) continue;
+    // empregadoId real só dá pra resolver do lado do client (precisa do mapa
+    // CPF → emp.id). Aqui usamos o CPF como chave; o client preenche o resto.
+    // Pra simplicidade desta versão, salvamos com cpf (não empregadoId) e o
+    // client resolve no render. Mas como nossas chaves de comparação usam
+    // empregadoId, vamos usar o CPF mesmo (atribuído ao campo empregadoId
+    // temporariamente). Refinar depois quando o caller passar o mapa.
+    const empregadoId = exc.cpf || "";
+    const data = exc.date || "";
+    const ruleId = exc.ruleId;
+    const k = `${empregadoId}_${data}_${ruleId}`;
+    const prev = previous.get(k);
+    novos.push({
+      id: prev?.id || uidApEsc(),
+      empregadoId,
+      empregadoNome: exc.employeeName || "",
+      data,
+      ruleId,
+      texto: `${exc.description || ""}${exc.detail ? ` (${exc.detail})` : ""}`,
+      status: prev?.status || "pendente",
+      ...(prev?.ajustadoEm ? { ajustadoEm: prev.ajustadoEm } : {}),
+      ...(prev?.ajustadoPor ? { ajustadoPor: prev.ajustadoPor } : {}),
+      ...(prev?.ajustadoPorNome ? { ajustadoPorNome: prev.ajustadoPorNome } : {}),
+      criadoEm: prev?.criadoEm || now,
+    });
+  }
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentosEscala: novos });
+}
+
+export async function marcarApontamentoEscalaAjustado(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoId: string,
+  pessoa: Pessoa,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const now = new Date().toISOString();
+  const apontamentosEscala = (existing?.apontamentosEscala || []).map((a) =>
+    a.id === apontamentoId
+      ? {
+          ...a,
+          status: "ajustado" as const,
+          ajustadoEm: now,
+          ajustadoPor: pessoa.id,
+          ajustadoPorNome: pessoa.nome,
+        }
+      : a,
+  );
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentosEscala });
+}
+
+export async function reabrirApontamentoEscala(
+  restaurantId: string,
+  weekStart: string,
+  weekEnd: string,
+  apontamentoId: string,
+): Promise<ExcecaoStatusSemana> {
+  const existing = await carregarStatusSemana(restaurantId, weekStart);
+  const apontamentosEscala = (existing?.apontamentosEscala || []).map((a) =>
+    a.id === apontamentoId
+      ? { ...a, status: "pendente" as const, ajustadoEm: undefined, ajustadoPor: undefined, ajustadoPorNome: undefined }
+      : a,
+  );
+  return upsertSemana(restaurantId, weekStart, weekEnd, { apontamentosEscala });
 }
 
 export async function removerNotaInterna(

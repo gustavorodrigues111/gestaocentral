@@ -1309,7 +1309,7 @@ export type ExcecaoStatusValor =
 export const EXCECAO_STATUS_LABEL: Record<ExcecaoStatusValor, string> = {
   aberto:            "Aberto",
   em_tratamento:     "Em tratamento",
-  tratado_lider:     "Tratado pelo líder",
+  tratado_lider:     "Conferido pelo líder",
   conferido_gerente: "Conferido pelo gerente",
 };
 
@@ -1377,6 +1377,30 @@ export type NotaInterna = {
   criadoPorNome: string;
 };
 
+// Apontamentos de Escala — relatório DERIVADO do snapshot do relatório,
+// gerado quando o gerente confere a semana. Lista o que precisa ajuste na
+// ESCALA PRATICADA do Planejamento (não no ponto Sólides):
+//   - falta sem ajuste → lançar falta na praticada
+//   - marcação fora da escala → trabalho em dia previsto pra folga
+//
+// Cada item é ajustado manualmente pelo líder na escala praticada e marcado
+// como "ajustado" (ou "ok" — vira só histórico).
+export type ApontamentoEscalaStatus = "pendente" | "ajustado";
+
+export type ApontamentoEscala = {
+  id: string;
+  empregadoId: string;
+  empregadoNome: string;
+  data: string;             // YYYY-MM-DD do fato
+  ruleId: string;           // origem (faltaSemAjuste, marcacaoForaDaEscala, ...)
+  texto: string;            // descrição pronta pra exibir
+  status: ApontamentoEscalaStatus;
+  ajustadoEm?: string;      // ISO
+  ajustadoPor?: string;
+  ajustadoPorNome?: string;
+  criadoEm: string;
+};
+
 // Snapshot do último relatório gerado, persistido pra manter memória do
 // tratamento entre sessões — quando o líder sai da tela e volta, restaura
 // o relatório anterior em vez de exigir nova geração. O conteúdo é
@@ -1399,5 +1423,6 @@ export type ExcecaoStatusSemana = {
   apontamentos?: ApontamentoFuncionario[];
   notasInternas?: NotaInterna[];
   relatorioCache?: RelatorioSnapshot;
+  apontamentosEscala?: ApontamentoEscala[];
   updatedAt: string;
 };

@@ -31,6 +31,7 @@ import {
   adicionarApontamento,
   adicionarNotaInterna,
   carregarStatusSemana,
+  gerarApontamentosEscala,
   listarStatusDoRestaurante,
   marcarApontamentoCiencia,
   marcarApontamentosEnviados,
@@ -360,6 +361,22 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         } catch (e) {
           console.error("Erro salvando cache do relatório no início do tratamento:", e);
           alert("Status atualizado, mas o cache do relatório não foi salvo: " + (e instanceof Error ? e.message : "?"));
+        }
+      }
+      // Ao confirmar conferência do gerente, gera o relatório de Apontamentos
+      // de Escala a partir do snapshot do relatório de inconformidades.
+      // Preserva o status "ajustado" de itens equivalentes existentes (caso
+      // tenha sido reaberto e re-conferido).
+      if (novoStatus === "conferido_gerente") {
+        try {
+          updated = await gerarApontamentosEscala(
+            rid,
+            semanaAtiva.weekStart,
+            semanaAtiva.weekEnd,
+          );
+        } catch (e) {
+          console.error("Erro gerando Apontamentos de Escala:", e);
+          alert("Conferência salva, mas falhou ao gerar apontamentos de escala: " + (e instanceof Error ? e.message : "?"));
         }
       }
       setStatusSemana(updated);
@@ -1625,12 +1642,12 @@ function StatusSemanaCard({
     });
     if (podeMarcar("tratado_lider")) acoes.push({
       proximo: "tratado_lider",
-      label: "✅ Tratado pelo líder",
+      label: "✅ Conferido pelo líder",
       disabled: !temRelatorio,
       tooltip: !temRelatorio ? "Gere o relatório antes de marcar como tratado" : undefined,
     });
   } else if (status === "em_tratamento") {
-    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Tratado pelo líder" });
+    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Conferido pelo líder" });
     if (podeMarcar("aberto"))        acoes.push({ proximo: "aberto",        label: "↩ Reabrir", variant: "secondary" });
   } else if (status === "tratado_lider") {
     if (podeMarcar("conferido_gerente")) acoes.push({ proximo: "conferido_gerente", label: "✓✓ Conferir e fechar" });
