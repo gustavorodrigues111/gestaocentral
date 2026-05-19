@@ -17,6 +17,7 @@ export type SolidesDebug = {
   restaurant: string | null;
   range: { startDate: string; endDate: string };
   pages: { count: number; sizes: number[] };
+  responsesMeta?: Array<{ requested: number; number?: number; last?: boolean; totalPages?: number; size: number }>;
   totalElementsReported: number;
   raw: number;
   dedupedTotal: number;

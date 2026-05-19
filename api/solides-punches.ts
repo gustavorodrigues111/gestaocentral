@@ -193,12 +193,20 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     let page = 0;
     let totalElements = 0;
     const pageSizes: number[] = [];
+    const responsesMeta: Array<{ requested: number; number?: number; last?: boolean; totalPages?: number; size: number }> = [];
 
     while (page < MAX_PAGES) {
       const data = await fetchPage(token, startMs, endMs, page);
       const content = Array.isArray(data.content) ? data.content : [];
       punches.push(...content);
       pageSizes.push(content.length);
+      responsesMeta.push({
+        requested: page,
+        number: data.number,
+        last: data.last,
+        totalPages: data.totalPages,
+        size: content.length,
+      });
       totalElements = typeof data.totalElements === "number" ? data.totalElements : punches.length;
 
       const isLast =
@@ -244,6 +252,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       restaurant: restaurantKey || null,
       range: { startDate, endDate },
       pages: { count: pageSizes.length, sizes: pageSizes },
+      responsesMeta,
       totalElementsReported: totalElements,
       raw: punches.length,
       dedupedTotal: deduped.length,
