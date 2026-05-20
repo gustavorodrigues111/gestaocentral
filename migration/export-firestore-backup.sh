@@ -29,8 +29,18 @@ OP=$(gcloud firestore export "gs://$BUCKET/$PASTA" \
 
 echo "✓ Export iniciado: $OP"
 echo
-echo "Aguardando conclusão (pode levar 1-5 min)..."
-gcloud firestore operations wait "$OP" --project="$PROJECT" --format='none'
+echo "Aguardando conclusão (poll a cada 10s, pode levar 1-5 min)..."
+
+# gcloud não tem `operations wait`, então polla `describe` até `done=true`
+while true; do
+  STATUS=$(gcloud firestore operations describe "$OP" --project="$PROJECT" --format='value(done)' 2>/dev/null || echo "")
+  if [ "$STATUS" = "True" ]; then
+    break
+  fi
+  sleep 10
+  echo -n "."
+done
+echo
 echo "✓ Export concluído: gs://$BUCKET/$PASTA"
 
 # Lista o que foi exportado pra confirmar
