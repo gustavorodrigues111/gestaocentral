@@ -126,8 +126,9 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
           Preencha os dados básicos do candidato. O resto da ficha será preenchido por ele via link.
         </p>
 
-        <Input label="Nome completo *" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome e sobrenome" />
-        <Input label="CPF *" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" inputMode="numeric" />
+        {/* CPF primeiro — dispara busca por Pessoa existente. Antes de
+            digitar o resto, RH pode reusar cadastro pré-existente. */}
+        <Input label="CPF *" value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="000.000.000-00" inputMode="numeric" autoFocus />
 
         {/* Banner: pessoa já cadastrada (mesmo CPF). Permite reutilizar dados
             e vincula a admissão à Pessoa existente. */}
@@ -164,6 +165,7 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
           </div>
         )}
 
+        <Input label="Nome completo *" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome e sobrenome" />
         <Input label="E-mail *" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@dominio.com" type="email" />
         <Input label="WhatsApp *" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(11) 99999-9999" inputMode="tel" />
 
