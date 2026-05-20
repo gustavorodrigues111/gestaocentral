@@ -1524,6 +1524,11 @@ export type Admissao = {
     whatsapp: string;          // só dígitos
   };
   cargoId: string;
+  // Pessoa pré-existente vinculada (quando o CPF do candidato já estava em
+  // /pessoas — ex: era freela e agora vira empregado registrado). Na hora
+  // de criar o Empregado na admissão, reusa essa Pessoa em vez de
+  // duplicar.
+  pessoaIdVinculada?: string;
 
   // Opcionais na etapa 1
   horariosCadastrados?: Record<string, { in: string; out: string } | { folga: true }>;

@@ -87,6 +87,7 @@ export type IniciarAdmissaoInput = {
   dataAdmissao?: string;
   cargoConfianca?: boolean;
   schemaUsado: FormField[];   // passa snapshot já resolvido
+  pessoaIdVinculada?: string; // se o CPF já existia em /pessoas
 };
 
 export async function iniciarAdmissao(
@@ -108,6 +109,7 @@ export async function iniciarAdmissao(
     token: gerarToken(),
     schemaUsado: input.schemaUsado,
     restaurantSnapshot: input.restaurantSnapshot,
+    pessoaIdVinculada: input.pessoaIdVinculada,
     createdAt: now,
     updatedAt: now,
   };
@@ -155,6 +157,27 @@ export async function reenviarAdmissao(
     updatedAt: enviadoEm,
   });
   return { token, enviadoEm, expiraEm };
+}
+
+// Busca pessoa por CPF (qualquer restaurante). Retorna a 1ª que casar.
+// Usado pra detectar duplicação no momento de iniciar admissão e oferecer
+// reusar dados existentes (ex: ex-freela virando empregado registrado).
+export async function buscarPessoaPorCpf(
+  cpfDigits: string,
+): Promise<{ id: string; nome: string; email: string; whatsapp?: string; restaurantIds: string[] } | null> {
+  if (!cpfDigits || cpfDigits.length !== 11) return null;
+  const q = query(collection(db, "pessoas"), where("cpf", "==", cpfDigits));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  const data = d.data() as { nome?: string; email?: string; whatsapp?: string; restaurantIds?: string[] };
+  return {
+    id: d.id,
+    nome: data.nome || "",
+    email: data.email || "",
+    whatsapp: data.whatsapp,
+    restaurantIds: data.restaurantIds || [],
+  };
 }
 
 export async function listarAdmissoes(restaurantId: string): Promise<Admissao[]> {
