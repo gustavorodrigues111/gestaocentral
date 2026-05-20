@@ -181,7 +181,7 @@ export function SubtarefasDrawer({
       return;
     }
     const msg = montarMensagemBancoFinanceiro(admissao);
-    const url = `https://wa.me/${WHATSAPP_FINANCEIRO_DEFAULT}?text=${encodeURIComponent(msg)}`;
+    const url = `https://api.whatsapp.com/send?phone=${WHATSAPP_FINANCEIRO_DEFAULT}&text=${encodeURIComponent(msg)}`;
     window.open(url, "_blank");
     if (!s.feita) void toggle(s);
   }

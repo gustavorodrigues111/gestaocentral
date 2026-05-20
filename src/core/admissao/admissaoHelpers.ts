@@ -569,7 +569,19 @@ export function montarMensagemEnvioLink(
   ].join("\n");
 }
 
-// Link wa.me pra o candidato mandar os documentos pro WhatsApp do DP.
+// Monta URL canonical do WhatsApp pra abrir o chat de um número com texto
+// pré-preenchido. Usa api.whatsapp.com/send (em vez de wa.me) porque o
+// redirect do wa.me às vezes mexe na codificação UTF-8 do texto e quebra
+// emojis em alguns clients.
+function montarLinkWhatsApp(numero: string, texto: string): string | null {
+  const num = (numero || "").replace(/\D/g, "");
+  if (!num) return null;
+  const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
+  if (numCompleto.length < 12) return null;
+  return `https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(texto)}`;
+}
+
+// Link pro candidato mandar os documentos pro WhatsApp do DP.
 // Usado dentro da página pública (botão "Enviar documentos via WhatsApp").
 export function linkWhatsAppDP(
   whatsappDP: string,
@@ -577,10 +589,6 @@ export function linkWhatsAppDP(
   candidatoCpf: string,
   restNome: string,
 ): string | null {
-  const num = (whatsappDP || "").replace(/\D/g, "");
-  if (!num) return null;
-  const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
-  if (numCompleto.length < 12) return null;
   const cpfFmt = candidatoCpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
   const msg = [
     `Olá! Estou enviando os documentos pra minha admissão no ${restNome}.`,
@@ -589,19 +597,15 @@ export function linkWhatsAppDP(
     "",
     "Vou enviar as fotos a seguir.",
   ].join("\n");
-  return `https://wa.me/${numCompleto}?text=${encodeURIComponent(msg)}`;
+  return montarLinkWhatsApp(whatsappDP, msg);
 }
 
-// Link wa.me pra mandar o link da admissão pro candidato.
+// Link pra mandar o link da admissão pro candidato.
 export function linkWhatsAppCandidato(
   whatsapp: string,
   texto: string,
 ): string | null {
-  const num = (whatsapp || "").replace(/\D/g, "");
-  if (!num) return null;
-  const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
-  if (numCompleto.length < 12) return null;
-  return `https://wa.me/${numCompleto}?text=${encodeURIComponent(texto)}`;
+  return montarLinkWhatsApp(whatsapp, texto);
 }
 
 // ─── Status helpers ────────────────────────────────────────────────────────
@@ -877,9 +881,7 @@ export function montarMensagemInstrucoesCandidato(
       ? `Mensagem importante com 2 temas fundamentais pra sua admissão pela ${restNome}:`
       : `Mensagem importante com 3 temas fundamentais pra sua admissão pela ${restNome}:`,
     "",
-    "═══════════════════════════════════════",
-    "📅 BLOCO 1 — EXAME MÉDICO",
-    "═══════════════════════════════════════",
+    "*BLOCO 1 — EXAME MÉDICO*",
     "Seu exame admissional foi agendado:",
     `• Data: ${quando}`,
     `• Local: ${clinica.nome}`,
@@ -888,26 +890,22 @@ export function montarMensagemInstrucoesCandidato(
     "",
     "Favor comparecer no dia/horário marcados, levando documento com foto.",
     "",
-    "No dia, você recebe também uma guia pra fazer o exame parasitológico — pra isso vai precisar de um potinho de coleta de fezes:",
-    "• Retirar conosco mediante agendamento no escritório, OU",
+    "Importante: no dia, você recebe também uma guia pra fazer o exame parasitológico — pra isso vai precisar de um potinho de coleta de fezes. Você pode:",
+    "• Retirar conosco mediante agendamento no escritório; OU",
     "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso.",
     "",
   );
   // Bloco 2 (conta Itaú) só aparece quando candidato ainda não tem Itaú
   if (!jaTemItau) {
     partes.push(
-      "═══════════════════════════════════════",
-      "🏦 BLOCO 2 — CONTA BANCÁRIA ITAÚ",
-      "═══════════════════════════════════════",
+      "*BLOCO 2 — CONTA BANCÁRIA ITAÚ*",
       `Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.`,
       "",
     );
   }
   // Bloco final é sempre o de docs — numeração ajusta automaticamente
   partes.push(
-    "═══════════════════════════════════════",
-    jaTemItau ? "📎 BLOCO 2 — DOCUMENTOS PRA WHATSAPP" : "📎 BLOCO 3 — DOCUMENTOS PRA WHATSAPP",
-    "═══════════════════════════════════════",
+    jaTemItau ? "*BLOCO 2 — DOCUMENTOS PRA WHATSAPP*" : "*BLOCO 3 — DOCUMENTOS PRA WHATSAPP*",
     `Mande as fotos dos seguintes documentos por aqui em até ${prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`}:`,
     "",
     docsLista,
