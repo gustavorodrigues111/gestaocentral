@@ -1551,6 +1551,11 @@ export type Admissao = {
   dadosPreenchidos?: Record<string, unknown>;
   preenchidoEm?: string;       // ISO
 
+  // Quando o RH preenche o formulário pelo candidato (canal alternativo:
+  // papel, e-mail, WhatsApp). Mantém auditoria de que não foi o próprio
+  // candidato pela página pública.
+  preenchimentoManual?: { por: { id: string; nome: string } | null; em: string };
+
   // Declaração de veracidade + selfie de validação. Submetida junto com o form.
   validacao?: {
     selfieDataUrl?: string;    // base64 (JPEG comprimido, max ~250KB)

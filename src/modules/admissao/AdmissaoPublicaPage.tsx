@@ -62,9 +62,9 @@ async function comprimirImagem(file: File, maxLado = 800, quality = 0.7): Promis
 // IDs do schema cujos valores vêm do cadastro inicial do RH e NÃO podem ser
 // editados pelo candidato. Se a admissão usa um schema customizado que não
 // inclui esses ids, simplesmente não há lock (campos só do candidato).
-const IDS_CONFIRMADOS = ["nome_completo", "cpf", "email_recibo", "whatsapp"] as const;
+export const IDS_CONFIRMADOS = ["nome_completo", "cpf", "email_recibo", "whatsapp"] as const;
 
-function mapaConfirmados(adm: Admissao): Record<string, string> {
+export function mapaConfirmados(adm: Admissao): Record<string, string> {
   // CPF formatado pra leitura. Mantém só dígitos quando submeter — Firestore
   // recebe o que estiver em dados[id], então preserva como string fmt aqui.
   const cpfFmt = adm.candidato.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
@@ -82,13 +82,13 @@ function mapaConfirmados(adm: Admissao): Record<string, string> {
   };
 }
 
-function isConfirmado(fieldId: string): boolean {
+export function isConfirmado(fieldId: string): boolean {
   return (IDS_CONFIRMADOS as readonly string[]).includes(fieldId);
 }
 
 // Verifica se um valor está "vazio" pra fim de validação obrigatória.
 // Considera tipo do campo: naturalidade exige uf + cidade preenchidos.
-function vazio(v: unknown, tipo: string): boolean {
+export function vazio(v: unknown, tipo: string): boolean {
   if (v == null || v === "") return true;
   if (Array.isArray(v)) return v.length === 0;
   if (tipo === "naturalidade" && typeof v === "object") {
@@ -541,7 +541,7 @@ export function AdmissaoPublicaPage() {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function agruparPorGrupo(schema: FormField[]): { grupo: string; campos: FormField[] }[] {
+export function agruparPorGrupo(schema: FormField[]): { grupo: string; campos: FormField[] }[] {
   const ativos = schema.filter((f) => f.ativo).sort((a, b) => a.ordem - b.ordem);
   const map = new Map<string, FormField[]>();
   for (const f of ativos) {
@@ -552,12 +552,12 @@ function agruparPorGrupo(schema: FormField[]): { grupo: string; campos: FormFiel
   return Array.from(map.entries()).map(([grupo, campos]) => ({ grupo, campos }));
 }
 
-type RenderCtx = {
+export type RenderCtx = {
   numFilhosDeclarados?: number;
   vtNaoUtiliza?: boolean;
 };
 
-function CampoRender({
+export function CampoRender({
   field,
   value,
   onChange,

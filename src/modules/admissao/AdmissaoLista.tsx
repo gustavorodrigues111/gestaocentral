@@ -35,6 +35,7 @@ import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
+import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { atualizarChecklistDocumentos } from "../../core/admissao/admissaoHelpers";
 
 type Props = {
@@ -186,16 +187,30 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
   const [admDadosBasicos, setAdmDadosBasicos] = useState<Admissao | null>(null);
 
+  const [admPreenchimentoManual, setAdmPreenchimentoManual] = useState<Admissao | null>(null);
+
   async function handleAvancar(adm: Admissao) {
     const prox = proximoStatus(adm.status);
     if (!prox) return;
+    // formulario_enviado → formulario_preenchido só faz sentido se há dados.
+    // Se não houver, abre o modal pro RH preencher pelo candidato.
+    if (prox === "formulario_preenchido" && !adm.dadosPreenchidos) {
+      const ok = confirm(
+        "Esse candidato ainda não preencheu o formulário online.\n\n" +
+        'Pra marcar como "Formulário preenchido" você precisa preencher os ' +
+        "dados (caso o candidato tenha mandado por outro canal — papel, " +
+        "e-mail, WhatsApp). Abrir o formulário agora?",
+      );
+      if (ok) setAdmPreenchimentoManual(adm);
+      return;
+    }
     // Pra passar de documentos_recebidos → dados_finais_preenchidos exige
     // que os 4 campos (cargo, data admissão, salário, horários) estejam ok.
     if (prox === "dados_finais_preenchidos" && !temDadosFinaisCompletos(adm)) {
       alert(
         "Pra avançar pra 'Dados finais preenchidos' é preciso ter: cargo, data " +
-        "de admissão, salário e horários cadastrados. Edite os dados básicos da " +
-        "admissão pra completar (em iteração futura).",
+        "de admissão, salário e horários cadastrados. Use o botão 'Preencher " +
+        "dados básicos' acima.",
       );
       return;
     }
@@ -408,6 +423,14 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           activeRestaurant={activeRestaurant}
           onClose={() => setAdmDadosBasicos(null)}
           onSaved={() => setAdmDadosBasicos(null)}
+        />
+      )}
+
+      {admPreenchimentoManual && (
+        <PreencherFormManualModal
+          admissao={admPreenchimentoManual}
+          onClose={() => setAdmPreenchimentoManual(null)}
+          onSaved={() => setAdmPreenchimentoManual(null)}
         />
       )}
     </div>
