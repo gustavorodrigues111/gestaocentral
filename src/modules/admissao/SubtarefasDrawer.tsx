@@ -184,11 +184,11 @@ export function SubtarefasDrawer({
     if (tipo === "clinica") {
       contato = getContatoClinica(activeRestaurant);
       assunto = `Agendamento exame admissional — ${admissao.candidato.nome}`;
-      corpo = montarCorpoEmailClinica(admissao, cargo?.nome, activeRestaurant.nome);
+      corpo = montarCorpoEmailClinica(admissao, cargo?.nome, activeRestaurant.nome, activeRestaurant);
     } else if (tipo === "contabilidade") {
       contato = getContatoContabilidade(activeRestaurant);
       assunto = `Solicitação de admissão — ${admissao.candidato.nome} (${activeRestaurant.nome})`;
-      corpo = montarCorpoEmailContabilidade(admissao, cargo, activeRestaurant.nome);
+      corpo = montarCorpoEmailContabilidade(admissao, cargo, activeRestaurant.nome, activeRestaurant);
     } else {
       contato = getContatoFinanceiro(activeRestaurant);
       // Pré-check pro financeiro: precisa dos dados bancários antes
@@ -198,7 +198,7 @@ export function SubtarefasDrawer({
         return;
       }
       assunto = "Cadastro de empregado no banco interno";
-      corpo = montarMensagemBancoFinanceiro(admissao);
+      corpo = montarMensagemBancoFinanceiro(admissao, activeRestaurant);
     }
 
     // Despacha por canal
@@ -243,6 +243,7 @@ export function SubtarefasDrawer({
       s.dataAgendada,
       clinica,
       prazoDocs,
+      activeRestaurant,
     );
     const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
     if (!link) {

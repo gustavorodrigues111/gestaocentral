@@ -6,7 +6,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import XLSX from "xlsx-js-style";
-import type { Admissao, Cargo, FormField } from "../types";
+import type { Admissao, Cargo, FormField, Restaurant } from "../types";
+import { getTemplate, renderTemplate } from "./admissaoHelpers";
 
 // ─── Formatadores ──────────────────────────────────────────────────────────
 
@@ -570,31 +571,23 @@ export function montarCorpoEmailContabilidade(
   admissao: Admissao,
   cargo: Cargo | undefined,
   restNome: string,
+  rest?: Restaurant | null,
 ): string {
   const c = admissao.candidato;
-  const linhas = [
-    `Olá,`,
-    ``,
-    `Segue solicitação de admissão pra processar:`,
-    ``,
-    `🏢 Empresa: ${restNome}`,
-    `👤 Candidato: ${c.nome}`,
-    `📋 CPF: ${c.cpf}`,
-    `📧 E-mail: ${c.email}`,
-    `📱 WhatsApp: ${c.whatsapp}`,
-    ``,
-    `💼 Cargo: ${cargo?.nome || "—"}${cargo?.area ? ` (${cargo.area})` : ""}`,
-    admissao.salario ? `💰 Salário: ${admissao.salario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}` : "",
-    admissao.dataAdmissao ? `📅 Data de admissão: ${admissao.dataAdmissao.split("-").reverse().join("/")}` : "",
-    admissao.cargoConfianca ? `⭐ Cargo de confiança: Sim` : "",
-    ``,
-    `📎 Anexe a ficha completa (arquivo XLSX baixado automaticamente).`,
-    ``,
-    `Os documentos do candidato foram coletados via WhatsApp e estão no nosso DP.`,
-    ``,
-    `Qualquer dúvida, me avisa.`,
-    ``,
-    `Obrigado!`,
-  ].filter((l) => l !== "");
-  return linhas.join("\n");
+  const template = getTemplate(rest, "envioContabilidade");
+  return renderTemplate(template, {
+    restaurante: restNome,
+    nome: c.nome,
+    cpf: c.cpf,
+    email: c.email,
+    whatsapp: c.whatsapp,
+    cargo: cargo ? `${cargo.nome}${cargo.area ? ` (${cargo.area})` : ""}` : "—",
+    salarioLinha: admissao.salario
+      ? `💰 Salário: ${admissao.salario.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}\n`
+      : "",
+    dataAdmissaoLinha: admissao.dataAdmissao
+      ? `📅 Data de admissão: ${admissao.dataAdmissao.split("-").reverse().join("/")}\n`
+      : "",
+    cargoConfiancaLinha: admissao.cargoConfianca ? "⭐ Cargo de confiança: Sim\n" : "",
+  });
 }

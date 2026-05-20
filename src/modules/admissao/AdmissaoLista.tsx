@@ -195,6 +195,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       activeRestaurant.nome,
       url,
       prazoDias,
+      activeRestaurant,
     );
     const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
     if (!link) {
@@ -216,6 +217,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       activeRestaurant.nome,
       url,
       prazoDias,
+      activeRestaurant,
     );
     const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
     if (link) window.open(link, "_blank");
@@ -293,7 +295,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
         const url = montarGmailComposeUrl({
           to: emailDest,
           subject: `Solicitação de admissão — ${adm.candidato.nome} (${activeRestaurant.nome})`,
-          body: montarCorpoEmailContabilidade(adm, cargo, activeRestaurant.nome),
+          body: montarCorpoEmailContabilidade(adm, cargo, activeRestaurant.nome, activeRestaurant),
         });
         window.open(url, "_blank");
         if (me) {

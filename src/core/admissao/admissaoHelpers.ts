@@ -157,6 +157,133 @@ export function getContatoFinanceiro(rest: Restaurant | null | undefined): Conta
   return rest?.contatosAdmissao?.financeiroBanco || CONTATO_FINANCEIRO_DEFAULT;
 }
 
+// ─── Templates de mensagens ────────────────────────────────────────────────
+// Cada template é uma string com placeholders {{xxx}}. `renderTemplate`
+// substitui pelos valores do contexto. Se restaurante não tem template
+// salvo, usa o default global em TEMPLATES_DEFAULT.
+
+export type TemplateKey =
+  | "envioLink"
+  | "instrucoesCandidato"
+  | "agendamentoClinica"
+  | "envioContabilidade"
+  | "solicitacaoBanco";
+
+export const TEMPLATES_DEFAULT: Record<TemplateKey, string> = {
+  envioLink:
+`Olá, {{primeiroNome}}! Tudo bem?
+
+Aqui é da equipe do {{restaurante}}. Estamos com tudo pronto pra sua admissão — só precisamos que você preencha a ficha cadastral abaixo:
+
+{{linkAdmissao}}
+
+Você tem {{prazoLabel}} pra preencher. Depois desse prazo o link expira automaticamente.
+
+Para acessar, vai ser solicitado o e-mail que você me informou.
+
+Qualquer dúvida, me avisa por aqui!`,
+
+  instrucoesCandidato:
+`Olá, {{primeiroNome}}!
+
+Mensagem importante com {{numBlocos}} temas fundamentais pra sua admissão pela {{restaurante}}:
+
+*BLOCO 1 — EXAME MÉDICO*
+Seu exame admissional foi agendado:
+• Data: {{dataExame}}
+• Local: {{clinicaNome}}
+• Endereço: {{clinicaEndereco}}
+• Telefone: {{clinicaTelefone}}
+
+Favor comparecer no dia/horário marcados, levando documento com foto.
+
+Importante: no dia, você recebe também uma guia pra fazer o exame parasitológico — pra isso vai precisar de um potinho de coleta de fezes. Você pode:
+• Retirar conosco mediante agendamento no escritório; OU
+• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso.
+
+{{blocoConta}}*BLOCO {{numBlocoDocs}} — DOCUMENTOS PRA WHATSAPP*
+Mande as fotos dos seguintes documentos por aqui em até {{prazoDocs}}:
+
+{{listaDocs}}
+
+Qualquer dúvida, é só responder por aqui!`,
+
+  agendamentoClinica:
+`Olá,
+
+Preciso agendar exames admissionais (clínico + manipulador de alimentos) para o seguinte candidato:
+
+Empresa: {{restaurante}}
+Nome: {{nome}}
+CPF: {{cpf}}
+RG: {{rg}}
+Cargo: {{cargo}}
+Data de admissão: {{dataAdmissao}}
+
+Aguardo retorno com horários disponíveis. Obrigado!`,
+
+  envioContabilidade:
+`Olá,
+
+Segue solicitação de admissão pra processar:
+
+🏢 Empresa: {{restaurante}}
+👤 Candidato: {{nome}}
+📋 CPF: {{cpf}}
+📧 E-mail: {{email}}
+📱 WhatsApp: {{whatsapp}}
+
+💼 Cargo: {{cargo}}
+{{salarioLinha}}{{dataAdmissaoLinha}}{{cargoConfiancaLinha}}
+
+📎 Anexe a ficha completa (arquivo XLSX baixado automaticamente).
+
+Os documentos do candidato foram coletados via WhatsApp e estão no nosso DP.
+
+Qualquer dúvida, me avisa.
+
+Obrigado!`,
+
+  solicitacaoBanco:
+`Olá! Segue solicitação de cadastro no banco interno:
+
+Nome: {{nome}}
+CPF: {{cpf}}
+
+Conta Itaú:
+• Tipo: {{contaTipo}}
+• Agência: {{contaAgencia}}
+• Conta: {{contaConta}}
+
+Obrigado!`,
+};
+
+export function getTemplate(
+  rest: Restaurant | null | undefined,
+  key: TemplateKey,
+): string {
+  const custom = rest?.templatesAdmissao?.[key]?.trim();
+  return custom || TEMPLATES_DEFAULT[key];
+}
+
+// Substitui {{chave}} pelos valores do dicionário. Chaves não encontradas
+// ficam como está (não quebra). Suporta múltiplas ocorrências da mesma chave.
+export function renderTemplate(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (full, key) => {
+    return vars[key] !== undefined ? vars[key] : full;
+  });
+}
+
+// Lista de placeholders disponíveis em cada template — usada pelo editor de
+// Config pra mostrar dicas pro RH.
+export const PLACEHOLDERS_DISPONIVEIS: Record<TemplateKey, string[]> = {
+  envioLink: ["primeiroNome", "restaurante", "linkAdmissao", "prazoLabel"],
+  instrucoesCandidato: ["primeiroNome", "restaurante", "numBlocos", "numBlocoDocs", "dataExame", "clinicaNome", "clinicaEndereco", "clinicaTelefone", "blocoConta", "prazoDocs", "listaDocs"],
+  agendamentoClinica: ["restaurante", "nome", "cpf", "rg", "cargo", "dataAdmissao"],
+  envioContabilidade: ["restaurante", "nome", "cpf", "email", "whatsapp", "cargo", "salarioLinha", "dataAdmissaoLinha", "cargoConfiancaLinha"],
+  solicitacaoBanco: ["nome", "cpf", "contaTipo", "contaAgencia", "contaConta"],
+};
+
 // ─── CRUD ──────────────────────────────────────────────────────────────────
 
 export type IniciarAdmissaoInput = {
@@ -615,6 +742,7 @@ export async function salvarConfigAdmissao(
     | "admissaoPrazoDias"
     | "whatsappDP"
     | "contatosAdmissao"
+    | "templatesAdmissao"
     | "emailContabilidade"
     | "emailClinicaExames"
     | "clinicaExamesNome"
@@ -640,21 +768,16 @@ export function montarMensagemEnvioLink(
   restNome: string,
   url: string,
   prazoDias: number,
+  rest?: Restaurant | null,
 ): string {
   const primeiroNome = candidatoNome.split(" ")[0] || candidatoNome;
-  return [
-    `Olá, ${primeiroNome}! Tudo bem?`,
-    "",
-    `Aqui é da equipe do ${restNome}. Estamos com tudo pronto pra sua admissão — só precisamos que você preencha a ficha cadastral abaixo:`,
-    "",
-    url,
-    "",
-    `Você tem ${prazoDias === 1 ? "24 horas" : `${prazoDias} dias`} pra preencher. Depois desse prazo o link expira automaticamente.`,
-    "",
-    "Para acessar, vai ser solicitado o e-mail que você me informou.",
-    "",
-    "Qualquer dúvida, me avisa por aqui!",
-  ].join("\n");
+  const template = getTemplate(rest, "envioLink");
+  return renderTemplate(template, {
+    primeiroNome,
+    restaurante: restNome,
+    linkAdmissao: url,
+    prazoLabel: prazoDias === 1 ? "24 horas" : `${prazoDias} dias`,
+  });
 }
 
 // Monta URL canonical do WhatsApp pra abrir o chat de um número com texto
@@ -889,6 +1012,7 @@ export function montarCorpoEmailClinica(
   admissao: Admissao,
   cargoNome: string | undefined,
   restNome: string,
+  rest?: Restaurant | null,
 ): string {
   const c = admissao.candidato;
   const dataAdm = admissao.dataAdmissao
@@ -900,22 +1024,17 @@ export function montarCorpoEmailClinica(
   const rgOrgao = typeof dados.rg_orgao === "string" ? dados.rg_orgao.trim() : "";
   const rgUf = typeof dados.rg_uf === "string" ? dados.rg_uf.trim() : "";
   const rgLinha = rgVal
-    ? `RG: ${rgVal}${rgOrgao ? ` ${rgOrgao}` : ""}${rgUf ? `/${rgUf}` : ""}`
-    : "RG: (será enviado pelo candidato)";
-  return [
-    "Olá,",
-    "",
-    "Preciso agendar exames admissionais (clínico + manipulador de alimentos) para o seguinte candidato:",
-    "",
-    `Empresa: ${restNome}`,
-    `Nome: ${c.nome}`,
-    `CPF: ${cpfFmt}`,
-    rgLinha,
-    `Cargo: ${cargoNome || "(a confirmar)"}`,
-    `Data de admissão: ${dataAdm}`,
-    "",
-    "Aguardo retorno com horários disponíveis. Obrigado!",
-  ].join("\n");
+    ? `${rgVal}${rgOrgao ? ` ${rgOrgao}` : ""}${rgUf ? `/${rgUf}` : ""}`
+    : "(será enviado pelo candidato)";
+  const template = getTemplate(rest, "agendamentoClinica");
+  return renderTemplate(template, {
+    restaurante: restNome,
+    nome: c.nome,
+    cpf: cpfFmt,
+    rg: rgLinha,
+    cargo: cargoNome || "(a confirmar)",
+    dataAdmissao: dataAdm,
+  });
 }
 
 // Formata "YYYY-MM-DDTHH:MM" local (vindo de <input type="datetime-local">)
@@ -947,81 +1066,59 @@ export const LISTA_DOCS_WHATSAPP = [
 
 // Mensagem única de instruções. Tipicamente tem 3 blocos (exame + conta
 // Itaú + docs); se o candidato já informou conta Itaú no form, o bloco 2
-// é pulado e a intro vira "2 temas".
+// é pulado e a intro vira "2 temas". Usa template configurável do
+// restaurante; placeholders incluem blocoConta (vazio ou bloco 2 inteiro)
+// + numBlocos/numBlocoDocs pra ajustar numeração.
 export function montarMensagemInstrucoesCandidato(
   admissao: Admissao,
   restNome: string,
   dataHoraExame: string,
   clinica: { nome: string; endereco: string; telefone: string },
   prazoDocsDias: number,
+  rest?: Restaurant | null,
 ): string {
   const primeiroNome = admissao.candidato.nome.split(" ")[0] || admissao.candidato.nome;
   const quando = dataHoraExame ? fmtDataHoraLocal(dataHoraExame) : "(data a confirmar)";
   const docsLista = LISTA_DOCS_WHATSAPP.map((d) => `• ${d}`).join("\n");
   const jaTemItau = !!admissao.dadosBancariosItau?.agencia?.trim()
     && !!admissao.dadosBancariosItau?.conta?.trim();
+  const blocoConta = jaTemItau ? "" : (
+`*BLOCO 2 — CONTA BANCÁRIA ITAÚ*
+Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.
 
-  const partes: string[] = [];
-  partes.push(
-    `Olá, ${primeiroNome}!`,
-    "",
-    jaTemItau
-      ? `Mensagem importante com 2 temas fundamentais pra sua admissão pela ${restNome}:`
-      : `Mensagem importante com 3 temas fundamentais pra sua admissão pela ${restNome}:`,
-    "",
-    "*BLOCO 1 — EXAME MÉDICO*",
-    "Seu exame admissional foi agendado:",
-    `• Data: ${quando}`,
-    `• Local: ${clinica.nome}`,
-    `• Endereço: ${clinica.endereco}`,
-    `• Telefone: ${clinica.telefone}`,
-    "",
-    "Favor comparecer no dia/horário marcados, levando documento com foto.",
-    "",
-    "Importante: no dia, você recebe também uma guia pra fazer o exame parasitológico — pra isso vai precisar de um potinho de coleta de fezes. Você pode:",
-    "• Retirar conosco mediante agendamento no escritório; OU",
-    "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso.",
-    "",
+`
   );
-  // Bloco 2 (conta Itaú) só aparece quando candidato ainda não tem Itaú
-  if (!jaTemItau) {
-    partes.push(
-      "*BLOCO 2 — CONTA BANCÁRIA ITAÚ*",
-      `Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.`,
-      "",
-    );
-  }
-  // Bloco final é sempre o de docs — numeração ajusta automaticamente
-  partes.push(
-    jaTemItau ? "*BLOCO 2 — DOCUMENTOS PRA WHATSAPP*" : "*BLOCO 3 — DOCUMENTOS PRA WHATSAPP*",
-    `Mande as fotos dos seguintes documentos por aqui em até ${prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`}:`,
-    "",
-    docsLista,
-    "",
-    "Qualquer dúvida, é só responder por aqui!",
-  );
-  return partes.join("\n");
+  const template = getTemplate(rest, "instrucoesCandidato");
+  return renderTemplate(template, {
+    primeiroNome,
+    restaurante: restNome,
+    numBlocos: jaTemItau ? "2" : "3",
+    numBlocoDocs: jaTemItau ? "2" : "3",
+    dataExame: quando,
+    clinicaNome: clinica.nome,
+    clinicaEndereco: clinica.endereco,
+    clinicaTelefone: clinica.telefone,
+    blocoConta,
+    prazoDocs: prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`,
+    listaDocs: docsLista,
+  });
 }
 
-// Mensagem padrão pra solicitar cadastro do empregado no banco interno —
-// vai pro WhatsApp do financeiro do escritório.
-export function montarMensagemBancoFinanceiro(admissao: Admissao): string {
+// Mensagem padrão pra solicitar cadastro do empregado no banco interno.
+export function montarMensagemBancoFinanceiro(admissao: Admissao, rest?: Restaurant | null): string {
   const c = admissao.candidato;
   const cpfFmt = c.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
   const dados = admissao.dadosBancariosItau;
-  return [
-    "Olá! Segue solicitação de cadastro no banco interno:",
-    "",
-    `Nome: ${c.nome}`,
-    `CPF: ${cpfFmt}`,
-    "",
-    "Conta Itaú:",
-    `• Tipo: ${dados?.tipo === "salario" ? "salário" : dados?.tipo === "corrente" ? "corrente" : "(não informado)"}`,
-    `• Agência: ${dados?.agencia || "(não informada)"}`,
-    `• Conta: ${dados?.conta || "(não informada)"}`,
-    "",
-    "Obrigado!",
-  ].join("\n");
+  const template = getTemplate(rest, "solicitacaoBanco");
+  return renderTemplate(template, {
+    nome: c.nome,
+    cpf: cpfFmt,
+    contaTipo: dados?.tipo === "salario" ? "salário"
+      : dados?.tipo === "corrente" ? "corrente"
+      : "(não informado)",
+    contaAgencia: dados?.agencia || "(não informada)",
+    contaConta: dados?.conta || "(não informada)",
+  });
 }
 
 export { WHATSAPP_FINANCEIRO_DEFAULT, PRAZO_CONTA_ITAU_DIAS };

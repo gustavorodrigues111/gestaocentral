@@ -12,9 +12,13 @@ import {
   getContatoContabilidade,
   getContatoFinanceiro,
   getPrazoDias,
+  getTemplate,
   getWhatsappDP,
+  PLACEHOLDERS_DISPONIVEIS,
   resetarLayoutKanban,
   salvarConfigAdmissao,
+  TEMPLATES_DEFAULT,
+  type TemplateKey,
 } from "../../core/admissao/admissaoHelpers";
 import type { CanalContato, ContatoExterno, Restaurant } from "../../core/types";
 
@@ -36,6 +40,14 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [contatoClinica, setContatoClinica] = useState<ContatoExterno>(() => getContatoClinica(activeRestaurant));
   const [contatoContabilidade, setContatoContabilidade] = useState<ContatoExterno>(() => getContatoContabilidade(activeRestaurant));
   const [contatoFinanceiro, setContatoFinanceiro] = useState<ContatoExterno>(() => getContatoFinanceiro(activeRestaurant));
+  // Templates de mensagem editáveis. Inicializa com o salvo OU com o default.
+  const [templates, setTemplates] = useState<Record<TemplateKey, string>>(() => ({
+    envioLink: getTemplate(activeRestaurant, "envioLink"),
+    instrucoesCandidato: getTemplate(activeRestaurant, "instrucoesCandidato"),
+    agendamentoClinica: getTemplate(activeRestaurant, "agendamentoClinica"),
+    envioContabilidade: getTemplate(activeRestaurant, "envioContabilidade"),
+    solicitacaoBanco: getTemplate(activeRestaurant, "solicitacaoBanco"),
+  }));
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [resetando, setResetando] = useState(false);
@@ -66,6 +78,16 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
     setMsg("");
     setSalvando(true);
     try {
+      // Só grava templates que foram efetivamente editados (diferentes do
+      // default global) — pra restaurante "limpo" não poluir com dados
+      // iguais ao default. Restaura é só deletar (set undefined / vazio).
+      const templatesPraSalvar: Partial<Record<TemplateKey, string>> = {};
+      (Object.keys(templates) as TemplateKey[]).forEach((k) => {
+        const v = templates[k]?.trim();
+        if (v && v !== TEMPLATES_DEFAULT[k].trim()) {
+          templatesPraSalvar[k] = v;
+        }
+      });
       await salvarConfigAdmissao(rid, {
         admissaoPrazoDias: prazoDias,
         whatsappDP: onlyDigits(whatsappDP) || undefined,
@@ -74,6 +96,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           contabilidade: contatoContabilidade,
           financeiroBanco: contatoFinanceiro,
         },
+        templatesAdmissao: Object.keys(templatesPraSalvar).length > 0 ? templatesPraSalvar : undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -155,6 +178,58 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         contato={contatoFinanceiro}
         onChange={setContatoFinanceiro}
       />
+
+      {/* Templates de mensagem — colapsável pra não ocupar tela toda */}
+      <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+        <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
+          ✉️ Templates de mensagens
+          <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+            (toque pra expandir — 5 mensagens editáveis)
+          </span>
+        </summary>
+        <div className="p-4 pt-0 space-y-4">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Cada mensagem usa placeholders <code className="text-indigo-600 dark:text-indigo-400">{`{{nome}}`}</code>
+            {" "}que o sistema substitui na hora de gerar a mensagem real.
+            Defaults vêm pré-configurados — restaure se errar.
+          </p>
+          <EditorTemplate
+            chave="envioLink"
+            titulo="📨 Envio do link inicial"
+            sub="WhatsApp pro candidato logo após o RH iniciar a admissão"
+            valor={templates.envioLink}
+            onChange={(v) => setTemplates((t) => ({ ...t, envioLink: v }))}
+          />
+          <EditorTemplate
+            chave="instrucoesCandidato"
+            titulo="📣 Instruções únicas (3 blocos)"
+            sub="Mensagem pro candidato sobre exames, conta Itaú e docs"
+            valor={templates.instrucoesCandidato}
+            onChange={(v) => setTemplates((t) => ({ ...t, instrucoesCandidato: v }))}
+          />
+          <EditorTemplate
+            chave="agendamentoClinica"
+            titulo="🩺 Agendamento com a clínica"
+            sub="Email/WhatsApp/script telefone pra agendar exames com a clínica"
+            valor={templates.agendamentoClinica}
+            onChange={(v) => setTemplates((t) => ({ ...t, agendamentoClinica: v }))}
+          />
+          <EditorTemplate
+            chave="envioContabilidade"
+            titulo="📊 Envio pra contabilidade"
+            sub="Email com a ficha pra contabilidade processar a admissão"
+            valor={templates.envioContabilidade}
+            onChange={(v) => setTemplates((t) => ({ ...t, envioContabilidade: v }))}
+          />
+          <EditorTemplate
+            chave="solicitacaoBanco"
+            titulo="🏦 Solicitação ao financeiro"
+            sub="WhatsApp/email pra cadastrar o empregado no banco interno"
+            valor={templates.solicitacaoBanco}
+            onChange={(v) => setTemplates((t) => ({ ...t, solicitacaoBanco: v }))}
+          />
+        </div>
+      </details>
 
       <div className="flex items-center gap-2">
         <Button onClick={salvar} disabled={salvando}>
@@ -291,6 +366,60 @@ function EditorContato({
           ))}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── EditorTemplate: textarea + chips de placeholders + botão restaurar ──
+
+function EditorTemplate({
+  chave,
+  titulo,
+  sub,
+  valor,
+  onChange,
+}: {
+  chave: TemplateKey;
+  titulo: string;
+  sub: string;
+  valor: string;
+  onChange: (v: string) => void;
+}) {
+  const placeholders = PLACEHOLDERS_DISPONIVEIS[chave];
+  const ehDefault = valor.trim() === TEMPLATES_DEFAULT[chave].trim();
+  return (
+    <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <div className="font-semibold text-xs text-gray-900 dark:text-gray-100">{titulo}</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">{sub}</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => onChange(TEMPLATES_DEFAULT[chave])}
+          disabled={ehDefault}
+          className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
+        >
+          {ehDefault ? "✓ usando default" : "🔄 restaurar default"}
+        </button>
+      </div>
+      <div className="text-[10px] text-gray-500 dark:text-gray-400">
+        Placeholders disponíveis:{" "}
+        {placeholders.map((p) => (
+          <code
+            key={p}
+            className="inline-block mr-1 px-1 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 text-[10px]"
+          >
+            {`{{${p}}}`}
+          </code>
+        ))}
+      </div>
+      <textarea
+        value={valor}
+        onChange={(e) => onChange(e.target.value)}
+        rows={Math.min(14, Math.max(4, valor.split("\n").length + 1))}
+        className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono resize-y"
+      />
     </div>
   );
 }

@@ -397,6 +397,17 @@ export type Restaurant = {
     contabilidade?: ContatoExterno;
     financeiroBanco?: ContatoExterno;
   };
+  // Templates de mensagem configuráveis pelo restaurante. Cada string
+  // suporta placeholders {{nome}}. Defaults em formTemplate.ts —
+  // restaurante pode editar e o sistema substitui as variáveis na hora
+  // de gerar a mensagem.
+  templatesAdmissao?: {
+    envioLink?: string;             // WhatsApp inicial pro candidato com o link
+    instrucoesCandidato?: string;   // mensagem única 3 blocos
+    agendamentoClinica?: string;    // pra contato com a clínica
+    envioContabilidade?: string;    // pra contato com contabilidade
+    solicitacaoBanco?: string;      // pra contato com financeiro
+  };
   // Campos legados — mantidos pra retrocompat até migração completa.
   // Novos lugares devem ler de contatosAdmissao.
   emailContabilidade?: string;
