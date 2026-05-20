@@ -294,10 +294,25 @@ export function AdmissaoPublicaPage() {
           documentosWhatsapp: { aceita: true, em: now },
         },
       };
-      // Aplica auto-trigger "form_preenchido" nas subtarefas que aguardam
-      // esse evento (ex: "Adicionar contato + emergência").
+      // Se candidato já tem conta Itaú, popula dadosBancariosItau no doc
+      // da admissão — depois usado pela mensagem de instruções (pula o
+      // bloco 2 de abertura de conta) e pela subtarefa de cadastrar no
+      // banco. Default tipo = corrente; RH pode mudar pra salário no drawer.
+      const jaTemItau = dados.banco_tipo === "Já tenho conta no Itaú";
+      const dadosBancariosItau = jaTemItau ? {
+        tipo: "corrente" as const,
+        agencia: typeof dados.banco_agencia === "string" ? dados.banco_agencia : "",
+        conta:   typeof dados.banco_conta   === "string" ? dados.banco_conta   : "",
+      } : undefined;
+
+      // Aplica auto-triggers nas subtarefas: form_preenchido (sempre) e
+      // dados_bancarios_itau_recebidos (se candidato preencheu conta Itaú).
+      const triggersAtivos = new Set<string>(["form_preenchido"]);
+      if (jaTemItau && dadosBancariosItau?.agencia && dadosBancariosItau?.conta) {
+        triggersAtivos.add("dados_bancarios_itau_recebidos");
+      }
       const subtarefas = (admissao.subtarefas || []).map((s) =>
-        s.autoTrigger === "form_preenchido" && !s.feita
+        s.autoTrigger && triggersAtivos.has(s.autoTrigger) && !s.feita
           ? {
               ...s,
               feita: true,
@@ -314,6 +329,7 @@ export function AdmissaoPublicaPage() {
           preenchidoEm: now,
           validacao,
           ...(subtarefas.length > 0 ? { subtarefas } : {}),
+          ...(dadosBancariosItau ? { dadosBancariosItau } : {}),
           updatedAt: now,
         },
         { merge: true },
@@ -325,6 +341,7 @@ export function AdmissaoPublicaPage() {
         preenchidoEm: now,
         validacao,
         subtarefas,
+        ...(dadosBancariosItau ? { dadosBancariosItau } : {}),
       });
     } catch (e) {
       alert("Erro ao enviar: " + (e instanceof Error ? e.message : "?"));
@@ -534,6 +551,7 @@ export function AdmissaoPublicaPage() {
 
         {/* Box: ciência conta Itaú */}
         <CienciaContaItauBox
+          jaTemItau={dados.banco_tipo === "Já tenho conta no Itaú"}
           aceita={cienteContaItau}
           onChange={setCienteContaItau}
         />
@@ -1012,9 +1030,11 @@ void onlyDigits;
 function CienciaContaItauBox({
   aceita,
   onChange,
+  jaTemItau,
 }: {
   aceita: boolean;
   onChange: (v: boolean) => void;
+  jaTemItau: boolean;
 }) {
   return (
     <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-sky-50 border-sky-300"}`}>
@@ -1022,15 +1042,35 @@ function CienciaContaItauBox({
         🏦 Conta bancária para receber seu salário
       </h2>
       <div className="text-xs text-gray-800 space-y-2">
-        <p>Você precisa abrir uma conta no <strong>Itaú</strong> pra receber o salário. Pode ser:</p>
-        <ul className="list-disc pl-5 space-y-0.5">
-          <li><strong>Conta salário</strong> — gratuita, vinculada à empresa</li>
-          <li><strong>Conta corrente</strong> — normal, sua escolha</li>
-        </ul>
-        <p>
-          <strong>Prazo:</strong> você tem <strong>1 semana</strong> a partir de
-          hoje pra abrir e nos informar os dados (agência, conta e dígito).
-        </p>
+        {jaTemItau ? (
+          <>
+            <p>
+              ✓ Você já informou que <strong>tem conta no Itaú</strong> no bloco
+              Banco acima — isso facilita demais o processo, obrigado!
+            </p>
+            <p>
+              Confira agência e conta antes de enviar. Se ainda não preencheu
+              esses dados, volte pro bloco Banco.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>Você precisa abrir uma conta no <strong>Itaú</strong> pra receber o salário. Pode ser:</p>
+            <ul className="list-disc pl-5 space-y-0.5">
+              <li><strong>Conta salário</strong> — gratuita, vinculada à empresa</li>
+              <li><strong>Conta corrente</strong> — normal, sua escolha</li>
+            </ul>
+            <p>
+              <strong>Prazo:</strong> você tem <strong>1 semana</strong> a partir de
+              hoje pra abrir e nos informar os dados (agência, conta e dígito).
+            </p>
+            <p className="bg-amber-100/50 border border-amber-200 rounded p-2">
+              💡 <strong>Já tem Itaú?</strong> Marque "Já tenho conta no Itaú" no
+              bloco Banco lá em cima e preenche os dados — você pula essa
+              etapa de abertura e a gente já agiliza tudo.
+            </p>
+          </>
+        )}
       </div>
       <label className="flex items-start gap-2 mt-3 cursor-pointer select-none">
         <input
@@ -1040,8 +1080,11 @@ function CienciaContaItauBox({
           className="mt-0.5 accent-emerald-600 w-4 h-4"
         />
         <span className="text-xs text-gray-900">
-          Estou ciente que devo <strong>abrir uma conta no Itaú</strong> (salário
-          ou corrente) e informar os dados em até <strong>1 semana</strong>.
+          {jaTemItau ? (
+            <>Confirmo que os dados da conta <strong>Itaú</strong> preenchidos acima estão corretos.</>
+          ) : (
+            <>Estou ciente que devo <strong>abrir uma conta no Itaú</strong> (salário ou corrente) e informar os dados em até <strong>1 semana</strong>.</>
+          )}
         </span>
       </label>
     </section>

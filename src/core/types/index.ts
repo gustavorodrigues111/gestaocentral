@@ -1633,13 +1633,14 @@ export type Admissao = {
 // Eventos que o sistema detecta automaticamente — usados pra auto-checar
 // subtarefas sem o RH precisar marcar uma a uma.
 export type AutoTriggerSubtarefa =
-  | "iniciar_admissao"            // RH criou a admissão
-  | "link_enviado"                // RH clicou "Enviar via WhatsApp"
-  | "form_preenchido"             // candidato submeteu o form
-  | "dados_finais_completos"      // RH preencheu cargo/salário/horário/data
-  | "checklist_docs_completo"     // RH marcou 12/12 docs no modal de WhatsApp
-  | "envio_contabilidade"         // RH clicou "Enviar pra contabilidade"
-  | "admitido";                   // RH clicou "Concluir admissão"
+  | "iniciar_admissao"               // RH criou a admissão
+  | "link_enviado"                   // RH clicou "Enviar via WhatsApp"
+  | "form_preenchido"                // candidato submeteu o form
+  | "dados_finais_completos"         // RH preencheu cargo/salário/horário/data
+  | "checklist_docs_completo"        // RH marcou 12/12 docs no modal de WhatsApp
+  | "dados_bancarios_itau_recebidos" // candidato informou dados Itaú no form
+  | "envio_contabilidade"            // RH clicou "Enviar pra contabilidade"
+  | "admitido";                      // RH clicou "Concluir admissão"
 
 // Definição de uma subtarefa no template (sem state de execução).
 export type SubtarefaTemplate = {

@@ -853,9 +853,9 @@ export const LISTA_DOCS_WHATSAPP = [
   "Certidão de nascimento dos dependentes (se houver)",
 ];
 
-// Mensagem única de instruções: 3 blocos (exames + conta + docs). Substituiu
-// 3 mensagens separadas que tínhamos antes. RH manda 1 vez, candidato
-// recebe tudo junto.
+// Mensagem única de instruções. Tipicamente tem 3 blocos (exame + conta
+// Itaú + docs); se o candidato já informou conta Itaú no form, o bloco 2
+// é pulado e a intro vira "2 temas".
 export function montarMensagemInstrucoesCandidato(
   admissao: Admissao,
   restNome: string,
@@ -866,10 +866,16 @@ export function montarMensagemInstrucoesCandidato(
   const primeiroNome = admissao.candidato.nome.split(" ")[0] || admissao.candidato.nome;
   const quando = dataHoraExame ? fmtDataHoraLocal(dataHoraExame) : "(data a confirmar)";
   const docsLista = LISTA_DOCS_WHATSAPP.map((d) => `• ${d}`).join("\n");
-  return [
+  const jaTemItau = !!admissao.dadosBancariosItau?.agencia?.trim()
+    && !!admissao.dadosBancariosItau?.conta?.trim();
+
+  const partes: string[] = [];
+  partes.push(
     `Olá, ${primeiroNome}!`,
     "",
-    `Mensagem importante com 3 temas fundamentais pra sua admissão pela ${restNome}:`,
+    jaTemItau
+      ? `Mensagem importante com 2 temas fundamentais pra sua admissão pela ${restNome}:`
+      : `Mensagem importante com 3 temas fundamentais pra sua admissão pela ${restNome}:`,
     "",
     "═══════════════════════════════════════",
     "📅 BLOCO 1 — EXAME MÉDICO",
@@ -886,20 +892,29 @@ export function montarMensagemInstrucoesCandidato(
     "• Retirar conosco mediante agendamento no escritório, OU",
     "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso.",
     "",
+  );
+  // Bloco 2 (conta Itaú) só aparece quando candidato ainda não tem Itaú
+  if (!jaTemItau) {
+    partes.push(
+      "═══════════════════════════════════════",
+      "🏦 BLOCO 2 — CONTA BANCÁRIA ITAÚ",
+      "═══════════════════════════════════════",
+      `Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.`,
+      "",
+    );
+  }
+  // Bloco final é sempre o de docs — numeração ajusta automaticamente
+  partes.push(
     "═══════════════════════════════════════",
-    "🏦 BLOCO 2 — CONTA BANCÁRIA ITAÚ",
-    "═══════════════════════════════════════",
-    `Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.`,
-    "",
-    "═══════════════════════════════════════",
-    "📎 BLOCO 3 — DOCUMENTOS PRA WHATSAPP",
+    jaTemItau ? "📎 BLOCO 2 — DOCUMENTOS PRA WHATSAPP" : "📎 BLOCO 3 — DOCUMENTOS PRA WHATSAPP",
     "═══════════════════════════════════════",
     `Mande as fotos dos seguintes documentos por aqui em até ${prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`}:`,
     "",
     docsLista,
     "",
     "Qualquer dúvida, é só responder por aqui!",
-  ].join("\n");
+  );
+  return partes.join("\n");
 }
 
 // Mensagem padrão pra solicitar cadastro do empregado no banco interno —

@@ -102,7 +102,19 @@ const RAW: FormField[] = [
   f("cnh_categoria",   "Categoria CNH",       "select",   G_DOCS, false, { opcoes: ["A", "B", "AB", "C", "D", "E"] }),
 
   // ─── Banco ───
-  f("banco_nome",      "Banco",               "text",     G_BANCO, true),
+  // banco_tipo controla o fluxo da conta Itaú:
+  //   - "Itaú já tenho": agência/conta são da Itaú, popula dadosBancariosItau
+  //     automaticamente, e a mensagem de instruções pula o bloco 2 (abertura).
+  //   - "Outro banco": pede texto livre em banco_nome_outro. Candidato terá
+  //     que abrir Itaú depois (mensagem inclui o bloco 2 padrão).
+  f("banco_tipo",      "Conta bancária",      "select",   G_BANCO, true, {
+    opcoes: ["Já tenho conta no Itaú", "Tenho conta em outro banco"],
+    ajuda: "Se você já tem conta no Itaú (corrente ou salário), preenche os dados aqui e facilita o processo — não precisa abrir conta nova depois.",
+  }),
+  f("banco_nome_outro","Nome do banco (se não for Itaú)", "text", G_BANCO, false, {
+    placeholder: "Bradesco, Caixa, Nubank…",
+    ajuda: "Só preencha se você selecionou 'Outro banco' acima.",
+  }),
   f("banco_agencia",   "Agência",             "text",     G_BANCO, true),
   f("banco_conta",     "Conta",               "text",     G_BANCO, true),
   f("pix",             "Chave PIX",           "text",     G_BANCO, true,  { placeholder: "CPF, e-mail, telefone ou chave aleatória" }),
@@ -263,7 +275,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { pedeLink: true }),
   st("st_dados_bancarios", "Receber dados bancários Itaú (tipo, agência e conta)",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true,
-     { pedeDadosBancarios: true }),
+     { pedeDadosBancarios: true, autoTrigger: "dados_bancarios_itau_recebidos" }),
   st("st_cadastro_banco", "Cadastrar empregado no Banco (solicitar ao financeiro)",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true,
      { atalho: { tipo: "whatsapp_banco_financeiro" } }),
