@@ -10,6 +10,7 @@ import { Button } from "../../core/ui/Button";
 import type { Admissao, Cargo, FormField } from "../../core/types";
 import {
   buscarPessoaPorCpf,
+  buscarPessoaPorEmail,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
 
@@ -68,6 +69,40 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
     return () => { cancelled = true; clearTimeout(t); };
   }, [cpf]);
 
+  // Conflito de e-mail: outra Pessoa (não o vínculo atual) já usa esse e-mail
+  // → bloqueia o save porque viraria login duplicado no futuro.
+  const [emailConflito, setEmailConflito] = useState<{
+    id: string;
+    nome: string;
+    cpf?: string;
+  } | null>(null);
+  const [verificandoEmail, setVerificandoEmail] = useState(false);
+
+  useEffect(() => {
+    const e = email.trim().toLowerCase();
+    if (!e || !e.includes("@")) {
+      setEmailConflito(null);
+      return;
+    }
+    let cancelled = false;
+    setVerificandoEmail(true);
+    const t = setTimeout(() => {
+      buscarPessoaPorEmail(e)
+        .then((p) => {
+          if (cancelled) return;
+          // Conflito SÓ se a pessoa encontrada NÃO é a vinculada pelo CPF
+          if (p && p.id !== pessoaIdVinculada) {
+            setEmailConflito(p);
+          } else {
+            setEmailConflito(null);
+          }
+        })
+        .catch(() => { if (!cancelled) setEmailConflito(null); })
+        .finally(() => { if (!cancelled) setVerificandoEmail(false); });
+    }, 400);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [email, pessoaIdVinculada]);
+
   // Pré-preenche dados a partir da Pessoa existente. Mantém edição livre.
   function usarPessoaExistente() {
     if (!pessoaExistente) return;
@@ -93,6 +128,13 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
     if (!nomeT) { setErro("Nome completo é obrigatório."); return; }
     if (cpfD.length !== 11) { setErro("CPF inválido — precisa de 11 dígitos."); return; }
     if (!emailT || !emailT.includes("@")) { setErro("E-mail inválido."); return; }
+    if (emailConflito) {
+      setErro(
+        `Esse e-mail já está vinculado a outra pessoa cadastrada (${emailConflito.nome}). ` +
+        `Não dá pra usar — viraria login duplicado.`,
+      );
+      return;
+    }
     if (whatsD.length < 10) { setErro("WhatsApp inválido — informe DDD + número."); return; }
     if (!cargoId) { setErro("Selecione o cargo."); return; }
 
@@ -167,6 +209,24 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
 
         <Input label="Nome completo *" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome e sobrenome" />
         <Input label="E-mail *" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="email@dominio.com" type="email" />
+        {verificandoEmail && email.includes("@") && (
+          <div className="text-[11px] text-gray-500 italic -mt-2">Verificando e-mail…</div>
+        )}
+        {emailConflito && (
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-300 dark:border-rose-800 p-2 -mt-2">
+            <div className="text-xs text-rose-800 dark:text-rose-300">
+              ❌ Esse e-mail já está cadastrado em outra pessoa: <strong>{emailConflito.nome}</strong>
+              {emailConflito.cpf && <> (CPF {emailConflito.cpf})</>}
+            </div>
+            <div className="text-[10px] text-rose-700/80 dark:text-rose-400/80 mt-0.5">
+              Cada pessoa precisa ter e-mail único — é o que vai virar login no sistema.
+              Use outro e-mail (ou{" "}
+              {emailConflito.cpf && emailConflito.cpf === onlyDigits(cpf)
+                ? "vincule essa pessoa pelo CPF acima"
+                : "verifique se o CPF está correto"}).
+            </div>
+          </div>
+        )}
         <Input label="WhatsApp *" value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="(11) 99999-9999" inputMode="tel" />
 
         <div className="flex flex-col gap-1">

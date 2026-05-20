@@ -159,6 +159,27 @@ export async function reenviarAdmissao(
   return { token, enviadoEm, expiraEm };
 }
 
+// Busca pessoa por email (qualquer restaurante). Email é o identity provider
+// futuro (vira login), então precisa ser único no sistema. Comparação
+// case-insensitive — normaliza pra lowercase.
+export async function buscarPessoaPorEmail(
+  email: string,
+): Promise<{ id: string; nome: string; cpf?: string; restaurantIds: string[] } | null> {
+  const e = (email || "").trim().toLowerCase();
+  if (!e || !e.includes("@")) return null;
+  const q = query(collection(db, "pessoas"), where("email", "==", e));
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  const data = d.data() as { nome?: string; cpf?: string; restaurantIds?: string[] };
+  return {
+    id: d.id,
+    nome: data.nome || "",
+    cpf: data.cpf,
+    restaurantIds: data.restaurantIds || [],
+  };
+}
+
 // Busca pessoa por CPF (qualquer restaurante). Retorna a 1ª que casar.
 // Usado pra detectar duplicação no momento de iniciar admissão e oferecer
 // reusar dados existentes (ex: ex-freela virando empregado registrado).
