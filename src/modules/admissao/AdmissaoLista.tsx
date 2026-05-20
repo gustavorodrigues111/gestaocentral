@@ -19,6 +19,7 @@ import {
   avancarStatus,
   avancarStatusComTrigger,
   cancelarAdmissao,
+  excluirAdmissaoDefinitivamente,
   getPrazoDias,
   getSchemaAdmissao,
   getSubtarefasTemplate,
@@ -28,6 +29,7 @@ import {
   montarMensagemEnvioLink,
   normalizarAdmissao,
   proximoStatus,
+  reabrirAdmissao,
   reenviarAdmissao,
   statusEfetivo,
   temDadosFinaisCompletos,
@@ -276,6 +278,39 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   // Os botões "Confirmar docs recebidos" e "Docs WhatsApp" foram removidos
   // da action bar pra evitar duplicidade.
 
+  async function handleReabrir(adm: Admissao) {
+    if (!me?.isMaster) return;
+    const ok = confirm(
+      `REABERTURA DE ADMISSÃO\n\n` +
+      `Você vai reverter a admissão de ${adm.candidato.nome} pra "Pronto pra admitir".\n\n` +
+      `Use só pra casos extremos (admissão criada por engano, candidato voltou ` +
+      `atrás, etc). As marcações de admitido/cancelado serão limpas.\n\n` +
+      `Continuar?`,
+    );
+    if (!ok) return;
+    try {
+      await reabrirAdmissao(adm.id, me);
+    } catch (e) {
+      alert("Erro ao reabrir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  async function handleExcluir(adm: Admissao) {
+    if (!me?.isMaster) return;
+    const ok = confirm(
+      `EXCLUSÃO DEFINITIVA\n\n` +
+      `Você vai apagar pra sempre o card da admissão de ${adm.candidato.nome} ` +
+      `(CPF ${adm.candidato.cpf}). Essa ação não pode ser desfeita.\n\n` +
+      `Confirma?`,
+    );
+    if (!ok) return;
+    try {
+      await excluirAdmissaoDefinitivamente(adm.id);
+    } catch (e) {
+      alert("Erro ao excluir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -422,6 +457,27 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     <Button size="sm" variant="secondary" onClick={() => setAdmCancelando(adm)}>
                       ✕ Cancelar
                     </Button>
+                  )}
+                  {/* Ações de master pra casos extremos — em status terminal */}
+                  {me?.isMaster && (st === "admitido" || st === "cancelada" || st === "expirada") && (
+                    <>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleReabrir(adm)}
+                        title="Volta a admissão pra 'Pronto pra admitir'. Use só pra casos extremos."
+                      >
+                        ↩ Reabrir
+                      </Button>
+                      <button
+                        type="button"
+                        onClick={() => handleExcluir(adm)}
+                        className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline px-2 py-1"
+                        title="Apaga pra sempre. Irreversível."
+                      >
+                        🗑️ Excluir
+                      </button>
+                    </>
                   )}
                 </div>
               </div>

@@ -4,7 +4,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
+  addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
@@ -269,6 +269,29 @@ export async function carregarAdmissao(id: string): Promise<Admissao | null> {
 // a UI só expõe o botão pra master).
 export async function excluirAdmissaoDefinitivamente(id: string): Promise<void> {
   await deleteDoc(doc(db, "admissoes", id));
+}
+
+// Reabre uma admissão em estado terminal (admitido/cancelada/expirada),
+// devolvendo-a pra "Pronto pra admitir". Limpa flags de cancelamento e de
+// admissão pra que o card volte ao fluxo normal. Operação master-only —
+// pra casos extremos: admissão criada por engano, candidato voltou atrás,
+// admissão duplicada, etc.
+export async function reabrirAdmissao(admissaoId: string, pessoa: Pessoa): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    status: "pronto_admissao",
+    canceladoEm:           deleteField(),
+    canceladoPor:          deleteField(),
+    motivoCancelamento:    deleteField(),
+    motivosCancelamento:   deleteField(),
+    aprovadoEm:            deleteField(),
+    aprovadoPor:           deleteField(),
+    pessoaIdCriada:        deleteField(),
+    empregadoIdCriado:     deleteField(),
+    reabertaEm:            now,
+    reabertaPor:           { id: pessoa.id, nome: pessoa.nome },
+    updatedAt:             now,
+  });
 }
 
 export async function cancelarAdmissao(
