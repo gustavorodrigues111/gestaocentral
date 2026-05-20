@@ -6,14 +6,21 @@
 //  Aberto ao clicar num card do Kanban (ou via botão "Checklist" na lista).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import type { Admissao, Cargo, KanbanColuna, Pessoa, Restaurant, SubtarefaAdmissao } from "../../core/types";
 import {
   atualizarSubtarefa,
+  getClinicaInfo,
   getEmailClinicaExames,
   getKanbanColunas,
+  getSubtarefasTemplate,
+  linkWhatsAppCandidato,
   montarCorpoEmailClinica,
+  montarMensagemExameCandidato,
   progressoSubtarefasColuna,
+  sincronizarSubtarefasComTemplate,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
 } from "../../core/admissao/admissaoHelpers";
@@ -46,6 +53,21 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
     || colunas[0];
   const subtarefas = admissao.subtarefas || [];
   const [salvando, setSalvando] = useState<string | null>(null);
+
+  // Sincroniza com o template atual ao abrir o drawer: se novas subtarefas
+  // foram adicionadas ao template do restaurante depois da criação dessa
+  // admissão, insere elas como pendentes. Idempotente — só persiste se houver
+  // adição. Roda só uma vez por mount.
+  useEffect(() => {
+    const template = getSubtarefasTemplate(activeRestaurant);
+    const { sincronizadas, adicionou } = sincronizarSubtarefasComTemplate(subtarefas, template);
+    if (!adicionou) return;
+    void updateDoc(doc(db, "admissoes", admissao.id), {
+      subtarefas: sincronizadas,
+      updatedAt: new Date().toISOString(),
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admissao.id]);
 
   async function toggle(s: SubtarefaAdmissao) {
     setSalvando(s.id);
@@ -80,6 +102,17 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
     }
   }
 
+  async function salvarDataAgendada(s: SubtarefaAdmissao, dataAgendada: string) {
+    setSalvando(s.id);
+    try {
+      await atualizarSubtarefa(admissao, s.id, { dataAgendada }, pessoa);
+    } catch (e) {
+      alert("Erro: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSalvando(null);
+    }
+  }
+
   function abrirGmailClinica(s: SubtarefaAdmissao) {
     const to = getEmailClinicaExames(activeRestaurant);
     const subject = `Agendamento exame admissional — ${admissao.candidato.nome}`;
@@ -88,6 +121,27 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
     window.open(url, "_blank");
     // Pré-marca a subtarefa como feita já que o RH disparou a ação. Se quiser
     // reverter, é só desmarcar no checkbox.
+    if (!s.feita) void toggle(s);
+  }
+
+  function abrirWhatsappExameCandidato(s: SubtarefaAdmissao) {
+    if (!s.dataAgendada) {
+      alert("Defina a data e hora do exame primeiro — usa o campo acima do botão.");
+      return;
+    }
+    const clinica = getClinicaInfo(activeRestaurant);
+    const msg = montarMensagemExameCandidato(
+      admissao,
+      activeRestaurant.nome,
+      s.dataAgendada,
+      clinica,
+    );
+    const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
+    if (!link) {
+      alert("WhatsApp do candidato inválido — confira o cadastro.");
+      return;
+    }
+    window.open(link, "_blank");
     if (!s.feita) void toggle(s);
   }
 
@@ -170,7 +224,9 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
                         onToggle={() => toggle(s)}
                         onLink={(link) => salvarLink(s, link)}
                         onObs={(obs) => salvarObs(s, obs)}
+                        onDataAgendada={(d) => salvarDataAgendada(s, d)}
                         onAtalhoGmail={() => abrirGmailClinica(s)}
+                        onAtalhoWhatsappExame={() => abrirWhatsappExameCandidato(s)}
                       />
                     ))}
                   </div>
@@ -189,17 +245,22 @@ function SubtarefaRow({
   onToggle,
   onLink,
   onObs,
+  onDataAgendada,
   onAtalhoGmail,
+  onAtalhoWhatsappExame,
 }: {
   sub: SubtarefaAdmissao;
   salvando: boolean;
   onToggle: () => void;
   onLink: (link: string) => void;
   onObs: (obs: string) => void;
+  onDataAgendada: (d: string) => void;
   onAtalhoGmail: () => void;
+  onAtalhoWhatsappExame: () => void;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
   const [obsLocal, setObsLocal] = useState(sub.observacao || "");
+  const [dataLocal, setDataLocal] = useState(sub.dataAgendada || "");
   const [showDetails, setShowDetails] = useState(false);
   return (
     <div className={`rounded-md border px-2.5 py-2 ${sub.feita ? "bg-emerald-50/40 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/40" : "bg-white dark:bg-gray-900/40 border-gray-200 dark:border-gray-800"}`}>
@@ -233,6 +294,24 @@ function SubtarefaRow({
           )}
         </div>
       </label>
+
+      {/* Data/hora agendada (ex: data do exame médico) — sempre visível porque
+          é input principal pra disparar o atalho de WhatsApp */}
+      {sub.pedeDataHora && (
+        <div className="mt-2 flex flex-col gap-1 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded p-2">
+          <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">
+            📅 Data e horário agendados
+          </label>
+          <input
+            type="datetime-local"
+            value={dataLocal}
+            onChange={(e) => setDataLocal(e.target.value)}
+            onBlur={() => dataLocal !== (sub.dataAgendada || "") && onDataAgendada(dataLocal)}
+            className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+      )}
+
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">
         {sub.atalho?.tipo === "gmail_clinica" && (
           <button
@@ -241,6 +320,17 @@ function SubtarefaRow({
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             📧 Abrir Gmail pra clínica
+          </button>
+        )}
+        {sub.atalho?.tipo === "whatsapp_exame_candidato" && (
+          <button
+            type="button"
+            onClick={onAtalhoWhatsappExame}
+            disabled={!sub.dataAgendada}
+            title={sub.dataAgendada ? "" : "Preencha a data e hora antes"}
+            className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
+          >
+            📱 Enviar instruções por WhatsApp
           </button>
         )}
         {(sub.pedeLink || sub.observacao || sub.link) && (

@@ -14,6 +14,8 @@ import type {
 import {
   TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT,
   SUBTAREFAS_TEMPLATE_DEFAULT, EMAIL_CLINICA_EXAMES_DEFAULT,
+  CLINICA_EXAMES_NOME_DEFAULT, CLINICA_EXAMES_ENDERECO_DEFAULT,
+  CLINICA_EXAMES_TELEFONE_DEFAULT,
 } from "./formTemplate";
 
 // ─── Token + URL ───────────────────────────────────────────────────────────
@@ -85,6 +87,16 @@ export function getEmailContabilidade(rest: Restaurant | null | undefined): stri
 
 export function getEmailClinicaExames(rest: Restaurant | null | undefined): string {
   return rest?.emailClinicaExames?.trim() || EMAIL_CLINICA_EXAMES_DEFAULT;
+}
+
+export function getClinicaInfo(rest: Restaurant | null | undefined): {
+  nome: string; endereco: string; telefone: string;
+} {
+  return {
+    nome:     rest?.clinicaExamesNome?.trim()     || CLINICA_EXAMES_NOME_DEFAULT,
+    endereco: rest?.clinicaExamesEndereco?.trim() || CLINICA_EXAMES_ENDERECO_DEFAULT,
+    telefone: rest?.clinicaExamesTelefone?.trim() || CLINICA_EXAMES_TELEFONE_DEFAULT,
+  };
 }
 
 export function getSubtarefasTemplate(rest: Restaurant | null | undefined): SubtarefaTemplate[] {
@@ -431,6 +443,9 @@ export async function salvarConfigAdmissao(
     | "whatsappDP"
     | "emailContabilidade"
     | "emailClinicaExames"
+    | "clinicaExamesNome"
+    | "clinicaExamesEndereco"
+    | "clinicaExamesTelefone"
     | "admissaoFormSchema"
     | "admissaoKanbanColunas"
     | "admissaoSubtarefasTemplate"
@@ -526,6 +541,28 @@ export function instanciarSubtarefas(template: SubtarefaTemplate[]): SubtarefaAd
     .map((t) => ({ ...t, feita: false }));
 }
 
+// Mescla template atual com subtarefas da admissão: insere subtarefas que
+// existem no template mas não na admissão (foram adicionadas depois). Mantém
+// estado das existentes. Idempotente — sem alteração retorna o mesmo array.
+// Não mexe em subtarefas órfãs (que existem na admissão mas saíram do
+// template) pra não perder dados.
+export function sincronizarSubtarefasComTemplate(
+  atuais: SubtarefaAdmissao[],
+  template: SubtarefaTemplate[],
+): { sincronizadas: SubtarefaAdmissao[]; adicionou: boolean } {
+  const existentesIds = new Set(atuais.map((s) => s.id));
+  const novas: SubtarefaAdmissao[] = [];
+  for (const t of template) {
+    if (existentesIds.has(t.id)) continue;
+    novas.push({ ...t, feita: false });
+  }
+  if (novas.length === 0) return { sincronizadas: atuais, adicionou: false };
+  return {
+    sincronizadas: [...atuais, ...novas].sort((a, b) => a.ordem - b.ordem),
+    adicionou: true,
+  };
+}
+
 // Marca todas as subtarefas com o autoTrigger correspondente como feitas
 // (in-place). Retorna true se alguma mudou de estado. Idempotente — pular
 // se já feita.
@@ -553,11 +590,11 @@ export function aplicarAutoTrigger(
 }
 
 // Marca/desmarca uma subtarefa específica e persiste. Aceita também update
-// de link externo e/ou observação (sem mudar feita).
+// de link externo, observação e dataAgendada (sem mudar feita).
 export async function atualizarSubtarefa(
   admissao: Admissao,
   subtarefaId: string,
-  patch: { feita?: boolean; observacao?: string; link?: string },
+  patch: { feita?: boolean; observacao?: string; link?: string; dataAgendada?: string },
   pessoa: Pessoa,
 ): Promise<void> {
   const subtarefas = (admissao.subtarefas || []).map((s) => {
@@ -578,6 +615,9 @@ export async function atualizarSubtarefa(
     }
     if (typeof patch.link === "string") {
       next.link = patch.link || undefined;
+    }
+    if (typeof patch.dataAgendada === "string") {
+      next.dataAgendada = patch.dataAgendada || undefined;
     }
     return next;
   });
@@ -615,7 +655,9 @@ export function progressoSubtarefasColuna(
 }
 
 // Monta corpo de e-mail pra agendamento de exames admissionais com a clínica.
-// Usado pelo botão "Gmail compose" da subtarefa de agendar exames.
+// Usado pelo botão "Gmail compose" da subtarefa de agendar exames. Inclui
+// CPF e RG (se já preenchidos no form do candidato) pra clínica abrir o
+// cadastro sem precisar pedir os números depois.
 export function montarCorpoEmailClinica(
   admissao: Admissao,
   cargoNome: string | undefined,
@@ -625,16 +667,69 @@ export function montarCorpoEmailClinica(
   const dataAdm = admissao.dataAdmissao
     ? admissao.dataAdmissao.split("-").reverse().join("/")
     : "(a confirmar)";
+  const dados = (admissao.dadosPreenchidos as Record<string, unknown>) || {};
+  const cpfFmt = c.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  const rgVal = typeof dados.rg === "string" ? dados.rg.trim() : "";
+  const rgOrgao = typeof dados.rg_orgao === "string" ? dados.rg_orgao.trim() : "";
+  const rgUf = typeof dados.rg_uf === "string" ? dados.rg_uf.trim() : "";
+  const rgLinha = rgVal
+    ? `RG: ${rgVal}${rgOrgao ? ` ${rgOrgao}` : ""}${rgUf ? `/${rgUf}` : ""}`
+    : "RG: (será enviado pelo candidato)";
   return [
     "Olá,",
     "",
-    `Preciso agendar exames admissionais (clínico + manipulador de alimentos) para o seguinte candidato:`,
+    "Preciso agendar exames admissionais (clínico + manipulador de alimentos) para o seguinte candidato:",
     "",
     `Empresa: ${restNome}`,
     `Nome: ${c.nome}`,
+    `CPF: ${cpfFmt}`,
+    rgLinha,
     `Cargo: ${cargoNome || "(a confirmar)"}`,
     `Data de admissão: ${dataAdm}`,
     "",
     "Aguardo retorno com horários disponíveis. Obrigado!",
+  ].join("\n");
+}
+
+// Formata "YYYY-MM-DDTHH:MM" local (vindo de <input type="datetime-local">)
+// pra "DD/MM/YYYY às HH:MM" exibível.
+function fmtDataHoraLocal(s: string): string {
+  if (!s) return "";
+  const [d, h] = s.split("T");
+  if (!d) return s;
+  const [a, m, dia] = d.split("-");
+  if (!a || !m || !dia) return s;
+  return `${dia}/${m}/${a} às ${h || "--:--"}`;
+}
+
+// Monta mensagem padrão pra mandar ao candidato avisando data do exame
+// admissional, endereço/telefone da clínica e instruções sobre o exame
+// parasitológico (potinho de coleta — retirar conosco ou comprar em drogaria).
+export function montarMensagemExameCandidato(
+  admissao: Admissao,
+  restNome: string,
+  dataHoraLocal: string,
+  clinica: { nome: string; endereco: string; telefone: string },
+): string {
+  const primeiroNome = admissao.candidato.nome.split(" ")[0] || admissao.candidato.nome;
+  const quando = dataHoraLocal ? fmtDataHoraLocal(dataHoraLocal) : "(data a confirmar)";
+  return [
+    `Olá, ${primeiroNome}!`,
+    "",
+    `Seu exame admissional pela ${restNome} foi agendado:`,
+    "",
+    `📅 ${quando}`,
+    `🏥 ${clinica.nome}`,
+    `📍 ${clinica.endereco}`,
+    `📞 ${clinica.telefone}`,
+    "",
+    "Favor comparecer no dia e horário marcados, levando documento com foto.",
+    "",
+    "ℹ️ Importante:",
+    "No dia do exame você vai receber também uma guia pra fazer o exame parasitológico. Pra isso vai precisar de um potinho de coleta de fezes — você pode:",
+    "• Retirar conosco mediante agendamento no escritório, OU",
+    "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso (o que for mais conveniente).",
+    "",
+    "Qualquer dúvida, é só responder por aqui!",
   ].join("\n");
 }

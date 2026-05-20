@@ -169,6 +169,13 @@ export const KANBAN_COLUNAS_DEFAULT = [
 // escritório migrar de fornecedor.
 export const EMAIL_CLINICA_EXAMES_DEFAULT = "atendimento@triagem.com";
 
+// Dados de contato da clínica de exames — usados nas mensagens de WhatsApp
+// pro candidato. Configuráveis em Restaurant.clinicaExames* pra quando o
+// escritório migrar de fornecedor.
+export const CLINICA_EXAMES_NOME_DEFAULT     = "Triagem Medicina do Trabalho";
+export const CLINICA_EXAMES_ENDERECO_DEFAULT = "Rua Paulistânia, 273 — metrô Vila Madalena, São Paulo - SP, 05440-000";
+export const CLINICA_EXAMES_TELEFONE_DEFAULT = "(11) 3801-3363";
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Template de subtarefas — checklist interno do processo de admissão.
 //
@@ -195,6 +202,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
 
   // ─── Formulário preenchido ───
   st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica", "col_preenchido", true, { atalho: { tipo: "gmail_clinica" } }),
+  st("st_avisar_exame_candidato", "Enviar instruções do exame médico para o candidato", "col_preenchido", true, { atalho: { tipo: "whatsapp_exame_candidato" }, pedeDataHora: true }),
   st("st_contato_emergencia", "Adicionar contato do empregado e de emergência na guia de informações", "col_preenchido", true, { autoTrigger: "form_preenchido" }),
 
   // ─── Documentos recebidos ───

@@ -375,6 +375,9 @@ export type Restaurant = {
   whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
   emailContabilidade?: string;           // e-mail da contabilidade pra solicitação de admissão
   emailClinicaExames?: string;           // e-mail da clínica de exames admissionais (default: atendimento@triagem.com)
+  clinicaExamesNome?: string;            // nome da clínica (default: "Triagem Medicina do Trabalho")
+  clinicaExamesEndereco?: string;        // endereço completo da clínica (default: rua Paulistânia 273, Vila Madalena)
+  clinicaExamesTelefone?: string;        // telefone da clínica (default: (11) 3801-3363)
   admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
   admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
   admissaoSubtarefasTemplate?: SubtarefaTemplate[]; // default = SUBTAREFAS_TEMPLATE_DEFAULT (formTemplate.ts)
@@ -1636,10 +1639,12 @@ export type SubtarefaTemplate = {
   autoTrigger?: AutoTriggerSubtarefa; // se setado, sistema auto-marca quando o evento ocorre
   // Atalhos disponíveis na UI do drawer:
   atalho?:
-    | { tipo: "gmail_clinica" }      // abre Gmail compose pra clínica de exames
-    | { tipo: "whatsapp_candidato" } // abre WhatsApp do candidato
-    | { tipo: "whatsapp_dp" };       // abre WhatsApp do DP (n° configurado)
+    | { tipo: "gmail_clinica" }                // abre Gmail compose pra clínica de exames
+    | { tipo: "whatsapp_exame_candidato" }     // abre WhatsApp do candidato c/ mensagem de exame
+    | { tipo: "whatsapp_candidato" }           // abre WhatsApp do candidato (genérico)
+    | { tipo: "whatsapp_dp" };                 // abre WhatsApp do DP (n° configurado)
   pedeLink?: boolean;                // se true, mostra input de URL (Drive/Dropbox)
+  pedeDataHora?: boolean;            // se true, mostra input datetime-local (ex: data do exame)
 };
 
 // Instância de subtarefa numa admissão concreta (state + dados).
@@ -1649,6 +1654,7 @@ export type SubtarefaAdmissao = SubtarefaTemplate & {
   feitaPor?: { id: string; nome: string };
   observacao?: string;
   link?: string;                     // URL externa (se pedeLink)
+  dataAgendada?: string;             // "YYYY-MM-DDTHH:MM" local — se pedeDataHora
 };
 
 export type KanbanColuna = {

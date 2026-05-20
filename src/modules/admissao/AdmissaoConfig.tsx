@@ -12,7 +12,12 @@ import {
   getWhatsappDP,
   salvarConfigAdmissao,
 } from "../../core/admissao/admissaoHelpers";
-import { EMAIL_CLINICA_EXAMES_DEFAULT } from "../../core/admissao/formTemplate";
+import {
+  EMAIL_CLINICA_EXAMES_DEFAULT,
+  CLINICA_EXAMES_NOME_DEFAULT,
+  CLINICA_EXAMES_ENDERECO_DEFAULT,
+  CLINICA_EXAMES_TELEFONE_DEFAULT,
+} from "../../core/admissao/formTemplate";
 import { EditorKanbanColunas } from "./EditorKanbanColunas";
 import type { Restaurant } from "../../core/types";
 
@@ -32,6 +37,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   // está usando o default e quando o restaurante tem seu próprio cadastrado.
   const [emailContabilidade, setEmailContabilidade] = useState<string>(activeRestaurant?.emailContabilidade?.trim() || "");
   const [emailClinicaExames, setEmailClinicaExames] = useState<string>(activeRestaurant?.emailClinicaExames?.trim() || "");
+  const [clinicaNome, setClinicaNome] = useState<string>(activeRestaurant?.clinicaExamesNome?.trim() || "");
+  const [clinicaEndereco, setClinicaEndereco] = useState<string>(activeRestaurant?.clinicaExamesEndereco?.trim() || "");
+  const [clinicaTelefone, setClinicaTelefone] = useState<string>(activeRestaurant?.clinicaExamesTelefone?.trim() || "");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -44,6 +52,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         whatsappDP: onlyDigits(whatsappDP) || undefined,
         emailContabilidade: emailContabilidade.trim() || undefined,
         emailClinicaExames: emailClinicaExames.trim() || undefined,
+        clinicaExamesNome: clinicaNome.trim() || undefined,
+        clinicaExamesEndereco: clinicaEndereco.trim() || undefined,
+        clinicaExamesTelefone: clinicaTelefone.trim() || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -129,27 +140,41 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-          🩺 E-mail da clínica de exames admissionais
+          🩺 Clínica de exames admissionais
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Destinatário do e-mail de agendamento de exames (clínico + manipulador
-          de alimentos). A subtarefa "Agendar exames" do checklist tem um botão
-          que abre o Gmail compose pra esse endereço, já com nome, cargo e data
-          de admissão no corpo.
+          Dados da clínica usados no <strong>e-mail de agendamento</strong> e
+          na <strong>mensagem de instruções pro candidato</strong>. Defaults
+          são da Triagem — sobrescreva se trocar de fornecedor.
         </p>
         <Input
-          label="E-mail da clínica de exames"
+          label="E-mail (Gmail compose pra agendamento)"
           value={emailClinicaExames}
           onChange={(e) => setEmailClinicaExames(e.target.value)}
           placeholder={EMAIL_CLINICA_EXAMES_DEFAULT}
           type="email"
         />
-        {!emailClinicaExames && (
-          <p className="text-[11px] text-gray-500 dark:text-gray-400">
-            Sem cadastro, o sistema usa o padrão{" "}
-            <strong className="text-gray-700 dark:text-gray-300">{EMAIL_CLINICA_EXAMES_DEFAULT}</strong>.
-          </p>
-        )}
+        <Input
+          label="Nome da clínica"
+          value={clinicaNome}
+          onChange={(e) => setClinicaNome(e.target.value)}
+          placeholder={CLINICA_EXAMES_NOME_DEFAULT}
+        />
+        <Input
+          label="Endereço completo"
+          value={clinicaEndereco}
+          onChange={(e) => setClinicaEndereco(e.target.value)}
+          placeholder={CLINICA_EXAMES_ENDERECO_DEFAULT}
+        />
+        <Input
+          label="Telefone"
+          value={clinicaTelefone}
+          onChange={(e) => setClinicaTelefone(e.target.value)}
+          placeholder={CLINICA_EXAMES_TELEFONE_DEFAULT}
+        />
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Campos em branco usam os defaults da Triagem.
+        </p>
       </div>
 
       <div className="flex items-center gap-2">
