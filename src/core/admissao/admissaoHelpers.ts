@@ -271,6 +271,32 @@ export async function excluirAdmissaoDefinitivamente(id: string): Promise<void> 
   await deleteDoc(doc(db, "admissoes", id));
 }
 
+// Estende o prazo de preenchimento somando `horas` em `expiraEm`. Usado
+// quando candidato pediu mais tempo. Reaproveita o token atual (não gera
+// novo). Registra em `extensoesPrazo` pra auditoria.
+export async function estenderPrazoAdmissao(
+  admissao: Admissao,
+  horas: number,
+  pessoa: Pessoa,
+): Promise<string> {
+  if (!admissao.expiraEm) throw new Error("Admissão ainda não foi enviada.");
+  const base = new Date(admissao.expiraEm).getTime();
+  const novo = new Date(base + horas * 3600_000).toISOString();
+  const now = new Date().toISOString();
+  const extensoes = [
+    ...(admissao.extensoesPrazo || []),
+    { em: now, por: pessoa.id, porNome: pessoa.nome, horas },
+  ];
+  await updateDoc(doc(db, "admissoes", admissao.id), {
+    expiraEm: novo,
+    extensoesPrazo: extensoes,
+    // Se estava expirada, volta pra "formulario_enviado" pra liberar o candidato.
+    status: admissao.status === "expirada" ? "formulario_enviado" : admissao.status,
+    updatedAt: now,
+  });
+  return novo;
+}
+
 // Reabre uma admissão em estado terminal (admitido/cancelada/expirada),
 // devolvendo-a pra "Pronto pra admitir". Limpa flags de cancelamento e de
 // admissão pra que o card volte ao fluxo normal. Operação master-only —
@@ -535,7 +561,9 @@ export function montarMensagemEnvioLink(
     "",
     url,
     "",
-    `Você tem ${prazoDias === 1 ? "24 horas" : `${prazoDias} dias`} pra preencher. Depois desse prazo o link expira e precisa pedir um novo.`,
+    `Você tem ${prazoDias === 1 ? "24 horas" : `${prazoDias} dias`} pra preencher. Depois desse prazo o link expira automaticamente.`,
+    "",
+    "Para acessar, vai ser solicitado o e-mail que você me informou.",
     "",
     "Qualquer dúvida, me avisa por aqui!",
   ].join("\n");

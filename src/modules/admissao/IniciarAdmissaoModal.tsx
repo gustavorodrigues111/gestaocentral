@@ -127,6 +127,18 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, onClose, onConf
     const whatsD = onlyDigits(whatsapp);
     if (!nomeT) { setErro("Nome completo é obrigatório."); return; }
     if (cpfD.length !== 11) { setErro("CPF inválido — precisa de 11 dígitos."); return; }
+    // CPF já cadastrado e RH ignorou o banner → bloqueia. Se quiser mesmo
+    // criar admissão pra essa pessoa, precisa clicar "Usar dados desta
+    // pessoa" no banner verde (vincula). Senão, geraria 2 Pessoa com mesmo
+    // CPF — fonte garantida de bug futuro.
+    if (pessoaExistente && !pessoaIdVinculada) {
+      setErro(
+        `Esse CPF já tem cadastro no sistema (${pessoaExistente.nome}). ` +
+        `Clique em "Usar dados desta pessoa" acima pra vincular a admissão ` +
+        `ao cadastro existente, ou troque o CPF se não for essa pessoa.`,
+      );
+      return;
+    }
     if (!emailT || !emailT.includes("@")) { setErro("E-mail inválido."); return; }
     if (emailConflito) {
       setErro(

@@ -19,6 +19,7 @@ import {
   avancarStatus,
   avancarStatusComTrigger,
   cancelarAdmissao,
+  estenderPrazoAdmissao,
   excluirAdmissaoDefinitivamente,
   getPrazoDias,
   getSchemaAdmissao,
@@ -278,6 +279,15 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   // Os botões "Confirmar docs recebidos" e "Docs WhatsApp" foram removidos
   // da action bar pra evitar duplicidade.
 
+  async function handleEstenderPrazo(adm: Admissao, horas: number) {
+    if (!me) return;
+    try {
+      await estenderPrazoAdmissao(adm, horas, me);
+    } catch (e) {
+      alert("Erro ao estender prazo: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   async function handleReabrir(adm: Admissao) {
     if (!me?.isMaster) return;
     const ok = confirm(
@@ -430,6 +440,9 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       📋 Copiar link
                     </Button>
                   )}
+                  {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
+                    <EstenderPrazoMenu adm={adm} onEstender={(h) => handleEstenderPrazo(adm, h)} />
+                  )}
                   {/* Checklist da etapa atual (subtarefas do fluxo) — sempre disponível */}
                   {st !== "cancelada" && st !== "expirada" && (
                     <Button
@@ -539,6 +552,52 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           }}
           onClose={() => setDrawerAdmId(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// Mini-dropdown pra estender o prazo do link em +12h ou +24h. Bota um botão
+// secundário "⏰ +prazo"; ao clicar, abre menu absoluto com as duas opções.
+function EstenderPrazoMenu({
+  adm,
+  onEstender,
+}: {
+  adm: Admissao;
+  onEstender: (horas: number) => Promise<void> | void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const totalExt = (adm.extensoesPrazo || []).reduce((acc, e) => acc + e.horas, 0);
+  return (
+    <div className="relative">
+      <Button size="sm" variant="secondary" onClick={() => setAberto((v) => !v)}>
+        ⏰ {totalExt > 0 ? `+${totalExt}h` : "+ prazo"}
+      </Button>
+      {aberto && (
+        <>
+          <button
+            type="button"
+            onClick={() => setAberto(false)}
+            className="fixed inset-0 z-10 bg-transparent cursor-default"
+            aria-label="Fechar"
+          />
+          <div className="absolute right-0 top-full mt-1 z-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden min-w-[180px]">
+            <button
+              type="button"
+              onClick={async () => { setAberto(false); await onEstender(12); }}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-gray-900 dark:text-gray-100"
+            >
+              + 12 horas
+            </button>
+            <button
+              type="button"
+              onClick={async () => { setAberto(false); await onEstender(24); }}
+              className="w-full text-left text-xs px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-gray-900 dark:text-gray-100 border-t border-gray-100 dark:border-gray-800"
+            >
+              + 24 horas
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

@@ -1544,8 +1544,11 @@ export type Admissao = {
   // ─── Token público ───
   token: string;               // UUID
   enviadoEm?: string;          // ISO — quando RH clicou "enviar WhatsApp" (timer inicia)
-  expiraEm?: string;           // ISO — enviadoEm + prazoDias × 86400000
+  expiraEm?: string;           // ISO — enviadoEm + prazoDias × 86400000 (+ extensões)
   reenvios?: AdmissaoReenvio[];
+  // Extensões manuais do prazo pelo RH (sem regenerar token). Cada entrada
+  // soma `horas` em expiraEm. Pra histórico/auditoria.
+  extensoesPrazo?: { em: string; por: string; porNome: string; horas: number }[];
 
   // Snapshot do schema na hora da criação (congela)
   schemaUsado: FormField[];
