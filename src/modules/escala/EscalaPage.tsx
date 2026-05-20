@@ -714,10 +714,56 @@ export function EscalaPage() {
           mes={mes}
           onClose={() => setShowFeriasLote(false)}
           onApply={async (empregadoId, dataInicio, dataFim, status) => {
+            if (!rid) return;
             const ini = parseYmd(dataInicio);
             const fim = parseYmd(dataFim);
+
+            // Agrupa dias por mês ("YYYY-MM") pra ler o doc da escala UMA vez
+            // por mês envolvido e decidir em qual versão gravar (prevista ou
+            // real) baseado no `previstaFechadaEm` daquele mês — não na versão
+            // global da página. Sem isso, dias do mês futuro (não fechado)
+            // gravavam na `real` e ficavam invisíveis pra tela que mostra
+            // só prevista.
+            const diasPorMes = new Map<string, string[]>();
             for (let d = new Date(ini); d <= fim; d.setDate(d.getDate() + 1)) {
-              await setStatusCelula(empregadoId, ymdFromDate(d), status);
+              const ymd = ymdFromDate(d);
+              const ym = ymd.slice(0, 7);
+              const arr = diasPorMes.get(ym) || [];
+              arr.push(ymd);
+              diasPorMes.set(ym, arr);
+            }
+
+            for (const [ym, dias] of diasPorMes) {
+              const docId = `${rid}_${ym}`;
+              const ref = doc(db, "escalas", docId);
+              const snap = await getDoc(ref);
+              const data = snap.exists() ? snap.data() as EscalaMes : null;
+              const fechada = !!data?.previstaFechadaEm;
+              const versaoMes: "prevista" | "real" = fechada ? "real" : "prevista";
+              const ano = parseInt(ym.slice(0, 4), 10);
+              const mes = parseInt(ym.slice(5, 7), 10);
+
+              // Cria doc se não existe
+              if (!snap.exists()) {
+                await setDoc(ref, {
+                  id: docId,
+                  restaurantId: rid,
+                  ano, mes,
+                  prevista: {}, real: {},
+                  updatedAt: new Date().toISOString(),
+                });
+              }
+
+              // Monta updates pra todos os dias daquele mês de uma vez
+              const updates: Record<string, unknown> = {
+                updatedAt: new Date().toISOString(),
+              };
+              const unidadeKey = versaoMes === "prevista" ? "unidadesPrevistas" : "unidadesReais";
+              for (const ymd of dias) {
+                updates[`${versaoMes}.${empregadoId}.${ymd}`] = status;
+                updates[`${unidadeKey}.${empregadoId}.${ymd}`] = deleteField();
+              }
+              await updateDoc(ref, updates);
             }
             setShowFeriasLote(false);
           }}
