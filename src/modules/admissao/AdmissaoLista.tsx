@@ -442,9 +442,8 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                   )}
                   {/* Avançar etapa — só se há próxima e status não é terminal.
                       Abre o drawer no modo "avancar": RH revisa as obrigatórias
-                      antes de confirmar. Pra formulario_preenchido segue fluxo
-                      antigo (precisa do modal de docs recebidos). */}
-                  {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && st !== "formulario_preenchido" && (
+                      antes de confirmar. */}
+                  {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && (
                     <Button
                       size="sm"
                       onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("avancar"); }}
