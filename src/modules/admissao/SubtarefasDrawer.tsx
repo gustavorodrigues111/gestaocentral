@@ -16,7 +16,9 @@ import {
   atualizarDadosBancariosItau,
   marcarDocumentosRecebidos,
   getClinicaInfo,
-  getEmailClinicaExames,
+  getContatoClinica,
+  getContatoContabilidade,
+  getContatoFinanceiro,
   getKanbanColunas,
   getSubtarefasTemplate,
   getPrazoDias,
@@ -29,16 +31,34 @@ import {
   sincronizarSubtarefasComTemplate,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
-  WHATSAPP_FINANCEIRO_DEFAULT,
 } from "../../core/admissao/admissaoHelpers";
-import { ADMISSAO_STATUS_LABEL } from "../../core/types";
-import { montarGmailComposeUrl } from "../../core/admissao/exportFicha";
+import { ADMISSAO_STATUS_LABEL, type ContatoExterno } from "../../core/types";
+import { montarCorpoEmailContabilidade, montarGmailComposeUrl } from "../../core/admissao/exportFicha";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
+import { ModalLigarContato } from "./ModalLigarContato";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
   if (!col.statusAuto) return false;
   if (Array.isArray(col.statusAuto)) return col.statusAuto.includes(st as never);
   return col.statusAuto === st;
+}
+
+// Gera o label do botão de atalho de contato baseado no canal preferido.
+// Ex: "📧 Abrir Gmail pra Senador Contábil" ou "📞 Ligar pra Triagem".
+function labelContato(rest: Restaurant, tipo: "clinica" | "contabilidade" | "financeiro"): string {
+  const contato = tipo === "clinica"
+    ? rest?.contatosAdmissao?.clinicaExames
+    : tipo === "contabilidade"
+    ? rest?.contatosAdmissao?.contabilidade
+    : rest?.contatosAdmissao?.financeiroBanco;
+  // Resolve canal preferido (fallback pros defaults dependendo do tipo)
+  const canal = contato?.canalPreferido
+    ?? (tipo === "clinica" ? "telefone" : tipo === "contabilidade" ? "email" : "whatsapp");
+  const nomeContato = contato?.nome
+    ?? (tipo === "clinica" ? "clínica" : tipo === "contabilidade" ? "contabilidade" : "financeiro");
+  if (canal === "email") return `📧 Abrir Gmail pra ${nomeContato}`;
+  if (canal === "whatsapp") return `📱 Abrir WhatsApp ${nomeContato}`;
+  return `📞 Ligar pra ${nomeContato}`;
 }
 
 type Props = {
@@ -68,6 +88,12 @@ export function SubtarefasDrawer({
   // Quando uma subtarefa abre o modal de docs WhatsApp, guardamos a admissão
   // pra o modal usar — fechamos quando o modal fecha.
   const [docsModalOpen, setDocsModalOpen] = useState(false);
+  // Modal de "ligar pro contato" (canal=telefone) — aberto sob demanda
+  const [ligarContato, setLigarContato] = useState<{
+    contato: ContatoExterno;
+    script: string;
+    onConfirmar: () => void;
+  } | null>(null);
 
   // Sincroniza com o template atual ao abrir o drawer: subtarefas adicionadas
   // ou alteradas no template global ganham efeito retroativo nas admissões
@@ -142,13 +168,66 @@ export function SubtarefasDrawer({
     }
   }
 
-  function abrirGmailClinica(s: SubtarefaAdmissao) {
-    const to = getEmailClinicaExames(activeRestaurant);
-    const subject = `Agendamento exame admissional — ${admissao.candidato.nome}`;
-    const body = montarCorpoEmailClinica(admissao, cargo?.nome, activeRestaurant.nome);
-    const url = montarGmailComposeUrl({ to, subject, body });
-    window.open(url, "_blank");
-    if (!s.feita) void toggle(s);
+  // Despacha o atalho de contato externo pro canal preferido configurado
+  // (email = Gmail compose; whatsapp = api.whatsapp.com; telefone = modal
+  // com número + script + botão Ligar). Tipo do contato vem do atalho da
+  // subtarefa (clinica/contabilidade/financeiro). Mensagem é montada
+  // específica pra cada tipo.
+  function abrirContato(
+    s: SubtarefaAdmissao,
+    tipo: "clinica" | "contabilidade" | "financeiro",
+  ) {
+    // Resolve contato + mensagem específica
+    let contato: ContatoExterno;
+    let assunto: string;
+    let corpo: string;
+    if (tipo === "clinica") {
+      contato = getContatoClinica(activeRestaurant);
+      assunto = `Agendamento exame admissional — ${admissao.candidato.nome}`;
+      corpo = montarCorpoEmailClinica(admissao, cargo?.nome, activeRestaurant.nome);
+    } else if (tipo === "contabilidade") {
+      contato = getContatoContabilidade(activeRestaurant);
+      assunto = `Solicitação de admissão — ${admissao.candidato.nome} (${activeRestaurant.nome})`;
+      corpo = montarCorpoEmailContabilidade(admissao, cargo, activeRestaurant.nome);
+    } else {
+      contato = getContatoFinanceiro(activeRestaurant);
+      // Pré-check pro financeiro: precisa dos dados bancários antes
+      const dados = admissao.dadosBancariosItau;
+      if (!dados?.tipo || !dados?.agencia?.trim() || !dados?.conta?.trim()) {
+        alert("Preencha os dados bancários Itaú (tipo, agência e conta) antes de solicitar o cadastro.");
+        return;
+      }
+      assunto = "Cadastro de empregado no banco interno";
+      corpo = montarMensagemBancoFinanceiro(admissao);
+    }
+
+    // Despacha por canal
+    if (contato.canalPreferido === "email") {
+      if (!contato.email?.trim()) {
+        alert(`O contato "${contato.nome}" está marcado pra email mas não tem email cadastrado. Configure em ⚙️ Configurações.`);
+        return;
+      }
+      const url = montarGmailComposeUrl({ to: contato.email, subject: assunto, body: corpo });
+      window.open(url, "_blank");
+      if (!s.feita) void toggle(s);
+    } else if (contato.canalPreferido === "whatsapp") {
+      const num = (contato.whatsapp || "").replace(/\D/g, "");
+      if (!num) {
+        alert(`O contato "${contato.nome}" está marcado pra WhatsApp mas não tem número cadastrado. Configure em ⚙️ Configurações.`);
+        return;
+      }
+      const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
+      const url = `https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(corpo)}`;
+      window.open(url, "_blank");
+      if (!s.feita) void toggle(s);
+    } else {
+      // telefone — abre modal com número + script
+      setLigarContato({
+        contato,
+        script: corpo,
+        onConfirmar: () => { if (!s.feita) void toggle(s); },
+      });
+    }
   }
 
   function abrirWhatsappInstrucoes(s: SubtarefaAdmissao) {
@@ -174,17 +253,6 @@ export function SubtarefasDrawer({
     if (!s.feita) void toggle(s);
   }
 
-  function abrirWhatsappBanco(s: SubtarefaAdmissao) {
-    const dados = admissao.dadosBancariosItau;
-    if (!dados?.tipo || !dados?.agencia?.trim() || !dados?.conta?.trim()) {
-      alert("Preencha os dados bancários Itaú (tipo, agência e conta) antes de solicitar o cadastro.");
-      return;
-    }
-    const msg = montarMensagemBancoFinanceiro(admissao);
-    const url = `https://api.whatsapp.com/send?phone=${WHATSAPP_FINANCEIRO_DEFAULT}&text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
-    if (!s.feita) void toggle(s);
-  }
 
   function abrirChecklistDocs(_s: SubtarefaAdmissao) {
     setDocsModalOpen(true);
@@ -311,10 +379,10 @@ export function SubtarefasDrawer({
                                   onObs={(obs) => salvarObs(s, obs)}
                                   onDataAgendada={(d) => salvarDataAgendada(s, d)}
                                   onDadosBancarios={(p) => salvarDadosBancarios(s, p)}
-                                  onAtalhoGmail={() => abrirGmailClinica(s)}
+                                  onAtalhoContato={(tipo) => abrirContato(s, tipo)}
                                   onAtalhoWhatsappInstrucoes={() => abrirWhatsappInstrucoes(s)}
-                                  onAtalhoWhatsappBanco={() => abrirWhatsappBanco(s)}
                                   onAtalhoChecklistDocs={() => abrirChecklistDocs(s)}
+                                  contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
                             </div>
@@ -373,6 +441,15 @@ export function SubtarefasDrawer({
           }}
         />
       )}
+
+      {ligarContato && (
+        <ModalLigarContato
+          contato={ligarContato.contato}
+          scriptSugerido={ligarContato.script}
+          onClose={() => setLigarContato(null)}
+          onConfirmar={ligarContato.onConfirmar}
+        />
+      )}
     </>,
     document.body,
   );
@@ -387,10 +464,10 @@ function SubtarefaRow({
   onObs,
   onDataAgendada,
   onDadosBancarios,
-  onAtalhoGmail,
+  onAtalhoContato,
   onAtalhoWhatsappInstrucoes,
-  onAtalhoWhatsappBanco,
   onAtalhoChecklistDocs,
+  contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
   admissao: Admissao;
@@ -400,10 +477,10 @@ function SubtarefaRow({
   onObs: (obs: string) => void;
   onDataAgendada: (d: string) => void;
   onDadosBancarios: (p: Partial<{ tipo: "salario" | "corrente"; agencia: string; conta: string }>) => void;
-  onAtalhoGmail: () => void;
+  onAtalhoContato: (tipo: "clinica" | "contabilidade" | "financeiro") => void;
   onAtalhoWhatsappInstrucoes: () => void;
-  onAtalhoWhatsappBanco: () => void;
   onAtalhoChecklistDocs: () => void;
+  contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
   const [obsLocal, setObsLocal] = useState(sub.observacao || "");
@@ -516,13 +593,22 @@ function SubtarefaRow({
       )}
 
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">
-        {sub.atalho?.tipo === "gmail_clinica" && (
+        {(sub.atalho?.tipo === "contato_clinica" || sub.atalho?.tipo === "gmail_clinica") && (
           <button
             type="button"
-            onClick={onAtalhoGmail}
+            onClick={() => onAtalhoContato("clinica")}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            📧 Abrir Gmail pra clínica
+            {contatoLabel("clinica")}
+          </button>
+        )}
+        {sub.atalho?.tipo === "contato_contabilidade" && (
+          <button
+            type="button"
+            onClick={() => onAtalhoContato("contabilidade")}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            {contatoLabel("contabilidade")}
           </button>
         )}
         {sub.atalho?.tipo === "whatsapp_instrucoes_candidato" && (
@@ -536,15 +622,15 @@ function SubtarefaRow({
             📱 Enviar mensagem de instruções
           </button>
         )}
-        {sub.atalho?.tipo === "whatsapp_banco_financeiro" && (
+        {(sub.atalho?.tipo === "contato_financeiro" || sub.atalho?.tipo === "whatsapp_banco_financeiro") && (
           <button
             type="button"
-            onClick={onAtalhoWhatsappBanco}
+            onClick={() => onAtalhoContato("financeiro")}
             disabled={!dadosBancariosCompletos}
             title={dadosBancariosCompletos ? "" : "Preencha os dados bancários da conta Itaú antes"}
             className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
-            📱 Solicitar cadastro ao financeiro
+            {contatoLabel("financeiro")}
           </button>
         )}
         {sub.atalho?.tipo === "checklist_docs_whatsapp" && (

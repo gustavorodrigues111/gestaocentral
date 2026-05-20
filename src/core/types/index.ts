@@ -339,6 +339,23 @@ export type Unidade = {
   ativa: boolean;
 };
 
+// ─── CONTATOS EXTERNOS (admissão) ──────────────────────────────────────────
+// Stakeholder externo do processo (clínica de exames, contabilidade,
+// financeiro do escritório, etc) com seus canais possíveis e o preferido.
+// Cada empresa atende de um jeito — Triagem só agenda por telefone, por
+// exemplo. O atalho da subtarefa lê `canalPreferido` pra escolher o que
+// abrir (Gmail, WhatsApp ou modal de telefone).
+export type CanalContato = "email" | "whatsapp" | "telefone";
+
+export type ContatoExterno = {
+  nome: string;
+  email?: string;
+  whatsapp?: string;     // só dígitos (sem DDI). DDI 55 é adicionado pelo helper.
+  telefone?: string;     // texto formatado, ex: "(11) 3801-3363"
+  endereco?: string;     // opcional — útil pra clínica
+  canalPreferido: CanalContato;
+};
+
 export type Restaurant = {
   id: string;
   nome: string;
@@ -373,11 +390,20 @@ export type Restaurant = {
   // ─── Admissão (módulo Admissão) ───
   admissaoPrazoDias?: number;            // 1-7, default 1
   whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
-  emailContabilidade?: string;           // e-mail da contabilidade pra solicitação de admissão
-  emailClinicaExames?: string;           // e-mail da clínica de exames admissionais (default: atendimento@triagem.com)
-  clinicaExamesNome?: string;            // nome da clínica (default: "Triagem Medicina do Trabalho")
-  clinicaExamesEndereco?: string;        // endereço completo da clínica (default: rua Paulistânia 273, Vila Madalena)
-  clinicaExamesTelefone?: string;        // telefone da clínica (default: (11) 3801-3363)
+  // Contatos externos com canal preferido (email/whatsapp/telefone). Cada
+  // restaurante pode customizar. Defaults em formTemplate.ts.
+  contatosAdmissao?: {
+    clinicaExames?: ContatoExterno;
+    contabilidade?: ContatoExterno;
+    financeiroBanco?: ContatoExterno;
+  };
+  // Campos legados — mantidos pra retrocompat até migração completa.
+  // Novos lugares devem ler de contatosAdmissao.
+  emailContabilidade?: string;
+  emailClinicaExames?: string;
+  clinicaExamesNome?: string;
+  clinicaExamesEndereco?: string;
+  clinicaExamesTelefone?: string;
   admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
   admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
   admissaoSubtarefasTemplate?: SubtarefaTemplate[]; // default = SUBTAREFAS_TEMPLATE_DEFAULT (formTemplate.ts)
@@ -1660,14 +1686,20 @@ export type SubtarefaTemplate = {
   obrigatoria: boolean;              // bloqueia avanço de coluna se true e pendente
   ordem: number;
   autoTrigger?: AutoTriggerSubtarefa; // se setado, sistema auto-marca quando o evento ocorre
-  // Atalhos disponíveis na UI do drawer:
+  // Atalhos disponíveis na UI do drawer. Os atalhos "contato_*" usam o
+  // canalPreferido do contato configurado em Restaurant.contatosAdmissao
+  // (email → Gmail compose; whatsapp → api.whatsapp.com; telefone → modal
+  // com número + script). Templates de mensagem vêm de Restaurant.templatesAdmissao.
   atalho?:
-    | { tipo: "gmail_clinica" }                  // abre Gmail compose pra clínica de exames
-    | { tipo: "whatsapp_instrucoes_candidato" }  // mensagem única (exames + conta + docs)
-    | { tipo: "whatsapp_banco_financeiro" }      // pra (11) 91756-0073 do financeiro
+    | { tipo: "contato_clinica" }                // contato com clínica de exames
+    | { tipo: "contato_contabilidade" }          // contato com contabilidade
+    | { tipo: "contato_financeiro" }             // contato com financeiro (cadastro banco)
+    | { tipo: "whatsapp_instrucoes_candidato" }  // mensagem única pro candidato (3 blocos)
     | { tipo: "checklist_docs_whatsapp" }        // abre o modal de confirmar 12 docs
-    | { tipo: "whatsapp_candidato" }             // genérico
-    | { tipo: "whatsapp_dp" };                   // genérico
+    // Atalhos legados — mantidos por retrocompat. Resolvidos pra contato_*
+    // no drawer.
+    | { tipo: "gmail_clinica" }
+    | { tipo: "whatsapp_banco_financeiro" };
   pedeLink?: boolean;                // se true, mostra input de URL (Drive/Dropbox)
   pedeDataHora?: boolean;            // se true, mostra input datetime-local
   pedeDadosBancarios?: boolean;      // se true, mostra 3 campos (tipo + agência + conta) — atualizam adm.dadosBancariosItau

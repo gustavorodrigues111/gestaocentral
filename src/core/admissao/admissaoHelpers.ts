@@ -19,7 +19,10 @@ import {
   CLINICA_EXAMES_TELEFONE_DEFAULT,
   WHATSAPP_FINANCEIRO_DEFAULT, PRAZO_CONTA_ITAU_DIAS,
   DEPRECATED_SUBTAREFAS_IDS,
+  CONTATO_CLINICA_DEFAULT, CONTATO_CONTABILIDADE_DEFAULT,
+  CONTATO_FINANCEIRO_DEFAULT,
 } from "./formTemplate";
+import type { ContatoExterno } from "../types";
 
 // ─── Token + URL ───────────────────────────────────────────────────────────
 
@@ -104,6 +107,54 @@ export function getClinicaInfo(rest: Restaurant | null | undefined): {
 
 export function getSubtarefasTemplate(rest: Restaurant | null | undefined): SubtarefaTemplate[] {
   return rest?.admissaoSubtarefasTemplate || SUBTAREFAS_TEMPLATE_DEFAULT;
+}
+
+// ─── Contatos externos (admissão) ──────────────────────────────────────────
+// Resolve cada contato com prioridade:
+//   1. contatosAdmissao.<chave> (config nova explícita)
+//   2. Default global (formTemplate.ts)
+//
+// Migração suave de legados: ainda lemos emailContabilidade /
+// emailClinicaExames / clinicaExames* como fallback se contatosAdmissao
+// estiver vazio. Quando o restaurante salvar Config nova, contatosAdmissao
+// passa a ser fonte de verdade.
+
+function migrarContatoClinicaLegacy(rest: Restaurant | null | undefined): ContatoExterno | null {
+  if (!rest) return null;
+  if (!rest.emailClinicaExames && !rest.clinicaExamesNome && !rest.clinicaExamesEndereco && !rest.clinicaExamesTelefone) {
+    return null;
+  }
+  return {
+    ...CONTATO_CLINICA_DEFAULT,
+    nome:     rest.clinicaExamesNome?.trim()     || CONTATO_CLINICA_DEFAULT.nome,
+    email:    rest.emailClinicaExames?.trim()    || CONTATO_CLINICA_DEFAULT.email,
+    endereco: rest.clinicaExamesEndereco?.trim() || CONTATO_CLINICA_DEFAULT.endereco,
+    telefone: rest.clinicaExamesTelefone?.trim() || CONTATO_CLINICA_DEFAULT.telefone,
+  };
+}
+
+function migrarContatoContabilidadeLegacy(rest: Restaurant | null | undefined): ContatoExterno | null {
+  if (!rest?.emailContabilidade) return null;
+  return {
+    ...CONTATO_CONTABILIDADE_DEFAULT,
+    email: rest.emailContabilidade.trim() || CONTATO_CONTABILIDADE_DEFAULT.email,
+  };
+}
+
+export function getContatoClinica(rest: Restaurant | null | undefined): ContatoExterno {
+  return rest?.contatosAdmissao?.clinicaExames
+    || migrarContatoClinicaLegacy(rest)
+    || CONTATO_CLINICA_DEFAULT;
+}
+
+export function getContatoContabilidade(rest: Restaurant | null | undefined): ContatoExterno {
+  return rest?.contatosAdmissao?.contabilidade
+    || migrarContatoContabilidadeLegacy(rest)
+    || CONTATO_CONTABILIDADE_DEFAULT;
+}
+
+export function getContatoFinanceiro(rest: Restaurant | null | undefined): ContatoExterno {
+  return rest?.contatosAdmissao?.financeiroBanco || CONTATO_FINANCEIRO_DEFAULT;
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -556,13 +607,14 @@ export async function moverColunaKanban(
   });
 }
 
-// Atualiza o schema/prazo/whatsapp DP/emails/template de um restaurante.
+// Atualiza o schema/prazo/whatsapp DP/contatos/template de um restaurante.
 export async function salvarConfigAdmissao(
   restaurantId: string,
   patch: Partial<Pick<
     Restaurant,
     | "admissaoPrazoDias"
     | "whatsappDP"
+    | "contatosAdmissao"
     | "emailContabilidade"
     | "emailClinicaExames"
     | "clinicaExamesNome"

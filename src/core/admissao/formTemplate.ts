@@ -3,7 +3,7 @@
 //  Contábil. Cada restaurante começa com esse schema; pode editar livremente.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { FormField, SubtarefaTemplate } from "../types";
+import type { ContatoExterno, FormField, SubtarefaTemplate } from "../types";
 
 // Helper local pra reduzir verbosidade ao declarar 50+ campos.
 function f(
@@ -191,6 +191,37 @@ export const CLINICA_EXAMES_TELEFONE_DEFAULT = "(11) 3801-3363";
 // cadastrar empregado no banco interno. Hardcoded por agora.
 export const WHATSAPP_FINANCEIRO_DEFAULT = "5511917560073";
 
+// ─── Contatos externos default (admissão) ──────────────────────────────────
+// Defaults pré-configurados — restaurante pode sobrescrever em
+// Restaurant.contatosAdmissao. Sem gravação hard: os valores ficam no
+// código, mas restaurante pode editar tudo na tela de Config.
+export const CONTATO_CLINICA_DEFAULT: ContatoExterno = {
+  nome: CLINICA_EXAMES_NOME_DEFAULT,
+  email: EMAIL_CLINICA_EXAMES_DEFAULT,
+  whatsapp: "",
+  telefone: CLINICA_EXAMES_TELEFONE_DEFAULT,
+  endereco: CLINICA_EXAMES_ENDERECO_DEFAULT,
+  // Triagem só agenda por telefone. Restaurante pode trocar se for outra
+  // clínica que faz por email.
+  canalPreferido: "telefone",
+};
+
+export const CONTATO_CONTABILIDADE_DEFAULT: ContatoExterno = {
+  nome: "Senador Contábil",
+  email: "dpessoal@senadorcontabil.com.br",
+  whatsapp: "",
+  telefone: "",
+  canalPreferido: "email",
+};
+
+export const CONTATO_FINANCEIRO_DEFAULT: ContatoExterno = {
+  nome: "Financeiro (escritório)",
+  email: "",
+  whatsapp: WHATSAPP_FINANCEIRO_DEFAULT,
+  telefone: "",
+  canalPreferido: "whatsapp",
+};
+
 // Dias pra abrir a conta no Itaú a partir do envio do form (hardcoded).
 // Usado tanto na mensagem de instruções quanto no box do form público.
 export const PRAZO_CONTA_ITAU_DIAS = 7;
@@ -248,7 +279,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   // ─── Col 2: Exames, conta e dados internos ───
   st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica",
      "col_preenchido", CK_AGENDAR_EXAMES.id, CK_AGENDAR_EXAMES.nome, true,
-     { atalho: { tipo: "gmail_clinica" } }),
+     { atalho: { tipo: "contato_clinica" } }),
   st("st_avisar_exame_candidato", "Enviar mensagem única de instruções (exames + conta Itaú + docs) pro candidato",
      "col_preenchido", CK_INSTRUCOES.id, CK_INSTRUCOES.nome, true,
      { atalho: { tipo: "whatsapp_instrucoes_candidato" }, pedeDataHora: true }),
@@ -262,7 +293,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   // ─── Col 3: Contabilidade & contratos ───
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
      "col_contabilidade", CK_CONTABILIDADE.id, CK_CONTABILIDADE.nome, true,
-     { autoTrigger: "envio_contabilidade" }),
+     { atalho: { tipo: "contato_contabilidade" }, autoTrigger: "envio_contabilidade" }),
   st("st_receber_contrato", "Recebimento do contrato e termos para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { pedeLink: true }),
@@ -278,7 +309,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { pedeDadosBancarios: true, autoTrigger: "dados_bancarios_itau_recebidos" }),
   st("st_cadastro_banco", "Cadastrar empregado no Banco (solicitar ao financeiro)",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true,
-     { atalho: { tipo: "whatsapp_banco_financeiro" } }),
+     { atalho: { tipo: "contato_financeiro" } }),
   st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true),
 
