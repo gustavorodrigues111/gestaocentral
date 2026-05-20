@@ -541,24 +541,59 @@ export function instanciarSubtarefas(template: SubtarefaTemplate[]): SubtarefaAd
     .map((t) => ({ ...t, feita: false }));
 }
 
-// Mescla template atual com subtarefas da admissão: insere subtarefas que
-// existem no template mas não na admissão (foram adicionadas depois). Mantém
-// estado das existentes. Idempotente — sem alteração retorna o mesmo array.
-// Não mexe em subtarefas órfãs (que existem na admissão mas saíram do
-// template) pra não perder dados.
+// Mescla template atual com subtarefas da admissão:
+//   - Insere subtarefas que existem no template mas não na admissão (novas).
+//   - Atualiza campos do template (nome, colunaId, obrigatoria, ordem,
+//     autoTrigger, atalho, pedeLink, pedeDataHora) em subtarefas existentes
+//     — preserva estado de execução (feita, feitaEm, feitaPor, observacao,
+//     link, dataAgendada).
+//   - Mantém subtarefas órfãs (existiam na admissão mas saíram do template)
+//     pra não perder dados; ficam soltas no final.
+// Idempotente — retorna o mesmo array por referência quando não há diferença.
 export function sincronizarSubtarefasComTemplate(
   atuais: SubtarefaAdmissao[],
   template: SubtarefaTemplate[],
 ): { sincronizadas: SubtarefaAdmissao[]; adicionou: boolean } {
-  const existentesIds = new Set(atuais.map((s) => s.id));
-  const novas: SubtarefaAdmissao[] = [];
-  for (const t of template) {
-    if (existentesIds.has(t.id)) continue;
-    novas.push({ ...t, feita: false });
-  }
-  if (novas.length === 0) return { sincronizadas: atuais, adicionou: false };
+  const porIdAtual = new Map(atuais.map((s) => [s.id, s]));
+  const idsTemplate = new Set(template.map((t) => t.id));
+  let mudou = false;
+
+  // Mescla cada item do template com o estado existente (se houver).
+  const mescladas: SubtarefaAdmissao[] = template.map((t) => {
+    const ex = porIdAtual.get(t.id);
+    if (!ex) {
+      mudou = true;
+      return { ...t, feita: false };
+    }
+    // Compara campos do template — se algum mudou, atualiza
+    const atualizou =
+      ex.nome !== t.nome ||
+      ex.colunaId !== t.colunaId ||
+      ex.obrigatoria !== t.obrigatoria ||
+      ex.ordem !== t.ordem ||
+      ex.autoTrigger !== t.autoTrigger ||
+      JSON.stringify(ex.atalho) !== JSON.stringify(t.atalho) ||
+      !!ex.pedeLink !== !!t.pedeLink ||
+      !!ex.pedeDataHora !== !!t.pedeDataHora;
+    if (!atualizou) return ex;
+    mudou = true;
+    return {
+      ...t,                       // campos do template (atualizados)
+      feita: ex.feita,            // preserva estado de execução
+      feitaEm: ex.feitaEm,
+      feitaPor: ex.feitaPor,
+      observacao: ex.observacao,
+      link: ex.link,
+      dataAgendada: ex.dataAgendada,
+    };
+  });
+
+  // Subtarefas órfãs (no admin mas não no template) vão pro fim — preserva.
+  const orfas = atuais.filter((s) => !idsTemplate.has(s.id));
+
+  if (!mudou) return { sincronizadas: atuais, adicionou: false };
   return {
-    sincronizadas: [...atuais, ...novas].sort((a, b) => a.ordem - b.ordem),
+    sincronizadas: [...mescladas, ...orfas].sort((a, b) => a.ordem - b.ordem),
     adicionou: true,
   };
 }

@@ -225,6 +225,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_certificados_cursos", "Receber certificados dos cursos obrigatórios", "col_pronto", true, { pedeLink: true }),
   st("st_cadastro_vt", "Cadastro de VT na plataforma (SPTrans/Caju)", "col_pronto", true),
   st("st_calculo_primeiro_vt", "Cálculo do primeiro VT + informar setor financeiro", "col_pronto", true),
+  st("st_cadastro_tangerino", "Cadastro do empregado no Tangerino (controle de ponto)", "col_pronto", true),
 
   // ─── Onboarding (D1) ───
   st("st_onboarding_treinamento", "Onboarding e treinamento inicial", "col_onboarding", true),
@@ -233,9 +234,8 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
 
   // ─── Admitido (pós-admissão administrativa) ───
   st("st_matricula_esocial", "Informe número de matrícula do e-social junto a Triagem", "col_admitido", true),
-  st("st_cadastro_tangerino", "Cadastro do empregado no Tangerino (controle de ponto)", "col_admitido", true),
   st("st_pasta_drive", "Abrir pasta do empregado no Drive e subir todos os documentos", "col_admitido", true, { pedeLink: true }),
-  st("st_fim_experiencia", "Adicionar fim dos períodos de experiência (30 e 90 dias) no Asana", "col_admitido", true),
+  st("st_fim_experiencia", "Adicionar fim dos períodos de experiência (45 e 90 dias) no Asana", "col_admitido", true),
 ];
 
 export const SUBTAREFAS_TEMPLATE_DEFAULT: SubtarefaTemplate[] = RAW_SUBTAREFAS.map((s, i) => ({ ...s, ordem: i + 1 }));
