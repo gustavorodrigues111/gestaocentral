@@ -71,8 +71,12 @@ export function getWhatsappDP(rest: Restaurant | null | undefined): string | und
   return rest?.whatsappDP || undefined;
 }
 
+// Default usado pelas empresas que ainda não sobrescreveram o campo.
+// É só pra pré-preencher destinatário do Gmail compose — config segue editável.
+export const EMAIL_CONTABILIDADE_DEFAULT = "dpessoal@senadorcontabil.com.br";
+
 export function getEmailContabilidade(rest: Restaurant | null | undefined): string | undefined {
-  return rest?.emailContabilidade?.trim() || undefined;
+  return rest?.emailContabilidade?.trim() || EMAIL_CONTABILIDADE_DEFAULT;
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ import { useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import {
-  getEmailContabilidade,
+  EMAIL_CONTABILIDADE_DEFAULT,
   getPrazoDias,
   getWhatsappDP,
   salvarConfigAdmissao,
@@ -27,7 +27,9 @@ function onlyDigits(s: string): string {
 export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [prazoDias, setPrazoDias] = useState<number>(getPrazoDias(activeRestaurant));
   const [whatsappDP, setWhatsappDP] = useState<string>(getWhatsappDP(activeRestaurant) || "");
-  const [emailContabilidade, setEmailContabilidade] = useState<string>(getEmailContabilidade(activeRestaurant) || "");
+  // Mostra o valor "real" do restaurante (sem fallback) pra ficar claro quando
+  // está usando o default e quando o restaurante tem seu próprio cadastrado.
+  const [emailContabilidade, setEmailContabilidade] = useState<string>(activeRestaurant?.emailContabilidade?.trim() || "");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -110,12 +112,14 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           label="E-mail da contabilidade"
           value={emailContabilidade}
           onChange={(e) => setEmailContabilidade(e.target.value)}
-          placeholder="contato@contabilidade.com.br"
+          placeholder={EMAIL_CONTABILIDADE_DEFAULT}
           type="email"
         />
-        {!getEmailContabilidade(activeRestaurant) && !emailContabilidade && (
-          <p className="text-[11px] text-amber-700 dark:text-amber-400">
-            ⚠ Sem e-mail cadastrado, o sistema baixa a ficha mas o Gmail compose abre sem destinatário.
+        {!emailContabilidade && (
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Sem cadastro, o sistema usa o padrão{" "}
+            <strong className="text-gray-700 dark:text-gray-300">{EMAIL_CONTABILIDADE_DEFAULT}</strong>.
+            Coloque outro aqui se quiser sobrescrever só pra esse restaurante.
           </p>
         )}
       </div>
