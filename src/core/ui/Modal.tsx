@@ -10,7 +10,7 @@ type Props = {
 export function Modal({ title, children, onClose, maxWidth = "max-w-lg" }: Props) {
   return (
     <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
