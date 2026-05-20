@@ -61,7 +61,13 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [admAberta, setAdmAberta] = useState<Admissao | null>(null);
+  // Guarda só o ID do card aberto — re-deriva da lista live do onSnapshot
+  // a cada atualização, senão drawer fica com snapshot velho de subtarefas.
+  const [admAbertaId, setAdmAbertaId] = useState<string | null>(null);
+  const admAberta = useMemo(
+    () => (admAbertaId ? admissoes.find((a) => a.id === admAbertaId) || null : null),
+    [admAbertaId, admissoes],
+  );
 
   useEffect(() => {
     if (!rid) return;
@@ -168,7 +174,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
           cargos={cargos}
           activeRestaurant={activeRestaurant}
           pessoa={me}
-          onClose={() => setAdmAberta(null)}
+          onClose={() => setAdmAbertaId(null)}
         />
       )}
 
@@ -207,7 +213,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                       draggable
                       onDragStart={() => setDraggingId(a.id)}
                       onDragEnd={() => setDraggingId(null)}
-                      onClick={() => setAdmAberta(a)}
+                      onClick={() => setAdmAbertaId(a.id)}
                       className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 ${
                         draggingId === a.id ? "opacity-50" : ""
                       }`}
