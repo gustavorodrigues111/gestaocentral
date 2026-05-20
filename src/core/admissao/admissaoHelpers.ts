@@ -276,6 +276,17 @@ export async function excluirAdmissaoDefinitivamente(id: string): Promise<void> 
 // admissão pra que o card volte ao fluxo normal. Operação master-only —
 // pra casos extremos: admissão criada por engano, candidato voltou atrás,
 // admissão duplicada, etc.
+// Apaga os campos `admissaoKanbanColunas` e `admissaoSubtarefasTemplate`
+// do restaurante — força a UI a voltar pros defaults globais do template.
+// Útil quando o template global muda e o restaurante tinha um snapshot
+// antigo salvo (que se sobrepõe ao default). Master-only.
+export async function resetarLayoutKanban(restaurantId: string): Promise<void> {
+  await updateDoc(doc(db, "restaurants", restaurantId), {
+    admissaoKanbanColunas:      deleteField(),
+    admissaoSubtarefasTemplate: deleteField(),
+  });
+}
+
 export async function reabrirAdmissao(admissaoId: string, pessoa: Pessoa): Promise<void> {
   const now = new Date().toISOString();
   await updateDoc(doc(db, "admissoes", admissaoId), {

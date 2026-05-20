@@ -6,10 +6,12 @@
 import { useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { useAuth } from "../../core/auth/AuthContext";
 import {
   EMAIL_CONTABILIDADE_DEFAULT,
   getPrazoDias,
   getWhatsappDP,
+  resetarLayoutKanban,
   salvarConfigAdmissao,
 } from "../../core/admissao/admissaoHelpers";
 import {
@@ -30,6 +32,7 @@ function onlyDigits(s: string): string {
 }
 
 export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
+  const { pessoa: me } = useAuth();
   const [prazoDias, setPrazoDias] = useState<number>(getPrazoDias(activeRestaurant));
   const [whatsappDP, setWhatsappDP] = useState<string>(getWhatsappDP(activeRestaurant) || "");
   // Mostra o valor "real" do restaurante (sem fallback) pra ficar claro quando
@@ -41,6 +44,29 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [clinicaTelefone, setClinicaTelefone] = useState<string>(activeRestaurant?.clinicaExamesTelefone?.trim() || "");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
+  const [resetando, setResetando] = useState(false);
+
+  async function resetarLayout() {
+    if (!me?.isMaster) return;
+    const ok = confirm(
+      "Resetar layout do Kanban?\n\n" +
+      "Apaga as colunas e o template de subtarefas salvos no restaurante e " +
+      "faz a UI usar os defaults globais (5 colunas + 26 subtarefas). Útil " +
+      "quando o template global mudou e o restaurante tinha uma versão antiga " +
+      "salva.\n\n" +
+      "Nenhuma admissão é afetada — só o layout do Kanban. Continuar?",
+    );
+    if (!ok) return;
+    setResetando(true);
+    try {
+      await resetarLayoutKanban(rid);
+      setMsg("✓ Layout resetado. Recarregue a página pra ver as colunas novas.");
+    } catch (e) {
+      setMsg("❌ " + (e instanceof Error ? e.message : "Erro"));
+    } finally {
+      setResetando(false);
+    }
+  }
 
   async function salvar() {
     setMsg("");
@@ -200,6 +226,23 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           📌 Em desenvolvimento — editor de schema chega na próxima iteração.
         </div>
       </div>
+
+      {me?.isMaster && (
+        <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 space-y-2">
+          <h2 className="font-bold text-sm text-amber-900 dark:text-amber-300">
+            🛠 Manutenção (master)
+          </h2>
+          <p className="text-xs text-amber-900/80 dark:text-amber-300/80">
+            Apaga o layout customizado do Kanban + template de subtarefas salvos
+            neste restaurante e faz a UI usar os defaults globais. Use quando o
+            template global mudar e a tela continuar mostrando a estrutura
+            antiga. Nenhuma admissão é afetada.
+          </p>
+          <Button onClick={resetarLayout} disabled={resetando} variant="secondary">
+            {resetando ? "Resetando…" : "🔄 Resetar layout do Kanban pros defaults"}
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
