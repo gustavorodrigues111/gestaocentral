@@ -20,10 +20,12 @@ import {
   montarCorpoEmailClinica,
   montarMensagemExameCandidato,
   progressoSubtarefasColuna,
+  proximoStatus,
   sincronizarSubtarefasComTemplate,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
 } from "../../core/admissao/admissaoHelpers";
+import { ADMISSAO_STATUS_LABEL } from "../../core/types";
 import { montarGmailComposeUrl } from "../../core/admissao/exportFicha";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
@@ -38,9 +40,18 @@ type Props = {
   activeRestaurant: Restaurant;
   pessoa: Pessoa;
   onClose: () => void;
+  // Quando intencao="avancar", o drawer mostra rodapé com botão de confirmar
+  // avanço pra próxima coluna. Botão fica desabilitado enquanto há obrigatórias
+  // pendentes na coluna atual. Click chama onConfirmarAvanco (parent fecha
+  // drawer + roda fluxo de avanço — XLSX da contabilidade, modal manual, etc).
+  intencao?: "ver" | "avancar";
+  onConfirmarAvanco?: () => void;
 };
 
-export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, onClose }: Props) {
+export function SubtarefasDrawer({
+  admissao, cargos, activeRestaurant, pessoa, onClose,
+  intencao = "ver", onConfirmarAvanco,
+}: Props) {
   const colunas = useMemo(
     () => [...getKanbanColunas(activeRestaurant)].sort((a, b) => a.ordem - b.ordem),
     [activeRestaurant],
@@ -145,6 +156,16 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
     if (!s.feita) void toggle(s);
   }
 
+  // Rodapé de avanço: só aparece se intencao === "avancar"
+  const proxStatus = proximoStatus(admissao.status);
+  const proximaColuna = proxStatus
+    ? colunas.find((c) => colunaCapturaStatus(c, proxStatus))
+    : null;
+  const pendentesObrigAtual = colunaAtual
+    ? subtarefasPendentesObrigatorias(admissao, colunaAtual.id)
+    : [];
+  const podeAvancar = pendentesObrigAtual.length === 0;
+
   return (
     <div className="fixed inset-0 z-50 flex">
       {/* Backdrop */}
@@ -234,6 +255,40 @@ export function SubtarefasDrawer({ admissao, cargos, activeRestaurant, pessoa, o
               );
             })}
         </div>
+
+        {/* Rodapé com botão de avançar — só em modo "intencao=avancar" */}
+        {intencao === "avancar" && onConfirmarAvanco && proxStatus && (
+          <footer className="border-t border-gray-200 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-900/60">
+            {podeAvancar ? (
+              <div className="text-xs text-emerald-700 dark:text-emerald-400 mb-2 flex items-center gap-1">
+                ✓ Tudo pronto pra avançar — todas as obrigatórias de
+                "<strong>{colunaAtual?.nome}</strong>" estão marcadas.
+              </div>
+            ) : (
+              <div className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+                ⚠ Faltam <strong>{pendentesObrigAtual.length} obrigatória(s)</strong> em
+                "<strong>{colunaAtual?.nome}</strong>". Marque acima pra liberar o avanço.
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={onConfirmarAvanco}
+                disabled={!podeAvancar}
+                className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
+              >
+                ▶ Avançar pra "{proximaColuna?.nome || ADMISSAO_STATUS_LABEL[proxStatus]}"
+              </button>
+            </div>
+          </footer>
+        )}
       </aside>
     </div>
   );

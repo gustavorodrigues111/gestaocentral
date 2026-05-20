@@ -38,6 +38,7 @@ import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
+import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import {
   atualizarChecklistDocumentos,
   getEmailContabilidade,
@@ -200,6 +201,14 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
 
   const [admPreenchimentoManual, setAdmPreenchimentoManual] = useState<Admissao | null>(null);
 
+  // Drawer de checklist: guarda só o ID + a intenção. Re-deriva a admissão
+  // pela lista live pra refletir mudanças do onSnapshot durante o uso.
+  const [drawerAdmId, setDrawerAdmId] = useState<string | null>(null);
+  const [drawerIntencao, setDrawerIntencao] = useState<"ver" | "avancar">("ver");
+  const drawerAdmissao = drawerAdmId
+    ? admissoes.find((a) => a.id === drawerAdmId) || null
+    : null;
+
   async function handleAvancar(adm: Admissao) {
     const prox = proximoStatus(adm.status);
     if (!prox) return;
@@ -255,7 +264,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       }
       return;
     }
-    if (!confirm(`Avançar pra "${ADMISSAO_STATUS_LABEL[prox]}"?`)) return;
+    // Sem confirm genérico — o drawer já mostrou as obrigatórias e o usuário
+    // explicitamente clicou "Avançar pra X" ali. A confirmação extra do
+    // contabilidade (XLSX + Gmail) acima é mantida porque informa ações
+    // específicas que vão acontecer.
     if (prox === "admitido" && me) {
       await avancarStatusComTrigger(adm, prox, "admitido", me);
     } else {
@@ -392,19 +404,35 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       📄 Confirmar docs recebidos
                     </Button>
                   )}
-                  {/* Reabrir checklist quando já recebido pra revisar pendências */}
+                  {/* Reabrir checklist de DOCS quando já recebido pra revisar pendências */}
                   {(st === "documentos_recebidos"
                     || st === "solicitacao_contabilidade"
                     || st === "assinando_documentos"
                     || st === "pronto_admissao"
                     || st === "onboarding") && (
                     <Button size="sm" variant="secondary" onClick={() => setAdmChecklist(adm)}>
-                      📄 Checklist
+                      📄 Docs WhatsApp
                     </Button>
                   )}
-                  {/* Avançar etapa — só se há próxima e status não é terminal */}
+                  {/* Checklist da etapa atual (subtarefas do fluxo) — sempre disponível */}
+                  {st !== "cancelada" && st !== "expirada" && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("ver"); }}
+                    >
+                      📋 Checklist da etapa
+                    </Button>
+                  )}
+                  {/* Avançar etapa — só se há próxima e status não é terminal.
+                      Abre o drawer no modo "avancar": RH revisa as obrigatórias
+                      antes de confirmar. Pra formulario_preenchido segue fluxo
+                      antigo (precisa do modal de docs recebidos). */}
                   {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && st !== "formulario_preenchido" && (
-                    <Button size="sm" onClick={() => handleAvancar(adm)}>
+                    <Button
+                      size="sm"
+                      onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("avancar"); }}
+                    >
                       ▶ Avançar
                     </Button>
                   )}
@@ -477,6 +505,22 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           admissao={admPreenchimentoManual}
           onClose={() => setAdmPreenchimentoManual(null)}
           onSaved={() => setAdmPreenchimentoManual(null)}
+        />
+      )}
+
+      {drawerAdmissao && me && (
+        <SubtarefasDrawer
+          admissao={drawerAdmissao}
+          cargos={cargos}
+          activeRestaurant={activeRestaurant}
+          pessoa={me}
+          intencao={drawerIntencao}
+          onConfirmarAvanco={async () => {
+            const adm = drawerAdmissao;
+            setDrawerAdmId(null);
+            await handleAvancar(adm);
+          }}
+          onClose={() => setDrawerAdmId(null)}
         />
       )}
     </div>
