@@ -373,6 +373,7 @@ export type Restaurant = {
   // ─── Admissão (módulo Admissão) ───
   admissaoPrazoDias?: number;            // 1-7, default 1
   whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
+  emailContabilidade?: string;           // e-mail da contabilidade pra solicitação de admissão
   admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
   admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
 

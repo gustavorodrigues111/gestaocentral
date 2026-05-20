@@ -71,6 +71,10 @@ export function getWhatsappDP(rest: Restaurant | null | undefined): string | und
   return rest?.whatsappDP || undefined;
 }
 
+export function getEmailContabilidade(rest: Restaurant | null | undefined): string | undefined {
+  return rest?.emailContabilidade?.trim() || undefined;
+}
+
 // ─── CRUD ──────────────────────────────────────────────────────────────────
 
 export type IniciarAdmissaoInput = {
@@ -307,7 +311,7 @@ export async function moverColunaKanban(
 // Atualiza o schema/prazo/whatsapp DP de um restaurante.
 export async function salvarConfigAdmissao(
   restaurantId: string,
-  patch: Partial<Pick<Restaurant, "admissaoPrazoDias" | "whatsappDP" | "admissaoFormSchema" | "admissaoKanbanColunas">>,
+  patch: Partial<Pick<Restaurant, "admissaoPrazoDias" | "whatsappDP" | "emailContabilidade" | "admissaoFormSchema" | "admissaoKanbanColunas">>,
 ): Promise<void> {
   await setDoc(
     doc(db, "restaurants", restaurantId),

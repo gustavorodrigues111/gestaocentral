@@ -7,6 +7,7 @@ import { useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import {
+  getEmailContabilidade,
   getPrazoDias,
   getWhatsappDP,
   salvarConfigAdmissao,
@@ -26,6 +27,7 @@ function onlyDigits(s: string): string {
 export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [prazoDias, setPrazoDias] = useState<number>(getPrazoDias(activeRestaurant));
   const [whatsappDP, setWhatsappDP] = useState<string>(getWhatsappDP(activeRestaurant) || "");
+  const [emailContabilidade, setEmailContabilidade] = useState<string>(getEmailContabilidade(activeRestaurant) || "");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -36,6 +38,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       await salvarConfigAdmissao(rid, {
         admissaoPrazoDias: prazoDias,
         whatsappDP: onlyDigits(whatsappDP) || undefined,
+        emailContabilidade: emailContabilidade.trim() || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -94,9 +97,32 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         )}
       </div>
 
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+          📧 E-mail da contabilidade
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Quando a admissão for movida pra <strong>"Solicitação Enviada para Contabilidade"</strong>,
+          o sistema baixa a ficha em XLSX e abre o Gmail compose pré-preenchido com este
+          destinatário. Você só anexa o arquivo baixado e envia.
+        </p>
+        <Input
+          label="E-mail da contabilidade"
+          value={emailContabilidade}
+          onChange={(e) => setEmailContabilidade(e.target.value)}
+          placeholder="contato@contabilidade.com.br"
+          type="email"
+        />
+        {!getEmailContabilidade(activeRestaurant) && !emailContabilidade && (
+          <p className="text-[11px] text-amber-700 dark:text-amber-400">
+            ⚠ Sem e-mail cadastrado, o sistema baixa a ficha mas o Gmail compose abre sem destinatário.
+          </p>
+        )}
+      </div>
+
       <div className="flex items-center gap-2">
         <Button onClick={salvar} disabled={salvando}>
-          {salvando ? "Salvando…" : "💾 Salvar prazo + WhatsApp"}
+          {salvando ? "Salvando…" : "💾 Salvar configurações"}
         </Button>
         {msg && <span className="text-xs">{msg}</span>}
       </div>

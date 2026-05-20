@@ -36,7 +36,15 @@ import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
-import { atualizarChecklistDocumentos } from "../../core/admissao/admissaoHelpers";
+import {
+  atualizarChecklistDocumentos,
+  getEmailContabilidade,
+} from "../../core/admissao/admissaoHelpers";
+import {
+  baixarFichaAdmissao,
+  montarCorpoEmailContabilidade,
+  montarGmailComposeUrl,
+} from "../../core/admissao/exportFicha";
 
 type Props = {
   rid: string;
@@ -212,6 +220,32 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
         "de admissão, salário e horários cadastrados. Use o botão 'Preencher " +
         "dados básicos' acima.",
       );
+      return;
+    }
+    // dados_finais → solicitacao_contabilidade: baixa ficha XLSX + abre Gmail
+    if (prox === "solicitacao_contabilidade") {
+      const emailDest = getEmailContabilidade(activeRestaurant);
+      const ok = confirm(
+        `Vamos avançar pra "Enviado pra contabilidade":\n\n` +
+        `1. O sistema baixa a ficha em XLSX agora\n` +
+        `2. Abre o Gmail compose ${emailDest ? `pra ${emailDest}` : "(sem destinatário — cadastre em ⚙️ Configurações)"}\n` +
+        `3. Você anexa o XLSX baixado e envia\n\n` +
+        `Continuar?`,
+      );
+      if (!ok) return;
+      try {
+        const cargo = cargos.find((c) => c.id === adm.cargoId);
+        baixarFichaAdmissao(adm, cargos, activeRestaurant.nome);
+        const url = montarGmailComposeUrl({
+          to: emailDest,
+          subject: `Solicitação de admissão — ${adm.candidato.nome} (${activeRestaurant.nome})`,
+          body: montarCorpoEmailContabilidade(adm, cargo, activeRestaurant.nome),
+        });
+        window.open(url, "_blank");
+        await avancarStatus(adm.id, prox);
+      } catch (e) {
+        alert("Erro: " + (e instanceof Error ? e.message : "?"));
+      }
       return;
     }
     if (!confirm(`Avançar pra "${ADMISSAO_STATUS_LABEL[prox]}"?`)) return;
