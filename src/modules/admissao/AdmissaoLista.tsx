@@ -21,6 +21,7 @@ import {
   cancelarAdmissao,
   estenderPrazoAdmissao,
   excluirAdmissaoDefinitivamente,
+  getKanbanColunas,
   getPrazoDias,
   getSchemaAdmissao,
   getSubtarefasTemplate,
@@ -29,6 +30,7 @@ import {
   marcarLinkEnviado,
   montarMensagemEnvioLink,
   normalizarAdmissao,
+  progressoSubtarefasColuna,
   proximoStatus,
   reabrirAdmissao,
   reenviarAdmissao,
@@ -36,6 +38,7 @@ import {
   temDadosFinaisCompletos,
   urlPublicaAdmissao,
 } from "../../core/admissao/admissaoHelpers";
+import type { KanbanColuna } from "../../core/types";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
@@ -82,6 +85,36 @@ const STATUS_COR: Record<string, string> = {
   cancelada:             "bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300",
   expirada:              "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
 };
+
+// Resolve a coluna correspondente ao status atual de uma admissão.
+function colunaAtualDoStatus(adm: Admissao, colunas: KanbanColuna[]): KanbanColuna | undefined {
+  const st = statusEfetivo(adm);
+  return colunas.find((c) => {
+    const sa = c.statusAuto;
+    if (!sa) return false;
+    if (Array.isArray(sa)) return (sa as string[]).includes(st);
+    return sa === st;
+  });
+}
+
+// Sombreamento do botão "Checklist da etapa" baseado no progresso da etapa atual:
+//   vermelho — nenhuma obrigatória feita ainda
+//   amarelo — em andamento (algumas feitas, mas faltam obrigatórias)
+//   verde — todas as obrigatórias da etapa feitas (pronto pra avançar)
+//   neutro — sem subtarefas ou status terminal
+function classeChecklistEtapa(adm: Admissao, colunas: KanbanColuna[]): string {
+  const colAtual = colunaAtualDoStatus(adm, colunas);
+  if (!colAtual) return "";
+  const prog = progressoSubtarefasColuna(adm, colAtual.id);
+  if (prog.total === 0) return "";
+  if (prog.feitas === 0) {
+    return "!bg-rose-50 !text-rose-800 !border-rose-300 hover:!bg-rose-100 dark:!bg-rose-900/20 dark:!text-rose-300 dark:!border-rose-800";
+  }
+  if (prog.obrigatoriasPendentes === 0) {
+    return "!bg-emerald-50 !text-emerald-800 !border-emerald-300 hover:!bg-emerald-100 dark:!bg-emerald-900/20 dark:!text-emerald-300 dark:!border-emerald-800";
+  }
+  return "!bg-amber-50 !text-amber-800 !border-amber-300 hover:!bg-amber-100 dark:!bg-amber-900/20 dark:!text-amber-300 dark:!border-amber-800";
+}
 
 export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
@@ -209,6 +242,8 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   const drawerAdmissao = drawerAdmId
     ? admissoes.find((a) => a.id === drawerAdmId) || null
     : null;
+
+  const colunasKanban = useMemo(() => getKanbanColunas(activeRestaurant), [activeRestaurant]);
 
   async function handleAvancar(adm: Admissao) {
     const prox = proximoStatus(adm.status);
@@ -481,6 +516,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     size="sm"
                     variant="secondary"
                     onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("ver"); }}
+                    className={classeChecklistEtapa(adm, colunasKanban)}
                   >
                     📋 Checklist da etapa
                   </Button>
