@@ -1570,6 +1570,12 @@ export type Admissao = {
   // candidato pela página pública.
   preenchimentoManual?: { por: { id: string; nome: string } | null; em: string };
 
+  // Quando o RH faz uma correção/revisão dos dados preenchidos pelo
+  // candidato (ex: corrigir erro de digitação). Diferente de
+  // preenchimentoManual — o candidato já tinha preenchido, RH só ajusta.
+  dadosRevisadosEm?: string;
+  dadosRevisadosPor?: { id: string; nome: string };
+
   // Declaração de veracidade + selfie + ciências obrigatórias do candidato.
   // Submetidas junto com o form. Tudo aceito = libera submit do form.
   validacao?: {

@@ -11,9 +11,13 @@ import { CampoRender, agruparPorGrupo } from "./AdmissaoPublicaPage";
 type Props = {
   admissao: Admissao;
   onClose: () => void;
+  // Quando provido, mostra botão "Conferir e editar" no topo (só aparece se
+  // form já foi finalizado). Click chama esse callback — a Lista fecha esse
+  // modal e abre o PreencherFormManualModal em modo "revisao".
+  onEditar?: () => void;
 };
 
-export function VerPreenchimentoModal({ admissao, onClose }: Props) {
+export function VerPreenchimentoModal({ admissao, onClose, onEditar }: Props) {
   const dados = (admissao.dadosPreenchidos as Record<string, unknown>) || {};
   const gruposOrdenados = agruparPorGrupo(admissao.schemaUsado);
   const exigeDependentes = dados.tem_dependentes_legais === true;
@@ -50,9 +54,26 @@ export function VerPreenchimentoModal({ admissao, onClose }: Props) {
                   · preenchimento em andamento (auto-save do candidato)
                 </span>
               )}
+              {admissao.dadosRevisadosEm && (
+                <span className="ml-2 text-sky-700 dark:text-sky-400">
+                  · ✏️ revisado em {new Date(admissao.dadosRevisadosEm).toLocaleString("pt-BR")}
+                  {admissao.dadosRevisadosPor?.nome ? ` por ${admissao.dadosRevisadosPor.nome}` : ""}
+                </span>
+              )}
             </div>
-            <div className="text-indigo-700 dark:text-indigo-400 italic">
-              somente leitura
+            <div className="flex items-center gap-2">
+              {onEditar && admissao.preenchidoEm && (
+                <button
+                  type="button"
+                  onClick={onEditar}
+                  className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
+                >
+                  ✏️ Conferir e editar
+                </button>
+              )}
+              <div className="text-indigo-700 dark:text-indigo-400 italic">
+                somente leitura
+              </div>
             </div>
           </div>
         </div>

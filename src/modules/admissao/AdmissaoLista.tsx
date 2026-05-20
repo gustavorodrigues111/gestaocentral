@@ -234,6 +234,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
 
   const [admPreenchimentoManual, setAdmPreenchimentoManual] = useState<Admissao | null>(null);
   const [admVerPreenchimento, setAdmVerPreenchimento] = useState<Admissao | null>(null);
+  // Modo de revisão = candidato já preencheu, RH só está corrigindo. Reusa o
+  // mesmo modal de preenchimento manual mas com flag pra mudar o
+  // comportamento de save (sem marcar preenchimentoManual).
+  const [admRevisao, setAdmRevisao] = useState<Admissao | null>(null);
 
   // Drawer de checklist: guarda só o ID + a intenção. Re-deriva a admissão
   // pela lista live pra refletir mudanças do onSnapshot durante o uso.
@@ -606,6 +610,20 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
         <VerPreenchimentoModal
           admissao={admVerPreenchimento}
           onClose={() => setAdmVerPreenchimento(null)}
+          onEditar={() => {
+            const adm = admVerPreenchimento;
+            setAdmVerPreenchimento(null);
+            setAdmRevisao(adm);
+          }}
+        />
+      )}
+
+      {admRevisao && (
+        <PreencherFormManualModal
+          admissao={admRevisao}
+          modo="revisao"
+          onClose={() => setAdmRevisao(null)}
+          onSaved={() => setAdmRevisao(null)}
         />
       )}
 

@@ -28,9 +28,14 @@ type Props = {
   admissao: Admissao;
   onClose: () => void;
   onSaved: () => void;
+  // "manual": RH preenche a ficha pelo candidato (caminho excepcional —
+  //   marca o doc com preenchimentoManual)
+  // "revisao": candidato já preencheu, RH só está corrigindo erros de
+  //   digitação. Grava dadosRevisadosEm/Por, NÃO marca preenchimentoManual.
+  modo?: "manual" | "revisao";
 };
 
-export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) {
+export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "manual" }: Props) {
   const { pessoa: me } = useAuth();
   const [dados, setDados] = useState<Record<string, unknown>>(() => ({
     ...((admissao.dadosPreenchidos as Record<string, unknown>) || {}),
@@ -66,20 +71,26 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) 
     setSalvando(true);
     try {
       const now = new Date().toISOString();
-      await setDoc(
-        doc(db, "admissoes", admissao.id),
-        {
-          dadosPreenchidos: dados,
-          status: "formulario_preenchido",
-          preenchidoEm: now,
-          preenchimentoManual: {
-            por: me ? { id: me.id, nome: me.nome } : null,
-            em: now,
-          },
-          updatedAt: now,
-        },
-        { merge: true },
-      );
+      const patch: Record<string, unknown> = {
+        dadosPreenchidos: dados,
+        updatedAt: now,
+      };
+      if (modo === "manual") {
+        // Caminho original — RH preenche pelo candidato. Marca status e
+        // grava preenchimentoManual pra distinguir no histórico.
+        patch.status = "formulario_preenchido";
+        patch.preenchidoEm = now;
+        patch.preenchimentoManual = {
+          por: me ? { id: me.id, nome: me.nome } : null,
+          em: now,
+        };
+      } else {
+        // Revisão — candidato já preencheu. Não mexe em status/preenchidoEm/
+        // preenchimentoManual. Só registra que RH revisou.
+        patch.dadosRevisadosEm = now;
+        patch.dadosRevisadosPor = me ? { id: me.id, nome: me.nome } : null;
+      }
+      await setDoc(doc(db, "admissoes", admissao.id), patch, { merge: true });
       onSaved();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
@@ -89,16 +100,26 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) 
 
   return (
     <Modal
-      title={`Preencher formulário manualmente — ${admissao.candidato.nome}`}
+      title={modo === "revisao"
+        ? `Conferir e corrigir formulário — ${admissao.candidato.nome}`
+        : `Preencher formulário manualmente — ${admissao.candidato.nome}`}
       onClose={onClose}
       maxWidth="max-w-3xl"
     >
       <div className="space-y-3">
-        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-300">
-          ⚠ Use só em casos excepcionais — o caminho normal é o candidato
-          preencher sozinho pelo link. Ao salvar, o doc fica marcado como
-          "preenchimento manual por {me?.nome || "—"}" pra distinguir no histórico.
-        </div>
+        {modo === "manual" ? (
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-300">
+            ⚠ Use só em casos excepcionais — o caminho normal é o candidato
+            preencher sozinho pelo link. Ao salvar, o doc fica marcado como
+            "preenchimento manual por {me?.nome || "—"}" pra distinguir no histórico.
+          </div>
+        ) : (
+          <div className="rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 p-3 text-xs text-sky-900 dark:text-sky-300">
+            ✏️ Modo revisão — corrija erros de digitação ou ajuste o que
+            precisar. O preenchimento original do candidato é preservado no
+            histórico; só fica registrado que você revisou em {new Date().toLocaleString("pt-BR")}.
+          </div>
+        )}
 
         <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
           {gruposOrdenados.map(({ grupo, campos }) => (
@@ -134,7 +155,11 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) 
             Cancelar
           </Button>
           <Button onClick={salvar} disabled={salvando}>
-            {salvando ? "Salvando…" : "💾 Salvar e marcar preenchido"}
+            {salvando
+              ? "Salvando…"
+              : modo === "revisao"
+              ? "💾 Salvar correções"
+              : "💾 Salvar e marcar preenchido"}
           </Button>
         </div>
       </div>
