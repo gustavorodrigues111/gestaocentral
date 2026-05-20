@@ -1470,27 +1470,25 @@ export type FormField = {
   ativo: boolean;              // soft-delete (não quebra admissões antigas)
 };
 
+// Cada status corresponde 1:1 a uma coluna do Kanban — flow linear:
+//   enviado → preenchido → contabilidade → pronto → admitido
+// formulario_enviado auto-avança pra formulario_preenchido quando o candidato
+// submete o form. Restante é manual via botão "▶ Avançar" na lista.
 export type AdmissaoStatus =
-  | "formulario_enviado"          // RH criou e mandou WhatsApp pro candidato
-  | "formulario_preenchido"       // candidato submeteu o form
-  | "documentos_recebidos"        // RH confirmou recebimento dos docs + cargo/horário/data preenchidos
-  | "solicitacao_contabilidade"   // pedido enviado pra contabilidade processar
-  | "assinando_documentos"        // contrato voltou da contabilidade; assinaturas + banco + cursos
-  | "pronto_admissao"             // tudo pronto, esperando D-day
-  | "onboarding"                  // D1: treinamento, EPIs, grupo
-  | "admitido"                    // processo finalizado (Pessoa+Empregado criados)
+  | "formulario_enviado"          // col 1 — link enviado, esperando candidato
+  | "formulario_preenchido"       // col 2 — candidato submeteu, RH lidando com exames + conta + docs + dados internos
+  | "solicitacao_contabilidade"   // col 3 — pedido enviado pra contabilidade, assinaturas + banco + cursos
+  | "pronto_admissao"             // col 4 — tudo pronto, esperando D-day
+  | "admitido"                    // col 5 — processo finalizado + onboarding D1 + cadastros pós
   | "cancelada"                   // qualquer motivo de cancelamento
   | "expirada";                   // token expirou sem preenchimento
 
 export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
   formulario_enviado:        "Aguardando preenchimento",
-  formulario_preenchido:     "Formulário preenchido",
-  documentos_recebidos:      "Documentos recebidos",
-  solicitacao_contabilidade: "Enviado pra contabilidade",
-  assinando_documentos:      "Assinando documentos",
+  formulario_preenchido:     "Exames, conta e dados internos",
+  solicitacao_contabilidade: "Contabilidade & contratos",
   pronto_admissao:           "Pronto pra admitir",
-  onboarding:                "Onboarding",
-  admitido:                  "Admitido",
+  admitido:                  "Admitido e Onboarding",
   cancelada:                 "Cancelada",
   expirada:                  "Expirada",
 };
@@ -1607,7 +1605,17 @@ export type Admissao = {
   motivosCancelamento?: MotivoCancelamento[]; // tags cumulativas (cancelado_empresa, desistencia, etc)
 
   // ─── Kanban: override manual da coluna (default: derivado do status) ───
+  // Mantido por retrocompat. O Kanban virou view-only — não há mais drag-drop.
   kanbanColunaId?: string;
+
+  // ─── Dados bancários Itaú (preenchidos na col 3) ───
+  // RH preenche depois que candidato envia agência + conta. Subtarefa de
+  // cadastrar no banco usa estes dados pra montar a mensagem do financeiro.
+  dadosBancariosItau?: {
+    tipo: "salario" | "corrente";
+    agencia: string;
+    conta: string;
+  };
 
   // ─── Checklist do fluxo de admissão ───
   // Subtarefas instanciadas do template do restaurante (ou do default global)
@@ -1626,6 +1634,7 @@ export type AutoTriggerSubtarefa =
   | "link_enviado"                // RH clicou "Enviar via WhatsApp"
   | "form_preenchido"             // candidato submeteu o form
   | "dados_finais_completos"      // RH preencheu cargo/salário/horário/data
+  | "checklist_docs_completo"     // RH marcou 12/12 docs no modal de WhatsApp
   | "envio_contabilidade"         // RH clicou "Enviar pra contabilidade"
   | "admitido";                   // RH clicou "Concluir admissão"
 
@@ -1634,17 +1643,24 @@ export type SubtarefaTemplate = {
   id: string;
   nome: string;
   colunaId: string;                  // FK em KanbanColuna.id
+  // Sub-agrupamento dentro da coluna — várias subtarefas com o mesmo
+  // checklistId aparecem juntas no drawer sob o título checklistNome.
+  checklistId: string;
+  checklistNome: string;
   obrigatoria: boolean;              // bloqueia avanço de coluna se true e pendente
   ordem: number;
   autoTrigger?: AutoTriggerSubtarefa; // se setado, sistema auto-marca quando o evento ocorre
   // Atalhos disponíveis na UI do drawer:
   atalho?:
-    | { tipo: "gmail_clinica" }                // abre Gmail compose pra clínica de exames
-    | { tipo: "whatsapp_exame_candidato" }     // abre WhatsApp do candidato c/ mensagem de exame
-    | { tipo: "whatsapp_candidato" }           // abre WhatsApp do candidato (genérico)
-    | { tipo: "whatsapp_dp" };                 // abre WhatsApp do DP (n° configurado)
+    | { tipo: "gmail_clinica" }                  // abre Gmail compose pra clínica de exames
+    | { tipo: "whatsapp_instrucoes_candidato" }  // mensagem única (exames + conta + docs)
+    | { tipo: "whatsapp_banco_financeiro" }      // pra (11) 91756-0073 do financeiro
+    | { tipo: "checklist_docs_whatsapp" }        // abre o modal de confirmar 12 docs
+    | { tipo: "whatsapp_candidato" }             // genérico
+    | { tipo: "whatsapp_dp" };                   // genérico
   pedeLink?: boolean;                // se true, mostra input de URL (Drive/Dropbox)
-  pedeDataHora?: boolean;            // se true, mostra input datetime-local (ex: data do exame)
+  pedeDataHora?: boolean;            // se true, mostra input datetime-local
+  pedeDadosBancarios?: boolean;      // se true, mostra 3 campos (tipo + agência + conta) — atualizam adm.dadosBancariosItau
 };
 
 // Instância de subtarefa numa admissão concreta (state + dados).

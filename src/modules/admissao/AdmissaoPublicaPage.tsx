@@ -1085,6 +1085,8 @@ function CienciaDocsWhatsappBox({
     if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
     return whatsappDP || "";
   })();
+  // Lista de docs idêntica à usada na mensagem de instruções (mantida
+  // hardcoded aqui pra o form público não precisar importar do core/admissao).
   const docs = [
     "RG (frente e verso)",
     "CPF",
@@ -1097,6 +1099,24 @@ function CienciaDocsWhatsappBox({
     "Comprovante de escolaridade",
     "Certidão de nascimento dos dependentes (se houver)",
   ];
+  // Prazo dos docs = prazo do form + 24h. Permite que o candidato envie o
+  // form rapidinho e tenha mais 1 dia pra reunir as fotos.
+  const prazoDocsDias = prazoDias + 1;
+  const prazoDocsLabel = prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`;
+  const [copiou, setCopiou] = useState(false);
+
+  async function copiarLista() {
+    const texto = `Documentos pra enviar via WhatsApp (até ${prazoDocsLabel}):\n\n` +
+      docs.map((d) => `• ${d}`).join("\n");
+    try {
+      await navigator.clipboard.writeText(texto);
+      setCopiou(true);
+      setTimeout(() => setCopiou(false), 2000);
+    } catch {
+      alert("Não consegui copiar — selecione e copie manualmente da tela.");
+    }
+  }
+
   return (
     <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-indigo-50 border-indigo-300"}`}>
       <h2 className={`font-bold text-sm mb-2 ${aceita ? "text-emerald-900" : "text-indigo-900"}`}>
@@ -1118,12 +1138,19 @@ function CienciaDocsWhatsappBox({
           </p>
         )}
         <p>
-          <strong>Prazo:</strong> mesmo prazo deste formulário —{" "}
-          <strong>{prazoDias === 1 ? "24 horas" : `${prazoDias} dias`}</strong>.
+          <strong>Prazo:</strong> até <strong>{prazoDocsLabel}</strong> depois
+          do envio deste formulário (24h a mais que o prazo do form).
         </p>
         <ul className="list-disc pl-5 space-y-0.5">
           {docs.map((d) => <li key={d}>{d}</li>)}
         </ul>
+        <button
+          type="button"
+          onClick={copiarLista}
+          className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700"
+        >
+          📋 {copiou ? "Copiado!" : "Copiar lista de docs"}
+        </button>
       </div>
       <label className="flex items-start gap-2 mt-3 cursor-pointer select-none">
         <input
@@ -1134,7 +1161,7 @@ function CienciaDocsWhatsappBox({
         />
         <span className="text-xs text-gray-900">
           Estou ciente que devo <strong>enviar todos esses documentos por
-          WhatsApp</strong> em até <strong>{prazoDias === 1 ? "24 horas" : `${prazoDias} dias`}</strong>.
+          WhatsApp</strong> em até <strong>{prazoDocsLabel}</strong>.
         </span>
       </label>
     </section>

@@ -16,6 +16,8 @@ import {
   SUBTAREFAS_TEMPLATE_DEFAULT, EMAIL_CLINICA_EXAMES_DEFAULT,
   CLINICA_EXAMES_NOME_DEFAULT, CLINICA_EXAMES_ENDERECO_DEFAULT,
   CLINICA_EXAMES_TELEFONE_DEFAULT,
+  WHATSAPP_FINANCEIRO_DEFAULT, PRAZO_CONTA_ITAU_DIAS,
+  DEPRECATED_SUBTAREFAS_IDS,
 } from "./formTemplate";
 
 // ─── Token + URL ───────────────────────────────────────────────────────────
@@ -291,13 +293,27 @@ export async function cancelarAdmissao(
 const ORDEM_FLUXO: AdmissaoStatus[] = [
   "formulario_enviado",
   "formulario_preenchido",
-  "documentos_recebidos",
   "solicitacao_contabilidade",
-  "assinando_documentos",
   "pronto_admissao",
-  "onboarding",
   "admitido",
 ];
+
+// Mapeia status legados (de admissões criadas antes da reestruturação) pros
+// status atuais. Usado no carregamento das admissões pra evitar quebrar UI
+// quando o doc tem um status que saiu do enum.
+function normalizarStatusLegacy(s: string): AdmissaoStatus {
+  if (s === "documentos_recebidos" || s === "assinando_documentos") {
+    // documentos_recebidos virou parte de formulario_preenchido (col 2).
+    // assinando_documentos virou parte de solicitacao_contabilidade (col 3).
+    return s === "documentos_recebidos" ? "formulario_preenchido" : "solicitacao_contabilidade";
+  }
+  if (s === "onboarding") return "admitido";
+  return s as AdmissaoStatus;
+}
+
+export function normalizarAdmissao(adm: Admissao): Admissao {
+  return { ...adm, status: normalizarStatusLegacy(adm.status as string) };
+}
 
 export function proximoStatus(s: AdmissaoStatus): AdmissaoStatus | null {
   const i = ORDEM_FLUXO.indexOf(s);
@@ -353,14 +369,23 @@ export function temDadosFinaisCompletos(adm: Admissao): boolean {
   return algumAtivo;
 }
 
+// Atualiza o checklist de 12 docs WhatsApp. NÃO muda status (admissão fica
+// em formulario_preenchido — col 2 — enquanto RH conferir docs). Se todos
+// recebidos, dispara o auto-trigger pra marcar a subtarefa "Conferir
+// recebimento de docs".
 export async function marcarDocumentosRecebidos(
-  admissaoId: string,
+  admissao: Admissao,
   pessoa: Pessoa,
   checklistItens: { id: string; nome: string; recebido: boolean; observacao?: string }[],
 ): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
-    status: "documentos_recebidos",
+  const todosRecebidos = checklistItens.length > 0 && checklistItens.every((i) => i.recebido);
+  const subtarefas = [...(admissao.subtarefas || [])];
+  let mutouSubtarefas = false;
+  if (todosRecebidos) {
+    mutouSubtarefas = aplicarAutoTrigger(subtarefas, "checklist_docs_completo", pessoa, now);
+  }
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
     documentosRecebidosEm: now,
     documentosRecebidosPor: { id: pessoa.id, nome: pessoa.nome },
     checklistDocumentos: {
@@ -368,6 +393,7 @@ export async function marcarDocumentosRecebidos(
       atualizadoEm: now,
       atualizadoPor: { id: pessoa.id, nome: pessoa.nome },
     },
+    ...(mutouSubtarefas ? { subtarefas } : {}),
     updatedAt: now,
   }));
 }
@@ -569,12 +595,15 @@ export function sincronizarSubtarefasComTemplate(
     const atualizou =
       ex.nome !== t.nome ||
       ex.colunaId !== t.colunaId ||
+      ex.checklistId !== t.checklistId ||
+      ex.checklistNome !== t.checklistNome ||
       ex.obrigatoria !== t.obrigatoria ||
       ex.ordem !== t.ordem ||
       ex.autoTrigger !== t.autoTrigger ||
       JSON.stringify(ex.atalho) !== JSON.stringify(t.atalho) ||
       !!ex.pedeLink !== !!t.pedeLink ||
-      !!ex.pedeDataHora !== !!t.pedeDataHora;
+      !!ex.pedeDataHora !== !!t.pedeDataHora ||
+      !!ex.pedeDadosBancarios !== !!t.pedeDadosBancarios;
     if (!atualizou) return ex;
     mudou = true;
     return {
@@ -588,8 +617,17 @@ export function sincronizarSubtarefasComTemplate(
     };
   });
 
-  // Subtarefas órfãs (no admin mas não no template) vão pro fim — preserva.
-  const orfas = atuais.filter((s) => !idsTemplate.has(s.id));
+  // Subtarefas órfãs (no admin mas não no template). IDs deprecados são
+  // removidos silenciosamente (foram fundidos ou aposentados). Os demais
+  // ficam preservados no fim por segurança.
+  const orfasReais = atuais.filter(
+    (s) => !idsTemplate.has(s.id) && !DEPRECATED_SUBTAREFAS_IDS.has(s.id),
+  );
+  const removeuDeprecated = atuais.some(
+    (s) => !idsTemplate.has(s.id) && DEPRECATED_SUBTAREFAS_IDS.has(s.id),
+  );
+  if (removeuDeprecated) mudou = true;
+  const orfas = orfasReais;
 
   if (!mudou) return { sincronizadas: atuais, adicionou: false };
   return {
@@ -737,34 +775,108 @@ function fmtDataHoraLocal(s: string): string {
   return `${dia}/${m}/${a} às ${h || "--:--"}`;
 }
 
-// Monta mensagem padrão pra mandar ao candidato avisando data do exame
-// admissional, endereço/telefone da clínica e instruções sobre o exame
-// parasitológico (potinho de coleta — retirar conosco ou comprar em drogaria).
-export function montarMensagemExameCandidato(
+// Lista de documentos que o candidato deve enviar por WhatsApp. Exportada
+// pra ser usada tanto na mensagem de instruções quanto no box do form
+// público (com botão "copiar lista").
+export const LISTA_DOCS_WHATSAPP = [
+  "RG (frente e verso)",
+  "CPF",
+  "Comprovante de residência",
+  "Foto 3x4",
+  "CTPS (página de rosto + qualificação civil)",
+  "Título de eleitor",
+  "Comprovante de PIS/PASEP",
+  "Certificado de reservista (homens)",
+  "Comprovante de escolaridade",
+  "Certidão de nascimento dos dependentes (se houver)",
+];
+
+// Mensagem única de instruções: 3 blocos (exames + conta + docs). Substituiu
+// 3 mensagens separadas que tínhamos antes. RH manda 1 vez, candidato
+// recebe tudo junto.
+export function montarMensagemInstrucoesCandidato(
   admissao: Admissao,
   restNome: string,
-  dataHoraLocal: string,
+  dataHoraExame: string,
   clinica: { nome: string; endereco: string; telefone: string },
+  prazoDocsDias: number,
 ): string {
   const primeiroNome = admissao.candidato.nome.split(" ")[0] || admissao.candidato.nome;
-  const quando = dataHoraLocal ? fmtDataHoraLocal(dataHoraLocal) : "(data a confirmar)";
+  const quando = dataHoraExame ? fmtDataHoraLocal(dataHoraExame) : "(data a confirmar)";
+  const docsLista = LISTA_DOCS_WHATSAPP.map((d) => `• ${d}`).join("\n");
   return [
     `Olá, ${primeiroNome}!`,
     "",
-    `Seu exame admissional pela ${restNome} foi agendado:`,
+    `Mensagem importante com 3 temas fundamentais pra sua admissão pela ${restNome}:`,
     "",
-    `📅 ${quando}`,
-    `🏥 ${clinica.nome}`,
-    `📍 ${clinica.endereco}`,
-    `📞 ${clinica.telefone}`,
+    "═══════════════════════════════════════",
+    "📅 BLOCO 1 — EXAME MÉDICO",
+    "═══════════════════════════════════════",
+    "Seu exame admissional foi agendado:",
+    `• Data: ${quando}`,
+    `• Local: ${clinica.nome}`,
+    `• Endereço: ${clinica.endereco}`,
+    `• Telefone: ${clinica.telefone}`,
     "",
-    "Favor comparecer no dia e horário marcados, levando documento com foto.",
+    "Favor comparecer no dia/horário marcados, levando documento com foto.",
     "",
-    "ℹ️ Importante:",
-    "No dia do exame você vai receber também uma guia pra fazer o exame parasitológico. Pra isso vai precisar de um potinho de coleta de fezes — você pode:",
+    "No dia, você recebe também uma guia pra fazer o exame parasitológico — pra isso vai precisar de um potinho de coleta de fezes:",
     "• Retirar conosco mediante agendamento no escritório, OU",
-    "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso (o que for mais conveniente).",
+    "• Comprar em uma drogaria (Drogaria São Paulo, Raia ou Drogasil) e nos enviar a nota fiscal pra reembolso.",
+    "",
+    "═══════════════════════════════════════",
+    "🏦 BLOCO 2 — CONTA BANCÁRIA ITAÚ",
+    "═══════════════════════════════════════",
+    `Você precisa abrir uma conta no Itaú (corrente ou salário) e nos enviar os dados (agência e conta) em até ${PRAZO_CONTA_ITAU_DIAS} dias. Dá pra fazer pelo app do banco, sem precisar ir na agência.`,
+    "",
+    "═══════════════════════════════════════",
+    "📎 BLOCO 3 — DOCUMENTOS PRA WHATSAPP",
+    "═══════════════════════════════════════",
+    `Mande as fotos dos seguintes documentos por aqui em até ${prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`}:`,
+    "",
+    docsLista,
     "",
     "Qualquer dúvida, é só responder por aqui!",
   ].join("\n");
+}
+
+// Mensagem padrão pra solicitar cadastro do empregado no banco interno —
+// vai pro WhatsApp do financeiro do escritório.
+export function montarMensagemBancoFinanceiro(admissao: Admissao): string {
+  const c = admissao.candidato;
+  const cpfFmt = c.cpf.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
+  const dados = admissao.dadosBancariosItau;
+  return [
+    "Olá! Segue solicitação de cadastro no banco interno:",
+    "",
+    `Nome: ${c.nome}`,
+    `CPF: ${cpfFmt}`,
+    "",
+    "Conta Itaú:",
+    `• Tipo: ${dados?.tipo === "salario" ? "salário" : dados?.tipo === "corrente" ? "corrente" : "(não informado)"}`,
+    `• Agência: ${dados?.agencia || "(não informada)"}`,
+    `• Conta: ${dados?.conta || "(não informada)"}`,
+    "",
+    "Obrigado!",
+  ].join("\n");
+}
+
+export { WHATSAPP_FINANCEIRO_DEFAULT, PRAZO_CONTA_ITAU_DIAS };
+
+// Atualiza os dados bancários Itaú da admissão (campo top-level — não fica
+// dentro de subtarefa). Usado pelo input `pedeDadosBancarios` do drawer.
+export async function atualizarDadosBancariosItau(
+  admissaoId: string,
+  patch: Partial<{ tipo: "salario" | "corrente"; agencia: string; conta: string }>,
+  dadosAtuais?: { tipo: "salario" | "corrente"; agencia: string; conta: string },
+): Promise<void> {
+  const merged = {
+    tipo:     patch.tipo     ?? dadosAtuais?.tipo     ?? "salario",
+    agencia:  patch.agencia  ?? dadosAtuais?.agencia  ?? "",
+    conta:    patch.conta    ?? dadosAtuais?.conta    ?? "",
+  };
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    dadosBancariosItau: merged,
+    updatedAt: new Date().toISOString(),
+  });
 }

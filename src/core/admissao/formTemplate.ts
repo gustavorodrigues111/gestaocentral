@@ -148,20 +148,16 @@ export const CHECKLIST_DOCUMENTOS_DEFAULT = [
   { id: "dependentes_certidao", nome: "Certidão de nascimento dos dependentes (se houver)" },
 ];
 
-// Colunas default do Kanban — fluxo completo da admissão.
-// Cards seguem aqui da esquerda pra direita conforme o status muda.
-// "Cancelados e Expirados" combina os dois status terminais com badges
-// cumulativas pra explicar o motivo.
+// Colunas default do Kanban — fluxo completo da admissão. 5 funcionais + 1
+// terminal. Cada coluna tem 1:1 com um AdmissaoStatus, exceto "terminados"
+// que cobre cancelada + expirada. Kanban é VIEW-ONLY — não tem drag-drop.
 export const KANBAN_COLUNAS_DEFAULT = [
   { id: "col_enviado",        nome: "Aguardando preenchimento",   ordem: 1, statusAuto: "formulario_enviado" as const,        cor: "94a3b8" },
-  { id: "col_preenchido",     nome: "Formulário preenchido",      ordem: 2, statusAuto: "formulario_preenchido" as const,     cor: "f59e0b" },
-  { id: "col_documentos",     nome: "Documentos recebidos",       ordem: 3, statusAuto: "documentos_recebidos" as const,      cor: "10b981" },
-  { id: "col_contabilidade",  nome: "Enviado pra contabilidade",  ordem: 4, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
-  { id: "col_assinando",      nome: "Assinando documentos",       ordem: 5, statusAuto: "assinando_documentos" as const,      cor: "d946ef" },
-  { id: "col_pronto",         nome: "Pronto pra admitir",         ordem: 6, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
-  { id: "col_onboarding",     nome: "Onboarding",                 ordem: 7, statusAuto: "onboarding" as const,                cor: "14b8a6" },
-  { id: "col_admitido",       nome: "Admitido",                   ordem: 8, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
-  { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 9, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
+  { id: "col_preenchido",     nome: "Exames, conta e dados internos", ordem: 2, statusAuto: "formulario_preenchido" as const, cor: "f59e0b" },
+  { id: "col_contabilidade",  nome: "Contabilidade & contratos",  ordem: 3, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
+  { id: "col_pronto",         nome: "Pronto pra admitir",         ordem: 4, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
+  { id: "col_admitido",       nome: "Admitido e Onboarding",      ordem: 5, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
+  { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 6, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
 ];
 
 // Default do e-mail da clínica de exames admissionais. Restaurante pode
@@ -176,6 +172,21 @@ export const CLINICA_EXAMES_NOME_DEFAULT     = "Triagem Medicina do Trabalho";
 export const CLINICA_EXAMES_ENDERECO_DEFAULT = "Rua Paulistânia, 273 — metrô Vila Madalena, São Paulo - SP, 05440-000";
 export const CLINICA_EXAMES_TELEFONE_DEFAULT = "(11) 3801-3363";
 
+// Telefone do financeiro do escritório — destinatário da mensagem de
+// cadastrar empregado no banco interno. Hardcoded por agora.
+export const WHATSAPP_FINANCEIRO_DEFAULT = "5511917560073";
+
+// Dias pra abrir a conta no Itaú a partir do envio do form (hardcoded).
+// Usado tanto na mensagem de instruções quanto no box do form público.
+export const PRAZO_CONTA_ITAU_DIAS = 7;
+
+// IDs de subtarefas que foram removidos do template ao longo da evolução —
+// são filtradas como "lixo" no momento de sincronizar admissões antigas
+// pra não aparecerem como órfãs no drawer.
+export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
+  "st_contato_emergencia", // virou parte da mensagem única de instruções
+]);
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Template de subtarefas — checklist interno do processo de admissão.
 //
@@ -189,53 +200,104 @@ function st(
   id: string,
   nome: string,
   colunaId: string,
+  checklistId: string,
+  checklistNome: string,
   obrigatoria: boolean = true,
   extra: Partial<SubtarefaTemplate> = {},
 ): SubtarefaTemplate {
-  return { id, nome, colunaId, obrigatoria, ordem: 0, ...extra };
+  return { id, nome, colunaId, checklistId, checklistNome, obrigatoria, ordem: 0, ...extra };
 }
 
+// IDs e nomes de checklists — declarados como constantes pra evitar typos.
+const CK_ENVIO_LINK     = { id: "ck_envio_link",     nome: "📨 Envio do link" };
+const CK_AGENDAR_EXAMES = { id: "ck_agendar_exames", nome: "🩺 Agendamento de exames" };
+const CK_INSTRUCOES     = { id: "ck_instrucoes",     nome: "📣 Enviar/reforçar instruções para o candidato" };
+const CK_DADOS_INTERNOS = { id: "ck_dados_internos", nome: "📋 Dados internos" };
+const CK_CONTABILIDADE  = { id: "ck_contabilidade",  nome: "📤 Contabilidade" };
+const CK_ASSINATURAS    = { id: "ck_assinaturas",    nome: "📃 Assinaturas" };
+const CK_CADASTROS_EXT  = { id: "ck_cadastros_ext",  nome: "🏦 Cadastros externos" };
+const CK_RESULT_EXAMES  = { id: "ck_resultados",     nome: "🏥 Resultados de exames" };
+const CK_ULTIMA_MILHA   = { id: "ck_ultima_milha",   nome: "🏁 Última milha" };
+const CK_ONBOARDING_D1  = { id: "ck_onboarding_d1",  nome: "🚀 Onboarding (D1)" };
+const CK_CADASTROS_POS  = { id: "ck_cadastros_pos",  nome: "📝 Cadastros pós-admissão" };
+
 const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
-  // ─── Aguardando preenchimento ───
-  st("st_solicitar_info", "Solicitar informações de admissão: cargo, horário e empresa", "col_enviado", true, { autoTrigger: "iniciar_admissao" }),
-  st("st_solicitar_docs", "Solicitação de documentos + abertura de conta no Itaú", "col_enviado", true, { autoTrigger: "link_enviado" }),
+  // ─── Col 1: Aguardando preenchimento ───
+  st("st_solicitar_info", "Solicitar informações de admissão (cargo, horário e empresa)",
+     "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
+     { autoTrigger: "iniciar_admissao" }),
+  st("st_solicitar_docs", "Solicitação de documentos + abertura de conta Itaú via link",
+     "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
+     { autoTrigger: "link_enviado" }),
 
-  // ─── Formulário preenchido ───
-  st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica", "col_preenchido", true, { atalho: { tipo: "gmail_clinica" } }),
-  st("st_avisar_exame_candidato", "Enviar instruções do exame médico para o candidato", "col_preenchido", true, { atalho: { tipo: "whatsapp_exame_candidato" }, pedeDataHora: true }),
-  st("st_contato_emergencia", "Adicionar contato do empregado e de emergência na guia de informações", "col_preenchido", true, { autoTrigger: "form_preenchido" }),
+  // ─── Col 2: Exames, conta e dados internos ───
+  st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica",
+     "col_preenchido", CK_AGENDAR_EXAMES.id, CK_AGENDAR_EXAMES.nome, true,
+     { atalho: { tipo: "gmail_clinica" } }),
+  st("st_avisar_exame_candidato", "Enviar mensagem única de instruções (exames + conta Itaú + docs) pro candidato",
+     "col_preenchido", CK_INSTRUCOES.id, CK_INSTRUCOES.nome, true,
+     { atalho: { tipo: "whatsapp_instrucoes_candidato" }, pedeDataHora: true }),
+  st("st_dados_finais", "Preencher dados finais (cargo, salário, horário, data)",
+     "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
+     { autoTrigger: "dados_finais_completos" }),
+  st("st_conferir_docs", "Conferir recebimento dos documentos enviados pelo candidato",
+     "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
+     { atalho: { tipo: "checklist_docs_whatsapp" }, autoTrigger: "checklist_docs_completo" }),
 
-  // ─── Documentos recebidos ───
-  st("st_receber_aso", "Recebimento do ASO (exame clínico)", "col_documentos", true, { pedeLink: true }),
-  st("st_receber_cert_manip", "Recebimento do certificado de manipulador de alimentos", "col_documentos", true, { pedeLink: true }),
-  st("st_dados_finais", "Preencher dados finais (cargo, salário, horário, data)", "col_documentos", true, { autoTrigger: "dados_finais_completos" }),
+  // ─── Col 3: Contabilidade & contratos ───
+  st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
+     "col_contabilidade", CK_CONTABILIDADE.id, CK_CONTABILIDADE.nome, true,
+     { autoTrigger: "envio_contabilidade" }),
+  st("st_receber_contrato", "Recebimento do contrato e termos para assinatura",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+     { pedeLink: true }),
+  st("st_coleta_assinatura", "Coleta de assinatura do empregado no contrato",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true),
+  st("st_assinatura_outros", "Assinatura de outros termos",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true),
+  st("st_envio_regulamento", "Envio do Regulamento Interno em PDF",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+     { pedeLink: true }),
+  st("st_dados_bancarios", "Receber dados bancários Itaú (tipo, agência e conta)",
+     "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true,
+     { pedeDadosBancarios: true }),
+  st("st_cadastro_banco", "Cadastrar empregado no Banco (solicitar ao financeiro)",
+     "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true,
+     { atalho: { tipo: "whatsapp_banco_financeiro" } }),
+  st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo",
+     "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true),
 
-  // ─── Enviado pra contabilidade ───
-  st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade", "col_contabilidade", true, { autoTrigger: "envio_contabilidade" }),
+  // ─── Col 4: Pronto pra admitir ───
+  st("st_receber_aso", "Recebimento do ASO (exame clínico)",
+     "col_pronto", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
+     { pedeLink: true }),
+  st("st_receber_cert_manip", "Recebimento do certificado de manipulador de alimentos",
+     "col_pronto", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
+     { pedeLink: true }),
+  st("st_certificados_cursos", "Receber certificados dos cursos obrigatórios",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
+     { pedeLink: true }),
+  st("st_cadastro_vt", "Cadastro de VT no Caju",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
+  st("st_calculo_primeiro_vt", "Cálculo do primeiro VT + informar setor financeiro",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
+  st("st_cadastro_tangerino", "Cadastro do empregado no Tangerino (controle de ponto)",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
 
-  // ─── Assinando documentos ───
-  st("st_receber_contrato", "Recebimento do contrato e termos para assinatura", "col_assinando", true, { pedeLink: true }),
-  st("st_coleta_assinatura", "Coleta de assinatura do empregado no contrato e termos adicionais", "col_assinando", true),
-  st("st_assinatura_outros", "Assinatura de outros termos", "col_assinando", true),
-  st("st_envio_regulamento", "Envio do Regulamento Interno em PDF", "col_assinando", true, { pedeLink: true }),
-  st("st_cadastro_banco", "Cadastrar o empregado no Banco", "col_assinando", true),
-  st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo", "col_assinando", true),
-
-  // ─── Pronto pra admitir ───
-  st("st_certificados_cursos", "Receber certificados dos cursos obrigatórios", "col_pronto", true, { pedeLink: true }),
-  st("st_cadastro_vt", "Cadastro de VT na plataforma (SPTrans/Caju)", "col_pronto", true),
-  st("st_calculo_primeiro_vt", "Cálculo do primeiro VT + informar setor financeiro", "col_pronto", true),
-  st("st_cadastro_tangerino", "Cadastro do empregado no Tangerino (controle de ponto)", "col_pronto", true),
-
-  // ─── Onboarding (D1) ───
-  st("st_onboarding_treinamento", "Onboarding e treinamento inicial", "col_onboarding", true),
-  st("st_uniformes_epis", "Entrega de uniformes e EPIs", "col_onboarding", true),
-  st("st_grupo_avisos", "Inclusão no grupo de Avisos Gerais", "col_onboarding", true),
-
-  // ─── Admitido (pós-admissão administrativa) ───
-  st("st_matricula_esocial", "Informe número de matrícula do e-social junto a Triagem", "col_admitido", true),
-  st("st_pasta_drive", "Abrir pasta do empregado no Drive e subir todos os documentos", "col_admitido", true, { pedeLink: true }),
-  st("st_fim_experiencia", "Adicionar fim dos períodos de experiência (45 e 90 dias) no Asana", "col_admitido", true),
+  // ─── Col 5: Admitido e Onboarding ───
+  st("st_onboarding_treinamento", "Onboarding e treinamento inicial",
+     "col_admitido", CK_ONBOARDING_D1.id, CK_ONBOARDING_D1.nome, true),
+  st("st_uniformes_epis", "Entrega de uniformes e EPIs",
+     "col_admitido", CK_ONBOARDING_D1.id, CK_ONBOARDING_D1.nome, true),
+  st("st_grupo_avisos", "Inclusão no grupo de Avisos Gerais",
+     "col_admitido", CK_ONBOARDING_D1.id, CK_ONBOARDING_D1.nome, true),
+  st("st_matricula_esocial", "Informe matrícula e-social junto a Triagem",
+     "col_admitido", CK_CADASTROS_POS.id, CK_CADASTROS_POS.nome, true),
+  st("st_pasta_drive", "Abrir pasta do empregado no Drive e subir todos os documentos",
+     "col_admitido", CK_CADASTROS_POS.id, CK_CADASTROS_POS.nome, true,
+     { pedeLink: true }),
+  st("st_fim_experiencia", "Adicionar fim dos períodos de experiência (45 e 90 dias) no Asana",
+     "col_admitido", CK_CADASTROS_POS.id, CK_CADASTROS_POS.nome, true),
 ];
 
 export const SUBTAREFAS_TEMPLATE_DEFAULT: SubtarefaTemplate[] = RAW_SUBTAREFAS.map((s, i) => ({ ...s, ordem: i + 1 }));

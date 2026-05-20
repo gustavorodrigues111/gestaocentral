@@ -18,7 +18,6 @@ import {
   CLINICA_EXAMES_ENDERECO_DEFAULT,
   CLINICA_EXAMES_TELEFONE_DEFAULT,
 } from "../../core/admissao/formTemplate";
-import { EditorKanbanColunas } from "./EditorKanbanColunas";
 import type { Restaurant } from "../../core/types";
 
 type Props = {
@@ -184,8 +183,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         {msg && <span className="text-xs">{msg}</span>}
       </div>
 
-      {/* Editor de colunas Kanban — tem seu próprio botão de salvar */}
-      <EditorKanbanColunas rid={rid} activeRestaurant={activeRestaurant} />
+      {/* Colunas e checklists do Kanban ficam fixos no template global por
+          enquanto — editor visual foi desabilitado nesta fase pra evitar
+          inconsistências entre colunas e os checklists internos. */}
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">

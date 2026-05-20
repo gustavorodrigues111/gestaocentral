@@ -24,9 +24,9 @@ import {
   getSubtarefasTemplate,
   iniciarAdmissao,
   linkWhatsAppCandidato,
-  marcarDocumentosRecebidos,
   marcarLinkEnviado,
   montarMensagemEnvioLink,
+  normalizarAdmissao,
   proximoStatus,
   reenviarAdmissao,
   statusEfetivo,
@@ -35,14 +35,10 @@ import {
 } from "../../core/admissao/admissaoHelpers";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
-import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
-import {
-  atualizarChecklistDocumentos,
-  getEmailContabilidade,
-} from "../../core/admissao/admissaoHelpers";
+import { getEmailContabilidade } from "../../core/admissao/admissaoHelpers";
 import {
   baixarFichaAdmissao,
   montarCorpoEmailContabilidade,
@@ -96,7 +92,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     if (!rid) return;
     const q1 = query(collection(db, "admissoes"), where("restaurantId", "==", rid));
     const u1 = onSnapshot(q1, (snap) => {
-      setAdmissoes(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Admissao)));
+      setAdmissoes(snap.docs.map((d) => normalizarAdmissao({ id: d.id, ...d.data() } as Admissao)));
     });
     const q2 = query(collection(db, "cargos"), where("restaurantId", "==", rid));
     const u2 = onSnapshot(q2, (snap) => {
@@ -275,10 +271,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     }
   }
 
-  // Abre o modal de checklist. Reutilizado tanto pra primeira confirmação
-  // (status preenchido → documentos_recebidos) quanto pra revisar pendências
-  // depois (status já é documentos_recebidos+, mas tem itens em aberto).
-  const [admChecklist, setAdmChecklist] = useState<Admissao | null>(null);
+  // Checklist de 12 docs WhatsApp agora vive dentro do drawer (atalho da
+  // subtarefa "Conferir recebimento dos documentos enviados pelo candidato").
+  // Os botões "Confirmar docs recebidos" e "Docs WhatsApp" foram removidos
+  // da action bar pra evitar duplicidade.
 
   return (
     <div className="space-y-4">
@@ -399,21 +395,6 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       📋 Copiar link
                     </Button>
                   )}
-                  {st === "formulario_preenchido" && (
-                    <Button size="sm" onClick={() => setAdmChecklist(adm)}>
-                      📄 Confirmar docs recebidos
-                    </Button>
-                  )}
-                  {/* Reabrir checklist de DOCS quando já recebido pra revisar pendências */}
-                  {(st === "documentos_recebidos"
-                    || st === "solicitacao_contabilidade"
-                    || st === "assinando_documentos"
-                    || st === "pronto_admissao"
-                    || st === "onboarding") && (
-                    <Button size="sm" variant="secondary" onClick={() => setAdmChecklist(adm)}>
-                      📄 Docs WhatsApp
-                    </Button>
-                  )}
                   {/* Checklist da etapa atual (subtarefas do fluxo) — sempre disponível */}
                   {st !== "cancelada" && st !== "expirada" && (
                     <Button
@@ -467,25 +448,6 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
             if (!me) return;
             await cancelarAdmissao(admCancelando.id, motivos, texto, me);
             setAdmCancelando(null);
-          }}
-        />
-      )}
-
-      {admChecklist && (
-        <ConfirmarDocumentosModal
-          candidatoNome={admChecklist.candidato.nome}
-          itensIniciais={admChecklist.checklistDocumentos?.itens}
-          onClose={() => setAdmChecklist(null)}
-          onConfirm={async (itens) => {
-            if (!me) return;
-            // Se ainda não passou pra documentos_recebidos, faz transição.
-            // Senão, só atualiza o checklist sem mexer no status.
-            if (admChecklist.status === "formulario_preenchido") {
-              await marcarDocumentosRecebidos(admChecklist.id, me, itens);
-            } else {
-              await atualizarChecklistDocumentos(admChecklist.id, me, itens);
-            }
-            setAdmChecklist(null);
           }}
         />
       )}

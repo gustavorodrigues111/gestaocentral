@@ -1,8 +1,8 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Sub-tab "Kanban" — visualização de fluxo das admissões.
-//  Implementação inicial: colunas default + drag-drop básico nativo (HTML5).
-//  Próximas iterações: colunas customizáveis pela aba Config + regras
-//  automáticas adicionais.
+//  Sub-tab "Kanban" — visualização VIEW-ONLY do fluxo das admissões.
+//  Sem drag-drop: movimentação entre colunas só pelo botão "▶ Avançar" lá
+//  na lista de Pessoas em admissão, que abre o drawer pra revisar e
+//  confirmar as obrigatórias da etapa antes de mover.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
@@ -20,10 +20,9 @@ import {
 import {
   excluirAdmissaoDefinitivamente,
   getKanbanColunas,
-  moverColunaKanban,
+  normalizarAdmissao,
   progressoSubtarefasColuna,
   statusEfetivo,
-  subtarefasPendentesObrigatorias,
 } from "../../core/admissao/admissaoHelpers";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
 
@@ -60,7 +59,6 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
   // Guarda só o ID do card aberto — re-deriva da lista live do onSnapshot
   // a cada atualização, senão drawer fica com snapshot velho de subtarefas.
   const [admAbertaId, setAdmAbertaId] = useState<string | null>(null);
@@ -73,7 +71,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     if (!rid) return;
     const u1 = onSnapshot(
       query(collection(db, "admissoes"), where("restaurantId", "==", rid)),
-      (snap) => setAdmissoes(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Admissao))),
+      (snap) => setAdmissoes(snap.docs.map((d) => normalizarAdmissao({ id: d.id, ...d.data() } as Admissao))),
     );
     const u2 = onSnapshot(
       query(collection(db, "cargos"), where("restaurantId", "==", rid)),
@@ -112,38 +110,6 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     return m;
   }, [admissoes, colunas]);
 
-  async function onDrop(colId: string) {
-    if (!draggingId) return;
-    const adm = admissoes.find((a) => a.id === draggingId);
-    if (!adm) { setDraggingId(null); return; }
-    // Resolve coluna de origem e destino (pelos objetos, pra comparar ordens)
-    const origemId = colunaDaAdmissao(adm, colunas);
-    const origem = colunas.find((c) => c.id === origemId);
-    const destino = colunas.find((c) => c.id === colId);
-    // Mover pra trás ou pra mesma coluna sempre permitido. Pra frente exige
-    // que obrigatórias da coluna atual estejam todas feitas.
-    if (origem && destino && destino.ordem > origem.ordem) {
-      const pendentes = subtarefasPendentesObrigatorias(adm, origem.id);
-      if (pendentes.length > 0) {
-        alert(
-          `Não dá pra avançar enquanto há ${pendentes.length} subtarefa(s) obrigatória(s) pendente(s) em "${origem.nome}":\n\n` +
-          pendentes.slice(0, 6).map((s) => `• ${s.nome}`).join("\n") +
-          (pendentes.length > 6 ? `\n… +${pendentes.length - 6} outra(s)` : "") +
-          "\n\nAbra o card pra marcar como feitas.",
-        );
-        setDraggingId(null);
-        return;
-      }
-    }
-    try {
-      await moverColunaKanban(draggingId, colId);
-    } catch (e) {
-      alert("Erro ao mover: " + (e instanceof Error ? e.message : "?"));
-    } finally {
-      setDraggingId(null);
-    }
-  }
-
   async function excluirCard(adm: Admissao) {
     if (!me?.isMaster) return;
     const ok = confirm(
@@ -163,9 +129,11 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   return (
     <div>
       <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
-        Arraste os cards entre colunas pra mover manualmente. Por default cada admissão cai na
-        coluna correspondente ao status — clica em <strong>⚙️ Configurações</strong> pra editar
-        as colunas.
+        Visualização do fluxo. Cada card aparece automaticamente na coluna
+        correspondente ao status. Pra <strong>avançar</strong> de etapa,
+        vá em <strong>"Pessoas em admissão"</strong> e use o botão
+        <strong> ▶ Avançar</strong> — o sistema valida as obrigatórias da
+        etapa antes de mover. Clica num card aqui pra abrir o checklist.
       </p>
 
       {admAberta && me && (
@@ -184,8 +152,6 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
           return (
             <div
               key={col.id}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => onDrop(col.id)}
               className="flex-shrink-0 w-72 bg-gray-50 dark:bg-gray-900/40 rounded-xl border border-gray-200 dark:border-gray-800 p-2"
             >
               <div className="flex items-center gap-2 mb-2 px-1">
@@ -210,13 +176,8 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                   return (
                     <div
                       key={a.id}
-                      draggable
-                      onDragStart={() => setDraggingId(a.id)}
-                      onDragEnd={() => setDraggingId(null)}
                       onClick={() => setAdmAbertaId(a.id)}
-                      className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 ${
-                        draggingId === a.id ? "opacity-50" : ""
-                      }`}
+                      className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600"
                     >
                       <div className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
                         {a.candidato.nome}
