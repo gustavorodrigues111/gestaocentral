@@ -362,7 +362,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
             >
               <div className="flex items-start justify-between flex-wrap gap-3">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-bold text-gray-900 dark:text-gray-100">{adm.candidato.nome}</span>
                     <span
                       className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${
@@ -371,6 +371,38 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     >
                       {ADMISSAO_STATUS_LABEL[st]}
                     </span>
+                    {/* Mini-ações de link logo após o badge — mesma área visual,
+                        pra não ocupar a barra de ações principais embaixo */}
+                    {(st === "formulario_enviado" || (!adm.enviadoEm)) && (
+                      <button
+                        type="button"
+                        onClick={() => handleEnviarWhats(adm)}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-semibold dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                      >
+                        💬 {adm.enviadoEm ? "Reenviar" : "Enviar link"}
+                      </button>
+                    )}
+                    {st === "expirada" && (
+                      <button
+                        type="button"
+                        onClick={() => handleReenviar(adm)}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 font-semibold dark:bg-indigo-900/40 dark:text-indigo-300 dark:hover:bg-indigo-900/60"
+                      >
+                        🔄 Gerar novo link
+                      </button>
+                    )}
+                    {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopiarLink(adm)}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                      >
+                        📋 Copiar link
+                      </button>
+                    )}
+                    {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
+                      <EstenderPrazoMenu adm={adm} onEstender={(h) => handleEstenderPrazo(adm, h)} />
+                    )}
                   </div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 space-y-0.5">
                     <div>📧 {adm.candidato.email} · 📱 {adm.candidato.whatsapp}</div>
@@ -416,34 +448,23 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* Preencher/editar dados básicos da vaga — disponível em
-                      qualquer momento (exceto terminais), sinaliza completude */}
+                      qualquer momento (exceto terminais). Depois de preenchido,
+                      vira "Atualizar" em verde pra indicar estado feito. */}
                   {st !== "admitido" && st !== "cancelada" && (
-                    <Button
-                      size="sm"
-                      variant={temDadosFinaisCompletos(adm) ? "secondary" : "primary"}
-                      onClick={() => setAdmDadosBasicos(adm)}
-                    >
-                      {temDadosFinaisCompletos(adm) ? "✏️ Dados básicos" : "📝 Preencher dados básicos"}
-                    </Button>
-                  )}
-                  {/* Ações conforme status */}
-                  {(st === "formulario_enviado" || (!adm.enviadoEm)) && (
-                    <Button size="sm" onClick={() => handleEnviarWhats(adm)}>
-                      💬 {adm.enviadoEm ? "Reenviar" : "Enviar link via WhatsApp"}
-                    </Button>
-                  )}
-                  {st === "expirada" && (
-                    <Button size="sm" onClick={() => handleReenviar(adm)}>
-                      🔄 Gerar novo link
-                    </Button>
-                  )}
-                  {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
-                    <Button size="sm" variant="secondary" onClick={() => handleCopiarLink(adm)}>
-                      📋 Copiar link
-                    </Button>
-                  )}
-                  {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
-                    <EstenderPrazoMenu adm={adm} onEstender={(h) => handleEstenderPrazo(adm, h)} />
+                    temDadosFinaisCompletos(adm) ? (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setAdmDadosBasicos(adm)}
+                        className="!bg-emerald-50 !text-emerald-800 !border-emerald-300 hover:!bg-emerald-100 dark:!bg-emerald-900/20 dark:!text-emerald-300 dark:!border-emerald-800"
+                      >
+                        ✏️ Atualizar dados básicos
+                      </Button>
+                    ) : (
+                      <Button size="sm" variant="primary" onClick={() => setAdmDadosBasicos(adm)}>
+                        📝 Preencher dados básicos
+                      </Button>
+                    )
                   )}
                   {/* Ver preenchimento parcial ou completo do candidato — só
                       aparece quando há dados (candidato começou a preencher) */}
@@ -463,19 +484,19 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     </Button>
                   )}
                   {/* Avançar etapa — só se há próxima e status não é terminal.
-                      Abre o drawer no modo "avancar": RH revisa as obrigatórias
-                      antes de confirmar. */}
+                      Verde pra destacar como ação principal positiva. */}
                   {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && (
                     <Button
                       size="sm"
                       onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("avancar"); }}
+                      className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600 !text-white"
                     >
                       ▶ Avançar
                     </Button>
                   )}
-                  {/* Cancelar — disponível enquanto não foi admitido nem cancelado */}
+                  {/* Cancelar — vermelho pra ser claramente a ação destrutiva */}
                   {st !== "admitido" && st !== "cancelada" && (
-                    <Button size="sm" variant="secondary" onClick={() => setAdmCancelando(adm)}>
+                    <Button size="sm" variant="danger" onClick={() => setAdmCancelando(adm)}>
                       ✕ Cancelar
                     </Button>
                   )}
@@ -586,9 +607,13 @@ function EstenderPrazoMenu({
   const totalExt = (adm.extensoesPrazo || []).reduce((acc, e) => acc + e.horas, 0);
   return (
     <div className="relative">
-      <Button size="sm" variant="secondary" onClick={() => setAberto((v) => !v)}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      >
         ⏰ {totalExt > 0 ? `+${totalExt}h` : "+ prazo"}
-      </Button>
+      </button>
       {aberto && (
         <>
           <button

@@ -7,6 +7,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { Admissao, Cargo, KanbanColuna, Pessoa, Restaurant, SubtarefaAdmissao } from "../../core/types";
@@ -70,15 +71,19 @@ export function SubtarefasDrawer({
 
   // Sincroniza com o template atual ao abrir o drawer: subtarefas adicionadas
   // ou alteradas no template global ganham efeito retroativo nas admissões
-  // existentes. Idempotente — só persiste se houver diferença.
+  // existentes. Idempotente — só persiste se houver diferença. Defer pra
+  // depois do primeiro paint pra não bloquear a abertura visual do drawer.
   useEffect(() => {
-    const template = getSubtarefasTemplate(activeRestaurant);
-    const { sincronizadas, adicionou } = sincronizarSubtarefasComTemplate(subtarefas, template);
-    if (!adicionou) return;
-    void updateDoc(doc(db, "admissoes", admissao.id), {
-      subtarefas: sincronizadas,
-      updatedAt: new Date().toISOString(),
-    });
+    const t = setTimeout(() => {
+      const template = getSubtarefasTemplate(activeRestaurant);
+      const { sincronizadas, adicionou } = sincronizarSubtarefasComTemplate(subtarefas, template);
+      if (!adicionou) return;
+      void updateDoc(doc(db, "admissoes", admissao.id), {
+        subtarefas: sincronizadas,
+        updatedAt: new Date().toISOString(),
+      });
+    }, 50);
+    return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admissao.id]);
 
@@ -195,16 +200,24 @@ export function SubtarefasDrawer({
     : [];
   const podeAvancar = pendentesObrigAtual.length === 0;
 
-  return (
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-50 flex">
+      <div className="fixed inset-0 z-[100] flex">
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 bg-black/40"
+          className="hidden sm:block flex-1 bg-black/40"
           aria-label="Fechar"
         />
-        <aside className="w-full max-w-lg bg-white dark:bg-gray-900 shadow-2xl flex flex-col overflow-hidden">
+        {/* Backdrop fininho em mobile (sem flex-1 do desktop) — sempre dá pra
+            clicar fora pra fechar. */}
+        <button
+          type="button"
+          onClick={onClose}
+          className="sm:hidden absolute inset-0 bg-black/40 z-0"
+          aria-label="Fechar"
+        />
+        <aside className="relative z-10 w-full sm:max-w-lg bg-white dark:bg-gray-900 shadow-2xl flex flex-col overflow-hidden ml-auto">
           <header className="border-b border-gray-200 dark:border-gray-800 p-4 flex items-start justify-between gap-2">
             <div className="min-w-0">
               <div className="text-xs uppercase tracking-wider text-gray-500 dark:text-gray-400">
@@ -360,7 +373,8 @@ export function SubtarefasDrawer({
           }}
         />
       )}
-    </>
+    </>,
+    document.body,
   );
 }
 
