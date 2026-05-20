@@ -24,6 +24,39 @@ import {
 
 const DIAS_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
+// ─── Máscara de salário em BRL ─────────────────────────────────────────────
+// Aceita só dígitos do usuário, formata como "R$ X.XXX,XX". O número fica
+// implícito nos centavos: "150" → "R$ 1,50". Apaga reinicia limpo.
+
+function maskSalarioBRL(input: string): string {
+  const digits = input.replace(/\D/g, "");
+  if (!digits) return "";
+  const cents = parseInt(digits, 10);
+  if (!Number.isFinite(cents)) return "";
+  const reais = cents / 100;
+  return reais.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  });
+}
+
+function parseSalarioBRL(masked: string): number | undefined {
+  const digits = masked.replace(/\D/g, "");
+  if (!digits) return undefined;
+  const cents = parseInt(digits, 10);
+  if (!Number.isFinite(cents) || cents <= 0) return undefined;
+  return cents / 100;
+}
+
+function formatarSalarioBRL(n: number): string {
+  return n.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+  });
+}
+
 type DiasState = Record<number, HorarioDia>;
 
 function diasIniciais(salvos?: Record<string, unknown>): DiasState {
@@ -56,7 +89,7 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
   const cargaMaxMin = activeRestaurant.horarioConfig?.cargaSemanalMaxMin ?? 2640;
   const [cargoId, setCargoId] = useState(admissao.cargoId || "");
   const [salario, setSalario] = useState(
-    typeof admissao.salario === "number" ? String(admissao.salario).replace(".", ",") : "",
+    typeof admissao.salario === "number" ? formatarSalarioBRL(admissao.salario) : "",
   );
   const [dataAdmissao, setDataAdmissao] = useState(admissao.dataAdmissao || "");
   const [cargoConfianca, setCargoConfianca] = useState(!!admissao.cargoConfianca);
@@ -81,8 +114,8 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
   async function salvar() {
     setErro("");
     if (!cargoId) { setErro("Selecione o cargo."); return; }
-    const salarioNum = salario ? parseFloat(salario.replace(",", ".")) : undefined;
-    if (salario && (!salarioNum || Number.isNaN(salarioNum))) {
+    const salarioNum = parseSalarioBRL(salario);
+    if (salario && salarioNum == null) {
       setErro("Salário inválido."); return;
     }
     if (!algumAtivo) {
@@ -154,9 +187,9 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
           <Input
             label="Salário *"
             value={salario}
-            onChange={(e) => setSalario(e.target.value)}
-            inputMode="decimal"
-            placeholder="2500,00"
+            onChange={(e) => setSalario(maskSalarioBRL(e.target.value))}
+            inputMode="numeric"
+            placeholder="R$ 2.500,00"
           />
           <Input
             label="Data de admissão *"

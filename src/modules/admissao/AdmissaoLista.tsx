@@ -358,10 +358,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           return (
             <section
               key={adm.id}
-              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+              className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3"
             >
-              <div className="flex items-start justify-between flex-wrap gap-3">
-                <div className="min-w-0">
+              {/* Bloco 1: header (nome + status + chips de link) + meta info */}
+              <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-bold text-gray-900 dark:text-gray-100">{adm.candidato.nome}</span>
                     <span
@@ -402,6 +402,17 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     )}
                     {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
                       <EstenderPrazoMenu adm={adm} onEstender={(h) => handleEstenderPrazo(adm, h)} />
+                    )}
+                    {/* Ver preenchimento — chip também, só aparece quando
+                        candidato começou a digitar */}
+                    {adm.dadosPreenchidos && Object.keys(adm.dadosPreenchidos).length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAdmVerPreenchimento(adm)}
+                        className="text-[10px] px-2 py-0.5 rounded-full bg-sky-100 hover:bg-sky-200 text-sky-800 font-semibold dark:bg-sky-900/40 dark:text-sky-300 dark:hover:bg-sky-900/60"
+                      >
+                        👁 Ver preenchimento
+                      </button>
                     )}
                   </div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 space-y-0.5">
@@ -445,83 +456,70 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                       <div className="text-rose-700 dark:text-rose-400">✕ Cancelada em {fmtDataHora(adm.canceladoEm)} por {adm.canceladoPor?.nome} — "{adm.motivoCancelamento}"</div>
                     )}
                   </div>
-                </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Preencher/editar dados básicos da vaga — disponível em
-                      qualquer momento (exceto terminais). Depois de preenchido,
-                      vira "Atualizar" em verde pra indicar estado feito. */}
-                  {st !== "admitido" && st !== "cancelada" && (
-                    temDadosFinaisCompletos(adm) ? (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => setAdmDadosBasicos(adm)}
-                        className="!bg-emerald-50 !text-emerald-800 !border-emerald-300 hover:!bg-emerald-100 dark:!bg-emerald-900/20 dark:!text-emerald-300 dark:!border-emerald-800"
-                      >
-                        ✏️ Atualizar dados básicos
-                      </Button>
-                    ) : (
-                      <Button size="sm" variant="primary" onClick={() => setAdmDadosBasicos(adm)}>
-                        📝 Preencher dados básicos
-                      </Button>
-                    )
-                  )}
-                  {/* Ver preenchimento parcial ou completo do candidato — só
-                      aparece quando há dados (candidato começou a preencher) */}
-                  {adm.dadosPreenchidos && Object.keys(adm.dadosPreenchidos).length > 0 && (
-                    <Button size="sm" variant="secondary" onClick={() => setAdmVerPreenchimento(adm)}>
-                      👁 Ver preenchimento
-                    </Button>
-                  )}
-                  {/* Checklist da etapa atual (subtarefas do fluxo) — sempre disponível */}
-                  {st !== "cancelada" && st !== "expirada" && (
+              </div>
+
+              {/* Bloco 2: barra de ações principais — linha final do card */}
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-gray-100 dark:border-gray-800">
+                {st !== "admitido" && st !== "cancelada" && (
+                  temDadosFinaisCompletos(adm) ? (
                     <Button
                       size="sm"
                       variant="secondary"
-                      onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("ver"); }}
+                      onClick={() => setAdmDadosBasicos(adm)}
+                      className="!bg-emerald-50 !text-emerald-800 !border-emerald-300 hover:!bg-emerald-100 dark:!bg-emerald-900/20 dark:!text-emerald-300 dark:!border-emerald-800"
                     >
-                      📋 Checklist da etapa
+                      ✏️ Atualizar dados básicos
                     </Button>
-                  )}
-                  {/* Avançar etapa — só se há próxima e status não é terminal.
-                      Verde pra destacar como ação principal positiva. */}
-                  {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && (
+                  ) : (
+                    <Button size="sm" variant="primary" onClick={() => setAdmDadosBasicos(adm)}>
+                      📝 Preencher dados básicos
+                    </Button>
+                  )
+                )}
+                {st !== "cancelada" && st !== "expirada" && (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("ver"); }}
+                  >
+                    📋 Checklist da etapa
+                  </Button>
+                )}
+                {proximoStatus(adm.status) && st !== "cancelada" && st !== "expirada" && (
+                  <Button
+                    size="sm"
+                    onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("avancar"); }}
+                    className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600 !text-white"
+                  >
+                    ▶ Avançar
+                  </Button>
+                )}
+                {st !== "admitido" && st !== "cancelada" && (
+                  <Button size="sm" variant="danger" onClick={() => setAdmCancelando(adm)}>
+                    ✕ Cancelar
+                  </Button>
+                )}
+                {/* Ações de master pra casos extremos — em status terminal */}
+                {me?.isMaster && (st === "admitido" || st === "cancelada" || st === "expirada") && (
+                  <>
                     <Button
                       size="sm"
-                      onClick={() => { setDrawerAdmId(adm.id); setDrawerIntencao("avancar"); }}
-                      className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600 !text-white"
+                      variant="secondary"
+                      onClick={() => handleReabrir(adm)}
+                      title="Volta a admissão pra 'Pronto pra admitir'. Use só pra casos extremos."
                     >
-                      ▶ Avançar
+                      ↩ Reabrir
                     </Button>
-                  )}
-                  {/* Cancelar — vermelho pra ser claramente a ação destrutiva */}
-                  {st !== "admitido" && st !== "cancelada" && (
-                    <Button size="sm" variant="danger" onClick={() => setAdmCancelando(adm)}>
-                      ✕ Cancelar
-                    </Button>
-                  )}
-                  {/* Ações de master pra casos extremos — em status terminal */}
-                  {me?.isMaster && (st === "admitido" || st === "cancelada" || st === "expirada") && (
-                    <>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleReabrir(adm)}
-                        title="Volta a admissão pra 'Pronto pra admitir'. Use só pra casos extremos."
-                      >
-                        ↩ Reabrir
-                      </Button>
-                      <button
-                        type="button"
-                        onClick={() => handleExcluir(adm)}
-                        className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline px-2 py-1"
-                        title="Apaga pra sempre. Irreversível."
-                      >
-                        🗑️ Excluir
-                      </button>
-                    </>
-                  )}
-                </div>
+                    <button
+                      type="button"
+                      onClick={() => handleExcluir(adm)}
+                      className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline px-2 py-1"
+                      title="Apaga pra sempre. Irreversível."
+                    >
+                      🗑️ Excluir
+                    </button>
+                  </>
+                )}
               </div>
             </section>
           );
