@@ -61,6 +61,9 @@ const RAW: FormField[] = [
   }),
   f("estado_civil",    "Estado civil",        "select",   G_PESSOAL, true, { opcoes: ["Solteiro(a)", "Casado(a)", "União estável", "Divorciado(a)", "Viúvo(a)"] }),
   f("num_filhos",      "Número de filhos",    "numero",   G_PESSOAL, false),
+  f("tem_dependentes_legais", "Algum filho seu é dependente legal (declaração de IR, plano de saúde, pensão, etc)?", "boolean", G_PESSOAL, false, {
+    ajuda: "Marque sim se você tem filhos que devem ser cadastrados como dependentes. Se todos os filhos forem maiores de idade e independentes, deixe desmarcado.",
+  }),
   f("nome_pai",        "Nome do pai",         "text",     G_PESSOAL, false),
   f("nome_mae",        "Nome da mãe",         "text",     G_PESSOAL, true),
 

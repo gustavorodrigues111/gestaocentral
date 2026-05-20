@@ -40,11 +40,7 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) 
   const [erro, setErro] = useState("");
 
   const gruposOrdenados = useMemo(() => agruparPorGrupo(admissao.schemaUsado), [admissao.schemaUsado]);
-  const numFilhosDeclarados = (() => {
-    const v = dados.num_filhos;
-    const n = typeof v === "number" ? v : parseInt(String(v || ""), 10);
-    return Number.isFinite(n) && n > 0 ? n : 0;
-  })();
+  const exigeDependentes = dados.tem_dependentes_legais === true;
   const vtNaoUtiliza = dados.vt_nao_utiliza === true;
 
   function updateCampo(id: string, value: unknown) {
@@ -120,7 +116,7 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved }: Props) 
                   bloqueado={isConfirmado(f.id)}
                   value={dados[f.id]}
                   onChange={(v) => updateCampo(f.id, v)}
-                  ctx={{ numFilhosDeclarados, vtNaoUtiliza }}
+                  ctx={{ exigeDependentes, vtNaoUtiliza }}
                 />
               ))}
             </section>

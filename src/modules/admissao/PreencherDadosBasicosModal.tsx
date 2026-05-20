@@ -185,7 +185,8 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
             sem marcação ficam como folga.
           </p>
           <div className="space-y-1.5">
-            <div className="grid grid-cols-[60px_60px_1fr_1fr_80px] gap-2 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold px-2">
+            {/* Header só aparece em desktop. Em mobile cada linha vira card */}
+            <div className="hidden sm:grid grid-cols-[60px_60px_1fr_1fr_80px] gap-2 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold px-2">
               <div>Dia</div>
               <div>Ativo</div>
               <div>Entrada</div>
@@ -197,41 +198,68 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
               return (
                 <div
                   key={i}
-                  className={`grid grid-cols-[60px_60px_1fr_1fr_80px] gap-2 items-center px-2 py-1.5 rounded-lg border ${
+                  className={`px-3 py-2 rounded-lg border ${
                     d.active ? "border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/30 dark:bg-indigo-900/10" : "border-gray-200 dark:border-gray-700"
                   }`}
                 >
-                  <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                    {DIAS_LABEL[i]}
+                  {/* Desktop: 1 linha em grid. Mobile: empilha vertical */}
+                  <div className="sm:grid sm:grid-cols-[60px_60px_1fr_1fr_80px] sm:gap-2 sm:items-center flex flex-col gap-2">
+                    <div className="flex items-center justify-between sm:block">
+                      <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                        {DIAS_LABEL[i]}
+                      </span>
+                      {/* Em mobile, checkbox aparece junto do nome do dia */}
+                      <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-400 sm:hidden">
+                        <input
+                          type="checkbox"
+                          checked={d.active}
+                          onChange={(e) => updDia(i, { active: e.target.checked })}
+                          className="accent-indigo-600"
+                        />
+                        Ativo
+                      </label>
+                    </div>
+                    {/* Checkbox separado em desktop */}
+                    <input
+                      type="checkbox"
+                      checked={d.active}
+                      onChange={(e) => updDia(i, { active: e.target.checked })}
+                      className="accent-indigo-600 justify-self-center hidden sm:block"
+                    />
+                    <div className="grid grid-cols-3 gap-2 sm:contents">
+                      <div className="flex flex-col gap-0.5 sm:contents">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold sm:hidden">Entrada</span>
+                        <TimeInput
+                          value={d.in || ""}
+                          onChange={(v) => updDia(i, { in: v })}
+                          placeholder="HH:MM"
+                          disabled={!d.active}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5 sm:contents">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold sm:hidden">Saída</span>
+                        <TimeInput
+                          value={d.out || ""}
+                          onChange={(v) => updDia(i, { out: v })}
+                          placeholder="HH:MM"
+                          disabled={!d.active}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5 sm:contents">
+                        <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold sm:hidden">Interv. (min)</span>
+                        <input
+                          type="number"
+                          min={0}
+                          max={300}
+                          step={5}
+                          value={d.break || 0}
+                          onChange={(e) => updDia(i, { break: parseInt(e.target.value, 10) || 0 })}
+                          disabled={!d.active}
+                          className="w-full text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:bg-gray-100 dark:disabled:bg-gray-800"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <input
-                    type="checkbox"
-                    checked={d.active}
-                    onChange={(e) => updDia(i, { active: e.target.checked })}
-                    className="accent-indigo-600 justify-self-center"
-                  />
-                  <TimeInput
-                    value={d.in || ""}
-                    onChange={(v) => updDia(i, { in: v })}
-                    placeholder="HH:MM"
-                    disabled={!d.active}
-                  />
-                  <TimeInput
-                    value={d.out || ""}
-                    onChange={(v) => updDia(i, { out: v })}
-                    placeholder="HH:MM"
-                    disabled={!d.active}
-                  />
-                  <input
-                    type="number"
-                    min={0}
-                    max={300}
-                    step={5}
-                    value={d.break || 0}
-                    onChange={(e) => updDia(i, { break: parseInt(e.target.value, 10) || 0 })}
-                    disabled={!d.active}
-                    className="w-full text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:bg-gray-100 dark:disabled:bg-gray-800"
-                  />
                 </div>
               );
             })}

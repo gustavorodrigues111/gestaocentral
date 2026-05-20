@@ -41,6 +41,7 @@ import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
+import { VerPreenchimentoModal } from "./VerPreenchimentoModal";
 import { getEmailContabilidade } from "../../core/admissao/admissaoHelpers";
 import {
   baixarFichaAdmissao,
@@ -199,6 +200,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   const [admDadosBasicos, setAdmDadosBasicos] = useState<Admissao | null>(null);
 
   const [admPreenchimentoManual, setAdmPreenchimentoManual] = useState<Admissao | null>(null);
+  const [admVerPreenchimento, setAdmVerPreenchimento] = useState<Admissao | null>(null);
 
   // Drawer de checklist: guarda só o ID + a intenção. Re-deriva a admissão
   // pela lista live pra refletir mudanças do onSnapshot durante o uso.
@@ -443,6 +445,13 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                   {(st === "formulario_enviado" || st === "expirada") && adm.enviadoEm && (
                     <EstenderPrazoMenu adm={adm} onEstender={(h) => handleEstenderPrazo(adm, h)} />
                   )}
+                  {/* Ver preenchimento parcial ou completo do candidato — só
+                      aparece quando há dados (candidato começou a preencher) */}
+                  {adm.dadosPreenchidos && Object.keys(adm.dadosPreenchidos).length > 0 && (
+                    <Button size="sm" variant="secondary" onClick={() => setAdmVerPreenchimento(adm)}>
+                      👁 Ver preenchimento
+                    </Button>
+                  )}
                   {/* Checklist da etapa atual (subtarefas do fluxo) — sempre disponível */}
                   {st !== "cancelada" && st !== "expirada" && (
                     <Button
@@ -535,6 +544,13 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           admissao={admPreenchimentoManual}
           onClose={() => setAdmPreenchimentoManual(null)}
           onSaved={() => setAdmPreenchimentoManual(null)}
+        />
+      )}
+
+      {admVerPreenchimento && (
+        <VerPreenchimentoModal
+          admissao={admVerPreenchimento}
+          onClose={() => setAdmVerPreenchimento(null)}
         />
       )}
 
