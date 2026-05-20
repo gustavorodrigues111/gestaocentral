@@ -16,6 +16,7 @@ import {
   type Restaurant,
 } from "../../core/types";
 import {
+  aprovarAdmissao,
   avancarStatus,
   avancarStatusComTrigger,
   cancelarAdmissao,
@@ -35,6 +36,7 @@ import {
   reabrirAdmissao,
   reenviarAdmissao,
   statusEfetivo,
+  subtarefasPendentesObrigatorias,
   temDadosFinaisCompletos,
   urlPublicaAdmissao,
 } from "../../core/admissao/admissaoHelpers";
@@ -329,6 +331,30 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     }
   }
 
+  async function handleConcluirAdmissao(adm: Admissao) {
+    if (!me) return;
+    const cargo = cargos.find((c) => c.id === adm.cargoId);
+    if (!cargo) {
+      alert("Cargo da admissão não foi encontrado. Verifique o cadastro de cargos.");
+      return;
+    }
+    const ok = confirm(
+      `CONCLUIR ADMISSÃO\n\n` +
+      `Vamos criar o registro definitivo de ${adm.candidato.nome}:\n` +
+      `${adm.pessoaIdVinculada ? "• Vincular ao cadastro de Pessoa já existente" : "• Criar nova Pessoa no sistema"}\n` +
+      `• Criar Empregado no restaurante, cargo "${cargo.nome}"\n` +
+      `• Data de admissão: ${adm.dataAdmissao ? adm.dataAdmissao.split("-").reverse().join("/") : "(hoje)"}\n\n` +
+      `Depois disso o empregado aparece no módulo Pessoas e pode usar o sistema. Continuar?`,
+    );
+    if (!ok) return;
+    try {
+      await aprovarAdmissao(adm, me);
+      alert("✅ Admissão concluída — Pessoa + Empregado criados.");
+    } catch (e) {
+      alert("Erro ao concluir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   async function handleReabrir(adm: Admissao) {
     if (!me?.isMaster) return;
     const ok = confirm(
@@ -532,6 +558,20 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                     className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600 !text-white"
                   >
                     ▶ Avançar
+                  </Button>
+                )}
+                {/* Concluir admissão (cria Pessoa+Empregado) — só quando:
+                    1. Status = admitido (chegou na col final)
+                    2. Ainda não foi aprovado (não tem aprovadoEm)
+                    3. Todas obrigatórias de col_admitido estão checadas */}
+                {st === "admitido" && !adm.aprovadoEm
+                  && subtarefasPendentesObrigatorias(adm, "col_admitido").length === 0 && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleConcluirAdmissao(adm)}
+                    className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600 !text-white"
+                  >
+                    ✅ Concluir admissão
                   </Button>
                 )}
                 {st !== "admitido" && st !== "cancelada" && (

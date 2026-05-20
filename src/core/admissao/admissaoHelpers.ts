@@ -8,7 +8,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  Admissao, AdmissaoStatus, AutoTriggerSubtarefa, FormField, MotivoCancelamento,
+  Admissao, AdmissaoStatus, AutoTriggerSubtarefa, Empregado, EmpregadoPeriodo,
+  FormField, MotivoCancelamento,
   Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate,
 } from "../types";
 import {
@@ -228,6 +229,41 @@ export async function buscarPessoaPorEmail(
     cpf: data.cpf,
     restaurantIds: data.restaurantIds || [],
   };
+}
+
+// Busca a última admissão aprovada (com pessoaIdCriada/Vinculada apontando
+// pra essa Pessoa) — usado pelo form público pra pré-popular dados quando
+// a Pessoa já passou por uma admissão antes (mudança de restaurante,
+// freela virando fixo, etc.). Ignora a admissão atual.
+export async function buscarUltimaAdmissaoAprovadaDaPessoa(
+  pessoaId: string,
+  excluirAdmissaoId: string,
+): Promise<Admissao | null> {
+  // Procura via pessoaIdCriada OU pessoaIdVinculada — uma admissão antiga
+  // pode ter qualquer um dos dois apontando pra essa Pessoa.
+  const refColl = collection(db, "admissoes");
+  const [q1, q2] = await Promise.all([
+    getDocs(query(refColl, where("pessoaIdCriada", "==", pessoaId))),
+    getDocs(query(refColl, where("pessoaIdVinculada", "==", pessoaId))),
+  ]);
+  const candidatas: Admissao[] = [];
+  for (const d of q1.docs) candidatas.push({ id: d.id, ...d.data() } as Admissao);
+  for (const d of q2.docs) {
+    if (q1.docs.some((x) => x.id === d.id)) continue; // dedupe
+    candidatas.push({ id: d.id, ...d.data() } as Admissao);
+  }
+  // Filtra: ignora a admissão atual + só aprovadas (= tem aprovadoEm OU
+  // status admitido) com dadosPreenchidos
+  const elegiveis = candidatas.filter(
+    (a) => a.id !== excluirAdmissaoId
+      && a.aprovadoEm
+      && a.dadosPreenchidos
+      && Object.keys(a.dadosPreenchidos as object).length > 0,
+  );
+  if (elegiveis.length === 0) return null;
+  // Mais recente primeiro
+  elegiveis.sort((a, b) => (b.aprovadoEm || "").localeCompare(a.aprovadoEm || ""));
+  return elegiveis[0] || null;
 }
 
 // Busca pessoa por CPF (qualquer restaurante). Retorna a 1ª que casar.
@@ -954,4 +990,112 @@ export async function atualizarDadosBancariosItau(
     dadosBancariosItau: merged,
     updatedAt: new Date().toISOString(),
   });
+}
+
+// ─── Aprovação final ───────────────────────────────────────────────────────
+// Cria os registros de Pessoa + Empregado a partir da admissão concluída e
+// fecha o ciclo. Reusa Pessoa pré-existente se a admissão foi vinculada
+// via pessoaIdVinculada. Operação idempotente — se já tem pessoaIdCriada
+// e empregadoIdCriado no doc, retorna esses IDs sem recriar.
+export async function aprovarAdmissao(
+  admissao: Admissao,
+  aprovadoPor: Pessoa,
+): Promise<{ pessoaId: string; empregadoId: string }> {
+  // Idempotência: se já foi aprovada, retorna o que tem
+  if (admissao.pessoaIdCriada && admissao.empregadoIdCriado) {
+    return {
+      pessoaId: admissao.pessoaIdCriada,
+      empregadoId: admissao.empregadoIdCriado,
+    };
+  }
+
+  const now = new Date().toISOString();
+  const candidato = admissao.candidato;
+  const dados = (admissao.dadosPreenchidos as Record<string, unknown>) || {};
+
+  // ── 1. Resolve Pessoa: existente ou nova ──
+  let pessoaId: string;
+  if (admissao.pessoaIdVinculada) {
+    // Vincula a Pessoa existente. Adiciona o rid à lista se ainda não tiver.
+    pessoaId = admissao.pessoaIdVinculada;
+    const pessoaRef = doc(db, "pessoas", pessoaId);
+    const pessoaSnap = await getDoc(pessoaRef);
+    if (!pessoaSnap.exists()) {
+      throw new Error(`Pessoa vinculada (${pessoaId}) não existe mais. Apague o vínculo e tente de novo.`);
+    }
+    const p = pessoaSnap.data() as Pessoa;
+    const rids = p.restaurantIds || [];
+    if (!rids.includes(admissao.restaurantId)) {
+      const novosConvites = [...(p.novosRestaurantes || []), admissao.restaurantId];
+      await updateDoc(pessoaRef, {
+        restaurantIds: [...rids, admissao.restaurantId],
+        novosRestaurantes: novosConvites,
+      });
+    }
+  } else {
+    // Cria Pessoa nova. Email vira identidade — já bloqueamos duplicado no
+    // IniciarAdmissaoModal, então aqui é seguro.
+    const pixCandidato = typeof dados.pix === "string" ? dados.pix.trim() : "";
+    const novaPessoa: Omit<Pessoa, "id"> = {
+      email: candidato.email.toLowerCase(),
+      nome: candidato.nome,
+      cpf: candidato.cpf,
+      whatsapp: candidato.whatsapp,
+      pix: pixCandidato || undefined,
+      isMaster: false,
+      restaurantIds: [admissao.restaurantId],
+      // Permissões iniciais vazias — RH configura depois no módulo Pessoas
+      // (matriz de permissões). Banner "Você foi adicionado ao restaurante X"
+      // aparece pra Pessoa graças ao novosRestaurantes.
+      permissions: { [admissao.restaurantId]: {} as Pessoa["permissions"][string] },
+      novosRestaurantes: [admissao.restaurantId],
+      ativa: true,
+      createdAt: now,
+    };
+    const ref = await addDoc(collection(db, "pessoas"), stripUndefined(novaPessoa));
+    pessoaId = ref.id;
+  }
+
+  // ── 2. Cria Empregado novo ──
+  // (Sempre cria — mesmo se Pessoa já existia em outro rest, esta é uma
+  // admissão neste rest específico → empregado novo nesse rest.)
+  const dataAdmissaoStr = admissao.dataAdmissao || now.slice(0, 10);
+  const periodo: EmpregadoPeriodo = {
+    admissao: dataAdmissaoStr,
+    registradoEm: now,
+    registradoPor: aprovadoPor.id,
+  };
+  const novoEmpregado: Omit<Empregado, "id"> = {
+    restaurantId: admissao.restaurantId,
+    pessoaId,
+    nome: candidato.nome,
+    cpf: candidato.cpf,
+    cargoId: admissao.cargoId,
+    periodos: [periodo],
+    estaAtivo: true,
+    admissaoAtual: dataAdmissaoStr,
+    email: candidato.email,
+    telefone: candidato.whatsapp,
+    emergenciaNome: typeof dados.contato_emergencia_nome === "string"
+      ? dados.contato_emergencia_nome
+      : null,
+    emergenciaTelefone: typeof dados.tel_emergencia === "string"
+      ? dados.tel_emergencia
+      : null,
+    createdAt: now,
+    createdBy: aprovadoPor.id,
+  };
+  const empregadoRef = await addDoc(collection(db, "empregados"), stripUndefined(novoEmpregado));
+  const empregadoId = empregadoRef.id;
+
+  // ── 3. Atualiza a admissão ──
+  await updateDoc(doc(db, "admissoes", admissao.id), {
+    aprovadoEm: now,
+    aprovadoPor: { id: aprovadoPor.id, nome: aprovadoPor.nome },
+    pessoaIdCriada: pessoaId,
+    empregadoIdCriado: empregadoId,
+    updatedAt: now,
+  });
+
+  return { pessoaId, empregadoId };
 }

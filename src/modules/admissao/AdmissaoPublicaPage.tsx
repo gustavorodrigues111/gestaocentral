@@ -18,6 +18,7 @@ import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import {
+  buscarUltimaAdmissaoAprovadaDaPessoa,
   linkWhatsAppDP,
   statusEstaExpirada,
 } from "../../core/admissao/admissaoHelpers";
@@ -169,13 +170,26 @@ export function AdmissaoPublicaPage() {
         const adm = { id: snap.docs[0].id, ...snap.docs[0].data() } as Admissao;
         if (cancelled) return;
         setAdmissao(adm);
-        // Pré-preenche os campos confirmados pelo RH. Se já tinha valor antigo
-        // no dadosPreenchidos, o do RH sobrescreve — fonte de verdade do
-        // cadastro inicial é a admissão.candidato.
-        const inicial: Record<string, unknown> = {
-          ...((adm.dadosPreenchidos as Record<string, unknown>) || {}),
-          ...mapaConfirmados(adm),
-        };
+
+        // Pré-preenche em camadas (do mais antigo pro mais novo — o último
+        // sobrescreve):
+        //   1. Admissão anterior aprovada dessa Pessoa (se houver) — reusa
+        //      dados que ela já preencheu numa admissão passada (mudança de
+        //      restaurante, freela virou fixo, etc). Candidato pode editar.
+        //   2. dadosPreenchidos da admissão atual — auto-save local
+        //   3. Campos confirmados pelo RH no IniciarAdmissaoModal (cadastro
+        //      básico nome/CPF/email/whatsapp) — fonte de verdade, bloqueia.
+        const inicial: Record<string, unknown> = {};
+        if (adm.pessoaIdVinculada && !adm.preenchidoEm) {
+          // Só busca o histórico quando candidato ainda não submeteu —
+          // depois disso, dados atuais são o que importa.
+          const antiga = await buscarUltimaAdmissaoAprovadaDaPessoa(adm.pessoaIdVinculada, adm.id);
+          if (antiga?.dadosPreenchidos) {
+            Object.assign(inicial, antiga.dadosPreenchidos);
+          }
+        }
+        Object.assign(inicial, (adm.dadosPreenchidos as Record<string, unknown>) || {});
+        Object.assign(inicial, mapaConfirmados(adm));
         setDados(inicial);
       } catch (e) {
         if (!cancelled) setErro(e instanceof Error ? e.message : "Erro ao carregar.");
