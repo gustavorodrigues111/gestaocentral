@@ -61,9 +61,16 @@ export function EscalaPage() {
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
 
-  // Quando carrega a escala: se prevista fechada, abre direto na praticada (= real)
+  // Quando carrega a escala / navega entre meses:
+  //   - prevista fechada → abre na praticada (= real)
+  //   - prevista NÃO fechada → força a view pra prevista (mesmo que estava em
+  //     "real" no mês anterior). Senão fica tela vazia/quebrada.
   useEffect(() => {
-    if (escala?.previstaFechadaEm) setVersao("real");
+    if (escala?.previstaFechadaEm) {
+      setVersao("real");
+    } else {
+      setVersao("prevista");
+    }
   }, [escala?.previstaFechadaEm]);
 
   // Empregados
@@ -286,6 +293,15 @@ export function EscalaPage() {
     // Praticada só edita após prevista fechada
     if (versao === "real" && !escala?.previstaFechadaEm) {
       alert("🔒 Pra editar a Praticada, primeiro feche a Prevista do mês.");
+      return [];
+    }
+    // Praticada só edita em mês corrente/passado — não faz sentido pintar
+    // "o que aconteceu" em mês que ainda não começou.
+    if (versao === "real" && isMesFuturo) {
+      alert(
+        "⏰ Esse mês ainda não começou — não dá pra editar a Praticada.\n\n" +
+        "Praticada registra o que de fato aconteceu. Pra mês futuro, ajuste a Prevista.",
+      );
       return [];
     }
     // Prevista só edita em mês FUTURO (a não ser que seja master)
@@ -544,13 +560,19 @@ export function EscalaPage() {
           <button
             type="button"
             onClick={() => setVersao("real")}
+            disabled={!previstaFechada}
+            title={previstaFechada
+              ? ""
+              : "🔒 A Praticada só fica disponível depois que a Prevista é fechada."}
             className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
               versao === "real"
                 ? "bg-white dark:bg-gray-900 shadow-sm text-gray-900 dark:text-gray-100"
+                : !previstaFechada
+                ? "text-gray-400 dark:text-gray-600 cursor-not-allowed"
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
             }`}
           >
-            ✅ Praticada
+            ✅ Praticada{!previstaFechada && <span className="ml-1 text-[10px]">🔒</span>}
           </button>
         </div>
 
