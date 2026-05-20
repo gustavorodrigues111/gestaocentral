@@ -12,6 +12,7 @@ import {
   getWhatsappDP,
   salvarConfigAdmissao,
 } from "../../core/admissao/admissaoHelpers";
+import { EMAIL_CLINICA_EXAMES_DEFAULT } from "../../core/admissao/formTemplate";
 import { EditorKanbanColunas } from "./EditorKanbanColunas";
 import type { Restaurant } from "../../core/types";
 
@@ -30,6 +31,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   // Mostra o valor "real" do restaurante (sem fallback) pra ficar claro quando
   // está usando o default e quando o restaurante tem seu próprio cadastrado.
   const [emailContabilidade, setEmailContabilidade] = useState<string>(activeRestaurant?.emailContabilidade?.trim() || "");
+  const [emailClinicaExames, setEmailClinicaExames] = useState<string>(activeRestaurant?.emailClinicaExames?.trim() || "");
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
 
@@ -41,6 +43,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         admissaoPrazoDias: prazoDias,
         whatsappDP: onlyDigits(whatsappDP) || undefined,
         emailContabilidade: emailContabilidade.trim() || undefined,
+        emailClinicaExames: emailClinicaExames.trim() || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -120,6 +123,31 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             Sem cadastro, o sistema usa o padrão{" "}
             <strong className="text-gray-700 dark:text-gray-300">{EMAIL_CONTABILIDADE_DEFAULT}</strong>.
             Coloque outro aqui se quiser sobrescrever só pra esse restaurante.
+          </p>
+        )}
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+          🩺 E-mail da clínica de exames admissionais
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Destinatário do e-mail de agendamento de exames (clínico + manipulador
+          de alimentos). A subtarefa "Agendar exames" do checklist tem um botão
+          que abre o Gmail compose pra esse endereço, já com nome, cargo e data
+          de admissão no corpo.
+        </p>
+        <Input
+          label="E-mail da clínica de exames"
+          value={emailClinicaExames}
+          onChange={(e) => setEmailClinicaExames(e.target.value)}
+          placeholder={EMAIL_CLINICA_EXAMES_DEFAULT}
+          type="email"
+        />
+        {!emailClinicaExames && (
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">
+            Sem cadastro, o sistema usa o padrão{" "}
+            <strong className="text-gray-700 dark:text-gray-300">{EMAIL_CLINICA_EXAMES_DEFAULT}</strong>.
           </p>
         )}
       </div>

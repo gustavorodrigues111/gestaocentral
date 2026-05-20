@@ -8,9 +8,13 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  Admissao, AdmissaoStatus, FormField, MotivoCancelamento, Pessoa, Restaurant,
+  Admissao, AdmissaoStatus, AutoTriggerSubtarefa, FormField, MotivoCancelamento,
+  Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate,
 } from "../types";
-import { TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT } from "./formTemplate";
+import {
+  TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT,
+  SUBTAREFAS_TEMPLATE_DEFAULT, EMAIL_CLINICA_EXAMES_DEFAULT,
+} from "./formTemplate";
 
 // ─── Token + URL ───────────────────────────────────────────────────────────
 
@@ -79,6 +83,14 @@ export function getEmailContabilidade(rest: Restaurant | null | undefined): stri
   return rest?.emailContabilidade?.trim() || EMAIL_CONTABILIDADE_DEFAULT;
 }
 
+export function getEmailClinicaExames(rest: Restaurant | null | undefined): string {
+  return rest?.emailClinicaExames?.trim() || EMAIL_CLINICA_EXAMES_DEFAULT;
+}
+
+export function getSubtarefasTemplate(rest: Restaurant | null | undefined): SubtarefaTemplate[] {
+  return rest?.admissaoSubtarefasTemplate || SUBTAREFAS_TEMPLATE_DEFAULT;
+}
+
 // ─── CRUD ──────────────────────────────────────────────────────────────────
 
 export type IniciarAdmissaoInput = {
@@ -90,8 +102,9 @@ export type IniciarAdmissaoInput = {
   salario?: number;
   dataAdmissao?: string;
   cargoConfianca?: boolean;
-  schemaUsado: FormField[];   // passa snapshot já resolvido
-  pessoaIdVinculada?: string; // se o CPF já existia em /pessoas
+  schemaUsado: FormField[];                  // passa snapshot já resolvido
+  pessoaIdVinculada?: string;                // se o CPF já existia em /pessoas
+  subtarefasTemplate?: SubtarefaTemplate[];  // snapshot do template do restaurante
 };
 
 export async function iniciarAdmissao(
@@ -99,6 +112,19 @@ export async function iniciarAdmissao(
   pessoa: Pessoa,
 ): Promise<Admissao> {
   const now = new Date().toISOString();
+  const subtarefas = instanciarSubtarefas(
+    input.subtarefasTemplate || SUBTAREFAS_TEMPLATE_DEFAULT,
+  );
+  // Aplica auto-triggers que já ocorreram: a criação da admissão.
+  aplicarAutoTrigger(subtarefas, "iniciar_admissao", pessoa, now);
+  // Se dados finais já vieram completos no momento de iniciar, marca também.
+  if (input.cargoId && input.dataAdmissao && typeof input.salario === "number") {
+    const h = input.horariosCadastrados;
+    const algumAtivo = h && Object.values(h).some(
+      (d) => typeof d === "object" && d != null && (d as { active?: boolean }).active === true,
+    );
+    if (algumAtivo) aplicarAutoTrigger(subtarefas, "dados_finais_completos", pessoa, now);
+  }
   const novo: Omit<Admissao, "id"> = {
     restaurantId: input.restaurantId,
     status: "formulario_enviado",
@@ -114,6 +140,7 @@ export async function iniciarAdmissao(
     schemaUsado: input.schemaUsado,
     restaurantSnapshot: input.restaurantSnapshot,
     pessoaIdVinculada: input.pessoaIdVinculada,
+    subtarefas,
     createdAt: now,
     updatedAt: now,
   };
@@ -122,18 +149,23 @@ export async function iniciarAdmissao(
 }
 
 // Marca o envio do link: define enviadoEm + expiraEm baseado no prazo do rest.
-// É essa ação que dispara o timer pro candidato.
+// É essa ação que dispara o timer pro candidato. Auto-marca subtarefa de
+// "Solicitação de documentos + abertura conta Itaú".
 export async function marcarLinkEnviado(
-  admissaoId: string,
+  admissao: Admissao,
   prazoDias: number,
+  pessoa: Pessoa,
 ): Promise<{ enviadoEm: string; expiraEm: string }> {
   const enviadoEm = new Date().toISOString();
   const expiraEm = new Date(Date.now() + prazoDias * 86400000).toISOString();
-  await updateDoc(doc(db, "admissoes", admissaoId), {
+  const subtarefas = [...(admissao.subtarefas || [])];
+  aplicarAutoTrigger(subtarefas, "link_enviado", pessoa, enviadoEm);
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
     enviadoEm,
     expiraEm,
+    subtarefas: subtarefas.length > 0 ? subtarefas : undefined,
     updatedAt: enviadoEm,
-  });
+  }));
   return { enviadoEm, expiraEm };
 }
 
@@ -248,9 +280,10 @@ const ORDEM_FLUXO: AdmissaoStatus[] = [
   "formulario_enviado",
   "formulario_preenchido",
   "documentos_recebidos",
-  "dados_finais_preenchidos",
   "solicitacao_contabilidade",
+  "assinando_documentos",
   "pronto_admissao",
+  "onboarding",
   "admitido",
 ];
 
@@ -269,6 +302,25 @@ export async function avancarStatus(
     status: novoStatus,
     updatedAt: now,
   });
+}
+
+// Avança status + aplica auto-trigger nas subtarefas em uma única gravação.
+// Usar quando a ação do RH no UI corresponde a um evento monitorado
+// (ex: clicar "Enviar pra contabilidade" → trigger envio_contabilidade).
+export async function avancarStatusComTrigger(
+  admissao: Admissao,
+  novoStatus: AdmissaoStatus,
+  trigger: AutoTriggerSubtarefa,
+  pessoa: Pessoa,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const subtarefas = [...(admissao.subtarefas || [])];
+  const mutou = aplicarAutoTrigger(subtarefas, trigger, pessoa, now);
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    status: novoStatus,
+    ...(mutou ? { subtarefas } : {}),
+    updatedAt: now,
+  }));
 }
 
 // Valida se a admissão tem todos os dados finais preenchidos (pelo RH no
@@ -328,9 +380,10 @@ export async function atualizarChecklistDocumentos(
 
 // Atualiza dados básicos da vaga (cargo, salário, data admissão, horários).
 // Pode ser chamado em qualquer etapa pra completar/corrigir dados. Não mexe
-// no status — RH avança manualmente quando estiver tudo preenchido.
+// no status — RH avança manualmente quando estiver tudo preenchido. Se o
+// patch deixar a admissão com dados finais completos, dispara o auto-trigger.
 export async function atualizarDadosBasicos(
-  admissaoId: string,
+  admissao: Admissao,
   patch: {
     cargoId?: string;
     salario?: number;
@@ -338,10 +391,23 @@ export async function atualizarDadosBasicos(
     cargoConfianca?: boolean;
     horariosCadastrados?: Record<string, unknown>;
   },
+  pessoa: Pessoa,
 ): Promise<void> {
-  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+  const now = new Date().toISOString();
+  const merged: Admissao = {
+    ...admissao,
     ...patch,
-    updatedAt: new Date().toISOString(),
+    horariosCadastrados: (patch.horariosCadastrados as Admissao["horariosCadastrados"]) ?? admissao.horariosCadastrados,
+  };
+  const subtarefas = [...(admissao.subtarefas || [])];
+  let mutouSubtarefas = false;
+  if (temDadosFinaisCompletos(merged)) {
+    mutouSubtarefas = aplicarAutoTrigger(subtarefas, "dados_finais_completos", pessoa, now);
+  }
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    ...patch,
+    ...(mutouSubtarefas ? { subtarefas } : {}),
+    updatedAt: now,
   }));
 }
 
@@ -356,10 +422,19 @@ export async function moverColunaKanban(
   });
 }
 
-// Atualiza o schema/prazo/whatsapp DP de um restaurante.
+// Atualiza o schema/prazo/whatsapp DP/emails/template de um restaurante.
 export async function salvarConfigAdmissao(
   restaurantId: string,
-  patch: Partial<Pick<Restaurant, "admissaoPrazoDias" | "whatsappDP" | "emailContabilidade" | "admissaoFormSchema" | "admissaoKanbanColunas">>,
+  patch: Partial<Pick<
+    Restaurant,
+    | "admissaoPrazoDias"
+    | "whatsappDP"
+    | "emailContabilidade"
+    | "emailClinicaExames"
+    | "admissaoFormSchema"
+    | "admissaoKanbanColunas"
+    | "admissaoSubtarefasTemplate"
+  >>,
 ): Promise<void> {
   await setDoc(
     doc(db, "restaurants", restaurantId),
@@ -439,4 +514,127 @@ export function statusEstaExpirada(adm: Admissao, now: number = Date.now()): boo
 export function statusEfetivo(adm: Admissao, now: number = Date.now()): AdmissaoStatus {
   if (statusEstaExpirada(adm, now)) return "expirada";
   return adm.status;
+}
+
+// ─── Subtarefas ────────────────────────────────────────────────────────────
+
+// Cria SubtarefaAdmissao[] a partir de um template, todas como `feita: false`.
+export function instanciarSubtarefas(template: SubtarefaTemplate[]): SubtarefaAdmissao[] {
+  return template
+    .slice()
+    .sort((a, b) => a.ordem - b.ordem)
+    .map((t) => ({ ...t, feita: false }));
+}
+
+// Marca todas as subtarefas com o autoTrigger correspondente como feitas
+// (in-place). Retorna true se alguma mudou de estado. Idempotente — pular
+// se já feita.
+export function aplicarAutoTrigger(
+  subtarefas: SubtarefaAdmissao[],
+  trigger: AutoTriggerSubtarefa,
+  pessoa: Pessoa | { id: string; nome: string },
+  emISO: string = new Date().toISOString(),
+): boolean {
+  let mutou = false;
+  for (let i = 0; i < subtarefas.length; i++) {
+    const s = subtarefas[i];
+    if (!s) continue;
+    if (s.autoTrigger !== trigger) continue;
+    if (s.feita) continue;
+    subtarefas[i] = {
+      ...s,
+      feita: true,
+      feitaEm: emISO,
+      feitaPor: { id: pessoa.id, nome: pessoa.nome },
+    };
+    mutou = true;
+  }
+  return mutou;
+}
+
+// Marca/desmarca uma subtarefa específica e persiste. Aceita também update
+// de link externo e/ou observação (sem mudar feita).
+export async function atualizarSubtarefa(
+  admissao: Admissao,
+  subtarefaId: string,
+  patch: { feita?: boolean; observacao?: string; link?: string },
+  pessoa: Pessoa,
+): Promise<void> {
+  const subtarefas = (admissao.subtarefas || []).map((s) => {
+    if (s.id !== subtarefaId) return s;
+    const next: SubtarefaAdmissao = { ...s };
+    if (typeof patch.feita === "boolean") {
+      next.feita = patch.feita;
+      if (patch.feita) {
+        next.feitaEm = new Date().toISOString();
+        next.feitaPor = { id: pessoa.id, nome: pessoa.nome };
+      } else {
+        next.feitaEm = undefined;
+        next.feitaPor = undefined;
+      }
+    }
+    if (typeof patch.observacao === "string") {
+      next.observacao = patch.observacao || undefined;
+    }
+    if (typeof patch.link === "string") {
+      next.link = patch.link || undefined;
+    }
+    return next;
+  });
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    subtarefas,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
+// Lista as subtarefas obrigatórias e ainda pendentes de uma coluna específica.
+// Usado pra bloquear avanço de coluna no Kanban.
+export function subtarefasPendentesObrigatorias(
+  adm: Admissao,
+  colunaId: string,
+): SubtarefaAdmissao[] {
+  return (adm.subtarefas || []).filter(
+    (s) => s.colunaId === colunaId && s.obrigatoria && !s.feita,
+  );
+}
+
+// True se nenhuma subtarefa obrigatória da coluna atual está pendente.
+export function podeAvancarDeColuna(adm: Admissao, colunaId: string): boolean {
+  return subtarefasPendentesObrigatorias(adm, colunaId).length === 0;
+}
+
+// Calcula progresso "X / Y" das subtarefas de uma coluna — pra badge no card.
+export function progressoSubtarefasColuna(
+  adm: Admissao,
+  colunaId: string,
+): { feitas: number; total: number; obrigatoriasPendentes: number } {
+  const da = (adm.subtarefas || []).filter((s) => s.colunaId === colunaId);
+  const feitas = da.filter((s) => s.feita).length;
+  const obrig = da.filter((s) => s.obrigatoria && !s.feita).length;
+  return { feitas, total: da.length, obrigatoriasPendentes: obrig };
+}
+
+// Monta corpo de e-mail pra agendamento de exames admissionais com a clínica.
+// Usado pelo botão "Gmail compose" da subtarefa de agendar exames.
+export function montarCorpoEmailClinica(
+  admissao: Admissao,
+  cargoNome: string | undefined,
+  restNome: string,
+): string {
+  const c = admissao.candidato;
+  const dataAdm = admissao.dataAdmissao
+    ? admissao.dataAdmissao.split("-").reverse().join("/")
+    : "(a confirmar)";
+  return [
+    "Olá,",
+    "",
+    `Preciso agendar exames admissionais (clínico + manipulador de alimentos) para o seguinte candidato:`,
+    "",
+    `Empresa: ${restNome}`,
+    `Nome: ${c.nome}`,
+    `Cargo: ${cargoNome || "(a confirmar)"}`,
+    `Data de admissão: ${dataAdm}`,
+    "",
+    "Aguardo retorno com horários disponíveis. Obrigado!",
+  ].join("\n");
 }

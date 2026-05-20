@@ -17,9 +17,11 @@ import {
 } from "../../core/types";
 import {
   avancarStatus,
+  avancarStatusComTrigger,
   cancelarAdmissao,
   getPrazoDias,
   getSchemaAdmissao,
+  getSubtarefasTemplate,
   iniciarAdmissao,
   linkWhatsAppCandidato,
   marcarDocumentosRecebidos,
@@ -119,7 +121,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
   }, [admissoes, mostrarFinalizadas]);
 
   async function handleIniciar(
-    input: Omit<Parameters<typeof iniciarAdmissao>[0], "restaurantSnapshot">,
+    input: Omit<Parameters<typeof iniciarAdmissao>[0], "restaurantSnapshot" | "subtarefasTemplate">,
   ) {
     if (!me) return;
     const adm = await iniciarAdmissao(
@@ -130,6 +132,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           whatsappDP: activeRestaurant.whatsappDP || undefined,
           prazoDias: getPrazoDias(activeRestaurant),
         },
+        subtarefasTemplate: getSubtarefasTemplate(activeRestaurant),
       },
       me,
     );
@@ -147,8 +150,8 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     let admissao = adm;
     // Se ainda não foi marcado como enviado, marca agora (inicia timer)
     if (!adm.enviadoEm) {
-      await marcarLinkEnviado(adm.id, prazoDias);
-      admissao = { ...adm, enviadoEm: new Date().toISOString(), expiraEm: new Date(Date.now() + prazoDias * 86400000).toISOString() };
+      const { enviadoEm, expiraEm } = await marcarLinkEnviado(adm, prazoDias, me);
+      admissao = { ...adm, enviadoEm, expiraEm };
     }
     const url = urlPublicaAdmissao(admissao.token, activeRestaurant.subdomain);
     const msg = montarMensagemEnvioLink(
@@ -212,17 +215,17 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       if (ok) setAdmPreenchimentoManual(adm);
       return;
     }
-    // Pra passar de documentos_recebidos → dados_finais_preenchidos exige
+    // Pra passar de documentos_recebidos → solicitacao_contabilidade exige
     // que os 4 campos (cargo, data admissão, salário, horários) estejam ok.
-    if (prox === "dados_finais_preenchidos" && !temDadosFinaisCompletos(adm)) {
+    if (prox === "solicitacao_contabilidade" && !temDadosFinaisCompletos(adm)) {
       alert(
-        "Pra avançar pra 'Dados finais preenchidos' é preciso ter: cargo, data " +
+        "Pra avançar pra 'Enviado pra contabilidade' é preciso ter: cargo, data " +
         "de admissão, salário e horários cadastrados. Use o botão 'Preencher " +
         "dados básicos' acima.",
       );
       return;
     }
-    // dados_finais → solicitacao_contabilidade: baixa ficha XLSX + abre Gmail
+    // documentos_recebidos → solicitacao_contabilidade: baixa ficha XLSX + abre Gmail
     if (prox === "solicitacao_contabilidade") {
       const emailDest = getEmailContabilidade(activeRestaurant);
       const ok = confirm(
@@ -242,14 +245,22 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           body: montarCorpoEmailContabilidade(adm, cargo, activeRestaurant.nome),
         });
         window.open(url, "_blank");
-        await avancarStatus(adm.id, prox);
+        if (me) {
+          await avancarStatusComTrigger(adm, prox, "envio_contabilidade", me);
+        } else {
+          await avancarStatus(adm.id, prox);
+        }
       } catch (e) {
         alert("Erro: " + (e instanceof Error ? e.message : "?"));
       }
       return;
     }
     if (!confirm(`Avançar pra "${ADMISSAO_STATUS_LABEL[prox]}"?`)) return;
-    await avancarStatus(adm.id, prox);
+    if (prox === "admitido" && me) {
+      await avancarStatusComTrigger(adm, prox, "admitido", me);
+    } else {
+      await avancarStatus(adm.id, prox);
+    }
   }
 
   // Abre o modal de checklist. Reutilizado tanto pra primeira confirmação
@@ -383,9 +394,10 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
                   )}
                   {/* Reabrir checklist quando já recebido pra revisar pendências */}
                   {(st === "documentos_recebidos"
-                    || st === "dados_finais_preenchidos"
                     || st === "solicitacao_contabilidade"
-                    || st === "pronto_admissao") && (
+                    || st === "assinando_documentos"
+                    || st === "pronto_admissao"
+                    || st === "onboarding") && (
                     <Button size="sm" variant="secondary" onClick={() => setAdmChecklist(adm)}>
                       📄 Checklist
                     </Button>

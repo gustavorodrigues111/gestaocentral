@@ -146,6 +146,10 @@ export function AdmissaoPublicaPage() {
   // sempre obrigatórios)
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
   const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
+  // Ciências obrigatórias sobre obrigações pós-form (conta Itaú + envio de
+  // documentos via WhatsApp). Bloqueiam submit se não marcadas.
+  const [cienteContaItau, setCienteContaItau] = useState(false);
+  const [cienteDocsWhatsapp, setCienteDocsWhatsapp] = useState(false);
 
   // ─── Carrega admissão pelo token + restaurante ───────────────────────────
   useEffect(() => {
@@ -267,13 +271,21 @@ export function AdmissaoPublicaPage() {
         return;
       }
     }
-    // Bloco final: declaração + selfie
+    // Bloco final: declaração + selfie + ciências (Itaú + docs WhatsApp)
     if (!declaracaoAceita) {
       alert("Você precisa aceitar a declaração de veracidade pra enviar a ficha.");
       return;
     }
     if (!selfieDataUrl) {
       alert("Tire a foto pra ficha cadastral pra concluir o envio.");
+      return;
+    }
+    if (!cienteContaItau) {
+      alert("Marque que você está ciente sobre abrir a conta no Itaú pra enviar a ficha.");
+      return;
+    }
+    if (!cienteDocsWhatsapp) {
+      alert("Marque que você está ciente sobre o envio dos documentos via WhatsApp pra enviar a ficha.");
       return;
     }
     setEnviando(true);
@@ -283,7 +295,23 @@ export function AdmissaoPublicaPage() {
         selfieDataUrl,
         declaracaoEm: now,
         declaracaoTexto: TEXTO_DECLARACAO,
+        ciencias: {
+          contaItau:          { aceita: true, em: now },
+          documentosWhatsapp: { aceita: true, em: now },
+        },
       };
+      // Aplica auto-trigger "form_preenchido" nas subtarefas que aguardam
+      // esse evento (ex: "Adicionar contato + emergência").
+      const subtarefas = (admissao.subtarefas || []).map((s) =>
+        s.autoTrigger === "form_preenchido" && !s.feita
+          ? {
+              ...s,
+              feita: true,
+              feitaEm: now,
+              feitaPor: { id: "candidato", nome: admissao.candidato.nome },
+            }
+          : s,
+      );
       await setDoc(
         doc(db, "admissoes", admissao.id),
         {
@@ -291,6 +319,7 @@ export function AdmissaoPublicaPage() {
           status: "formulario_preenchido",
           preenchidoEm: now,
           validacao,
+          ...(subtarefas.length > 0 ? { subtarefas } : {}),
           updatedAt: now,
         },
         { merge: true },
@@ -301,6 +330,7 @@ export function AdmissaoPublicaPage() {
         status: "formulario_preenchido",
         preenchidoEm: now,
         validacao,
+        subtarefas,
       });
     } catch (e) {
       alert("Erro ao enviar: " + (e instanceof Error ? e.message : "?"));
@@ -512,6 +542,20 @@ export function AdmissaoPublicaPage() {
           />
         )}
 
+        {/* Box: ciência conta Itaú */}
+        <CienciaContaItauBox
+          aceita={cienteContaItau}
+          onChange={setCienteContaItau}
+        />
+
+        {/* Box: ciência envio docs WhatsApp */}
+        <CienciaDocsWhatsappBox
+          aceita={cienteDocsWhatsapp}
+          onChange={setCienteDocsWhatsapp}
+          whatsappDP={whatsappDP}
+          prazoDias={admissao.restaurantSnapshot?.prazoDias || 1}
+        />
+
         {/* Bloco final: selfie + declaração de veracidade */}
         <DeclaracaoFinalBlock
           selfieDataUrl={selfieDataUrl}
@@ -524,13 +568,15 @@ export function AdmissaoPublicaPage() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <Button
             onClick={submeter}
-            disabled={enviando || !selfieDataUrl || !declaracaoAceita}
+            disabled={enviando || !selfieDataUrl || !declaracaoAceita || !cienteContaItau || !cienteDocsWhatsapp}
             className="w-full"
           >
             {enviando ? "Enviando…" : "✅ Enviar ficha"}
           </Button>
           <p className="text-[11px] text-gray-500 text-center mt-2">
-            Os dados que você preencheu são salvos automaticamente. Pode fechar e voltar depois
+            Marque as <strong>3 confirmações</strong> acima (conta Itaú, envio
+            de documentos e veracidade) pra liberar o envio. Os dados que você
+            preencheu são salvos automaticamente — pode fechar e voltar depois
             dentro do prazo.
           </p>
         </div>
@@ -980,6 +1026,120 @@ function DocumentosWhatsBlock({
 // Helper pra silenciar warning de import (fmtDataBr reservado pra evoluções)
 void fmtDataBr;
 void onlyDigits;
+
+// ─── Boxes de ciência (Itaú + Docs WhatsApp) ─────────────────────────────
+
+function CienciaContaItauBox({
+  aceita,
+  onChange,
+}: {
+  aceita: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-sky-50 border-sky-300"}`}>
+      <h2 className={`font-bold text-sm mb-2 ${aceita ? "text-emerald-900" : "text-sky-900"}`}>
+        🏦 Conta bancária para receber seu salário
+      </h2>
+      <div className="text-xs text-gray-800 space-y-2">
+        <p>Você precisa abrir uma conta no <strong>Itaú</strong> pra receber o salário. Pode ser:</p>
+        <ul className="list-disc pl-5 space-y-0.5">
+          <li><strong>Conta salário</strong> — gratuita, vinculada à empresa</li>
+          <li><strong>Conta corrente</strong> — normal, sua escolha</li>
+        </ul>
+        <p>
+          <strong>Prazo:</strong> você tem <strong>1 semana</strong> a partir de
+          hoje pra abrir e nos informar os dados (agência, conta e dígito).
+        </p>
+      </div>
+      <label className="flex items-start gap-2 mt-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={aceita}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 accent-emerald-600 w-4 h-4"
+        />
+        <span className="text-xs text-gray-900">
+          Estou ciente que devo <strong>abrir uma conta no Itaú</strong> (salário
+          ou corrente) e informar os dados em até <strong>1 semana</strong>.
+        </span>
+      </label>
+    </section>
+  );
+}
+
+function CienciaDocsWhatsappBox({
+  aceita,
+  onChange,
+  whatsappDP,
+  prazoDias,
+}: {
+  aceita: boolean;
+  onChange: (v: boolean) => void;
+  whatsappDP?: string;
+  prazoDias: number;
+}) {
+  const fmtDP = (() => {
+    const d = (whatsappDP || "").replace(/\D/g, "");
+    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+    return whatsappDP || "";
+  })();
+  const docs = [
+    "RG (frente e verso)",
+    "CPF",
+    "Comprovante de residência",
+    "Foto 3x4",
+    "CTPS (página de rosto + qualificação civil)",
+    "Título de eleitor",
+    "Comprovante de PIS/PASEP",
+    "Certificado de reservista (homens)",
+    "Comprovante de escolaridade",
+    "Certidão de nascimento dos dependentes (se houver)",
+  ];
+  return (
+    <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-indigo-50 border-indigo-300"}`}>
+      <h2 className={`font-bold text-sm mb-2 ${aceita ? "text-emerald-900" : "text-indigo-900"}`}>
+        📎 Envio dos documentos pelo WhatsApp
+      </h2>
+      <div className="text-xs text-gray-800 space-y-2">
+        <p>
+          Mande fotos dos documentos abaixo via WhatsApp pra equipe que cuida
+          da sua admissão:
+        </p>
+        {whatsappDP ? (
+          <p className="font-mono bg-white border border-gray-200 rounded px-2 py-1 inline-block">
+            📱 {fmtDP}
+          </p>
+        ) : (
+          <p className="text-amber-700 italic">
+            ⚠ A empresa ainda não cadastrou o WhatsApp do DP. Você vai receber
+            o número assim que estiver configurado.
+          </p>
+        )}
+        <p>
+          <strong>Prazo:</strong> mesmo prazo deste formulário —{" "}
+          <strong>{prazoDias === 1 ? "24 horas" : `${prazoDias} dias`}</strong>.
+        </p>
+        <ul className="list-disc pl-5 space-y-0.5">
+          {docs.map((d) => <li key={d}>{d}</li>)}
+        </ul>
+      </div>
+      <label className="flex items-start gap-2 mt-3 cursor-pointer select-none">
+        <input
+          type="checkbox"
+          checked={aceita}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-0.5 accent-emerald-600 w-4 h-4"
+        />
+        <span className="text-xs text-gray-900">
+          Estou ciente que devo <strong>enviar todos esses documentos por
+          WhatsApp</strong> em até <strong>{prazoDias === 1 ? "24 horas" : `${prazoDias} dias`}</strong>.
+        </span>
+      </label>
+    </section>
+  );
+}
 
 // ─── Bloco final: selfie + declaração ────────────────────────────────────
 

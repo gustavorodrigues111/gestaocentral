@@ -16,6 +16,7 @@ import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
 import type { Admissao, Cargo, HorarioDia, Restaurant } from "../../core/types";
 import { atualizarDadosBasicos } from "../../core/admissao/admissaoHelpers";
+import { useAuth } from "../../core/auth/AuthContext";
 import {
   fmtHHMM,
   validateWorkScheduleDays,
@@ -48,6 +49,7 @@ type Props = {
 };
 
 export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant, onClose, onSaved }: Props) {
+  const { pessoa: me } = useAuth();
   // Mesma config do módulo Pessoas: limites de carga semanal do restaurante.
   // Default CLT 44h/sem (entre 43h55 e 44h00).
   const cargaMinMin = activeRestaurant.horarioConfig?.cargaSemanalMinMin ?? 2635;
@@ -105,15 +107,16 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
       }
     }
 
+    if (!me) { setErro("Sessão inválida. Tente recarregar a página."); return; }
     setSalvando(true);
     try {
-      await atualizarDadosBasicos(admissao.id, {
+      await atualizarDadosBasicos(admissao, {
         cargoId,
         salario: salarioNum,
         dataAdmissao: dataAdmissao || undefined,
         cargoConfianca,
         horariosCadastrados: Object.keys(horariosCadastrados).length > 0 ? horariosCadastrados : undefined,
-      });
+      }, me);
       onSaved();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");

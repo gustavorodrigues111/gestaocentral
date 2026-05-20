@@ -3,7 +3,7 @@
 //  Contábil. Cada restaurante começa com esse schema; pode editar livremente.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { FormField } from "../types";
+import type { FormField, SubtarefaTemplate } from "../types";
 
 // Helper local pra reduzir verbosidade ao declarar 50+ campos.
 function f(
@@ -156,9 +156,78 @@ export const KANBAN_COLUNAS_DEFAULT = [
   { id: "col_enviado",        nome: "Aguardando preenchimento",   ordem: 1, statusAuto: "formulario_enviado" as const,        cor: "94a3b8" },
   { id: "col_preenchido",     nome: "Formulário preenchido",      ordem: 2, statusAuto: "formulario_preenchido" as const,     cor: "f59e0b" },
   { id: "col_documentos",     nome: "Documentos recebidos",       ordem: 3, statusAuto: "documentos_recebidos" as const,      cor: "10b981" },
-  { id: "col_dados_finais",   nome: "Dados finais preenchidos",   ordem: 4, statusAuto: "dados_finais_preenchidos" as const,  cor: "14b8a6" },
-  { id: "col_contabilidade",  nome: "Enviado pra contabilidade",  ordem: 5, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
+  { id: "col_contabilidade",  nome: "Enviado pra contabilidade",  ordem: 4, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
+  { id: "col_assinando",      nome: "Assinando documentos",       ordem: 5, statusAuto: "assinando_documentos" as const,      cor: "d946ef" },
   { id: "col_pronto",         nome: "Pronto pra admitir",         ordem: 6, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
-  { id: "col_admitido",       nome: "Admitido",                   ordem: 7, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
-  { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 8, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
+  { id: "col_onboarding",     nome: "Onboarding",                 ordem: 7, statusAuto: "onboarding" as const,                cor: "14b8a6" },
+  { id: "col_admitido",       nome: "Admitido",                   ordem: 8, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
+  { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 9, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
 ];
+
+// Default do e-mail da clínica de exames admissionais. Restaurante pode
+// sobrescrever em `emailClinicaExames`. Será trocado em breve quando o
+// escritório migrar de fornecedor.
+export const EMAIL_CLINICA_EXAMES_DEFAULT = "atendimento@triagem.com";
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Template de subtarefas — checklist interno do processo de admissão.
+//
+//  Cada admissão é instanciada com uma cópia desse template. Subtarefas com
+//  autoTrigger são marcadas pelo sistema quando o evento correspondente
+//  ocorre (ver `aplicarAutoTrigger` em admissaoHelpers.ts). Obrigatórias
+//  pendentes bloqueiam o avanço pra próxima coluna do Kanban.
+// ════════════════════════════════════════════════════════════════════════════
+
+function st(
+  id: string,
+  nome: string,
+  colunaId: string,
+  obrigatoria: boolean = true,
+  extra: Partial<SubtarefaTemplate> = {},
+): SubtarefaTemplate {
+  return { id, nome, colunaId, obrigatoria, ordem: 0, ...extra };
+}
+
+const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
+  // ─── Aguardando preenchimento ───
+  st("st_solicitar_info", "Solicitar informações de admissão: cargo, horário e empresa", "col_enviado", true, { autoTrigger: "iniciar_admissao" }),
+  st("st_solicitar_docs", "Solicitação de documentos + abertura de conta no Itaú", "col_enviado", true, { autoTrigger: "link_enviado" }),
+
+  // ─── Formulário preenchido ───
+  st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica", "col_preenchido", true, { atalho: { tipo: "gmail_clinica" } }),
+  st("st_contato_emergencia", "Adicionar contato do empregado e de emergência na guia de informações", "col_preenchido", true, { autoTrigger: "form_preenchido" }),
+
+  // ─── Documentos recebidos ───
+  st("st_receber_aso", "Recebimento do ASO (exame clínico)", "col_documentos", true, { pedeLink: true }),
+  st("st_receber_cert_manip", "Recebimento do certificado de manipulador de alimentos", "col_documentos", true, { pedeLink: true }),
+  st("st_dados_finais", "Preencher dados finais (cargo, salário, horário, data)", "col_documentos", true, { autoTrigger: "dados_finais_completos" }),
+
+  // ─── Enviado pra contabilidade ───
+  st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade", "col_contabilidade", true, { autoTrigger: "envio_contabilidade" }),
+
+  // ─── Assinando documentos ───
+  st("st_receber_contrato", "Recebimento do contrato e termos para assinatura", "col_assinando", true, { pedeLink: true }),
+  st("st_coleta_assinatura", "Coleta de assinatura do empregado no contrato e termos adicionais", "col_assinando", true),
+  st("st_assinatura_outros", "Assinatura de outros termos", "col_assinando", true),
+  st("st_envio_regulamento", "Envio do Regulamento Interno em PDF", "col_assinando", true, { pedeLink: true }),
+  st("st_cadastro_banco", "Cadastrar o empregado no Banco", "col_assinando", true),
+  st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo", "col_assinando", true),
+
+  // ─── Pronto pra admitir ───
+  st("st_certificados_cursos", "Receber certificados dos cursos obrigatórios", "col_pronto", true, { pedeLink: true }),
+  st("st_cadastro_vt", "Cadastro de VT na plataforma (SPTrans/Caju)", "col_pronto", true),
+  st("st_calculo_primeiro_vt", "Cálculo do primeiro VT + informar setor financeiro", "col_pronto", true),
+
+  // ─── Onboarding (D1) ───
+  st("st_onboarding_treinamento", "Onboarding e treinamento inicial", "col_onboarding", true),
+  st("st_uniformes_epis", "Entrega de uniformes e EPIs", "col_onboarding", true),
+  st("st_grupo_avisos", "Inclusão no grupo de Avisos Gerais", "col_onboarding", true),
+
+  // ─── Admitido (pós-admissão administrativa) ───
+  st("st_matricula_esocial", "Informe número de matrícula do e-social junto a Triagem", "col_admitido", true),
+  st("st_cadastro_tangerino", "Cadastro do empregado no Tangerino (controle de ponto)", "col_admitido", true),
+  st("st_pasta_drive", "Abrir pasta do empregado no Drive e subir todos os documentos", "col_admitido", true, { pedeLink: true }),
+  st("st_fim_experiencia", "Adicionar fim dos períodos de experiência (30 e 90 dias) no Asana", "col_admitido", true),
+];
+
+export const SUBTAREFAS_TEMPLATE_DEFAULT: SubtarefaTemplate[] = RAW_SUBTAREFAS.map((s, i) => ({ ...s, ordem: i + 1 }));

@@ -374,8 +374,10 @@ export type Restaurant = {
   admissaoPrazoDias?: number;            // 1-7, default 1
   whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
   emailContabilidade?: string;           // e-mail da contabilidade pra solicitação de admissão
+  emailClinicaExames?: string;           // e-mail da clínica de exames admissionais (default: atendimento@triagem.com)
   admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
   admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
+  admissaoSubtarefasTemplate?: SubtarefaTemplate[]; // default = SUBTAREFAS_TEMPLATE_DEFAULT (formTemplate.ts)
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)
@@ -1468,10 +1470,11 @@ export type FormField = {
 export type AdmissaoStatus =
   | "formulario_enviado"          // RH criou e mandou WhatsApp pro candidato
   | "formulario_preenchido"       // candidato submeteu o form
-  | "documentos_recebidos"        // RH confirmou recebimento dos docs via WhatsApp
-  | "dados_finais_preenchidos"    // horário, data, salário, etc — empresa preencheu tudo
+  | "documentos_recebidos"        // RH confirmou recebimento dos docs + cargo/horário/data preenchidos
   | "solicitacao_contabilidade"   // pedido enviado pra contabilidade processar
-  | "pronto_admissao"             // contabilidade confirmou; admissão futura
+  | "assinando_documentos"        // contrato voltou da contabilidade; assinaturas + banco + cursos
+  | "pronto_admissao"             // tudo pronto, esperando D-day
+  | "onboarding"                  // D1: treinamento, EPIs, grupo
   | "admitido"                    // processo finalizado (Pessoa+Empregado criados)
   | "cancelada"                   // qualquer motivo de cancelamento
   | "expirada";                   // token expirou sem preenchimento
@@ -1480,9 +1483,10 @@ export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
   formulario_enviado:        "Aguardando preenchimento",
   formulario_preenchido:     "Formulário preenchido",
   documentos_recebidos:      "Documentos recebidos",
-  dados_finais_preenchidos:  "Dados finais preenchidos",
   solicitacao_contabilidade: "Enviado pra contabilidade",
+  assinando_documentos:      "Assinando documentos",
   pronto_admissao:           "Pronto pra admitir",
+  onboarding:                "Onboarding",
   admitido:                  "Admitido",
   cancelada:                 "Cancelada",
   expirada:                  "Expirada",
@@ -1562,11 +1566,18 @@ export type Admissao = {
   // candidato pela página pública.
   preenchimentoManual?: { por: { id: string; nome: string } | null; em: string };
 
-  // Declaração de veracidade + selfie de validação. Submetida junto com o form.
+  // Declaração de veracidade + selfie + ciências obrigatórias do candidato.
+  // Submetidas junto com o form. Tudo aceito = libera submit do form.
   validacao?: {
     selfieDataUrl?: string;    // base64 (JPEG comprimido, max ~250KB)
     declaracaoEm: string;      // ISO — quando o candidato marcou o checkbox
     declaracaoTexto: string;   // snapshot do texto da declaração (pra histórico jurídico)
+    // Ciência sobre conta Itaú e envio de docs por WhatsApp — boxes mostrados
+    // no fim do form. Bloqueiam submit se não marcados.
+    ciencias?: {
+      contaItau?: { aceita: boolean; em: string };
+      documentosWhatsapp?: { aceita: boolean; em: string };
+    };
   };
 
   // ─── Etapa 3: RH confirma recebimento dos docs via WhatsApp ───
@@ -1595,8 +1606,49 @@ export type Admissao = {
   // ─── Kanban: override manual da coluna (default: derivado do status) ───
   kanbanColunaId?: string;
 
+  // ─── Checklist do fluxo de admissão ───
+  // Subtarefas instanciadas do template do restaurante (ou do default global)
+  // no momento do iniciarAdmissao. Cada subtarefa pertence a uma coluna do
+  // Kanban; avanço de coluna bloqueia se obrigatórias da atual estão pendentes.
+  subtarefas?: SubtarefaAdmissao[];
+
   createdAt: string;
   updatedAt: string;
+};
+
+// Eventos que o sistema detecta automaticamente — usados pra auto-checar
+// subtarefas sem o RH precisar marcar uma a uma.
+export type AutoTriggerSubtarefa =
+  | "iniciar_admissao"            // RH criou a admissão
+  | "link_enviado"                // RH clicou "Enviar via WhatsApp"
+  | "form_preenchido"             // candidato submeteu o form
+  | "dados_finais_completos"      // RH preencheu cargo/salário/horário/data
+  | "envio_contabilidade"         // RH clicou "Enviar pra contabilidade"
+  | "admitido";                   // RH clicou "Concluir admissão"
+
+// Definição de uma subtarefa no template (sem state de execução).
+export type SubtarefaTemplate = {
+  id: string;
+  nome: string;
+  colunaId: string;                  // FK em KanbanColuna.id
+  obrigatoria: boolean;              // bloqueia avanço de coluna se true e pendente
+  ordem: number;
+  autoTrigger?: AutoTriggerSubtarefa; // se setado, sistema auto-marca quando o evento ocorre
+  // Atalhos disponíveis na UI do drawer:
+  atalho?:
+    | { tipo: "gmail_clinica" }      // abre Gmail compose pra clínica de exames
+    | { tipo: "whatsapp_candidato" } // abre WhatsApp do candidato
+    | { tipo: "whatsapp_dp" };       // abre WhatsApp do DP (n° configurado)
+  pedeLink?: boolean;                // se true, mostra input de URL (Drive/Dropbox)
+};
+
+// Instância de subtarefa numa admissão concreta (state + dados).
+export type SubtarefaAdmissao = SubtarefaTemplate & {
+  feita: boolean;
+  feitaEm?: string;                  // ISO
+  feitaPor?: { id: string; nome: string };
+  observacao?: string;
+  link?: string;                     // URL externa (se pedeLink)
 };
 
 export type KanbanColuna = {

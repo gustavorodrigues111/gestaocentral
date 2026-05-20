@@ -21,8 +21,11 @@ import {
   excluirAdmissaoDefinitivamente,
   getKanbanColunas,
   moverColunaKanban,
+  progressoSubtarefasColuna,
   statusEfetivo,
+  subtarefasPendentesObrigatorias,
 } from "../../core/admissao/admissaoHelpers";
+import { SubtarefasDrawer } from "./SubtarefasDrawer";
 
 function fmtDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -58,6 +61,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [admAberta, setAdmAberta] = useState<Admissao | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -104,6 +108,27 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
   async function onDrop(colId: string) {
     if (!draggingId) return;
+    const adm = admissoes.find((a) => a.id === draggingId);
+    if (!adm) { setDraggingId(null); return; }
+    // Resolve coluna de origem e destino (pelos objetos, pra comparar ordens)
+    const origemId = colunaDaAdmissao(adm, colunas);
+    const origem = colunas.find((c) => c.id === origemId);
+    const destino = colunas.find((c) => c.id === colId);
+    // Mover pra trás ou pra mesma coluna sempre permitido. Pra frente exige
+    // que obrigatórias da coluna atual estejam todas feitas.
+    if (origem && destino && destino.ordem > origem.ordem) {
+      const pendentes = subtarefasPendentesObrigatorias(adm, origem.id);
+      if (pendentes.length > 0) {
+        alert(
+          `Não dá pra avançar enquanto há ${pendentes.length} subtarefa(s) obrigatória(s) pendente(s) em "${origem.nome}":\n\n` +
+          pendentes.slice(0, 6).map((s) => `• ${s.nome}`).join("\n") +
+          (pendentes.length > 6 ? `\n… +${pendentes.length - 6} outra(s)` : "") +
+          "\n\nAbra o card pra marcar como feitas.",
+        );
+        setDraggingId(null);
+        return;
+      }
+    }
     try {
       await moverColunaKanban(draggingId, colId);
     } catch (e) {
@@ -137,6 +162,16 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         as colunas.
       </p>
 
+      {admAberta && me && (
+        <SubtarefasDrawer
+          admissao={admAberta}
+          cargos={cargos}
+          activeRestaurant={activeRestaurant}
+          pessoa={me}
+          onClose={() => setAdmAberta(null)}
+        />
+      )}
+
       <div className="flex gap-3 overflow-x-auto pb-2">
         {colunas.map((col) => {
           const cards = porColuna.get(col.id) || [];
@@ -165,13 +200,15 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                 {cards.map((a) => {
                   const cargo = cargoPorId.get(a.cargoId);
                   const st = statusEfetivo(a);
+                  const prog = progressoSubtarefasColuna(a, col.id);
                   return (
                     <div
                       key={a.id}
                       draggable
                       onDragStart={() => setDraggingId(a.id)}
                       onDragEnd={() => setDraggingId(null)}
-                      className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 cursor-move ${
+                      onClick={() => setAdmAberta(a)}
+                      className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 ${
                         draggingId === a.id ? "opacity-50" : ""
                       }`}
                     >
@@ -181,6 +218,24 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                         {cargo?.nome || "—"} · {ADMISSAO_STATUS_LABEL[st]}
                       </div>
+                      {prog.total > 0 && (
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <div className="flex-1 h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full ${prog.obrigatoriasPendentes > 0 ? "bg-amber-500" : "bg-emerald-500"}`}
+                              style={{ width: `${(prog.feitas / prog.total) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-[9px] tabular-nums text-gray-500 dark:text-gray-400">
+                            {prog.feitas}/{prog.total}
+                          </span>
+                          {prog.obrigatoriasPendentes > 0 && (
+                            <span className="text-[9px] px-1 py-0 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-semibold">
+                              {prog.obrigatoriasPendentes}!
+                            </span>
+                          )}
+                        </div>
+                      )}
                       {/* Cancelada/Expirada: badges cumulativas dos motivos + data + autor */}
                       {(a.status === "cancelada" || a.status === "expirada") && (
                         <div className="mt-1.5 pt-1.5 border-t border-rose-100 dark:border-rose-900/40 space-y-1">
@@ -223,7 +278,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                       {me?.isMaster && (a.status === "cancelada" || a.status === "expirada") && (
                         <button
                           type="button"
-                          onClick={() => excluirCard(a)}
+                          onClick={(e) => { e.stopPropagation(); excluirCard(a); }}
                           className="block mt-1 text-[10px] text-rose-600 dark:text-rose-400 hover:underline"
                           title="Apaga o card pra sempre (irreversível, só master)"
                         >

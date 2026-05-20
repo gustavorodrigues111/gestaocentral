@@ -148,7 +148,7 @@ service cloud.firestore {
           // Caminho público: candidato preenchendo
           (resource.data.status == "formulario_enviado")
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(["dadosPreenchidos", "preenchidoEm", "status", "validacao", "updatedAt"])
+              .hasOnly(["dadosPreenchidos", "preenchidoEm", "status", "validacao", "subtarefas", "updatedAt"])
           && (
             // Só pode manter status atual OU mudar pra "formulario_preenchido"
             request.resource.data.status == "formulario_enviado"
