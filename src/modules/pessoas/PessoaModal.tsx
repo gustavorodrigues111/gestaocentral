@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -13,7 +13,7 @@ import { ReativarModal } from "./ReativarModal";
 import { ExcluirModal } from "./ExcluirModal";
 import { getModule } from "../../config/modules";
 import { logAudit } from "../../core/audit/versionedChange";
-import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa } from "../../core/types";
+import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 
 type Tab = "identidade" | "vinculos" | "permissoes";
@@ -482,10 +482,14 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
         )}
       </div>
 
-      <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-        ℹ️ Vínculos em outros restaurantes que essa pessoa acessa virão na próxima iteração da Fase 2.
-        Demitir/inativar vínculo vem na Fase 5 (com fluxo completo de data efetiva e log).
-      </p>
+      {/* Outros restaurantes vinculados a essa Pessoa — útil pra desvincular
+          empresas onde a pessoa não trabalha mais (ex: demitida e foi pra
+          outra empresa do grupo). Não mexe no histórico do Empregado, só
+          remove o restaurantId de pessoa.restaurantIds. */}
+      <OutrosRestaurantesVinculados
+        pessoa={pessoa}
+        restauranteAtualId={restaurantId}
+      />
 
       {showEmpModal && (
         <EmpregadoModal
@@ -845,3 +849,146 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
   );
 }
 
+// ════════════════════════════════════════════════════════════════
+// Bloco da aba Vínculos: outros restaurantes que essa Pessoa tem em
+// pessoa.restaurantIds (além do atual). Pra cada um mostra o status do
+// Empregado (ativo/demitido) e botão "Desvincular" — remove o rid de
+// pessoa.restaurantIds sem mexer no Empregado (histórico preservado).
+// ════════════════════════════════════════════════════════════════
+
+function OutrosRestaurantesVinculados({
+  pessoa,
+  restauranteAtualId,
+}: {
+  pessoa: Pessoa;
+  restauranteAtualId: string;
+}) {
+  const [vinculos, setVinculos] = useState<Array<{
+    restaurantId: string;
+    nomeRest: string;
+    empregadoId: string | null;
+    estaAtivo: boolean;
+    demitidoEm: string | null | undefined;
+    admissaoAtual: string | null | undefined;
+  }>>([]);
+  const [salvando, setSalvando] = useState<string | null>(null);
+
+  // Recarrega quando muda restaurantIds da Pessoa (após desvincular)
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const outros = (pessoa.restaurantIds || []).filter((rid) => rid !== restauranteAtualId);
+      if (outros.length === 0) {
+        if (!cancelled) setVinculos([]);
+        return;
+      }
+      // Busca nomes + empregados em paralelo
+      const items = await Promise.all(outros.map(async (rid) => {
+        const restSnap = await getDoc(doc(db, "restaurants", rid));
+        const r = restSnap.exists() ? (restSnap.data() as Restaurant) : null;
+        const empQ = query(
+          collection(db, "empregados"),
+          where("restaurantId", "==", rid),
+          where("pessoaId", "==", pessoa.id),
+        );
+        const empSnap = await getDocs(empQ);
+        const emp = empSnap.docs[0]?.data() as Empregado | undefined;
+        return {
+          restaurantId: rid,
+          nomeRest: r?.nome || rid,
+          empregadoId: empSnap.docs[0]?.id || null,
+          estaAtivo: emp?.estaAtivo ?? false,
+          demitidoEm: emp?.demitidoEm,
+          admissaoAtual: emp?.admissaoAtual,
+        };
+      }));
+      if (!cancelled) setVinculos(items);
+    })();
+    return () => { cancelled = true; };
+  }, [pessoa.restaurantIds, restauranteAtualId, pessoa.id]);
+
+  async function desvincular(rid: string, nomeRest: string, estaAtivo: boolean) {
+    const aviso = estaAtivo
+      ? `⚠ ATENÇÃO: o vínculo de empregado dessa pessoa em "${nomeRest}" ainda está ATIVO (não foi demitido).\n\n` +
+        `Desvincular do restaurante sem demitir antes vai deixar o Empregado órfão na collection. ` +
+        `Recomendado: demita o empregado primeiro pelo módulo Pessoas do restaurante "${nomeRest}".\n\n` +
+        `Continuar mesmo assim?`
+      : `Remover o vínculo dessa pessoa com "${nomeRest}"?\n\n` +
+        `A Pessoa deixa de aparecer como vinculada a esse restaurante. O Empregado demitido fica ` +
+        `preservado no histórico (sem ser apagado).`;
+    if (!confirm(aviso)) return;
+    setSalvando(rid);
+    try {
+      const novosRids = (pessoa.restaurantIds || []).filter((x) => x !== rid);
+      await updateDoc(doc(db, "pessoas", pessoa.id), {
+        restaurantIds: novosRids,
+      });
+    } catch (e) {
+      alert("Erro ao desvincular: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  if (vinculos.length === 0) {
+    return (
+      <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+        Esta pessoa está vinculada só ao restaurante atual.
+      </p>
+    );
+  }
+
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
+      <div className="text-xs font-bold uppercase tracking-wider text-gray-500">
+        Outros restaurantes vinculados a esta pessoa
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        Lista todos os restaurantes em <code>pessoa.restaurantIds</code> além
+        do atual. Use <strong>Desvincular</strong> pra remover da lista quando
+        a pessoa não trabalha mais lá (típico em demissão + mudança pra
+        outro restaurante do grupo). O Empregado demitido fica preservado no
+        histórico do restaurante antigo, só a Pessoa deixa de aparecer como vinculada.
+      </p>
+      {vinculos.map((v) => (
+        <div
+          key={v.restaurantId}
+          className={`flex items-center justify-between gap-3 px-3 py-2 rounded-lg border ${
+            v.estaAtivo
+              ? "bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800"
+              : "bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800"
+          }`}
+        >
+          <div className="flex-1 min-w-0">
+            <div className="font-medium text-sm text-gray-900 dark:text-gray-100">
+              {v.nomeRest}
+            </div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">
+              {v.empregadoId == null ? (
+                <span className="italic">Sem registro de Empregado neste restaurante</span>
+              ) : v.estaAtivo ? (
+                <>
+                  ✓ Empregado <strong>ativo</strong>
+                  {v.admissaoAtual && <> · admissão {v.admissaoAtual.split("-").reverse().join("/")}</>}
+                </>
+              ) : (
+                <>
+                  ✕ Demitida
+                  {v.demitidoEm && <> em {v.demitidoEm.split("-").reverse().join("/")}</>}
+                </>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => desvincular(v.restaurantId, v.nomeRest, v.estaAtivo)}
+            disabled={salvando === v.restaurantId}
+            className="text-[10px] px-2 py-1 rounded text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+          >
+            {salvando === v.restaurantId ? "..." : "🔗 Desvincular"}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
