@@ -368,6 +368,59 @@ export function EscalaPage() {
   // `copiarPrevistaParaReal` removida — agora cópia é automática no 1º
   // fechamento da prevista.
 
+  // ── Materializar derivados de UM empregado (manual, on-demand) ─────────────
+  // Caso típico: empregado admitido depois da prevista fechada → as células
+  // dele ficam vazias no doc da escala (mesmo que a UI mostre os derivados
+  // do workSchedule em verde-pontilhado). VT/Gorjeta leem só células
+  // gravadas, então conta zero. Esse helper grava os derivados nas células
+  // vazias da versão atual (prevista ou real), sem mexer no que já tem.
+  async function materializarDerivadosEmp(empId: string) {
+    if (!rid) return;
+    const empregado = empregados.find((e) => e.id === empId);
+    if (!empregado) return;
+    const derivadosEmp = derivados[empId] || {};
+    const escalaCellsEmp = escala?.[versao]?.[empId] || {};
+    const updates: Record<string, ScheduleStatus> = {};
+    for (const date of Object.keys(derivadosEmp)) {
+      const d = derivadosEmp[date];
+      if (!d?.status) continue;
+      if (escalaCellsEmp[date] !== undefined) continue;
+      updates[date] = d.status;
+    }
+    const n = Object.keys(updates).length;
+    if (n === 0) {
+      alert("Nenhum dia derivado pendente — tudo já está gravado.");
+      return;
+    }
+    const versaoLabel = versao === "prevista" ? "prevista" : "praticada";
+    const ok = confirm(
+      `Vai gravar ${n} dia(s) do horário cadastrado de ${empregado.nome} na ` +
+      `escala (versão ${versaoLabel}).\n\n` +
+      `As células já preenchidas ficam intactas — só as vazias são completadas.\n\n` +
+      `Continuar?`,
+    );
+    if (!ok) return;
+    const escalaId = `${rid}_${fmtAnoMes(ano, mes)}`;
+    const ref = doc(db, "escalas", escalaId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, {
+        id: escalaId,
+        restaurantId: rid,
+        ano, mes,
+        prevista: {}, real: {},
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    const pathUpdates: Record<string, unknown> = {
+      updatedAt: new Date().toISOString(),
+    };
+    for (const [date, status] of Object.entries(updates)) {
+      pathUpdates[`${versao}.${empId}.${date}`] = status;
+    }
+    await updateDoc(ref, pathUpdates);
+  }
+
   // ── Fechar prevista do mês ─────────────────────────────────────────────────
   // 1. Materializa o derivado do horário cadastrado nas células ainda vazias
   //    da prevista (cobertura total).
@@ -699,6 +752,7 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
+              onMaterializarEmp={materializarDerivadosEmp}
               unidadesAtivas={unidadesAtivas}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
@@ -719,6 +773,7 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
+              onMaterializarEmp={materializarDerivadosEmp}
               swapsPorCelula={swapsPorCelula}
               onMesChange={(novoAno, novoMes) => {
                 setAno(novoAno);
@@ -996,6 +1051,7 @@ function Legenda() {
 
 function Grade({
   ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
+  onMaterializarEmp,
   unidadesAtivas, usaMultiUnidades, filtroUnidadeId, swapsPorCelula,
 }: {
   ano: number; mes: number; dias: number;
@@ -1004,6 +1060,7 @@ function Grade({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null, unidadeId?: string | null) => Promise<ValidacaoEscalaIssue[]>;
+  onMaterializarEmp: (empregadoId: string) => Promise<void>;
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
@@ -1165,6 +1222,13 @@ function Grade({
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{cargo?.nome || "—"}</div>
+                      <ChipMaterializar
+                        empId={e.id}
+                        derivadosEmp={derivados[e.id]}
+                        escalaCellsEmp={escala?.[versao]?.[e.id]}
+                        podeEditar={podeEditar}
+                        onClick={() => onMaterializarEmp(e.id)}
+                      />
                     </div>
                   </div>
                 </td>
@@ -1634,7 +1698,9 @@ function getSegunda(date: Date): Date {
 }
 
 function GradeMobile({
-  ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus, swapsPorCelula,
+  ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus,
+  onMaterializarEmp,
+  swapsPorCelula,
   onMesChange,
 }: {
   ano: number; mes: number;
@@ -1646,6 +1712,7 @@ function GradeMobile({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
+  onMaterializarEmp: (empregadoId: string) => Promise<void>;
   swapsPorCelula: Record<string, SundaySwap>;
   // Callback pra avisar a EscalaPage quando a semana visualizada cai num
   // outro mês (atravessou virada). A página recarrega escala/derivados do
@@ -1802,6 +1869,13 @@ function GradeMobile({
                 <div className="min-w-0 pr-1">
                   <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
                   <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
+                  <ChipMaterializar
+                    empId={e.id}
+                    derivadosEmp={derivados[e.id]}
+                    escalaCellsEmp={escala?.[versao]?.[e.id]}
+                    podeEditar={podeEditar}
+                    onClick={() => onMaterializarEmp(e.id)}
+                  />
                 </div>
                 {dates.map(({ iso, inMes }) => {
                   // Lê da escala do mês a que o dia pertence (suporta semana
@@ -1947,5 +2021,50 @@ function StatusPickerSheet({
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Chip "Materializar derivados não gravados" ────────────────────────────
+// Aparece SÓ na linha de empregados que têm derivados (do workSchedule)
+// pra dias do mês mas com células vazias na escala. Caso típico: empregado
+// admitido depois da prevista ser fechada. Click → confirm → grava as
+// células vazias com o status derivado. Sem efeito em quem tá ok.
+
+function ChipMaterializar({
+  empId,
+  derivadosEmp,
+  escalaCellsEmp,
+  podeEditar,
+  onClick,
+}: {
+  empId: string;
+  derivadosEmp: { [date: string]: DerivedDay } | undefined;
+  escalaCellsEmp: { [date: string]: ScheduleStatus } | undefined;
+  podeEditar: boolean;
+  onClick: () => void | Promise<void>;
+}) {
+  void empId; // recebido pra deixar componente self-contained se evoluir
+  if (!podeEditar) return null;
+  if (!derivadosEmp) return null;
+  let count = 0;
+  for (const date of Object.keys(derivadosEmp)) {
+    const d = derivadosEmp[date];
+    if (!d?.status) continue;
+    if (escalaCellsEmp?.[date] !== undefined) continue;
+    count++;
+  }
+  if (count === 0) return null;
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); void onClick(); }}
+      className="mt-0.5 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60 font-semibold leading-none"
+      title={
+        `${count} dia(s) do horário cadastrado deste empregado ainda não estão gravados ` +
+        `na escala. Click pra materializar — VT/Gorjeta passam a contar esses dias.`
+      }
+    >
+      📌 {count} dia{count > 1 ? "s" : ""} não gravado{count > 1 ? "s" : ""}
+    </button>
   );
 }
