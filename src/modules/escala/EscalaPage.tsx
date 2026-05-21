@@ -369,36 +369,45 @@ export function EscalaPage() {
   // fechamento da prevista.
 
   // ── Materializar derivados de UM empregado (manual, on-demand) ─────────────
-  // Caso típico: empregado admitido depois da prevista fechada → as células
-  // dele ficam vazias no doc da escala (mesmo que a UI mostre os derivados
-  // do workSchedule em verde-pontilhado). VT/Gorjeta leem só células
-  // gravadas, então conta zero. Esse helper grava os derivados nas células
-  // vazias da versão atual (prevista ou real), sem mexer no que já tem.
+  // Caso típico: empregado admitido depois da prevista fechada → ele nunca
+  // entrou no snapshot da prevista. VT lê da prevista (hardcoded no calc),
+  // então conta zero pra ele.
+  //
+  // Estratégia: grava os derivados na PREVISTA (fonte do VT), mesmo se já
+  // fechada — o snapshot oficial é re-completado pra incluir esse empregado
+  // que não existia no momento original do fechamento. Se a prevista está
+  // fechada, replica também na praticada pra UI ficar consistente.
+  //
+  // Só toca em células VAZIAS — overrides já gravados ficam intactos.
   async function materializarDerivadosEmp(empId: string) {
     if (!rid) return;
     const empregado = empregados.find((e) => e.id === empId);
     if (!empregado) return;
     const derivadosEmp = derivados[empId] || {};
-    const escalaCellsEmp = escala?.[versao]?.[empId] || {};
+    const prevCellsEmp = escala?.prevista?.[empId] || {};
+    const realCellsEmp = escala?.real?.[empId] || {};
+    const previstaFechada = !!escala?.previstaFechadaEm;
     const updates: Record<string, ScheduleStatus> = {};
     for (const date of Object.keys(derivadosEmp)) {
       const d = derivadosEmp[date];
       if (!d?.status) continue;
-      if (escalaCellsEmp[date] !== undefined) continue;
+      if (prevCellsEmp[date] !== undefined) continue;
       updates[date] = d.status;
     }
     const n = Object.keys(updates).length;
     if (n === 0) {
-      alert("Nenhum dia derivado pendente — tudo já está gravado.");
+      alert("Nenhum dia derivado pendente na prevista — tudo já está gravado.");
       return;
     }
-    const versaoLabel = versao === "prevista" ? "prevista" : "praticada";
-    const ok = confirm(
-      `Vai gravar ${n} dia(s) do horário cadastrado de ${empregado.nome} na ` +
-      `escala (versão ${versaoLabel}).\n\n` +
-      `As células já preenchidas ficam intactas — só as vazias são completadas.\n\n` +
-      `Continuar?`,
-    );
+    const aviso = previstaFechada
+      ? `Vai gravar ${n} dia(s) do horário de ${empregado.nome} na ESCALA do mês ` +
+        `(prevista + praticada). A prevista está fechada — adicionar agora é ` +
+        `tratado como "empregado admitido pós-fechamento". Sem isso, VT e ` +
+        `Gorjeta não contam os dias dele.\n\n` +
+        `Células já gravadas ficam intactas. Continuar?`
+      : `Vai gravar ${n} dia(s) do horário cadastrado de ${empregado.nome} na ` +
+        `prevista. As células já preenchidas ficam intactas.\n\nContinuar?`;
+    const ok = confirm(aviso);
     if (!ok) return;
     const escalaId = `${rid}_${fmtAnoMes(ano, mes)}`;
     const ref = doc(db, "escalas", escalaId);
@@ -416,7 +425,13 @@ export function EscalaPage() {
       updatedAt: new Date().toISOString(),
     };
     for (const [date, status] of Object.entries(updates)) {
-      pathUpdates[`${versao}.${empId}.${date}`] = status;
+      pathUpdates[`prevista.${empId}.${date}`] = status;
+      // Se prevista fechada, replica na praticada também (igual ao primeiro
+      // fechamento faz). Só pra células ainda vazias em real — preserva
+      // overrides feitos depois (ex: férias marcadas manualmente).
+      if (previstaFechada && realCellsEmp[date] === undefined) {
+        pathUpdates[`real.${empId}.${date}`] = status;
+      }
     }
     await updateDoc(ref, pathUpdates);
   }
@@ -1225,7 +1240,7 @@ function Grade({
                       <ChipMaterializar
                         empId={e.id}
                         derivadosEmp={derivados[e.id]}
-                        escalaCellsEmp={escala?.[versao]?.[e.id]}
+                        prevCellsEmp={escala?.prevista?.[e.id]}
                         podeEditar={podeEditar}
                         onClick={() => onMaterializarEmp(e.id)}
                       />
@@ -1872,7 +1887,7 @@ function GradeMobile({
                   <ChipMaterializar
                     empId={e.id}
                     derivadosEmp={derivados[e.id]}
-                    escalaCellsEmp={escala?.[versao]?.[e.id]}
+                    prevCellsEmp={escala?.prevista?.[e.id]}
                     podeEditar={podeEditar}
                     onClick={() => onMaterializarEmp(e.id)}
                   />
@@ -2025,32 +2040,33 @@ function StatusPickerSheet({
 }
 
 // ─── Chip "Materializar derivados não gravados" ────────────────────────────
-// Aparece SÓ na linha de empregados que têm derivados (do workSchedule)
-// pra dias do mês mas com células vazias na escala. Caso típico: empregado
-// admitido depois da prevista ser fechada. Click → confirm → grava as
-// células vazias com o status derivado. Sem efeito em quem tá ok.
+// Aparece SÓ na linha de empregados que têm derivados (do workSchedule) pra
+// dias do mês mas com células vazias NA PREVISTA. Conta contra prevista
+// porque é dela que VT/Gorjeta leem — independente da versão visualizada
+// na UI (que tem fallback de real → prevista). Click → confirm → grava na
+// prevista (+ replica na praticada se prevista fechada).
 
 function ChipMaterializar({
   empId,
   derivadosEmp,
-  escalaCellsEmp,
+  prevCellsEmp,
   podeEditar,
   onClick,
 }: {
   empId: string;
   derivadosEmp: { [date: string]: DerivedDay } | undefined;
-  escalaCellsEmp: { [date: string]: ScheduleStatus } | undefined;
+  prevCellsEmp: { [date: string]: ScheduleStatus } | undefined;
   podeEditar: boolean;
   onClick: () => void | Promise<void>;
 }) {
-  void empId; // recebido pra deixar componente self-contained se evoluir
+  void empId;
   if (!podeEditar) return null;
   if (!derivadosEmp) return null;
   let count = 0;
   for (const date of Object.keys(derivadosEmp)) {
     const d = derivadosEmp[date];
     if (!d?.status) continue;
-    if (escalaCellsEmp?.[date] !== undefined) continue;
+    if (prevCellsEmp?.[date] !== undefined) continue;
     count++;
   }
   if (count === 0) return null;
@@ -2060,8 +2076,9 @@ function ChipMaterializar({
       onClick={(e) => { e.stopPropagation(); void onClick(); }}
       className="mt-0.5 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60 font-semibold leading-none"
       title={
-        `${count} dia(s) do horário cadastrado deste empregado ainda não estão gravados ` +
-        `na escala. Click pra materializar — VT/Gorjeta passam a contar esses dias.`
+        `${count} dia(s) do horário cadastrado deste empregado ainda não estão na ` +
+        `prevista. Típico de empregado admitido pós-fechamento. Click pra ` +
+        `materializar — VT/Gorjeta passam a contar esses dias.`
       }
     >
       📌 {count} dia{count > 1 ? "s" : ""} não gravado{count > 1 ? "s" : ""}
