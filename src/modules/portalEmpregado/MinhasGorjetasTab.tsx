@@ -83,17 +83,30 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
     return () => unsub();
   }, [restaurantId]);
 
-  // Linhas: pra cada gorjeta, calcula a divisão e filtra a parte do empregado logado
+  // Linhas: pra cada gorjeta publicada, pega o snapshot da divisão e filtra
+  // a parte do empregado logado. Snapshot é a verdade — congelado no ato de
+  // publicar. Sem snapshot (gorjetas publicadas antes da refatoração de
+  // snapshot-on-publish), cai pro cálculo live como fallback transparente.
   const linhas = useMemo(() => {
-    const result: { date: string; bruto: number; retencao: number; liquido: number; status: "live" | "snapshot" }[] = [];
+    const result: { date: string; bruto: number; retencao: number; liquido: number }[] = [];
     for (const g of gorjetas) {
-      const sv = getActiveSplitVersion(splitVersions, g.date);
-      const itens = (g.paidAt && g.divisaoSnapshot)
-        ? g.divisaoSnapshot
-        : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv, g.unidadeId || null, unidades).itens;
+      let taxRate = g.taxRate || 0;
+      let itens = g.divisaoSnapshot;
+      if (!itens || itens.length === 0) {
+        // Fallback: gorjeta publicada sem snapshot (legado).
+        // Calcula live com a escala atual.
+        const sv = getActiveSplitVersion(splitVersions, g.date);
+        taxRate = sv?.taxRate ?? taxRate;
+        itens = calcularDivisaoDia(
+          g.date,
+          calcularValorLiquido(g.valorBruto, taxRate),
+          empregados, cargos, escala, sv,
+          g.unidadeId || null, unidades,
+        ).itens;
+      }
       const meu = itens.find(it => it.empregadoId === empregado.id);
       if (!meu) continue;
-      const fator = 1 - (g.taxRate || 0) / 100;
+      const fator = 1 - taxRate / 100;
       const liquido = meu.valor;
       const bruto = fator > 0 ? liquido / fator : liquido;
       const retencao = bruto - liquido;
@@ -102,11 +115,10 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
         bruto: Math.round(bruto * 100) / 100,
         retencao: Math.round(retencao * 100) / 100,
         liquido: Math.round(liquido * 100) / 100,
-        status: g.paidAt ? "snapshot" : "live",
       });
     }
     return result;
-  }, [gorjetas, empregado.id, empregados, cargos, escala, splitVersions]);
+  }, [gorjetas, empregado.id, empregados, cargos, escala, splitVersions, unidades]);
 
   const totais = useMemo(() => {
     return linhas.reduce(
@@ -159,17 +171,16 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <div className="grid grid-cols-[80px_120px_110px_120px_60px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
+          <div className="grid grid-cols-[80px_1fr_1fr_1fr] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
             <div>Dia</div>
             <div className="text-right">Bruto</div>
             <div className="text-right">Retenção</div>
             <div className="text-right">Líquido</div>
-            <div className="text-center">Status</div>
           </div>
           {linhas.map((l, i) => {
             const d = parseYmd(l.date);
             return (
-              <div key={l.date} className={`grid grid-cols-[80px_120px_110px_120px_60px] gap-2 px-3 py-2 items-center text-sm ${i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
+              <div key={l.date} className={`grid grid-cols-[80px_1fr_1fr_1fr] gap-2 px-3 py-2 items-center text-sm ${i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
                 <div>
                   <div className="font-medium text-gray-900 dark:text-gray-100">{pad2(d.getDate())}/{pad2(d.getMonth() + 1)}</div>
                   <div className="text-[10px] text-gray-500 uppercase">
@@ -179,34 +190,21 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
                 <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.bruto)}</div>
                 <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(l.retencao)}</div>
                 <div className="text-right tabular-nums font-bold text-emerald-700 dark:text-emerald-300">{fmtBR(l.liquido)}</div>
-                <div className="text-center">
-                  {l.status === "snapshot" ? (
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-bold" title="Gorjeta paga e congelada">
-                      ✓
-                    </span>
-                  ) : (
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="Estimativa — gorjeta ainda não paga">
-                      Pend.
-                    </span>
-                  )}
-                </div>
               </div>
             );
           })}
           {/* Total */}
-          <div className="grid grid-cols-[80px_120px_110px_120px_60px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
+          <div className="grid grid-cols-[80px_1fr_1fr_1fr] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
             <div>TOTAL</div>
             <div className="text-right tabular-nums">{fmtBR(totais.bruto)}</div>
             <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(totais.retencao)}</div>
             <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(totais.liquido)}</div>
-            <div></div>
           </div>
         </div>
       )}
 
       <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
-        ✓ pago = valor congelado (não muda mais).{" "}
-        <span className="text-amber-600">Pend.</span> = estimativa em tempo real, pode mudar até a gorjeta ser paga.
+        Valores congelados no momento em que o restaurante publica a gorjeta do dia.
       </div>
     </div>
   );

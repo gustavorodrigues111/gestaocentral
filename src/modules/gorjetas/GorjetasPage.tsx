@@ -15,6 +15,8 @@ import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
+import { publicarGorjeta, despublicarGorjeta } from "./publicar";
+import { PublicarGorjetasModal } from "./PublicarGorjetasModal";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -176,6 +178,13 @@ export function GorjetasPage() {
     setMes(next.mes);
   }
 
+  // Estado pro modal de publicação em lote
+  const [showPublicar, setShowPublicar] = useState(false);
+  // Quantas gorjetas estão "publicáveis" (lançadas + ainda não publicadas)
+  const qtdPublicaveis = useMemo(() => {
+    return gorjetas.filter(g => !g.publicada && !g.semGorjeta && g.valorBruto > 0).length;
+  }, [gorjetas]);
+
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
   }
@@ -232,7 +241,16 @@ export function GorjetasPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {podeConfig && qtdPublicaveis > 0 && (
+            <Button
+              size="sm"
+              onClick={() => setShowPublicar(true)}
+              title="Publicar gorjetas pros empregados verem (congela a divisão)"
+            >
+              📢 Publicar gorjetas ({qtdPublicaveis})
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
           <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
             {nomeMes(mes)} {ano}
@@ -297,10 +315,15 @@ export function GorjetasPage() {
               gorjetaMap={gorjetaMap}
               splitVersions={splitVersions}
               unidadesAtendimento={unidadesAtendimento}
+              unidades={unidades}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
               podeEditar={podeConfig}
               meId={me?.id || ""}
+              meNome={me?.nome || ""}
+              empregados={empregados}
+              cargos={cargos}
+              escala={escala}
             />
           )}
         </>
@@ -319,6 +342,21 @@ export function GorjetasPage() {
           unidades={unidades}
           usaMultiUnidades={usaMultiUnidades}
           filtroUnidadeId={filtroUnidadeId}
+        />
+      )}
+
+      {showPublicar && (
+        <PublicarGorjetasModal
+          onClose={() => setShowPublicar(false)}
+          gorjetas={gorjetas}
+          empregados={empregados}
+          cargos={cargos}
+          escala={escala}
+          splitVersions={splitVersions}
+          unidades={unidades}
+          usaMultiUnidades={usaMultiUnidades}
+          meId={me?.id || ""}
+          meNome={me?.nome || ""}
         />
       )}
 
@@ -351,16 +389,23 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
 // SEM modal, SEM botão "pagar por dia" (pagamento é mensal — feito offline).
 // ════════════════════════════════════════════════════════════════════════════
 function ListaDiasInline({
-  ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, usaMultiUnidades, filtroUnidadeId, podeEditar, meId,
+  ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, unidades, usaMultiUnidades,
+  filtroUnidadeId, podeEditar, meId, meNome,
+  empregados, cargos, escala,
 }: {
   ano: number; mes: number; rid: string;
   gorjetaMap: Record<string, Gorjeta>;
   splitVersions: SplitVersion[];
   unidadesAtendimento: Unidade[];
+  unidades: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
   podeEditar: boolean;
   meId: string;
+  meNome: string;
+  empregados: Empregado[];
+  cargos: Cargo[];
+  escala: EscalaMes | null;
 }) {
   const dias = daysInMonth(ano, mes);
   const todayYmd = (() => {
@@ -459,7 +504,32 @@ function ListaDiasInline({
     if (!podeEditar) return;
     const g = gorjetaMap[keyFor(date, unidadeId)];
     if (!g) return;
-    await gravar(date, unidadeId, { publicada: !g.publicada });
+    if (g.publicada) {
+      const ok = confirm(
+        "Despublicar a gorjeta deste dia?\n\n" +
+        "Vai apagar o snapshot da divisão. O empregado deixa de ver. " +
+        "Pra publicar de novo, é só clicar em Publicar — vai recalcular " +
+        "a divisão com a escala atual."
+      );
+      if (!ok) return;
+      await despublicarGorjeta(g);
+      return;
+    }
+    // Publicar 1 dia: confirma + congela snapshot
+    const ok = confirm(
+      `Publicar gorjeta de ${date}?\n\n` +
+      "A divisão vai ser CALCULADA agora com a escala atual e CONGELADA. " +
+      "Edições posteriores na escala desse dia não vão recalcular."
+    );
+    if (!ok) return;
+    try {
+      await publicarGorjeta({
+        gorjeta: g, empregados, cargos, escala, splitVersions, unidades,
+        publicadoPorId: meId, publicadoPorNome: meNome,
+      });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao publicar");
+    }
   }
 
   // Paleta pra diferenciar unidades em restaurantes multi-unidades.

@@ -61,8 +61,8 @@ export function SumarioMesModal({
     const bruto = gorjetas.reduce((s, g) => s + (g.valorBruto || 0), 0);
     const liquido = gorjetas.reduce((s, g) => s + (g.valorLiquido || 0), 0);
     const retencao = bruto - liquido;
-    const pagas = gorjetas.filter(g => g.paidAt).length;
-    return { bruto, liquido, retencao, total: gorjetas.length, pagas };
+    const publicadas = gorjetas.filter(g => g.publicada).length;
+    return { bruto, liquido, retencao, total: gorjetas.length, publicadas };
   }, [gorjetas]);
 
   // Distribuição por empregado (igual à DivisaoMesTab)
@@ -70,7 +70,7 @@ export function SumarioMesModal({
     const acc: Record<string, { nome: string; cargo: string; area: string; bruto: number; liquido: number }> = {};
     for (const g of gorjetas) {
       const sv = getActiveSplitVersion(splitVersions, g.date);
-      const itens = (g.paidAt && g.divisaoSnapshot)
+      const itens = (g.publicada && g.divisaoSnapshot)
         ? g.divisaoSnapshot
         : calcularDivisaoDia(g.date, calcularValorLiquido(g.valorBruto, g.taxRate), empregados, cargos, escala, sv, g.unidadeId || null, restaurant.unidades || []).itens;
       const fator = 1 - (g.taxRate || 0) / 100;
@@ -132,7 +132,7 @@ export function SumarioMesModal({
                 <Stat label="Líquido" value={fmtBR(totaisGorjeta.liquido)} variant="ok" />
               </div>
               <div className="text-[11px] text-gray-500 mt-1">
-                {totaisGorjeta.total} dia(s) lançado(s) · {totaisGorjeta.pagas} pago(s)
+                {totaisGorjeta.total} dia(s) lançado(s) · {totaisGorjeta.publicadas} publicada(s)
               </div>
             </section>
 

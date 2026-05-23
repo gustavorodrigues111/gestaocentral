@@ -83,15 +83,17 @@ export function DivisaoMesTab({
 
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
-      // taxRate: se a gorjeta foi paga, usa o snapshot dela (congelado).
-      // Senão, usa a splitVersion ativa na data — o `g.taxRate` armazenado
-      // pode ser zero/vazio em gorjetas importadas e não deve ser fonte.
-      const taxRate = g.paidAt ? (g.taxRate || 0) : (splitVersion?.taxRate ?? 0);
+      // taxRate: se a gorjeta foi publicada (snapshot congelado), usa o
+      // snapshot dela. Senão, usa a splitVersion ativa na data — o `g.taxRate`
+      // armazenado pode ser zero/vazio em gorjetas importadas.
+      const taxRate = (g.publicada && g.divisaoSnapshot)
+        ? (g.taxRate || 0)
+        : (splitVersion?.taxRate ?? 0);
       const fator = 1 - taxRate / 100;
 
-      // Usa snapshot se gorjeta paga; senão recalcula em tempo real
+      // Usa snapshot se gorjeta publicada (congelada); senão recalcula live
       let itens: DivisaoItem[];
-      if (g.paidAt && g.divisaoSnapshot) {
+      if (g.publicada && g.divisaoSnapshot) {
         itens = g.divisaoSnapshot;
       } else {
         const liquido = g.valorBruto * fator;
@@ -193,7 +195,7 @@ export function DivisaoMesTab({
     }
     const bruto = gorjetasFiltradas.reduce((s, g) => s + (g.valorBruto || 0), 0);
     const liquido = gorjetasFiltradas.reduce((s, g) => {
-      if (g.paidAt) return s + (g.valorLiquido || 0);
+      if (g.publicada && g.divisaoSnapshot) return s + (g.valorLiquido || 0);
       const sv = getActiveSplitVersion(splitVersions, g.date);
       const tax = sv?.taxRate ?? 0;
       return s + (g.valorBruto || 0) * (1 - tax / 100);
@@ -244,15 +246,16 @@ export function DivisaoMesTab({
     XLSX.utils.book_append_sheet(wb, divisaoWS, "Divisão");
 
     // Aba 3: Lançamentos diários
-    const lancamentosHeader = ["Data", "Bruto", "Retenção (%)", "Líquido", "Pago em", "Observação"];
+    const lancamentosHeader = ["Data", "Bruto", "Retenção (%)", "Líquido", "Publicada em", "Observação"];
     const lancamentosRows = [...gorjetas]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(g => {
-        // Pra gorjetas pagas, usa o snapshot. Pra pendentes, pega da splitVersion ativa.
-        const tax = g.paidAt
+        // Pra gorjetas publicadas (snapshot), usa o taxRate do snapshot.
+        // Pra não-publicadas, pega da splitVersion ativa.
+        const tax = (g.publicada && g.divisaoSnapshot)
           ? (g.taxRate || 0)
           : (getActiveSplitVersion(splitVersions, g.date)?.taxRate ?? 0);
-        const liquido = g.paidAt
+        const liquido = (g.publicada && g.divisaoSnapshot)
           ? (g.valorLiquido || 0)
           : (g.valorBruto || 0) * (1 - tax / 100);
         return [
@@ -260,7 +263,7 @@ export function DivisaoMesTab({
           g.valorBruto,
           tax,
           liquido,
-          g.paidAt ? new Date(g.paidAt).toLocaleString("pt-BR") : "",
+          g.publicadaEm ? new Date(g.publicadaEm).toLocaleString("pt-BR") : "",
           g.observacao || "",
         ];
       });

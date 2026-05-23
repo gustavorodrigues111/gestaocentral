@@ -520,13 +520,17 @@ export type Gorjeta = {
   // ignorado em qualquer cálculo de divisão.
   semGorjeta?: boolean;
   // Visibilidade pro portal do empregado. False (default) = só escritório vê.
-  // True = publicada → empregado vê na sua tela (quando o portal for habilitado).
+  // True = publicada → empregado vê na sua tela com a divisão CONGELADA.
   publicada?: boolean;
+  publicadaEm?: string | null;
+  publicadaPor?: string | null;
+  publicadaPorNome?: string | null;
   taxRate: number;              // snapshot — usado só pra retrocompat de docs antigos
   valorLiquido: number;         // snapshot — idem
   observacao?: string;
-  // Snapshot da divisão. Hoje é populado no fluxo de pagamento (legado por dia)
-  // e vai ser usado pelo novo fluxo de pagamento mensal (gorjetaPagamentos).
+  // Snapshot da divisão. Congelado no ato de publicar — a partir daí o cálculo
+  // dessa gorjeta NÃO recalcula mesmo que a escala mude. Pra recalcular, é
+  // necessário despublicar e publicar de novo.
   divisaoSnapshot?: DivisaoItem[];
   paidAt?: string | null;       // DEPRECATED: pagamento agora é mensal
   paidBy?: string | null;       // idem
