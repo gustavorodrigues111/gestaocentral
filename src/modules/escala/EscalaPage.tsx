@@ -1083,6 +1083,7 @@ function Grade({
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
+  const previstaFechada = !!escala?.previstaFechadaEm;
   // Seleção: Set<"empId|date"> — qualquer click adiciona/remove. Ações via barra inferior.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   // Multi-unidades: override de unidade ao aplicar bulk de "trabalho".
@@ -1242,6 +1243,7 @@ function Grade({
                         derivadosEmp={derivados[e.id]}
                         prevCellsEmp={escala?.prevista?.[e.id]}
                         podeEditar={podeEditar}
+                        previstaFechada={previstaFechada}
                         onClick={() => onMaterializarEmp(e.id)}
                       />
                     </div>
@@ -1734,6 +1736,7 @@ function GradeMobile({
   // novo mês — fluxo de navegação por semana fica contínuo entre meses.
   onMesChange: (novoAno: number, novoMes: number) => void;
 }) {
+  const previstaFechada = !!escala?.previstaFechadaEm;
   // Helper: pega a escala do mês a que o `iso` pertence
   function escalaDoIso(iso: string): EscalaMes | null {
     const ym = iso.slice(0, 7); // "YYYY-MM"
@@ -1889,6 +1892,7 @@ function GradeMobile({
                     derivadosEmp={derivados[e.id]}
                     prevCellsEmp={escala?.prevista?.[e.id]}
                     podeEditar={podeEditar}
+                    previstaFechada={previstaFechada}
                     onClick={() => onMaterializarEmp(e.id)}
                   />
                 </div>
@@ -2045,22 +2049,31 @@ function StatusPickerSheet({
 // porque é dela que VT/Gorjeta leem — independente da versão visualizada
 // na UI (que tem fallback de real → prevista). Click → confirm → grava na
 // prevista (+ replica na praticada se prevista fechada).
+//
+// Gate: só faz sentido com prevista FECHADA. Em prevista aberta/futura, todo
+// empregado tem derivados não gravados (é o normal — o gestor nem abriu a
+// tela ainda), e ao fechar a prevista os derivados são gravados em lote.
+// Com prevista fechada, o chip vira sinal real do caso Marcelo: empregado
+// vinculado / cadastrado depois do fechamento → não foi capturado → VT zera.
 
 function ChipMaterializar({
   empId,
   derivadosEmp,
   prevCellsEmp,
   podeEditar,
+  previstaFechada,
   onClick,
 }: {
   empId: string;
   derivadosEmp: { [date: string]: DerivedDay } | undefined;
   prevCellsEmp: { [date: string]: ScheduleStatus } | undefined;
   podeEditar: boolean;
+  previstaFechada: boolean;
   onClick: () => void | Promise<void>;
 }) {
   void empId;
   if (!podeEditar) return null;
+  if (!previstaFechada) return null;
   if (!derivadosEmp) return null;
   let count = 0;
   for (const date of Object.keys(derivadosEmp)) {
