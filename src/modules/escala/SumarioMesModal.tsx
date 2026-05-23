@@ -98,8 +98,8 @@ export function SumarioMesModal({
 
   // Divergências VT
   const divergencias = useMemo(
-    () => calcularDivergenciasVT(empregados, escala),
-    [empregados, escala],
+    () => calcularDivergenciasVT(empregados, escala, ano, mes),
+    [empregados, escala, ano, mes],
   );
   const divTotais = useMemo(() => {
     const aReceber = divergencias.filter(d => d.delta > 0).reduce((s, d) => s + d.diferencaValor, 0);

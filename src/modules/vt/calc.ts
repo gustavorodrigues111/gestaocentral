@@ -1,5 +1,6 @@
 import type { Empregado, EscalaMes, ScheduleStatus, Cargo, Area, VTLote, VTLoteLinha, VTLoteStatus } from "../../core/types";
 import { daysInMonth, nomeMes, pad2, shiftMonth } from "../../core/utils/date";
+import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 
 // Empregado estava ativo em ALGUM dia do mês? (mesma regra usada em /escala)
 // Demitido antes/no 1º dia → demissao <= inicio → fora. Admitido depois do
@@ -56,14 +57,18 @@ const STATUS_LABEL: Record<ScheduleStatus, string> = {
 
 // Conta dias de trabalho na escala — versão "prevista" pra VT antecipado,
 // "real" pra divergências/ajustes posteriores.
+//
+// Fonte: status efetivo (override ∪ derivado do horário cadastrado). Isso é
+// o que faz empregado admitido pós-fechamento contar no VT — mesmo sem
+// override gravado, o derivado captura os dias trabalho/folga do cadastro.
 export function contarDiasTrabalhados(
-  empregadoId: string,
+  empregado: Empregado,
   escala: EscalaMes | null,
+  ano: number,
+  mes: number,
   versao: "prevista" | "real" = "prevista",
 ): number {
-  if (!escala) return 0;
-  const dias = escala[versao]?.[empregadoId];
-  if (!dias) return 0;
+  const dias = statusEfetivoEmpMes(empregado, escala, ano, mes, versao);
   let n = 0;
   for (const k of Object.keys(dias)) {
     if (STATUS_TRABALHADO[dias[k]]) n++;
@@ -71,17 +76,12 @@ export function contarDiasTrabalhados(
   return n;
 }
 
-// Conta dias de trabalho usando a ESCALA como ÚNICA fonte.
-// VT e Gorjetas seguem a mesma regra: o que conta é o que está na escala
-// (prevista ou real). Horário cadastrado é insumo só do módulo Escala —
-// quando o user clica "Fechar prevista", o sistema materializa o derivado
-// nas células ainda vazias. Daí em diante a escala é a verdade.
+// Conta dias de trabalho considerando override + derivado do horário cadastrado.
 //
 // Estados retornados em `fonte`:
-//   - "snapshot": escala prevista fechada — número definitivo
-//   - "preview":  escala em planejamento (só células explícitas, sem fallback
-//                 derivado — pra preview ser igual ao final)
-//   - "vazio":    nada na escala → 0 dias
+//   - "snapshot": escala prevista fechada → número definitivo, intocável
+//   - "preview":  escala aberta → estimativa em tempo real (pode mudar até fechar)
+//   - "vazio":    empregado sem horário cadastrado E sem qualquer override
 export type DiasContados = {
   dias: number;
   fonte: "snapshot" | "preview" | "vazio";
@@ -90,18 +90,17 @@ export type DiasContados = {
 export function contarDiasTrabalhadosSmart(
   empregado: Empregado,
   escala: EscalaMes | null,
-  _ano: number,
-  _mes: number,
+  ano: number,
+  mes: number,
   versao: "prevista" | "real" = "prevista",
 ): DiasContados {
-  const escalaEmp = escala?.[versao]?.[empregado.id] || {};
-  const temEscala = Object.keys(escalaEmp).length > 0;
+  const dias = statusEfetivoEmpMes(empregado, escala, ano, mes, versao);
+  const totalEntries = Object.keys(dias).length;
   const previstaFechada = !!escala?.previstaFechadaEm;
-
-  if (!temEscala) return { dias: 0, fonte: "vazio" };
+  if (totalEntries === 0) return { dias: 0, fonte: "vazio" };
   let n = 0;
-  for (const k of Object.keys(escalaEmp)) {
-    if (STATUS_TRABALHADO[escalaEmp[k]]) n++;
+  for (const k of Object.keys(dias)) {
+    if (STATUS_TRABALHADO[dias[k]]) n++;
   }
   return { dias: n, fonte: versao === "prevista" && previstaFechada ? "snapshot" : "preview" };
 }
@@ -119,12 +118,14 @@ export type VTLinhaCalc = {
 export function calcularVTLinha(
   e: Empregado,
   escala: EscalaMes | null,
+  ano: number,
+  mes: number,
   versao: "prevista" | "real" = "prevista",
 ): VTLinhaCalc | null {
   if (!e.vtAtivo) return null;
   const passagensPorDia = e.vtPassagensPorDia ?? 0;
   const valorPassagem   = e.vtValorPassagem   ?? 0;
-  const diasTrabalhados = contarDiasTrabalhados(e.id, escala, versao);
+  const diasTrabalhados = contarDiasTrabalhados(e, escala, ano, mes, versao);
   const total = Math.round(diasTrabalhados * passagensPorDia * valorPassagem * 100) / 100;
   return {
     empregadoId: e.id,
@@ -148,7 +149,7 @@ export type DescontoSugeridoCalc = {
 };
 
 export function calcularDescontoSugerido(
-  empregadoId: string,
+  empregado: Empregado,
   passagensPorDia: number,
   valorPassagem: number,
   escalaRef: EscalaMes | null,
@@ -161,8 +162,9 @@ export function calcularDescontoSugerido(
   if (!escalaRef) {
     return { valor: 0, justificativa: `Sem escala em ${mesNomeRef}/${anoCurto} — desconto = 0`, refMesYm, ocorrencias: [] };
   }
-  // Usa a versão REAL do refMes (o mês "passou", então o real é a fonte certa).
-  const dias = escalaRef.real?.[empregadoId] || {};
+  // Status efetivo no refMes (o mês "passou", então usa versao=real, que
+  // cai pra prevista e depois derivado se não houver override).
+  const dias = statusEfetivoEmpMes(empregado, escalaRef, refAno, refMes, "real");
   if (Object.keys(dias).length === 0) {
     return { valor: 0, justificativa: `Sem lançamentos em ${mesNomeRef}/${anoCurto} pra esse empregado — desconto = 0`, refMesYm, ocorrencias: [] };
   }
@@ -208,6 +210,8 @@ export type VTDivergencia = {
 export function calcularDivergenciasVT(
   empregados: Empregado[],
   escala: EscalaMes | null,
+  ano: number,
+  mes: number,
 ): VTDivergencia[] {
   if (!escala) return [];
   const divergencias: VTDivergencia[] = [];
@@ -216,8 +220,8 @@ export function calcularDivergenciasVT(
     const passagensPorDia = e.vtPassagensPorDia ?? 0;
     const valorPassagem   = e.vtValorPassagem   ?? 0;
     if (passagensPorDia <= 0 || valorPassagem <= 0) continue;
-    const prev = contarDiasTrabalhados(e.id, escala, "prevista");
-    const real = contarDiasTrabalhados(e.id, escala, "real");
+    const prev = contarDiasTrabalhados(e, escala, ano, mes, "prevista");
+    const real = contarDiasTrabalhados(e, escala, ano, mes, "real");
     const delta = real - prev;
     if (delta === 0) continue;
     const diferencaValor = Math.round(delta * passagensPorDia * valorPassagem * 100) / 100;
@@ -254,21 +258,20 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
 export function contarDiasTrabalhadosNoRange(
   empregado: Empregado,
   escala: EscalaMes | null,
-  _ano: number,
-  _mes: number,
+  ano: number,
+  mes: number,
   inicio: string,
   fim: string,
   versao: "prevista" | "real" = "prevista",
 ): DiasContados {
-  const escalaEmp = escala?.[versao]?.[empregado.id] || {};
-  const temEscala = Object.keys(escalaEmp).length > 0;
+  const dias = statusEfetivoEmpMes(empregado, escala, ano, mes, versao);
+  const totalEntries = Object.keys(dias).length;
   const previstaFechada = !!escala?.previstaFechadaEm;
-
-  if (!temEscala) return { dias: 0, fonte: "vazio" };
+  if (totalEntries === 0) return { dias: 0, fonte: "vazio" };
   const noRange = (date: string) => date >= inicio && date <= fim;
   let n = 0;
-  for (const k of Object.keys(escalaEmp)) {
-    if (noRange(k) && STATUS_TRABALHADO[escalaEmp[k]]) n++;
+  for (const k of Object.keys(dias)) {
+    if (noRange(k) && STATUS_TRABALHADO[dias[k]]) n++;
   }
   return { dias: n, fonte: versao === "prevista" && previstaFechada ? "snapshot" : "preview" };
 }
@@ -404,7 +407,7 @@ export function montarLinhasLote(
     let descontoSugeridoJustificativa = "";
     let descontoSugeridoRefMes = `${ref.ano}-${String(ref.mes).padStart(2, "0")}`;
     if (temVt && passagensPorDia > 0 && valorPassagem > 0) {
-      const ds = calcularDescontoSugerido(e.id, passagensPorDia, valorPassagem, escalaRef, ref.ano, ref.mes);
+      const ds = calcularDescontoSugerido(e, passagensPorDia, valorPassagem, escalaRef, ref.ano, ref.mes);
       descontoSugerido = ds.valor;
       descontoSugeridoJustificativa = ds.justificativa;
       descontoSugeridoRefMes = ds.refMesYm;

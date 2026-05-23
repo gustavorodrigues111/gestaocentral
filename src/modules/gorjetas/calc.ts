@@ -5,14 +5,15 @@ import type {
 import { AREAS } from "../../core/types";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
+import { statusEfetivoComDerivado } from "../../core/escala/statusEfetivo";
 import { computeAreaPercentages, countEmpregadosRegistradosNaArea } from "./splitRules";
 
 // Re-export pra retrocompatibilidade (módulos antigos importam daqui)
 export { empregadoAtivoEm };
 
 // Status que faz o empregado RECEBER gorjeta naquele dia (se cargo tem pontos).
-// Regra alinhada com VT — única fonte é a ESCALA (sem fallback do horário
-// cadastrado). Diferenças intencionais entre VT e Gorjetas:
+// Fonte: status EFETIVO (override gravado ∪ derivado do horário cadastrado).
+// Diferenças intencionais entre VT e Gorjetas:
 //   - "comp" (folgou compensando outro dia trabalhado) → RECEBE gorjeta porque
 //     a folga é "paga" pelo trabalho que já fez antes — em VT não conta
 //     (não usou transporte), mas em gorjeta sim.
@@ -77,16 +78,23 @@ export function calcularDivisaoDia(
   const yNum = parseInt(yStr, 10);
   const mNum = parseInt(mStr, 10);
 
-  // Pra cada empregado, resolve status do dia.
-  // Fonte ÚNICA: a escala. Sem fallback pro horário cadastrado.
-  // Ordem: real (o que aconteceu) tem precedência sobre prevista (planejamento).
-  // Se a escala não tem entry pro dia → undefined → empregado NÃO recebe.
+  // Cache de derivados por empregado pro mês inteiro. Como esta função é
+  // chamada 1× por dia, computa todos os derivados uma vez e reusa.
+  const derivedCache: Record<string, ReturnType<typeof derivedScheduleForEmpregado>> = {};
+  function derivadosDoEmp(emp: Empregado) {
+    let cached = derivedCache[emp.id];
+    if (!cached) {
+      cached = derivedScheduleForEmpregado(emp, yNum, mNum);
+      derivedCache[emp.id] = cached;
+    }
+    return cached;
+  }
+
+  // Pra cada empregado, resolve status efetivo do dia (override ∪ derivado).
+  // Versão "real": tenta real → prevista → derivado.
+  // Se nada disso retornar status → empregado NÃO recebe.
   function resolverStatus(emp: Empregado): ScheduleStatus | undefined {
-    const real = escala?.real?.[emp.id]?.[date];
-    if (real) return real;
-    const prevista = escala?.prevista?.[emp.id]?.[date];
-    if (prevista) return prevista;
-    return undefined;
+    return statusEfetivoComDerivado(emp.id, escala, derivadosDoEmp(emp), date, "real");
   }
 
   // Resolve unidade onde o empregado trabalhou no dia.
