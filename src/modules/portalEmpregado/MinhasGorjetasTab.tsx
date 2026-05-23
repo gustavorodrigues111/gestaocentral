@@ -40,7 +40,10 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
       const fim    = `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
       const list = snap.docs
         .map(d => ({ id: d.id, ...d.data() }) as Gorjeta)
-        .filter(g => g.date >= inicio && g.date <= fim);
+        // Só mostra pro empregado o que foi explicitamente publicado pelo
+        // escritório (botão "Publicar" no admin). Doc sem o campo, publicada=false
+        // ou semGorjeta=true ficam invisíveis pro empregado.
+        .filter(g => g.date >= inicio && g.date <= fim && g.publicada === true && !g.semGorjeta);
       list.sort((a, b) => a.date.localeCompare(b.date));
       setGorjetas(list);
     });
