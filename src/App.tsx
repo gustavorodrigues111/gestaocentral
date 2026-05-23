@@ -27,6 +27,7 @@ import { ComprasPage } from "./modules/compras/ComprasPage";
 import { RegistrosPontoPage } from "./modules/excecoes/RegistrosPontoPage";
 import { AdmissaoPage } from "./modules/admissao/AdmissaoPage";
 import { AdmissaoPublicaPage } from "./modules/admissao/AdmissaoPublicaPage";
+import { EventosPage } from "./modules/eventos/EventosPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -67,6 +68,7 @@ function ModuleRouter() {
     case "compras":       return <ComprasPage key={k} />;
     case "excecoes":      return <RegistrosPontoPage key={k} />;
     case "admissao":      return <AdmissaoPage key={k} />;
+    case "eventos":       return <EventosPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

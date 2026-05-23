@@ -4,7 +4,7 @@ export type ModuleArea = "operacao" | "time" | "escritorio";
 
 export type ModuleId =
   // Operação
-  | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas"
+  | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
@@ -1741,4 +1741,244 @@ export type KanbanColuna = {
   // Manual drag sempre sobrescreve.
   statusAuto?: AdmissaoStatus | AdmissaoStatus[];
   cor?: string;                // hex sem # — pra header da coluna
+};
+
+// ─── EVENTOS ───────────────────────────────────────────────────────────────
+// Módulo de gestão de eventos privados (Laje do Lobozó: aniversários,
+// corporativos, jantares privê pra até 45 pax). Três entidades-base:
+//   - EspacoEvento  → cadastro do espaço físico (capacidade, recursos, política)
+//   - PacoteEvento  → template de evento (cardápio + duração + preço/pax)
+//   - LeadEvento    → instância no funil (Kanban: novo → realizado)
+// Mais 3 artefatos derivados de um lead:
+//   - PropostaEvento (versionada)
+//   - BEOEvento (banquet event order, gerado na confirmação)
+//   - LogMensagemEvento (auditoria do que foi enviado pro cliente)
+
+export type SlotEvento = "almoco" | "jantar" | "dia_inteiro";
+
+export type FaixaCancelamento = {
+  diasAntesMin: number;              // ex: 30 = "≥30 dias antes"
+  percentDevolucao: number;          // 0..100
+};
+
+export type EspacoEvento = {
+  id: string;
+  restaurantId: string;
+  nome: string;                      // "Laje do Lobozó"
+  descricao?: string;
+  capacidadeMin: number;             // 10
+  capacidadeMax: number;             // 45
+  permiteDoisEventosNoDia: boolean;  // false default; true valida 1 almoço + 1 jantar
+  recursosInclusos: string[];        // ["caixa de som", "wifi"]
+  recursosOpcionais: { nome: string; valor: number }[];
+  politicaCancelamento: {
+    faixas: FaixaCancelamento[];     // ordenadas desc por diasAntesMin
+    noShowPercent: number;           // default 0
+  };
+  observacoes?: string;
+  ativo: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ItemCardapioEvento = {
+  id: string;
+  tipo: "couvert" | "entrada" | "principal" | "acompanhamento"
+      | "sobremesa" | "bebida" | "extra";
+  nome: string;
+  descricao?: string;
+  fichaTecnicaId?: string;           // link opcional pra Ficha Técnica do mise
+  ordem: number;
+};
+
+export type PacoteEvento = {
+  id: string;
+  restaurantId: string;
+  espacoId: string;
+  nome: string;                      // "Pacote A"
+  descricao: string;
+  // "fixo" = template fechado pra cliente escolher direto
+  // "personalizavel" = base vazia que o vendedor monta do zero
+  tipo: "fixo" | "personalizavel";
+  duracaoHoras: number;              // 4
+  precoPorPessoa: number;            // R$
+  capacidadeMin: number;
+  capacidadeMax: number;
+  cardapio: ItemCardapioEvento[];
+  inclusos: string[];                // ["som ambiente", "decoração básica"]
+  naoInclusos: string[];             // ["bolo", "DJ"]
+  observacoes?: string;
+  ativo: boolean;
+  ordem: number;                     // ordenação na vitrine pública
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type LeadEventoStatus =
+  | "novo"
+  | "qualificado"
+  | "proposta_enviada"
+  | "sinal_recebido"
+  | "confirmado"
+  | "realizado"
+  | "perdido";
+
+export type LeadEvento = {
+  id: string;
+  restaurantId: string;
+  status: LeadEventoStatus;
+  // Cliente
+  pessoaId?: string;                 // vínculo com a base Pessoa unificada (CRM)
+  cliente: {
+    nome: string;
+    whatsapp: string;
+    email?: string;
+    tipoPessoa: "PF" | "PJ";
+    cnpj?: string;
+    razaoSocial?: string;
+  };
+  // Evento desejado
+  dataDesejada: string;              // "YYYY-MM-DD"
+  datasAlternativas?: string[];
+  slot: SlotEvento;
+  horaInicio?: string;               // "HH:MM"
+  duracaoEstimadaHoras?: number;
+  numConvidados: number;
+  tipoEventoLivre?: string;          // "aniversário 30 anos", "casamento informal"
+  pacoteSugeridoId?: string;         // se cliente escolheu no form público
+  observacoesCliente?: string;       // texto livre do form
+  inspiracoesUrls?: string[];        // pinterest/fotos
+  // Atribuição interna
+  responsavelId?: string;
+  responsavelNome?: string;
+  // Marcações operacionais
+  duvidaPraGestor?: {
+    pergunta: string;
+    perguntadoEm: string;
+    perguntadoPor: string;
+    resposta?: string;
+    respondidoEm?: string;
+    respondidoPor?: string;
+  };
+  conflitaDataCom?: string[];        // ids de outros leads/eventos na mesma data
+  // Auditoria
+  origem: "publico" | "manual";
+  createdAt: string;
+  createdBy?: string;
+  updatedAt: string;
+  // Perda
+  perdidoEm?: string;
+  motivoPerda?: string;
+};
+
+export type AjusteProposta = {
+  descricao: string;                 // "Hora adicional", "Decoração premium"
+  valor: number;                     // pode ser negativo (desconto)
+};
+
+export type ParcelaProposta = {
+  ordem: number;
+  descricao: string;                 // "Sinal 50%", "Saldo 50%"
+  valor: number;
+  vencimentoEm?: string;             // "YYYY-MM-DD"
+  // Pagamento real
+  pagaEm?: string;
+  pagaPor?: string;                  // id da pessoa que registrou
+  pagaPorNome?: string;
+  comprovanteUrl?: string;
+  observacao?: string;
+};
+
+export type PropostaEvento = {
+  id: string;
+  restaurantId: string;
+  leadId: string;
+  versao: number;                    // v1, v2... se renegociar
+  pacoteBaseId?: string;             // pacote-base se houver
+  // Snapshot do evento proposto
+  dataEvento: string;
+  slot: SlotEvento;
+  horaInicio: string;
+  duracaoHoras: number;
+  numConvidados: number;
+  cardapio: ItemCardapioEvento[];
+  inclusos: string[];
+  naoInclusos: string[];
+  ajustes: AjusteProposta[];
+  precoTotal: number;
+  precoPorPessoa: number;
+  // Pagamento
+  parcelas: ParcelaProposta[];
+  politicaCancelamentoTexto: string; // snapshot textual no momento da proposta
+  observacoes?: string;
+  // Auditoria
+  pdfUrl?: string;
+  enviadaEm?: string;
+  enviadaPor?: string;
+  enviadaPorNome?: string;
+  createdAt: string;
+  createdBy: string;
+};
+
+export type BEOEvento = {
+  id: string;
+  restaurantId: string;
+  leadId: string;
+  propostaId: string;                // proposta-fonte
+  versao: number;
+  // Cronograma
+  dataEvento: string;
+  slot: SlotEvento;
+  horaChegadaEquipe: string;
+  horaInicioServico: string;
+  horaEncerramento: string;
+  // Convidados
+  numConvidados: number;
+  contatoNoDia: { nome: string; whatsapp: string };
+  // Operação
+  cardapio: ItemCardapioEvento[];
+  restricoesAlimentares: string[];
+  setup: string;                     // texto livre (mesas, decoração, AV)
+  observacoes?: string;
+  // Auditoria
+  pdfUrl?: string;
+  geradoEm: string;
+  geradoPor: string;
+  geradoPorNome: string;
+};
+
+export type TemplateMensagemEventoKey =
+  | "lead_auto_resposta"             // disparado ao receber inquiry público
+  | "primeiro_contato"               // vendedor abre conversa
+  | "envio_proposta"
+  | "lembrete_proposta"
+  | "confirmacao_sinal"
+  | "lembrete_saldo"
+  | "evento_7_dias"
+  | "evento_1_dia"
+  | "pos_evento_obrigado";
+
+export type TemplateMensagemEvento = {
+  chave: TemplateMensagemEventoKey;
+  titulo: string;
+  texto: string;                     // com placeholders {{nome}}, {{data}}, {{pax}}, {{preco}}, {{pacote}}
+};
+
+export type ConfigTemplatesEvento = {
+  id: string;                        // sempre = restaurantId
+  restaurantId: string;
+  templates: TemplateMensagemEvento[];
+  updatedAt: string;
+};
+
+export type LogMensagemEvento = {
+  id: string;
+  restaurantId: string;
+  leadId: string;
+  templateKey?: TemplateMensagemEventoKey;
+  texto: string;                     // texto efetivo enviado (após substituir placeholders)
+  enviadoEm: string;
+  enviadoPor: string;
+  enviadoPorNome: string;
+  canal: "whatsapp_wame" | "whatsapp_api" | "email";
 };
