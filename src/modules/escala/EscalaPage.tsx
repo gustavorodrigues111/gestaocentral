@@ -368,89 +368,21 @@ export function EscalaPage() {
   // `copiarPrevistaParaReal` removida — agora cópia é automática no 1º
   // fechamento da prevista.
 
-  // ── Materializar derivados de UM empregado (manual, on-demand) ─────────────
-  // Caso típico: empregado admitido depois da prevista fechada → ele nunca
-  // entrou no snapshot da prevista. VT lê da prevista (hardcoded no calc),
-  // então conta zero pra ele.
-  //
-  // Estratégia: grava os derivados na PREVISTA (fonte do VT), mesmo se já
-  // fechada — o snapshot oficial é re-completado pra incluir esse empregado
-  // que não existia no momento original do fechamento. Se a prevista está
-  // fechada, replica também na praticada pra UI ficar consistente.
-  //
-  // Só toca em células VAZIAS — overrides já gravados ficam intactos.
-  async function materializarDerivadosEmp(empId: string) {
-    if (!rid) return;
-    const empregado = empregados.find((e) => e.id === empId);
-    if (!empregado) return;
-    const derivadosEmp = derivados[empId] || {};
-    const prevCellsEmp = escala?.prevista?.[empId] || {};
-    const realCellsEmp = escala?.real?.[empId] || {};
-    const previstaFechada = !!escala?.previstaFechadaEm;
-    const updates: Record<string, ScheduleStatus> = {};
-    for (const date of Object.keys(derivadosEmp)) {
-      const d = derivadosEmp[date];
-      if (!d?.status) continue;
-      if (prevCellsEmp[date] !== undefined) continue;
-      updates[date] = d.status;
-    }
-    const n = Object.keys(updates).length;
-    if (n === 0) {
-      alert("Nenhum dia derivado pendente na prevista — tudo já está gravado.");
-      return;
-    }
-    const aviso = previstaFechada
-      ? `Vai gravar ${n} dia(s) do horário de ${empregado.nome} na ESCALA do mês ` +
-        `(prevista + praticada). A prevista está fechada — adicionar agora é ` +
-        `tratado como "empregado admitido pós-fechamento". Sem isso, VT e ` +
-        `Gorjeta não contam os dias dele.\n\n` +
-        `Células já gravadas ficam intactas. Continuar?`
-      : `Vai gravar ${n} dia(s) do horário cadastrado de ${empregado.nome} na ` +
-        `prevista. As células já preenchidas ficam intactas.\n\nContinuar?`;
-    const ok = confirm(aviso);
-    if (!ok) return;
-    const escalaId = `${rid}_${fmtAnoMes(ano, mes)}`;
-    const ref = doc(db, "escalas", escalaId);
-    const snap = await getDoc(ref);
-    if (!snap.exists()) {
-      await setDoc(ref, {
-        id: escalaId,
-        restaurantId: rid,
-        ano, mes,
-        prevista: {}, real: {},
-        updatedAt: new Date().toISOString(),
-      });
-    }
-    const pathUpdates: Record<string, unknown> = {
-      updatedAt: new Date().toISOString(),
-    };
-    for (const [date, status] of Object.entries(updates)) {
-      pathUpdates[`prevista.${empId}.${date}`] = status;
-      // Se prevista fechada, replica na praticada também (igual ao primeiro
-      // fechamento faz). Só pra células ainda vazias em real — preserva
-      // overrides feitos depois (ex: férias marcadas manualmente).
-      if (previstaFechada && realCellsEmp[date] === undefined) {
-        pathUpdates[`real.${empId}.${date}`] = status;
-      }
-    }
-    await updateDoc(ref, pathUpdates);
-  }
-
   // ── Fechar prevista do mês ─────────────────────────────────────────────────
-  // 1. Materializa o derivado do horário cadastrado nas células ainda vazias
-  //    da prevista (cobertura total).
-  // 2. Grava previstaFechadaEm — vira fotografia oficial.
+  // 1. Tira foto: pra cada empregado ativo no mês, congela o status efetivo
+  //    de cada dia (override gravado OR derivado do horário cadastrado).
+  // 2. Grava previstaFechadaEm — fotografia oficial.
   // 3. Auto-popula a Praticada com o conteúdo da prevista (ponto de partida).
   async function fecharPrevista() {
     if (!rid || !me) return;
     const motivo = prompt(
       "Fechar a prevista de " + nomeMes(mes) + "/" + ano + "?\n\n" +
-      "Isso vai materializar todos os dias derivados do horário cadastrado e travar a prevista.\n" +
-      "Depois disso o VT pode ser lançado.\n\n" +
+      "A prevista vira fotografia oficial e o lançamento do VT é liberado.\n" +
+      "Depois disso, ajustes do mês passam pra Praticada.\n\n" +
       "Motivo / observação (opcional):"
     );
     if (motivo === null) return;
-    // Materializa o derivado nas células ainda vazias
+    // Congela o status efetivo nas células ainda vazias (override ∪ derivado)
     const prevAtual = escala?.prevista || {};
     const novaPrevista: { [empregadoId: string]: { [date: string]: ScheduleStatus } } = {};
     for (const e of empregadosDoMes) {
@@ -767,7 +699,6 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
-              onMaterializarEmp={materializarDerivadosEmp}
               unidadesAtivas={unidadesAtivas}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
@@ -788,7 +719,6 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
-              onMaterializarEmp={materializarDerivadosEmp}
               swapsPorCelula={swapsPorCelula}
               onMesChange={(novoAno, novoMes) => {
                 setAno(novoAno);
@@ -956,8 +886,7 @@ function BannerStatus({
             no topo. A partir daí, todos os ajustes vão pra Praticada.
           </p>
           <p>
-            Ao fechar, o sistema materializa o derivado do horário cadastrado nas células ainda
-            vazias e libera o lançamento do VT.
+            Ao fechar, a prevista vira fotografia oficial do mês e o lançamento do VT é liberado.
           </p>
         </PainelExplicativo>
       );
@@ -1066,7 +995,6 @@ function Legenda() {
 
 function Grade({
   ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
-  onMaterializarEmp,
   unidadesAtivas, usaMultiUnidades, filtroUnidadeId, swapsPorCelula,
 }: {
   ano: number; mes: number; dias: number;
@@ -1075,7 +1003,6 @@ function Grade({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null, unidadeId?: string | null) => Promise<ValidacaoEscalaIssue[]>;
-  onMaterializarEmp: (empregadoId: string) => Promise<void>;
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
@@ -1083,7 +1010,6 @@ function Grade({
 }) {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
-  const previstaFechada = !!escala?.previstaFechadaEm;
   // Seleção: Set<"empId|date"> — qualquer click adiciona/remove. Ações via barra inferior.
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   // Multi-unidades: override de unidade ao aplicar bulk de "trabalho".
@@ -1238,14 +1164,6 @@ function Grade({
                     <div className="min-w-0">
                       <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{cargo?.nome || "—"}</div>
-                      <ChipMaterializar
-                        empId={e.id}
-                        derivadosEmp={derivados[e.id]}
-                        prevCellsEmp={escala?.prevista?.[e.id]}
-                        podeEditar={podeEditar}
-                        previstaFechada={previstaFechada}
-                        onClick={() => onMaterializarEmp(e.id)}
-                      />
                     </div>
                   </div>
                 </td>
@@ -1325,9 +1243,8 @@ function Grade({
 }
 
 // Renderiza UMA célula da grade combinando override + derivado.
-// - Override (manual): cor sólida, foco visual.
-// - Derivado vindo do horário cadastrado: cor light + borda tracejada.
-// - Sem nada (sem horário cadastrado): célula vazia (subentende "trabalho implícito").
+// - Com status (override ou derivado do cadastro): cor sólida.
+// - Sem horário cadastrado: célula vazia com "·" (lembra de cadastrar).
 // - Selecionada (multi-select): ring indigo
 function Celula({
   override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge, swap, empregadoId,
@@ -1379,9 +1296,10 @@ function Celula({
     </span>
   ) : null;
 
-  // Trabalho derivado de horário cadastrado: mostra com cor light (T cinza-esverdeado tracejado)
-  // Trabalho implícito (sem cadastro): mostra como célula vazia, hint
-  if (!displayStatus || (isImplicito)) {
+  // Sem status: célula cinza (vazio). Inclui empregado sem horário cadastrado
+  // (implícito = "assume trabalho" no cálculo, mas visualmente sinaliza falta
+  // de cadastro pra o gestor preencher).
+  if (!displayStatus || isImplicito) {
     return (
       <button
         type="button"
@@ -1390,7 +1308,7 @@ function Celula({
         className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
         } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-        title={swapTitle || (isImplicito ? "Sem horário cadastrado — assume trabalho" : "Vazio")}
+        title={swapTitle || (isImplicito ? "Sem horário cadastrado — assume trabalho no cálculo" : "Vazio")}
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
@@ -1399,34 +1317,19 @@ function Celula({
     );
   }
 
+  // Com status: célula sólida — não distingue mais entre derivado-do-cadastro
+  // e override manual. Pro usuário, a prevista É o horário cadastrado +
+  // edições pontuais. Ambos mostram igual.
   const info = STATUS_INFO[displayStatus];
-  if (isFromOverride) {
-    return (
-      <button
-        type="button"
-        disabled={!podeEditar}
-        onClick={onClick}
-        className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
-          podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-        title={swapTitle || `${info.label} (override manual)`}
-      >
-        {info.short}
-        {unidadeSubscript}
-        {swapBadge}
-      </button>
-    );
-  }
-
   return (
     <button
       type="button"
       disabled={!podeEditar}
       onClick={onClick}
-      className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all border border-dashed border-gray-300 dark:border-gray-600 ${info.bg} ${info.text} opacity-50 ${
-        podeEditar ? "cursor-pointer hover:opacity-80 hover:scale-110" : "cursor-default"
-      } ${isOpen ? "ring-1 ring-indigo-400 opacity-100" : ""} ${selRing} ${swapClass}`}
-      title={swapTitle || `${info.label} (do horário cadastrado)`}
+      className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
+        podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
+      } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
+      title={swapTitle || (isFromOverride ? `${info.label} (override manual)` : info.label)}
     >
       {info.short}
       {unidadeSubscript}
@@ -1716,7 +1619,6 @@ function getSegunda(date: Date): Date {
 
 function GradeMobile({
   ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus,
-  onMaterializarEmp,
   swapsPorCelula,
   onMesChange,
 }: {
@@ -1729,14 +1631,12 @@ function GradeMobile({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
-  onMaterializarEmp: (empregadoId: string) => Promise<void>;
   swapsPorCelula: Record<string, SundaySwap>;
   // Callback pra avisar a EscalaPage quando a semana visualizada cai num
   // outro mês (atravessou virada). A página recarrega escala/derivados do
   // novo mês — fluxo de navegação por semana fica contínuo entre meses.
   onMesChange: (novoAno: number, novoMes: number) => void;
 }) {
-  const previstaFechada = !!escala?.previstaFechadaEm;
   // Helper: pega a escala do mês a que o `iso` pertence
   function escalaDoIso(iso: string): EscalaMes | null {
     const ym = iso.slice(0, 7); // "YYYY-MM"
@@ -1887,14 +1787,6 @@ function GradeMobile({
                 <div className="min-w-0 pr-1">
                   <div className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
                   <div className="text-[9px] text-gray-500 truncate">{cargo?.nome || "—"}</div>
-                  <ChipMaterializar
-                    empId={e.id}
-                    derivadosEmp={derivados[e.id]}
-                    prevCellsEmp={escala?.prevista?.[e.id]}
-                    podeEditar={podeEditar}
-                    previstaFechada={previstaFechada}
-                    onClick={() => onMaterializarEmp(e.id)}
-                  />
                 </div>
                 {dates.map(({ iso, inMes }) => {
                   // Lê da escala do mês a que o dia pertence (suporta semana
@@ -1907,7 +1799,6 @@ function GradeMobile({
                     : previstaCell;
                   const derived = derivados[e.id]?.[iso];
                   const status = override ?? derived?.status;
-                  const isFromOverride = !!override;
                   const isImplicito = !override && derived?.fonte === "implicito";
                   const info = status ? STATUS_INFO[status] : null;
                   const swap = swapsPorCelula[`${e.id}|${iso}`];
@@ -1923,9 +1814,7 @@ function GradeMobile({
                       className={`relative aspect-square w-full max-w-[44px] mx-auto rounded text-[11px] font-bold ${
                         !status || isImplicito
                           ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
-                          : isFromOverride
-                            ? `${info!.bg} ${info!.text}`
-                            : `${info!.bg} ${info!.text} opacity-50 border border-dashed border-gray-300 dark:border-gray-600`
+                          : `${info!.bg} ${info!.text}`
                       } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
                       title={swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined}
                     >
@@ -2043,58 +1932,3 @@ function StatusPickerSheet({
   );
 }
 
-// ─── Chip "Materializar derivados não gravados" ────────────────────────────
-// Aparece SÓ na linha de empregados que têm derivados (do workSchedule) pra
-// dias do mês mas com células vazias NA PREVISTA. Conta contra prevista
-// porque é dela que VT/Gorjeta leem — independente da versão visualizada
-// na UI (que tem fallback de real → prevista). Click → confirm → grava na
-// prevista (+ replica na praticada se prevista fechada).
-//
-// Gate: só faz sentido com prevista FECHADA. Em prevista aberta/futura, todo
-// empregado tem derivados não gravados (é o normal — o gestor nem abriu a
-// tela ainda), e ao fechar a prevista os derivados são gravados em lote.
-// Com prevista fechada, o chip vira sinal real do caso Marcelo: empregado
-// vinculado / cadastrado depois do fechamento → não foi capturado → VT zera.
-
-function ChipMaterializar({
-  empId,
-  derivadosEmp,
-  prevCellsEmp,
-  podeEditar,
-  previstaFechada,
-  onClick,
-}: {
-  empId: string;
-  derivadosEmp: { [date: string]: DerivedDay } | undefined;
-  prevCellsEmp: { [date: string]: ScheduleStatus } | undefined;
-  podeEditar: boolean;
-  previstaFechada: boolean;
-  onClick: () => void | Promise<void>;
-}) {
-  void empId;
-  if (!podeEditar) return null;
-  if (!previstaFechada) return null;
-  if (!derivadosEmp) return null;
-  let count = 0;
-  for (const date of Object.keys(derivadosEmp)) {
-    const d = derivadosEmp[date];
-    if (!d?.status) continue;
-    if (prevCellsEmp?.[date] !== undefined) continue;
-    count++;
-  }
-  if (count === 0) return null;
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); void onClick(); }}
-      className="mt-0.5 inline-flex items-center gap-1 text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 hover:bg-amber-200 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60 font-semibold leading-none"
-      title={
-        `${count} dia(s) do horário cadastrado deste empregado ainda não estão na ` +
-        `prevista. Típico de empregado admitido pós-fechamento. Click pra ` +
-        `materializar — VT/Gorjeta passam a contar esses dias.`
-      }
-    >
-      📌 {count} dia{count > 1 ? "s" : ""} não gravado{count > 1 ? "s" : ""}
-    </button>
-  );
-}
