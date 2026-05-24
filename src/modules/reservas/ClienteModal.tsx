@@ -6,6 +6,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { upsertClienteLookup } from "./clienteLookup";
 import type { Cliente } from "../../core/types";
 
 type Props = {
@@ -71,11 +72,28 @@ export function ClienteModal({ cliente, restaurantId, onClose, onCreated }: Prop
         criadoPor: cliente?.criadoPor || me.id,
         atualizadoEm: now,
       };
+      let clienteId: string;
       if (isNew) {
         const ref = await addDoc(collection(db, "clientes"), sanitizeForFirestore(payload));
+        clienteId = ref.id;
         onCreated?.(ref.id, nome.trim());
       } else {
+        clienteId = cliente.id;
         await updateDoc(doc(db, "clientes", cliente.id), sanitizeForFirestore(payload));
+      }
+      // Propaga pro lookup público — assim o form de reservas reconhece
+      // clientes que o admin cadastrou/editou manualmente.
+      try {
+        await upsertClienteLookup({
+          restaurantId,
+          telefone: payload.telefone,
+          nome: payload.nome,
+          email: payload.email,
+          clienteId,
+        });
+      } catch (e) {
+        // Não bloqueia o save do cliente — só loga.
+        console.warn("[cliente] lookup upsert falhou:", e);
       }
       onClose();
     } catch (e) {

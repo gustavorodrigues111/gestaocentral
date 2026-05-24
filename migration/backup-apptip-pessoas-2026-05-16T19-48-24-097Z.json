@@ -1,0 +1,3225 @@
+[
+  {
+    "isTeam": {
+      "1775792314382": true
+    },
+    "mustChangePin": true,
+    "name": "Gustavo Rodrigues",
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1775792314382": {
+        "empCode": "LBZ0003",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": "2026-04-10",
+        "admission": "2026-04-01",
+        "roleId": "1775857364198",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792314382",
+      "1775792279549"
+    ],
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      },
+      "1775792279549": {
+        "operational": {
+          "gorjetas": true,
+          "reunioes": true,
+          "checklists": true,
+          "trilhas": true,
+          "contagens": true,
+          "fichasTecnicas": true,
+          "compras": true,
+          "escalas": true
+        },
+        "admin": {
+          "faq": true,
+          "dpCanal": true,
+          "employees": true,
+          "pessoas": true,
+          "comunicados": true,
+          "atravessarPrivado": true,
+          "config": true,
+          "reabrirEscala": true,
+          "tips": true,
+          "roles": true,
+          "schedule": true,
+          "fecharEscala": true,
+          "vt": true
+        },
+        "special": {
+          "isLider": true,
+          "areas": [
+            "Limpeza",
+            "Salão",
+            "Cozinha",
+            "Bar"
+          ],
+          "isDP": true
+        }
+      }
+    },
+    "id": "pes_emp_1775829285324",
+    "pin": "3632",
+    "linkedEmployeeId": "1775829285324",
+    "cpf": "363.221.038-14",
+    "linkedManagerId": "mgr_auto_pes_emp_1775829285324_vm3q"
+  },
+  {
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0001",
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1776008187789-9dl8"
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "mustChangePin": true,
+    "name": "Amanda Ferreira dos Santos",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "linkedEmployeeId": "SRC0001",
+    "cpf": "427.918.648-06",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_SRC0001",
+    "pin": "4279"
+  },
+  {
+    "pin": "0733",
+    "id": "pes_emp_SRC0002",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "linkedEmployeeId": "SRC0002",
+    "cpf": "073.326.543-00",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "Antonio Flavio da Silva Vieira",
+    "whatsapp": null,
+    "email": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776007800878-sa52",
+        "inactive": false,
+        "empCode": "SRC0002",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": "",
+        "admission": "2026-04-01"
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ]
+  },
+  {
+    "linkedEmployeeId": "SRC0003",
+    "emergencyName": null,
+    "cpf": "43745472829",
+    "linkedManagerId": "mgr_auto_pes_emp_SRC0003_wlf5",
+    "id": "pes_emp_SRC0003",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "admin": {},
+        "operational": {
+          "freelasExec": true,
+          "contagens": false,
+          "checklistsExec": true,
+          "contagensExec": true
+        }
+      }
+    },
+    "pin": "1234",
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776008213074-4hzr",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "SRC0003",
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "mustChangePin": false,
+    "name": "Bianca Oliveira Costa",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null
+  },
+  {
+    "emergencyName": null,
+    "cpf": "46729358840",
+    "linkedEmployeeId": "SRC0004",
+    "id": "pes_emp_SRC0004",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "admin": {},
+        "operational": {
+          "freelasExec": true,
+          "checklistsExec": true,
+          "contagensExec": true
+        }
+      }
+    },
+    "pin": "4672",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776008213074-3ic0",
+        "inactive": false,
+        "empCode": "SRC0004",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": ""
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Bruna Dias dos Santos",
+    "isTeam": {
+      "1775792279549": true
+    }
+  },
+  {
+    "linkedEmployeeId": "SRC0005",
+    "cpf": "409.408.208-54",
+    "pin": "4094",
+    "id": "pes_emp_SRC0005",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "empCode": "SRC0005",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "roleId": "role-1776007800878-qzkm",
+        "inactive": false
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "Carlos Eduardo Esquillaro Simoes",
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_SRC0006",
+    "pin": "3411",
+    "linkedEmployeeId": "SRC0006",
+    "cpf": "341.195.648-86",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Fabio Augusto da Silva",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776007800878-sa52",
+        "inactive": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "empCode": "SRC0006",
+        "isFreela": false
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ]
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Fernanda de Oliveira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0007",
+        "inactive": false,
+        "roleId": "role-1776007800878-8b0t"
+      }
+    },
+    "pin": "3331",
+    "id": "pes_emp_SRC0007",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "cpf": "333.161.458-00",
+    "linkedEmployeeId": "SRC0007"
+  },
+  {
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0008",
+        "roleId": "role-1776007800878-8b0t",
+        "inactive": false
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Fernanda Vitoria Oliveira Ferreira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "cpf": "470.676.728-80",
+    "linkedEmployeeId": "SRC0008",
+    "pin": "4706",
+    "id": "pes_emp_SRC0008",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    }
+  },
+  {
+    "mustChangePin": true,
+    "name": "Gabriel Estevao Nunes de Sousa",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "pix": null,
+    "teamData": {
+      "1775792279549": {
+        "empCode": "SRC0009",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "roleId": "role-1776008213074-3ic0",
+        "inactive": false
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "pin": "5086",
+    "id": "pes_emp_SRC0009",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "admin": {},
+        "operational": {
+          "contagensExec": true,
+          "checklistsExec": true
+        }
+      }
+    },
+    "linkedEmployeeId": "SRC0009",
+    "emergencyName": null,
+    "cpf": "50869344862"
+  },
+  {
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "pix": null,
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0010",
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1776008228341-7cmx"
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "mustChangePin": true,
+    "name": "Heron Derek de Souza Lira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "emergencyName": null,
+    "cpf": "46398604806",
+    "linkedEmployeeId": "SRC0010",
+    "pin": "4639",
+    "permissions": {
+      "1775792279549": {
+        "operational": {
+          "checklists": false,
+          "temperaturas": false,
+          "contagensExec": true,
+          "contagens": false,
+          "checklistsExec": true
+        },
+        "admin": {},
+        "special": {
+          "areas": []
+        }
+      }
+    },
+    "id": "pes_emp_SRC0010"
+  },
+  {
+    "id": "pes_emp_SRC0011",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": [
+            "Cozinha",
+            "Limpeza"
+          ],
+          "isLider": true,
+          "profile": "lider"
+        },
+        "admin": {},
+        "operational": {
+          "temperaturas": true,
+          "reunioes": true,
+          "checklists": true,
+          "fichasTecnicas": true,
+          "contagens": true,
+          "escalas": true,
+          "freelasFechar": true
+        }
+      }
+    },
+    "pin": "4639",
+    "linkedEmployeeId": "SRC0011",
+    "emergencyName": null,
+    "cpf": "46398054890",
+    "linkedManagerId": "1776280644093",
+    "name": "Jose Victor Gabriel Nogueira Torres",
+    "mustChangePin": true,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null,
+    "pix": null,
+    "teamData": {
+      "1775792279549": {
+        "empCode": "SRC0011",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "roleId": "role-1776007800878-40gu",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null
+  },
+  {
+    "id": "pes_emp_SRC0012",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "pin": "5959",
+    "linkedEmployeeId": "SRC0012",
+    "cpf": "595.935.148-05",
+    "mustChangePin": true,
+    "name": "Kamile Melo Silva",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0012",
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1776007800878-sa52"
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ]
+  },
+  {
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Kaua Magalhaes Ulhoa",
+    "mustChangePin": true,
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0013",
+        "roleId": "role-1776007800878-sa52",
+        "inactive": false
+      }
+    },
+    "pin": "5731",
+    "permissions": {
+      "1775792279549": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_SRC0013",
+    "cpf": "573.116.868-73",
+    "linkedEmployeeId": "SRC0013"
+  },
+  {
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Larissa Kaline Santos Barbosa",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776008228341-8sdm",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "SRC0014",
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "id": "pes_emp_SRC0014",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "0911",
+    "linkedEmployeeId": "SRC0014",
+    "cpf": "091.166.834-98"
+  },
+  {
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "role-1776008228341-8sdm",
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0015"
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Marcelo Belchior de Oliveira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "cpf": "343.322.498-60",
+    "linkedEmployeeId": "SRC0015",
+    "pin": "3433",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_SRC0015"
+  },
+  {
+    "teamData": {
+      "1775792279549": {
+        "empCode": "SRC0016",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "roleId": "role-1776008213074-4x7b",
+        "inactive": false
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Michael Dias de Oliveira",
+    "mustChangePin": false,
+    "isFreela": false,
+    "whatsapp": null,
+    "email": null,
+    "linkedEmployeeId": "SRC0016",
+    "cpf": "44963630893",
+    "emergencyName": null,
+    "id": "pes_emp_SRC0016",
+    "permissions": {
+      "1775792279549": {
+        "admin": {},
+        "operational": {
+          "contagensExec": true,
+          "checklistsExec": true
+        },
+        "special": {
+          "areas": []
+        }
+      }
+    },
+    "pin": "1234"
+  },
+  {
+    "pin": "2307",
+    "id": "pes_emp_SRC0017",
+    "permissions": {
+      "1775792279549": {
+        "operational": {
+          "checklists": true,
+          "freelasExec": false,
+          "reunioes": true,
+          "temperaturas": true,
+          "freelasFechar": true,
+          "escalas": true,
+          "contagens": true
+        },
+        "admin": {},
+        "special": {
+          "areas": [
+            "Bar",
+            "Salão",
+            "Limpeza"
+          ],
+          "isLider": true,
+          "profile": "lider"
+        }
+      }
+    },
+    "linkedEmployeeId": "SRC0017",
+    "linkedManagerId": "1776011547982",
+    "cpf": "23077922878",
+    "emergencyName": null,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": false,
+    "name": "Richard Oliveira Costa",
+    "whatsapp": null,
+    "isFreela": false,
+    "email": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "role-1776008213074-1esx",
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "empCode": "SRC0017",
+        "isFreela": false
+      }
+    },
+    "pix": null,
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549"
+    ]
+  },
+  {
+    "emergencyName": null,
+    "linkedManagerId": "1776011558513",
+    "cpf": "52833829825",
+    "linkedEmployeeId": "SRC0018",
+    "permissions": {
+      "1775792279549": {
+        "admin": {},
+        "operational": {
+          "contagens": true,
+          "escalas": true,
+          "freelasFechar": true,
+          "temperaturas": true,
+          "reunioes": true,
+          "checklists": true
+        },
+        "special": {
+          "profile": "lider",
+          "isLider": true,
+          "areas": [
+            "Bar",
+            "Salão",
+            "Limpeza"
+          ]
+        }
+      }
+    },
+    "id": "pes_emp_SRC0018",
+    "pin": "1234",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "role-1776008213074-1esx",
+        "demitidoEm": null,
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "empCode": "SRC0018",
+        "isFreela": false
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null,
+    "mustChangePin": false,
+    "name": "Rodrigo da Silva Barroso",
+    "isTeam": {
+      "1775792279549": true
+    }
+  },
+  {
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0019",
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null,
+        "roleId": "role-1776007800878-qzkm",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.510Z",
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Vinicius Henrique Gualberto dos Santos",
+    "mustChangePin": true,
+    "cpf": "475.296.688-38",
+    "linkedEmployeeId": "SRC0019",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_SRC0019",
+    "pin": "4752"
+  },
+  {
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776008228341-7cmx",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "SRC0020",
+        "inactiveFrom": "",
+        "admission": "2026-04-01",
+        "demitidoEm": null
+      }
+    },
+    "pix": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "email": null,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Vitor Augusto Moraes Lima",
+    "mustChangePin": true,
+    "cpf": "43645882880",
+    "emergencyName": null,
+    "linkedEmployeeId": "SRC0020",
+    "pin": "4364",
+    "id": "pes_emp_SRC0020",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "admin": {},
+        "operational": {
+          "contagensExec": true,
+          "checklistsExec": true,
+          "contagens": false,
+          "checklists": false,
+          "temperaturas": false
+        }
+      }
+    }
+  },
+  {
+    "mustChangePin": true,
+    "name": "Ingrid Beltrão",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "isFreela": true,
+    "whatsapp": "11985499821",
+    "pix": "44516901889",
+    "teamData": {
+      "1775792279549": {
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "empCode": "SRC0021",
+        "isFreela": true,
+        "inactive": false,
+        "roleId": null
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_1776011174513",
+    "pin": "0000",
+    "linkedEmployeeId": "1776011174513",
+    "emergencyName": null,
+    "cpf": ""
+  },
+  {
+    "linkedManagerId": "mgr_auto_pes_emp_1776277775320_wg0b",
+    "cpf": "05082772562",
+    "emergencyName": null,
+    "linkedEmployeeId": "1776277775320",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "admin": {},
+        "operational": {
+          "checklistsExec": true,
+          "contagens": false,
+          "contagensExec": true
+        }
+      }
+    },
+    "id": "pes_emp_1776277775320",
+    "pin": "0508",
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "role-1776008213074-4hzr",
+        "empCode": "SRC0022",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": "",
+        "admission": "2026-04-01"
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "isFreela": false,
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792279549": true
+    },
+    "name": "Masciel Costa de Sousa",
+    "mustChangePin": true
+  },
+  {
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "pix": null,
+    "teamData": {
+      "1775792279549": {
+        "roleId": "role-1776008213074-4x7b",
+        "inactive": false,
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0023"
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Paulo Sergio Pereira de Souza Junior",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "emergencyName": null,
+    "cpf": "02949346260",
+    "linkedEmployeeId": "1776277792184",
+    "id": "pes_emp_1776277792184",
+    "permissions": {
+      "1775792279549": {
+        "admin": {},
+        "operational": {
+          "checklistsExec": true,
+          "contagensExec": true
+        },
+        "special": {
+          "areas": []
+        }
+      }
+    },
+    "pin": "0294"
+  },
+  {
+    "mustChangePin": true,
+    "name": "Fernando Luis Souza da Silva",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null,
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0024",
+        "admission": "2026-04-01",
+        "inactiveFrom": "",
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1776008213074-4x7b"
+      }
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "id": "pes_emp_1776277801894",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "areas": []
+        },
+        "operational": {
+          "checklistsExec": true,
+          "contagensExec": true
+        },
+        "admin": {}
+      }
+    },
+    "pin": "0963",
+    "linkedEmployeeId": "1776277801894",
+    "emergencyName": null,
+    "cpf": "09636334498"
+  },
+  {
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "role-1776007800878-sa52",
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "SRC0025"
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "mustChangePin": true,
+    "name": "Marcelo Santos Gonzaga de Oliveira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "linkedEmployeeId": "1776360635305",
+    "cpf": "510.859.278-73",
+    "pin": "5108",
+    "id": "pes_emp_1776360635305",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    }
+  },
+  {
+    "teamData": {
+      "1775792279549": {
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "empCode": "SRC0026",
+        "isFreela": false,
+        "roleId": "role-1776007800878-iysp",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "mustChangePin": true,
+    "name": "Allan Lopes Terrabuio",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "linkedEmployeeId": "1776362419758",
+    "cpf": "397.916.908-12",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_1776362419758",
+    "pin": "3979"
+  },
+  {
+    "isTeam": {
+      "1775792314382": false,
+      "1775792279549": false
+    },
+    "name": "Marilia Sriubas",
+    "mustChangePin": false,
+    "whatsapp": null,
+    "isFreela": false,
+    "email": null,
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "teamData": {
+      "1775792314382": {},
+      "1775792279549": {}
+    },
+    "pix": null,
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382"
+    ],
+    "pin": "2407",
+    "id": "pes_mgr_1775882190445",
+    "permissions": {
+      "1775792279549": {
+        "special": {
+          "isLider": false,
+          "areas": [],
+          "isDP": true
+        },
+        "admin": {
+          "roles": true,
+          "recursosItens": true,
+          "tips": true,
+          "fichasTecnicas": true,
+          "fecharEscala": true,
+          "vt": true,
+          "compras": true,
+          "freelas": true,
+          "regraDivisao": true,
+          "schedule": true,
+          "dpCanal": true,
+          "permissoes": true,
+          "faq": true,
+          "reabrirEscala": true,
+          "atravessarPrivado": true,
+          "fornecedores": true,
+          "recursosPastas": true,
+          "config": true,
+          "employees": true,
+          "comunicados": true,
+          "pessoas": true
+        },
+        "operational": {
+          "fichasTecnicas": true,
+          "checklists": true,
+          "temperaturas": true,
+          "freelasExec": true,
+          "freelasFechar": true,
+          "contagens": true,
+          "compras": true,
+          "temperaturasExec": true,
+          "reunioes": true,
+          "contagensExec": true,
+          "trilhas": true,
+          "gorjetas": true,
+          "escalas": true,
+          "checklistsExec": true
+        }
+      },
+      "1775792314382": {
+        "admin": {
+          "schedule": false,
+          "tips": false
+        },
+        "operational": {},
+        "special": {
+          "areas": []
+        }
+      }
+    },
+    "linkedManagerId": "1775882190445",
+    "cpf": "37081378846",
+    "emergencyName": null
+  },
+  {
+    "linkedEmployeeId": "emp_auto_pes_mgr_1776280919420_14cd",
+    "emergencyName": null,
+    "cpf": "07209095543",
+    "linkedManagerId": "1776280919420",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "admin": {
+          "schedule": true,
+          "tips": true
+        },
+        "operational": {
+          "escalas": true,
+          "gorjetas": true
+        }
+      },
+      "1777204191993": {
+        "admin": {
+          "schedule": true,
+          "tips": true
+        },
+        "operational": {
+          "escalas": true,
+          "gorjetas": true
+        },
+        "special": {}
+      },
+      "1775792314382": {
+        "operational": {
+          "gorjetas": true,
+          "contagens": true
+        },
+        "admin": {
+          "config": false,
+          "fornecedores": true,
+          "fecharEscala": true,
+          "vt": true,
+          "reabrirEscala": true,
+          "schedule": true,
+          "pessoas": true,
+          "compras": true,
+          "employees": true,
+          "tips": true,
+          "recursosItens": true,
+          "roles": true
+        },
+        "special": {
+          "areas": []
+        }
+      },
+      "1775792279549": {
+        "special": {},
+        "operational": {
+          "freelasFechar": true,
+          "freelasExec": true
+        },
+        "admin": {
+          "freelas": true,
+          "employees": true,
+          "pessoas": true,
+          "schedule": true,
+          "vt": true,
+          "fecharEscala": true,
+          "config": true,
+          "faq": true,
+          "roles": true,
+          "tips": true
+        }
+      }
+    },
+    "id": "pes_mgr_1776280919420",
+    "pin": "1234",
+    "pix": null,
+    "teamData": {
+      "1775792314382": {}
+    },
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382",
+      "1777204146548",
+      "1777204191993"
+    ],
+    "emergencyPhone": null,
+    "mustChangePin": false,
+    "name": "Janaynna Oliveira da Silva",
+    "isTeam": {
+      "1777204146548": false,
+      "1775792314382": false
+    },
+    "email": null,
+    "isFreela": false,
+    "whatsapp": null
+  },
+  {
+    "linkedEmployeeId": "emp_mordl32od8y",
+    "cpf": "34479700811",
+    "linkedManagerId": "1776280952648",
+    "emergencyName": null,
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "operational": {
+          "escalas": true,
+          "trilhas": true,
+          "gorjetas": true,
+          "reunioes": true
+        },
+        "admin": {
+          "faq": true,
+          "roles": true,
+          "tips": true,
+          "employees": true,
+          "pessoas": true,
+          "comunicados": true,
+          "schedule": true,
+          "vt": true,
+          "config": true
+        }
+      },
+      "1777204146548": {
+        "special": {
+          "areas": [
+            "Bar",
+            "Cozinha",
+            "Salão",
+            "Limpeza"
+          ],
+          "isLider": true
+        },
+        "operational": {
+          "freelasExec": true,
+          "gorjetas": true,
+          "reunioes": true,
+          "trilhas": true,
+          "escalas": true
+        },
+        "admin": {
+          "tips": true,
+          "recursosItens": true,
+          "roles": true,
+          "fecharEscala": true,
+          "vt": true,
+          "schedule": true,
+          "dpCanal": true,
+          "faq": true,
+          "config": true,
+          "recursosPastas": false,
+          "comunicados": true,
+          "pessoas": true,
+          "employees": true
+        }
+      },
+      "1775792279549": {
+        "special": {
+          "isDP": true
+        },
+        "operational": {
+          "freelasExec": true,
+          "reunioes": true,
+          "freelasFechar": true,
+          "trilhas": true,
+          "compras": true
+        },
+        "admin": {
+          "dpCanal": true,
+          "faq": true,
+          "reabrirEscala": true,
+          "config": true,
+          "comunicados": true,
+          "pessoas": true,
+          "employees": true,
+          "roles": true,
+          "tips": true,
+          "fecharEscala": true,
+          "vt": true,
+          "freelas": true,
+          "schedule": true
+        }
+      },
+      "1775792314382": {
+        "admin": {
+          "atravessarPrivado": true,
+          "config": true,
+          "recursosPastas": false,
+          "reabrirEscala": true,
+          "employees": true,
+          "comunicados": true,
+          "pessoas": true,
+          "dpCanal": true,
+          "faq": true,
+          "vt": true,
+          "fecharEscala": true,
+          "schedule": true,
+          "recursosItens": true,
+          "tips": true,
+          "roles": true
+        },
+        "operational": {
+          "gorjetas": true,
+          "compras": true,
+          "reunioes": true,
+          "trilhas": true
+        },
+        "special": {
+          "isDP": true,
+          "areas": []
+        }
+      }
+    },
+    "id": "pes_mgr_1776280952648",
+    "pin": "3447",
+    "teamData": {
+      "1775792314382": {
+        "roleId": null,
+        "admission": null
+      },
+      "1777204146548": {}
+    },
+    "pix": null,
+    "createdAt": "2026-04-21T18:58:57.511Z",
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382",
+      "1777204146548",
+      "1777204191993"
+    ],
+    "isTeam": {
+      "1777204146548": false,
+      "1775792314382": true
+    },
+    "name": "Veronica de Cassia Macedo Stivanim",
+    "mustChangePin": false,
+    "isFreela": false,
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "createdAt": "2026-04-29T18:12:09.566Z",
+    "pix": null,
+    "teamData": {
+      "1775792279549": {
+        "admission": "2026-04-01",
+        "roleId": "1777486499890"
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "emergencyPhone": null,
+    "mustChangePin": true,
+    "name": "Maria Elisabete Teles de Oliveira",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "linkedEmployeeId": "emp_mokdkubslxh",
+    "emergencyName": null,
+    "cpf": "14280344809",
+    "pin": "1000",
+    "id": "pes_mokdgtlqjmx8",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    }
+  },
+  {
+    "createdAt": "2026-04-29T18:15:17.128Z",
+    "teamData": {
+      "1775792279549": {
+        "roleId": "1777486499890",
+        "inactive": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "empCode": "SRC0027",
+        "isFreela": false
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "Maria Elisabete Teles de Oliveira",
+    "whatsapp": null,
+    "email": null,
+    "linkedEmployeeId": "emp_mokdkubslxh",
+    "cpf": "14280344809",
+    "pin": "1428",
+    "permissions": {
+      "1775792279549": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mokdkubslxh"
+  },
+  {
+    "linkedEmployeeId": "emp_morg7c1rs5b",
+    "cpf": "45278699817",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_emp_morg7c1rs5b",
+    "pin": "4527",
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "1777914121204",
+        "empCode": "SRC0028",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2026-04-01"
+      }
+    },
+    "createdAt": "2026-05-04T17:03:08.991Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "Kaynã Mutton de Souza",
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "id": "pes_emp_emp_moso1gzyxlp",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "8465",
+    "linkedEmployeeId": "emp_moso1gzyxlp",
+    "cpf": "84656832120",
+    "isTeam": {
+      "1775792314382": true
+    },
+    "mustChangePin": true,
+    "name": "Filomena pereira de Sousa",
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1775792314382": {
+        "roleId": "1775829178372",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "LBZ0016",
+        "inactiveFrom": null,
+        "admission": "2026-04-01",
+        "demitidoEm": null
+      }
+    },
+    "createdAt": "2026-05-11T15:12:59.945Z",
+    "restaurantIds": [
+      "1775792314382"
+    ]
+  },
+  {
+    "pin": "5884",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_1775856095814-7qb",
+    "linkedEmployeeId": "1775856095814-7qb",
+    "cpf": "58845218805",
+    "mustChangePin": true,
+    "name": "Romildo de Brito Medeiros",
+    "isTeam": {
+      "1775792314382": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "createdAt": "2026-05-11T15:12:59.200Z",
+    "teamData": {
+      "1775792314382": {
+        "empCode": "LBZ0009",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-02-01",
+        "inactiveFrom": null,
+        "roleId": "role-1775856094593-nrn",
+        "inactive": false
+      }
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ]
+  },
+  {
+    "pin": "0337",
+    "id": "pes_emp_emp_mofwwdg1jjt",
+    "permissions": {
+      "1777204191993": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "cpf": "03374612288",
+    "linkedEmployeeId": "emp_mofwwdg1jjt",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Luis Henrique Gomes Costa",
+    "isTeam": {
+      "1777204191993": true
+    },
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "createdAt": "2026-05-11T15:14:53.916Z",
+    "teamData": {
+      "1777204191993": {
+        "isFreela": false,
+        "empCode": "PPF0007",
+        "admission": "2025-11-14",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1777213737398-uxrj"
+      }
+    }
+  },
+  {
+    "linkedEmployeeId": "emp_mofwwdg0dk8",
+    "cpf": "04097732200",
+    "id": "pes_emp_emp_mofwwdg0dk8",
+    "permissions": {
+      "1777204191993": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "pin": "0409",
+    "teamData": {
+      "1777204191993": {
+        "inactive": false,
+        "roleId": "role-1777213737398-sjda",
+        "empCode": "PPF0005",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2025-09-23",
+        "inactiveFrom": null
+      }
+    },
+    "createdAt": "2026-05-11T15:14:53.818Z",
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "isTeam": {
+      "1777204191993": true
+    },
+    "name": "Lucas Araujo Setubal",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "name": "Andre Ricardo Soares da Silva",
+    "mustChangePin": true,
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "createdAt": "2026-05-11T15:14:48.942Z",
+    "teamData": {
+      "1777204146548": {
+        "roleId": "role-1777213548170-3io2",
+        "inactive": false,
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2025-02-25",
+        "empCode": "PCV0001",
+        "isFreela": false
+      }
+    },
+    "pin": "1919",
+    "permissions": {
+      "1777204146548": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1a4o3",
+    "cpf": "19196977809",
+    "linkedEmployeeId": "emp_mofwug1a4o3"
+  },
+  {
+    "emergencyPhone": null,
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "createdAt": "2026-05-11T15:12:58.319Z",
+    "teamData": {
+      "1775792314382": {
+        "isFreela": false,
+        "empCode": "LBZ0002",
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "roleId": "1775822738642",
+        "inactive": false
+      }
+    },
+    "pix": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "email": null,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "name": "Vinicius Barros",
+    "mustChangePin": true,
+    "cpf": "48068763805",
+    "emergencyName": null,
+    "linkedEmployeeId": "1775822753789",
+    "pin": "4806",
+    "permissions": {
+      "1775792314382": {
+        "admin": {
+          "schedule": true,
+          "liderEditaEscala": true
+        },
+        "operational": {
+          "temperaturasExec": true,
+          "freelasExec": true,
+          "checklistsReview": true,
+          "contagensExec": true,
+          "checklistsExec": true,
+          "fichasTecnicas": true
+        },
+        "special": {
+          "isLider": true,
+          "areas": [
+            "Cozinha",
+            "Bar",
+            "Salão",
+            "Limpeza"
+          ]
+        }
+      }
+    },
+    "id": "pes_emp_1775822753789"
+  },
+  {
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "createdAt": "2026-05-11T15:14:49.925Z",
+    "teamData": {
+      "1777204146548": {
+        "inactive": false,
+        "roleId": "1777913425566",
+        "empCode": "PCV0009",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2025-02-25",
+        "inactiveFrom": null
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "name": "Rodrigo Gomes da Cruz",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "cpf": "74321927234",
+    "linkedEmployeeId": "emp_mofwug1b3dv",
+    "pin": "7432",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1b3dv"
+  },
+  {
+    "isTeam": {
+      "1777204146548": true
+    },
+    "name": "Sergio Augusto Nogueira Macias Junior",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1777204146548": {
+        "roleId": "role-1777213548170-ddry",
+        "inactive": false,
+        "inactiveFrom": null,
+        "admission": "2026-01-08",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0011"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:50.123Z",
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "id": "pes_emp_emp_mofwug1bo6z",
+    "permissions": {
+      "1777204146548": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "pin": "0103",
+    "linkedEmployeeId": "emp_mofwug1bo6z",
+    "cpf": "01034310208"
+  },
+  {
+    "isTeam": {
+      "1777204191993": true
+    },
+    "mustChangePin": true,
+    "name": "Arlana Alves Dias",
+    "whatsapp": null,
+    "email": null,
+    "createdAt": "2026-05-11T15:14:53.320Z",
+    "teamData": {
+      "1777204191993": {
+        "demitidoEm": null,
+        "admission": "2025-10-24",
+        "inactiveFrom": null,
+        "empCode": "PPF0001",
+        "isFreela": false,
+        "inactive": false,
+        "roleId": "role-1777213737398-sjda"
+      }
+    },
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "pin": "0102",
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwwdg07wj",
+    "linkedEmployeeId": "emp_mofwwdg07wj",
+    "cpf": "01023991233"
+  },
+  {
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "mustChangePin": true,
+    "name": "Antonia Nayara Soares de Souza",
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "teamData": {
+      "1775792314382": {
+        "isFreela": false,
+        "empCode": "LBZ0006",
+        "admission": "2023-09-22",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": "role-1775855989483-n6j"
+      }
+    },
+    "createdAt": "2026-05-11T15:12:58.707Z",
+    "id": "pes_emp_1775855991807-7b4",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "3839",
+    "cpf": "38399879894",
+    "linkedEmployeeId": "1775855991807-7b4"
+  },
+  {
+    "cpf": "04087741346",
+    "linkedEmployeeId": "1776367653250",
+    "pin": "0408",
+    "id": "pes_emp_1776367653250",
+    "permissions": {
+      "1775792314382": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "createdAt": "2026-05-11T15:12:59.730Z",
+    "teamData": {
+      "1775792314382": {
+        "inactive": false,
+        "roleId": "role-1775856094593-nrn",
+        "isFreela": false,
+        "empCode": "LBZ0012",
+        "inactiveFrom": null,
+        "admission": "2026-04-01",
+        "demitidoEm": null
+      }
+    },
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "name": "Maria da Conceição Soares de Sousa Silva",
+    "mustChangePin": true
+  },
+  {
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_emp_mok4b64pdv9",
+    "pin": "0524",
+    "linkedEmployeeId": "emp_mok4b64pdv9",
+    "cpf": "05242494239",
+    "isTeam": {
+      "1777204146548": true
+    },
+    "name": "Rayssa Cristina Gomes Pantoja",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1777204146548": {
+        "roleId": "role-1777213548170-ddry",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "PCV0015",
+        "admission": "2025-02-25",
+        "inactiveFrom": null,
+        "demitidoEm": null
+      }
+    },
+    "createdAt": "2026-05-11T15:14:50.393Z",
+    "restaurantIds": [
+      "1777204146548"
+    ]
+  },
+  {
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "teamData": {
+      "1777204191993": {
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2025-02-25",
+        "empCode": "PPF0009",
+        "isFreela": false,
+        "inactive": false,
+        "roleId": "role-1777213737398-8bo2"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:54.143Z",
+    "email": null,
+    "whatsapp": null,
+    "name": "Maimy Luisa Minori Campos",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204191993": true
+    },
+    "cpf": "03815383200",
+    "linkedEmployeeId": "emp_mofwwdg13gz",
+    "id": "pes_emp_emp_mofwwdg13gz",
+    "permissions": {
+      "1777204191993": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "pin": "0381"
+  },
+  {
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "teamData": {
+      "1777204146548": {
+        "isFreela": false,
+        "empCode": "PCV0002",
+        "admission": "2025-05-20",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "roleId": "role-1777213548170-2eul",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-05-11T15:14:49.070Z",
+    "email": null,
+    "whatsapp": null,
+    "name": "Camila Brito Martins",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "cpf": "04586678208",
+    "linkedEmployeeId": "emp_mofwug1bljy",
+    "permissions": {
+      "1777204146548": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1bljy",
+    "pin": "0458"
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "name": "José Ilton Moura Bezerra",
+    "mustChangePin": true,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "createdAt": "2026-05-11T15:12:59.869Z",
+    "teamData": {
+      "1775792314382": {
+        "roleId": "1775829178372",
+        "inactive": false,
+        "demitidoEm": null,
+        "admission": "2026-04-29",
+        "inactiveFrom": null,
+        "empCode": "LBZ0015",
+        "isFreela": false
+      }
+    },
+    "pin": "4079",
+    "id": "pes_emp_emp_molfhynf1lf",
+    "permissions": {
+      "1775792314382": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "cpf": "40791144860",
+    "linkedEmployeeId": "emp_molfhynf1lf"
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "name": "Gabriel Barros Souza Silva",
+    "mustChangePin": true,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "teamData": {
+      "1775792314382": {
+        "roleId": "role-1775856038681-4pw",
+        "inactive": false,
+        "empCode": "LBZ0007",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2026-02-04"
+      }
+    },
+    "createdAt": "2026-05-11T15:12:58.829Z",
+    "id": "pes_emp_1775856041718-01g",
+    "permissions": {
+      "1775792314382": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "pin": "5430",
+    "cpf": "54300016860",
+    "linkedEmployeeId": "1775856041718-01g"
+  },
+  {
+    "permissions": {
+      "1777204146548": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1brbr",
+    "pin": "0534",
+    "linkedEmployeeId": "emp_mofwug1brbr",
+    "cpf": "05340096203",
+    "isTeam": {
+      "1777204146548": true
+    },
+    "mustChangePin": true,
+    "name": "Gabriel Sales Sarmento",
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1777204146548": {
+        "inactive": false,
+        "roleId": "role-1777213548170-xeim",
+        "admission": "2025-09-16",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0005"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:49.423Z",
+    "restaurantIds": [
+      "1777204146548"
+    ]
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Ivesson Silva Nogueira",
+    "isTeam": {
+      "1777204191993": true
+    },
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "createdAt": "2026-05-11T15:14:53.607Z",
+    "teamData": {
+      "1777204191993": {
+        "admission": "2025-12-20",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PPF0003",
+        "roleId": "role-1777213737398-rwtf",
+        "inactive": false
+      }
+    },
+    "pin": "0296",
+    "id": "pes_emp_emp_mofwwdg03bc",
+    "permissions": {
+      "1777204191993": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "cpf": "02969169274",
+    "linkedEmployeeId": "emp_mofwwdg03bc"
+  },
+  {
+    "id": "pes_emp_emp_mofwug1bpni",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "pin": "0643",
+    "linkedEmployeeId": "emp_mofwug1bpni",
+    "cpf": "06432442206",
+    "mustChangePin": true,
+    "name": "Rissia Siqueira dos Santos",
+    "isTeam": {
+      "1777204146548": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "teamData": {
+      "1777204146548": {
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2025-10-17",
+        "empCode": "PCV0008",
+        "isFreela": false,
+        "roleId": "role-1777213548170-ddry",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-05-11T15:14:49.828Z",
+    "restaurantIds": [
+      "1777204146548"
+    ]
+  },
+  {
+    "cpf": "04131351285",
+    "linkedEmployeeId": "emp_mofwwdg0du1",
+    "pin": "0413",
+    "id": "pes_emp_emp_mofwwdg0du1",
+    "permissions": {
+      "1777204191993": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "createdAt": "2026-05-11T15:14:53.504Z",
+    "teamData": {
+      "1777204191993": {
+        "empCode": "PPF0002",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2025-09-23",
+        "inactiveFrom": null,
+        "roleId": "role-1777213737398-w77s",
+        "inactive": false
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Bianca Soares da Costa",
+    "isTeam": {
+      "1777204191993": true
+    }
+  },
+  {
+    "teamData": {
+      "1775792314382": {
+        "inactive": false,
+        "roleId": "role-1775856066777-qwq",
+        "demitidoEm": null,
+        "admission": "2025-03-20",
+        "inactiveFrom": null,
+        "empCode": "LBZ0010",
+        "isFreela": false
+      }
+    },
+    "createdAt": "2026-05-11T15:12:59.322Z",
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "isTeam": {
+      "1775792314382": true
+    },
+    "mustChangePin": true,
+    "name": "Regiane de Souza Reis",
+    "whatsapp": null,
+    "email": null,
+    "linkedEmployeeId": "1775856852657-qqp",
+    "cpf": "01871709598",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_1775856852657-qqp",
+    "pin": "0187"
+  },
+  {
+    "permissions": {
+      "1775792314382": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_1775960630909",
+    "pin": "1234",
+    "cpf": "12345678999",
+    "linkedEmployeeId": "1775960630909",
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "name": "Gabriel Ferreira",
+    "mustChangePin": true,
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "teamData": {
+      "1775792314382": {
+        "roleId": "role-1775856094593-nrn",
+        "inactive": true,
+        "demitidoEm": null,
+        "inactiveFrom": "2026-04-15",
+        "admission": "2026-04-01",
+        "empCode": "LBZ0004",
+        "isFreela": false
+      }
+    },
+    "createdAt": "2026-05-11T15:12:59.619Z"
+  },
+  {
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "createdAt": "2026-05-11T15:12:59.802Z",
+    "teamData": {
+      "1775792314382": {
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "LBZ0013",
+        "inactive": false,
+        "roleId": "role-1775856038681-4pw"
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Joane Moraes Sales",
+    "isTeam": {
+      "1775792314382": true
+    },
+    "cpf": "17205717752",
+    "linkedEmployeeId": "1776367743059",
+    "pin": "1720",
+    "id": "pes_emp_1776367743059",
+    "permissions": {
+      "1775792314382": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    }
+  },
+  {
+    "linkedEmployeeId": "emp_mofwug1bvoy",
+    "cpf": "97133922215",
+    "permissions": {
+      "1777204146548": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1bvoy",
+    "pin": "9713",
+    "teamData": {
+      "1777204146548": {
+        "roleId": "role-1777213548170-e6fi",
+        "inactive": false,
+        "admission": "2025-02-25",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0010"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:50.022Z",
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "isTeam": {
+      "1777204146548": true
+    },
+    "name": "Rubia Karenina Monteiro Dias",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "isTeam": {
+      "1777204191993": true
+    },
+    "name": "Luzitania Oliveira Fernandes",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1777204191993": {
+        "inactive": false,
+        "roleId": "role-1777213737398-sjda",
+        "inactiveFrom": null,
+        "admission": "2025-10-15",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PPF0008"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:54.032Z",
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "id": "pes_emp_emp_mofwwdg1s27",
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "6566",
+    "linkedEmployeeId": "emp_mofwwdg1s27",
+    "cpf": "65661044291"
+  },
+  {
+    "name": "Gabriel Henrique Xavier de Almeida",
+    "mustChangePin": false,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "createdAt": "2026-05-11T15:12:58.950Z",
+    "pix": null,
+    "teamData": {
+      "1775792314382": {
+        "empCode": "LBZ0008",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2024-06-20",
+        "inactive": false,
+        "roleId": "role-1775856066777-qwq"
+      }
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "emergencyPhone": null,
+    "pin": "0727",
+    "id": "pes_emp_1775856068500-zwu",
+    "permissions": {
+      "1775792314382": {
+        "special": {
+          "areas": [],
+          "isLider": true
+        },
+        "operational": {
+          "fichasTecnicas": true,
+          "checklistsExec": true,
+          "contagensExec": true,
+          "checklistsReview": true,
+          "freelasExec": true,
+          "temperaturasExec": true
+        },
+        "admin": {
+          "liderEditaEscala": true,
+          "schedule": true
+        }
+      }
+    },
+    "linkedEmployeeId": "1775856068500-zwu",
+    "emergencyName": null,
+    "cpf": "37310837878"
+  },
+  {
+    "emergencyName": null,
+    "cpf": "43958261809",
+    "linkedEmployeeId": "1775792351581",
+    "pin": "4395",
+    "permissions": {
+      "1775792314382": {
+        "operational": {
+          "temperaturasExec": true,
+          "freelasExec": true,
+          "reunioes": true,
+          "contagensExec": true,
+          "checklistsReview": true,
+          "checklistsExec": true,
+          "fichasTecnicas": true
+        },
+        "admin": {
+          "pessoas": false,
+          "liderEditaEscala": true,
+          "schedule": true
+        },
+        "special": {
+          "areas": [
+            "Bar",
+            "Cozinha",
+            "Salão",
+            "Limpeza"
+          ],
+          "isLider": true
+        }
+      }
+    },
+    "id": "pes_emp_1775792351581",
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "emergencyPhone": null,
+    "createdAt": "2026-05-11T15:12:58.177Z",
+    "pix": null,
+    "teamData": {
+      "1775792314382": {
+        "roleId": "1775792340881",
+        "inactive": false,
+        "empCode": "LBZ0001",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "2026-04-01",
+        "inactiveFrom": null
+      }
+    },
+    "email": null,
+    "whatsapp": null,
+    "isFreela": false,
+    "name": "Diego Ferreira",
+    "mustChangePin": true,
+    "isTeam": {
+      "1775792314382": true
+    }
+  },
+  {
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "teamData": {
+      "1775792314382": {
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2022-02-01",
+        "empCode": "LBZ0011",
+        "isFreela": false,
+        "inactive": false,
+        "roleId": "role-1775855989483-n6j"
+      }
+    },
+    "createdAt": "2026-05-11T15:12:59.448Z",
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1775792314382": true
+    },
+    "name": "Helio Gomes dos Santos",
+    "mustChangePin": true,
+    "cpf": "04965950321",
+    "linkedEmployeeId": "1775856871966-p3c",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_1775856871966-p3c",
+    "pin": "0496"
+  },
+  {
+    "id": "pes_emp_1775855945328-mu9",
+    "permissions": {
+      "1775792314382": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "0627",
+    "cpf": "06272041390",
+    "linkedEmployeeId": "1775855945328-mu9",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Alezio Matos da Silva",
+    "isTeam": {
+      "1775792314382": true
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "teamData": {
+      "1775792314382": {
+        "roleId": "1775863174341",
+        "inactive": false,
+        "isFreela": false,
+        "empCode": "LBZ0005",
+        "inactiveFrom": null,
+        "admission": "2025-03-13",
+        "demitidoEm": null
+      }
+    },
+    "createdAt": "2026-05-11T15:12:58.580Z"
+  },
+  {
+    "permissions": {
+      "1777204191993": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwwdg078k",
+    "pin": "0343",
+    "cpf": "03434186220",
+    "linkedEmployeeId": "emp_mofwwdg078k",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Joyce Vitoria dos Santos Ribeiro",
+    "isTeam": {
+      "1777204191993": true
+    },
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "teamData": {
+      "1777204191993": {
+        "inactive": false,
+        "roleId": "role-1777213737398-uxrj",
+        "demitidoEm": null,
+        "admission": "2025-10-15",
+        "inactiveFrom": null,
+        "empCode": "PPF0004",
+        "isFreela": false
+      }
+    },
+    "createdAt": "2026-05-11T15:14:53.715Z"
+  },
+  {
+    "pin": "7009",
+    "id": "pes_emp_emp_mofwug1bxhk",
+    "permissions": {
+      "1777204146548": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "cpf": "70094886229",
+    "linkedEmployeeId": "emp_mofwug1bxhk",
+    "email": null,
+    "whatsapp": null,
+    "name": "Karine Cavalcante Moraes",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "createdAt": "2026-05-11T15:14:49.567Z",
+    "teamData": {
+      "1777204146548": {
+        "empCode": "PCV0006",
+        "isFreela": false,
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "2025-12-02",
+        "inactive": false,
+        "roleId": "role-1777213548170-ddry"
+      }
+    }
+  },
+  {
+    "permissions": {
+      "1777204146548": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_morfs6ndqwo",
+    "pin": "0422",
+    "cpf": "04220245200",
+    "linkedEmployeeId": "emp_morfs6ndqwo",
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "name": "Lucas Pinheiro da Cruz",
+    "mustChangePin": true,
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "teamData": {
+      "1777204146548": {
+        "admission": "2026-04-01",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0014",
+        "inactive": false,
+        "roleId": "1777919370426"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:50.432Z"
+  },
+  {
+    "pin": "0629",
+    "id": "pes_emp_emp_mofwug1brqr",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "linkedEmployeeId": "emp_mofwug1brqr",
+    "cpf": "06299135280",
+    "name": "Eliza Vitoria Nunes Palheta",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "createdAt": "2026-05-11T15:14:49.305Z",
+    "teamData": {
+      "1777204146548": {
+        "demitidoEm": null,
+        "admission": "2025-07-10",
+        "inactiveFrom": null,
+        "empCode": "PCV0004",
+        "isFreela": false,
+        "roleId": "role-1777213548170-qgny",
+        "inactive": false
+      }
+    },
+    "restaurantIds": [
+      "1777204146548"
+    ]
+  },
+  {
+    "cpf": "00435939254",
+    "linkedEmployeeId": "emp_mofwug1bbct",
+    "id": "pes_emp_emp_mofwug1bbct",
+    "permissions": {
+      "1777204146548": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "pin": "0043",
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "teamData": {
+      "1777204146548": {
+        "admission": "2025-08-26",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0013",
+        "inactive": false,
+        "roleId": "role-1777213548170-bkjo"
+      }
+    },
+    "createdAt": "2026-05-11T15:14:50.355Z",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Wendell Araujo Miranda",
+    "isTeam": {
+      "1777204146548": true
+    }
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "name": "Larissa Fabiele Araujo da Costa",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "teamData": {
+      "1777204146548": {
+        "inactiveFrom": null,
+        "admission": "2025-10-16",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0007",
+        "roleId": "1777213622054",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-05-11T15:14:49.679Z",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1bxoo",
+    "pin": "0897",
+    "cpf": "08972703206",
+    "linkedEmployeeId": "emp_mofwug1bxoo"
+  },
+  {
+    "pin": "8875",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1bkg1",
+    "cpf": "88751201291",
+    "linkedEmployeeId": "emp_mofwug1bkg1",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "Diogo Pinho Magalhães",
+    "isTeam": {
+      "1777204146548": true
+    },
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "createdAt": "2026-05-11T15:14:49.176Z",
+    "teamData": {
+      "1777204146548": {
+        "admission": "2025-02-25",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "PCV0003",
+        "inactive": false,
+        "roleId": "role-1777213548170-m5cx"
+      }
+    }
+  },
+  {
+    "restaurantIds": [
+      "1777204146548"
+    ],
+    "teamData": {
+      "1777204146548": {
+        "demitidoEm": null,
+        "inactiveFrom": null,
+        "admission": "",
+        "empCode": "PCV0012",
+        "isFreela": false,
+        "inactive": false,
+        "roleId": "role-1777213548170-m5cx"
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "email": null,
+    "whatsapp": null,
+    "name": "⚠️ RECUPERAR — Puba matriz / Cozinha (ativo abr-mai)",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204146548": true
+    },
+    "cpf": "",
+    "linkedEmployeeId": "emp_mofwug1bf04",
+    "permissions": {
+      "1777204146548": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwug1bf04",
+    "pin": "0000"
+  },
+  {
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "teamData": {
+      "1777204191993": {
+        "isFreela": false,
+        "empCode": "PPF0006",
+        "inactiveFrom": null,
+        "admission": "",
+        "demitidoEm": null,
+        "roleId": "role-1777213737398-aiba",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "⚠️ RECUPERAR — Puba Filial / Bar (ativo abr-mai)",
+    "isTeam": {
+      "1777204191993": true
+    },
+    "cpf": "",
+    "linkedEmployeeId": "emp_mofwwdg1oku",
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwwdg1oku",
+    "pin": "0000"
+  },
+  {
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_mofwwdg1iy8",
+    "pin": "0000",
+    "linkedEmployeeId": "emp_mofwwdg1iy8",
+    "cpf": "",
+    "name": "⚠️ RECUPERAR — Puba Filial / Cozinha (ativo abr-mai)",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204191993": true
+    },
+    "email": null,
+    "whatsapp": null,
+    "teamData": {
+      "1777204191993": {
+        "demitidoEm": null,
+        "admission": "",
+        "inactiveFrom": null,
+        "empCode": "PPF0010",
+        "isFreela": false,
+        "roleId": "role-1777213737398-8bo2",
+        "inactive": false
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "restaurantIds": [
+      "1777204191993"
+    ]
+  },
+  {
+    "cpf": "",
+    "linkedEmployeeId": "emp_mofwwdg1pnr",
+    "id": "pes_emp_emp_mofwwdg1pnr",
+    "permissions": {
+      "1777204191993": {
+        "special": {},
+        "admin": {},
+        "operational": {}
+      }
+    },
+    "pin": "0000",
+    "restaurantIds": [
+      "1777204191993"
+    ],
+    "teamData": {
+      "1777204191993": {
+        "roleId": "role-1777213737398-8bo2",
+        "inactive": false,
+        "empCode": "PPF0011",
+        "isFreela": false,
+        "demitidoEm": null,
+        "admission": "",
+        "inactiveFrom": null
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "email": null,
+    "whatsapp": null,
+    "name": "⚠️ RECUPERAR — Puba Filial / Cozinha (ativo abr-mai)",
+    "mustChangePin": true,
+    "isTeam": {
+      "1777204191993": true
+    }
+  },
+  {
+    "whatsapp": null,
+    "email": null,
+    "isTeam": {},
+    "name": "⚠️ RECUPERAR — restaurante? / Salão (ativo abr-mai)",
+    "mustChangePin": true,
+    "restaurantIds": [],
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "teamData": {},
+    "pin": "0000",
+    "id": "pes_emp_emp_morfrq6buxd",
+    "permissions": {},
+    "cpf": "",
+    "linkedEmployeeId": "emp_morfrq6buxd"
+  },
+  {
+    "linkedEmployeeId": "emp_moo9la2ul2a",
+    "cpf": "",
+    "pin": "0000",
+    "id": "pes_emp_emp_moo9la2ul2a",
+    "permissions": {
+      "1775792314382": {
+        "operational": {},
+        "admin": {},
+        "special": {}
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "teamData": {
+      "1775792314382": {
+        "inactive": false,
+        "roleId": "",
+        "admission": "",
+        "inactiveFrom": null,
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "LBZ0014"
+      }
+    },
+    "restaurantIds": [
+      "1775792314382"
+    ],
+    "isTeam": {
+      "1775792314382": true
+    },
+    "mustChangePin": true,
+    "name": "⚠️ RECUPERAR — Lobozó (sem gorjetas)",
+    "whatsapp": null,
+    "email": null
+  },
+  {
+    "permissions": {
+      "1775792314382": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "id": "pes_emp_emp_mordl32od8y",
+    "pin": "0000",
+    "linkedEmployeeId": "emp_mordl32od8y",
+    "cpf": "",
+    "isTeam": {
+      "1775792314382": true
+    },
+    "name": "Veronica de Cassia Macedo Stivanim",
+    "mustChangePin": true,
+    "whatsapp": null,
+    "email": null,
+    "teamData": {
+      "1775792314382": {
+        "roleId": "",
+        "inactive": false,
+        "inactiveFrom": null,
+        "admission": "",
+        "demitidoEm": null,
+        "isFreela": false,
+        "empCode": "LBZ0017"
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "restaurantIds": [
+      "1775792314382"
+    ]
+  },
+  {
+    "teamData": {
+      "1775792279549": {
+        "isFreela": false,
+        "empCode": "SRC0029",
+        "inactiveFrom": null,
+        "admission": "",
+        "demitidoEm": null,
+        "inactive": false,
+        "roleId": ""
+      }
+    },
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "⚠️ RECUPERAR — Sororoca (sem gorjetas)",
+    "whatsapp": null,
+    "email": null,
+    "linkedEmployeeId": "emp_morlq5zwedi",
+    "cpf": "",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "id": "pes_emp_emp_morlq5zwedi",
+    "pin": "0000"
+  },
+  {
+    "email": null,
+    "whatsapp": null,
+    "mustChangePin": true,
+    "name": "⚠️ RECUPERAR — Sororoca (ID antigo)",
+    "isTeam": {
+      "1775792279549": true
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "teamData": {
+      "1775792279549": {
+        "demitidoEm": null,
+        "admission": "",
+        "inactiveFrom": null,
+        "empCode": "SRC0030",
+        "isFreela": false,
+        "inactive": false,
+        "roleId": ""
+      }
+    },
+    "pin": "0000",
+    "id": "pes_emp_1775830282844",
+    "permissions": {
+      "1775792279549": {
+        "admin": {},
+        "operational": {},
+        "special": {}
+      }
+    },
+    "cpf": "",
+    "linkedEmployeeId": "1775830282844"
+  },
+  {
+    "isTeam": {
+      "1775792279549": true
+    },
+    "mustChangePin": true,
+    "name": "⚠️ RECUPERAR — Sororoca (ID antigo)",
+    "whatsapp": null,
+    "email": null,
+    "createdAt": "2026-05-16T19:28:00.366Z",
+    "teamData": {
+      "1775792279549": {
+        "inactive": false,
+        "roleId": "",
+        "isFreela": false,
+        "empCode": "SRC0031",
+        "admission": "",
+        "inactiveFrom": null,
+        "demitidoEm": null
+      }
+    },
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "pin": "0000",
+    "id": "pes_emp_1775830410477",
+    "permissions": {
+      "1775792279549": {
+        "special": {},
+        "operational": {},
+        "admin": {}
+      }
+    },
+    "linkedEmployeeId": "1775830410477",
+    "cpf": ""
+  }
+]

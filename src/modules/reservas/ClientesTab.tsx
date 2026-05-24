@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { Cliente, Reserva } from "../../core/types";
 import { ClienteModal } from "./ClienteModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
+import { phoneKey, upsertClienteLookup } from "./clienteLookup";
 
 type Props = {
   restaurantId: string;
@@ -67,6 +69,104 @@ export function ClientesTab({ restaurantId, podeConfig }: Props) {
     clientes.forEach(c => (c.tags || []).forEach(t => s.add(t)));
     return Array.from(s).sort();
   }, [clientes]);
+
+  // Grupos de duplicados — mesmo telefone (normalizado pra últimos 11 dígitos).
+  // Pode acontecer quando: (a) reservas públicas anteriores ao lookup
+  // determinístico criaram clientes redundantes; (b) admin cadastrou
+  // manualmente um cliente que já existia. Mostramos banner pra mesclar.
+  const grupoDuplicados = useMemo(() => {
+    const m = new Map<string, Cliente[]>();
+    for (const c of clientes) {
+      const k = phoneKey(c.telefone);
+      if (!k) continue;
+      const arr = m.get(k) || [];
+      arr.push(c);
+      m.set(k, arr);
+    }
+    return Array.from(m.values()).filter(g => g.length > 1);
+  }, [clientes]);
+
+  const [mesclando, setMesclando] = useState<string | null>(null); // phoneKey em curso
+
+  // Mescla um grupo de clientes em um só. Mantém o mais antigo (winner),
+  // repointa todas as reservas dos outros pra ele, atualiza o lookup
+  // público pra apontar pro winner, e deleta os perdedores.
+  //
+  // Campos opcionais (email, aniversario, restricoes, tags) são herdados
+  // dos perdedores SÓ se o winner não tinha — não sobrescreve dados
+  // curados pelo admin.
+  async function mesclarGrupo(grupo: Cliente[]) {
+    if (grupo.length < 2) return;
+    // Mais antigo fica. Se criadoEm faltar, vai pro fim (string vazia).
+    const ordenados = [...grupo].sort((a, b) => (a.criadoEm || "").localeCompare(b.criadoEm || ""));
+    const winner = ordenados[0]!;
+    const perdedores = ordenados.slice(1);
+    const nomesPerdedores = perdedores.map(c => c.nome).join(", ");
+    if (!confirm(
+      `Mesclar ${grupo.length} registros em "${winner.nome}"?\n\n` +
+      `Mantém: ${winner.nome}\n` +
+      `Some: ${nomesPerdedores}\n\n` +
+      `As reservas dos registros que somem passam pro principal — histórico fica todo junto.`
+    )) return;
+
+    const key = phoneKey(winner.telefone);
+    setMesclando(key);
+    try {
+      const now = new Date().toISOString();
+
+      // 1) Merge de campos opcionais — winner só herda o que está vazio
+      const camposHerdados: Partial<Cliente> = {};
+      for (const p of perdedores) {
+        if (!winner.email && p.email) camposHerdados.email = p.email;
+        if (!winner.aniversario && p.aniversario) camposHerdados.aniversario = p.aniversario;
+        if (!winner.restricoesAlimentares && p.restricoesAlimentares) {
+          camposHerdados.restricoesAlimentares = p.restricoesAlimentares;
+        }
+        if (!winner.observacoes && p.observacoes) camposHerdados.observacoes = p.observacoes;
+        // Tags: union
+        const tagsExistentes = new Set(winner.tags || []);
+        (p.tags || []).forEach(t => tagsExistentes.add(t));
+        if (tagsExistentes.size > (winner.tags?.length || 0)) {
+          camposHerdados.tags = Array.from(tagsExistentes);
+        }
+      }
+      if (Object.keys(camposHerdados).length > 0) {
+        await updateDoc(
+          doc(db, "clientes", winner.id),
+          sanitizeForFirestore({ ...camposHerdados, atualizadoEm: now }),
+        );
+      }
+
+      // 2) Repointa reservas dos perdedores pro winner
+      const reservasParaMigrar = reservas.filter(r =>
+        perdedores.some(p => p.id === r.clienteId)
+      );
+      await Promise.all(reservasParaMigrar.map(r =>
+        updateDoc(doc(db, "reservas", r.id), {
+          clienteId: winner.id,
+          atualizadoEm: now,
+        })
+      ));
+
+      // 3) Atualiza o lookup público pra apontar pro winner. Próxima
+      // reserva pública desse telefone cai direto no winner.
+      await upsertClienteLookup({
+        restaurantId,
+        telefone: winner.telefone,
+        nome: winner.nome,
+        email: winner.email || camposHerdados.email,
+        clienteId: winner.id,
+      });
+
+      // 4) Deleta perdedores
+      await Promise.all(perdedores.map(p => deleteDoc(doc(db, "clientes", p.id))));
+    } catch (e) {
+      console.error("[clientes] merge falhou:", e);
+      alert("Erro ao mesclar — tenta de novo.");
+    } finally {
+      setMesclando(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     return clientes.filter(c => {
@@ -135,6 +235,46 @@ export function ClientesTab({ restaurantId, podeConfig }: Props) {
               🏷️ {t}
             </button>
           ))}
+        </div>
+      )}
+
+      {podeConfig && grupoDuplicados.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3 space-y-2">
+          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2">
+            ⚠ {grupoDuplicados.length} {grupoDuplicados.length === 1 ? "grupo" : "grupos"} de clientes com telefone igual
+          </div>
+          <div className="text-xs text-amber-800 dark:text-amber-300">
+            Mescla pra juntar o histórico de reservas num registro só.
+          </div>
+          <div className="space-y-1.5 pt-1">
+            {grupoDuplicados.map(grupo => {
+              const k = phoneKey(grupo[0]!.telefone);
+              const emCurso = mesclando === k;
+              return (
+                <div
+                  key={k}
+                  className="bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-900 rounded-lg p-2.5 flex items-center justify-between gap-3 flex-wrap"
+                >
+                  <div className="text-xs text-gray-700 dark:text-gray-300 min-w-0">
+                    <div className="font-medium text-gray-900 dark:text-gray-100">
+                      📞 {grupo[0]!.telefone}
+                    </div>
+                    <div className="text-gray-500 mt-0.5">
+                      {grupo.map(c => c.nome).join(" · ")}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => mesclarGrupo(grupo)}
+                    disabled={emCurso}
+                  >
+                    {emCurso ? "Mesclando..." : `🔀 Mesclar em 1`}
+                  </Button>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

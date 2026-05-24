@@ -7,7 +7,7 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Cliente, ConfiguracaoReservas, Reserva, ReservaPII, Salao,
+  Cliente, ClientePublicLookup, ConfiguracaoReservas, Reserva, ReservaPII, Salao,
 } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
@@ -17,17 +17,19 @@ import {
 import { useSiteConfigPublic, explicarNotFound } from "./shared/useSiteConfigPublic";
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "./shared/SiteFormShell";
 import { FormField, fieldInputCls } from "./shared/FormField";
+import { upsertClienteLookup } from "../reservas/clienteLookup";
 
 // Página pública: cliente solicita reserva de mesa.
 // Rota: /reservas/:rid (sem auth).
 //
 // Fluxo wizard em 3 passos:
-//   1. WhatsApp → lookup em /reservas pra ver se é cliente recorrente
-//      (pré-preenche nome/email/observações com base no último registro)
-//   2. Detalhes → nome (se novo), data, pessoas, ocasião, observações
-//   3. Slot → mostra horários disponíveis do dia (das janelas configuradas)
-//      com qtd de vagas por salão (calculada em tempo real). Cliente
-//      escolhe slot+salão.
+//   1. WhatsApp → lookup em /clientesPublicLookup/<rid>_<e164> (get por ID
+//      exato — sem enumeração possível). Se reconhecer, pré-preenche
+//      nome/email e reusa o clienteId no CRM.
+//   2. Detalhes → nome (editável mesmo se reconhecido), data, pessoas,
+//      ocasião, observações.
+//   3. Slot → horários disponíveis do dia (das janelas configuradas) com
+//      qtd de vagas por salão. Cliente escolhe slot+salão.
 //
 // Cria doc em /reservas com origem=publico e status=pendente — admin
 // confirma no módulo Reservas + CRM.
@@ -54,9 +56,13 @@ export function ReservasPublicaPage() {
   const [erro, setErro] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // (removido) lookup de cliente recorrente — exigia ler PII de
-  // /reservas. Mantido cliente novo a cada reserva pública; admin
-  // dedupe manualmente no CRM se quiser.
+  // Reconhecimento de cliente recorrente. Lookup feito por getDoc em
+  // /clientesPublicLookup/<rid>_<e164> ao avançar o step do WhatsApp.
+  // Se reconhecer, reusamos o clienteId no /clientes ao invés de criar
+  // novo (mantém histórico do CRM contíguo). Nome/email vem pré-preenchidos
+  // mas seguem editáveis.
+  const [lookupState, setLookupState] = useState<"idle" | "checking" | "found" | "notfound">("idle");
+  const [clienteIdConhecido, setClienteIdConhecido] = useState<string | null>(null);
 
   // Form state
   const [paisIso, setPaisIso] = useState(PAIS_BR.iso);
@@ -85,8 +91,23 @@ export function ReservasPublicaPage() {
     });
   }
 
-  // Data mínima = hoje
-  const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  // Data mínima = hoje (formato YYYY-MM-DD em horário LOCAL — toISOString
+  // é UTC e quebra a virada de dia em fuso GMT-3 nas primeiras 3h da
+  // madrugada). Idem agora (HH:MM) usado pra esconder slots passados.
+  const hojeISO = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }, []);
+  // Buffer mínimo pra aceitar reserva (em minutos). 30min dá tempo da casa
+  // se organizar — sem isso, cliente conseguia reservar pra 5 min no futuro.
+  const BUFFER_MIN_MINUTOS = 30;
+  // Soma BUFFER aos minutos atuais e retorna "HH:MM" (zero-padded), pra
+  // comparar lexicograficamente com slot.horario.
+  const agoraComBuffer = useMemo(() => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() + BUFFER_MIN_MINUTOS);
+    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  }, []);
 
   // ──────────────── Carrega salões + config ────────────────
   useEffect(() => {
@@ -141,20 +162,48 @@ export function ReservasPublicaPage() {
     return null;
   }
 
-  // Avança pro step "details".
+  // Avança pro step "details" + faz lookup público de cliente recorrente.
   //
-  // NOTA SOBRE PRIVACIDADE: antes a gente fazia lookup em /reservas
-  // procurando reservas com mesmo telefone pra pré-preencher nome do
-  // cliente recorrente. Pra fazer isso o /reservas precisava ter
-  // telefone público — vazamento de PII. Agora /reservas não tem mais
-  // PII (foi pra /reservasPII auth-only), então cliente sempre digita
-  // o nome do zero. Trade-off: UX um pouco menos mágica, mas zero
-  // exposição de dados. Próxima fase: Vercel function autenticada que
-  // faz esse lookup retornando apenas {nome, totalReservas} agregado.
-  function avancarPhone() {
+  // SEGURANÇA: O lookup é getDoc por ID exato em /clientesPublicLookup —
+  // doc id determinístico (`<rid>_<e164>`). Rules permitem `get` público
+  // mas bloqueiam `list`, então ninguém consegue enumerar a coleção. O
+  // doc contém só { nome, email?, clienteId } — nada de aniversário,
+  // restrições, observações ou outros campos sensíveis do /clientes.
+  // Mesmo risco que perguntar "fulano é cliente?" pelo WhatsApp da casa.
+  async function avancarPhone() {
     setErro("");
     const v = validatePhone();
     if (v) return setErro(v);
+    if (!rid) return setErro("URL inválida.");
+
+    const pais = getPaisByIso(paisIso);
+    const e164 = montarE164(
+      pais.iso === "OUTROS" ? ddiManual : pais.ddi,
+      whatsapp,
+    );
+    const lookupId = `${rid}_${e164.replace(/^\+/, "")}`;
+
+    setLookupState("checking");
+    try {
+      const snap = await getDoc(doc(db, "clientesPublicLookup", lookupId));
+      if (snap.exists()) {
+        const lk = snap.data() as ClientePublicLookup;
+        // Pré-preenche só se o usuário ainda não digitou nada — não
+        // sobrescreve se ele voltou pro step 1 depois de já ter mexido.
+        if (!nome.trim()) setNome(lk.nome || "");
+        if (!email.trim() && lk.email) setEmail(lk.email);
+        setClienteIdConhecido(lk.clienteId);
+        setLookupState("found");
+      } else {
+        setClienteIdConhecido(null);
+        setLookupState("notfound");
+      }
+    } catch (e) {
+      // Falha de rede não é blocker — segue como cliente novo.
+      console.warn("[reservas] lookup falhou, seguindo como novo:", e);
+      setClienteIdConhecido(null);
+      setLookupState("notfound");
+    }
     setStep("details");
   }
 
@@ -211,7 +260,13 @@ export function ReservasPublicaPage() {
       slotsBase = janela.slots;
     }
 
-    return slotsBase.map(slot => {
+    // Se for HOJE, esconde slots já passados (com BUFFER de 30min).
+    // Comparação lexicográfica de "HH:MM" funciona porque é zero-padded.
+    const slotsValidos = data === hojeISO
+      ? slotsBase.filter(s => s.horario > agoraComBuffer)
+      : slotsBase;
+
+    return slotsValidos.map(slot => {
       // Pra cada salão habilitado nesse slot, computa vagas
       const salaoStatus = slot.salaoIds.map(sId => {
         const sal = saloes.find(s => s.id === sId);
@@ -266,7 +321,7 @@ export function ReservasPublicaPage() {
       const algumDisponivel = salaoStatus.some(s => s.disponivel);
       return { horario: slot.horario, salaoStatus, algumDisponivel };
     });
-  }, [data, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
+  }, [data, hojeISO, agoraComBuffer, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
 
   // ──────────────── Próximos dias disponíveis ────────────────
   // Lista os próximos 7 dias DISPONÍVEIS (com janelas configuradas) —
@@ -289,25 +344,31 @@ export function ReservasPublicaPage() {
     for (let i = 0; i < RANGE_VARREDURA && result.length < MAX_DIAS; i++) {
       const d = new Date(hojeBase);
       d.setDate(d.getDate() + i);
-      const dataIso = d.toISOString().slice(0, 10);
+      // Igual ao hojeISO: monta em horário LOCAL, não UTC
+      const dataIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
       const dow = d.getDay();
+      const ehHoje = dataIso === hojeISO;
       // Aplica regra de precedência (mesma do slotsDisponiveis)
       const exc = siteConfig?.excecoes?.find(e => e.data === dataIso);
-      let temSlot = false;
+      let slotsDoDia: { horario: string }[] = [];
       if (exc) {
         if (exc.fechado) continue;
         if (exc.slotsReservaCustom !== undefined) {
           if (exc.slotsReservaCustom.length === 0) continue;
-          temSlot = exc.slotsReservaCustom.some(s => s.salaoIds.length > 0);
+          slotsDoDia = exc.slotsReservaCustom.filter(s => s.salaoIds.length > 0);
         } else {
           const j = config.janelas?.find(jw => jw.dia === dow);
-          temSlot = !!j && j.slots.length > 0;
+          if (j) slotsDoDia = j.slots;
         }
       } else {
         const j = config.janelas?.find(jw => jw.dia === dow);
-        temSlot = !!j && j.slots.length > 0;
+        if (j) slotsDoDia = j.slots;
       }
-      if (!temSlot) continue;
+      // Se for hoje, descarta slots já passados com buffer
+      if (ehHoje) {
+        slotsDoDia = slotsDoDia.filter(s => s.horario > agoraComBuffer);
+      }
+      if (slotsDoDia.length === 0) continue;
       result.push({
         data: dataIso,
         diaSemanaCurto: sCurto[dow]!,
@@ -320,7 +381,7 @@ export function ReservasPublicaPage() {
       });
     }
     return result;
-  }, [config, siteConfig?.excecoes, hojeISO]);
+  }, [config, siteConfig?.excecoes, hojeISO, agoraComBuffer]);
 
   // ──────────────── Submit ────────────────
   async function submit() {
@@ -344,24 +405,40 @@ export function ReservasPublicaPage() {
         whatsapp,
       );
 
-      // ─── Cliente: sempre cria novo. Dedupe manual no admin (CRM
-      // pode juntar clientes com mesmo telefone depois). Antes a gente
-      // tentava reaproveitar IDs de reservas anteriores, mas isso
-      // exigia ler PII em /reservas (read público). Agora /reservas
-      // não tem mais telefone — então não temos como casar do lado
-      // cliente sem expor dados. Trade-off aceitável.
-      const clienteIdFinal = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      const cliente: Cliente = {
-        id: clienteIdFinal,
+      // ─── Cliente: se foi reconhecido pelo lookup público, reusa o
+      // clienteId (mantém histórico do CRM contíguo — admin vê todas as
+      // reservas da pessoa sob o mesmo registro). Senão, cria novo.
+      //
+      // Quando reconhecido, NÃO sobrescrevemos /clientes — pode ter
+      // dados curados pelo admin (aniversário, restrições, tags). O lookup
+      // é atualizado abaixo com o nome/email mais recente que a pessoa
+      // digitou; admin reconcilia no CRM se quiser.
+      const clienteIdFinal = clienteIdConhecido
+        || `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      if (!clienteIdConhecido) {
+        const cliente: Cliente = {
+          id: clienteIdFinal,
+          restaurantId: rid,
+          nome: nome.trim(),
+          telefone: telefoneE164,
+          email: email.trim() || undefined,
+          criadoEm: now,
+          criadoPor: "publico",
+          atualizadoEm: now,
+        };
+        await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
+      }
+
+      // Upsert do lookup público — ID determinístico permite que próximas
+      // reservas dessa pessoa caiam no mesmo clienteId. Só nome/email/ref
+      // ficam aqui; nada de campos sensíveis do CRM.
+      await upsertClienteLookup({
         restaurantId: rid,
-        nome: nome.trim(),
         telefone: telefoneE164,
+        nome: nome.trim(),
         email: email.trim() || undefined,
-        criadoEm: now,
-        criadoPor: "publico",
-        atualizadoEm: now,
-      };
-      await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
+        clienteId: clienteIdFinal,
+      });
 
       // Doc PRINCIPAL — sem PII. Read pode ser público pra contar
       // disponibilidade. PII vai pro /reservasPII abaixo (read auth-only).
@@ -549,9 +626,10 @@ export function ReservasPublicaPage() {
           <button
             type="button"
             onClick={avancarPhone}
-            style={botaoPrimarioStyle(siteConfig)}
+            disabled={lookupState === "checking"}
+            style={{ ...botaoPrimarioStyle(siteConfig), opacity: lookupState === "checking" ? 0.6 : 1 }}
           >
-            Continuar
+            {lookupState === "checking" ? "Verificando..." : "Continuar"}
           </button>
         </div>
       )}
@@ -559,6 +637,16 @@ export function ReservasPublicaPage() {
       {/* STEP 2: Detalhes */}
       {step === "details" && (
         <div className="space-y-4">
+          {lookupState === "found" && (
+            <div style={{
+              fontSize: 13, padding: "10px 12px", borderRadius: 10,
+              backgroundColor: `${corPrimaria}10`,
+              border: `1px solid ${corPrimaria}30`,
+              color: corPrimaria, lineHeight: 1.4,
+            }}>
+              👋 Bem-vindo de volta{nome ? `, ${nome.split(" ")[0]}` : ""}! Confere se os dados estão certos.
+            </div>
+          )}
           <FormField label="Seu nome *">
             <input
               value={nome}

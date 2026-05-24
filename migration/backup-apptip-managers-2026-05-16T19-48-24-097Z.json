@@ -1,0 +1,240 @@
+[
+  {
+    "masterRestaurantIds": [
+      "1775792279549"
+    ],
+    "id": "1775882190445",
+    "perms": {
+      "fornecedores": true,
+      "recursosItens": true,
+      "reabrirEscala": true,
+      "employees": true,
+      "regraDivisao": true,
+      "freelas": true,
+      "config": true,
+      "comunicados": true,
+      "faq": true,
+      "fecharEscala": true,
+      "fichasTecnicas": true,
+      "permissoes": true,
+      "schedule": true,
+      "vt": true,
+      "roles": true,
+      "recursosPastas": true,
+      "pessoas": true,
+      "dpCanal": true,
+      "tips": true,
+      "compras": true,
+      "atravessarPrivado": true
+    },
+    "profile": "lider",
+    "name": "Marilia Sriubas",
+    "cpf": "370.813.788-46",
+    "areas": [
+      "Bar",
+      "Cozinha",
+      "Salão",
+      "Limpeza"
+    ],
+    "pin": "2407",
+    "isDP": true,
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382"
+    ]
+  },
+  {
+    "isDP": false,
+    "areas": [
+      "Bar",
+      "Salão",
+      "Limpeza"
+    ],
+    "pin": "2307",
+    "createdBy": "1775882190445",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "id": "1776011547982",
+    "name": "Richard Oliveira Costa",
+    "cpf": "230.779.228-78",
+    "mustChangePin": false,
+    "perms": {
+      "config": false,
+      "schedule": false
+    },
+    "profile": "lider"
+  },
+  {
+    "cpf": "528.338.298-25",
+    "name": "Rodrigo da Silva Barroso",
+    "profile": "lider",
+    "perms": {
+      "vt": false,
+      "schedule": false,
+      "horarios": false,
+      "pessoas": false,
+      "config": false,
+      "roles": false,
+      "employees": false,
+      "comunicados": false,
+      "faq": false,
+      "tips": false,
+      "dp": false
+    },
+    "mustChangePin": false,
+    "id": "1776011558513",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdBy": "1775882190445",
+    "isDP": false,
+    "pin": "1234",
+    "areas": [
+      "Bar",
+      "Salão",
+      "Limpeza"
+    ]
+  },
+  {
+    "name": "Jose Victor Gabriel Nogueira Torres",
+    "cpf": "463.980.548-90",
+    "mustChangePin": false,
+    "perms": {},
+    "profile": "lider",
+    "id": "1776280644093",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "createdBy": "1775882190445",
+    "isDP": false,
+    "areas": [
+      "Cozinha",
+      "Limpeza"
+    ],
+    "pin": "2611"
+  },
+  {
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382"
+    ],
+    "isDP": false,
+    "pin": "1234",
+    "areas": [],
+    "cpf": "072.090.955-43",
+    "name": "Janaynna Oliveira da Silva",
+    "perms": {
+      "horarios": true,
+      "vt": true,
+      "schedule": true,
+      "fecharEscala": true,
+      "dp": false,
+      "tips": true,
+      "faq": false,
+      "comunicados": false,
+      "freelas": true,
+      "roles": true,
+      "employees": true,
+      "pessoas": true
+    },
+    "profile": "custom",
+    "id": "1776280919420"
+  },
+  {
+    "profile": "custom",
+    "perms": {
+      "config": true,
+      "pessoas": true,
+      "employees": true,
+      "freelas": true,
+      "roles": true,
+      "faq": true,
+      "comunicados": true,
+      "tips": true,
+      "atravessarPrivado": false,
+      "vt": true,
+      "schedule": true
+    },
+    "name": "Veronica de Cassia Macedo Stivanim",
+    "cpf": "344.797.008-11",
+    "id": "1776280952648",
+    "restaurantIds": [
+      "1775792279549",
+      "1775792314382"
+    ],
+    "areas": [],
+    "pin": "3447",
+    "isDP": true
+  },
+  {
+    "isDP": true,
+    "linkedPessoaId": "pes_emp_1775829285324",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isMaster": false,
+    "id": "mgr_auto_pes_emp_1775829285324_vm3q",
+    "createdAt": "2026-04-21T20:02:16.358Z",
+    "mustChangePin": true,
+    "name": "Gustavo Rodrigues",
+    "cpf": "363.221.038-14",
+    "areas": [
+      "Limpeza",
+      "Salão",
+      "Cozinha",
+      "Bar"
+    ],
+    "pin": "3632",
+    "perms": {
+      "employees": true,
+      "roles": true,
+      "pessoas": true,
+      "config": true,
+      "tips": true,
+      "comunicados": true,
+      "faq": true,
+      "vt": true,
+      "schedule": true
+    },
+    "profile": "lider"
+  },
+  {
+    "mustChangePin": true,
+    "name": "Masciel Costa de Sousa",
+    "cpf": "050.827.725-62",
+    "isMaster": false,
+    "id": "mgr_auto_pes_emp_1776277775320_wg0b",
+    "createdAt": "2026-04-28T23:16:34.187Z",
+    "linkedPessoaId": "pes_emp_1776277775320",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isDP": false,
+    "profile": "custom",
+    "perms": {
+      "pessoas": false
+    },
+    "areas": [],
+    "pin": "0508"
+  },
+  {
+    "areas": [],
+    "pin": "1234",
+    "profile": "custom",
+    "perms": {
+      "pessoas": false
+    },
+    "linkedPessoaId": "pes_emp_SRC0003",
+    "restaurantIds": [
+      "1775792279549"
+    ],
+    "isDP": false,
+    "mustChangePin": false,
+    "name": "Bianca Oliveira Costa",
+    "cpf": "437.454.728-29",
+    "id": "mgr_auto_pes_emp_SRC0003_wlf5",
+    "isMaster": false,
+    "createdAt": "2026-04-28T23:16:41.201Z"
+  }
+]

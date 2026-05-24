@@ -19,9 +19,14 @@ export function AppShell({ children }: { children?: ReactNode }) {
   }, []);
 
   return (
-    <div className="min-h-screen flex bg-gray-50 dark:bg-gray-950">
+    // h-screen + overflow-hidden no shell — fixa a altura na viewport. A
+    // sidebar (overflow-y-auto interno) e o <main> (overflow-auto) ganham
+    // scrolls independentes. Sem isso, conteúdo longo empurrava a página
+    // inteira pra baixo e a sidebar acompanhava — perdia a referência
+    // de menu fixo. Em telas curtas a sidebar mesmo rola interna.
+    <div className="h-screen overflow-hidden flex bg-gray-50 dark:bg-gray-950">
       <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <Header onToggleSidebar={() => setSidebarOpen(s => !s)} />
         <main className="flex-1 overflow-auto p-6">
           {children || <Outlet />}

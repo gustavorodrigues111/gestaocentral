@@ -1,0 +1,10 @@
+import admin from "firebase-admin";
+console.log("0");
+const app = admin.initializeApp({credential: admin.credential.applicationDefault(), projectId: "gorjeta-app"}, "named-app");
+console.log("1");
+setTimeout(() => { console.error("TIMEOUT 20s"); process.exit(2); }, 20000).unref();
+const db = admin.firestore(app);
+console.log("2");
+const s = await db.doc("appdata/v4:pessoas").get();
+console.log("3:", s.data()?.value?.length, "pessoas");
+process.exit(0);

@@ -1145,6 +1145,25 @@ export type SolicitacaoExclusao = {
   notaInterna?: string;               // o que foi feito (quais docs deletados, etc)
 };
 
+// Lookup público de cliente recorrente. Usado APENAS pelo form público de
+// reservas pra pré-preencher nome/email quando a pessoa digita um WhatsApp
+// já conhecido — UX de cliente recorrente sem expor /clientes (que tem
+// aniversário, restrições, tags, etc).
+//
+// Doc ID determinístico: <restaurantId>_<telefoneE164 sem "+">. Rules
+// permitem `get` público (lookup por ID exato) mas bloqueiam `list` —
+// ninguém consegue enumerar clientes nem queryar a coleção. Mesmo nível
+// de risco que perguntar "fulano é cliente de vocês?" pelo WhatsApp da
+// casa.
+export type ClientePublicLookup = {
+  restaurantId: string;
+  telefoneE164: string;
+  nome: string;
+  email?: string;
+  clienteId: string;                  // ref pro doc completo em /clientes
+  atualizadoEm: string;
+};
+
 // Dados PII da reserva — vive em coleção paralela `/reservasPII` com read
 // só pra authed (admin). Form público escreve mas não lê. Anonimização
 // LGPD: deletar este doc preserva a estatística em /reservas sem PII.

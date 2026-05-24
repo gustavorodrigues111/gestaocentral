@@ -184,6 +184,31 @@ service cloud.firestore {
         );
       allow update, delete: if authed();
     }
+    // ── /clientesPublicLookup ── reconhecimento de cliente recorrente no
+    // form público de reservas, SEM expor /clientes (que tem aniversário,
+    // restrições alimentares, observações, tags).
+    //
+    // Doc ID determinístico: <rid>_<telefoneE164 sem "+">. O form público
+    // faz getDoc por ID — não consegue queryar a coleção (list bloqueado),
+    // então só lê quem JÁ SABE o número exato. Mesmo nível de exposição
+    // que a pessoa enviar "será que esse número é cliente do X?" ao
+    // restaurante por WhatsApp.
+    //
+    // Campos: { restaurantId, telefoneE164, nome, email?, clienteId,
+    //          atualizadoEm }. Nada mais — nem aniversário, nem obs.
+    match /clientesPublicLookup/{id} {
+      allow get: if true;
+      allow list: if authed();
+      allow create, update: if authed()
+        || (
+          request.resource.data.restaurantId is string
+          && request.resource.data.telefoneE164 is string
+          && request.resource.data.nome is string
+          && request.resource.data.nome.size() > 0
+          && request.resource.data.clienteId is string
+        );
+      allow delete: if authed();
+    }
     // ConfiguracaoReservas: doc por restaurante com janelas + slots.
     // Read público (form precisa pra gerar os horários selecionáveis).
     match /configReservas/{id} {
