@@ -872,8 +872,10 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <h2 style={{
             ...tituloSectionStyle,
-            fontSize: "clamp(32px, 5vw, 48px)",  // tamanho original
-            marginBottom: 48,
+            fontSize: "clamp(32px, 5vw, 48px)",
+            // marginBottom 32 dá mesmo espaçamento que o gap interno do
+            // CtaConteudo (h2 → texto = texto → botão = equidistante).
+            marginBottom: 32,
           }}>
             {titulo}
           </h2>
@@ -1076,12 +1078,16 @@ function CtaConteudo({
     <div style={{
       maxWidth: 600, margin: "0 auto", textAlign: "center",
       display: "flex", flexDirection: "column",
-      flex: 1,
-      width: "100%",
+      flex: 1, width: "100%",
+      // Gap mínimo entre p e botão = mesmo que h2→p (32px), garantindo
+      // equidistância visual no render single. No par (com altura
+      // forçada via flex stretch), o marginTop:auto do botão empurra
+      // pro rodapé pra alinhar com a outra coluna.
+      gap: 32,
     }}>
       <p style={{
         fontSize: 17, lineHeight: 1.7,
-        marginBottom: 24, whiteSpace: "pre-wrap",
+        margin: 0, whiteSpace: "pre-wrap",
       }}>
         {texto}
       </p>
@@ -1196,16 +1202,23 @@ function CardapioPreview({
               click nas setas funcionar. Em vez disso, hint clicável
               abaixo serve pra abrir o PDF completo. */}
           <div style={previewWrapperStyle}>
-            {/* iframe propositalmente OVERSIZE — overflow:hidden do parent
-                clipa a área extra. Truque empurra as scrollbars verticais
-                e horizontais do PDF viewer pra fora do viewport visível,
-                já que muitos viewers ignoram scrollbar=0 no hash. */}
+            {/* iframe propositalmente OVERSIZE no desktop — overflow:hidden
+                do parent clipa a área extra e empurra as scrollbars do PDF
+                viewer pra fora do viewport, já que muitos viewers ignoram
+                scrollbar=0 no hash. No mobile (Google Docs Viewer) NÃO
+                oversize — o GDV tem seu próprio chrome simétrico e o
+                oversize estava cortando só um lado, deixando a borda
+                desigual. */}
             <iframe
               key={`${pdfUrl}#${pagina}`}
               src={iframeSrc}
               title="Preview do cardápio"
               scrolling="no"
-              style={{
+              style={isMobile ? {
+                width: "100%",
+                height: "100%",
+                border: "none", display: "block",
+              } : {
                 width: "calc(100% + 20px)",
                 height: "calc(100% + 20px)",
                 marginRight: -20,
