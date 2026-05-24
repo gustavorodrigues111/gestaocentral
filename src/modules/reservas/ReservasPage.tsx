@@ -8,16 +8,16 @@ import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
-import type { Cliente, Mesa, Reserva, ReservaPII, ReservaStatus } from "../../core/types";
+import type { Cliente, ConfiguracaoReservas, Mesa, Reserva, ReservaPII, ReservaStatus, Salao } from "../../core/types";
 import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
-import { MesasTab } from "./MesasTab";
-import { SaloesTab } from "./SaloesTab";
+import { ConfigTab } from "./ConfigTab";
 import { TabBadge } from "../../core/ui/TabBadge";
-// JanelasTab agora vive no módulo "Horários" — não importa mais aqui.
-import type { Salao } from "../../core/types";
+import { ChegouModal } from "./ChegouModal";
+import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
+import { montarLinkWhatsapp, montarMensagemConfirmacao } from "./whatsappConfirmacao";
 
-type Tab = "agenda" | "proximas" | "canceladas" | "clientes" | "saloes" | "mesas";
+type Tab = "reservas" | "clientes" | "config";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -35,6 +35,11 @@ const STATUS_BADGE_CLS: Record<ReservaStatus, string> = {
   cancelada:  "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
+// Janela de chips visíveis no seletor de dias — 7 dias por vez
+const CHIPS_DIAS = 7;
+const SEMANA_CURTA = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MESES_CURTO = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+
 export function ReservasPage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -44,15 +49,27 @@ export function ReservasPage() {
   const podeVer = canVer(me, rid, "reservas");
   const podeConfig = canConfigurar(me, rid, "reservas");
 
-  const [tab, setTab] = useState<Tab>("agenda");
+  const [tab, setTab] = useState<Tab>("reservas");
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [saloes, setSaloes] = useState<Salao[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Reserva | "new" | null>(null);
+  // Modal "Cliente chegou" — escolhe mesa + nota
+  const [chegouReserva, setChegouReserva] = useState<Reserva | null>(null);
+  // Modal "Histórico do cliente" no fluxo da reserva (mode=recente)
+  const [historicoReserva, setHistoricoReserva] = useState<Reserva | null>(null);
 
+  // Dia selecionado e início da janela de chips (sempre começa em
+  // dataAtual ou ontem — pra mostrar contexto recente).
   const [dataAtual, setDataAtual] = useState(todayYmd());
+  // Offset (em dias) do primeiro chip da janela em relação a HOJE.
+  // 0 = janela começa hoje. Permite navegar setas pra frente/trás.
+  const [chipOffset, setChipOffset] = useState(0);
+
+  // Template de confirmação (vive em /configReservas/{rid})
+  const [templateConfirmacao, setTemplateConfirmacao] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     if (!rid) return;
@@ -79,6 +96,19 @@ export function ReservasPage() {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Salao);
       list.sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
       setSaloes(list);
+    });
+    return () => unsub();
+  }, [rid]);
+
+  // Carrega o template de confirmação (1x — reativo via mudança de rid).
+  // Usa onSnapshot pra refletir edição em tempo real quando admin
+  // muda o template em Configurações → Mensagem.
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = onSnapshot(doc(db, "configReservas", rid), (snap) => {
+      if (!snap.exists()) { setTemplateConfirmacao(undefined); return; }
+      const data = snap.data() as ConfiguracaoReservas;
+      setTemplateConfirmacao(data.templateConfirmacao || undefined);
     });
     return () => unsub();
   }, [rid]);
@@ -135,41 +165,57 @@ export function ReservasPage() {
     setReservas(merged);
   }, [reservasBase, piiMap]);
 
-  // Filtros / agrupamentos
+  const today = todayYmd();
+
+  // Reservas do dia selecionado (separadas: ativas vs canceladas/no-show)
   const reservasDoDia = useMemo(() => {
     return reservas.filter(r => r.data === dataAtual);
   }, [reservas, dataAtual]);
 
-  const today = todayYmd();
-  const proximas = useMemo(() => {
-    return reservas
-      .filter(r => r.data >= today && (r.status === "pendente" || r.status === "confirmada"))
-      .slice(0, 50);
-  }, [reservas, today]);
-
-  // Pendentes confirmação (reservas públicas que admin ainda não confirmou) —
-  // usado pra badge de notificação na tab "Próximas".
-  const pendentesConfirmacao = useMemo(() => {
-    return reservas.filter(r => r.data >= today && r.status === "pendente").length;
-  }, [reservas, today]);
-  // Pendentes do DIA atual — badge na agenda do dia
-  const pendentesDoDia = useMemo(() => {
-    return reservasDoDia.filter(r => r.status === "pendente").length;
+  const reservasAtivasDoDia = useMemo(() => {
+    return reservasDoDia.filter(r => r.status !== "cancelada" && r.status !== "no_show");
   }, [reservasDoDia]);
 
-  // Histórico de canceladas + no-show — preserva o registro do cliente
-  const canceladas = useMemo(() => {
-    return reservas
-      .filter(r => r.status === "cancelada" || r.status === "no_show")
-      .sort((a, b) => {
-        // Mais recentes primeiro (por data+horário)
-        const ad = `${a.data} ${a.horario || "00:00"}`;
-        const bd = `${b.data} ${b.horario || "00:00"}`;
-        return bd.localeCompare(ad);
-      });
+  const canceladasDoDia = useMemo(() => {
+    return reservasDoDia.filter(r => r.status === "cancelada" || r.status === "no_show");
+  }, [reservasDoDia]);
+
+  // Contagem de reservas ATIVAS por dia — usado pros badges dos chips.
+  // Mapa { "YYYY-MM-DD": qtd }. Inclui só pendente/confirmada/chegou
+  // (cancelada e no-show não contam pro contador do dia).
+  const qtdPorDia = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of reservas) {
+      if (r.status === "cancelada" || r.status === "no_show") continue;
+      m.set(r.data, (m.get(r.data) || 0) + 1);
+    }
+    return m;
   }, [reservas]);
 
-  // Stats do dia
+  // Pendentes não confirmadas no dia → badge no nível da tab Reservas
+  const pendentesHoje = useMemo(() => {
+    return reservas.filter(r => r.data === today && r.status === "pendente").length;
+  }, [reservas, today]);
+
+  // Reservas SEM FECHAMENTO: data < hoje e status ainda em aberto
+  // (pendente ou confirmada). Mostra banner no topo do tab Reservas pra
+  // admin marcar retroativamente chegou/no_show. Sem isso, no_show fica
+  // inflado sem distinção do que realmente aconteceu.
+  const semFechamento = useMemo(() => {
+    return reservas
+      .filter(r => r.data < today && (r.status === "pendente" || r.status === "confirmada"))
+      .sort((a, b) => {
+        // Mais antigas primeiro — quanto mais pra trás, mais urgente fechar
+        const ad = `${a.data} ${a.horario}`;
+        const bd = `${b.data} ${b.horario}`;
+        return ad.localeCompare(bd);
+      });
+  }, [reservas, today]);
+
+  // Banner expandido pra mostrar a lista; recolhe por padrão
+  const [banneOpen, setBannerOpen] = useState(false);
+
+  // Stats do dia (mostradas no header da agenda)
   const statsDia = useMemo(() => {
     const pendentes = reservasDoDia.filter(r => r.status === "pendente" || r.status === "confirmada").length;
     const chegou = reservasDoDia.filter(r => r.status === "chegou").length;
@@ -180,33 +226,68 @@ export function ReservasPage() {
     return { pendentes, chegou, noShow, totalPessoas };
   }, [reservasDoDia]);
 
-  function navegarDia(diff: number) {
-    const d = new Date(dataAtual + "T12:00:00");
-    d.setDate(d.getDate() + diff);
-    setDataAtual(d.toISOString().slice(0, 10));
-  }
+  // Calcula os 7 chips visíveis a partir do offset atual
+  const chips = useMemo(() => {
+    const base = new Date(today + "T12:00:00");
+    base.setDate(base.getDate() + chipOffset);
+    const result: Array<{ data: string; dia: number; mes: number; dow: number; eHoje: boolean }> = [];
+    for (let i = 0; i < CHIPS_DIAS; i++) {
+      const d = new Date(base);
+      d.setDate(d.getDate() + i);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      result.push({
+        data: iso,
+        dia: d.getDate(),
+        mes: d.getMonth(),
+        dow: d.getDay(),
+        eHoje: iso === today,
+      });
+    }
+    return result;
+  }, [chipOffset, today]);
 
   async function setStatus(r: Reserva, status: ReservaStatus) {
     if (!me) return;
+    // "chegou" não muda status direto — abre modal pra escolher mesa +
+    // nota. O modal cuida do updateDoc.
+    if (status === "chegou") {
+      setChegouReserva(r);
+      return;
+    }
     const now = new Date().toISOString();
     const patch: Partial<Reserva> = { status, atualizadoEm: now };
     if (status === "confirmada") patch.confirmadaEm = now;
-    if (status === "chegou") {
-      patch.chegouEm = now;
-      // Atualiza ultimaVisita do cliente
-      if (r.clienteId) {
-        try {
-          await updateDoc(doc(db, "clientes", r.clienteId), { ultimaVisita: r.data, atualizadoEm: now });
-        } catch (e) { console.error(e); }
-      }
-    }
     if (status === "cancelada") patch.canceladaEm = now;
     await updateDoc(doc(db, "reservas", r.id), patch);
   }
 
-  // Excluir permanente desabilitado na UI — preserva histórico e dados do
-  // cliente. Pra remover, use Cancelar (status: cancelada). Em caso extremo,
-  // master pode deletar via Firestore console.
+  // Abre WhatsApp com a mensagem de confirmação renderizada pra essa
+  // reserva. Não atualiza o status — admin marca manualmente quando o
+  // cliente responder (botões "Cliente confirmou" / "Desmarcou").
+  function abrirWhatsappConfirmacao(r: Reserva) {
+    if (!restaurant) return;
+    // Busca PII em tempo de uso pra garantir o telefone mais recente
+    // (pode ter sido atualizado depois do merge inicial). Tenta primeiro
+    // do snapshot; se não tiver, recorre ao /reservasPII.
+    const telefone = r.clienteTelefoneSnapshot;
+    if (!telefone) {
+      alert("Reserva sem telefone — não dá pra mandar WhatsApp.");
+      return;
+    }
+    const salao = saloes.find(s => s.id === r.salaoId) || null;
+    const mensagem = montarMensagemConfirmacao({
+      reserva: r,
+      restauranteNome: restaurant.nome,
+      salao,
+      template: templateConfirmacao,
+    });
+    const link = montarLinkWhatsapp(telefone, mensagem);
+    if (!link) {
+      alert("Telefone inválido — não consigo montar o link do WhatsApp.");
+      return;
+    }
+    window.open(link, "_blank", "noopener,noreferrer");
+  }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) {
@@ -218,16 +299,16 @@ export function ReservasPage() {
     );
   }
 
-  // Agrupa reservas do dia por horário
+  // Agrupa reservas ATIVAS do dia por horário
   const porHorario = useMemo(() => {
     const m: Record<string, Reserva[]> = {};
-    for (const r of reservasDoDia) {
+    for (const r of reservasAtivasDoDia) {
       const h = r.horario || "00:00";
       if (!m[h]) m[h] = [];
       m[h].push(r);
     }
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
-  }, [reservasDoDia]);
+  }, [reservasAtivasDoDia]);
 
   const dataAtualLabel = new Date(dataAtual + "T12:00:00").toLocaleDateString("pt-BR", {
     weekday: "long", day: "2-digit", month: "long", year: "numeric",
@@ -240,20 +321,17 @@ export function ReservasPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎫 Reservas + CRM</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
         </div>
-        {podeConfig && (tab === "agenda" || tab === "proximas") && (
+        {podeConfig && tab === "reservas" && (
           <Button onClick={() => setEditing("new")}>+ Nova reserva</Button>
         )}
       </div>
 
-      {/* Tabs */}
+      {/* Tabs nível superior — 3 só */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["agenda",     `📅 Agenda do dia (${reservasDoDia.length})`, pendentesDoDia],
-          ["proximas",   `⏰ Próximas (${proximas.length})`, pendentesConfirmacao],
-          ["canceladas", `🗑 Canceladas (${canceladas.length})`, 0],
-          ["clientes",   `👥 Clientes (${clientes.length})`, 0],
-          ["saloes",     `🏛️ Salões (${saloes.filter(s => s.ativo).length})`, 0],
-          ["mesas",      `🪑 Mesas (${mesas.filter(m => m.ativa).length})`, 0],
+          ["reservas", "📅 Reservas",     pendentesHoje],
+          ["clientes", `👥 Clientes (${clientes.length})`, 0],
+          ["config",   "⚙️ Configurações", 0],
         ] as const).map(([id, label, badge]) => (
           <button
             key={id}
@@ -270,50 +348,144 @@ export function ReservasPage() {
         ))}
       </div>
 
-      {/* TAB AGENDA */}
-      {tab === "agenda" && (
+      {/* ───────────────── TAB RESERVAS ───────────────── */}
+      {tab === "reservas" && (
         <div className="space-y-3">
-          {/* Navegação por dia */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="flex items-center gap-1">
-              <Button variant="secondary" size="sm" onClick={() => navegarDia(-1)}>◀</Button>
+          {/* Banner pendências — reservas antes de hoje sem fechamento */}
+          {semFechamento.length > 0 && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setBannerOpen(o => !o)}
+                className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
+              >
+                <span className="text-sm font-semibold text-amber-900 dark:text-amber-200 text-left">
+                  ⚠ {semFechamento.length} reserva(s) sem fechamento de dias anteriores
+                </span>
+                <span className="text-xs text-amber-700 dark:text-amber-400">
+                  {banneOpen ? "▲ recolher" : "▼ ver e fechar"}
+                </span>
+              </button>
+              {banneOpen && (
+                <div className="px-3 pb-3 pt-1 space-y-1.5 border-t border-amber-200 dark:border-amber-900">
+                  <p className="text-xs text-amber-800 dark:text-amber-300 pt-2">
+                    Marca o que de fato aconteceu pra manter o histórico do cliente correto.
+                  </p>
+                  {semFechamento.map(r => (
+                    <div
+                      key={r.id}
+                      className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-amber-200 dark:border-amber-900 text-sm flex-wrap"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {r.clienteNomeSnapshot}
+                          <span className="text-xs text-gray-500 font-normal ml-2">
+                            📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {r.horario} · 👥 {r.pessoas}
+                          </span>
+                        </div>
+                      </div>
+                      {podeConfig && (
+                        <div className="flex gap-1 flex-wrap">
+                          <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}>🪑 Veio</Button>
+                          <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}>😶 Não veio</Button>
+                          <Button variant="secondary" size="sm" onClick={() => setStatus(r, "cancelada")}>✕ Cancelar</Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Chips de 7 dias com setas de navegação */}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary" size="sm"
+              onClick={() => setChipOffset(o => o - CHIPS_DIAS)}
+              title={`Ver ${CHIPS_DIAS} dias anteriores`}
+            >◀</Button>
+
+            <div className="flex-1 grid grid-cols-7 gap-1.5">
+              {chips.map(c => {
+                const ativo = c.data === dataAtual;
+                const qtd = qtdPorDia.get(c.data) || 0;
+                return (
+                  <button
+                    key={c.data}
+                    type="button"
+                    onClick={() => setDataAtual(c.data)}
+                    className={`relative flex flex-col items-center py-2 px-1 rounded-xl border transition-colors ${
+                      ativo
+                        ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                        : c.eHoje
+                          ? "border-indigo-200 bg-white dark:bg-gray-900 dark:border-indigo-900 text-gray-700 dark:text-gray-300"
+                          : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-400 hover:border-gray-300"
+                    }`}
+                  >
+                    <span className="text-[10px] uppercase tracking-wider opacity-70">
+                      {c.eHoje ? "hoje" : SEMANA_CURTA[c.dow]}
+                    </span>
+                    <span className="text-xl font-bold leading-tight">
+                      {String(c.dia).padStart(2, "0")}
+                    </span>
+                    <span className="text-[10px] opacity-60 uppercase">
+                      {MESES_CURTO[c.mes]}
+                    </span>
+                    {qtd > 0 && (
+                      <span className={`absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold flex items-center justify-center ${
+                        ativo
+                          ? "bg-indigo-600 text-white"
+                          : "bg-gray-700 text-white"
+                      }`}>
+                        {qtd}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <Button
+              variant="secondary" size="sm"
+              onClick={() => setChipOffset(o => o + CHIPS_DIAS)}
+              title={`Ver ${CHIPS_DIAS} próximos dias`}
+            >▶</Button>
+          </div>
+
+          {/* Botões de atalho — Hoje + datepicker pra dia fora da janela */}
+          <div className="flex items-center justify-between flex-wrap gap-2 text-sm">
+            <div className="capitalize text-gray-600 dark:text-gray-400 font-medium">
+              {dataAtualLabel}
+            </div>
+            <div className="flex items-center gap-1.5">
+              {dataAtual !== today && (
+                <Button variant="secondary" size="sm" onClick={() => { setDataAtual(today); setChipOffset(0); }}>
+                  Voltar pra hoje
+                </Button>
+              )}
               <input
                 type="date"
                 value={dataAtual}
                 onChange={(e) => setDataAtual(e.target.value)}
                 className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                title="Escolher data específica"
               />
-              <Button variant="secondary" size="sm" onClick={() => navegarDia(1)}>▶</Button>
-              {dataAtual !== today && (
-                <Button variant="secondary" size="sm" onClick={() => setDataAtual(today)}>Hoje</Button>
-              )}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 capitalize">{dataAtualLabel}</div>
           </div>
 
           {/* Stats do dia */}
           <div className="grid grid-cols-4 gap-2">
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">A vir</div>
-              <div className="text-2xl font-bold text-blue-700 dark:text-blue-400">{statsDia.pendentes}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Chegaram</div>
-              <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400">{statsDia.chegou}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">No-show</div>
-              <div className="text-2xl font-bold text-rose-700 dark:text-rose-400">{statsDia.noShow}</div>
-            </div>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 text-center">
-              <div className="text-[10px] uppercase tracking-wider text-gray-500">Pessoas</div>
-              <div className="text-2xl font-bold text-indigo-700 dark:text-indigo-400">{statsDia.totalPessoas}</div>
-            </div>
+            <StatCard label="A vir" value={statsDia.pendentes} cor="text-blue-700 dark:text-blue-400" />
+            <StatCard label="Chegaram" value={statsDia.chegou} cor="text-emerald-700 dark:text-emerald-400" />
+            <StatCard label="No-show" value={statsDia.noShow} cor="text-rose-700 dark:text-rose-400" />
+            <StatCard label="Pessoas" value={statsDia.totalPessoas} cor="text-indigo-700 dark:text-indigo-400" />
           </div>
 
+          {/* Lista de reservas ativas do dia */}
           {loading ? (
             <div className="text-sm text-gray-500">Carregando...</div>
-          ) : reservasDoDia.length === 0 ? (
+          ) : reservasAtivasDoDia.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="text-4xl mb-3">📅</div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem reservas pra esse dia</p>
@@ -337,7 +509,7 @@ export function ReservasPage() {
                         podeConfig={podeConfig}
                         onEditar={() => setEditing(r)}
                         onStatus={(s) => setStatus(r, s)}
-                        onExcluir={() => { /* desativado */ }}
+                        onWhatsapp={() => abrirWhatsappConfirmacao(r)}
                       />
                     ))}
                   </div>
@@ -345,76 +517,41 @@ export function ReservasPage() {
               ))}
             </div>
           )}
-        </div>
-      )}
 
-      {/* TAB CANCELADAS — histórico, sem ações de cancelar/excluir */}
-      {tab === "canceladas" && (
-        <div className="space-y-2">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Reservas canceladas e no-show. Histórico preservado pro CRM —
-            cliente continua aparecendo na aba Clientes.
-          </p>
-          {canceladas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">🗑</div>
-              <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma reserva cancelada</p>
-            </div>
-          ) : (
-            canceladas.map(r => (
-              <ReservaCard
-                key={r.id}
-                reserva={r}
-                clientes={clientes}
-                podeConfig={podeConfig}
-                onEditar={() => setEditing(r)}
-                onStatus={(s) => setStatus(r, s)}
-                onExcluir={() => {/* desabilitado */}}
-                mostrarData
-              />
-            ))
+          {/* Accordion canceladas DO DIA — separado da lista ativa pra
+              não poluir a operação. Histórico de canceladas de outros
+              dias fica visível ao navegar pra esses dias. */}
+          {canceladasDoDia.length > 0 && (
+            <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 rounded-xl">
+                ▼ Canceladas / no-show ({canceladasDoDia.length})
+              </summary>
+              <div className="px-3 pb-3 pt-1 space-y-1">
+                {canceladasDoDia.map(r => (
+                  <ReservaCard
+                    key={r.id}
+                    reserva={r}
+                    clientes={clientes}
+                    podeConfig={podeConfig}
+                    onEditar={() => setEditing(r)}
+                    onStatus={(s) => setStatus(r, s)}
+                    onWhatsapp={() => abrirWhatsappConfirmacao(r)}
+                  />
+                ))}
+              </div>
+            </details>
           )}
         </div>
       )}
 
-      {/* TAB PRÓXIMAS */}
-      {tab === "proximas" && (
-        <div className="space-y-2">
-          {proximas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">⏰</div>
-              <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma reserva pendente futura</p>
-            </div>
-          ) : (
-            proximas.map(r => (
-              <ReservaCard
-                key={r.id}
-                reserva={r}
-                clientes={clientes}
-                podeConfig={podeConfig}
-                onEditar={() => setEditing(r)}
-                onStatus={(s) => setStatus(r, s)}
-                mostrarData
-              />
-            ))
-          )}
-        </div>
-      )}
-
-      {/* TAB CLIENTES */}
+      {/* ───────────────── TAB CLIENTES ───────────────── */}
       {tab === "clientes" && (
         <ClientesTab restaurantId={rid} podeConfig={podeConfig} />
       )}
 
-      {/* TAB SALÕES */}
-      {tab === "saloes" && me && (
-        <SaloesTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} />
-      )}
-
-      {/* TAB JANELAS */}
-      {/* TAB MESAS */}
-      {tab === "mesas" && (
-        <MesasTab restaurantId={rid} podeConfig={podeConfig} />
+      {/* ───────────────── TAB CONFIGURAÇÕES ───────────────── */}
+      {tab === "config" && me && (
+        <ConfigTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} />
       )}
 
       {editing && (
@@ -428,20 +565,49 @@ export function ReservasPage() {
           onClose={() => setEditing(null)}
         />
       )}
+
+      {chegouReserva && (
+        <ChegouModal
+          reserva={chegouReserva}
+          mesas={mesas}
+          saloes={saloes}
+          reservasDoDia={reservas.filter(r => r.data === chegouReserva.data)}
+          onClose={() => setChegouReserva(null)}
+        />
+      )}
+
+      {historicoReserva && historicoReserva.clienteId && (() => {
+        const cliente = clientes.find(c => c.id === historicoReserva.clienteId);
+        if (!cliente) {
+          // Cliente foi deletado mas reserva ainda referencia — fecha modal
+          setHistoricoReserva(null);
+          return null;
+        }
+        const dele = reservas.filter(r => r.clienteId === cliente.id);
+        return (
+          <ClienteHistoricoModal
+            cliente={cliente}
+            reservas={dele}
+            mode="recente"
+            onClose={() => setHistoricoReserva(null)}
+          />
+        );
+      })()}
     </div>
   );
 
+  // ───────────────── ReservaCard (inline, fecha sobre setStatus) ─────
   function ReservaCard({
-    reserva, clientes, podeConfig, onEditar, onStatus, mostrarData,
+    reserva, clientes, podeConfig, onEditar, onStatus, onWhatsapp,
   }: {
     reserva: Reserva;
     clientes: Cliente[];
     podeConfig: boolean;
     onEditar: () => void;
     onStatus: (s: ReservaStatus) => void;
-    onExcluir?: () => void;          // legado — não é mais usado na UI
-    mostrarData?: boolean;
+    onWhatsapp: () => void;
   }) {
+    const temCliente = !!reserva.clienteId && !!clientes.find(c => c.id === reserva.clienteId);
     const cliente = reserva.clienteId ? clientes.find(c => c.id === reserva.clienteId) : null;
     return (
       <div className={`rounded-xl border p-3 ${STATUS_CLS[reserva.status]}`}>
@@ -466,9 +632,9 @@ export function ReservasPage() {
               )}
             </div>
             <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-3 flex-wrap mt-0.5">
-              {mostrarData && <span>📅 {new Date(reserva.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
               <span>⏰ {reserva.horario}</span>
               <span>👥 {reserva.pessoas}</span>
+              {reserva.salaoNomeSnapshot && <span>🏛️ {reserva.salaoNomeSnapshot}</span>}
               {reserva.mesaNomeSnapshot && <span>🪑 {reserva.mesaNomeSnapshot}</span>}
               {reserva.clienteTelefoneSnapshot && <span>📞 {reserva.clienteTelefoneSnapshot}</span>}
             </div>
@@ -481,8 +647,20 @@ export function ReservasPage() {
           </div>
           {podeConfig && (
             <div className="flex gap-1 flex-wrap">
+              {/* Histórico do cliente (mode=recente, 6 meses) — sempre que tem cliente */}
+              {temCliente && (
+                <Button variant="secondary" size="sm" onClick={() => setHistoricoReserva(reserva)} title="Ver últimas reservas e notas deste cliente">
+                  📊 Histórico
+                </Button>
+              )}
+              {/* WhatsApp confirmar — só pra pendente/confirmada */}
+              {(reserva.status === "pendente" || reserva.status === "confirmada") && reserva.clienteTelefoneSnapshot && (
+                <Button variant="secondary" size="sm" onClick={onWhatsapp} title="Abre WhatsApp com mensagem de confirmação">
+                  📱 Confirmar via WhatsApp
+                </Button>
+              )}
               {reserva.status === "pendente" && (
-                <Button variant="secondary" size="sm" onClick={() => onStatus("confirmada")}>✓ Confirmar</Button>
+                <Button variant="secondary" size="sm" onClick={() => onStatus("confirmada")}>✓ Cliente confirmou</Button>
               )}
               {(reserva.status === "pendente" || reserva.status === "confirmada") && (
                 <>
@@ -494,12 +672,20 @@ export function ReservasPage() {
                 <Button variant="secondary" size="sm" onClick={() => onStatus("cancelada")}>✕ Cancelar</Button>
               )}
               <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>
-              {/* Excluir permanente removido da UI — preserva histórico e cliente.
-                  Use "Cancelar" pra remover; cliente continua no CRM. */}
             </div>
           )}
         </div>
       </div>
     );
   }
+}
+
+// ───────────────── StatCard ─────────────────
+function StatCard({ label, value, cor }: { label: string; value: number; cor: string }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2 text-center">
+      <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
+      <div className={`text-2xl font-bold ${cor}`}>{value}</div>
+    </div>
+  );
 }

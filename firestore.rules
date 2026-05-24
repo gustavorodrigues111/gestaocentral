@@ -184,6 +184,12 @@ service cloud.firestore {
         );
       allow update, delete: if authed();
     }
+    // ── /notasCliente ── log cronológico de anotações sobre clientes ───
+    // Criadas pelo admin (chegada do cliente, observação no CRM, etc).
+    // Read/create/delete só authed — sem exposição pública nunca.
+    match /notasCliente/{id} {
+      allow read, create, update, delete: if authed();
+    }
     // ── /clientesPublicLookup ── reconhecimento de cliente recorrente no
     // form público de reservas, SEM expor /clientes (que tem aniversário,
     // restrições alimentares, observações, tags).

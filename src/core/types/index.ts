@@ -988,7 +988,11 @@ export type Mesa = {
   restaurantId: string;
   nome: string;                       // ex: "Mesa 4", "Bar 2", "Varanda 1"
   capacidade: number;                 // qtd máx de pessoas
-  setor?: string;                     // ex: "Salão interno", "Varanda", "Bar"
+  setor?: string;                     // LEGADO — substituído por salaoId
+  // Salão ao qual a mesa pertence. Opcional pra retrocompat com mesas
+  // criadas antes dessa relação existir (UI mostra "sem salão" pra elas
+  // e oferece atribuir). Mesas novas criadas via UI exigem salaoId.
+  salaoId?: string;
   ativa: boolean;
   ordem: number;
 };
@@ -1058,9 +1062,33 @@ export type ConfiguracaoReservas = {
   restaurantId: string;
   janelas: JanelaDiaReserva[];        // 7 entries (1 por dia da semana)
   duracaoSlotMin: number;             // duração da reserva em minutos (default 90)
+  // Template da mensagem de WhatsApp que admin manda pra confirmar reserva
+  // antes do dia. Variáveis suportadas (substituídas no momento de mandar):
+  //   {primeiro_nome} {nome} {restaurante} {data} {hora} {pax} {salao}
+  // Se vazio/undefined, usa DEFAULT_TEMPLATE_CONFIRMACAO.
+  templateConfirmacao?: string;
   atualizadoEm: string;
   atualizadoPor: string;
 };
+
+// Template padrão usado quando o restaurante ainda não customizou o seu.
+// Variáveis viram literais no texto até serem substituídas.
+export const DEFAULT_TEMPLATE_CONFIRMACAO =
+  `Oi {primeiro_nome}! Aqui é do {restaurante} 👋\n` +
+  `Confirmando sua reserva pra {data} às {hora}, mesa pra {pax} pessoas.\n` +
+  `Você confirma que vem? 🙂`;
+
+// Variáveis disponíveis pro template — exposto pra a UI do editor mostrar
+// como "tags clicáveis" que inserem no textarea.
+export const TEMPLATE_CONFIRMACAO_VARIAVEIS = [
+  { tag: "{primeiro_nome}", desc: "Primeiro nome do cliente" },
+  { tag: "{nome}",          desc: "Nome completo" },
+  { tag: "{restaurante}",   desc: "Nome do restaurante" },
+  { tag: "{data}",          desc: "Data formatada (ex: 25/05)" },
+  { tag: "{hora}",          desc: "Horário (ex: 19:30)" },
+  { tag: "{pax}",           desc: "Quantidade de pessoas" },
+  { tag: "{salao}",         desc: "Nome do salão" },
+] as const;
 
 export type ReservaStatus =
   | "pendente"        // marcada mas ainda não confirmada
@@ -1162,6 +1190,28 @@ export type ClientePublicLookup = {
   email?: string;
   clienteId: string;                  // ref pro doc completo em /clientes
   atualizadoEm: string;
+};
+
+// Nota de cliente — log cronológico de anotações que admin/hostess faz
+// sobre o cliente. Ex: "gosta da mesa 19", "alérgico a camarão",
+// "indicado pelo João Silva", "pediu mesa do canto, gostou muito".
+//
+// Pode ser criada de 3 lugares:
+//   1. Modal "Cliente chegou" — junto com escolha de mesa
+//   2. Card do cliente (aba Clientes) — botão "+ Nota"
+//   3. Histórico do cliente — retroativo
+//
+// Histórico do cliente mostra como log cronológico (mais recente primeiro)
+// com autor + data. Persiste pra sempre — só exclusão LGPD apaga.
+export type NotaCliente = {
+  id: string;
+  restaurantId: string;
+  clienteId: string;
+  reservaId?: string;                 // se associada a uma reserva específica
+  texto: string;
+  criadoEm: string;
+  criadoPor: string;                  // pessoaId
+  criadoPorNome: string;              // snapshot pra exibir se a pessoa for renomeada
 };
 
 // Dados PII da reserva — vive em coleção paralela `/reservasPII` com read
