@@ -255,7 +255,7 @@ export function EventosPublicaPage() {
             Recebemos sua mensagem!
           </h1>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Vamos retornar via WhatsApp em até 24h pra detalhar sua proposta.
+            Vamos retornar em breve via WhatsApp pra detalhar sua proposta.
           </p>
         </div>
       </div>
