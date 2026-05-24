@@ -18,6 +18,9 @@ type Props = {
 };
 
 const DIAS = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+// Ordem visual da semana: começa segunda (1) e termina domingo (0).
+// Convenção BR/europeia, mais natural pra restaurante (semana operacional).
+const ORDEM_SEMANA = [1, 2, 3, 4, 5, 6, 0] as const;
 
 // Tab Horários: edita horário semanal padrão + lista de exceções pontuais.
 // Os dados aqui são lidos pelo site público AND pelo módulo Reservas
@@ -340,60 +343,86 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Configure os horários por dia da semana. Cada dia pode ter 1 ou mais turnos (ex: almoço + jantar).
         </p>
-        <div className="space-y-2">
-          {horarios.map(h => (
-            <div key={h.dia} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="font-semibold text-gray-900 dark:text-gray-100 min-w-[80px]">
-                  {DIAS[h.dia]}
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+          {ORDEM_SEMANA.map(dow => {
+            const h = horarios.find(x => x.dia === dow);
+            if (!h) return null;
+            return (
+              <div
+                key={h.dia}
+                className="flex items-center gap-3 px-3 py-2 flex-wrap"
+              >
+                {/* Dia + status: largura fixa pra alinhar inputs entre linhas */}
+                <div className="flex items-center gap-2 min-w-[150px]">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 w-[72px] text-sm">
+                    {DIAS[h.dia]}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => podeEditar && toggleFechado(h.dia)}
+                    disabled={!podeEditar}
+                    className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded tracking-wider ${
+                      h.fechado
+                        ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
+                        : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                    } ${podeEditar ? "cursor-pointer hover:opacity-80" : "cursor-default"}`}
+                    title={podeEditar ? "Clica pra alternar aberto/fechado" : ""}
+                  >
+                    {h.fechado ? "Fechado" : "Aberto"}
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => podeEditar && toggleFechado(h.dia)}
-                  disabled={!podeEditar}
-                  className={`px-2 py-1 text-xs font-bold uppercase rounded ${
-                    h.fechado
-                      ? "bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300"
-                      : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
-                  }`}
-                >
-                  {h.fechado ? "Fechado" : "Aberto"}
-                </button>
+
+                {/* Turnos inline. Quando fechado, mostra "—" e oculta inputs. */}
+                {h.fechado ? (
+                  <span className="text-xs text-gray-400 italic">sem expediente</span>
+                ) : (
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    {h.turnos.map((t, i) => (
+                      <div
+                        key={i}
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-gray-50 dark:bg-gray-800/60"
+                      >
+                        <input
+                          type="time"
+                          value={t.abre}
+                          onChange={(e) => setTurno(h.dia, i, { abre: e.target.value })}
+                          disabled={!podeEditar}
+                          className="px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm w-[100px] tabular-nums"
+                        />
+                        <span className="text-gray-400 text-xs">→</span>
+                        <input
+                          type="time"
+                          value={t.fecha}
+                          onChange={(e) => setTurno(h.dia, i, { fecha: e.target.value })}
+                          disabled={!podeEditar}
+                          className="px-1.5 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm w-[100px] tabular-nums"
+                        />
+                        {podeEditar && h.turnos.length > 1 && (
+                          <button
+                            onClick={() => delTurno(h.dia, i)}
+                            className="text-xs text-rose-500 hover:text-rose-700 px-1"
+                            title="Remover esse turno"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {podeEditar && h.turnos.length < 3 && (
+                      <button
+                        type="button"
+                        onClick={() => addTurno(h.dia)}
+                        className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1.5 py-1"
+                        title="Adicionar um segundo turno (ex: almoço + jantar)"
+                      >
+                        + turno
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
-              {!h.fechado && (
-                <div className="mt-2 space-y-1.5">
-                  {h.turnos.map((t, i) => (
-                    <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
-                      <input
-                        type="time"
-                        value={t.abre}
-                        onChange={(e) => setTurno(h.dia, i, { abre: e.target.value })}
-                        disabled={!podeEditar}
-                        className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                      />
-                      <input
-                        type="time"
-                        value={t.fecha}
-                        onChange={(e) => setTurno(h.dia, i, { fecha: e.target.value })}
-                        disabled={!podeEditar}
-                        className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                      />
-                      {podeEditar && (
-                        <button onClick={() => delTurno(h.dia, i)} className="text-xs text-rose-600 hover:underline px-2">
-                          ✕
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                  {podeEditar && h.turnos.length < 3 && (
-                    <Button size="sm" variant="secondary" onClick={() => addTurno(h.dia)}>
-                      + turno
-                    </Button>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
 
