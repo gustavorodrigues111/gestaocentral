@@ -122,7 +122,18 @@ service cloud.firestore {
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
     match /trilhaEventos/{id}       { allow read, write: if authed(); }
-    match /reservas/{id}            { allow read, write: if authed(); }
+    // Reservas: read/write authed (admin) + create público com guards
+    // (form /reservas/:rid — cliente registra interesse de mesa).
+    // Status inicial obrigatório "pendente", origem "publico".
+    match /reservas/{id} {
+      allow read: if authed();
+      allow create: if authed()
+        || (
+          request.resource.data.status == "pendente"
+          && request.resource.data.origem == "publico"
+        );
+      allow update, delete: if authed();
+    }
     match /clientes/{id}            { allow read, write: if authed(); }
     match /mesas/{id}               { allow read, write: if authed(); }
     match /checklistTemplates/{id}  { allow read, write: if authed(); }

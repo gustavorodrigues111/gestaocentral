@@ -178,7 +178,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               <NavLink href="#cardapio">Cardápio</NavLink>
               <NavLink href="#horario">Horário</NavLink>
               {cfg.features.hasLaje && <NavLink href="#laje">Laje</NavLink>}
-              {cfg.features.hasReservas && <NavLink href="#reservas">Reservas</NavLink>}
+              {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`}>Reservas</NavLink>}
               <NavLink href="#contato">Contato</NavLink>
             </nav>
           )}
@@ -210,7 +210,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 </MobileMenuLink>
               )}
               {cfg.features.hasReservas && (
-                <MobileMenuLink href="#reservas" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                <MobileMenuLink href={`/reservas/${cfg.restaurantId}`} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                   Reservas
                 </MobileMenuLink>
               )}
@@ -292,12 +292,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 </a>
               );
             }
-            // Fallback: botão de reserva antigo (rola pra seção)
+            // Fallback: botão de reserva — leva pra página pública /reservas/:rid
             if (cfg.features.hasReservas) {
               return (
-                <a href="#reservas" style={primaryButton(corSecundaria)}>
+                <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corSecundaria)}>
                   {t("heroCtaLabel", "Faça sua reserva")}
-                </a>
+                </Link>
               );
             }
             return null;
@@ -440,11 +440,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
                   {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
                 </p>
-                {waLink && (
-                  <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>
-                    {t("reservasCtaLabel", "💬 Reservar pelo WhatsApp")}
-                  </a>
-                )}
+                <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("reservasCtaLabel", "Reservar mesa")}
+                </Link>
               </div>
             </Section>
           ) : null,

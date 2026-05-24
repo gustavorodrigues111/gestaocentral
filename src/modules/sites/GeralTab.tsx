@@ -707,7 +707,7 @@ function TextosSection({ form, setForm, disabled }: {
         { chave: "heroSubtitulo", label: "Subtítulo", placeholder: "Texto curto abaixo do título", longo: true },
         { chave: "heroCtaLabel",  label: "Botão CTA do Hero",
           placeholder: "Faça sua reserva",
-          acao: "→ rola até a seção Reservas" },
+          acao: "→ abre formulário público de reservas (/reservas/:rid)" },
       ],
     },
     {
@@ -756,8 +756,8 @@ function TextosSection({ form, setForm, disabled }: {
         { chave: "reservasTitulo",   label: "Título", placeholder: "Reservas" },
         { chave: "reservasTexto",    label: "Texto", placeholder: "Política de reserva", longo: true },
         { chave: "reservasCtaLabel", label: "Botão CTA de Reservas",
-          placeholder: "💬 Reservar pelo WhatsApp",
-          acao: "→ abre WhatsApp com o telefone configurado (ou a rede social do tipo whatsapp)" },
+          placeholder: "Reservar mesa",
+          acao: "→ abre formulário público de reservas (/reservas/:rid)" },
       ],
     },
     {

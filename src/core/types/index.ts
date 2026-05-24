@@ -1024,19 +1024,22 @@ export type Reserva = {
   clienteId?: string | null;
   clienteNomeSnapshot: string;        // sempre preenchido pra mostrar mesmo sem ID
   clienteTelefoneSnapshot?: string;
+  clienteEmailSnapshot?: string;      // pra reservas vindas do form público
   pessoas: number;                    // qtd
   mesaId?: string | null;             // opcional — pode confirmar mesa só na chegada
   mesaNomeSnapshot?: string;
   observacoes?: string;
   ocasiao?: string;                   // ex: "Aniversário", "Almoço de negócios"
   status: ReservaStatus;
+  // Origem: "interno" = criada no admin; "publico" = veio do form /reservas/:rid
+  origem?: "interno" | "publico";
   // Auditoria de status
   confirmadaEm?: string | null;
   chegouEm?: string | null;
   canceladaEm?: string | null;
   motivoCancelamento?: string;
   registradoEm: string;
-  registradoPor: string;              // pessoaId
+  registradoPor: string;              // pessoaId (ou "publico" se veio do form)
   atualizadoEm: string;
 };
 

@@ -25,7 +25,7 @@ const DEFAULTS_PERSONALIZADO: TextosDefaults = {
   eventosCtaLabel: "Solicitar proposta",
   reservasTitulo: "Reservas",
   reservasTexto: "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.",
-  reservasCtaLabel: "💬 Reservar pelo WhatsApp",
+  reservasCtaLabel: "Reservar mesa",
   deliveryTitulo: "Peça pra casa",
   trabalheTitulo: "Venha trabalhar com a gente",
   trabalheTexto: "Sempre buscando gente boa pra somar no time.",
