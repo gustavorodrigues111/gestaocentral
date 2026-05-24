@@ -287,62 +287,111 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             </Section>
           ) : null,
           contato: (bg) => {
-            // Endereço clicável: abre Google Maps (que no mobile usa app
-            // de navegação default — Google Maps, Waze, Apple Maps).
             const mapsHref = googleMapsLink(cfg.endereco);
-            // Telefone vira link WhatsApp (api.whatsapp.com — abre app
-            // no mobile, web.whatsapp.com no desktop).
             const telDigitos = (cfg.telefone || "").replace(/[^\d+]/g, "");
             const waHref = telDigitos
               ? `https://api.whatsapp.com/send?phone=${encodeURIComponent(telDigitos)}`
               : null;
-            // Email vira link mailto: (abre app de email default do sistema)
             const mailHref = cfg.emailContato ? `mailto:${cfg.emailContato}` : null;
-            // Estilo comum dos links de contato — sublinhado discreto
-            const linkStyle: React.CSSProperties = {
-              color: "inherit", textDecoration: "underline",
-              textDecorationColor: `${corPrimaria}55`,
-              textUnderlineOffset: 3,
+            // Estilo do card clicável de endereço
+            const cardLink: React.CSSProperties = {
+              display: "block",
+              padding: "20px 24px",
+              borderRadius: 8,
+              border: `1px solid ${corSecundaria}40`,
+              backgroundColor: "#ffffff",
+              color: corTexto,
+              textDecoration: "none",
+              transition: "border-color 0.15s, transform 0.15s",
+            };
+            // Estilo dos pill links (telefone, email) — sem sublinhado, com ícone
+            const pillLink: React.CSSProperties = {
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "10px 18px",
+              borderRadius: 999,
+              border: `1px solid ${corSecundaria}50`,
+              backgroundColor: "transparent",
+              color: corTexto,
+              textDecoration: "none",
+              fontSize: 14,
+              fontWeight: 500,
+              transition: "background-color 0.15s, border-color 0.15s",
             };
             return (
               <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg={bg}>
-                <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7 }}>
-                  {enderecoLinhaUm(cfg.endereco) && (
-                    <p style={{ marginBottom: 4 }}>
-                      <a href={mapsHref} target="_blank" rel="noreferrer" style={linkStyle}>
-                        {enderecoLinhaUm(cfg.endereco)}
-                      </a>
-                    </p>
-                  )}
-                  {enderecoLinhaDois(cfg.endereco) && (
-                    <p style={{ marginBottom: 16, color: "#555" }}>
-                      <a href={mapsHref} target="_blank" rel="noreferrer" style={{ ...linkStyle, color: "inherit" }}>
-                        {enderecoLinhaDois(cfg.endereco)}
-                      </a>
-                    </p>
-                  )}
-                  <a href={mapsHref} target="_blank" rel="noreferrer"
-                     style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
-                    ver no Google Maps →
-                  </a>
-                  {(cfg.telefone || cfg.emailContato) && (
-                    <div style={{ marginTop: 24, fontSize: 14, color: "#555" }}>
-                      {cfg.telefone && waHref && (
-                        <div>
-                          📞{" "}
-                          <a href={waHref} target="_blank" rel="noreferrer" style={linkStyle}
-                             title="Abrir no WhatsApp">
-                            {cfg.telefone}
-                          </a>
+                <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+                  {/* Endereço — card único clicável */}
+                  {(enderecoLinhaUm(cfg.endereco) || enderecoLinhaDois(cfg.endereco)) && (
+                    <a
+                      href={mapsHref}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={cardLink}
+                      title="Abrir no app de mapas"
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = corPrimaria; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${corSecundaria}40`; }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 22, color: corPrimaria }}>📍</span>
+                        <div style={{ textAlign: "left" }}>
+                          {enderecoLinhaUm(cfg.endereco) && (
+                            <div style={{ fontSize: 16, fontWeight: 600 }}>
+                              {enderecoLinhaUm(cfg.endereco)}
+                            </div>
+                          )}
+                          {enderecoLinhaDois(cfg.endereco) && (
+                            <div style={{ fontSize: 13, color: "#666", marginTop: 2 }}>
+                              {enderecoLinhaDois(cfg.endereco)}
+                            </div>
+                          )}
                         </div>
+                      </div>
+                    </a>
+                  )}
+
+                  {/* Telefone + email — pills sem sublinhado */}
+                  {(waHref || mailHref) && (
+                    <div style={{
+                      marginTop: 20,
+                      display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap",
+                    }}>
+                      {waHref && cfg.telefone && (
+                        <a
+                          href={waHref}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={pillLink}
+                          title="Abrir no WhatsApp"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
+                            e.currentTarget.style.borderColor = corPrimaria;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.borderColor = `${corSecundaria}50`;
+                          }}
+                        >
+                          <span>📞</span> {cfg.telefone}
+                        </a>
                       )}
-                      {cfg.emailContato && mailHref && (
-                        <div>
-                          ✉{" "}
-                          <a href={mailHref} style={linkStyle} title="Enviar email">
-                            {cfg.emailContato}
-                          </a>
-                        </div>
+                      {mailHref && cfg.emailContato && (
+                        <a
+                          href={mailHref}
+                          style={pillLink}
+                          title="Enviar email"
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
+                            e.currentTarget.style.borderColor = corPrimaria;
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = "transparent";
+                            e.currentTarget.style.borderColor = `${corSecundaria}50`;
+                          }}
+                        >
+                          <span>✉</span> {cfg.emailContato}
+                        </a>
                       )}
                     </div>
                   )}
