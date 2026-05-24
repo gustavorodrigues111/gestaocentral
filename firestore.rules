@@ -122,16 +122,31 @@ service cloud.firestore {
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
     match /trilhaEventos/{id}       { allow read, write: if authed(); }
-    // Reservas: read autorizado pra contar disponibilidade (form público
-    // precisa saber quantas vagas tem em cada slot/salão). Read público
-    // expõe só telefone/data/horário/status — dados aceitáveis. Create
-    // público com guards (status=pendente + origem=publico).
+    // Reservas: doc PRINCIPAL contém só metadados sem PII (data, horario,
+    // pessoas, salaoId, status, clienteId). PII (nome/telefone/email/
+    // observações/ocasião) vive em /reservasPII com read auth-only.
+    //
+    // Read público no /reservas é seguro porque só expõe contadores
+    // agregáveis (quantas pessoas reservadas pra um slot). Form público
+    // usa isso pra calcular disponibilidade sem ver dados pessoais.
     match /reservas/{id} {
       allow read: if true;
       allow create: if authed()
         || (
           request.resource.data.status == "pendente"
           && request.resource.data.origem == "publico"
+        );
+      allow update, delete: if authed();
+    }
+    // ReservasPII — dados pessoais sensíveis. Read SÓ authed (admin).
+    // Public form pode CRIAR (escrever), mas nunca LER.
+    match /reservasPII/{id} {
+      allow read: if authed();
+      allow create: if authed()
+        || (
+          // Public create: validar shape mínima de PII pra evitar abuso
+          request.resource.data.restaurantId is string
+          && request.resource.data.clienteNomeSnapshot is string
         );
       allow update, delete: if authed();
     }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -124,18 +124,15 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
         statusMudou && status === "cancelada" ? now :
         reserva?.canceladaEm;
 
-      const payload: Omit<Reserva, "id"> = {
+      // Doc principal (sem PII) — read pode ser público (contagem disponibilidade)
+      const payloadReserva: Omit<Reserva, "id"> = {
         restaurantId,
         data,
         horario,
         clienteId: clienteId || null,
-        clienteNomeSnapshot: clienteNome.trim(),
-        clienteTelefoneSnapshot: clienteTelefone.trim() || undefined,
         pessoas: pessoasNum,
         mesaId: mesaId || null,
         mesaNomeSnapshot: mesaSnapshot,
-        observacoes: observacoes.trim() || undefined,
-        ocasiao: ocasiao.trim() || undefined,
         status,
         confirmadaEm: confirmadaEm ?? null,
         chegouEm: chegouEm ?? null,
@@ -145,12 +142,26 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
         registradoPor: reserva?.registradoPor || me.id,
         atualizadoEm: now,
       };
+      // PII separada (auth-only read)
+      const piiPayload = {
+        restaurantId,
+        clienteNomeSnapshot: clienteNome.trim(),
+        clienteTelefoneSnapshot: clienteTelefone.trim() || undefined,
+        observacoes: observacoes.trim() || undefined,
+        ocasiao: ocasiao.trim() || undefined,
+        registradoEm: reserva?.registradoEm || now,
+      };
 
+      let docId: string;
       if (isNew) {
-        await addDoc(collection(db, "reservas"), sanitizeForFirestore(payload));
+        const newRef = await addDoc(collection(db, "reservas"), sanitizeForFirestore(payloadReserva));
+        docId = newRef.id;
       } else {
-        await updateDoc(doc(db, "reservas", reserva.id), sanitizeForFirestore(payload));
+        docId = reserva.id;
+        await updateDoc(doc(db, "reservas", reserva.id), sanitizeForFirestore(payloadReserva));
       }
+      // Sempre upsert da PII no mesmo ID
+      await setDoc(doc(db, "reservasPII", docId), sanitizeForFirestore(piiPayload), { merge: true });
 
       // Se vinculou a um cliente cadastrado, atualiza stats dele (best-effort)
       if (clienteId) {

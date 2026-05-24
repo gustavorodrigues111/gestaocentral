@@ -7,7 +7,7 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Cliente, ConfiguracaoReservas, Reserva, Salao,
+  Cliente, ConfiguracaoReservas, Reserva, ReservaPII, Salao,
 } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
@@ -54,13 +54,9 @@ export function ReservasPublicaPage() {
   const [erro, setErro] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Cliente reconhecido (se WhatsApp já apareceu antes).
-  // clienteId: se reservas anteriores já tinham um cliente vinculado, reusa o
-  // mesmo id pra manter o CRM coerente. null = vai criar novo no submit.
-  const [clienteReconhecido, setClienteReconhecido] = useState<{
-    nome: string; email?: string; ultimaData?: string; totalReservas: number;
-    clienteId: string | null;
-  } | null>(null);
+  // (removido) lookup de cliente recorrente — exigia ler PII de
+  // /reservas. Mantido cliente novo a cada reserva pública; admin
+  // dedupe manualmente no CRM se quiser.
 
   // Form state
   const [paisIso, setPaisIso] = useState(PAIS_BR.iso);
@@ -143,46 +139,20 @@ export function ReservasPublicaPage() {
     return null;
   }
 
-  // Avança pro step "details" e busca cliente recorrente
-  async function avancarPhone() {
+  // Avança pro step "details".
+  //
+  // NOTA SOBRE PRIVACIDADE: antes a gente fazia lookup em /reservas
+  // procurando reservas com mesmo telefone pra pré-preencher nome do
+  // cliente recorrente. Pra fazer isso o /reservas precisava ter
+  // telefone público — vazamento de PII. Agora /reservas não tem mais
+  // PII (foi pra /reservasPII auth-only), então cliente sempre digita
+  // o nome do zero. Trade-off: UX um pouco menos mágica, mas zero
+  // exposição de dados. Próxima fase: Vercel function autenticada que
+  // faz esse lookup retornando apenas {nome, totalReservas} agregado.
+  function avancarPhone() {
     setErro("");
     const v = validatePhone();
     if (v) return setErro(v);
-
-    // Busca reservas anteriores com esse telefone (montagem E.164)
-    const pais = getPaisByIso(paisIso);
-    const e164 = montarE164(pais.iso === "OUTROS" ? ddiManual : pais.ddi, whatsapp);
-    try {
-      const q = query(
-        collection(db, "reservas"),
-        where("restaurantId", "==", rid),
-        where("clienteTelefoneSnapshot", "==", e164),
-      );
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        // Pega a mais recente (maior registradoEm) pra usar como template
-        const docs = snap.docs.map(d => d.data() as Reserva)
-          .sort((a, b) => (b.registradoEm || "").localeCompare(a.registradoEm || ""));
-        const ultima = docs[0]!;
-        // Procura uma reserva qualquer que já tenha clienteId vinculado —
-        // reusa pra manter o CRM coerente (mesmo cliente, todas as reservas)
-        const comClienteId = docs.find(d => d.clienteId);
-        setClienteReconhecido({
-          nome: ultima.clienteNomeSnapshot,
-          email: ultima.clienteEmailSnapshot,
-          ultimaData: ultima.data,
-          totalReservas: docs.length,
-          clienteId: comClienteId?.clienteId || null,
-        });
-        setNome(ultima.clienteNomeSnapshot);
-        if (ultima.clienteEmailSnapshot) setEmail(ultima.clienteEmailSnapshot);
-      } else {
-        setClienteReconhecido(null);
-      }
-    } catch (e) {
-      // Falha de lookup não bloqueia — só vai pro próximo step
-      console.warn("[reservas] lookup cliente recorrente falhou:", e);
-    }
     setStep("details");
   }
 
@@ -369,49 +339,61 @@ export function ReservasPublicaPage() {
         whatsapp,
       );
 
-      // ─── Cliente: reusa se já tem um vinculado, senão cria novo ───
-      // Importante pro CRM: cada reserva pública gera (ou referencia) um
-      // doc em /clientes, que aparece automaticamente na aba Clientes.
-      let clienteIdFinal: string;
-      if (clienteReconhecido?.clienteId) {
-        clienteIdFinal = clienteReconhecido.clienteId;
-      } else {
-        clienteIdFinal = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-        const cliente: Cliente = {
-          id: clienteIdFinal,
-          restaurantId: rid,
-          nome: nome.trim(),
-          telefone: telefoneE164,
-          email: email.trim() || undefined,
-          criadoEm: now,
-          criadoPor: "publico",
-          atualizadoEm: now,
-        };
-        await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
-      }
+      // ─── Cliente: sempre cria novo. Dedupe manual no admin (CRM
+      // pode juntar clientes com mesmo telefone depois). Antes a gente
+      // tentava reaproveitar IDs de reservas anteriores, mas isso
+      // exigia ler PII em /reservas (read público). Agora /reservas
+      // não tem mais telefone — então não temos como casar do lado
+      // cliente sem expor dados. Trade-off aceitável.
+      const clienteIdFinal = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const cliente: Cliente = {
+        id: clienteIdFinal,
+        restaurantId: rid,
+        nome: nome.trim(),
+        telefone: telefoneE164,
+        email: email.trim() || undefined,
+        criadoEm: now,
+        criadoPor: "publico",
+        atualizadoEm: now,
+      };
+      await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
 
+      // Doc PRINCIPAL — sem PII. Read pode ser público pra contar
+      // disponibilidade. PII vai pro /reservasPII abaixo (read auth-only).
       const reserva: Reserva = {
         id,
         restaurantId: rid,
         data,
         horario: slotHorario,
         clienteId: clienteIdFinal,
-        clienteNomeSnapshot: nome.trim(),
-        clienteTelefoneSnapshot: telefoneE164,
-        clienteEmailSnapshot: email.trim() || undefined,
         pessoas: parseInt(pessoas, 10),
         salaoId,
         salaoNomeSnapshot: sal?.nome,
         mesaId: null,
-        observacoes: observacoes.trim() || undefined,
-        ocasiao: ocasiao.trim() || undefined,
         status: "pendente",
         origem: "publico",
         registradoEm: now,
         registradoPor: "publico",
         atualizadoEm: now,
       };
-      await setDoc(doc(db, "reservas", id), sanitizeForFirestore(reserva));
+      const reservaPII: ReservaPII = {
+        id,
+        restaurantId: rid,
+        clienteNomeSnapshot: nome.trim(),
+        clienteTelefoneSnapshot: telefoneE164,
+        clienteEmailSnapshot: email.trim() || undefined,
+        observacoes: observacoes.trim() || undefined,
+        ocasiao: ocasiao.trim() || undefined,
+        registradoEm: now,
+      };
+      // 2 escritas paralelas — não tem batch transacional aqui porque o
+      // usuário público não pode garantir consistência cross-collection
+      // via rules. Aceitável: se PII falhar, /reservas fica órfã (admin
+      // vê reserva sem dados — recupera por contato direto).
+      await Promise.all([
+        setDoc(doc(db, "reservas", id), sanitizeForFirestore(reserva)),
+        setDoc(doc(db, "reservasPII", id), sanitizeForFirestore(reservaPII)),
+      ]);
       setSubmitted(true);
     } catch (e) {
       console.error(e);
@@ -572,19 +554,6 @@ export function ReservasPublicaPage() {
       {/* STEP 2: Detalhes */}
       {step === "details" && (
         <div className="space-y-4">
-          {clienteReconhecido && (
-            <div className="text-sm rounded-lg p-3" style={{
-              backgroundColor: `${corPrimaria}10`,
-              border: `1px solid ${corPrimaria}40`,
-              color: corPrimaria,
-            }}>
-              👋 Bom te ver de volta, <strong>{clienteReconhecido.nome.split(" ")[0]}</strong>!
-              {clienteReconhecido.totalReservas > 1 && (
-                <> {clienteReconhecido.totalReservas}ª reserva com a gente.</>
-              )}
-            </div>
-          )}
-
           <FormField label="Seu nome *">
             <input
               value={nome}

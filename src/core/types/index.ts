@@ -1085,16 +1085,19 @@ export const RESERVA_STATUS_ICON: Record<ReservaStatus, string> = {
   cancelada:   "✕",
 };
 
+// Doc PRINCIPAL — sem PII. Read pode ser público (form usa pra contar
+// disponibilidade sem expor dados pessoais). PII fica em ReservaPII abaixo.
+//
+// Campos clienteNomeSnapshot/clienteTelefoneSnapshot/clienteEmailSnapshot/
+// observacoes/ocasiao são MARCADOS COMO OPCIONAIS pra compat. com reservas
+// antigas (pré-refactor de segurança) — mas a partir da Fase 2 da Segurança,
+// só são preenchidos via merge runtime (admin lê /reservas + /reservasPII e
+// faz merge no client).
 export type Reserva = {
   id: string;
   restaurantId: string;
   data: string;                       // YYYY-MM-DD
   horario: string;                    // HH:MM
-  // Cliente: pode ser ID ou avulso (sem cadastro)
-  clienteId?: string | null;
-  clienteNomeSnapshot: string;        // sempre preenchido pra mostrar mesmo sem ID
-  clienteTelefoneSnapshot?: string;
-  clienteEmailSnapshot?: string;      // pra reservas vindas do form público
   pessoas: number;                    // qtd
   // Salão escolhido — obrigatório no form público; admin pode deixar vazio
   // até confirmar (compat. com fluxo antigo).
@@ -1102,8 +1105,15 @@ export type Reserva = {
   salaoNomeSnapshot?: string;
   mesaId?: string | null;             // opcional — pode confirmar mesa só na chegada
   mesaNomeSnapshot?: string;
+  // Cliente: só ID (PII fica em /reservasPII e /clientes — auth-only)
+  clienteId?: string | null;
+  // PII (LEGADO): aparece em reservas antigas. Nas novas, mergeado a partir
+  // de /reservasPII. NUNCA é gravado em /reservas na criação nova.
+  clienteNomeSnapshot?: string;
+  clienteTelefoneSnapshot?: string;
+  clienteEmailSnapshot?: string;
   observacoes?: string;
-  ocasiao?: string;                   // ex: "Aniversário", "Almoço de negócios"
+  ocasiao?: string;
   status: ReservaStatus;
   // Origem: "interno" = criada no admin; "publico" = veio do form /reservas/:rid
   origem?: "interno" | "publico";
@@ -1115,6 +1125,21 @@ export type Reserva = {
   registradoEm: string;
   registradoPor: string;              // pessoaId (ou "publico" se veio do form)
   atualizadoEm: string;
+};
+
+// Dados PII da reserva — vive em coleção paralela `/reservasPII` com read
+// só pra authed (admin). Form público escreve mas não lê. Anonimização
+// LGPD: deletar este doc preserva a estatística em /reservas sem PII.
+export type ReservaPII = {
+  id: string;                         // mesmo ID da reserva
+  restaurantId: string;               // pra rules
+  clienteNomeSnapshot: string;
+  clienteTelefoneSnapshot?: string;
+  clienteEmailSnapshot?: string;
+  observacoes?: string;
+  ocasiao?: string;                   // ex: "Aniversário"
+  // Mantém timestamp pra auditoria
+  registradoEm: string;
 };
 
 // ─── CONTAGENS + COMPRAS (estoque) ─────────────────────────────────────────

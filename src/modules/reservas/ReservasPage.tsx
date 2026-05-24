@@ -8,7 +8,7 @@ import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
-import type { Cliente, Mesa, Reserva, ReservaStatus } from "../../core/types";
+import type { Cliente, Mesa, Reserva, ReservaPII, ReservaStatus } from "../../core/types";
 import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { MesasTab } from "./MesasTab";
@@ -82,22 +82,57 @@ export function ReservasPage() {
     return () => unsub();
   }, [rid]);
 
+  // 2 listeners: /reservas (sem PII) + /reservasPII (PII). Faz merge no
+  // client pra montar a Reserva completa pra UI. PII só chega aqui se
+  // user está authed (rules garantem). Reservas antigas (pre-refactor)
+  // têm PII inline em /reservas e funcionam sem merge.
+  const [reservasBase, setReservasBase] = useState<Reserva[]>([]);
+  const [piiMap, setPiiMap] = useState<Map<string, ReservaPII>>(new Map());
+
   useEffect(() => {
     if (!rid) return;
     setLoading(true);
     const q = query(collection(db, "reservas"), where("restaurantId", "==", rid));
     const unsub = onSnapshot(q, (snap) => {
       const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Reserva);
-      list.sort((a, b) => {
-        const ad = `${a.data} ${a.horario || "00:00"}`;
-        const bd = `${b.data} ${b.horario || "00:00"}`;
-        return ad.localeCompare(bd);
-      });
-      setReservas(list);
+      setReservasBase(list);
       setLoading(false);
     });
     return () => unsub();
   }, [rid]);
+
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      const m = new Map<string, ReservaPII>();
+      for (const d of snap.docs) m.set(d.id, { id: d.id, ...d.data() } as ReservaPII);
+      setPiiMap(m);
+    });
+    return () => unsub();
+  }, [rid]);
+
+  // Merge: reserva base + PII se disponível (reservas antigas têm PII inline)
+  useEffect(() => {
+    const merged: Reserva[] = reservasBase.map(r => {
+      const pii = piiMap.get(r.id);
+      if (!pii) return r; // legado — PII já está inline
+      return {
+        ...r,
+        clienteNomeSnapshot: pii.clienteNomeSnapshot || r.clienteNomeSnapshot,
+        clienteTelefoneSnapshot: pii.clienteTelefoneSnapshot || r.clienteTelefoneSnapshot,
+        clienteEmailSnapshot: pii.clienteEmailSnapshot || r.clienteEmailSnapshot,
+        observacoes: pii.observacoes || r.observacoes,
+        ocasiao: pii.ocasiao || r.ocasiao,
+      };
+    });
+    merged.sort((a, b) => {
+      const ad = `${a.data} ${a.horario || "00:00"}`;
+      const bd = `${b.data} ${b.horario || "00:00"}`;
+      return ad.localeCompare(bd);
+    });
+    setReservas(merged);
+  }, [reservasBase, piiMap]);
 
   // Filtros / agrupamentos
   const reservasDoDia = useMemo(() => {

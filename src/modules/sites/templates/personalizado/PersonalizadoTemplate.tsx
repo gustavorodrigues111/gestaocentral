@@ -1316,12 +1316,12 @@ function CardapioPreview({
       <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
         {cfg.cardapioPdfPtUrl && (
           <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-            🇧🇷 Cardápio (Português)
+            {cfg.cardapioPdfEnUrl ? "Português" : "Ver cardápio completo"}
           </a>
         )}
         {cfg.cardapioPdfEnUrl && (
           <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-            🇺🇸 Menu (English)
+            English
           </a>
         )}
       </div>
