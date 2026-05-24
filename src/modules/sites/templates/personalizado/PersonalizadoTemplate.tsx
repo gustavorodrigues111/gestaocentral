@@ -673,21 +673,26 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               <section key={`${a.id}-${b.id}`} id={`pair-${a.id}-${b.id}`} style={{
                 padding: "80px 20px", backgroundColor: bg,
               }}>
+                {/* Grid sem gap + linha divisória sólida no meio (separator
+                    visual). Cada coluna ganha seu próprio padding interno.
+                    "grid-template-columns: 1fr 1px 1fr" reserva 1px exato
+                    pra divisora — sem hack de margin negativa. */}
                 <div style={{
                   maxWidth: 1300, margin: "0 auto",
-                  display: "grid", gridTemplateColumns: "1fr 1fr",
-                  gap: 60, alignItems: "start",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1px 1fr",
+                  alignItems: "stretch",
                 }}>
-                  <div id={a.id} style={{
-                    // Linha divisória delicada à direita (entre as duas colunas)
-                    borderRight: `1px solid ${corSecundaria}30`,
-                    paddingRight: 60,
-                    marginRight: -60, // compensa o gap pra borda ficar centralizada
-                  }}>
+                  <div id={a.id} style={{ paddingRight: 48 }}>
                     <h2 style={tituloSectionStyle}>{a.titulo}</h2>
                     {a.conteudo}
                   </div>
-                  <div id={b.id}>
+                  <div aria-hidden style={{
+                    backgroundColor: corSecundaria,
+                    opacity: 0.25,
+                    width: 1,
+                  }} />
+                  <div id={b.id} style={{ paddingLeft: 48 }}>
                     <h2 style={tituloSectionStyle}>{b.titulo}</h2>
                     {b.conteudo}
                   </div>
@@ -1125,7 +1130,15 @@ function CardapioPreview({
               key={`${pdfUrl}#${pagina}`}
               src={iframeSrc}
               title="Preview do cardápio"
-              style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              scrolling="no"
+              style={{
+                width: "100%", height: "100%",
+                border: "none", display: "block",
+                // Bloqueia scroll/interação do PDF viewer interno —
+                // navegação entre páginas só pelas setas. Mobile mantém
+                // pointerEvents pra scroll natural funcionar dentro do FitH.
+                pointerEvents: isMobile ? "auto" : "none",
+              }}
               loading="lazy"
             />
             {/* Setas — só desktop. Mobile usa o botão "abrir completo" pra ver tudo. */}
