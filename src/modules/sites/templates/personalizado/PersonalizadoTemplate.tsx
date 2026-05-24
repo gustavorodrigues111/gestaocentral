@@ -720,6 +720,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           new Set<SecaoId>(["reservas", "eventos"]),
           new Set<SecaoId>(["horario", "contato"]),
           new Set<SecaoId>(["delivery", "trabalhe"]),
+          // Fallback: quando o site não tem laje/eventos/delivery (caso de
+          // restaurante simples como Sororoca), reservas e trabalhe ficariam
+          // órfãos no layout. Esse par só ativa via reordenação abaixo —
+          // não dispara junto com os pares acima quando estão ativos.
+          new Set<SecaoId>(["reservas", "trabalhe"]),
         ];
         function ehPar(a: SecaoId, b: SecaoId): boolean {
           return PARES_DESKTOP.some(s => s.has(a) && s.has(b) && a !== b);
@@ -735,6 +740,27 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         for (const id of ordem) {
           const c = conteudos[id]?.("");  // bg ainda não importa aqui
           if (c) items.push({ id, titulo: c.titulo, conteudo: c.conteudo });
+        }
+
+        // 2b) Pair fallback dinâmico: em sites simples (sem laje, eventos
+        // e delivery), reordena trabalhe pra ficar logo depois de reservas
+        // — assim o par "reservas+trabalhe" se forma. Sem essa reordenação,
+        // trabalhe ficaria isolado no fim e reservas isolada antes do bloco
+        // horário+contato. Em sites com qualquer dessas features (como o
+        // Lobozó), mantém a ordem natural — não interfere nos pares nativos.
+        const hasLajeAtiva = !!cfg.features.hasLaje;
+        const hasEventosAtivo = !!cfg.features.hasEventos;
+        const hasDeliveryAtivo = !!cfg.features.hasDelivery
+          && !!cfg.delivery && cfg.delivery.length > 0;
+        const ehSiteSimples = !hasLajeAtiva && !hasEventosAtivo && !hasDeliveryAtivo;
+        if (ehSiteSimples) {
+          const reservasIdx = items.findIndex(it => it.id === "reservas");
+          const trabalheIdx = items.findIndex(it => it.id === "trabalhe");
+          if (reservasIdx !== -1 && trabalheIdx !== -1 && trabalheIdx !== reservasIdx + 1) {
+            const [trabalheItem] = items.splice(trabalheIdx, 1);
+            const novoReservasIdx = items.findIndex(it => it.id === "reservas");
+            items.splice(novoReservasIdx + 1, 0, trabalheItem!);
+          }
         }
 
         // 2) Pareia consecutivos NA LISTA FILTRADA. Mobile sempre single.
