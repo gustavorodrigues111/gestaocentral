@@ -59,7 +59,9 @@ export function defaultSiteConfig(rid: string, nomeRestaurante: string): SiteCon
       raioBorda: "",
     },
     slug: nomeRestaurante.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || rid,
-    templateId: "default",
+    // Único template ativo hoje. Existing sites com "default"/"lobozo"
+    // também renderizam aqui (SiteRenderer ignora o id).
+    templateId: "personalizado",
     publicado: false,
     createdAt: now,
     updatedAt: now,

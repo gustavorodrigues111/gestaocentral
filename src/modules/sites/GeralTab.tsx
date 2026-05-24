@@ -579,33 +579,10 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
       </section>
 
-      {/* TEMPLATE */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-          Template visual
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Cada template tem layout, tipografia e personalidade próprios.
-        </p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <TemplateCard
-            templateId="personalizado"
-            label="✨ Personalizado"
-            descricao="Layout completo — hero, todas as seções. Adapta por cor/fonte/logo."
-            ativo={form.templateId === "personalizado" || form.templateId === "lobozo"}
-            onClick={() => atualizar("templateId", "personalizado")}
-            disabled={inputDisabled}
-          />
-          <TemplateCard
-            templateId="default"
-            label="📄 Default"
-            descricao="Layout minimalista — sem hero, foco em conteúdo direto."
-            ativo={form.templateId === "default"}
-            onClick={() => atualizar("templateId", "default")}
-            disabled={inputDisabled}
-          />
-        </div>
-      </section>
+      {/* TEMPLATE — só um layout hoje, cada restaurante customiza via
+          cor/fonte/logo/textos. Mantido implícito (sem picker no admin)
+          pra reduzir confusão. Pra adicionar novos layouts no futuro,
+          basta restaurar essa seção e ajustar o SiteRenderer. */}
 
       {/* PUBLICAÇÃO */}
       <section className="space-y-3">
@@ -912,30 +889,9 @@ function TextosSection({ form, setForm, disabled }: {
   );
 }
 
-function TemplateCard({ label, descricao, ativo, onClick, disabled }: {
-  templateId: string;
-  label: string;
-  descricao: string;
-  ativo: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-      className={`text-left px-3 py-3 rounded-lg border-2 transition-colors ${
-        ativo
-          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20"
-          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/50"
-      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-    >
-      <div className="font-bold text-sm">{label}</div>
-      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{descricao}</div>
-    </button>
-  );
-}
+// TemplateCard removido junto com o picker de template — só 1 layout
+// ativo hoje. Se voltar a ter múltiplos templates, restaura essa função
+// e a seção em GeralTab.
 
 // Editor de ordem das seções do site — setas ↑↓ pra mover.
 // Hero fica sempre primeiro, Footer sempre último — não entram aqui.

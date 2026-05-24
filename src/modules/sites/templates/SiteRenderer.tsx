@@ -1,24 +1,14 @@
-// SiteRenderer: escolhe qual template visual renderizar baseado em
-// siteConfig.templateId.
+// SiteRenderer: hoje só um template (personalizado) — atende todos os
+// restaurantes via cor/fonte/logo/textos editáveis no admin. Valores
+// legados ("default", "lobozo", undefined) caem aqui também.
 //
-// Templates:
-//   - "personalizado": base completa, adapta a qualquer marca via cor/fonte/logo
-//   - "default": layout minimalista
-//   - "lobozo" (legado): alias de "personalizado" pra retrocompat de docs antigos
+// Se um dia tiver mais de um layout visual, o switch volta aqui.
 
 import type { SiteConfig } from "../../../core/types";
 import { PersonalizadoTemplate } from "./personalizado/PersonalizadoTemplate";
-import { DefaultTemplate } from "./default/DefaultTemplate";
 
 type Props = { siteConfig: SiteConfig };
 
 export function SiteRenderer({ siteConfig }: Props) {
-  switch (siteConfig.templateId) {
-    case "personalizado":
-    case "lobozo":         // alias legado
-      return <PersonalizadoTemplate siteConfig={siteConfig} />;
-    case "default":
-    default:
-      return <DefaultTemplate siteConfig={siteConfig} />;
-  }
+  return <PersonalizadoTemplate siteConfig={siteConfig} />;
 }

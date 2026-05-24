@@ -35,39 +35,11 @@ const DEFAULTS_PERSONALIZADO: TextosDefaults = {
   rodapeDireitos: "Todos os direitos reservados.",
 };
 
-// Defaults genéricos — usado pelo template default
-const DEFAULTS_GENERICO: TextosDefaults = {
-  heroTitulo: "Bem-vindo",
-  heroSubtitulo: "",
-  heroCtaLabel: "Reservar",
-  historiaTitulo: "Sobre",
-  cardapioTitulo: "Cardápio",
-  horarioTitulo: "Horário",
-  horarioProximosAvisosLabel: "Próximos avisos",
-  lajeTitulo: "Eventos",
-  lajeTexto: "",
-  lajeCtaLabel: "Solicitar proposta",
-  eventosTitulo: "Eventos privados",
-  eventosTexto: "",
-  eventosCtaLabel: "Solicitar proposta",
-  reservasTitulo: "Reservas",
-  reservasTexto: "",
-  reservasCtaLabel: "Reservar",
-  deliveryTitulo: "Delivery",
-  deliveryTexto: "",
-  trabalheTitulo: "Trabalhe conosco",
-  trabalheTexto: "",
-  trabalheCtaLabel: "Enviar candidatura",
-  contatoTitulo: "Como chegar",
-  rodapeDireitos: "Todos os direitos reservados.",
-};
-
-export function defaultTextosByTemplate(templateId: SiteConfig["templateId"]): TextosDefaults {
-  switch (templateId) {
-    case "personalizado":
-    case "lobozo":          // alias legado
-      return DEFAULTS_PERSONALIZADO;
-    default:
-      return DEFAULTS_GENERICO;
-  }
+// Único template ativo hoje — defaults sempre são os do Personalizado.
+// templateId continua sendo recebido pra compatibilidade com chamadas
+// existentes (e pra abrir caminho a múltiplos templates no futuro).
+export function defaultTextosByTemplate(
+  _templateId: SiteConfig["templateId"],
+): TextosDefaults {
+  return DEFAULTS_PERSONALIZADO;
 }
