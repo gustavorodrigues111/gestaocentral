@@ -381,8 +381,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 {excecoes.length > 0 && (
                   <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${corSecundaria}30` }}>
                     <div style={{
-                      fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
-                      color: corPrimaria, marginBottom: 14, fontWeight: 600, textAlign: "center",
+                      // Preserva case do usuário (pode misturar Maiúscula/minúscula)
+                      // e suporta \n pra quebrar em duas linhas.
+                      fontSize: 13, letterSpacing: "0.04em",
+                      color: corPrimaria, marginBottom: 14, fontWeight: 600,
+                      textAlign: "center", whiteSpace: "pre-line", lineHeight: 1.35,
                     }}>
                       {t("horarioProximosAvisosLabel", "Próximos avisos")}
                     </div>

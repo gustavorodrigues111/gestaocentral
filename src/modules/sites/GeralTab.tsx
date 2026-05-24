@@ -727,7 +727,9 @@ function TextosSection({ form, setForm, disabled }: {
       titulo: "Horário",
       campos: [
         { chave: "horarioTitulo",              label: "Título", placeholder: "Horário de funcionamento" },
-        { chave: "horarioProximosAvisosLabel", label: "Label dos avisos", placeholder: "Próximos avisos" },
+        { chave: "horarioProximosAvisosLabel", label: "Label dos avisos",
+          placeholder: "Próximos avisos", longo: true,
+          dica: "Pode usar maiúscula/minúscula como quiser. Use \\n pra quebra de linha." },
       ],
     },
     {

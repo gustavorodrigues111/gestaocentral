@@ -992,6 +992,75 @@ export type Mesa = {
   ordem: number;
 };
 
+// ─── SALÕES (configuração de reservas) ───────────────────────────────────
+// Restaurante pode ter um ou mais salões (varanda, jardim, salão principal,
+// bar, etc). Cada salão decide como controla disponibilidade:
+//
+//   "por_capacidade"  → salão tem um total fixo de pessoas, mesas de tamanhos
+//                       variados que se acomodam. Sistema soma reservas do
+//                       slot e libera vagas até o limite.
+//                       ex: 10 pax no salão, mesas de 2 a 5 pax
+//
+//   "por_mesas"       → salão tem N mesas com min/max pax cada. Cada reserva
+//                       ocupa 1 mesa. Quando todas as mesas do slot estão
+//                       ocupadas, esconde disponibilidade.
+//                       ex: 6 mesas de 4 a 6 pax cada
+export type ModeloCapacidadeSalao = "por_capacidade" | "por_mesas";
+
+export type Salao = {
+  id: string;
+  restaurantId: string;
+  nome: string;                       // ex: "Salão Principal", "Varanda"
+  descricao?: string;                 // mostrada pro cliente no form de reserva
+  ordem: number;
+  ativo: boolean;
+  modeloCapacidade: ModeloCapacidadeSalao;
+  // ─ Modelo "por_capacidade"
+  capacidadeMaxPax?: number;          // total de pessoas que cabem no salão
+  paxMinPorMesaCap?: number;          // tamanho mínimo de mesa permitido (ex: 2)
+  paxMaxPorMesaCap?: number;          // tamanho máximo de mesa permitido (ex: 5)
+  // ─ Modelo "por_mesas"
+  numMesas?: number;                  // qtd de mesas iguais no salão (ex: 6)
+  paxMinPorMesa?: number;             // qtd mínima de pax que cada mesa aceita (ex: 4)
+  paxMaxPorMesa?: number;             // qtd máxima de pax por mesa (ex: 6)
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export const MODELO_CAPACIDADE_LABEL: Record<ModeloCapacidadeSalao, string> = {
+  por_capacidade: "Por capacidade do salão",
+  por_mesas:      "Por mesas fixas",
+};
+
+// ─── JANELAS DE RESERVA ────────────────────────────────────────────────
+// Restaurante define quais horários de reserva existem em cada dia da semana
+// e quais salões estão ativos em cada horário (slot).
+//
+// Doc id = restaurantId (1:1 com restaurante).
+//
+// Ex: domingo só almoço 12h e 12:30h (apenas Salão); sexta 19h e 20h em
+// Salão + Varanda; segunda fechado (sem slots).
+
+export type SlotReserva = {
+  horario: string;                    // "HH:MM"
+  salaoIds: string[];                 // quais salões aceitam reserva nesse horário
+};
+
+export type JanelaDiaReserva = {
+  dia: number;                        // 0=domingo, 6=sábado
+  slots: SlotReserva[];               // ordenados por horário (sem slots = sem reservas)
+};
+
+export type ConfiguracaoReservas = {
+  id: string;                         // = restaurantId
+  restaurantId: string;
+  janelas: JanelaDiaReserva[];        // 7 entries (1 por dia da semana)
+  duracaoSlotMin: number;             // duração da reserva em minutos (default 90)
+  atualizadoEm: string;
+  atualizadoPor: string;
+};
+
 export type ReservaStatus =
   | "pendente"        // marcada mas ainda não confirmada
   | "confirmada"      // confirmada (cliente avisou que vem)
@@ -1026,6 +1095,10 @@ export type Reserva = {
   clienteTelefoneSnapshot?: string;
   clienteEmailSnapshot?: string;      // pra reservas vindas do form público
   pessoas: number;                    // qtd
+  // Salão escolhido — obrigatório no form público; admin pode deixar vazio
+  // até confirmar (compat. com fluxo antigo).
+  salaoId?: string | null;
+  salaoNomeSnapshot?: string;
   mesaId?: string | null;             // opcional — pode confirmar mesa só na chegada
   mesaNomeSnapshot?: string;
   observacoes?: string;

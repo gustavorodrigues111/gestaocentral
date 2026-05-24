@@ -122,17 +122,30 @@ service cloud.firestore {
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
     match /trilhaEventos/{id}       { allow read, write: if authed(); }
-    // Reservas: read/write authed (admin) + create público com guards
-    // (form /reservas/:rid — cliente registra interesse de mesa).
-    // Status inicial obrigatório "pendente", origem "publico".
+    // Reservas: read autorizado pra contar disponibilidade (form público
+    // precisa saber quantas vagas tem em cada slot/salão). Read público
+    // expõe só telefone/data/horário/status — dados aceitáveis. Create
+    // público com guards (status=pendente + origem=publico).
     match /reservas/{id} {
-      allow read: if authed();
+      allow read: if true;
       allow create: if authed()
         || (
           request.resource.data.status == "pendente"
           && request.resource.data.origem == "publico"
         );
       allow update, delete: if authed();
+    }
+    // Salões: read público (form precisa listar salões disponíveis com
+    // capacidade pra calcular vagas). Write só authed.
+    match /saloes/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
+    }
+    // ConfiguracaoReservas: doc por restaurante com janelas + slots.
+    // Read público (form precisa pra gerar os horários selecionáveis).
+    match /configReservas/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
     }
     match /clientes/{id}            { allow read, write: if authed(); }
     match /mesas/{id}               { allow read, write: if authed(); }

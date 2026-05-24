@@ -12,8 +12,11 @@ import type { Cliente, Mesa, Reserva, ReservaStatus } from "../../core/types";
 import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { MesasTab } from "./MesasTab";
+import { SaloesTab } from "./SaloesTab";
+import { JanelasTab } from "./JanelasTab";
+import type { Salao } from "../../core/types";
 
-type Tab = "agenda" | "proximas" | "clientes" | "mesas";
+type Tab = "agenda" | "proximas" | "clientes" | "saloes" | "janelas" | "mesas";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -43,6 +46,7 @@ export function ReservasPage() {
   const [tab, setTab] = useState<Tab>("agenda");
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mesas, setMesas] = useState<Mesa[]>([]);
+  const [saloes, setSaloes] = useState<Salao[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Reserva | "new" | null>(null);
@@ -63,6 +67,17 @@ export function ReservasPage() {
     const q = query(collection(db, "mesas"), where("restaurantId", "==", rid));
     const unsub = onSnapshot(q, (snap) => {
       setMesas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Mesa));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "saloes"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Salao);
+      list.sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
+      setSaloes(list);
     });
     return () => unsub();
   }, [rid]);
@@ -179,6 +194,8 @@ export function ReservasPage() {
           ["agenda",   `📅 Agenda do dia (${reservasDoDia.length})`],
           ["proximas", `⏰ Próximas (${proximas.length})`],
           ["clientes", `👥 Clientes (${clientes.length})`],
+          ["saloes",   `🏛️ Salões (${saloes.filter(s => s.ativo).length})`],
+          ["janelas",  `🕒 Janelas`],
           ["mesas",    `🪑 Mesas (${mesas.filter(m => m.ativa).length})`],
         ] as const).map(([id, label]) => (
           <button
@@ -301,6 +318,16 @@ export function ReservasPage() {
       {/* TAB CLIENTES */}
       {tab === "clientes" && (
         <ClientesTab restaurantId={rid} podeConfig={podeConfig} />
+      )}
+
+      {/* TAB SALÕES */}
+      {tab === "saloes" && me && (
+        <SaloesTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} />
+      )}
+
+      {/* TAB JANELAS */}
+      {tab === "janelas" && me && (
+        <JanelasTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} saloes={saloes} />
       )}
 
       {/* TAB MESAS */}
