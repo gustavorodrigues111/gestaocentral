@@ -117,8 +117,16 @@ async function main() {
     const outDir = path.join(DIST_DIR, "site", slug);
     await fs.mkdir(outDir, { recursive: true });
     await fs.writeFile(path.join(outDir, "index.html"), html, "utf8");
+
+    // Também escreve JSON puro em /sites/<slug>.json — usado pelo
+    // SitePublicaPage como fallback quando o HTML pré-renderizado não é
+    // servido (ex: rewrite do host não captura). CDN-cached, instante.
+    const jsonDir = path.join(DIST_DIR, "sites");
+    await fs.mkdir(jsonDir, { recursive: true });
+    await fs.writeFile(path.join(jsonDir, `${slug}.json`), JSON.stringify(fullData), "utf8");
+
     gerados++;
-    console.log(`[prerender-sites] ✓ /site/${slug}/`);
+    console.log(`[prerender-sites] ✓ /site/${slug}/ + /sites/${slug}.json`);
   }
 
   console.log(`[prerender-sites] concluído — ${gerados} HTML(s) gerado(s)`);

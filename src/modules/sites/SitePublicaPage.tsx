@@ -55,36 +55,98 @@ export function SitePublicaPage({ slugFromHost }: { slugFromHost?: string }) {
 
   useEffect(() => {
     if (!slug) return;
-    (async () => {
+
+    // Fluxo em camadas, do mais rápido pro mais lento:
+    //   1. __SITE_CONFIG__ (já lido em injectedInicial) — instante
+    //   2. /sites/<slug>.json — CDN-cached, ~50-200ms (fallback quando o
+    //      HTML pré-renderizado não foi servido — ex: rewrite do host
+    //      não capturou e veio o /index.html genérico do SPA)
+    //   3. Firestore query — ~500ms-2s (rede + long-polling fallback)
+    let cancelado = false;
+
+    async function tentarJsonEstatico() {
       try {
-        // Resolve slug → siteConfig
-        const snap = await getDocs(query(collection(db, "sitesConfig"), where("slug", "==", slug)));
-        if (snap.empty) {
-          // Se não tem config injetado, é erro. Se tem (de prerender),
-          // mantém o injetado — pode ser que o doc tenha sido deletado
-          // depois do build mas ainda está cacheado na CDN.
-          if (!injectedInicial) setErro("nao_encontrado");
-          return;
+        const res = await fetch(`/sites/${slug}.json`, { cache: "default" });
+        if (!res.ok) return null;
+        const data = await res.json() as SiteConfig;
+        if (!data.publicado) return null;
+        return data;
+      } catch {
+        return null;
+      }
+    }
+
+    type FirestoreResult =
+      | { ok: true; cfg: SiteConfig }
+      | { ok: false; erro: "nao_encontrado" | "nao_publicado" };
+
+    async function tentarFirestore(): Promise<FirestoreResult> {
+      const snap = await getDocs(query(collection(db, "sitesConfig"), where("slug", "==", slug)));
+      if (snap.empty) return { ok: false, erro: "nao_encontrado" };
+      const d = snap.docs[0]!;
+      const cfg = { id: d.id, ...d.data() } as SiteConfig;
+      if (!cfg.publicado) return { ok: false, erro: "nao_publicado" };
+      return { ok: true, cfg };
+    }
+
+    (async () => {
+      // Se já tem injetado, ainda assim valida com Firestore em background
+      // (silencioso) pra detectar mudanças pós-build. Tela já renderizou.
+      if (injectedInicial) {
+        try {
+          const res = await tentarFirestore();
+          if (cancelado) return;
+          if (res.ok) {
+            setConfig(res.cfg);
+            document.title = res.cfg.slug;
+          }
+        } catch (e) {
+          // Silencioso — injetado já renderizou
+          console.warn("[site] Firestore background validation falhou", e);
         }
-        const d = snap.docs[0]!;
-        const cfg = { id: d.id, ...d.data() } as SiteConfig;
-        if (!cfg.publicado) {
-          if (!injectedInicial) setErro("nao_publicado");
-          return;
-        }
-        // Atualiza com dados frescos (silencioso) — pode ter mudado
-        // entre o build e o acesso. SiteRenderer re-renderiza diff.
-        setConfig(cfg);
-        // Define title
-        document.title = cfg.slug;
-      } catch (e) {
-        console.error(e);
-        // Só mostra erro se não tinha injetado
-        if (!injectedInicial) setErro("nao_encontrado");
-      } finally {
         setLoading(false);
+        return;
+      }
+
+      // Sem injetado: tenta JSON estático primeiro (CDN-rápido)
+      const jsonData = await tentarJsonEstatico();
+      if (cancelado) return;
+      if (jsonData) {
+        setConfig(jsonData);
+        setLoading(false);
+        document.title = jsonData.slug;
+        // Continua e valida com Firestore em background (silencioso)
+        try {
+          const res = await tentarFirestore();
+          if (cancelado) return;
+          if (res.ok) {
+            setConfig(res.cfg);
+            document.title = res.cfg.slug;
+          }
+        } catch {}
+        return;
+      }
+
+      // Último recurso: Firestore (mais lento, mas autoritativo)
+      try {
+        const res = await tentarFirestore();
+        if (cancelado) return;
+        if (res.ok) {
+          setConfig(res.cfg);
+          document.title = res.cfg.slug;
+        } else {
+          setErro(res.erro);
+        }
+      } catch (e) {
+        if (cancelado) return;
+        console.error(e);
+        setErro("nao_encontrado");
+      } finally {
+        if (!cancelado) setLoading(false);
       }
     })();
+
+    return () => { cancelado = true; };
     // injectedInicial só lida no mount — não vira dep
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
