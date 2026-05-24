@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import type { SiteConfig } from "../../core/types";
@@ -92,7 +92,7 @@ function CardapioCard({
   const [acabouDeSalvar, setAcabouDeSalvar] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  async function uploadFile(file: File) {
+  function uploadFile(file: File) {
     setErro("");
     if (file.type !== "application/pdf") {
       setErro("Arquivo precisa ser PDF.");
@@ -105,43 +105,68 @@ function CardapioCard({
     }
     setUploading(true);
     setProgresso(0);
-    try {
-      const path = `cardapios/${rid}/${idioma}.pdf`;
-      const ref = storageRef(storage, path);
-      // uploadBytes simples — pra ter progress real usaríamos uploadBytesResumable
-      // mas o ganho pra arquivos pequenos não compensa a complexidade.
-      setProgresso(25);
-      const snap = await uploadBytes(ref, file, {
-        contentType: "application/pdf",
-        customMetadata: { atualizadoPor: meId, restaurantId: rid },
-      });
-      setProgresso(75);
-      const downloadUrl = await getDownloadURL(snap.ref);
-      const now = new Date().toISOString();
-      const parcial: Partial<SiteConfig> = idioma === "pt"
-        ? {
-            cardapioPdfPtUrl: downloadUrl,
-            cardapioPdfPtAtualizadoEm: now,
-            cardapioPdfPtAtualizadoPor: meId,
-          }
-        : {
-            cardapioPdfEnUrl: downloadUrl,
-            cardapioPdfEnAtualizadoEm: now,
-            cardapioPdfEnAtualizadoPor: meId,
-          };
-      await onSave(parcial);
-      setProgresso(100);
-      setAcabouDeSalvar(true);
-      // Mensagem some depois de 4s
-      setTimeout(() => setAcabouDeSalvar(false), 4000);
-    } catch (e) {
-      console.error(e);
-      setErro(e instanceof Error ? e.message : "Erro ao fazer upload");
-    } finally {
-      setUploading(false);
-      // Limpa o input pra permitir re-upload do mesmo arquivo
-      if (inputRef.current) inputRef.current.value = "";
-    }
+
+    const path = `cardapios/${rid}/${idioma}.pdf`;
+    const ref = storageRef(storage, path);
+    const task = uploadBytesResumable(ref, file, {
+      contentType: "application/pdf",
+      customMetadata: { atualizadoPor: meId, restaurantId: rid },
+    });
+
+    task.on(
+      "state_changed",
+      (snap) => {
+        const pct = (snap.bytesTransferred / snap.totalBytes) * 100;
+        setProgresso(Math.max(5, Math.round(pct)));
+      },
+      (err) => {
+        console.error("Storage upload error:", err);
+        // Erro de permissão = rules não deployadas
+        const cod = (err as { code?: string }).code || "";
+        if (cod.includes("unauthorized") || cod.includes("permission")) {
+          setErro(
+            "Sem permissão pra subir arquivo. Provavelmente as regras do Firebase " +
+            "Storage não foram publicadas. Rode no terminal: " +
+            "firebase deploy --only storage --project gestaocentral"
+          );
+        } else if (cod.includes("retry-limit-exceeded")) {
+          setErro("Conexão instável — tenta de novo.");
+        } else if (cod.includes("canceled")) {
+          setErro("Upload cancelado.");
+        } else {
+          setErro(err.message || "Erro ao fazer upload");
+        }
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = "";
+      },
+      async () => {
+        try {
+          const downloadUrl = await getDownloadURL(task.snapshot.ref);
+          const now = new Date().toISOString();
+          const parcial: Partial<SiteConfig> = idioma === "pt"
+            ? {
+                cardapioPdfPtUrl: downloadUrl,
+                cardapioPdfPtAtualizadoEm: now,
+                cardapioPdfPtAtualizadoPor: meId,
+              }
+            : {
+                cardapioPdfEnUrl: downloadUrl,
+                cardapioPdfEnAtualizadoEm: now,
+                cardapioPdfEnAtualizadoPor: meId,
+              };
+          await onSave(parcial);
+          setProgresso(100);
+          setAcabouDeSalvar(true);
+          setTimeout(() => setAcabouDeSalvar(false), 4000);
+        } catch (e) {
+          console.error(e);
+          setErro(e instanceof Error ? e.message : "Erro ao salvar URL");
+        } finally {
+          setUploading(false);
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      },
+    );
   }
 
   async function remover() {
