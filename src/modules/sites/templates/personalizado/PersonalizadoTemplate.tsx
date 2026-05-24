@@ -1337,29 +1337,53 @@ function CardapioPreview({
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto" }}>
-      {pdfUrl && (
+      {/* MOBILE: preview pesado do PDF (Google Docs Viewer) saiu — o iframe
+          gview adicionava ~3-5s no first paint e às vezes nem carregava
+          em redes 3G/4G fracas. Em vez de preview, mostra ilustração leve
+          + botão grande "Toque pra abrir cardápio". Abre o PDF em nova aba
+          via viewer nativo do iOS/Android — escala perfeita, sem custo. */}
+      {pdfUrl && isMobile && (
+        <div style={{ marginBottom: 24, textAlign: "center" }}>
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "block",
+              padding: "32px 24px",
+              borderRadius: 12,
+              border: `2px dashed ${corSecundaria}60`,
+              backgroundColor: "#fff",
+              textDecoration: "none",
+              color: corPrimaria,
+              boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+            }}
+          >
+            <div style={{ fontSize: 48, marginBottom: 12 }}>📄</div>
+            <div style={{
+              fontFamily: "inherit",
+              fontSize: 18, fontWeight: 600,
+              marginBottom: 4,
+            }}>
+              Toque para abrir o cardápio
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.7 }}>
+              Abre em nova aba (PDF)
+            </div>
+          </a>
+        </div>
+      )}
+
+      {/* DESKTOP: mantém preview com iframe nativo (rápido + setas de navegação) */}
+      {pdfUrl && !isMobile && (
         <div style={{ position: "relative", marginBottom: 24 }}>
-          {/* Wrapper visual + iframe — não envolvido em <a> pq queremos
-              click nas setas funcionar. Em vez disso, hint clicável
-              abaixo serve pra abrir o PDF completo. */}
           <div style={previewWrapperStyle}>
-            {/* iframe propositalmente OVERSIZE no desktop — overflow:hidden
-                do parent clipa a área extra e empurra as scrollbars do PDF
-                viewer pra fora do viewport, já que muitos viewers ignoram
-                scrollbar=0 no hash. No mobile (Google Docs Viewer) NÃO
-                oversize — o GDV tem seu próprio chrome simétrico e o
-                oversize estava cortando só um lado, deixando a borda
-                desigual. */}
             <iframe
               key={`${pdfUrl}#${pagina}`}
               src={iframeSrc}
               title="Preview do cardápio"
               scrolling="no"
-              style={isMobile ? {
-                width: "100%",
-                height: "100%",
-                border: "none", display: "block",
-              } : {
+              style={{
                 // OVERSIZE só na largura — empurra a scrollbar vertical do
                 // PDF viewer pra fora do viewport (sem isso aparece uma
                 // listra cinza na borda direita). Altura fica EXATAMENTE
@@ -1374,35 +1398,27 @@ function CardapioPreview({
             />
             {/* Overlay invisível bloqueia scroll/clicks DENTRO do PDF
                 viewer no desktop. Sem isso o scroll roda as páginas do
-                PDF debaixo das setas. Mobile usa GDV (interação nativa
-                OK pra scroll entre páginas). */}
-            {!isMobile && (
-              <div
-                aria-hidden
-                style={{
-                  position: "absolute",
-                  inset: 0,
-                  zIndex: 1,
-                  // Background imperceptível só pra capturar eventos
-                  backgroundColor: "transparent",
-                }}
-              />
-            )}
-            {/* Setas — só desktop. Mobile usa o botão "abrir completo" pra ver tudo. */}
-            {!isMobile && seta("prev")}
-            {!isMobile && seta("next")}
-            {!isMobile && (
-              <div style={{
-                position: "absolute", bottom: 12, left: 12,
-                backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
-                padding: "4px 12px", borderRadius: 999,
-                fontSize: 11, fontWeight: 500,
-                zIndex: 2,                                  // acima do overlay
-              }}>
-                pág. {pagina}
-              </div>
-            )}
-            {/* Hint abrir completo */}
+                PDF debaixo das setas. */}
+            <div
+              aria-hidden
+              style={{
+                position: "absolute",
+                inset: 0,
+                zIndex: 1,
+                backgroundColor: "transparent",
+              }}
+            />
+            {seta("prev")}
+            {seta("next")}
+            <div style={{
+              position: "absolute", bottom: 12, left: 12,
+              backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
+              padding: "4px 12px", borderRadius: 999,
+              fontSize: 11, fontWeight: 500,
+              zIndex: 2,
+            }}>
+              pág. {pagina}
+            </div>
             <a
               href={pdfUrl}
               target="_blank"
@@ -1414,7 +1430,7 @@ function CardapioPreview({
                 fontSize: 12, fontWeight: 500,
                 textDecoration: "none",
                 backdropFilter: "blur(4px)",
-                zIndex: 2,                                  // acima do overlay
+                zIndex: 2,
               }}
             >
               🔍 abrir completo
