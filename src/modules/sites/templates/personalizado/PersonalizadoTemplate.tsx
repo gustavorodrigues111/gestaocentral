@@ -371,32 +371,54 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           cardapio: () => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
             conteudo: (
-              <div style={{ maxWidth: 700, margin: "0 auto" }}>
-                {/* Preview da 1ª página do PDF — usa <embed> com hash
-                    #page=1 + toolbar=0 pra exibir só o conteúdo. Tem
-                    fallback pra abrir o PDF completo via botão abaixo. */}
+              <div style={{ maxWidth: 900, margin: "0 auto" }}>
+                {/* Preview da 1ª página do PDF — clicável (abre o PDF
+                    completo em nova aba). pointer-events:none no iframe
+                    deixa o click passar pro <a> pai. Aspect-ratio A4 pra
+                    PDF caber sem cortar; #view=Fit faz a página caber
+                    inteira no viewport do iframe. */}
                 {cfg.cardapioPdfPtUrl && (
-                  <div style={{
-                    position: "relative",
-                    aspectRatio: "1 / 1.3",
-                    margin: "0 auto 24px",
-                    maxWidth: 480,
-                    borderRadius: 8,
-                    overflow: "hidden",
-                    border: `1px solid ${corSecundaria}40`,
-                    backgroundColor: "#fff",
-                    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-                  }}>
+                  <a
+                    href={cfg.cardapioPdfPtUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Abrir cardápio completo em nova aba"
+                    style={{
+                      display: "block",
+                      position: "relative",
+                      aspectRatio: "1 / 1.414", // A4
+                      maxWidth: isMobile ? "100%" : 760,
+                      margin: "0 auto 24px",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: `1px solid ${corSecundaria}40`,
+                      backgroundColor: "#fff",
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                      cursor: "pointer",
+                      textDecoration: "none",
+                    }}
+                  >
                     <iframe
-                      src={`${cfg.cardapioPdfPtUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                      src={`${cfg.cardapioPdfPtUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
                       title="Preview do cardápio"
                       style={{
                         width: "100%", height: "100%",
                         border: "none", display: "block",
+                        pointerEvents: "none",
                       }}
                       loading="lazy"
                     />
-                  </div>
+                    {/* Hint visual "abrir completo" no canto */}
+                    <div style={{
+                      position: "absolute", bottom: 12, right: 12,
+                      backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
+                      padding: "6px 14px", borderRadius: 999,
+                      fontSize: 12, fontWeight: 500,
+                      backdropFilter: "blur(4px)",
+                    }}>
+                      🔍 abrir completo
+                    </div>
+                  </a>
                 )}
                 <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
                   {cfg.cardapioPdfPtUrl && (
@@ -689,56 +711,56 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           return PARES_DESKTOP.some(s => s.has(a) && s.has(b) && a !== b);
         }
 
-        // Render seções na ordem + alterna bg só nas seções que existirem.
-        // No desktop tenta parear seções consecutivas conhecidas (Reservas +
-        // Laje/Eventos, Horário + Contato) — mantém o layout interno de cada
-        // uma, só compartilham bg + padding pra grudar visualmente.
+        // 1) Filtra primeiro as seções que realmente têm conteúdo —
+        //    seções com null (feature desligada) são removidas da lista.
+        //    Sem esse filtro, "Reservas" e "Laje" nunca seriam consecutivas
+        //    no array original (têm outras seções entre eles) e o par nunca
+        //    seria detectado.
+        type Item = { id: SecaoId; titulo: string; conteudo: React.ReactNode };
+        const items: Item[] = [];
+        for (const id of ordem) {
+          const c = conteudos[id]?.("");  // bg ainda não importa aqui
+          if (c) items.push({ id, titulo: c.titulo, conteudo: c.conteudo });
+        }
+
+        // 2) Pareia consecutivos NA LISTA FILTRADA. Mobile sempre single.
         const nodes: React.ReactNode[] = [];
         let idxRenderizado = 0;
         let i = 0;
-        while (i < ordem.length) {
-          const id = ordem[i]!;
-          const c = conteudos[id]?.(idxRenderizado % 2 === 0 ? corFundo : "#ffffff");
-          if (!c) { i++; continue; }
+        while (i < items.length) {
+          const a = items[i]!;
+          const b = items[i + 1];
           const bg = idxRenderizado % 2 === 0 ? corFundo : "#ffffff";
 
-          // Tenta parear com a próxima
-          if (!isMobile && i + 1 < ordem.length) {
-            const proxId = ordem[i + 1]!;
-            if (ehPar(id, proxId)) {
-              const c2 = conteudos[proxId]?.(bg);
-              if (c2) {
-                nodes.push(
-                  <section key={`${id}-${proxId}`} id={`pair-${id}-${proxId}`} style={{
-                    padding: "80px 20px", backgroundColor: bg,
-                  }}>
-                    <div style={{
-                      maxWidth: 1300, margin: "0 auto",
-                      display: "grid", gridTemplateColumns: "1fr 1fr",
-                      gap: 60, alignItems: "start",
-                    }}>
-                      <div id={id}>
-                        <h2 style={tituloSectionStyle}>{c.titulo}</h2>
-                        {c.conteudo}
-                      </div>
-                      <div id={proxId}>
-                        <h2 style={tituloSectionStyle}>{c2.titulo}</h2>
-                        {c2.conteudo}
-                      </div>
-                    </div>
-                  </section>
-                );
-                i += 2;
-                idxRenderizado++;
-                continue;
-              }
-            }
+          if (!isMobile && b && ehPar(a.id, b.id)) {
+            nodes.push(
+              <section key={`${a.id}-${b.id}`} id={`pair-${a.id}-${b.id}`} style={{
+                padding: "80px 20px", backgroundColor: bg,
+              }}>
+                <div style={{
+                  maxWidth: 1300, margin: "0 auto",
+                  display: "grid", gridTemplateColumns: "1fr 1fr",
+                  gap: 60, alignItems: "start",
+                }}>
+                  <div id={a.id}>
+                    <h2 style={tituloSectionStyle}>{a.titulo}</h2>
+                    {a.conteudo}
+                  </div>
+                  <div id={b.id}>
+                    <h2 style={tituloSectionStyle}>{b.titulo}</h2>
+                    {b.conteudo}
+                  </div>
+                </div>
+              </section>
+            );
+            i += 2;
+            idxRenderizado++;
+            continue;
           }
 
-          // Single
           nodes.push(
-            <Section key={id} id={id} titulo={c.titulo} bg={bg}>
-              {c.conteudo}
+            <Section key={a.id} id={a.id} titulo={a.titulo} bg={bg}>
+              {a.conteudo}
             </Section>
           );
           i++;

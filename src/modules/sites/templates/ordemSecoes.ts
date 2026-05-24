@@ -25,15 +25,19 @@ export const SECAO_LABEL: Record<SecaoId, string> = {
 };
 
 // Ordem padrão (mesma sequência que o template Personalizado já tinha)
+// Ordem padrão das seções. IMPORTANTE: os PARES do desktop (configurados no
+// template como [reservas+laje/eventos] e [horario+contato]) precisam ficar
+// consecutivos aqui pro pareamento detectar. Se você reordenar, considere
+// manter laje→reservas (ou reservas→eventos) juntos e horario→contato juntos.
 export const ORDEM_PADRAO: SecaoId[] = [
   "historia",
   "cardapio",
-  "horario",
-  "laje",
-  "eventos",
-  "reservas",
+  "laje",       // par com reservas no desktop (quando hasLaje+hasEventos)
+  "reservas",   // par com laje OU com eventos (next item filtrado)
+  "eventos",    // entra como par de reservas quando !hasLaje
   "delivery",
   "trabalhe",
+  "horario",    // par com contato no desktop
   "contato",
 ];
 
