@@ -44,6 +44,11 @@ export const PAISES: Pais[] = [
   { iso: "VE", nome: "Venezuela",       ddi: "58",  flag: "🇻🇪", minLen: 10, maxLen: 10 },
   { iso: "ZA", nome: "África do Sul",   ddi: "27",  flag: "🇿🇦", minLen: 9,  maxLen: 9  },
   { iso: "IN", nome: "Índia",           ddi: "91",  flag: "🇮🇳", minLen: 10, maxLen: 10 },
+  // Fallback: cliente digita DDI manualmente e número sem validação de
+  // comprimento. minLen=4 é só pra evitar campo vazio (qualquer telefone
+  // real tem mais de 4 dígitos). DDI fica em branco — é preenchido pelo
+  // usuário na UI quando escolhe esta opção.
+  { iso: "OUTROS", nome: "Outro país (digitar DDI)", ddi: "", flag: "🌐", minLen: 4, maxLen: 20 },
 ];
 
 export const PAIS_BR = PAISES[0];
@@ -85,6 +90,7 @@ const BR_DDDS = new Set([
 
 // Valida número LOCAL (sem DDI) pra um país específico.
 // Recebe input cru (com ou sem máscara) — limpa antes de validar.
+// OUTROS: validação mais frouxa (só checa que tem dígitos suficientes).
 export function validarNumeroLocal(input: string, pais: Pais): boolean {
   const digitos = input.replace(/\D/g, "");
   if (digitos.length < pais.minLen || digitos.length > pais.maxLen) return false;
@@ -97,10 +103,17 @@ export function validarNumeroLocal(input: string, pais: Pais): boolean {
   return true;
 }
 
+// Valida DDI digitado manualmente (OUTROS). DDIs reais têm 1-4 dígitos.
+export function validarDDIManual(ddi: string): boolean {
+  const d = ddi.replace(/\D/g, "");
+  return d.length >= 1 && d.length <= 4;
+}
+
 // Formata número LOCAL pra exibição com máscara amigável do país.
-// Default: separa por blocos comuns.
+// Default: separa por blocos comuns. OUTROS: não formata (deixa cru).
 export function formatarNumeroLocal(input: string, pais: Pais): string {
   const d = input.replace(/\D/g, "");
+  if (pais.iso === "OUTROS") return d; // sem formatação — usuário digita livre
   if (pais.iso === "BR") {
     if (d.length <= 2) return d;
     if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;

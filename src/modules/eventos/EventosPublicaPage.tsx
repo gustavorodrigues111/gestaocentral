@@ -15,7 +15,7 @@ import {
 } from "./validacoes";
 import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
-  validarNumeroLocal,
+  validarDDIManual, validarNumeroLocal,
 } from "./paises";
 
 // Página pública: cliente registra interesse num evento.
@@ -38,6 +38,7 @@ export function EventosPublicaPage() {
   const [form, setForm] = useState({
     nome: "",
     paisIso: PAIS_BR.iso,
+    ddiManual: "",      // só preenchido quando paisIso === "OUTROS"
     whatsapp: "",
     email: "",
     tipoPessoa: "PF" as "PF" | "PJ",
@@ -129,7 +130,14 @@ export function EventosPublicaPage() {
     // Validações
     if (!form.nome.trim()) return setErroGeral("Preenche seu nome.");
     const pais = getPaisByIso(form.paisIso);
-    if (!validarNumeroLocal(form.whatsapp, pais)) {
+    if (pais.iso === "OUTROS") {
+      if (!validarDDIManual(form.ddiManual)) {
+        return setErroGeral("DDI inválido. Digite só os números (ex: 351 pra Portugal).");
+      }
+      if (form.whatsapp.replace(/\D/g, "").length < 4) {
+        return setErroGeral("Digite o número de WhatsApp.");
+      }
+    } else if (!validarNumeroLocal(form.whatsapp, pais)) {
       const exemploLen = pais.minLen === pais.maxLen ? `${pais.minLen}` : `${pais.minLen}-${pais.maxLen}`;
       return setErroGeral(
         pais.iso === "BR"
@@ -174,7 +182,10 @@ export function EventosPublicaPage() {
         status: "novo",
         cliente: {
           nome: form.nome.trim(),
-          whatsapp: montarE164(pais.ddi, form.whatsapp),
+          whatsapp: montarE164(
+            pais.iso === "OUTROS" ? form.ddiManual : pais.ddi,
+            form.whatsapp,
+          ),
           email: form.email.trim(),
           tipoPessoa: form.tipoPessoa,
           ...(form.tipoPessoa === "PJ"
@@ -285,39 +296,74 @@ export function EventosPublicaPage() {
                 <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                   WhatsApp *
                 </label>
-                <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
-                  <select
-                    value={form.paisIso}
-                    onChange={(e) => {
-                      update("paisIso", e.target.value);
-                      // Limpa número quando muda de país pra não validar mal-formado
-                      update("whatsapp", "");
-                    }}
-                    className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  >
-                    {PAISES.map(p => (
-                      <option key={p.iso} value={p.iso}>
-                        {p.flag} +{p.ddi}
-                      </option>
-                    ))}
-                  </select>
-                  <input
-                    type="tel"
-                    inputMode="numeric"
-                    value={form.whatsapp}
-                    onChange={(e) => {
-                      const pais = getPaisByIso(form.paisIso);
-                      // Formata enquanto digita
-                      update("whatsapp", formatarNumeroLocal(e.target.value, pais));
-                    }}
-                    placeholder={
-                      form.paisIso === "BR"
-                        ? "(11) 99999-9999"
-                        : `${getPaisByIso(form.paisIso).minLen} dígitos`
-                    }
-                    className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  />
-                </div>
+                {form.paisIso === "OUTROS" ? (
+                  // Modo livre: cliente digita DDI + número, sem validação por país
+                  <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
+                    <select
+                      value={form.paisIso}
+                      onChange={(e) => {
+                        update("paisIso", e.target.value);
+                        update("whatsapp", "");
+                        update("ddiManual", "");
+                      }}
+                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    >
+                      {PAISES.map(p => (
+                        <option key={p.iso} value={p.iso}>
+                          {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={form.ddiManual}
+                      onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      placeholder="DDI"
+                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm tabular-nums"
+                    />
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={form.whatsapp}
+                      onChange={(e) => update("whatsapp", e.target.value)}
+                      placeholder="Número"
+                      className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    />
+                  </div>
+                ) : (
+                  <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+                    <select
+                      value={form.paisIso}
+                      onChange={(e) => {
+                        update("paisIso", e.target.value);
+                        update("whatsapp", "");
+                      }}
+                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    >
+                      {PAISES.map(p => (
+                        <option key={p.iso} value={p.iso}>
+                          {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      value={form.whatsapp}
+                      onChange={(e) => {
+                        const pais = getPaisByIso(form.paisIso);
+                        update("whatsapp", formatarNumeroLocal(e.target.value, pais));
+                      }}
+                      placeholder={
+                        form.paisIso === "BR"
+                          ? "(11) 99999-9999"
+                          : `${getPaisByIso(form.paisIso).minLen} dígitos`
+                      }
+                      className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    />
+                  </div>
+                )}
               </div>
               <Input
                 label="Email *"
