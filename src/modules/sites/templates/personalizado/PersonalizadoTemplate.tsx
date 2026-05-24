@@ -286,28 +286,70 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               </div>
             </Section>
           ) : null,
-          contato: (bg) => (
-            <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg={bg}>
-              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7 }}>
-                {enderecoLinhaUm(cfg.endereco) && (
-                  <p style={{ marginBottom: 4 }}>{enderecoLinhaUm(cfg.endereco)}</p>
-                )}
-                {enderecoLinhaDois(cfg.endereco) && (
-                  <p style={{ marginBottom: 16, color: "#555" }}>{enderecoLinhaDois(cfg.endereco)}</p>
-                )}
-                <a href={googleMapsLink(cfg.endereco)} target="_blank" rel="noreferrer"
-                   style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
-                  ver no Google Maps →
-                </a>
-                {(cfg.telefone || cfg.emailContato) && (
-                  <div style={{ marginTop: 24, fontSize: 14, color: "#555" }}>
-                    {cfg.telefone && <div>📞 {cfg.telefone}</div>}
-                    {cfg.emailContato && <div>✉ {cfg.emailContato}</div>}
-                  </div>
-                )}
-              </div>
-            </Section>
-          ),
+          contato: (bg) => {
+            // Endereço clicável: abre Google Maps (que no mobile usa app
+            // de navegação default — Google Maps, Waze, Apple Maps).
+            const mapsHref = googleMapsLink(cfg.endereco);
+            // Telefone vira link WhatsApp (api.whatsapp.com — abre app
+            // no mobile, web.whatsapp.com no desktop).
+            const telDigitos = (cfg.telefone || "").replace(/[^\d+]/g, "");
+            const waHref = telDigitos
+              ? `https://api.whatsapp.com/send?phone=${encodeURIComponent(telDigitos)}`
+              : null;
+            // Email vira link mailto: (abre app de email default do sistema)
+            const mailHref = cfg.emailContato ? `mailto:${cfg.emailContato}` : null;
+            // Estilo comum dos links de contato — sublinhado discreto
+            const linkStyle: React.CSSProperties = {
+              color: "inherit", textDecoration: "underline",
+              textDecorationColor: `${corPrimaria}55`,
+              textUnderlineOffset: 3,
+            };
+            return (
+              <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg={bg}>
+                <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7 }}>
+                  {enderecoLinhaUm(cfg.endereco) && (
+                    <p style={{ marginBottom: 4 }}>
+                      <a href={mapsHref} target="_blank" rel="noreferrer" style={linkStyle}>
+                        {enderecoLinhaUm(cfg.endereco)}
+                      </a>
+                    </p>
+                  )}
+                  {enderecoLinhaDois(cfg.endereco) && (
+                    <p style={{ marginBottom: 16, color: "#555" }}>
+                      <a href={mapsHref} target="_blank" rel="noreferrer" style={{ ...linkStyle, color: "inherit" }}>
+                        {enderecoLinhaDois(cfg.endereco)}
+                      </a>
+                    </p>
+                  )}
+                  <a href={mapsHref} target="_blank" rel="noreferrer"
+                     style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
+                    ver no Google Maps →
+                  </a>
+                  {(cfg.telefone || cfg.emailContato) && (
+                    <div style={{ marginTop: 24, fontSize: 14, color: "#555" }}>
+                      {cfg.telefone && waHref && (
+                        <div>
+                          📞{" "}
+                          <a href={waHref} target="_blank" rel="noreferrer" style={linkStyle}
+                             title="Abrir no WhatsApp">
+                            {cfg.telefone}
+                          </a>
+                        </div>
+                      )}
+                      {cfg.emailContato && mailHref && (
+                        <div>
+                          ✉{" "}
+                          <a href={mailHref} style={linkStyle} title="Enviar email">
+                            {cfg.emailContato}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Section>
+            );
+          },
         };
 
         // Render seções na ordem + alterna bg só nas seções que existirem
