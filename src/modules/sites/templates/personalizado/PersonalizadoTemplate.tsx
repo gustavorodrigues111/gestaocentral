@@ -1438,18 +1438,25 @@ function CardapioPreview({
           </div>
         </div>
       )}
-      <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-        {cfg.cardapioPdfPtUrl && (
-          <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-            {cfg.cardapioPdfEnUrl ? "Português" : "Ver cardápio completo"}
-          </a>
-        )}
-        {cfg.cardapioPdfEnUrl && (
-          <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-            English
-          </a>
-        )}
-      </div>
+      {/* Botões inferiores — só fazem sentido quando há 2 idiomas (escolha
+          PT/EN) OU no desktop (preview não abre direto clicando — botão
+          é a única forma de ver o cardápio completo). No mobile com só
+          1 idioma, o próprio card "Toque para abrir o cardápio" já é o
+          link — segunda exibição vira ruído. */}
+      {(cfg.cardapioPdfEnUrl || !isMobile) && (
+        <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+          {cfg.cardapioPdfPtUrl && (
+            <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+              {cfg.cardapioPdfEnUrl ? "Português" : "Ver cardápio completo"}
+            </a>
+          )}
+          {cfg.cardapioPdfEnUrl && (
+            <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+              English
+            </a>
+          )}
+        </div>
+      )}
     </div>
   );
 }
