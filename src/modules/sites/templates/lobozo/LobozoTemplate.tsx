@@ -56,6 +56,12 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
     ? `https://api.whatsapp.com/send?phone=${cfg.telefone.replace(/\D/g, "")}`
     : null);
 
+  // Textos editáveis com defaults da marca Lobozó.
+  // Pra editar, vai em Sites → Geral → "Textos das seções".
+  const t = (k: keyof NonNullable<typeof cfg.textos>, def: string): string => {
+    return cfg.textos?.[k] || def;
+  };
+
   return (
     <div style={{
       fontFamily: fontBody,
@@ -113,24 +119,27 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           <h1 style={{
             fontFamily: fontHeading, fontSize: "clamp(40px, 7vw, 84px)",
             lineHeight: 1.05, margin: "0 0 24px 0", letterSpacing: "-0.01em",
+            whiteSpace: "pre-line",
           }}>
-            Cozinha caipira,<br />feita com tempo.
+            {t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}
           </h1>
           <p style={{
             fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 36px",
             lineHeight: 1.55,
           }}>
-            Um laboratório gastronômico no coração da Vila Madalena.
+            {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
           </p>
           {cfg.features.hasReservas && (
-            <a href="#reservas" style={primaryButton(COR_DOURADO)}>Faça sua reserva</a>
+            <a href="#reservas" style={primaryButton(COR_DOURADO)}>
+              {t("heroCtaLabel", "Faça sua reserva")}
+            </a>
           )}
         </div>
       </section>
 
       {/* HISTÓRIA */}
       {cfg.historia && (
-        <Section id="historia" titulo="A nossa história" bg={COR_CREME}>
+        <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={COR_CREME}>
           <div style={{
             maxWidth: 720, margin: "0 auto", fontSize: 17, lineHeight: 1.7,
             whiteSpace: "pre-wrap",
@@ -142,7 +151,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* CARDÁPIO */}
       {(cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) && (
-        <Section id="cardapio" titulo="Cardápio" bg="#ffffff">
+        <Section id="cardapio" titulo={t("cardapioTitulo", "Cardápio")} bg="#ffffff">
           <div style={{
             display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap",
             maxWidth: 600, margin: "0 auto",
@@ -168,7 +177,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
       )}
 
       {/* HORÁRIO */}
-      <Section id="horario" titulo="Horário de funcionamento" bg={COR_CREME}>
+      <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={COR_CREME}>
         <div style={{
           maxWidth: 500, margin: "0 auto",
           background: "#ffffff",
@@ -193,7 +202,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
                 fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
                 color: COR_DOURADO, marginBottom: 8, fontWeight: 600,
               }}>
-                Próximos avisos
+                {t("horarioProximosAvisosLabel", "Próximos avisos")}
               </div>
               {excecoes.map(e => (
                 <div key={e.id} style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>
@@ -210,15 +219,13 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* LAJE — só se ligado */}
       {cfg.features.hasLaje && cfg.features.hasEventos && (
-        <Section id="laje" titulo="Eventos na Laje" bg="#ffffff">
+        <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg="#ffffff">
           <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28 }}>
-              Nosso rooftop recebe eventos privados para até 45 pessoas.
-              Aniversários, encontros corporativos, jantares fechados — montamos
-              cada celebração com você.
+            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+              {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
             </p>
             <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
-              Solicitar proposta
+              {t("lajeCtaLabel", "Solicitar proposta")}
             </Link>
           </div>
         </Section>
@@ -226,14 +233,13 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* EVENTOS (genérico, se não tem Laje específica) */}
       {cfg.features.hasEventos && !cfg.features.hasLaje && (
-        <Section id="eventos" titulo="Eventos privados" bg="#ffffff">
+        <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg="#ffffff">
           <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28 }}>
-              Reservamos o espaço para sua celebração. Conta pra gente o que tem em
-              mente — voltamos com uma proposta sob medida.
+            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+              {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
             </p>
             <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
-              Solicitar proposta
+              {t("eventosCtaLabel", "Solicitar proposta")}
             </Link>
           </div>
         </Section>
@@ -241,14 +247,14 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* RESERVAS */}
       {cfg.features.hasReservas && (
-        <Section id="reservas" titulo="Reservas" bg={COR_CREME}>
+        <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={COR_CREME}>
           <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24 }}>
-              Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.
+            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+              {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
             </p>
             {waLink && (
               <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(COR_DOURADO)}>
-                💬 Reservar pelo WhatsApp
+                {t("reservasCtaLabel", "💬 Reservar pelo WhatsApp")}
               </a>
             )}
           </div>
@@ -257,7 +263,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* DELIVERY */}
       {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && (
-        <Section id="delivery" titulo="Peça pra casa" bg="#ffffff">
+        <Section id="delivery" titulo={t("deliveryTitulo", "Peça pra casa")} bg="#ffffff">
           <div style={{
             display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap",
             maxWidth: 700, margin: "0 auto",
@@ -274,20 +280,20 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* TRABALHE CONOSCO */}
       {cfg.features.hasTrabalheConosco && (
-        <Section id="trabalhe" titulo="Venha trabalhar com a gente" bg={COR_CREME}>
+        <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={COR_CREME}>
           <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24 }}>
-              Sempre buscando gente boa pra somar no time.
+            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+              {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
             </p>
             <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
-              Enviar candidatura
+              {t("trabalheCtaLabel", "Enviar candidatura")}
             </Link>
           </div>
         </Section>
       )}
 
       {/* CONTATO */}
-      <Section id="contato" titulo="Como chegar" bg="#ffffff">
+      <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg="#ffffff">
         <div style={{
           maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7,
         }}>

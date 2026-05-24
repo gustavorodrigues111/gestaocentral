@@ -2107,6 +2107,32 @@ export type SiteConfig = {
   logoUrl?: string;
   faviconUrl?: string;
   ogImageUrl?: string;               // pra SEO/social share
+  // Textos editáveis do site (sobrescrevem defaults do template).
+  // Cada campo é opcional — se não preenchido, o template usa um default
+  // adequado à marca dele. Útil pra ajustar copy sem mexer no código.
+  textos?: {
+    heroTitulo?: string;
+    heroSubtitulo?: string;
+    heroCtaLabel?: string;
+    cardapioTitulo?: string;
+    horarioTitulo?: string;
+    horarioProximosAvisosLabel?: string;
+    eventosTitulo?: string;
+    eventosTexto?: string;
+    eventosCtaLabel?: string;
+    lajeTitulo?: string;
+    lajeTexto?: string;
+    lajeCtaLabel?: string;
+    reservasTitulo?: string;
+    reservasTexto?: string;
+    reservasCtaLabel?: string;
+    deliveryTitulo?: string;
+    trabalheTitulo?: string;
+    trabalheTexto?: string;
+    trabalheCtaLabel?: string;
+    contatoTitulo?: string;
+    historiaTitulo?: string;
+  };
   // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
   slug: string;
   // Qual template visual usar pra renderizar o site público.

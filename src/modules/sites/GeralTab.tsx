@@ -371,6 +371,9 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
       </section>
 
+      {/* TEXTOS DAS SEÇÕES */}
+      <TextosSection form={form} setForm={setForm} disabled={inputDisabled} />
+
       {/* TEMPLATE */}
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
@@ -474,6 +477,165 @@ function CheckRow({ label, checked, onChange, disabled }: {
       />
       <span className="text-sm">{label}</span>
     </label>
+  );
+}
+
+function TextosSection({ form, setForm, disabled }: {
+  form: SiteConfig;
+  setForm: React.Dispatch<React.SetStateAction<SiteConfig | null>>;
+  disabled: boolean;
+}) {
+  const textos = form.textos || {};
+  function setTexto(k: keyof NonNullable<SiteConfig["textos"]>, v: string) {
+    setForm(f => f ? { ...f, textos: { ...(f.textos || {}), [k]: v } } : f);
+  }
+  function resetAll() {
+    if (!confirm("Limpar todos os textos? O template volta a usar os textos padrão da marca.")) return;
+    setForm(f => f ? { ...f, textos: {} } : f);
+  }
+
+  // Definição dos campos editáveis, agrupados por seção do site
+  const grupos: { titulo: string; campos: {
+    chave: keyof NonNullable<SiteConfig["textos"]>;
+    label: string;
+    placeholder: string;
+    longo?: boolean;
+    dica?: string;
+  }[] }[] = [
+    {
+      titulo: "Hero (topo da página)",
+      campos: [
+        { chave: "heroTitulo",    label: "Título do hero", placeholder: "ex: Cozinha caipira,\\nfeita com tempo.", longo: true, dica: "Use \\n pra quebra de linha" },
+        { chave: "heroSubtitulo", label: "Subtítulo", placeholder: "Texto curto abaixo do título", longo: true },
+        { chave: "heroCtaLabel",  label: "Botão de CTA", placeholder: "Faça sua reserva" },
+      ],
+    },
+    {
+      titulo: "História",
+      campos: [
+        { chave: "historiaTitulo", label: "Título", placeholder: "A nossa história" },
+      ],
+    },
+    {
+      titulo: "Cardápio",
+      campos: [
+        { chave: "cardapioTitulo", label: "Título", placeholder: "Cardápio" },
+      ],
+    },
+    {
+      titulo: "Horário",
+      campos: [
+        { chave: "horarioTitulo",                 label: "Título", placeholder: "Horário de funcionamento" },
+        { chave: "horarioProximosAvisosLabel",    label: "Label dos avisos", placeholder: "Próximos avisos" },
+      ],
+    },
+    {
+      titulo: "Eventos / Laje",
+      campos: [
+        { chave: "lajeTitulo",    label: "Título Laje", placeholder: "Eventos na Laje" },
+        { chave: "lajeTexto",     label: "Texto Laje", placeholder: "Descreva o espaço da laje", longo: true },
+        { chave: "lajeCtaLabel",  label: "Botão Laje", placeholder: "Solicitar proposta" },
+        { chave: "eventosTitulo",   label: "Título Eventos (sem Laje)", placeholder: "Eventos privados" },
+        { chave: "eventosTexto",    label: "Texto Eventos", placeholder: "Descreva sua oferta", longo: true },
+        { chave: "eventosCtaLabel", label: "Botão Eventos", placeholder: "Solicitar proposta" },
+      ],
+    },
+    {
+      titulo: "Reservas",
+      campos: [
+        { chave: "reservasTitulo",   label: "Título", placeholder: "Reservas" },
+        { chave: "reservasTexto",    label: "Texto", placeholder: "Política de reserva", longo: true },
+        { chave: "reservasCtaLabel", label: "Botão CTA", placeholder: "💬 Reservar pelo WhatsApp" },
+      ],
+    },
+    {
+      titulo: "Delivery",
+      campos: [
+        { chave: "deliveryTitulo", label: "Título", placeholder: "Peça pra casa" },
+      ],
+    },
+    {
+      titulo: "Trabalhe Conosco",
+      campos: [
+        { chave: "trabalheTitulo",   label: "Título", placeholder: "Venha trabalhar com a gente" },
+        { chave: "trabalheTexto",    label: "Texto", placeholder: "Conta sobre as oportunidades", longo: true },
+        { chave: "trabalheCtaLabel", label: "Botão CTA", placeholder: "Enviar candidatura" },
+      ],
+    },
+    {
+      titulo: "Contato",
+      campos: [
+        { chave: "contatoTitulo", label: "Título", placeholder: "Como chegar" },
+      ],
+    },
+  ];
+
+  const totalPreenchidos = Object.values(textos).filter(v => !!(v && v.trim())).length;
+
+  return (
+    <section className="space-y-2">
+      <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <summary className="cursor-pointer px-3 py-2 flex items-center justify-between gap-2 list-none">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+              Textos das seções
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Sobrescreve as frases padrão do template. Deixe em branco pra usar o default.
+              {totalPreenchidos > 0 && <strong className="ml-1 text-indigo-600">{totalPreenchidos} customizad{totalPreenchidos === 1 ? "o" : "os"}.</strong>}
+            </p>
+          </div>
+          <span className="text-xs text-gray-400">▼ expandir</span>
+        </summary>
+        <div className="px-3 pb-3 pt-1 space-y-4">
+          {grupos.map(g => (
+            <div key={g.titulo}>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                {g.titulo}
+              </div>
+              <div className="space-y-2">
+                {g.campos.map(c => (
+                  <div key={c.chave}>
+                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
+                      {c.label}
+                    </label>
+                    {c.longo ? (
+                      <textarea
+                        value={textos[c.chave] || ""}
+                        onChange={(e) => setTexto(c.chave, e.target.value)}
+                        placeholder={c.placeholder}
+                        disabled={disabled}
+                        rows={2}
+                        className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                      />
+                    ) : (
+                      <input
+                        value={textos[c.chave] || ""}
+                        onChange={(e) => setTexto(c.chave, e.target.value)}
+                        placeholder={c.placeholder}
+                        disabled={disabled}
+                        className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                      />
+                    )}
+                    {c.dica && (
+                      <p className="text-[10px] text-gray-400 mt-0.5">{c.dica}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {!disabled && totalPreenchidos > 0 && (
+            <button
+              onClick={resetAll}
+              className="text-xs text-rose-600 hover:underline"
+            >
+              Limpar todos os textos customizados
+            </button>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 
