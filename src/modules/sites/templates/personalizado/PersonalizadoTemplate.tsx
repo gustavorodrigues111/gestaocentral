@@ -13,7 +13,7 @@
 //  - Cardápio = botão abre PDF (sem embed)
 //  - Sem libs extras
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
@@ -371,9 +371,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         const renderers: Record<SecaoId, (bg: string) => React.ReactNode> = {
           historia: (bg) => cfg.historia ? (
             <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={bg}>
-              <div style={{ maxWidth: 720, margin: "0 auto", fontSize: 17, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
-                {cfg.historia}
-              </div>
+              <HistoriaExpansivel
+                texto={cfg.historia}
+                bgSecao={bg}
+                corPrimaria={corPrimaria}
+              />
             </Section>
           ) : null,
           cardapio: (bg) => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? (
@@ -857,4 +859,84 @@ function labelDelivery(plataforma: string): string {
     ifood: "iFood", rappi: "Rappi", uber: "Uber Eats",
     proprio: "Pedido próprio", outro: "Delivery",
   }[plataforma] || plataforma;
+}
+
+// ─── HistoriaExpansivel ──────────────────────────────────────────────
+// Histórias longas comem a navegação — mostro só os primeiros ~220px e
+// um "Ver mais" pra expandir. Textos curtos passam direto sem botão.
+// Gradient fade no rodapé da versão recolhida pra deixar o corte suave.
+function HistoriaExpansivel({
+  texto, bgSecao, corPrimaria,
+}: {
+  texto: string;
+  bgSecao: string;
+  corPrimaria: string;
+}) {
+  const [expandido, setExpandido] = useState(false);
+  const [precisaExpandir, setPrecisaExpandir] = useState(false);
+  // Altura "limite" pra mostrar sem expandir (~7 linhas a 1.7 line-height
+  // com fontSize 17 = ~200px; arredondamos pra 220).
+  const ALTURA_RECOLHIDO = 220;
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Mede se o texto excede o limite — só então mostra "Ver mais".
+  useEffect(() => {
+    if (!ref.current) return;
+    setPrecisaExpandir(ref.current.scrollHeight > ALTURA_RECOLHIDO + 8);
+  }, [texto]);
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      <div
+        ref={ref}
+        style={{
+          position: "relative",
+          fontSize: 17, lineHeight: 1.7,
+          whiteSpace: "pre-wrap",
+          maxHeight: expandido || !precisaExpandir ? "none" : ALTURA_RECOLHIDO,
+          overflow: "hidden",
+          transition: "max-height 0.4s ease",
+        }}
+      >
+        {texto}
+        {/* Gradient fade no rodapé do recolhido */}
+        {precisaExpandir && !expandido && (
+          <div style={{
+            position: "absolute", bottom: 0, left: 0, right: 0,
+            height: 80,
+            background: `linear-gradient(to bottom, transparent, ${bgSecao})`,
+            pointerEvents: "none",
+          }} />
+        )}
+      </div>
+      {precisaExpandir && (
+        <div style={{ textAlign: "center", marginTop: 18 }}>
+          <button
+            type="button"
+            onClick={() => setExpandido(v => !v)}
+            style={{
+              background: "transparent",
+              border: `1px solid ${corPrimaria}40`,
+              color: corPrimaria,
+              fontSize: 13, fontWeight: 600,
+              padding: "8px 18px",
+              borderRadius: 999,
+              cursor: "pointer",
+              transition: "background-color 0.15s, border-color 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
+              e.currentTarget.style.borderColor = `${corPrimaria}80`;
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = "transparent";
+              e.currentTarget.style.borderColor = `${corPrimaria}40`;
+            }}
+          >
+            {expandido ? "↑ Ver menos" : "↓ Ver mais"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
