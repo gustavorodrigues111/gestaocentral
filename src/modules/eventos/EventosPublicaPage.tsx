@@ -5,15 +5,18 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { EspacoEvento, LeadEvento, PacoteEvento, SlotEvento } from "../../core/types";
+import type {
+  EscopoPacote, EspacoEvento, LeadEvento, ModeloEvento,
+  OcasiaoEvento, PacoteEvento,
+} from "../../core/types";
+import {
+  buscarCNPJ, duracaoHoras, ESCOPO_PACOTE_LABEL, limparCNPJ,
+  OCASIAO_LABEL, slotDoHorario, validarCNPJ, validarEmail,
+  validarWhatsAppInternacional,
+} from "./validacoes";
 
-// Página pública pra cliente registrar interesse num evento.
-// Rota: /eventos/:rid (pública, sem auth)
-// Cria um LeadEvento com origem="publico".
-//
-// IMPORTANTE: pra que a leitura de restaurants/espacosEvento/pacotesEvento
-// funcione sem auth, é preciso ter regras Firestore que permitam read público
-// pra essas coleções. (Já fizemos isso pra Admissão — pode reusar o padrão.)
+// Página pública: cliente registra interesse num evento.
+// Rota: /eventos/:rid (sem auth).
 export function EventosPublicaPage() {
   const { rid } = useParams<{ rid: string }>();
   const [espacos, setEspacos] = useState<EspacoEvento[]>([]);
@@ -21,8 +24,12 @@ export function EventosPublicaPage() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [err, setErr] = useState("");
+  const [erroGeral, setErroGeral] = useState("");
   const [naoEncontrado, setNaoEncontrado] = useState(false);
+
+  // CNPJ — busca automática
+  const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
+  const [cnpjNaoEncontrado, setCnpjNaoEncontrado] = useState(false);
 
   // Form state
   const [form, setForm] = useState({
@@ -33,19 +40,21 @@ export function EventosPublicaPage() {
     cnpj: "",
     razaoSocial: "",
     dataDesejada: "",
-    dataAlt1: "",
-    dataAlt2: "",
-    slot: "jantar" as SlotEvento,
+    dataAlternativa: "",
     horaInicio: "",
+    horaFim: "",
     numConvidados: "",
-    tipoEventoLivre: "",
+    ocasiao: "" as OcasiaoEvento | "",
+    ocasiaoOutros: "",
+    modeloEvento: "" as ModeloEvento | "",
+    escopoPacote: "" as EscopoPacote | "",
+    escopoPacoteOutro: "",
+    musicaAoVivo: false,
+    decoracao: false,
     pacoteSugeridoId: "",
     observacoesCliente: "",
-    inspiracoes: "",
   });
 
-  // Carrega espaços + pacotes ativos do restaurante.
-  // Não precisa do doc /restaurants — usa o nome do espaço como header.
   useEffect(() => {
     if (!rid) return;
     (async () => {
@@ -67,7 +76,7 @@ export function EventosPublicaPage() {
         setPacotes(pacs);
       } catch (e) {
         console.error(e);
-        setErr("Erro ao carregar página. Tenta de novo em alguns minutos.");
+        setErroGeral("Erro ao carregar página. Tenta de novo em alguns minutos.");
       } finally {
         setLoading(false);
       }
@@ -80,31 +89,75 @@ export function EventosPublicaPage() {
     setForm(f => ({ ...f, [k]: v }));
   }
 
+  // Quando CNPJ tem 14 dígitos, busca automaticamente
+  async function onCnpjBlur() {
+    if (form.tipoPessoa !== "PJ") return;
+    const limpo = limparCNPJ(form.cnpj);
+    if (limpo.length !== 14) return;
+    if (!validarCNPJ(form.cnpj)) {
+      setCnpjNaoEncontrado(false);
+      return;
+    }
+    setBuscandoCNPJ(true);
+    setCnpjNaoEncontrado(false);
+    try {
+      const info = await buscarCNPJ(form.cnpj);
+      if (info && info.razaoSocial) {
+        setForm(f => ({
+          ...f,
+          razaoSocial: info.razaoSocial,
+          // Pré-preenche email se vier da BrasilAPI e cliente ainda não preencheu
+          email: f.email || info.email || "",
+        }));
+      } else {
+        setCnpjNaoEncontrado(true);
+      }
+    } catch {
+      setCnpjNaoEncontrado(true);
+    } finally {
+      setBuscandoCNPJ(false);
+    }
+  }
+
   async function submit() {
-    setErr("");
-    if (!form.nome.trim() || !form.whatsapp.trim() || !form.dataDesejada || !form.numConvidados) {
-      setErr("Preenche pelo menos: nome, WhatsApp, data desejada e número de convidados.");
-      return;
+    setErroGeral("");
+
+    // Validações
+    if (!form.nome.trim()) return setErroGeral("Preenche seu nome.");
+    if (!validarWhatsAppInternacional(form.whatsapp)) {
+      return setErroGeral("WhatsApp inválido. Use formato internacional (ex: +55 11 99999-9999).");
     }
+    if (!validarEmail(form.email)) {
+      return setErroGeral("Email inválido.");
+    }
+    if (form.tipoPessoa === "PJ") {
+      if (!validarCNPJ(form.cnpj)) return setErroGeral("CNPJ inválido.");
+      if (!form.razaoSocial.trim()) return setErroGeral("Preencha a razão social.");
+    }
+    if (!form.dataDesejada) return setErroGeral("Escolhe a data desejada.");
+    if (!form.horaInicio || !form.horaFim) return setErroGeral("Preenche horário de início e fim.");
+    const dur = duracaoHoras(form.horaInicio, form.horaFim);
+    if (dur <= 0) return setErroGeral("Horário de fim precisa ser depois do início.");
+    if (!form.numConvidados) return setErroGeral("Quantos convidados?");
     const num = parseInt(form.numConvidados, 10);
-    if (!num || num < 1) {
-      setErr("Número de convidados inválido.");
-      return;
+    if (!num || num < 1) return setErroGeral("Número de convidados inválido.");
+    if (!form.ocasiao) return setErroGeral("Escolhe a ocasião.");
+    if (form.ocasiao === "outros" && !form.ocasiaoOutros.trim()) {
+      return setErroGeral("Descreve a ocasião (campo \"outros\").");
     }
-    if (form.tipoPessoa === "PJ" && !form.razaoSocial.trim()) {
-      setErr("Pra PJ, preencha a razão social.");
-      return;
+    if (!form.modeloEvento) return setErroGeral("Escolhe o modelo do evento.");
+    if (form.modeloEvento === "pacote_por_pessoa") {
+      if (!form.escopoPacote) return setErroGeral("Escolhe o escopo do pacote.");
+      if (form.escopoPacote === "outro" && !form.escopoPacoteOutro.trim()) {
+        return setErroGeral("Descreve o escopo (campo \"outro\").");
+      }
     }
+
     setSubmitting(true);
     try {
       if (!rid) throw new Error("URL inválida");
       const id = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date().toISOString();
-      const datasAlt = [form.dataAlt1, form.dataAlt2].filter(d => !!d);
-      const inspiracoes = form.inspiracoes
-        .split(/[\n,]/)
-        .map(s => s.trim())
-        .filter(s => s.length > 0);
       const lead: LeadEvento = {
         id,
         restaurantId: rid,
@@ -112,20 +165,31 @@ export function EventosPublicaPage() {
         cliente: {
           nome: form.nome.trim(),
           whatsapp: form.whatsapp.trim(),
-          email: form.email.trim() || undefined,
+          email: form.email.trim(),
           tipoPessoa: form.tipoPessoa,
-          cnpj: form.tipoPessoa === "PJ" ? form.cnpj.trim() || undefined : undefined,
-          razaoSocial: form.tipoPessoa === "PJ" ? form.razaoSocial.trim() || undefined : undefined,
+          ...(form.tipoPessoa === "PJ"
+            ? { cnpj: limparCNPJ(form.cnpj), razaoSocial: form.razaoSocial.trim() }
+            : {}),
         },
         dataDesejada: form.dataDesejada,
-        datasAlternativas: datasAlt.length > 0 ? datasAlt : undefined,
-        slot: form.slot,
-        horaInicio: form.horaInicio || undefined,
+        dataAlternativa: form.dataAlternativa || undefined,
+        slot: slotDoHorario(form.horaInicio, form.horaFim),
+        horaInicio: form.horaInicio,
+        horaFim: form.horaFim,
+        duracaoEstimadaHoras: dur,
         numConvidados: num,
-        tipoEventoLivre: form.tipoEventoLivre.trim() || undefined,
+        ocasiao: form.ocasiao as OcasiaoEvento,
+        ocasiaoOutros: form.ocasiao === "outros" ? form.ocasiaoOutros.trim() : undefined,
+        modeloEvento: form.modeloEvento as ModeloEvento,
+        escopoPacote: form.modeloEvento === "pacote_por_pessoa" ? (form.escopoPacote as EscopoPacote) : undefined,
+        escopoPacoteOutro:
+          form.modeloEvento === "pacote_por_pessoa" && form.escopoPacote === "outro"
+            ? form.escopoPacoteOutro.trim()
+            : undefined,
+        musicaAoVivo: form.musicaAoVivo,
+        decoracao: form.decoracao,
         pacoteSugeridoId: form.pacoteSugeridoId || undefined,
         observacoesCliente: form.observacoesCliente.trim() || undefined,
-        inspiracoesUrls: inspiracoes.length > 0 ? inspiracoes : undefined,
         origem: "publico",
         createdAt: now,
         updatedAt: now,
@@ -134,7 +198,7 @@ export function EventosPublicaPage() {
       setSubmitted(true);
     } catch (e) {
       console.error(e);
-      setErr(e instanceof Error ? e.message : "Erro ao enviar — tenta novamente");
+      setErroGeral(e instanceof Error ? e.message : "Erro ao enviar — tenta novamente");
     } finally {
       setSubmitting(false);
     }
@@ -147,7 +211,6 @@ export function EventosPublicaPage() {
       </div>
     );
   }
-
   if (naoEncontrado || !espaco) {
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
@@ -162,7 +225,6 @@ export function EventosPublicaPage() {
       </div>
     );
   }
-
   if (submitted) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
@@ -196,7 +258,7 @@ export function EventosPublicaPage() {
               </p>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-              Conta pra gente sobre seu evento — a gente retorna em até 24h via WhatsApp.
+              Conta pra gente sobre seu evento — retornamos em até 24h via WhatsApp.
             </p>
           </div>
 
@@ -210,16 +272,18 @@ export function EventosPublicaPage() {
                 placeholder="João da Silva"
               />
               <Input
-                label="WhatsApp *"
+                label="WhatsApp * (com DDD/país)"
                 value={form.whatsapp}
                 onChange={(e) => update("whatsapp", e.target.value)}
-                placeholder="(11) 99999-9999"
+                placeholder="+55 11 99999-9999"
+                inputMode="tel"
               />
               <Input
-                label="Email (opcional)"
+                label="Email *"
                 type="email"
                 value={form.email}
                 onChange={(e) => update("email", e.target.value)}
+                placeholder="seunome@email.com"
               />
             </div>
 
@@ -232,43 +296,50 @@ export function EventosPublicaPage() {
                 <button
                   type="button"
                   onClick={() => update("tipoPessoa", "PF")}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                    form.tipoPessoa === "PF"
-                      ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
-                      : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300"
-                  }`}
+                  className={pillBtn(form.tipoPessoa === "PF")}
                 >
                   Pessoa física
                 </button>
                 <button
                   type="button"
                   onClick={() => update("tipoPessoa", "PJ")}
-                  className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                    form.tipoPessoa === "PJ"
-                      ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
-                      : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300"
-                  }`}
+                  className={pillBtn(form.tipoPessoa === "PJ")}
                 >
                   Empresa
                 </button>
               </div>
               {form.tipoPessoa === "PJ" && (
                 <div className="mt-3 space-y-3">
+                  <div>
+                    <Input
+                      label="CNPJ *"
+                      value={form.cnpj}
+                      onChange={(e) => update("cnpj", e.target.value)}
+                      onBlur={onCnpjBlur}
+                      placeholder="00.000.000/0000-00"
+                      inputMode="numeric"
+                    />
+                    {buscandoCNPJ && (
+                      <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">
+                        🔎 buscando razão social...
+                      </p>
+                    )}
+                    {cnpjNaoEncontrado && !buscandoCNPJ && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                        Não consegui buscar — preencha a razão social manualmente.
+                      </p>
+                    )}
+                  </div>
                   <Input
                     label="Razão social *"
                     value={form.razaoSocial}
                     onChange={(e) => update("razaoSocial", e.target.value)}
                   />
-                  <Input
-                    label="CNPJ"
-                    value={form.cnpj}
-                    onChange={(e) => update("cnpj", e.target.value)}
-                  />
                 </div>
               )}
             </div>
 
-            {/* Data + slot */}
+            {/* Data + alternativa */}
             <div className="grid grid-cols-2 gap-3">
               <Input
                 label="Data desejada *"
@@ -276,102 +347,160 @@ export function EventosPublicaPage() {
                 value={form.dataDesejada}
                 onChange={(e) => update("dataDesejada", e.target.value)}
               />
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Horário
-                </label>
-                <div className="mt-1 grid grid-cols-2 gap-1">
-                  <button
-                    type="button"
-                    onClick={() => update("slot", "almoco")}
-                    className={`px-2 py-2 rounded text-xs font-medium border ${
-                      form.slot === "almoco"
-                        ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
-                        : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700"
-                    }`}
-                  >
-                    🌞 Almoço
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => update("slot", "jantar")}
-                    className={`px-2 py-2 rounded text-xs font-medium border ${
-                      form.slot === "jantar"
-                        ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
-                        : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700"
-                    }`}
-                  >
-                    🌙 Jantar
-                  </button>
-                </div>
+              <Input
+                label="Alternativa (opcional)"
+                type="date"
+                value={form.dataAlternativa}
+                onChange={(e) => update("dataAlternativa", e.target.value)}
+              />
+            </div>
+
+            {/* Horários início + fim */}
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                label="Início *"
+                type="time"
+                value={form.horaInicio}
+                onChange={(e) => update("horaInicio", e.target.value)}
+              />
+              <Input
+                label="Término *"
+                type="time"
+                value={form.horaFim}
+                onChange={(e) => update("horaFim", e.target.value)}
+              />
+            </div>
+
+            {/* Pax + Ocasião */}
+            <Input
+              label="Quantos convidados? *"
+              type="number"
+              value={form.numConvidados}
+              onChange={(e) => update("numConvidados", e.target.value)}
+              placeholder="ex: 30"
+            />
+
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Ocasião *
+              </label>
+              <select
+                value={form.ocasiao}
+                onChange={(e) => update("ocasiao", e.target.value as OcasiaoEvento | "")}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              >
+                <option value="">— selecione —</option>
+                <option value="aniversario">{OCASIAO_LABEL.aniversario}</option>
+                <option value="corporativo">{OCASIAO_LABEL.corporativo}</option>
+                <option value="encontro_amigos">{OCASIAO_LABEL.encontro_amigos}</option>
+                <option value="outros">{OCASIAO_LABEL.outros}</option>
+              </select>
+              {form.ocasiao === "outros" && (
+                <Input
+                  label=""
+                  value={form.ocasiaoOutros}
+                  onChange={(e) => update("ocasiaoOutros", e.target.value)}
+                  placeholder="Descreve a ocasião"
+                  className="mt-2"
+                />
+              )}
+            </div>
+
+            {/* Modelo do evento */}
+            <div>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                Modelo de evento *
+              </label>
+              <div className="mt-1 grid grid-cols-1 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => update("modeloEvento", "locacao_consumo_livre")}
+                  className={optionBtn(form.modeloEvento === "locacao_consumo_livre")}
+                >
+                  <strong>Locação do espaço</strong>
+                  <span className="block text-xs mt-0.5 opacity-80">
+                    Comanda individual, consumo livre — cada convidado paga o que consumir.
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => update("modeloEvento", "pacote_por_pessoa")}
+                  className={optionBtn(form.modeloEvento === "pacote_por_pessoa")}
+                >
+                  <strong>Pacote por pessoa</strong>
+                  <span className="block text-xs mt-0.5 opacity-80">
+                    Valor fixo por convidado com comidas e/ou bebidas inclusas.
+                  </span>
+                </button>
               </div>
+              {form.modeloEvento === "pacote_por_pessoa" && (
+                <div className="mt-3">
+                  <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                    O pacote inclui:
+                  </label>
+                  <div className="mt-1 grid grid-cols-1 gap-1.5">
+                    {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => update("escopoPacote", opt)}
+                        className={optionBtn(form.escopoPacote === opt)}
+                      >
+                        {ESCOPO_PACOTE_LABEL[opt]}
+                      </button>
+                    ))}
+                  </div>
+                  {form.escopoPacote === "outro" && (
+                    <Input
+                      label=""
+                      value={form.escopoPacoteOutro}
+                      onChange={(e) => update("escopoPacoteOutro", e.target.value)}
+                      placeholder="Descreve o que quer no pacote"
+                      className="mt-2"
+                    />
+                  )}
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Alternativa 1 (opcional)"
-                type="date"
-                value={form.dataAlt1}
-                onChange={(e) => update("dataAlt1", e.target.value)}
+            {/* Música / decoração */}
+            <div className="grid grid-cols-1 gap-2">
+              <CheckboxRow
+                checked={form.musicaAoVivo}
+                onChange={(v) => update("musicaAoVivo", v)}
+                label="Pretende levar música ao vivo?"
               />
-              <Input
-                label="Alternativa 2 (opcional)"
-                type="date"
-                value={form.dataAlt2}
-                onChange={(e) => update("dataAlt2", e.target.value)}
-              />
-            </div>
-
-            {/* Pax + tipo */}
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Quantos convidados? *"
-                type="number"
-                value={form.numConvidados}
-                onChange={(e) => update("numConvidados", e.target.value)}
-                placeholder="ex: 30"
-              />
-              <Input
-                label="Tipo de evento"
-                value={form.tipoEventoLivre}
-                onChange={(e) => update("tipoEventoLivre", e.target.value)}
-                placeholder="aniversário, corporativo..."
+              <CheckboxRow
+                checked={form.decoracao}
+                onChange={(v) => update("decoracao", v)}
+                label="Pretende decorar o espaço?"
               />
             </div>
 
-            {/* Pacote sugerido */}
+            {/* Pacote sugerido (do restaurante) */}
             {pacotes.length > 0 && (
               <div>
                 <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Tem algum pacote em mente? (opcional)
+                  Tem algum pacote nosso em mente? (opcional)
                 </label>
                 <div className="mt-1 grid grid-cols-1 gap-1.5">
                   <button
                     type="button"
                     onClick={() => update("pacoteSugeridoId", "")}
-                    className={`px-3 py-2 rounded-lg text-sm text-left border ${
-                      form.pacoteSugeridoId === ""
-                        ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700"
-                        : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"
-                    }`}
+                    className={optionBtn(form.pacoteSugeridoId === "")}
                   >
                     <span className="font-medium">Não sei ainda</span>
-                    <span className="block text-xs text-gray-500 mt-0.5">Quero que vocês me ajudem a escolher</span>
                   </button>
                   {pacotes.map(p => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => update("pacoteSugeridoId", p.id)}
-                      className={`px-3 py-2 rounded-lg text-sm text-left border ${
-                        form.pacoteSugeridoId === p.id
-                          ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700"
-                          : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"
-                      }`}
+                      className={optionBtn(form.pacoteSugeridoId === p.id)}
                     >
                       <span className="font-medium">{p.nome}</span>
                       {p.descricao && (
-                        <span className="block text-xs text-gray-500 mt-0.5">{p.descricao}</span>
+                        <span className="block text-xs opacity-70 mt-0.5">{p.descricao}</span>
                       )}
                       {p.precoPorPessoa > 0 && (
                         <span className="block text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
@@ -394,25 +523,11 @@ export function EventosPublicaPage() {
                 onChange={(e) => update("observacoesCliente", e.target.value)}
                 className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
                 rows={3}
-                placeholder="restrições alimentares, ideias específicas, dúvidas..."
+                placeholder="restrições alimentares, expectativa de orçamento, dúvidas..."
               />
             </div>
 
-            {/* Inspirações */}
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Inspirações (opcional)
-              </label>
-              <textarea
-                value={form.inspiracoes}
-                onChange={(e) => update("inspiracoes", e.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                rows={2}
-                placeholder="links de Pinterest, Instagram (um por linha)"
-              />
-            </div>
-
-            {err && <div className="text-sm text-rose-600 dark:text-rose-400">{err}</div>}
+            {erroGeral && <div className="text-sm text-rose-600 dark:text-rose-400">{erroGeral}</div>}
 
             <Button
               onClick={submit}
@@ -430,4 +545,38 @@ export function EventosPublicaPage() {
       </div>
     </div>
   );
+}
+
+function CheckboxRow({ checked, onChange, label }: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
+  return (
+    <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="accent-indigo-600"
+      />
+      <span className="text-sm">{label}</span>
+    </label>
+  );
+}
+
+function pillBtn(active: boolean): string {
+  return `px-3 py-2 rounded-lg text-sm font-medium border ${
+    active
+      ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
+      : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300"
+  }`;
+}
+
+function optionBtn(active: boolean): string {
+  return `px-3 py-2 rounded-lg text-sm text-left border ${
+    active
+      ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700"
+      : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"
+  }`;
 }

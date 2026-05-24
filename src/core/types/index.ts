@@ -1823,6 +1823,22 @@ export type LeadEventoStatus =
   | "realizado"
   | "perdido";
 
+export type OcasiaoEvento =
+  | "aniversario"
+  | "corporativo"
+  | "encontro_amigos"
+  | "outros";
+
+export type ModeloEvento =
+  | "locacao_consumo_livre"    // locação do espaço + comanda individual / consumo livre
+  | "pacote_por_pessoa";       // pacote fechado de comidas/bebidas por pessoa
+
+export type EscopoPacote =
+  | "somente_comidas"
+  | "comidas_bebidas_nao_alcoolicas"
+  | "comidas_bebidas_alcoolicas"
+  | "outro";
+
 export type LeadEvento = {
   id: string;
   restaurantId: string;
@@ -1832,22 +1848,28 @@ export type LeadEvento = {
   cliente: {
     nome: string;
     whatsapp: string;
-    email?: string;
+    email: string;                   // obrigatório agora
     tipoPessoa: "PF" | "PJ";
-    cnpj?: string;
-    razaoSocial?: string;
+    cnpj?: string;                   // obrigatório se PJ
+    razaoSocial?: string;            // buscada via CNPJ ou digitada
   };
   // Evento desejado
   dataDesejada: string;              // "YYYY-MM-DD"
-  datasAlternativas?: string[];
-  slot: SlotEvento;
-  horaInicio?: string;               // "HH:MM"
-  duracaoEstimadaHoras?: number;
+  dataAlternativa?: string;          // até 1 alternativa
+  slot: SlotEvento;                  // derivado da horaInicio (almoço/jantar)
+  horaInicio: string;                // "HH:MM" — obrigatório
+  horaFim: string;                   // "HH:MM" — obrigatório
+  duracaoEstimadaHoras?: number;     // derivada de horaInicio/horaFim
   numConvidados: number;
-  tipoEventoLivre?: string;          // "aniversário 30 anos", "casamento informal"
-  pacoteSugeridoId?: string;         // se cliente escolheu no form público
+  ocasiao: OcasiaoEvento;            // dropdown obrigatório
+  ocasiaoOutros?: string;            // texto livre se ocasiao=="outros"
+  modeloEvento: ModeloEvento;
+  escopoPacote?: EscopoPacote;       // só preenchido se modelo=="pacote_por_pessoa"
+  escopoPacoteOutro?: string;        // texto livre se escopoPacote=="outro"
+  musicaAoVivo: boolean;
+  decoracao: boolean;
+  pacoteSugeridoId?: string;         // se cliente escolheu pacote no form
   observacoesCliente?: string;       // texto livre do form
-  inspiracoesUrls?: string[];        // pinterest/fotos
   // Atribuição interna
   responsavelId?: string;
   responsavelNome?: string;
@@ -1860,7 +1882,7 @@ export type LeadEvento = {
     respondidoEm?: string;
     respondidoPor?: string;
   };
-  conflitaDataCom?: string[];        // ids de outros leads/eventos na mesma data
+  conflitaDataCom?: string[];
   // Auditoria
   origem: "publico" | "manual";
   createdAt: string;

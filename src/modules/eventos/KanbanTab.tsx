@@ -272,9 +272,9 @@ function LeadCardMini({
           {pacote.nome}
         </div>
       )}
-      {lead.tipoEventoLivre && (
+      {(lead.ocasiao === "outros" ? lead.ocasiaoOutros : lead.ocasiao) && (
         <div className="text-[10px] text-gray-500 dark:text-gray-500 mt-0.5 truncate italic">
-          {lead.tipoEventoLivre}
+          {lead.ocasiao === "outros" ? lead.ocasiaoOutros : lead.ocasiao}
         </div>
       )}
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">

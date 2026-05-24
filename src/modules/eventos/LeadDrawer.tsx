@@ -9,6 +9,7 @@ import { parseYmd, pad2 } from "../../core/utils/date";
 import type { LeadEvento, LeadEventoStatus, PacoteEvento } from "../../core/types";
 import { PropostaSection } from "./PropostaSection";
 import { BEOSection } from "./BEOSection";
+import { ESCOPO_PACOTE_LABEL, MODELO_LABEL, OCASIAO_LABEL } from "./validacoes";
 
 const STATUS_LABEL: Record<LeadEventoStatus, string> = {
   novo: "Novo",
@@ -237,20 +238,42 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
             <div>
               <strong>{pad2(data.getDate())}/{pad2(data.getMonth() + 1)}/{data.getFullYear()}</strong>
               {" · "}
+              {lead.horaInicio} – {lead.horaFim}
+              {" · "}
               {lead.slot === "almoco" ? "🌞 Almoço" : lead.slot === "jantar" ? "🌙 Jantar" : "🕒 Dia inteiro"}
-              {lead.horaInicio && ` · ${lead.horaInicio}`}
             </div>
             <div>{lead.numConvidados} convidados</div>
-            {lead.tipoEventoLivre && <div className="italic text-gray-600 dark:text-gray-400">{lead.tipoEventoLivre}</div>}
+            <div>
+              <span className="text-gray-500">Ocasião: </span>
+              {lead.ocasiao === "outros"
+                ? (lead.ocasiaoOutros || "Outros")
+                : (OCASIAO_LABEL[lead.ocasiao] || lead.ocasiao)}
+            </div>
+            <div>
+              <span className="text-gray-500">Modelo: </span>
+              {MODELO_LABEL[lead.modeloEvento] || lead.modeloEvento}
+            </div>
+            {lead.modeloEvento === "pacote_por_pessoa" && lead.escopoPacote && (
+              <div>
+                <span className="text-gray-500">Pacote: </span>
+                {lead.escopoPacote === "outro"
+                  ? (lead.escopoPacoteOutro || "Outro")
+                  : ESCOPO_PACOTE_LABEL[lead.escopoPacote]}
+              </div>
+            )}
+            <div className="flex gap-3 text-xs text-gray-600 dark:text-gray-400">
+              <span>{lead.musicaAoVivo ? "✓" : "✗"} música ao vivo</span>
+              <span>{lead.decoracao ? "✓" : "✗"} decoração própria</span>
+            </div>
             {pacote && (
               <div className="text-indigo-700 dark:text-indigo-400">📦 {pacote.nome}</div>
             )}
-            {lead.datasAlternativas && lead.datasAlternativas.length > 0 && (
+            {lead.dataAlternativa && (
               <div className="text-xs text-gray-500">
-                Alternativas: {lead.datasAlternativas.map(d => {
-                  const dd = parseYmd(d);
-                  return `${pad2(dd.getDate())}/${pad2(dd.getMonth() + 1)}`;
-                }).join(", ")}
+                Alternativa: {(() => {
+                  const dd = parseYmd(lead.dataAlternativa);
+                  return `${pad2(dd.getDate())}/${pad2(dd.getMonth() + 1)}/${dd.getFullYear()}`;
+                })()}
               </div>
             )}
           </div>
@@ -264,23 +287,6 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm whitespace-pre-wrap">
               {lead.observacoesCliente}
             </div>
-          </div>
-        )}
-
-        {lead.inspiracoesUrls && lead.inspiracoesUrls.length > 0 && (
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-              Inspirações
-            </div>
-            <ul className="text-sm space-y-0.5">
-              {lead.inspiracoesUrls.map((url, i) => (
-                <li key={i}>
-                  <a href={url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline truncate inline-block max-w-full">
-                    {url}
-                  </a>
-                </li>
-              ))}
-            </ul>
           </div>
         )}
 
