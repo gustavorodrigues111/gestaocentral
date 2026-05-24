@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
+import { formatarTelefoneExibicao } from "../../shared/telefoneUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl } from "../../shared/enderecoUtils";
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
@@ -684,7 +685,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                             e.currentTarget.style.borderColor = `${corSecundaria}50`;
                           }}
                         >
-                          <span>📞</span> {cfg.telefone}
+                          <span>📞</span> {formatarTelefoneExibicao(cfg.telefone)}
                         </a>
                       )}
                       {mailHref && cfg.emailContato && (
