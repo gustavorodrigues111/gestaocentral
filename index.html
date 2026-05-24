@@ -5,6 +5,39 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestão Central</title>
+
+    <!-- Preconnect — abre a conexão TCP/TLS pros hosts críticos antes
+         do JS executar. Economiza ~200-400ms na 1ª request pra cada
+         um deles. Particularmente importante em mobile 4G/3G. -->
+    <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://www.googleapis.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Fallback de fonte do hero ANTES do React montar (evita FOUT
+         visível). DM Serif Display + Inter cobrem ~80% dos sites. -->
+    <link rel="preload" as="style"
+          href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" />
+    <link rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Inter:wght@400;500;600;700&display=swap" />
+
+    <!-- Splash screen — aparece antes do JS hidratar. Bege neutro do
+         template padrão. Evita "flash" branco na primeira renderização
+         em mobile lento. -->
+    <style>
+      html, body {
+        margin: 0; padding: 0;
+        background: #f7f3e9;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      }
+      #root:empty::before {
+        content: '';
+        display: block;
+        min-height: 100vh;
+        background: #f7f3e9;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
