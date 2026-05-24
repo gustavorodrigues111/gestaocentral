@@ -6,6 +6,7 @@ import { canUse, canConfig } from "../../core/auth/permissions";
 import { GeralTab } from "./GeralTab";
 import { HorariosTab } from "./HorariosTab";
 import { CardapioTab } from "./CardapioTab";
+import { CandidaturasTab } from "./CandidaturasTab";
 
 type Tab = "geral" | "horarios" | "cardapio" | "candidaturas" | "preview";
 
@@ -92,7 +93,9 @@ export function SitesPage() {
       {tab === "cardapio" && (
         <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />
       )}
-      {tab === "candidaturas" && <PlaceholderTab fase={5} titulo="Candidaturas Trabalhe Conosco" descricao="Lista de candidatos vindos do form público do site. Triagem antes do processo formal de admissão." />}
+      {tab === "candidaturas" && (
+        <CandidaturasTab rid={rid} podeEditar={podeGeral} />
+      )}
       {tab === "preview" && <PlaceholderTab fase={6} titulo="Preview do site público" descricao="Renderiza o site como o cliente vai ver, lendo do conteúdo configurado nas outras tabs." />}
     </div>
   );

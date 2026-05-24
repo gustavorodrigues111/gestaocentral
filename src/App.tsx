@@ -30,6 +30,7 @@ import { AdmissaoPublicaPage } from "./modules/admissao/AdmissaoPublicaPage";
 import { EventosPage } from "./modules/eventos/EventosPage";
 import { EventosPublicaPage } from "./modules/eventos/EventosPublicaPage";
 import { SitesPage } from "./modules/sites/SitesPage";
+import { TrabalhePublicaPage } from "./modules/sites/TrabalhePublicaPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -190,6 +191,7 @@ function App() {
           {/* Página pública de admissão — sem auth, validação por token+email */}
           <Route path="/admissao/:token" element={<AdmissaoPublicaPage />} />
           <Route path="/eventos/:rid" element={<EventosPublicaPage />} />
+          <Route path="/trabalhe/:rid" element={<TrabalhePublicaPage />} />
           <Route path="*" element={<RootOrShell />} />
         </Routes>
       </AuthProvider>
