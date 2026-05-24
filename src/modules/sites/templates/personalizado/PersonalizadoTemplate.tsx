@@ -118,6 +118,18 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     return cfg.textos?.[k] || def;
   };
 
+  // Estilo do título h2 das seções — reaproveitado no layout pareado
+  // (2 colunas no desktop). Section single-col faz tamanho maior inline.
+  const tituloSectionStyle: React.CSSProperties = {
+    fontFamily: fonteHeading,
+    fontSize: "clamp(28px, 4vw, 40px)",
+    textAlign: "center",
+    margin: "0 0 32px 0",
+    color: corPrimaria,
+    letterSpacing: "-0.01em",
+    whiteSpace: "pre-wrap",
+  };
+
   return (
     <div style={{
       fontFamily: fonteCorpo,
@@ -347,33 +359,61 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           desligada ou sem conteúdo retornam null e ficam fora do zebra. */}
       {(() => {
         const ordem = normalizarOrdem(cfg.ordemSecoes);
-        const renderers: Record<SecaoId, (bg: string) => React.ReactNode> = {
-          historia: (bg) => cfg.historia ? (
-            <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={bg}>
-              <HistoriaExpansivel
-                texto={cfg.historia}
-                bgSecao={bg}
-                corPrimaria={corPrimaria}
-              />
-            </Section>
-          ) : null,
-          cardapio: (bg) => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? (
-            <Section id="cardapio" titulo={t("cardapioTitulo", "Cardápio")} bg={bg}>
-              <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", maxWidth: 600, margin: "0 auto" }}>
+        // Conteúdos das seções: retornam título + conteúdo SEM <Section>
+        // wrapper. O wrapper (com bg + padding) é aplicado depois — assim
+        // dá pra parear 2 seções dentro de um único bg/padding no desktop.
+        type SecaoConteudo = { titulo: string; conteudo: React.ReactNode };
+        const conteudos: Record<SecaoId, (bg: string) => SecaoConteudo | null> = {
+          historia: (bg) => cfg.historia ? {
+            titulo: t("historiaTitulo", "A nossa história"),
+            conteudo: <HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} />,
+          } : null,
+          cardapio: () => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
+            titulo: t("cardapioTitulo", "Cardápio"),
+            conteudo: (
+              <div style={{ maxWidth: 700, margin: "0 auto" }}>
+                {/* Preview da 1ª página do PDF — usa <embed> com hash
+                    #page=1 + toolbar=0 pra exibir só o conteúdo. Tem
+                    fallback pra abrir o PDF completo via botão abaixo. */}
                 {cfg.cardapioPdfPtUrl && (
-                  <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-                    🇧🇷 Cardápio (Português)
-                  </a>
+                  <div style={{
+                    position: "relative",
+                    aspectRatio: "1 / 1.3",
+                    margin: "0 auto 24px",
+                    maxWidth: 480,
+                    borderRadius: 8,
+                    overflow: "hidden",
+                    border: `1px solid ${corSecundaria}40`,
+                    backgroundColor: "#fff",
+                    boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                  }}>
+                    <iframe
+                      src={`${cfg.cardapioPdfPtUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=FitH`}
+                      title="Preview do cardápio"
+                      style={{
+                        width: "100%", height: "100%",
+                        border: "none", display: "block",
+                      }}
+                      loading="lazy"
+                    />
+                  </div>
                 )}
-                {cfg.cardapioPdfEnUrl && (
-                  <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-                    🇺🇸 Menu (English)
-                  </a>
-                )}
+                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+                  {cfg.cardapioPdfPtUrl && (
+                    <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                      🇧🇷 Cardápio (Português)
+                    </a>
+                  )}
+                  {cfg.cardapioPdfEnUrl && (
+                    <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                      🇺🇸 Menu (English)
+                    </a>
+                  )}
+                </div>
               </div>
-            </Section>
-          ) : null,
-          horario: (bg) => {
+            ),
+          } : null,
+          horario: () => {
             // Cards de exceção — mesmo render usado em mobile (lista cheia)
             // ou desktop coluna direita.
             const cardsExcecoes = excecoes.map(e => {
@@ -447,58 +487,58 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               </div>
             ) : null;
 
-            // Desktop: 2 cols (lista | avisos) quando há avisos.
-            // Mobile ou sem avisos: stack normal.
-            const usarDuasColunas = !isMobile && excecoes.length > 0;
-            return (
-              <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={bg}>
-                {usarDuasColunas ? (
-                  <div style={{
-                    maxWidth: 1000, margin: "0 auto",
-                    display: "grid", gridTemplateColumns: "1fr 1fr",
-                    gap: 40, alignItems: "start",
-                  }}>
-                    {listaSemana}
-                    {blocoAvisos}
-                  </div>
-                ) : (
-                  <div style={{ maxWidth: 600, margin: "0 auto" }}>
-                    {listaSemana}
-                    {blocoAvisos && <div style={{ marginTop: 28 }}>{blocoAvisos}</div>}
-                  </div>
-                )}
-              </Section>
-            );
+            return {
+              titulo: t("horarioTitulo", "Horário de funcionamento"),
+              conteudo: (
+                <div style={{ maxWidth: 600, margin: "0 auto" }}>
+                  {listaSemana}
+                  {blocoAvisos && <div style={{ marginTop: 28 }}>{blocoAvisos}</div>}
+                </div>
+              ),
+            };
           },
-          laje: (bg) => (cfg.features.hasLaje && cfg.features.hasEventos) ? (
-            <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg={bg}>
-              <CtaSection
-                texto={t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
-                ctaTo={`/eventos/${cfg.restaurantId}`}
-                ctaLabel={t("lajeCtaLabel", "Solicitar proposta")}
-              />
-            </Section>
-          ) : null,
-          eventos: (bg) => (cfg.features.hasEventos && !cfg.features.hasLaje) ? (
-            <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg={bg}>
-              <CtaSection
-                texto={t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
-                ctaTo={`/eventos/${cfg.restaurantId}`}
-                ctaLabel={t("eventosCtaLabel", "Solicitar proposta")}
-              />
-            </Section>
-          ) : null,
-          reservas: (bg) => cfg.features.hasReservas ? (
-            <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={bg}>
-              <CtaSection
-                texto={t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
-                ctaTo={`/reservas/${cfg.restaurantId}`}
-                ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
-              />
-            </Section>
-          ) : null,
-          delivery: (bg) => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? (
-            <Section id="delivery" titulo={t("deliveryTitulo", "Peça pra casa")} bg={bg}>
+          laje: () => (cfg.features.hasLaje && cfg.features.hasEventos) ? {
+            titulo: t("lajeTitulo", "Eventos na Laje"),
+            conteudo: (
+              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
+                  {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
+                </p>
+                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("lajeCtaLabel", "Solicitar proposta")}
+                </Link>
+              </div>
+            ),
+          } : null,
+          eventos: () => (cfg.features.hasEventos && !cfg.features.hasLaje) ? {
+            titulo: t("eventosTitulo", "Eventos privados"),
+            conteudo: (
+              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
+                  {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
+                </p>
+                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("eventosCtaLabel", "Solicitar proposta")}
+                </Link>
+              </div>
+            ),
+          } : null,
+          reservas: () => cfg.features.hasReservas ? {
+            titulo: t("reservasTitulo", "Reservas"),
+            conteudo: (
+              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
+                  {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
+                </p>
+                <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("reservasCtaLabel", "Reservar mesa")}
+                </Link>
+              </div>
+            ),
+          } : null,
+          delivery: () => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? {
+            titulo: t("deliveryTitulo", "Peça pra casa"),
+            conteudo: (
               <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", maxWidth: 700, margin: "0 auto" }}>
                 {(cfg.delivery || []).map((d, i) => (
                   <a key={i} href={d.url} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
@@ -506,18 +546,22 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   </a>
                 ))}
               </div>
-            </Section>
-          ) : null,
-          trabalhe: (bg) => cfg.features.hasTrabalheConosco ? (
-            <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={bg}>
-              <CtaSection
-                texto={t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
-                ctaTo={`/trabalhe/${cfg.restaurantId}`}
-                ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
-              />
-            </Section>
-          ) : null,
-          contato: (bg) => {
+            ),
+          } : null,
+          trabalhe: () => cfg.features.hasTrabalheConosco ? {
+            titulo: t("trabalheTitulo", "Venha trabalhar com a gente"),
+            conteudo: (
+              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
+                  {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
+                </p>
+                <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("trabalheCtaLabel", "Enviar candidatura")}
+                </Link>
+              </div>
+            ),
+          } : null,
+          contato: () => {
             const mapsHref = googleMapsLink(cfg.endereco);
             const telDigitos = (cfg.telefone || "").replace(/[^\d+]/g, "");
             const waHref = telDigitos
@@ -550,8 +594,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               fontWeight: 500,
               transition: "background-color 0.15s, border-color 0.15s",
             };
-            return (
-              <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg={bg}>
+            return {
+              titulo: t("contatoTitulo", "Como chegar"),
+              conteudo: (
                 <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
                   {/* Endereço — card único clicável */}
                   {(enderecoLinhaUm(cfg.endereco) || enderecoLinhaDois(cfg.endereco)) && (
@@ -627,21 +672,77 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     </div>
                   )}
                 </div>
-              </Section>
-            );
+              ),
+            };
           },
         };
 
-        // Render seções na ordem + alterna bg só nas seções que existirem
-        let idxRenderizado = 0;
+        // Pares no desktop: seções renderizadas lado a lado dentro do mesmo
+        // background. Ordem dentro do par não importa — qualquer combinação
+        // entre os ids listados aqui é pareada se vierem em sequência.
+        const PARES_DESKTOP: Array<Set<SecaoId>> = [
+          new Set<SecaoId>(["reservas", "laje"]),
+          new Set<SecaoId>(["reservas", "eventos"]),
+          new Set<SecaoId>(["horario", "contato"]),
+        ];
+        function ehPar(a: SecaoId, b: SecaoId): boolean {
+          return PARES_DESKTOP.some(s => s.has(a) && s.has(b) && a !== b);
+        }
+
+        // Render seções na ordem + alterna bg só nas seções que existirem.
+        // No desktop tenta parear seções consecutivas conhecidas (Reservas +
+        // Laje/Eventos, Horário + Contato) — mantém o layout interno de cada
+        // uma, só compartilham bg + padding pra grudar visualmente.
         const nodes: React.ReactNode[] = [];
-        for (const id of ordem) {
+        let idxRenderizado = 0;
+        let i = 0;
+        while (i < ordem.length) {
+          const id = ordem[i]!;
+          const c = conteudos[id]?.(idxRenderizado % 2 === 0 ? corFundo : "#ffffff");
+          if (!c) { i++; continue; }
           const bg = idxRenderizado % 2 === 0 ? corFundo : "#ffffff";
-          const node = renderers[id](bg);
-          if (node) {
-            nodes.push(<div key={id}>{node}</div>);
-            idxRenderizado++;
+
+          // Tenta parear com a próxima
+          if (!isMobile && i + 1 < ordem.length) {
+            const proxId = ordem[i + 1]!;
+            if (ehPar(id, proxId)) {
+              const c2 = conteudos[proxId]?.(bg);
+              if (c2) {
+                nodes.push(
+                  <section key={`${id}-${proxId}`} id={`pair-${id}-${proxId}`} style={{
+                    padding: "80px 20px", backgroundColor: bg,
+                  }}>
+                    <div style={{
+                      maxWidth: 1300, margin: "0 auto",
+                      display: "grid", gridTemplateColumns: "1fr 1fr",
+                      gap: 60, alignItems: "start",
+                    }}>
+                      <div id={id}>
+                        <h2 style={tituloSectionStyle}>{c.titulo}</h2>
+                        {c.conteudo}
+                      </div>
+                      <div id={proxId}>
+                        <h2 style={tituloSectionStyle}>{c2.titulo}</h2>
+                        {c2.conteudo}
+                      </div>
+                    </div>
+                  </section>
+                );
+                i += 2;
+                idxRenderizado++;
+                continue;
+              }
+            }
           }
+
+          // Single
+          nodes.push(
+            <Section key={id} id={id} titulo={c.titulo} bg={bg}>
+              {c.conteudo}
+            </Section>
+          );
+          i++;
+          idxRenderizado++;
         }
         return nodes;
       })()}
@@ -766,44 +867,6 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     );
   }
 
-  // Layout compartilhado pras seções "texto + CTA" (Reservas / Trabalhe /
-  // Eventos / Laje). Desktop: 2 colunas (texto à esquerda, botão grande à
-  // direita centralizado verticalmente). Mobile: stack, botão embaixo.
-  function CtaSection({ texto, ctaTo, ctaLabel }: {
-    texto: string; ctaTo: string; ctaLabel: string;
-  }) {
-    if (isMobile) {
-      return (
-        <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-          <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
-            {texto}
-          </p>
-          <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>
-        </div>
-      );
-    }
-    return (
-      <div style={{
-        maxWidth: 900, margin: "0 auto",
-        display: "grid", gridTemplateColumns: "1.4fr 1fr",
-        gap: 48, alignItems: "center",
-      }}>
-        <p style={{
-          fontSize: 18, lineHeight: 1.65,
-          margin: 0, whiteSpace: "pre-wrap",
-          textAlign: "left",
-        }}>
-          {texto}
-        </p>
-        <div style={{ textAlign: "center" }}>
-          <Link to={ctaTo} style={{ ...primaryButton(corPrimaria), fontSize: 16, padding: "16px 36px" }}>
-            {ctaLabel}
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
   function Section({ id, titulo, bg, children }: {
     id: string; titulo: string; bg: string; children: React.ReactNode;
   }) {
@@ -811,11 +874,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       <section id={id} style={{ padding: "80px 20px", backgroundColor: bg }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <h2 style={{
-            fontFamily: fonteHeading,
-            fontSize: "clamp(32px, 5vw, 48px)",
-            textAlign: "center", margin: "0 0 48px 0", color: corPrimaria,
-            letterSpacing: "-0.01em",
-            whiteSpace: "pre-wrap",
+            ...tituloSectionStyle,
+            fontSize: "clamp(32px, 5vw, 48px)",  // tamanho original
+            marginBottom: 48,
           }}>
             {titulo}
           </h2>

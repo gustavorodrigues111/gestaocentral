@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -16,7 +16,7 @@ import { SaloesTab } from "./SaloesTab";
 import { JanelasTab } from "./JanelasTab";
 import type { Salao } from "../../core/types";
 
-type Tab = "agenda" | "proximas" | "clientes" | "saloes" | "janelas" | "mesas";
+type Tab = "agenda" | "proximas" | "canceladas" | "clientes" | "saloes" | "janelas" | "mesas";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -111,6 +111,18 @@ export function ReservasPage() {
       .slice(0, 50);
   }, [reservas, today]);
 
+  // Histórico de canceladas + no-show — preserva o registro do cliente
+  const canceladas = useMemo(() => {
+    return reservas
+      .filter(r => r.status === "cancelada" || r.status === "no_show")
+      .sort((a, b) => {
+        // Mais recentes primeiro (por data+horário)
+        const ad = `${a.data} ${a.horario || "00:00"}`;
+        const bd = `${b.data} ${b.horario || "00:00"}`;
+        return bd.localeCompare(ad);
+      });
+  }, [reservas]);
+
   // Stats do dia
   const statsDia = useMemo(() => {
     const pendentes = reservasDoDia.filter(r => r.status === "pendente" || r.status === "confirmada").length;
@@ -146,10 +158,9 @@ export function ReservasPage() {
     await updateDoc(doc(db, "reservas", r.id), patch);
   }
 
-  async function excluir(r: Reserva) {
-    if (!confirm(`Excluir reserva de "${r.clienteNomeSnapshot}" em ${r.data} ${r.horario}?`)) return;
-    await deleteDoc(doc(db, "reservas", r.id));
-  }
+  // Excluir permanente desabilitado na UI — preserva histórico e dados do
+  // cliente. Pra remover, use Cancelar (status: cancelada). Em caso extremo,
+  // master pode deletar via Firestore console.
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) {
@@ -191,12 +202,13 @@ export function ReservasPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["agenda",   `📅 Agenda do dia (${reservasDoDia.length})`],
-          ["proximas", `⏰ Próximas (${proximas.length})`],
-          ["clientes", `👥 Clientes (${clientes.length})`],
-          ["saloes",   `🏛️ Salões (${saloes.filter(s => s.ativo).length})`],
-          ["janelas",  `🕒 Janelas`],
-          ["mesas",    `🪑 Mesas (${mesas.filter(m => m.ativa).length})`],
+          ["agenda",     `📅 Agenda do dia (${reservasDoDia.length})`],
+          ["proximas",   `⏰ Próximas (${proximas.length})`],
+          ["canceladas", `🗑 Canceladas (${canceladas.length})`],
+          ["clientes",   `👥 Clientes (${clientes.length})`],
+          ["saloes",     `🏛️ Salões (${saloes.filter(s => s.ativo).length})`],
+          ["janelas",    `🕒 Janelas`],
+          ["mesas",      `🪑 Mesas (${mesas.filter(m => m.ativa).length})`],
         ] as const).map(([id, label]) => (
           <button
             key={id}
@@ -279,13 +291,42 @@ export function ReservasPage() {
                         podeConfig={podeConfig}
                         onEditar={() => setEditing(r)}
                         onStatus={(s) => setStatus(r, s)}
-                        onExcluir={() => excluir(r)}
+                        onExcluir={() => { /* desativado */ }}
                       />
                     ))}
                   </div>
                 </div>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB CANCELADAS — histórico, sem ações de cancelar/excluir */}
+      {tab === "canceladas" && (
+        <div className="space-y-2">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Reservas canceladas e no-show. Histórico preservado pro CRM —
+            cliente continua aparecendo na aba Clientes.
+          </p>
+          {canceladas.length === 0 ? (
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
+              <div className="text-4xl mb-3">🗑</div>
+              <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma reserva cancelada</p>
+            </div>
+          ) : (
+            canceladas.map(r => (
+              <ReservaCard
+                key={r.id}
+                reserva={r}
+                clientes={clientes}
+                podeConfig={podeConfig}
+                onEditar={() => setEditing(r)}
+                onStatus={(s) => setStatus(r, s)}
+                onExcluir={() => {/* desabilitado */}}
+                mostrarData
+              />
+            ))
           )}
         </div>
       )}
@@ -307,7 +348,6 @@ export function ReservasPage() {
                 podeConfig={podeConfig}
                 onEditar={() => setEditing(r)}
                 onStatus={(s) => setStatus(r, s)}
-                onExcluir={() => excluir(r)}
                 mostrarData
               />
             ))
@@ -350,14 +390,14 @@ export function ReservasPage() {
   );
 
   function ReservaCard({
-    reserva, clientes, podeConfig, onEditar, onStatus, onExcluir, mostrarData,
+    reserva, clientes, podeConfig, onEditar, onStatus, mostrarData,
   }: {
     reserva: Reserva;
     clientes: Cliente[];
     podeConfig: boolean;
     onEditar: () => void;
     onStatus: (s: ReservaStatus) => void;
-    onExcluir: () => void;
+    onExcluir?: () => void;          // legado — não é mais usado na UI
     mostrarData?: boolean;
   }) {
     const cliente = reserva.clienteId ? clientes.find(c => c.id === reserva.clienteId) : null;
@@ -409,10 +449,11 @@ export function ReservasPage() {
                 </>
               )}
               {reserva.status !== "cancelada" && reserva.status !== "chegou" && (
-                <Button variant="secondary" size="sm" onClick={() => onStatus("cancelada")}>✕</Button>
+                <Button variant="secondary" size="sm" onClick={() => onStatus("cancelada")}>✕ Cancelar</Button>
               )}
               <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>
-              <Button variant="danger" size="sm" onClick={onExcluir}>×</Button>
+              {/* Excluir permanente removido da UI — preserva histórico e cliente.
+                  Use "Cancelar" pra remover; cliente continua no CRM. */}
             </div>
           )}
         </div>
