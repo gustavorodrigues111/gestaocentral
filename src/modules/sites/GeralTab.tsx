@@ -4,6 +4,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { LinkDelivery, RedeSocial, SiteConfig, TemaSite } from "../../core/types";
 import { defaultSiteConfig, useSiteConfig } from "./useSiteConfig";
+import { UploadImagem } from "./UploadImagem";
 import { defaultTextosByTemplate } from "./templates/textosDefaults";
 import { normalizarOrdem, SECAO_LABEL, type SecaoId } from "./templates/ordemSecoes";
 import {
@@ -209,27 +210,28 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
       )}
 
       {/* IMAGENS */}
-      <section className="space-y-3">
+      <section className="space-y-4">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
           Imagens
         </h3>
-        <Input
-          label="URL do logo"
-          value={form.logoUrl || ""}
-          onChange={(e) => atualizar("logoUrl", e.target.value)}
-          placeholder="https://..."
+        <UploadImagem
+          rid={rid}
+          tipo="logo"
+          label="Logo do restaurante"
+          descricao="Aparece no header do site e no rodapé. Use PNG com fundo transparente pra melhor resultado."
+          url={form.logoUrl || ""}
+          onChange={(v) => atualizar("logoUrl", v)}
           disabled={inputDisabled}
         />
-        <Input
-          label="URL da imagem hero (banner topo)"
-          value={form.heroImagemUrl || ""}
-          onChange={(e) => atualizar("heroImagemUrl", e.target.value)}
-          placeholder="https://..."
+        <UploadImagem
+          rid={rid}
+          tipo="hero"
+          label="Imagem hero (banner topo)"
+          descricao="Aparece como fundo do hero (com overlay escuro). Se não tiver, o hero usa só cor sólida da marca."
+          url={form.heroImagemUrl || ""}
+          onChange={(v) => atualizar("heroImagemUrl", v)}
           disabled={inputDisabled}
         />
-        <p className="text-[11px] text-gray-500 -mt-2">
-          (Upload direto vai entrar numa próxima fase. Por enquanto cole a URL.)
-        </p>
       </section>
 
       {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
