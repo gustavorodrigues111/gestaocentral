@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import type { CSSProperties } from "react";
 import { useParams } from "react-router-dom";
 import { collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type {
   EscopoPacote, EspacoEvento, LeadEvento, ModeloEvento,
@@ -17,19 +17,27 @@ import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
   validarDDIManual, validarNumeroLocal,
 } from "./paises";
+import { useSiteConfigPublic } from "../sites/shared/useSiteConfigPublic";
+import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "../sites/shared/SiteFormShell";
 
 // Página pública: cliente registra interesse num evento.
-// Rota: /eventos/:rid (sem auth).
+// Rota: /eventos/:rid (sem auth). Visual segue o tema do site do
+// restaurante (mesmo shell de Reservas/Trabalhe), com header + voltar
+// pro site + cores/fontes do SiteConfig.
 export function EventosPublicaPage() {
   const { rid } = useParams<{ rid: string }>();
+  // SiteConfig pra tema + voltar pro site (sem requireFeature aqui — o
+  // gate de eventos é "ter espaços ativos", não a flag hasEventos).
+  const { siteConfig, loading: loadingSite } = useSiteConfigPublic(rid);
+
+  // Carregamento próprio: espacosEvento + pacotesEvento (gate da página).
   const [espacos, setEspacos] = useState<EspacoEvento[]>([]);
   const [pacotes, setPacotes] = useState<PacoteEvento[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingEventos, setLoadingEventos] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [erroGeral, setErroGeral] = useState("");
   const [naoEncontrado, setNaoEncontrado] = useState(false);
-  const [siteSlug, setSiteSlug] = useState<string | null>(null);
 
   // CNPJ — busca automática
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
@@ -62,19 +70,13 @@ export function EventosPublicaPage() {
   });
 
   useEffect(() => {
-    if (!rid) return;
+    if (!rid) { setLoadingEventos(false); setNaoEncontrado(true); return; }
     (async () => {
       try {
-        const [espSnap, pacSnap, siteSnap] = await Promise.all([
+        const [espSnap, pacSnap] = await Promise.all([
           getDocs(query(collection(db, "espacosEvento"), where("restaurantId", "==", rid))),
           getDocs(query(collection(db, "pacotesEvento"), where("restaurantId", "==", rid))),
-          // sitesConfig pra pegar o slug e linkar volta pro site
-          getDocs(query(collection(db, "sitesConfig"), where("restaurantId", "==", rid))),
         ]);
-        const siteDoc = siteSnap.docs[0]?.data() as { slug?: string; publicado?: boolean } | undefined;
-        if (siteDoc?.slug && siteDoc.publicado) {
-          setSiteSlug(siteDoc.slug);
-        }
         const espacosAtivos = espSnap.docs
           .map(d => ({ id: d.id, ...d.data() }) as EspacoEvento)
           .filter(e => e.ativo);
@@ -90,12 +92,13 @@ export function EventosPublicaPage() {
         console.error(e);
         setErroGeral("Erro ao carregar página. Tenta de novo em alguns minutos.");
       } finally {
-        setLoading(false);
+        setLoadingEventos(false);
       }
     })();
   }, [rid]);
 
   const espaco = useMemo(() => espacos[0] || null, [espacos]);
+  const corPrimaria = siteConfig?.tema?.corPrimaria || "#1a5c2a";
 
   function update<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm(f => ({ ...f, [k]: v }));
@@ -232,461 +235,456 @@ export function EventosPublicaPage() {
     }
   }
 
+  // ───────────── Estados de carga / erro / sucesso ─────────────
+  const loading = loadingEventos || loadingSite;
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "#666", fontSize: 14 }}>
         Carregando...
       </div>
     );
   }
   if (naoEncontrado || !espaco) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4">
-        <div className="text-center max-w-md">
-          <div className="text-4xl mb-3">❌</div>
-          <p className="text-gray-800 dark:text-gray-200 font-medium">Página não encontrada</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Confere o link ou contata o restaurante. Talvez ainda não tenha
-            espaço de eventos cadastrado por aqui.
-          </p>
-        </div>
-      </div>
+      <SiteFormScreen
+        siteConfig={siteConfig}
+        icone="❌"
+        titulo="Página não encontrada"
+        mensagem="Confere o link ou contata o restaurante. Talvez ainda não tenha espaço de eventos cadastrado por aqui."
+      />
     );
   }
   if (submitted) {
     return (
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
-        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-8 max-w-lg text-center">
-          <div className="text-5xl mb-4">✓</div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            Recebemos sua mensagem!
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Vamos retornar em breve via WhatsApp pra detalhar sua proposta.
-          </p>
-          {siteSlug && (
-            <a
-              href={`/site/${siteSlug}`}
-              className="inline-block mt-6 text-sm text-indigo-600 hover:underline"
-            >
-              ← Voltar pro site
-            </a>
-          )}
-        </div>
-      </div>
+      <SiteFormScreen
+        siteConfig={siteConfig}
+        icone="✓"
+        titulo="Recebemos sua mensagem!"
+        mensagem="Vamos retornar em breve via WhatsApp pra detalhar sua proposta."
+      />
     );
   }
 
+  // ───────────── Form ─────────────
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8 px-4">
-      <div className="max-w-xl mx-auto">
-        {siteSlug && (
-          <a
-            href={`/site/${siteSlug}`}
-            className="inline-block mb-4 text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-          >
-            ← Voltar pro site
-          </a>
-        )}
-        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-6 sm:p-8">
-          <div className="text-center mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-              {espaco.nome}
-            </h1>
-            <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-              Eventos privados {espaco.capacidadeMax ? `· até ${espaco.capacidadeMax} pessoas` : ""}
-            </p>
-            {espaco.descricao && (
-              <p className="text-xs text-gray-500 dark:text-gray-500 mt-2 max-w-md mx-auto">
-                {espaco.descricao}
-              </p>
+    <SiteFormShell
+      siteConfig={siteConfig}
+      titulo={espaco.nome}
+      maxWidth={640}
+      subtitulo={
+        <>
+          Eventos privados {espaco.capacidadeMax ? `· até ${espaco.capacidadeMax} pessoas` : ""}
+          {espaco.descricao && (
+            <span style={{ display: "block", marginTop: 6, fontSize: 13, color: "#888" }}>
+              {espaco.descricao}
+            </span>
+          )}
+          <span style={{ display: "block", marginTop: 10, fontSize: 13, color: "#888" }}>
+            Conta pra gente sobre seu evento — retornaremos em breve via WhatsApp.
+          </span>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {/* Contato */}
+        <div className="grid grid-cols-1 gap-3">
+          <Input
+            label="Seu nome *"
+            value={form.nome}
+            onChange={(e) => update("nome", e.target.value)}
+            placeholder="João da Silva"
+          />
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              WhatsApp *
+            </label>
+            {form.paisIso === "OUTROS" ? (
+              <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
+                <select
+                  value={form.paisIso}
+                  onChange={(e) => {
+                    update("paisIso", e.target.value);
+                    update("whatsapp", "");
+                    update("ddiManual", "");
+                  }}
+                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                >
+                  {PAISES.map(p => (
+                    <option key={p.iso} value={p.iso}>
+                      {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="tel" inputMode="numeric"
+                  value={form.ddiManual}
+                  onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="DDI"
+                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm tabular-nums"
+                />
+                <input
+                  type="tel" inputMode="numeric"
+                  value={form.whatsapp}
+                  onChange={(e) => update("whatsapp", e.target.value)}
+                  placeholder="Número"
+                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                />
+              </div>
+            ) : (
+              <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+                <select
+                  value={form.paisIso}
+                  onChange={(e) => {
+                    update("paisIso", e.target.value);
+                    update("whatsapp", "");
+                  }}
+                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                >
+                  {PAISES.map(p => (
+                    <option key={p.iso} value={p.iso}>
+                      {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="tel" inputMode="numeric"
+                  value={form.whatsapp}
+                  onChange={(e) => {
+                    const pais = getPaisByIso(form.paisIso);
+                    update("whatsapp", formatarNumeroLocal(e.target.value, pais));
+                  }}
+                  placeholder={
+                    form.paisIso === "BR"
+                      ? "(11) 99999-9999"
+                      : `${getPaisByIso(form.paisIso).minLen} dígitos`
+                  }
+                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                />
+              </div>
             )}
-            <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-              Conta pra gente sobre seu evento — retornaremos em breve via WhatsApp.
-            </p>
           </div>
+          <Input
+            label="Email *"
+            type="email"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+            placeholder="seunome@email.com"
+          />
+        </div>
 
-          <div className="space-y-4">
-            {/* Contato */}
-            <div className="grid grid-cols-1 gap-3">
-              <Input
-                label="Seu nome *"
-                value={form.nome}
-                onChange={(e) => update("nome", e.target.value)}
-                placeholder="João da Silva"
-              />
+        {/* PF / PJ */}
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            Tipo
+          </label>
+          <div className="mt-1 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => update("tipoPessoa", "PF")}
+              style={pillStyle(form.tipoPessoa === "PF", corPrimaria)}
+            >
+              Pessoa física
+            </button>
+            <button
+              type="button"
+              onClick={() => update("tipoPessoa", "PJ")}
+              style={pillStyle(form.tipoPessoa === "PJ", corPrimaria)}
+            >
+              Empresa
+            </button>
+          </div>
+          {form.tipoPessoa === "PJ" && (
+            <div className="mt-3 space-y-3">
               <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  WhatsApp *
-                </label>
-                {form.paisIso === "OUTROS" ? (
-                  // Modo livre: cliente digita DDI + número, sem validação por país
-                  <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
-                    <select
-                      value={form.paisIso}
-                      onChange={(e) => {
-                        update("paisIso", e.target.value);
-                        update("whatsapp", "");
-                        update("ddiManual", "");
-                      }}
-                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                    >
-                      {PAISES.map(p => (
-                        <option key={p.iso} value={p.iso}>
-                          {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={form.ddiManual}
-                      onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      placeholder="DDI"
-                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm tabular-nums"
-                    />
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={form.whatsapp}
-                      onChange={(e) => update("whatsapp", e.target.value)}
-                      placeholder="Número"
-                      className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                    />
-                  </div>
-                ) : (
-                  <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
-                    <select
-                      value={form.paisIso}
-                      onChange={(e) => {
-                        update("paisIso", e.target.value);
-                        update("whatsapp", "");
-                      }}
-                      className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                    >
-                      {PAISES.map(p => (
-                        <option key={p.iso} value={p.iso}>
-                          {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      type="tel"
-                      inputMode="numeric"
-                      value={form.whatsapp}
-                      onChange={(e) => {
-                        const pais = getPaisByIso(form.paisIso);
-                        update("whatsapp", formatarNumeroLocal(e.target.value, pais));
-                      }}
-                      placeholder={
-                        form.paisIso === "BR"
-                          ? "(11) 99999-9999"
-                          : `${getPaisByIso(form.paisIso).minLen} dígitos`
-                      }
-                      className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                    />
-                  </div>
+                <Input
+                  label="CNPJ *"
+                  value={form.cnpj}
+                  onChange={(e) => update("cnpj", e.target.value)}
+                  onBlur={onCnpjBlur}
+                  placeholder="00.000.000/0000-00"
+                  inputMode="numeric"
+                />
+                {buscandoCNPJ && (
+                  <p className="text-[11px] mt-1" style={{ color: corPrimaria }}>
+                    🔎 buscando razão social...
+                  </p>
+                )}
+                {cnpjNaoEncontrado && !buscandoCNPJ && (
+                  <p className="text-[11px] text-amber-600 mt-1">
+                    Não consegui buscar — preencha a razão social manualmente.
+                  </p>
                 )}
               </div>
               <Input
-                label="Email *"
-                type="email"
-                value={form.email}
-                onChange={(e) => update("email", e.target.value)}
-                placeholder="seunome@email.com"
+                label="Razão social *"
+                value={form.razaoSocial}
+                onChange={(e) => update("razaoSocial", e.target.value)}
               />
             </div>
+          )}
+        </div>
 
-            {/* PF / PJ */}
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Tipo
-              </label>
-              <div className="mt-1 grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => update("tipoPessoa", "PF")}
-                  className={pillBtn(form.tipoPessoa === "PF")}
-                >
-                  Pessoa física
-                </button>
-                <button
-                  type="button"
-                  onClick={() => update("tipoPessoa", "PJ")}
-                  className={pillBtn(form.tipoPessoa === "PJ")}
-                >
-                  Empresa
-                </button>
-              </div>
-              {form.tipoPessoa === "PJ" && (
-                <div className="mt-3 space-y-3">
-                  <div>
-                    <Input
-                      label="CNPJ *"
-                      value={form.cnpj}
-                      onChange={(e) => update("cnpj", e.target.value)}
-                      onBlur={onCnpjBlur}
-                      placeholder="00.000.000/0000-00"
-                      inputMode="numeric"
-                    />
-                    {buscandoCNPJ && (
-                      <p className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-1">
-                        🔎 buscando razão social...
-                      </p>
-                    )}
-                    {cnpjNaoEncontrado && !buscandoCNPJ && (
-                      <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                        Não consegui buscar — preencha a razão social manualmente.
-                      </p>
-                    )}
-                  </div>
-                  <Input
-                    label="Razão social *"
-                    value={form.razaoSocial}
-                    onChange={(e) => update("razaoSocial", e.target.value)}
-                  />
-                </div>
-              )}
-            </div>
+        {/* Data + alternativa */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Data desejada *"
+            type="date"
+            value={form.dataDesejada}
+            onChange={(e) => update("dataDesejada", e.target.value)}
+          />
+          <Input
+            label="Alternativa (opcional)"
+            type="date"
+            value={form.dataAlternativa}
+            onChange={(e) => update("dataAlternativa", e.target.value)}
+          />
+        </div>
 
-            {/* Data + alternativa */}
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Data desejada *"
-                type="date"
-                value={form.dataDesejada}
-                onChange={(e) => update("dataDesejada", e.target.value)}
-              />
-              <Input
-                label="Alternativa (opcional)"
-                type="date"
-                value={form.dataAlternativa}
-                onChange={(e) => update("dataAlternativa", e.target.value)}
-              />
-            </div>
+        {/* Horários início + fim */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input
+            label="Início *"
+            type="time"
+            value={form.horaInicio}
+            onChange={(e) => update("horaInicio", e.target.value)}
+          />
+          <Input
+            label="Término *"
+            type="time"
+            value={form.horaFim}
+            onChange={(e) => update("horaFim", e.target.value)}
+          />
+        </div>
 
-            {/* Horários início + fim */}
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Início *"
-                type="time"
-                value={form.horaInicio}
-                onChange={(e) => update("horaInicio", e.target.value)}
-              />
-              <Input
-                label="Término *"
-                type="time"
-                value={form.horaFim}
-                onChange={(e) => update("horaFim", e.target.value)}
-              />
-            </div>
+        {/* Pax + Ocasião */}
+        <Input
+          label="Quantos convidados? *"
+          type="number"
+          value={form.numConvidados}
+          onChange={(e) => update("numConvidados", e.target.value)}
+          placeholder="ex: 30"
+        />
 
-            {/* Pax + Ocasião */}
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            Ocasião *
+          </label>
+          <select
+            value={form.ocasiao}
+            onChange={(e) => update("ocasiao", e.target.value as OcasiaoEvento | "")}
+            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+          >
+            <option value="">— selecione —</option>
+            <option value="aniversario">{OCASIAO_LABEL.aniversario}</option>
+            <option value="corporativo">{OCASIAO_LABEL.corporativo}</option>
+            <option value="encontro_amigos">{OCASIAO_LABEL.encontro_amigos}</option>
+            <option value="outros">{OCASIAO_LABEL.outros}</option>
+          </select>
+          {form.ocasiao === "outros" && (
             <Input
-              label="Quantos convidados? *"
-              type="number"
-              value={form.numConvidados}
-              onChange={(e) => update("numConvidados", e.target.value)}
-              placeholder="ex: 30"
+              label=""
+              value={form.ocasiaoOutros}
+              onChange={(e) => update("ocasiaoOutros", e.target.value)}
+              placeholder="Descreve a ocasião"
+              className="mt-2"
             />
+          )}
+        </div>
 
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Ocasião *
+        {/* Modelo do evento */}
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            Modelo de evento *
+          </label>
+          <div className="mt-1 grid grid-cols-1 gap-1.5">
+            <button
+              type="button"
+              onClick={() => update("modeloEvento", "locacao_consumo_livre")}
+              style={optionStyle(form.modeloEvento === "locacao_consumo_livre", corPrimaria)}
+            >
+              <strong>Locação do espaço</strong>
+              <span className="block text-xs mt-0.5 opacity-80">
+                Comanda individual, consumo livre — cada convidado paga o que consumir.
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => update("modeloEvento", "pacote_por_pessoa")}
+              style={optionStyle(form.modeloEvento === "pacote_por_pessoa", corPrimaria)}
+            >
+              <strong>Pacote por pessoa</strong>
+              <span className="block text-xs mt-0.5 opacity-80">
+                Valor fixo por convidado com comidas e/ou bebidas inclusas.
+              </span>
+            </button>
+          </div>
+          {form.modeloEvento === "pacote_por_pessoa" && (
+            <div className="mt-3">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+                O pacote inclui:
               </label>
-              <select
-                value={form.ocasiao}
-                onChange={(e) => update("ocasiao", e.target.value as OcasiaoEvento | "")}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-              >
-                <option value="">— selecione —</option>
-                <option value="aniversario">{OCASIAO_LABEL.aniversario}</option>
-                <option value="corporativo">{OCASIAO_LABEL.corporativo}</option>
-                <option value="encontro_amigos">{OCASIAO_LABEL.encontro_amigos}</option>
-                <option value="outros">{OCASIAO_LABEL.outros}</option>
-              </select>
-              {form.ocasiao === "outros" && (
+              <div className="mt-1 grid grid-cols-1 gap-1.5">
+                {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => update("escopoPacote", opt)}
+                    style={optionStyle(form.escopoPacote === opt, corPrimaria)}
+                  >
+                    {ESCOPO_PACOTE_LABEL[opt]}
+                  </button>
+                ))}
+              </div>
+              {form.escopoPacote === "outro" && (
                 <Input
                   label=""
-                  value={form.ocasiaoOutros}
-                  onChange={(e) => update("ocasiaoOutros", e.target.value)}
-                  placeholder="Descreve a ocasião"
+                  value={form.escopoPacoteOutro}
+                  onChange={(e) => update("escopoPacoteOutro", e.target.value)}
+                  placeholder="Descreve o que quer no pacote"
                   className="mt-2"
                 />
               )}
             </div>
-
-            {/* Modelo do evento */}
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Modelo de evento *
-              </label>
-              <div className="mt-1 grid grid-cols-1 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => update("modeloEvento", "locacao_consumo_livre")}
-                  className={optionBtn(form.modeloEvento === "locacao_consumo_livre")}
-                >
-                  <strong>Locação do espaço</strong>
-                  <span className="block text-xs mt-0.5 opacity-80">
-                    Comanda individual, consumo livre — cada convidado paga o que consumir.
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => update("modeloEvento", "pacote_por_pessoa")}
-                  className={optionBtn(form.modeloEvento === "pacote_por_pessoa")}
-                >
-                  <strong>Pacote por pessoa</strong>
-                  <span className="block text-xs mt-0.5 opacity-80">
-                    Valor fixo por convidado com comidas e/ou bebidas inclusas.
-                  </span>
-                </button>
-              </div>
-              {form.modeloEvento === "pacote_por_pessoa" && (
-                <div className="mt-3">
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                    O pacote inclui:
-                  </label>
-                  <div className="mt-1 grid grid-cols-1 gap-1.5">
-                    {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
-                      <button
-                        key={opt}
-                        type="button"
-                        onClick={() => update("escopoPacote", opt)}
-                        className={optionBtn(form.escopoPacote === opt)}
-                      >
-                        {ESCOPO_PACOTE_LABEL[opt]}
-                      </button>
-                    ))}
-                  </div>
-                  {form.escopoPacote === "outro" && (
-                    <Input
-                      label=""
-                      value={form.escopoPacoteOutro}
-                      onChange={(e) => update("escopoPacoteOutro", e.target.value)}
-                      placeholder="Descreve o que quer no pacote"
-                      className="mt-2"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Música / decoração */}
-            <div className="grid grid-cols-1 gap-2">
-              <CheckboxRow
-                checked={form.musicaAoVivo}
-                onChange={(v) => update("musicaAoVivo", v)}
-                label="Pretende levar música ao vivo?"
-              />
-              <CheckboxRow
-                checked={form.decoracao}
-                onChange={(v) => update("decoracao", v)}
-                label="Pretende decorar o espaço?"
-              />
-            </div>
-
-            {/* Pacote sugerido (do restaurante) */}
-            {pacotes.length > 0 && (
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                  Tem algum pacote nosso em mente? (opcional)
-                </label>
-                <div className="mt-1 grid grid-cols-1 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => update("pacoteSugeridoId", "")}
-                    className={optionBtn(form.pacoteSugeridoId === "")}
-                  >
-                    <span className="font-medium">Não sei ainda</span>
-                  </button>
-                  {pacotes.map(p => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => update("pacoteSugeridoId", p.id)}
-                      className={optionBtn(form.pacoteSugeridoId === p.id)}
-                    >
-                      <span className="font-medium">{p.nome}</span>
-                      {p.descricao && (
-                        <span className="block text-xs opacity-70 mt-0.5">{p.descricao}</span>
-                      )}
-                      {p.precoPorPessoa > 0 && (
-                        <span className="block text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">
-                          R$ {p.precoPorPessoa.toFixed(2)} / pessoa · {p.duracaoHoras}h
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Observações */}
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                Conta mais (opcional)
-              </label>
-              <textarea
-                value={form.observacoesCliente}
-                onChange={(e) => update("observacoesCliente", e.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                rows={3}
-                placeholder="restrições alimentares, expectativa de orçamento, dúvidas..."
-              />
-            </div>
-
-            {erroGeral && <div className="text-sm text-rose-600 dark:text-rose-400">{erroGeral}</div>}
-
-            <Button
-              onClick={submit}
-              disabled={submitting}
-              className="w-full"
-            >
-              {submitting ? "Enviando..." : "Enviar interesse"}
-            </Button>
-          </div>
+          )}
         </div>
 
-        <p className="text-center text-[11px] text-gray-500 dark:text-gray-500 mt-4">
-          Powered by Planejamento.app
-        </p>
+        {/* Música / decoração */}
+        <div className="grid grid-cols-1 gap-2">
+          <CheckboxRow
+            checked={form.musicaAoVivo}
+            onChange={(v) => update("musicaAoVivo", v)}
+            label="Pretende levar música ao vivo?"
+            corPrimaria={corPrimaria}
+          />
+          <CheckboxRow
+            checked={form.decoracao}
+            onChange={(v) => update("decoracao", v)}
+            label="Pretende decorar o espaço?"
+            corPrimaria={corPrimaria}
+          />
+        </div>
+
+        {/* Pacote sugerido (do restaurante) */}
+        {pacotes.length > 0 && (
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Tem algum pacote nosso em mente? (opcional)
+            </label>
+            <div className="mt-1 grid grid-cols-1 gap-1.5">
+              <button
+                type="button"
+                onClick={() => update("pacoteSugeridoId", "")}
+                style={optionStyle(form.pacoteSugeridoId === "", corPrimaria)}
+              >
+                <span className="font-medium">Não sei ainda</span>
+              </button>
+              {pacotes.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => update("pacoteSugeridoId", p.id)}
+                  style={optionStyle(form.pacoteSugeridoId === p.id, corPrimaria)}
+                >
+                  <span className="font-medium">{p.nome}</span>
+                  {p.descricao && (
+                    <span className="block text-xs opacity-70 mt-0.5">{p.descricao}</span>
+                  )}
+                  {p.precoPorPessoa > 0 && (
+                    <span className="block text-xs mt-0.5" style={{ color: corPrimaria, opacity: 0.85 }}>
+                      R$ {p.precoPorPessoa.toFixed(2)} / pessoa · {p.duracaoHoras}h
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Observações */}
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+            Conta mais (opcional)
+          </label>
+          <textarea
+            value={form.observacoesCliente}
+            onChange={(e) => update("observacoesCliente", e.target.value)}
+            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+            rows={3}
+            placeholder="restrições alimentares, expectativa de orçamento, dúvidas..."
+          />
+        </div>
+
+        {erroGeral && <div className="text-sm text-rose-600">{erroGeral}</div>}
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={submitting}
+          style={{ ...botaoPrimarioStyle(siteConfig), opacity: submitting ? 0.6 : 1 }}
+        >
+          {submitting ? "Enviando..." : "Enviar interesse"}
+        </button>
       </div>
-    </div>
+    </SiteFormShell>
   );
 }
 
-function CheckboxRow({ checked, onChange, label }: {
+// ─── Helpers visuais ─────────────────────────────────────────────
+
+function CheckboxRow({ checked, onChange, label, corPrimaria }: {
   checked: boolean;
   onChange: (v: boolean) => void;
   label: string;
+  corPrimaria: string;
 }) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+    <label style={{
+      display: "flex", alignItems: "center", gap: 8,
+      cursor: "pointer",
+      padding: "10px 14px",
+      borderRadius: 10,
+      border: `1px solid ${checked ? `${corPrimaria}60` : "#d1d5db"}`,
+      backgroundColor: checked ? `${corPrimaria}10` : "#fff",
+      transition: "background-color 0.15s, border-color 0.15s",
+    }}>
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="accent-indigo-600"
+        style={{ accentColor: corPrimaria }}
       />
-      <span className="text-sm">{label}</span>
+      <span style={{ fontSize: 14 }}>{label}</span>
     </label>
   );
 }
 
-function pillBtn(active: boolean): string {
-  return `px-3 py-2 rounded-lg text-sm font-medium border ${
-    active
-      ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/30 dark:border-indigo-700 dark:text-indigo-300"
-      : "bg-white border-gray-300 text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300"
-  }`;
+// Estilos inline pros botões pill (PF/PJ) — usa cor primária do tema do site
+function pillStyle(active: boolean, corPrimaria: string): CSSProperties {
+  return {
+    padding: "10px 14px",
+    borderRadius: 10,
+    fontSize: 14, fontWeight: 500,
+    cursor: "pointer",
+    border: `1px solid ${active ? `${corPrimaria}80` : "#d1d5db"}`,
+    backgroundColor: active ? `${corPrimaria}15` : "#fff",
+    color: active ? corPrimaria : "#374151",
+    transition: "background-color 0.15s, border-color 0.15s",
+  };
 }
 
-function optionBtn(active: boolean): string {
-  return `px-3 py-2 rounded-lg text-sm text-left border ${
-    active
-      ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700"
-      : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"
-  }`;
+// Estilos inline pros botões de opção (modelo de evento, escopo, pacote)
+function optionStyle(active: boolean, corPrimaria: string): CSSProperties {
+  return {
+    padding: "12px 14px",
+    borderRadius: 10,
+    fontSize: 14,
+    textAlign: "left",
+    cursor: "pointer",
+    border: `1px solid ${active ? `${corPrimaria}80` : "#d1d5db"}`,
+    backgroundColor: active ? `${corPrimaria}10` : "#fff",
+    color: "#1a1a1a",
+    transition: "background-color 0.15s, border-color 0.15s",
+    width: "100%",
+  };
 }
+
