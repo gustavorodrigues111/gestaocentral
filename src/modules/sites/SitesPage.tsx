@@ -4,6 +4,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse, canConfig } from "../../core/auth/permissions";
 import { GeralTab } from "./GeralTab";
+import { HorariosTab } from "./HorariosTab";
 
 type Tab = "geral" | "horarios" | "cardapio" | "candidaturas" | "preview";
 
@@ -84,7 +85,9 @@ export function SitesPage() {
       {tab === "geral" && (
         <GeralTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
       )}
-      {tab === "horarios" && <PlaceholderTab fase={3} titulo="Horários" descricao="Horário padrão da semana + exceções pontuais (feriados, eventos especiais). Compartilhado com módulo Reservas." />}
+      {tab === "horarios" && (
+        <HorariosTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
+      )}
       {tab === "cardapio" && <PlaceholderTab fase={4} titulo="Cardápio" descricao="Upload de PDF — 2 versões (português + inglês). Substitui automaticamente no site público." />}
       {tab === "candidaturas" && <PlaceholderTab fase={5} titulo="Candidaturas Trabalhe Conosco" descricao="Lista de candidatos vindos do form público do site. Triagem antes do processo formal de admissão." />}
       {tab === "preview" && <PlaceholderTab fase={6} titulo="Preview do site público" descricao="Renderiza o site como o cliente vai ver, lendo do conteúdo configurado nas outras tabs." />}
