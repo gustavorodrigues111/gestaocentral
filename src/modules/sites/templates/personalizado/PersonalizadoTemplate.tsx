@@ -672,6 +672,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           new Set<SecaoId>(["reservas", "laje"]),
           new Set<SecaoId>(["reservas", "eventos"]),
           new Set<SecaoId>(["horario", "contato"]),
+          new Set<SecaoId>(["delivery", "trabalhe"]),
         ];
         function ehPar(a: SecaoId, b: SecaoId): boolean {
           return PARES_DESKTOP.some(s => s.has(a) && s.has(b) && a !== b);

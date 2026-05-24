@@ -35,9 +35,9 @@ export const ORDEM_PADRAO: SecaoId[] = [
   "laje",       // par com reservas no desktop (quando hasLaje+hasEventos)
   "reservas",   // par com laje OU com eventos (next item filtrado)
   "eventos",    // entra como par de reservas quando !hasLaje
-  "delivery",
   "horario",    // par com contato no desktop
   "contato",
+  "delivery",   // par com trabalhe no desktop (quando ambos ativos)
   "trabalhe",   // final — depois de horário/contato (recrutamento é footer)
 ];
 
