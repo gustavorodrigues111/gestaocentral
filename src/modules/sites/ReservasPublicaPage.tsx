@@ -22,7 +22,11 @@ export function ReservasPublicaPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [erro, setErro] = useState("");
-  const [naoEncontrado, setNaoEncontrado] = useState(false);
+  // Motivo do "não encontrado" — ajuda o admin a debugar (sem-config vs
+  // feature off). null = ainda carregando ou tudo ok.
+  const [naoEncontradoMotivo, setNaoEncontradoMotivo] = useState<
+    null | "sem_config" | "reservas_off"
+  >(null);
 
   // Data mínima = hoje (formato YYYY-MM-DD pra input type="date")
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -47,12 +51,17 @@ export function ReservasPublicaPage() {
         const snap = await getDocs(query(collection(db, "sitesConfig"), where("__name__", "==", rid)));
         const cfg = snap.docs[0];
         if (!cfg) {
-          setNaoEncontrado(true);
+          console.warn("[reservas] sitesConfig não existe pro rid:", rid);
+          setNaoEncontradoMotivo("sem_config");
           return;
         }
         const data = { id: cfg.id, ...cfg.data() } as SiteConfig;
-        if (!data.publicado || !data.features?.hasReservas) {
-          setNaoEncontrado(true);
+        // Importante: NÃO checa publicado aqui — o form de reservas é um
+        // link que pode ser compartilhado antes do site ir ao ar (cliente
+        // testando, soft launch). Só checa se a feature está ligada.
+        if (!data.features?.hasReservas) {
+          console.warn("[reservas] feature hasReservas está desligada pro rid:", rid);
+          setNaoEncontradoMotivo("reservas_off");
           return;
         }
         setSiteConfig(data);
@@ -139,15 +148,18 @@ export function ReservasPublicaPage() {
   const tema = useMemo(() => siteConfig?.tema, [siteConfig]);
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Carregando...</div>;
-  if (naoEncontrado || !siteConfig) {
+  if (naoEncontradoMotivo || !siteConfig) {
+    const detalhe = naoEncontradoMotivo === "reservas_off"
+      ? "O restaurante ainda não habilitou reservas online. Liga em Sites → Geral → Features → \"Tem reservas\"."
+      : naoEncontradoMotivo === "sem_config"
+        ? "Esse restaurante ainda não tem site configurado (sitesConfig). Cria em Sites no admin."
+        : "Confere o link ou contata o restaurante.";
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <div className="text-center max-w-md">
           <div className="text-4xl mb-3">❌</div>
           <p className="text-gray-800 dark:text-gray-200 font-medium">Página não encontrada</p>
-          <p className="text-sm text-gray-500 mt-2">
-            Confere o link ou contata o restaurante.
-          </p>
+          <p className="text-sm text-gray-500 mt-2">{detalhe}</p>
         </div>
       </div>
     );
