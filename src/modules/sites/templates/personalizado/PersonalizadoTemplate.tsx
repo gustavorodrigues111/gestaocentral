@@ -432,13 +432,24 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               }}>
                 {grupos.map((g, i) => (
                   <div key={i} style={{
-                    display: "flex", justifyContent: "space-between",
-                    padding: "10px 0",
+                    display: "flex", justifyContent: "space-between", alignItems: "baseline",
+                    gap: 12,
+                    padding: "12px 0",
                     borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none",
-                    fontSize: 15,
+                    fontSize: 16,
                   }}>
-                    <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
-                    <span style={{ color: g.fechado ? "#999" : "#1a1a1a" }}>
+                    <span style={{
+                      fontWeight: 600, textTransform: "capitalize",
+                      whiteSpace: "nowrap",
+                    }}>
+                      {g.diasLabel}
+                    </span>
+                    <span style={{
+                      color: g.fechado ? "#999" : "#1a1a1a",
+                      fontWeight: 500,                            // medium pra não sumir vs o dia em 600
+                      fontVariantNumeric: "tabular-nums",         // dígitos com larguras iguais (mais limpo)
+                      textAlign: "right",
+                    }}>
                       {g.fechado ? "fechado" : g.turnosLabel}
                     </span>
                   </div>
