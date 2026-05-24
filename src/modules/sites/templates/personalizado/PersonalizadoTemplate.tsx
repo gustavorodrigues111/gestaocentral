@@ -553,16 +553,25 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             return {
               titulo: t("contatoTitulo", "Como chegar"),
               conteudo: (
-                <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+                <div style={{
+                  maxWidth: 560, margin: "0 auto", textAlign: "center",
+                  // Flex column com flex:1 — quando renderizado em par no
+                  // desktop (parent é flex column com altura), o mapa
+                  // (com flex:1 também) cresce pra preencher o espaço
+                  // disponível, alinhando o rodapé (telefone/email) com
+                  // o fim da coluna Horário ao lado.
+                  display: "flex", flexDirection: "column",
+                  flex: 1, width: "100%",
+                }}>
                   {/* Preview do mapa via Google Maps embed (sem API key).
-                      Aspect 4/3 (mais alto que 16/9) pra dar peso visual
-                      e balancear com a coluna do Horário quando pareados
-                      no desktop. Pointer-events liberados pra usuário
-                      mexer/arrastar dentro. */}
+                      Em par: flex:1 estica a altura. Single: aspectRatio
+                      4/3 dá altura natural. minHeight evita encolher. */}
                   {mapsEmbed && (
                     <div style={{
                       width: "100%",
+                      flex: 1,
                       aspectRatio: "4 / 3",
+                      minHeight: 280,
                       borderRadius: 8,
                       overflow: "hidden",
                       border: `1px solid ${corSecundaria}40`,
