@@ -207,6 +207,9 @@ export function ReservasPublicaPage() {
           && r.status !== "cancelada"
           && r.status !== "no_show"
         );
+        // Cliente não vê contagem de vagas (info interna). Só mostra
+        // mensagem quando NÃO está disponível — explicando o porquê
+        // (ex: "aceita mesas de 4 a 6 pax").
         if (sal.modeloCapacidade === "por_capacidade") {
           const usados = existentes.reduce((s, r) => s + (r.pessoas || 0), 0);
           const cap = sal.capacidadeMaxPax || 0;
@@ -214,12 +217,15 @@ export function ReservasPublicaPage() {
           const minMesa = sal.paxMinPorMesaCap || 1;
           const maxMesa = sal.paxMaxPorMesaCap || cap;
           const paxOk = pax >= minMesa && pax <= maxMesa;
+          const disponivel = paxOk && pax <= livres;
           return {
             salao: sal,
-            disponivel: paxOk && pax <= livres,
-            descricao: paxOk
-              ? `${livres} vaga${livres === 1 ? "" : "s"} disponíve${livres === 1 ? "l" : "is"}`
-              : `aceita mesas de ${minMesa} a ${maxMesa} pax`,
+            disponivel,
+            descricao: disponivel
+              ? ""
+              : !paxOk
+                ? `aceita mesas de ${minMesa} a ${maxMesa} pax`
+                : "sem vagas neste horário",
           };
         } else {
           const usadas = existentes.length;
@@ -228,12 +234,15 @@ export function ReservasPublicaPage() {
           const minMesa = sal.paxMinPorMesa || 1;
           const maxMesa = sal.paxMaxPorMesa || minMesa;
           const paxOk = pax >= minMesa && pax <= maxMesa;
+          const disponivel = paxOk && livres > 0;
           return {
             salao: sal,
-            disponivel: paxOk && livres > 0,
-            descricao: paxOk
-              ? `${livres} mesa${livres === 1 ? "" : "s"} livre${livres === 1 ? "" : "s"} de ${minMesa}–${maxMesa} pax`
-              : `mesas de ${minMesa}–${maxMesa} pax`,
+            disponivel,
+            descricao: disponivel
+              ? ""
+              : !paxOk
+                ? `mesas de ${minMesa}–${maxMesa} pax`
+                : "sem mesas neste horário",
           };
         }
       }).filter((x): x is NonNullable<typeof x> => !!x);
@@ -471,27 +480,25 @@ export function ReservasPublicaPage() {
             placeholder="seu@email.com"
           />
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Data *</label>
-              <input
-                type="date"
-                value={data}
-                min={hojeISO}
-                onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Pessoas *</label>
-              <input
-                type="number" inputMode="numeric"
-                min={1} max={50}
-                value={pessoas}
-                onChange={(e) => { setPessoas(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-                className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-              />
-            </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Data *</label>
+            <input
+              type="date"
+              value={data}
+              min={hojeISO}
+              onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Pessoas *</label>
+            <input
+              type="number" inputMode="numeric"
+              min={1} max={50}
+              value={pessoas}
+              onChange={(e) => { setPessoas(e.target.value); setSlotHorario(""); setSalaoId(""); }}
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+            />
           </div>
 
           <Input
@@ -516,22 +523,20 @@ export function ReservasPublicaPage() {
 
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setErro(""); setStep("phone"); }}
-              style={{ ...botaoPrimarioStyle(siteConfig), backgroundColor: "transparent", color: corPrimaria, border: `1px solid ${corPrimaria}` }}
-            >
-              ← Voltar
-            </button>
-            <button
-              type="button"
-              onClick={avancarDetails}
-              style={{ ...botaoPrimarioStyle(siteConfig), flex: 2 }}
-            >
-              Ver horários
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={avancarDetails}
+            style={botaoPrimarioStyle(siteConfig)}
+          >
+            Ver horários
+          </button>
+          <button
+            type="button"
+            onClick={() => { setErro(""); setStep("phone"); }}
+            style={voltarLinkStyle}
+          >
+            ← Voltar
+          </button>
         </div>
       )}
 
@@ -591,9 +596,11 @@ export function ReservasPublicaPage() {
                                     <div className="text-xs opacity-70 mt-0.5">{sal.descricao}</div>
                                   )}
                                 </div>
-                                <div className="text-xs whitespace-nowrap" style={{ opacity: 0.8 }}>
-                                  {disponivel ? descricao : "indisponível"}
-                                </div>
+                                {!disponivel && descricao && (
+                                  <div className="text-xs whitespace-nowrap" style={{ opacity: 0.7 }}>
+                                    {descricao}
+                                  </div>
+                                )}
                               </div>
                             </button>
                           );
@@ -608,29 +615,42 @@ export function ReservasPublicaPage() {
 
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
 
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setErro(""); setStep("details"); }}
-              disabled={submitting}
-              style={{ ...botaoPrimarioStyle(siteConfig), backgroundColor: "transparent", color: corPrimaria, border: `1px solid ${corPrimaria}` }}
-            >
-              ← Voltar
-            </button>
-            <button
-              type="button"
-              onClick={submit}
-              disabled={submitting || !slotHorario || !salaoId}
-              style={{ ...botaoPrimarioStyle(siteConfig), flex: 2, opacity: (submitting || !slotHorario || !salaoId) ? 0.6 : 1 }}
-            >
-              {submitting ? "Enviando..." : "Confirmar reserva"}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={submit}
+            disabled={submitting || !slotHorario || !salaoId}
+            style={{ ...botaoPrimarioStyle(siteConfig), opacity: (submitting || !slotHorario || !salaoId) ? 0.6 : 1 }}
+          >
+            {submitting ? "Enviando..." : "Confirmar reserva"}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setErro(""); setStep("details"); }}
+            disabled={submitting}
+            style={voltarLinkStyle}
+          >
+            ← Voltar
+          </button>
         </div>
       )}
     </SiteFormShell>
   );
 }
+
+// "Voltar" como link discreto — usado depois do botão primário em cada step
+const voltarLinkStyle: CSSProperties = {
+  background: "transparent",
+  border: "none",
+  color: "#888",
+  fontSize: 13,
+  padding: "8px 0",
+  cursor: "pointer",
+  display: "block",
+  margin: "0 auto",
+  textDecoration: "underline",
+  textDecorationStyle: "dotted",
+  textUnderlineOffset: 3,
+};
 
 // ─── Helpers visuais ────────────────────────────────────────────────
 
