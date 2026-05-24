@@ -12,8 +12,11 @@ import type {
 import {
   buscarCNPJ, duracaoHoras, ESCOPO_PACOTE_LABEL, limparCNPJ,
   OCASIAO_LABEL, slotDoHorario, validarCNPJ, validarEmail,
-  validarWhatsAppInternacional,
 } from "./validacoes";
+import {
+  formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
+  validarNumeroLocal,
+} from "./paises";
 
 // Página pública: cliente registra interesse num evento.
 // Rota: /eventos/:rid (sem auth).
@@ -34,6 +37,7 @@ export function EventosPublicaPage() {
   // Form state
   const [form, setForm] = useState({
     nome: "",
+    paisIso: PAIS_BR.iso,
     whatsapp: "",
     email: "",
     tipoPessoa: "PF" as "PF" | "PJ",
@@ -124,8 +128,14 @@ export function EventosPublicaPage() {
 
     // Validações
     if (!form.nome.trim()) return setErroGeral("Preenche seu nome.");
-    if (!validarWhatsAppInternacional(form.whatsapp)) {
-      return setErroGeral("WhatsApp inválido. Use formato internacional (ex: +55 11 99999-9999).");
+    const pais = getPaisByIso(form.paisIso);
+    if (!validarNumeroLocal(form.whatsapp, pais)) {
+      const exemploLen = pais.minLen === pais.maxLen ? `${pais.minLen}` : `${pais.minLen}-${pais.maxLen}`;
+      return setErroGeral(
+        pais.iso === "BR"
+          ? "WhatsApp inválido. Use DDD + número (11 99999-9999)."
+          : `WhatsApp inválido. ${pais.nome} pede ${exemploLen} dígitos.`
+      );
     }
     if (!validarEmail(form.email)) {
       return setErroGeral("Email inválido.");
@@ -164,7 +174,7 @@ export function EventosPublicaPage() {
         status: "novo",
         cliente: {
           nome: form.nome.trim(),
-          whatsapp: form.whatsapp.trim(),
+          whatsapp: montarE164(pais.ddi, form.whatsapp),
           email: form.email.trim(),
           tipoPessoa: form.tipoPessoa,
           ...(form.tipoPessoa === "PJ"
@@ -271,13 +281,44 @@ export function EventosPublicaPage() {
                 onChange={(e) => update("nome", e.target.value)}
                 placeholder="João da Silva"
               />
-              <Input
-                label="WhatsApp * (com DDD/país)"
-                value={form.whatsapp}
-                onChange={(e) => update("whatsapp", e.target.value)}
-                placeholder="+55 11 99999-9999"
-                inputMode="tel"
-              />
+              <div>
+                <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  WhatsApp *
+                </label>
+                <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+                  <select
+                    value={form.paisIso}
+                    onChange={(e) => {
+                      update("paisIso", e.target.value);
+                      // Limpa número quando muda de país pra não validar mal-formado
+                      update("whatsapp", "");
+                    }}
+                    className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                  >
+                    {PAISES.map(p => (
+                      <option key={p.iso} value={p.iso}>
+                        {p.flag} +{p.ddi}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="tel"
+                    inputMode="numeric"
+                    value={form.whatsapp}
+                    onChange={(e) => {
+                      const pais = getPaisByIso(form.paisIso);
+                      // Formata enquanto digita
+                      update("whatsapp", formatarNumeroLocal(e.target.value, pais));
+                    }}
+                    placeholder={
+                      form.paisIso === "BR"
+                        ? "(11) 99999-9999"
+                        : `${getPaisByIso(form.paisIso).minLen} dígitos`
+                    }
+                    className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                  />
+                </div>
+              </div>
               <Input
                 label="Email *"
                 type="email"
