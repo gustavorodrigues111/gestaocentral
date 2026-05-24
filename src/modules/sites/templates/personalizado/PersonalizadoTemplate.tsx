@@ -555,13 +555,14 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               conteudo: (
                 <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
                   {/* Preview do mapa via Google Maps embed (sem API key).
-                      Aspect 16/9 pra ficar discreto no mobile e crescer
+                      Aspect 4/3 (mais alto que 16/9) pra dar peso visual
+                      e balancear com a coluna do Horário quando pareados
                       no desktop. Pointer-events liberados pra usuário
                       mexer/arrastar dentro. */}
                   {mapsEmbed && (
                     <div style={{
                       width: "100%",
-                      aspectRatio: "16 / 9",
+                      aspectRatio: "4 / 3",
                       borderRadius: 8,
                       overflow: "hidden",
                       border: `1px solid ${corSecundaria}40`,
