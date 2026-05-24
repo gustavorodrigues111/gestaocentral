@@ -9,6 +9,7 @@ import type {
   SiteConfig, SlotReserva,
 } from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
+import { buscarFeriadosProximos12Meses, type FeriadoBR } from "./feriadosHelper";
 
 type Props = {
   rid: string;
@@ -50,8 +51,8 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
   const [nova, setNova] = useState<{
     data: string;
     fechado: boolean;
-    abre: string;
-    fecha: string;
+    // Múltiplos turnos (ex: feriado só com almoço quando semana tem almoço+jantar)
+    turnosNova: { abre: string; fecha: string }[];
     motivo: string;
     // Reservas nessa data:
     //  - "padrao"  → herda janela semanal (se fechado, sem reservas)
@@ -60,7 +61,9 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     reservaModo: "padrao" | "sem" | "custom";
     slotsCustom: SlotReserva[];
   }>({
-    data: "", fechado: false, abre: "19:00", fecha: "23:00", motivo: "",
+    data: "", fechado: false,
+    turnosNova: [{ abre: "19:00", fecha: "23:00" }],
+    motivo: "",
     reservaModo: "padrao", slotsCustom: [],
   });
 
@@ -70,6 +73,32 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
       setExcecoes(cfgRemoto.excecoes || []);
     }
   }, [cfgRemoto]);
+
+  // Feriados sugeridos via BrasilAPI (cache 24h em localStorage)
+  const [feriados, setFeriados] = useState<FeriadoBR[]>([]);
+  const [feriadosErro, setFeriadosErro] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelado = false;
+    buscarFeriadosProximos12Meses()
+      .then(list => { if (!cancelado) setFeriados(list); })
+      .catch(e => { if (!cancelado) setFeriadosErro(e?.message || "Erro ao buscar feriados"); });
+    return () => { cancelado = true; };
+  }, []);
+
+  // Adiciona um feriado da BrasilAPI como exceção (fechado por padrão)
+  function adicionarFeriadoComoExcecao(f: FeriadoBR) {
+    if (!me) return;
+    if (excecoes.some(e => e.data === f.date)) return; // dedupe
+    const ex: ExcecaoHorarioSite = {
+      id: `exc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      data: f.date,
+      fechado: true,
+      motivo: f.name,
+      criadoEm: new Date().toISOString(),
+      criadoPor: me.id,
+    };
+    setExcecoes(es => [...es, ex].sort((a, b) => a.data.localeCompare(b.data)));
+  }
 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
   if (erro === "permission_denied") {
@@ -132,7 +161,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
       id: `exc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       data: nova.data,
       fechado: nova.fechado,
-      turnos: nova.fechado ? undefined : [{ abre: nova.abre, fecha: nova.fecha }],
+      turnos: nova.fechado ? undefined : nova.turnosNova,
       slotsReservaCustom,
       motivo: nova.motivo.trim() || undefined,
       criadoEm: new Date().toISOString(),
@@ -140,9 +169,24 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     };
     setExcecoes(es => [...es, ex].sort((a, b) => a.data.localeCompare(b.data)));
     setNova({
-      data: "", fechado: false, abre: "19:00", fecha: "23:00", motivo: "",
+      data: "", fechado: false,
+      turnosNova: [{ abre: "19:00", fecha: "23:00" }],
+      motivo: "",
       reservaModo: "padrao", slotsCustom: [],
     });
+  }
+  // Helpers de turnos da nova exceção
+  function addTurnoNova() {
+    setNova(n => ({ ...n, turnosNova: [...n.turnosNova, { abre: "19:00", fecha: "23:00" }] }));
+  }
+  function delTurnoNova(idx: number) {
+    setNova(n => ({ ...n, turnosNova: n.turnosNova.filter((_, i) => i !== idx) }));
+  }
+  function setTurnoNova(idx: number, parcial: { abre?: string; fecha?: string }) {
+    setNova(n => ({
+      ...n,
+      turnosNova: n.turnosNova.map((t, i) => i === idx ? { ...t, ...parcial } : t),
+    }));
   }
 
   // Helpers pra editar slotsCustom da exceção nova
@@ -305,9 +349,43 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
               </button>
             </div>
             {!nova.fechado && (
-              <div className="grid grid-cols-[1fr_1fr] gap-2">
-                <Input label="Abre" type="time" value={nova.abre} onChange={(e) => setNova({ ...nova, abre: e.target.value })} />
-                <Input label="Fecha" type="time" value={nova.fecha} onChange={(e) => setNova({ ...nova, fecha: e.target.value })} />
+              <div className="space-y-2">
+                <div className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
+                  Turnos nessa data
+                </div>
+                {nova.turnosNova.map((t, i) => (
+                  <div key={i} className="grid grid-cols-[1fr_1fr_auto] gap-2 items-center">
+                    <input
+                      type="time"
+                      value={t.abre}
+                      onChange={(e) => setTurnoNova(i, { abre: e.target.value })}
+                      className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    />
+                    <input
+                      type="time"
+                      value={t.fecha}
+                      onChange={(e) => setTurnoNova(i, { fecha: e.target.value })}
+                      className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    />
+                    {nova.turnosNova.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => delTurnoNova(i)}
+                        className="text-xs text-rose-600 hover:underline px-2"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {nova.turnosNova.length < 3 && (
+                  <Button size="sm" variant="secondary" onClick={addTurnoNova}>
+                    + turno
+                  </Button>
+                )}
+                <p className="text-[11px] text-gray-500">
+                  Cada turno sobrescreve o horário normal desse dia da semana.
+                </p>
               </div>
             )}
 
@@ -416,6 +494,59 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
             <Button size="sm" onClick={addExcecao}>+ Adicionar exceção</Button>
           </div>
+        )}
+
+        {/* Sugestões de feriados nacionais (BrasilAPI) */}
+        {podeEditar && (
+          <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <summary className="cursor-pointer px-3 py-2 list-none">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="font-semibold text-sm text-gray-700 dark:text-gray-300">
+                  📅 Sugestões de feriados nacionais
+                </div>
+                <span className="text-xs text-gray-400">
+                  {feriadosErro
+                    ? "(erro ao buscar)"
+                    : feriados.length === 0
+                      ? "(carregando...)"
+                      : `(${feriados.filter(f => !excecoes.some(e => e.data === f.date)).length} disponíveis)`}
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500 mt-1">
+                Próximos 12 meses, via BrasilAPI. 1 clique marca como exceção fechada.
+                Estaduais e municipais ficam pra depois — por enquanto, adicione manualmente.
+              </p>
+            </summary>
+            {feriadosErro ? (
+              <p className="px-3 pb-3 text-xs text-rose-600">⚠ {feriadosErro}</p>
+            ) : (
+              <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                {feriados.map(f => {
+                  const ja = excecoes.some(e => e.data === f.date);
+                  const d = new Date(f.date + "T12:00:00");
+                  return (
+                    <button
+                      key={f.date}
+                      type="button"
+                      disabled={ja}
+                      onClick={() => adicionarFeriadoComoExcecao(f)}
+                      className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                        ja
+                          ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 opacity-50 cursor-not-allowed"
+                          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/20"
+                      }`}
+                    >
+                      <div className="font-semibold tabular-nums">
+                        {String(d.getDate()).padStart(2, "0")}/{String(d.getMonth() + 1).padStart(2, "0")}/{d.getFullYear()}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">{f.name}</div>
+                      {ja && <div className="text-[10px] text-emerald-600 mt-0.5">✓ já adicionado</div>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </details>
         )}
 
         {/* Lista de exceções */}
