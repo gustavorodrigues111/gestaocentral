@@ -817,6 +817,17 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         <div style={{ fontSize: 12, opacity: 0.7, whiteSpace: "pre-wrap" }}>
           © {new Date().getFullYear()} — {t("rodapeDireitos", "Todos os direitos reservados.")}
         </div>
+        {/* Link LGPD — política + solicitação de exclusão */}
+        {cfg.slug && (
+          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 6, display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+            <Link to={`/politica/${cfg.slug}`} style={{ color: "inherit", textDecoration: "underline" }}>
+              Política de privacidade
+            </Link>
+            <Link to={`/r/excluir-dados/${cfg.restaurantId}`} style={{ color: "inherit", textDecoration: "underline" }}>
+              Solicitar exclusão de dados
+            </Link>
+          </div>
+        )}
       </footer>
 
       {/* FLOATS SOCIAIS — Instagram (acima) + WhatsApp (canto inferior).

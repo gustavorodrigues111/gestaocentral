@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, where,
 } from "firebase/firestore";
@@ -73,6 +73,8 @@ export function ReservasPublicaPage() {
   const [salaoId, setSalaoId] = useState("");
   // Indisponíveis expandidos no slot picker (chave: "slot|salaoId")
   const [indisponiveisAbertos, setIndisponiveisAbertos] = useState<Set<string>>(new Set());
+  // LGPD: aceite da política de privacidade (obrigatório pra submit)
+  const [aceiteLgpd, setAceiteLgpd] = useState(false);
   function toggleIndisponivel(slot: string, salId: string) {
     setIndisponiveisAbertos(prev => {
       const k = `${slot}|${salId}`;
@@ -325,6 +327,9 @@ export function ReservasPublicaPage() {
     setErro("");
     if (!slotHorario || !salaoId) {
       return setErro("Escolhe horário e salão.");
+    }
+    if (!aceiteLgpd) {
+      return setErro("Aceita a política de privacidade pra continuar.");
     }
     setSubmitting(true);
     setStep("submitting");
@@ -783,13 +788,37 @@ export function ReservasPublicaPage() {
             </div>
           )}
 
+          {/* LGPD: aceite da política de privacidade obrigatório */}
+          <label style={{
+            display: "flex", alignItems: "flex-start", gap: 8,
+            cursor: "pointer",
+            fontSize: 12, lineHeight: 1.5, color: "#555",
+          }}>
+            <input
+              type="checkbox"
+              checked={aceiteLgpd}
+              onChange={(e) => setAceiteLgpd(e.target.checked)}
+              style={{ marginTop: 2, flexShrink: 0 }}
+            />
+            <span>
+              Concordo com a coleta e o uso dos meus dados conforme a{" "}
+              {siteConfig?.slug ? (
+                <Link to={`/politica/${siteConfig.slug}`} target="_blank" style={{ color: corPrimaria, textDecoration: "underline" }}>
+                  política de privacidade
+                </Link>
+              ) : (
+                <span style={{ color: corPrimaria }}>política de privacidade</span>
+              )} (LGPD).
+            </span>
+          </label>
+
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
 
           <button
             type="button"
             onClick={submit}
-            disabled={submitting || !slotHorario || !salaoId}
-            style={{ ...botaoPrimarioStyle(siteConfig), opacity: (submitting || !slotHorario || !salaoId) ? 0.6 : 1 }}
+            disabled={submitting || !slotHorario || !salaoId || !aceiteLgpd}
+            style={{ ...botaoPrimarioStyle(siteConfig), opacity: (submitting || !slotHorario || !salaoId || !aceiteLgpd) ? 0.6 : 1 }}
           >
             {submitting ? "Enviando..." : "Confirmar reserva"}
           </button>

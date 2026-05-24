@@ -150,6 +150,19 @@ service cloud.firestore {
         );
       allow update, delete: if authed();
     }
+    // Solicitações de exclusão de dados (LGPD Art. 18). Cliente envia pelo
+    // form público /r/excluir-dados/:rid. Create público com guards (status
+    // sempre pendente). Read/process só authed.
+    match /solicitacoesExclusao/{id} {
+      allow read: if authed();
+      allow create: if authed()
+        || (
+          request.resource.data.status == "pendente"
+          && request.resource.data.restaurantId is string
+          && request.resource.data.telefone is string
+        );
+      allow update, delete: if authed();
+    }
     // Salões: read público (form precisa listar salões disponíveis com
     // capacidade pra calcular vagas). Write só authed.
     match /saloes/{id} {

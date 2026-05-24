@@ -1127,6 +1127,24 @@ export type Reserva = {
   atualizadoEm: string;
 };
 
+// Solicitação de exclusão de dados (LGPD Art. 18).
+// Cliente pede pelo form público /r/excluir-dados/:rid; admin processa
+// no módulo Reservas → tab "Solicitações de Exclusão" (futuro) ou pelo
+// Firestore console.
+export type SolicitacaoExclusao = {
+  id: string;
+  restaurantId: string;
+  telefone: string;                   // E.164 — pra localizar cliente
+  email?: string;
+  nome?: string;
+  motivo?: string;                    // texto livre, opcional
+  status: "pendente" | "processada" | "rejeitada";
+  criadoEm: string;
+  processadoEm?: string;
+  processadoPor?: string;             // pessoaId
+  notaInterna?: string;               // o que foi feito (quais docs deletados, etc)
+};
+
 // Dados PII da reserva — vive em coleção paralela `/reservasPII` com read
 // só pra authed (admin). Form público escreve mas não lê. Anonimização
 // LGPD: deletar este doc preserva a estatística em /reservas sem PII.
