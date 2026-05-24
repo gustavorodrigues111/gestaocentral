@@ -373,8 +373,8 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <ColorInputComLimpar label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={inputDisabled} />
           <ColorInputComLimpar label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={inputDisabled} />
-          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
-          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo || ""} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto || ""} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
@@ -684,34 +684,6 @@ function TemplateCard({ label, descricao, ativo, onClick, disabled }: {
       <div className="font-bold text-sm">{label}</div>
       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{descricao}</div>
     </button>
-  );
-}
-
-function ColorInput({ label, value, onChange, disabled }: {
-  label: string; value: string; onChange: (v: string) => void; disabled?: boolean;
-}) {
-  return (
-    <div>
-      <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        {label}
-      </label>
-      <div className="mt-1 flex items-center gap-1.5">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="w-9 h-9 rounded border border-gray-300 dark:border-gray-700 cursor-pointer disabled:opacity-50"
-        />
-        <input
-          type="text"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-mono tabular-nums"
-        />
-      </div>
-    </div>
   );
 }
 
