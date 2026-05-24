@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -87,19 +87,28 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     return () => { cancelado = true; };
   }, [ufRestaurante]);
 
-  // Adiciona um feriado da BrasilAPI como exceção (fechado por padrão)
-  function adicionarFeriadoComoExcecao(f: FeriadoBR) {
-    if (!me) return;
-    if (excecoes.some(e => e.data === f.date)) return; // dedupe
-    const ex: ExcecaoHorarioSite = {
-      id: `exc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  // Ref pro form de criação de exceção — usado pra scroll quando o user
+  // clica num feriado da lista de sugestões.
+  const novaExcecaoRef = useRef<HTMLDivElement>(null);
+
+  // Click num feriado sugerido NÃO salva direto — apenas pré-preenche o
+  // form de "Nova exceção" com data + motivo. User decide aberto/fechado,
+  // turnos e reservas antes de salvar. Default fechado (caso comum em
+  // feriado) mas alterável no toggle Aberto/Fechado.
+  function abrirEdicaoFeriado(f: FeriadoBR) {
+    if (excecoes.some(e => e.data === f.date)) return; // dedupe — já existe
+    setNova({
       data: f.date,
-      fechado: true,
+      fechado: true,                                  // default sensato pra feriado
+      turnosNova: [{ abre: "19:00", fecha: "23:00" }],
       motivo: f.name,
-      criadoEm: new Date().toISOString(),
-      criadoPor: me.id,
-    };
-    setExcecoes(es => [...es, ex].sort((a, b) => a.data.localeCompare(b.data)));
+      reservaModo: "padrao",
+      slotsCustom: [],
+    });
+    // Scroll suave pro form (defer pra dar tempo do React aplicar state)
+    setTimeout(() => {
+      novaExcecaoRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
   }
 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
@@ -263,7 +272,8 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
         <p className="text-[11px] text-gray-500 mt-1">
           Próximos 6 meses — feriados nacionais (BrasilAPI) {ufRestaurante && `+ estaduais (${ufRestaurante})`}.
-          1 clique marca como exceção fechada. Municipais e aniversário da cidade: adicione manualmente.
+          Clique abre o formulário de exceção pré-preenchido com a data e o motivo —
+          você decide aberto/fechado, turnos e reservas antes de salvar.
         </p>
       </summary>
       {feriadosErro ? (
@@ -280,7 +290,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                 key={`${f.date}_${f.name}`}
                 type="button"
                 disabled={ja}
-                onClick={() => adicionarFeriadoComoExcecao(f)}
+                onClick={() => abrirEdicaoFeriado(f)}
                 className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
                   ja
                     ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 opacity-50 cursor-not-allowed"
@@ -396,7 +406,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
         {/* Adicionar nova */}
         {podeEditar && (
-          <div className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2">
+          <div ref={novaExcecaoRef} className="rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2">
             <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr_auto] gap-2 items-end">
               <Input
                 label="Data"
