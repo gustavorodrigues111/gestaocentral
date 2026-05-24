@@ -2109,6 +2109,11 @@ export type SiteConfig = {
   ogImageUrl?: string;               // pra SEO/social share
   // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
   slug: string;
+  // Qual template visual usar pra renderizar o site público.
+  // Cada template tem layout/tipografia/mood próprios, otimizados pra
+  // identidade de uma marca específica. "default" = template genérico
+  // (fallback enquanto não tiver template dedicado).
+  templateId: "lobozo" | "sororoca" | "puba" | "default";
   // Status
   publicado: boolean;                // se false, site retorna 404 público
   // Auditoria

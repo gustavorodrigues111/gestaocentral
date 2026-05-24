@@ -31,6 +31,7 @@ import { EventosPage } from "./modules/eventos/EventosPage";
 import { EventosPublicaPage } from "./modules/eventos/EventosPublicaPage";
 import { SitesPage } from "./modules/sites/SitesPage";
 import { TrabalhePublicaPage } from "./modules/sites/TrabalhePublicaPage";
+import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -192,6 +193,7 @@ function App() {
           <Route path="/admissao/:token" element={<AdmissaoPublicaPage />} />
           <Route path="/eventos/:rid" element={<EventosPublicaPage />} />
           <Route path="/trabalhe/:rid" element={<TrabalhePublicaPage />} />
+          <Route path="/site/:slug" element={<SitePublicaPage />} />
           <Route path="*" element={<RootOrShell />} />
         </Routes>
       </AuthProvider>

@@ -6,6 +6,7 @@ import { canUse, canConfig } from "../../core/auth/permissions";
 import { GeralTab } from "./GeralTab";
 import { HorariosTab } from "./HorariosTab";
 import { CardapioTab } from "./CardapioTab";
+import { PreviewTab } from "./PreviewTab";
 
 type Tab = "geral" | "horarios" | "cardapio" | "preview";
 
@@ -92,7 +93,9 @@ export function SitesPage() {
       {tab === "cardapio" && (
         <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />
       )}
-      {tab === "preview" && <PlaceholderTab fase={6} titulo="Preview do site público" descricao="Renderiza o site como o cliente vai ver, lendo do conteúdo configurado nas outras tabs." />}
+      {tab === "preview" && (
+        <PreviewTab rid={rid} nomeRestaurante={activeRestaurant.nome} />
+      )}
     </div>
   );
 }
@@ -119,11 +122,3 @@ function TabButton({ active, onClick, disabled, children }: {
   );
 }
 
-function PlaceholderTab({ fase, titulo, descricao }: { fase: number; titulo: string; descricao: string }) {
-  return (
-    <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-4 text-sm text-indigo-900 dark:text-indigo-200">
-      <p className="font-semibold mb-1">🚧 {titulo} (Fase {fase})</p>
-      <p className="text-[13px] opacity-90">{descricao}</p>
-    </div>
-  );
-}

@@ -56,6 +56,7 @@ export function defaultSiteConfig(rid: string, nomeRestaurante: string): SiteCon
       raioBorda: "8px",
     },
     slug: nomeRestaurante.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || rid,
+    templateId: "default",
     publicado: false,
     createdAt: now,
     updatedAt: now,

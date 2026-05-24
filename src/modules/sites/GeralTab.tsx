@@ -371,6 +371,50 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
       </section>
 
+      {/* TEMPLATE */}
+      <section className="space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+          Template visual
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Cada template tem layout, tipografia e personalidade próprios.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <TemplateCard
+            templateId="lobozo"
+            label="🌿 Lobozó"
+            descricao="Caipira refinado — verde + dourado, serif rústica"
+            ativo={form.templateId === "lobozo"}
+            onClick={() => atualizar("templateId", "lobozo")}
+            disabled={inputDisabled}
+          />
+          <TemplateCard
+            templateId="default"
+            label="📄 Default"
+            descricao="Genérico limpo — usa as cores do tema"
+            ativo={form.templateId === "default"}
+            onClick={() => atualizar("templateId", "default")}
+            disabled={inputDisabled}
+          />
+          <TemplateCard
+            templateId="sororoca"
+            label="🌾 Sororoca"
+            descricao="Em breve"
+            ativo={false}
+            onClick={() => {}}
+            disabled
+          />
+          <TemplateCard
+            templateId="puba"
+            label="🌑 Puba"
+            descricao="Em breve"
+            ativo={false}
+            onClick={() => {}}
+            disabled
+          />
+        </div>
+      </section>
+
       {/* PUBLICAÇÃO */}
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
@@ -392,7 +436,11 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           disabled={inputDisabled}
         />
         <p className="text-[11px] text-gray-500 dark:text-gray-400 -mt-2">
-          Vai virar URL preview: <code>/site/{form.slug}</code>
+          URL preview: <code>/site/{form.slug}</code> {form.publicado && form.slug && (
+            <a href={`/site/${form.slug}`} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline ml-1">
+              abrir em nova aba ↗
+            </a>
+          )}
         </p>
       </section>
 
@@ -426,6 +474,31 @@ function CheckRow({ label, checked, onChange, disabled }: {
       />
       <span className="text-sm">{label}</span>
     </label>
+  );
+}
+
+function TemplateCard({ label, descricao, ativo, onClick, disabled }: {
+  templateId: string;
+  label: string;
+  descricao: string;
+  ativo: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
+      className={`text-left px-3 py-3 rounded-lg border-2 transition-colors ${
+        ativo
+          ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20"
+          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/50"
+      } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+    >
+      <div className="font-bold text-sm">{label}</div>
+      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{descricao}</div>
+    </button>
   );
 }
 
