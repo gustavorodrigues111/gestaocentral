@@ -29,6 +29,7 @@ export function EventosPublicaPage() {
   const [submitted, setSubmitted] = useState(false);
   const [erroGeral, setErroGeral] = useState("");
   const [naoEncontrado, setNaoEncontrado] = useState(false);
+  const [siteSlug, setSiteSlug] = useState<string | null>(null);
 
   // CNPJ — busca automática
   const [buscandoCNPJ, setBuscandoCNPJ] = useState(false);
@@ -64,10 +65,16 @@ export function EventosPublicaPage() {
     if (!rid) return;
     (async () => {
       try {
-        const [espSnap, pacSnap] = await Promise.all([
+        const [espSnap, pacSnap, siteSnap] = await Promise.all([
           getDocs(query(collection(db, "espacosEvento"), where("restaurantId", "==", rid))),
           getDocs(query(collection(db, "pacotesEvento"), where("restaurantId", "==", rid))),
+          // sitesConfig pra pegar o slug e linkar volta pro site
+          getDocs(query(collection(db, "sitesConfig"), where("restaurantId", "==", rid))),
         ]);
+        const siteDoc = siteSnap.docs[0]?.data() as { slug?: string; publicado?: boolean } | undefined;
+        if (siteDoc?.slug && siteDoc.publicado) {
+          setSiteSlug(siteDoc.slug);
+        }
         const espacosAtivos = espSnap.docs
           .map(d => ({ id: d.id, ...d.data() }) as EspacoEvento)
           .filter(e => e.ativo);
@@ -257,6 +264,14 @@ export function EventosPublicaPage() {
           <p className="text-sm text-gray-600 dark:text-gray-400">
             Vamos retornar em breve via WhatsApp pra detalhar sua proposta.
           </p>
+          {siteSlug && (
+            <a
+              href={`/site/${siteSlug}`}
+              className="inline-block mt-6 text-sm text-indigo-600 hover:underline"
+            >
+              ← Voltar pro site
+            </a>
+          )}
         </div>
       </div>
     );
@@ -265,6 +280,14 @@ export function EventosPublicaPage() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 py-8 px-4">
       <div className="max-w-xl mx-auto">
+        {siteSlug && (
+          <a
+            href={`/site/${siteSlug}`}
+            className="inline-block mb-4 text-sm text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+          >
+            ← Voltar pro site
+          </a>
+        )}
         <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-800 p-6 sm:p-8">
           <div className="text-center mb-6">
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">

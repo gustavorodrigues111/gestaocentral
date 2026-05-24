@@ -45,7 +45,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const fonteCorpo = findFonte(cfg.tema.fonteCorpo)?.cssFamily
     || "'Inter', system-ui, sans-serif";
 
-  // Detecta mobile pra ajustar header (esconde nav, encolhe padding).
+  // Detecta mobile pra ajustar header (troca nav inline por hamburger).
   // 768px = breakpoint padrão Tailwind md.
   const [isMobile, setIsMobile] = useState(() =>
     typeof window !== "undefined" ? window.innerWidth < 768 : false
@@ -55,6 +55,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
+  // Menu hamburger (só mobile) — abre dropdown abaixo do header com links
+  const [menuAberto, setMenuAberto] = useState(false);
+  useEffect(() => {
+    if (!isMobile) setMenuAberto(false);
+  }, [isMobile]);
 
   // Carrega Google Fonts dinamicamente — só as fontes que estão sendo usadas
   useEffect(() => {
@@ -108,8 +113,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: corFundo,
       minHeight: "100vh",
     }}>
-      {/* HEADER — logo sempre aparece. Nav só em desktop (no mobile o
-          user rola e vê as seções; manter nav apertado fica horrível) */}
+      {/* HEADER — desktop tem nav inline; mobile tem hamburger que abre
+          dropdown abaixo do header com os mesmos links em coluna. */}
       <header style={{
         position: "sticky", top: 0, zIndex: 50,
         backgroundColor: "rgba(247,243,233,0.95)",
@@ -119,8 +124,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         <div style={{
           maxWidth: 1100, margin: "0 auto",
           padding: isMobile ? "10px 16px" : "12px 20px",
-          display: "flex", alignItems: "center",
-          justifyContent: isMobile ? "center" : "space-between",
+          display: "flex", alignItems: "center", justifyContent: "space-between",
           gap: 16,
         }}>
           <div style={{
@@ -131,7 +135,44 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: isMobile ? 32 : 36, width: "auto", display: "block" }} />
               : (cfg.slogan || cfg.slug)}
           </div>
-          {!isMobile && (
+          {isMobile ? (
+            <button
+              type="button"
+              onClick={() => setMenuAberto(v => !v)}
+              aria-label={menuAberto ? "Fechar menu" : "Abrir menu"}
+              style={{
+                background: "transparent",
+                border: "none",
+                padding: 8,
+                cursor: "pointer",
+                display: "flex", flexDirection: "column",
+                gap: 4,
+                width: 36, height: 36,
+                alignItems: "center", justifyContent: "center",
+                color: corPrimaria,
+              }}
+            >
+              {/* Hambúrguer estilizado: 3 barras → vira X quando aberto */}
+              <span style={{
+                display: "block", width: 22, height: 2,
+                backgroundColor: corPrimaria,
+                transition: "transform 0.2s, opacity 0.2s",
+                transform: menuAberto ? "translateY(6px) rotate(45deg)" : "none",
+              }} />
+              <span style={{
+                display: "block", width: 22, height: 2,
+                backgroundColor: corPrimaria,
+                transition: "opacity 0.2s",
+                opacity: menuAberto ? 0 : 1,
+              }} />
+              <span style={{
+                display: "block", width: 22, height: 2,
+                backgroundColor: corPrimaria,
+                transition: "transform 0.2s",
+                transform: menuAberto ? "translateY(-6px) rotate(-45deg)" : "none",
+              }} />
+            </button>
+          ) : (
             <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
               <NavLink href="#historia">Sobre</NavLink>
               <NavLink href="#cardapio">Cardápio</NavLink>
@@ -142,6 +183,43 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             </nav>
           )}
         </div>
+        {/* Dropdown do menu mobile — aparece abaixo do header sticky */}
+        {isMobile && menuAberto && (
+          <div style={{
+            borderTop: `1px solid ${corSecundaria}30`,
+            backgroundColor: "rgba(247,243,233,0.98)",
+            backdropFilter: "blur(8px)",
+          }}>
+            <nav style={{
+              display: "flex", flexDirection: "column",
+              padding: "8px 0",
+              maxWidth: 1100, margin: "0 auto",
+            }}>
+              <MobileMenuLink href="#historia" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                Sobre
+              </MobileMenuLink>
+              <MobileMenuLink href="#cardapio" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                Cardápio
+              </MobileMenuLink>
+              <MobileMenuLink href="#horario" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                Horário
+              </MobileMenuLink>
+              {cfg.features.hasLaje && (
+                <MobileMenuLink href="#laje" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Laje
+                </MobileMenuLink>
+              )}
+              {cfg.features.hasReservas && (
+                <MobileMenuLink href="#reservas" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Reservas
+                </MobileMenuLink>
+              )}
+              <MobileMenuLink href="#contato" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                Contato
+              </MobileMenuLink>
+            </nav>
+          </div>
+        )}
       </header>
 
       {/* HERO */}
@@ -580,6 +658,32 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         color: corTexto, textDecoration: "none",
         fontSize: 14, fontWeight: 500,
       }}>{children}</a>
+    );
+  }
+
+  function MobileMenuLink({ href, onClick, children, cor, corBorda }: {
+    href: string;
+    onClick: () => void;
+    children: React.ReactNode;
+    cor: string;
+    corBorda: string;
+  }) {
+    return (
+      <a
+        href={href}
+        onClick={onClick}
+        style={{
+          color: cor,
+          textDecoration: "none",
+          fontSize: 16,
+          fontWeight: 500,
+          padding: "14px 20px",
+          borderBottom: `1px solid ${corBorda}20`,
+          display: "block",
+        }}
+      >
+        {children}
+      </a>
     );
   }
 

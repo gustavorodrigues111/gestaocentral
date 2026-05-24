@@ -148,6 +148,14 @@ export function TrabalhePublicaPage() {
           <p className="text-sm text-gray-600">
             A gente vai analisar e entra em contato em breve se fizer sentido.
           </p>
+          {siteConfig.slug && siteConfig.publicado && (
+            <a
+              href={`/site/${siteConfig.slug}`}
+              className="inline-block mt-6 text-sm text-indigo-600 hover:underline"
+            >
+              ← Voltar pro site
+            </a>
+          )}
         </div>
       </div>
     );
@@ -163,6 +171,15 @@ export function TrabalhePublicaPage() {
       }}
     >
       <div className="max-w-xl mx-auto">
+        {siteConfig.slug && siteConfig.publicado && (
+          <a
+            href={`/site/${siteConfig.slug}`}
+            className="inline-block mb-4 text-sm hover:underline"
+            style={{ color: tema?.corPrimaria || "#666" }}
+          >
+            ← Voltar pro site
+          </a>
+        )}
         <div className="bg-white rounded-2xl shadow-xl border p-6 sm:p-8">
           <div className="text-center mb-6">
             <h1
