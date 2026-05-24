@@ -158,6 +158,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           justifyContent: scrolled ? "space-between" : "center",
           gap: scrolled ? 16 : 14,
           transition: "padding 0.3s ease, gap 0.3s ease",
+          // Position relative pra absolutamente posicionar o hamburger no
+          // canto superior direito quando expandido em mobile.
+          position: "relative",
         }}>
           {/* Logo — sempre em cores próprias (sem filtro). Animação suave
               de tamanho entre expandido (~80/100px) e compacto (~32/36px). */}
@@ -200,6 +203,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             const chipTransition = "background-color 0.25s ease, border-color 0.25s ease";
 
             if (isMobile) {
+              // Hamburger em 2 posições:
+              //   Scrolled:    no flow, à direita do logo pequeno (row)
+              //   Expandido:   absoluto no canto superior direito, menor —
+              //                deixa o logo grande respirar centralizado
+              //                sem o botão competindo pela atenção.
+              const expandido = !scrolled;
               return (
                 <button
                   type="button"
@@ -210,35 +219,41 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     backdropFilter: chipBlur,
                     border: chipBorder,
                     borderRadius: 999,
-                    padding: 8,
+                    padding: expandido ? 6 : 8,
                     cursor: "pointer",
                     display: "flex", flexDirection: "column",
-                    gap: 4,
-                    width: 40, height: 40,
+                    gap: expandido ? 3 : 4,
+                    width: expandido ? 32 : 40,
+                    height: expandido ? 32 : 40,
                     alignItems: "center", justifyContent: "center",
                     color: corPrimaria,
-                    transition: chipTransition,
+                    transition: chipTransition + ", width 0.3s ease, height 0.3s ease, padding 0.3s ease",
+                    position: expandido ? "absolute" : "static",
+                    top: expandido ? 16 : undefined,
+                    right: expandido ? 16 : undefined,
                   }}
                 >
-                  {/* Hambúrguer estilizado: 3 barras → vira X quando aberto */}
-                  <span style={{
-                    display: "block", width: 22, height: 2,
-                    backgroundColor: corPrimaria,
-                    transition: "transform 0.2s, opacity 0.2s",
-                    transform: menuAberto ? "translateY(6px) rotate(45deg)" : "none",
-                  }} />
-                  <span style={{
-                    display: "block", width: 22, height: 2,
-                    backgroundColor: corPrimaria,
-                    transition: "opacity 0.2s",
-                    opacity: menuAberto ? 0 : 1,
-                  }} />
-                  <span style={{
-                    display: "block", width: 22, height: 2,
-                    backgroundColor: corPrimaria,
-                    transition: "transform 0.2s",
-                    transform: menuAberto ? "translateY(-6px) rotate(-45deg)" : "none",
-                  }} />
+                  {/* Hambúrguer estilizado: 3 barras → vira X quando aberto.
+                      No estado expandido, barras menores também. */}
+                  {[0, 1, 2].map(i => {
+                    const w = expandido ? 18 : 22;
+                    const transform = menuAberto
+                      ? (i === 0 ? `translateY(${expandido ? 5 : 6}px) rotate(45deg)`
+                          : i === 2 ? `translateY(-${expandido ? 5 : 6}px) rotate(-45deg)` : "none")
+                      : "none";
+                    const opacity = menuAberto && i === 1 ? 0 : 1;
+                    return (
+                      <span key={i} style={{
+                        display: "block",
+                        width: w,
+                        height: 2,
+                        backgroundColor: corPrimaria,
+                        transition: "transform 0.2s, opacity 0.2s, width 0.3s ease",
+                        transform,
+                        opacity,
+                      }} />
+                    );
+                  })}
                 </button>
               );
             }
