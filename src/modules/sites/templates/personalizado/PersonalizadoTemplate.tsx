@@ -19,6 +19,7 @@ import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, formatarDataCurta, proximasExcecoes } from "../../shared/horarioUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink } from "../../shared/enderecoUtils";
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
+import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
 
 type Props = { siteConfig: SiteConfig };
 
@@ -113,7 +114,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           }}>
             {cfg.logoUrl
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: 36, width: "auto" }} />
-              : "lobozó"}
+              : (cfg.slogan || cfg.slug)}
           </div>
           <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
             <NavLink href="#historia">Sobre</NavLink>
@@ -166,184 +167,162 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         </div>
       </section>
 
-      {/* HISTÓRIA */}
-      {cfg.historia && (
-        <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={corFundo}>
-          <div style={{
-            maxWidth: 720, margin: "0 auto", fontSize: 17, lineHeight: 1.7,
-            whiteSpace: "pre-wrap",
-          }}>
-            {cfg.historia}
-          </div>
-        </Section>
-      )}
-
-      {/* CARDÁPIO */}
-      {(cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) && (
-        <Section id="cardapio" titulo={t("cardapioTitulo", "Cardápio")} bg="#ffffff">
-          <div style={{
-            display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap",
-            maxWidth: 600, margin: "0 auto",
-          }}>
-            {cfg.cardapioPdfPtUrl && (
-              <a
-                href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer"
-                style={menuButton(corPrimaria, corFundo)}
-              >
-                🇧🇷 Cardápio (Português)
-              </a>
-            )}
-            {cfg.cardapioPdfEnUrl && (
-              <a
-                href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer"
-                style={menuButton(corPrimaria, corFundo)}
-              >
-                🇺🇸 Menu (English)
-              </a>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {/* HORÁRIO */}
-      <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={corFundo}>
-        <div style={{
-          maxWidth: 500, margin: "0 auto",
-          background: "#ffffff",
-          borderRadius: 8, padding: 24,
-          border: `1px solid ${corSecundaria}30`,
-        }}>
-          {grupos.map((g, i) => (
-            <div key={i} style={{
-              display: "flex", justifyContent: "space-between", padding: "10px 0",
-              borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none",
-              fontSize: 15,
-            }}>
-              <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
-              <span style={{ color: g.fechado ? "#999" : "#1a1a1a" }}>
-                {g.fechado ? "fechado" : g.turnosLabel}
-              </span>
-            </div>
-          ))}
-          {excecoes.length > 0 && (
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${corSecundaria}30` }}>
-              <div style={{
-                fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
-                color: corSecundaria, marginBottom: 8, fontWeight: 600,
-              }}>
-                {t("horarioProximosAvisosLabel", "Próximos avisos")}
+      {/* Seções reordenáveis — entre hero e footer.
+          Ordem vem de cfg.ordemSecoes (com fallback pra ORDEM_PADRAO).
+          Bg alterna creme/branco pra ritmo visual. Seções com feature
+          desligada ou sem conteúdo retornam null e ficam fora do zebra. */}
+      {(() => {
+        const ordem = normalizarOrdem(cfg.ordemSecoes);
+        const renderers: Record<SecaoId, (bg: string) => React.ReactNode> = {
+          historia: (bg) => cfg.historia ? (
+            <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={bg}>
+              <div style={{ maxWidth: 720, margin: "0 auto", fontSize: 17, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                {cfg.historia}
               </div>
-              {excecoes.map(e => (
-                <div key={e.id} style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>
-                  <strong>{formatarDataCurta(e.data)}</strong>
-                  {" — "}
-                  {e.fechado ? "fechado" : (e.turnos?.map(t => `${t.abre}–${t.fecha}`).join(", ") || "horário especial")}
-                  {e.motivo && ` (${e.motivo})`}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </Section>
+            </Section>
+          ) : null,
+          cardapio: (bg) => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? (
+            <Section id="cardapio" titulo={t("cardapioTitulo", "Cardápio")} bg={bg}>
+              <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap", maxWidth: 600, margin: "0 auto" }}>
+                {cfg.cardapioPdfPtUrl && (
+                  <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                    🇧🇷 Cardápio (Português)
+                  </a>
+                )}
+                {cfg.cardapioPdfEnUrl && (
+                  <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                    🇺🇸 Menu (English)
+                  </a>
+                )}
+              </div>
+            </Section>
+          ) : null,
+          horario: (bg) => (
+            <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={bg}>
+              <div style={{ maxWidth: 500, margin: "0 auto", background: "#ffffff", borderRadius: 8, padding: 24, border: `1px solid ${corSecundaria}30` }}>
+                {grupos.map((g, i) => (
+                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none", fontSize: 15 }}>
+                    <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
+                    <span style={{ color: g.fechado ? "#999" : "#1a1a1a" }}>
+                      {g.fechado ? "fechado" : g.turnosLabel}
+                    </span>
+                  </div>
+                ))}
+                {excecoes.length > 0 && (
+                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${corSecundaria}30` }}>
+                    <div style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: corSecundaria, marginBottom: 8, fontWeight: 600 }}>
+                      {t("horarioProximosAvisosLabel", "Próximos avisos")}
+                    </div>
+                    {excecoes.map(e => (
+                      <div key={e.id} style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>
+                        <strong>{formatarDataCurta(e.data)}</strong>{" — "}
+                        {e.fechado ? "fechado" : (e.turnos?.map(tu => `${tu.abre}–${tu.fecha}`).join(", ") || "horário especial")}
+                        {e.motivo && ` (${e.motivo})`}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </Section>
+          ),
+          laje: (bg) => (cfg.features.hasLaje && cfg.features.hasEventos) ? (
+            <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg={bg}>
+              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+                  {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
+                </p>
+                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("lajeCtaLabel", "Solicitar proposta")}
+                </Link>
+              </div>
+            </Section>
+          ) : null,
+          eventos: (bg) => (cfg.features.hasEventos && !cfg.features.hasLaje) ? (
+            <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg={bg}>
+              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+                  {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
+                </p>
+                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("eventosCtaLabel", "Solicitar proposta")}
+                </Link>
+              </div>
+            </Section>
+          ) : null,
+          reservas: (bg) => cfg.features.hasReservas ? (
+            <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={bg}>
+              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+                  {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
+                </p>
+                {waLink && (
+                  <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>
+                    {t("reservasCtaLabel", "💬 Reservar pelo WhatsApp")}
+                  </a>
+                )}
+              </div>
+            </Section>
+          ) : null,
+          delivery: (bg) => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? (
+            <Section id="delivery" titulo={t("deliveryTitulo", "Peça pra casa")} bg={bg}>
+              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", maxWidth: 700, margin: "0 auto" }}>
+                {(cfg.delivery || []).map((d, i) => (
+                  <a key={i} href={d.url} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                    {d.label || labelDelivery(d.plataforma)}
+                  </a>
+                ))}
+              </div>
+            </Section>
+          ) : null,
+          trabalhe: (bg) => cfg.features.hasTrabalheConosco ? (
+            <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={bg}>
+              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+                  {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
+                </p>
+                <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
+                  {t("trabalheCtaLabel", "Enviar candidatura")}
+                </Link>
+              </div>
+            </Section>
+          ) : null,
+          contato: (bg) => (
+            <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg={bg}>
+              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7 }}>
+                {enderecoLinhaUm(cfg.endereco) && (
+                  <p style={{ marginBottom: 4 }}>{enderecoLinhaUm(cfg.endereco)}</p>
+                )}
+                {enderecoLinhaDois(cfg.endereco) && (
+                  <p style={{ marginBottom: 16, color: "#555" }}>{enderecoLinhaDois(cfg.endereco)}</p>
+                )}
+                <a href={googleMapsLink(cfg.endereco)} target="_blank" rel="noreferrer"
+                   style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
+                  ver no Google Maps →
+                </a>
+                {(cfg.telefone || cfg.emailContato) && (
+                  <div style={{ marginTop: 24, fontSize: 14, color: "#555" }}>
+                    {cfg.telefone && <div>📞 {cfg.telefone}</div>}
+                    {cfg.emailContato && <div>✉ {cfg.emailContato}</div>}
+                  </div>
+                )}
+              </div>
+            </Section>
+          ),
+        };
 
-      {/* LAJE — só se ligado */}
-      {cfg.features.hasLaje && cfg.features.hasEventos && (
-        <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg="#ffffff">
-          <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
-              {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
-            </p>
-            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-              {t("lajeCtaLabel", "Solicitar proposta")}
-            </Link>
-          </div>
-        </Section>
-      )}
-
-      {/* EVENTOS (genérico, se não tem Laje específica) */}
-      {cfg.features.hasEventos && !cfg.features.hasLaje && (
-        <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg="#ffffff">
-          <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
-              {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
-            </p>
-            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-              {t("eventosCtaLabel", "Solicitar proposta")}
-            </Link>
-          </div>
-        </Section>
-      )}
-
-      {/* RESERVAS */}
-      {cfg.features.hasReservas && (
-        <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={corFundo}>
-          <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
-              {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
-            </p>
-            {waLink && (
-              <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>
-                {t("reservasCtaLabel", "💬 Reservar pelo WhatsApp")}
-              </a>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {/* DELIVERY */}
-      {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && (
-        <Section id="delivery" titulo={t("deliveryTitulo", "Peça pra casa")} bg="#ffffff">
-          <div style={{
-            display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap",
-            maxWidth: 700, margin: "0 auto",
-          }}>
-            {cfg.delivery.map((d, i) => (
-              <a key={i} href={d.url} target="_blank" rel="noreferrer"
-                 style={menuButton(corPrimaria, corFundo)}>
-                {d.label || labelDelivery(d.plataforma)}
-              </a>
-            ))}
-          </div>
-        </Section>
-      )}
-
-      {/* TRABALHE CONOSCO */}
-      {cfg.features.hasTrabalheConosco && (
-        <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={corFundo}>
-          <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-            <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
-              {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
-            </p>
-            <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-              {t("trabalheCtaLabel", "Enviar candidatura")}
-            </Link>
-          </div>
-        </Section>
-      )}
-
-      {/* CONTATO */}
-      <Section id="contato" titulo={t("contatoTitulo", "Como chegar")} bg="#ffffff">
-        <div style={{
-          maxWidth: 600, margin: "0 auto", textAlign: "center", fontSize: 16, lineHeight: 1.7,
-        }}>
-          {enderecoLinhaUm(cfg.endereco) && (
-            <p style={{ marginBottom: 4 }}>{enderecoLinhaUm(cfg.endereco)}</p>
-          )}
-          {enderecoLinhaDois(cfg.endereco) && (
-            <p style={{ marginBottom: 16, color: "#555" }}>{enderecoLinhaDois(cfg.endereco)}</p>
-          )}
-          <a href={googleMapsLink(cfg.endereco)} target="_blank" rel="noreferrer"
-             style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
-            ver no Google Maps →
-          </a>
-          {(cfg.telefone || cfg.emailContato) && (
-            <div style={{ marginTop: 24, fontSize: 14, color: "#555" }}>
-              {cfg.telefone && <div>📞 {cfg.telefone}</div>}
-              {cfg.emailContato && <div>✉ {cfg.emailContato}</div>}
-            </div>
-          )}
-        </div>
-      </Section>
+        // Render seções na ordem + alterna bg só nas seções que existirem
+        let idxRenderizado = 0;
+        const nodes: React.ReactNode[] = [];
+        for (const id of ordem) {
+          const bg = idxRenderizado % 2 === 0 ? corFundo : "#ffffff";
+          const node = renderers[id](bg);
+          if (node) {
+            nodes.push(<div key={id}>{node}</div>);
+            idxRenderizado++;
+          }
+        }
+        return nodes;
+      })()}
 
       {/* FOOTER */}
       <footer style={{
@@ -351,11 +330,15 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         padding: "40px 20px 24px",
         textAlign: "center",
       }}>
-        <div style={{
-          fontFamily: fonteHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
-        }}>
-          lobozó
-        </div>
+        {(cfg.logoUrl || cfg.slogan) && (
+          <div style={{
+            fontFamily: fonteHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
+          }}>
+            {cfg.logoUrl
+              ? <img src={cfg.logoUrl} alt="" style={{ height: 40, width: "auto", filter: "brightness(0) invert(1)", opacity: 0.85 }} />
+              : cfg.slogan}
+          </div>
+        )}
         {cfg.redes.length > 0 && (
           <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
             {cfg.redes.filter(r => r.url).map((r, i) => (

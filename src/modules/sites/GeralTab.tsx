@@ -5,6 +5,7 @@ import { Input } from "../../core/ui/Input";
 import type { LinkDelivery, RedeSocial, SiteConfig, TemaSite } from "../../core/types";
 import { defaultSiteConfig, useSiteConfig } from "./useSiteConfig";
 import { defaultTextosByTemplate } from "./templates/textosDefaults";
+import { normalizarOrdem, SECAO_LABEL, type SecaoId } from "./templates/ordemSecoes";
 import {
   FONTES_SITE, CATEGORIA_LABEL, findFonte, googleFontsUrl,
   type FonteSite,
@@ -207,33 +208,13 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
       )}
 
-      {/* IDENTIDADE / HERO */}
+      {/* IMAGENS */}
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-          Identidade e abertura
+          Imagens
         </h3>
         <Input
-          label="Slogan / tagline"
-          value={form.slogan || ""}
-          onChange={(e) => atualizar("slogan", e.target.value)}
-          placeholder="ex: laboratório gastronômico"
-          disabled={inputDisabled}
-        />
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            História do restaurante
-          </label>
-          <textarea
-            value={form.historia}
-            onChange={(e) => atualizar("historia", e.target.value)}
-            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-            rows={6}
-            placeholder="Conta a história do restaurante — vai pro topo do site público."
-            disabled={inputDisabled}
-          />
-        </div>
-        <Input
-          label="URL do logo (Storage)"
+          label="URL do logo"
           value={form.logoUrl || ""}
           onChange={(e) => atualizar("logoUrl", e.target.value)}
           placeholder="https://..."
@@ -247,12 +228,16 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           disabled={inputDisabled}
         />
         <p className="text-[11px] text-gray-500 -mt-2">
-          (Upload direto no admin vai entrar na Fase 4. Por enquanto cole a URL.)
+          (Upload direto vai entrar numa próxima fase. Por enquanto cole a URL.)
         </p>
       </section>
 
-      {/* TEXTOS DAS SEÇÕES — logo após história pra facilitar a leitura */}
+      {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
+          em ordem de aparição. */}
       <TextosSection form={form} setForm={setForm} disabled={inputDisabled} />
+
+      {/* ORDEM DAS SEÇÕES — reordena o site público */}
+      <OrdemSecoesSection form={form} setForm={setForm} disabled={inputDisabled} />
 
       {/* ENDEREÇO */}
       <section className="space-y-3">
@@ -691,22 +676,29 @@ function TextosSection({ form, setForm, disabled }: {
   function setTexto(k: keyof NonNullable<SiteConfig["textos"]>, v: string) {
     setForm(f => f ? { ...f, textos: { ...(f.textos || {}), [k]: v } } : f);
   }
+  function setTop<K extends "slogan" | "historia">(k: K, v: string) {
+    setForm(f => f ? { ...f, [k]: v } : f);
+  }
   function resetAll() {
-    if (!confirm("Limpar todos os textos? O template volta a usar os textos padrão da marca.")) return;
+    if (!confirm("Limpar todos os textos das seções? O template volta a usar os textos padrão. (Slogan e história ficam.)")) return;
     setForm(f => f ? { ...f, textos: {} } : f);
   }
 
-  // Definição dos campos editáveis, agrupados por seção do site
-  const grupos: { titulo: string; campos: {
-    chave: keyof NonNullable<SiteConfig["textos"]>;
+  // Definição dos campos por grupo (ordem = ordem no site).
+  // "fromTop" = campo está em SiteConfig.slogan / .historia (não em .textos).
+  type Campo = {
+    chave?: keyof NonNullable<SiteConfig["textos"]>;
+    fromTop?: "slogan" | "historia";
     label: string;
     placeholder: string;
     longo?: boolean;
     dica?: string;
-  }[] }[] = [
+  };
+  const grupos: { titulo: string; campos: Campo[] }[] = [
     {
       titulo: "Hero (topo da página)",
       campos: [
+        { fromTop: "slogan",      label: "Slogan / tagline (acima do título)", placeholder: "ex: laboratório gastronômico" },
         { chave: "heroTitulo",    label: "Título do hero", placeholder: "ex: Cozinha caipira,\\nfeita com tempo.", longo: true, dica: "Use \\n pra quebra de linha" },
         { chave: "heroSubtitulo", label: "Subtítulo", placeholder: "Texto curto abaixo do título", longo: true },
         { chave: "heroCtaLabel",  label: "Botão de CTA", placeholder: "Faça sua reserva" },
@@ -715,7 +707,8 @@ function TextosSection({ form, setForm, disabled }: {
     {
       titulo: "História",
       campos: [
-        { chave: "historiaTitulo", label: "Título", placeholder: "A nossa história" },
+        { chave: "historiaTitulo", label: "Título da seção", placeholder: "A nossa história" },
+        { fromTop: "historia",     label: "Texto da história", placeholder: "Conta a história do restaurante (vai pro site público)", longo: true },
       ],
     },
     {
@@ -727,19 +720,24 @@ function TextosSection({ form, setForm, disabled }: {
     {
       titulo: "Horário",
       campos: [
-        { chave: "horarioTitulo",                 label: "Título", placeholder: "Horário de funcionamento" },
-        { chave: "horarioProximosAvisosLabel",    label: "Label dos avisos", placeholder: "Próximos avisos" },
+        { chave: "horarioTitulo",              label: "Título", placeholder: "Horário de funcionamento" },
+        { chave: "horarioProximosAvisosLabel", label: "Label dos avisos", placeholder: "Próximos avisos" },
       ],
     },
     {
-      titulo: "Eventos / Laje",
+      titulo: "Eventos na Laje (só se hasLaje)",
       campos: [
-        { chave: "lajeTitulo",    label: "Título Laje", placeholder: "Eventos na Laje" },
-        { chave: "lajeTexto",     label: "Texto Laje", placeholder: "Descreva o espaço da laje", longo: true },
-        { chave: "lajeCtaLabel",  label: "Botão Laje", placeholder: "Solicitar proposta" },
-        { chave: "eventosTitulo",   label: "Título Eventos (sem Laje)", placeholder: "Eventos privados" },
-        { chave: "eventosTexto",    label: "Texto Eventos", placeholder: "Descreva sua oferta", longo: true },
-        { chave: "eventosCtaLabel", label: "Botão Eventos", placeholder: "Solicitar proposta" },
+        { chave: "lajeTitulo",    label: "Título", placeholder: "Eventos na Laje" },
+        { chave: "lajeTexto",     label: "Texto", placeholder: "Descreva o espaço da laje", longo: true },
+        { chave: "lajeCtaLabel",  label: "Botão CTA", placeholder: "Solicitar proposta" },
+      ],
+    },
+    {
+      titulo: "Eventos genéricos (só se hasEventos sem Laje)",
+      campos: [
+        { chave: "eventosTitulo",   label: "Título", placeholder: "Eventos privados" },
+        { chave: "eventosTexto",    label: "Texto", placeholder: "Descreva sua oferta", longo: true },
+        { chave: "eventosCtaLabel", label: "Botão CTA", placeholder: "Solicitar proposta" },
       ],
     },
     {
@@ -751,7 +749,7 @@ function TextosSection({ form, setForm, disabled }: {
       ],
     },
     {
-      titulo: "Delivery",
+      titulo: "Delivery (só se hasDelivery)",
       campos: [
         { chave: "deliveryTitulo", label: "Título", placeholder: "Peça pra casa" },
       ],
@@ -774,20 +772,32 @@ function TextosSection({ form, setForm, disabled }: {
 
   const totalPreenchidos = Object.values(textos).filter(v => !!(v && v.trim())).length;
 
+  function readValor(c: Campo): string {
+    if (c.fromTop === "slogan") return form.slogan || "";
+    if (c.fromTop === "historia") return form.historia || "";
+    if (c.chave) return textos[c.chave] || "";
+    return "";
+  }
+  function setValor(c: Campo, v: string) {
+    if (c.fromTop) setTop(c.fromTop, v);
+    else if (c.chave) setTexto(c.chave, v);
+  }
+
   return (
     <section className="space-y-2">
-      <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" open>
         <summary className="cursor-pointer px-3 py-2 flex items-center justify-between gap-2 list-none">
           <div>
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
               Textos das seções
             </h3>
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-              Sobrescreve as frases padrão do template. Deixe em branco pra usar o default.
+              Slogan, história e todos os textos do site, em ordem de aparição.
+              Edite o que quiser — campos vazios voltam ao default do template.
               {totalPreenchidos > 0 && <strong className="ml-1 text-indigo-600">{totalPreenchidos} customizad{totalPreenchidos === 1 ? "o" : "os"}.</strong>}
             </p>
           </div>
-          <span className="text-xs text-gray-400">▼ expandir</span>
+          <span className="text-xs text-gray-400">▼ expandir / fechar</span>
         </summary>
         <div className="px-3 pb-3 pt-1 space-y-4">
           {grupos.map(g => (
@@ -796,34 +806,38 @@ function TextosSection({ form, setForm, disabled }: {
                 {g.titulo}
               </div>
               <div className="space-y-2">
-                {g.campos.map(c => (
-                  <div key={c.chave}>
-                    <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
-                      {c.label}
-                    </label>
-                    {c.longo ? (
-                      <textarea
-                        value={textos[c.chave] || ""}
-                        onChange={(e) => setTexto(c.chave, e.target.value)}
-                        placeholder={c.placeholder}
-                        disabled={disabled}
-                        rows={2}
-                        className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                      />
-                    ) : (
-                      <input
-                        value={textos[c.chave] || ""}
-                        onChange={(e) => setTexto(c.chave, e.target.value)}
-                        placeholder={c.placeholder}
-                        disabled={disabled}
-                        className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                      />
-                    )}
-                    {c.dica && (
-                      <p className="text-[10px] text-gray-400 mt-0.5">{c.dica}</p>
-                    )}
-                  </div>
-                ))}
+                {g.campos.map(c => {
+                  const valor = readValor(c);
+                  const key = c.chave || c.fromTop || c.label;
+                  return (
+                    <div key={key}>
+                      <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
+                        {c.label}
+                      </label>
+                      {c.longo ? (
+                        <textarea
+                          value={valor}
+                          onChange={(e) => setValor(c, e.target.value)}
+                          placeholder={c.placeholder}
+                          disabled={disabled}
+                          rows={c.fromTop === "historia" ? 6 : 2}
+                          className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                        />
+                      ) : (
+                        <input
+                          value={valor}
+                          onChange={(e) => setValor(c, e.target.value)}
+                          placeholder={c.placeholder}
+                          disabled={disabled}
+                          className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                        />
+                      )}
+                      {c.dica && (
+                        <p className="text-[10px] text-gray-400 mt-0.5">{c.dica}</p>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -832,7 +846,7 @@ function TextosSection({ form, setForm, disabled }: {
               onClick={resetAll}
               className="text-xs text-rose-600 hover:underline"
             >
-              Limpar todos os textos customizados
+              Limpar customizações dos textos das seções
             </button>
           )}
         </div>
@@ -863,6 +877,92 @@ function TemplateCard({ label, descricao, ativo, onClick, disabled }: {
       <div className="font-bold text-sm">{label}</div>
       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{descricao}</div>
     </button>
+  );
+}
+
+// Editor de ordem das seções do site — setas ↑↓ pra mover.
+// Hero fica sempre primeiro, Footer sempre último — não entram aqui.
+function OrdemSecoesSection({ form, setForm, disabled }: {
+  form: SiteConfig;
+  setForm: React.Dispatch<React.SetStateAction<SiteConfig | null>>;
+  disabled: boolean;
+}) {
+  const ordem = normalizarOrdem(form.ordemSecoes);
+
+  function mover(idx: number, delta: -1 | 1) {
+    const novo = [...ordem];
+    const target = idx + delta;
+    if (target < 0 || target >= novo.length) return;
+    [novo[idx], novo[target]] = [novo[target], novo[idx]];
+    setForm(f => f ? { ...f, ordemSecoes: novo } : f);
+  }
+  function resetar() {
+    if (!confirm("Voltar pra ordem padrão das seções?")) return;
+    setForm(f => f ? { ...f, ordemSecoes: undefined } : f);
+  }
+
+  // Detecta se está em ordem custom
+  const padrao = normalizarOrdem(undefined);
+  const custom = ordem.some((s, i) => s !== padrao[i]);
+
+  return (
+    <section className="space-y-2">
+      <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <summary className="cursor-pointer px-3 py-2 flex items-center justify-between gap-2 list-none">
+          <div>
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+              Ordem das seções
+            </h3>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+              Reorganize as seções do site usando as setas. Hero e Footer ficam fixos.
+              {custom && <strong className="ml-1 text-indigo-600">Ordem customizada.</strong>}
+            </p>
+          </div>
+          <span className="text-xs text-gray-400">▼ expandir</span>
+        </summary>
+        <div className="px-3 pb-3 pt-1 space-y-2">
+          {ordem.map((id, idx) => (
+            <div key={id} className="flex items-center gap-2 px-2 py-1.5 rounded border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30">
+              <span className="text-[10px] tabular-nums text-gray-400 w-5 text-right">
+                {idx + 1}.
+              </span>
+              <span className="flex-1 text-sm">
+                {SECAO_LABEL[id as SecaoId]}
+              </span>
+              {!disabled && (
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => mover(idx, -1)}
+                    disabled={idx === 0}
+                    className="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-900 disabled:opacity-30"
+                  >
+                    ↑
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => mover(idx, 1)}
+                    disabled={idx === ordem.length - 1}
+                    className="px-2 py-1 text-xs rounded border border-gray-300 dark:border-gray-700 hover:bg-white dark:hover:bg-gray-900 disabled:opacity-30"
+                  >
+                    ↓
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          {!disabled && custom && (
+            <button
+              type="button"
+              onClick={resetar}
+              className="text-xs text-rose-600 hover:underline"
+            >
+              ↺ voltar pra ordem padrão
+            </button>
+          )}
+        </div>
+      </details>
+    </section>
   );
 }
 

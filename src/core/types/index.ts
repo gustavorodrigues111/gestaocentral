@@ -2112,6 +2112,12 @@ export type SiteConfig = {
   logoUrl?: string;
   faviconUrl?: string;
   ogImageUrl?: string;               // pra SEO/social share
+  // Ordem das seções no site público. Hero e Footer ficam fixos (sempre
+  // primeiro e último). As outras seções aparecem na ordem deste array.
+  // IDs válidos: "historia" | "cardapio" | "horario" | "laje" | "eventos"
+  //             | "reservas" | "delivery" | "trabalhe" | "contato".
+  // Se não preenchido, usa ordem padrão do template.
+  ordemSecoes?: string[];
   // Textos editáveis do site (sobrescrevem defaults do template).
   // Cada campo é opcional — se não preenchido, o template usa um default
   // adequado à marca dele. Útil pra ajustar copy sem mexer no código.
