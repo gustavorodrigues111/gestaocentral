@@ -44,9 +44,9 @@ export function HomePage() {
   const modulosAtivos = activeRestaurant.modulosAtivos || [];
 
   function visibleModule(moduleId: ModuleId) {
-    if (!modulosAtivos.includes(moduleId)) return false;
     if (!pessoa) return false;
-    if (pessoa.isMaster) return true;
+    if (pessoa.isMaster) return true;       // master vê tudo
+    if (!modulosAtivos.includes(moduleId)) return false;
     return canUse(pessoa, rid, moduleId);
   }
 

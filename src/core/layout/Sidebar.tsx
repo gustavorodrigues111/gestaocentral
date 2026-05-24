@@ -32,9 +32,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
-    if (!modulosAtivos.includes(moduleId)) return false;
     if (!pessoa) return false;
+    // Master vê todos os módulos definidos no catálogo — não depende de
+    // modulosAtivos por restaurante (esse filtro só vale pra non-master).
     if (pessoa.isMaster) return true;
+    if (!modulosAtivos.includes(moduleId)) return false;
     return canUse(pessoa, rid, moduleId);
   }
 

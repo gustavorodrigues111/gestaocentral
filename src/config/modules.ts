@@ -39,6 +39,7 @@ export const MODULES: ModuleDef[] = [
   // ═══ OPERAÇÃO (laranja) ═══
   { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "ativo",     etapa: "em_desenvolvimento", desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
   { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "ativo",     etapa: "em_desenvolvimento", desc: "Reservas de mesa e base de clientes",    dependsOn: ["pessoas"] },
+  { id: "horarios",         area: "operacao", label: "Horários",           icon: "🕒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Horário semanal + datas especiais + janelas de reserva — fonte da verdade pro site e reservas" },
   { id: "eventos",          area: "operacao", label: "Eventos",            icon: "🎉", status: "ativo",     etapa: "em_desenvolvimento", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
   { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "ativo",     etapa: "em_desenvolvimento", desc: "Checklists operacionais",                dependsOn: ["pessoas"] },
   { id: "contagens",        area: "operacao", label: "Contagens",          icon: "📦", status: "ativo",     etapa: "em_desenvolvimento", desc: "Contagens de estoque",                   dependsOn: ["pessoas"] },

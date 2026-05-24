@@ -4,18 +4,20 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse, canConfig } from "../../core/auth/permissions";
 import { GeralTab } from "./GeralTab";
-import { HorariosTab } from "./HorariosTab";
 import { CardapioTab } from "./CardapioTab";
 import { PreviewTab } from "./PreviewTab";
 
-type Tab = "geral" | "horarios" | "cardapio" | "preview";
+type Tab = "geral" | "cardapio" | "preview";
 
 // Módulo Sites — controla o site público do restaurante.
 // Tabs:
 //   📝 Geral       (Fase 2): história, contato, redes, flags, tema
-//   🕒 Horários    (Fase 3): padrão + exceções
 //   📋 Cardápio    (Fase 4): PDFs PT/EN
 //   👁️ Preview     (Fase 6): site público renderizado
+//
+// Horários (semana + datas especiais) foram movidos pro módulo dedicado
+// "Horários" — mesmos dados, mesma source of truth (sitesConfig.horarios +
+// sitesConfig.excecoes), mas a UI vive lá pra unificar com janelas de reserva.
 //
 // Form Trabalhe Conosco → criado a partir do site público, mas as
 // candidaturas são gerenciadas em /r/:rid/admissao → tab Candidaturas
@@ -72,9 +74,6 @@ export function SitesPage() {
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
           📝 Geral
         </TabButton>
-        <TabButton active={tab === "horarios"} onClick={() => setTab("horarios")} disabled={!podeGeral}>
-          🕒 Horários
-        </TabButton>
         <TabButton active={tab === "cardapio"} onClick={() => setTab("cardapio")} disabled={!podeCardapio}>
           📋 Cardápio
         </TabButton>
@@ -86,9 +85,6 @@ export function SitesPage() {
       {/* Conteúdo */}
       {tab === "geral" && (
         <GeralTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
-      )}
-      {tab === "horarios" && (
-        <HorariosTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
       )}
       {tab === "cardapio" && (
         <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />

@@ -22,6 +22,7 @@ import { TrilhaPage } from "./modules/trilha/TrilhaPage";
 import { OcorrenciasPage } from "./modules/ocorrencias/OcorrenciasPage";
 import { ChecklistsPage } from "./modules/checklists/ChecklistsPage";
 import { ReservasPage } from "./modules/reservas/ReservasPage";
+import { HorariosPage } from "./modules/horarios/HorariosPage";
 import { ContagensPage } from "./modules/contagens/ContagensPage";
 import { ComprasPage } from "./modules/compras/ComprasPage";
 import { RegistrosPontoPage } from "./modules/excecoes/RegistrosPontoPage";
@@ -70,6 +71,7 @@ function ModuleRouter() {
     case "ocorrencias":   return <OcorrenciasPage key={k} />;
     case "checklists":    return <ChecklistsPage key={k} />;
     case "reservas":      return <ReservasPage key={k} />;
+    case "horarios":      return <HorariosPage key={k} />;
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
     case "excecoes":      return <RegistrosPontoPage key={k} />;

@@ -5,6 +5,7 @@ export type ModuleArea = "operacao" | "time" | "escritorio";
 export type ModuleId =
   // Operação
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
+  | "horarios"
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório

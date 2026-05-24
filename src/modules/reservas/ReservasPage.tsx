@@ -13,10 +13,10 @@ import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { MesasTab } from "./MesasTab";
 import { SaloesTab } from "./SaloesTab";
-import { JanelasTab } from "./JanelasTab";
+// JanelasTab agora vive no módulo "Horários" — não importa mais aqui.
 import type { Salao } from "../../core/types";
 
-type Tab = "agenda" | "proximas" | "canceladas" | "clientes" | "saloes" | "janelas" | "mesas";
+type Tab = "agenda" | "proximas" | "canceladas" | "clientes" | "saloes" | "mesas";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -207,7 +207,6 @@ export function ReservasPage() {
           ["canceladas", `🗑 Canceladas (${canceladas.length})`],
           ["clientes",   `👥 Clientes (${clientes.length})`],
           ["saloes",     `🏛️ Salões (${saloes.filter(s => s.ativo).length})`],
-          ["janelas",    `🕒 Janelas`],
           ["mesas",      `🪑 Mesas (${mesas.filter(m => m.ativa).length})`],
         ] as const).map(([id, label]) => (
           <button
@@ -366,10 +365,6 @@ export function ReservasPage() {
       )}
 
       {/* TAB JANELAS */}
-      {tab === "janelas" && me && (
-        <JanelasTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} saloes={saloes} />
-      )}
-
       {/* TAB MESAS */}
       {tab === "mesas" && (
         <MesasTab restaurantId={rid} podeConfig={podeConfig} />
