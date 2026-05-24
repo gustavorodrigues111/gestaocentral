@@ -8,6 +8,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
@@ -35,12 +36,14 @@ function validateConfig() {
 let app: ReturnType<typeof initializeApp>;
 let db: Firestore;
 let auth: Auth;
+let storage: FirebaseStorage;
 
 try {
   validateConfig();
   app = initializeApp(firebaseConfig);
   db = getFirestore(app);
   auth = getAuth(app);
+  storage = getStorage(app);
 
   // App Check (opcional — só ativa se a env var estiver setada)
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
@@ -60,4 +63,4 @@ try {
   console.error("Firebase init falhou:", e);
 }
 
-export { app, db, auth };
+export { app, db, auth, storage };

@@ -1,0 +1,39 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Cardápios públicos: leitura aberta (site público abre PDF sem auth)
+    // + write autenticado (admin sobe novo PDF).
+    match /cardapios/{rid}/{file=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024  // máx 20 MB
+        && request.resource.contentType.matches("application/pdf");
+    }
+
+    // Logos / imagens dos sites: leitura aberta + write autenticado.
+    match /sites/{rid}/{file=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024   // máx 5 MB
+        && request.resource.contentType.matches("image/.*");
+    }
+
+    // Currículos de candidaturas "Trabalhe Conosco": cliente faz upload
+    // sem auth, mas só lê com auth.
+    match /candidaturas/{rid}/{file=**} {
+      allow read: if request.auth != null;
+      allow create: if request.resource.size < 10 * 1024 * 1024
+        && (
+          request.resource.contentType.matches("application/pdf")
+          || request.resource.contentType.matches("image/.*")
+        );
+      allow update, delete: if request.auth != null;
+    }
+
+    // Catch-all: nega o que não tá listado
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
