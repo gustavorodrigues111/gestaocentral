@@ -6,7 +6,6 @@ import {
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { Input } from "../../core/ui/Input";
 import type {
   ConfiguracaoReservas, Reserva, Salao,
 } from "../../core/types";
@@ -17,6 +16,7 @@ import {
 } from "../eventos/paises";
 import { useSiteConfigPublic, explicarNotFound } from "./shared/useSiteConfigPublic";
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "./shared/SiteFormShell";
+import { FormField, fieldInputCls } from "./shared/FormField";
 
 // Página pública: cliente solicita reserva de mesa.
 // Rota: /reservas/:rid (sem auth).
@@ -387,14 +387,13 @@ export function ReservasPublicaPage() {
       {/* STEP 1: WhatsApp */}
       {step === "phone" && (
         <div className="space-y-4">
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">WhatsApp *</label>
+          <FormField label="WhatsApp *">
             {paisIso === "OUTROS" ? (
-              <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
+              <div className="grid grid-cols-[110px_70px_1fr] gap-1.5">
                 <select
                   value={paisIso}
                   onChange={(e) => { setPaisIso(e.target.value); setWhatsapp(""); setDdiManual(""); }}
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                  className={fieldInputCls}
                 >
                   {PAISES.map(p => (
                     <option key={p.iso} value={p.iso}>{p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}</option>
@@ -405,22 +404,22 @@ export function ReservasPublicaPage() {
                   value={ddiManual}
                   onChange={(e) => setDdiManual(e.target.value.replace(/\D/g, "").slice(0, 4))}
                   placeholder="DDI"
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm tabular-nums"
+                  className={fieldInputCls + " tabular-nums"}
                 />
                 <input
                   type="tel" inputMode="numeric"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
                   placeholder="Número"
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                  className={fieldInputCls}
                 />
               </div>
             ) : (
-              <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+              <div className="grid grid-cols-[110px_1fr] gap-1.5">
                 <select
                   value={paisIso}
                   onChange={(e) => { setPaisIso(e.target.value); setWhatsapp(""); }}
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                  className={fieldInputCls}
                 >
                   {PAISES.map(p => (
                     <option key={p.iso} value={p.iso}>{p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}</option>
@@ -434,11 +433,11 @@ export function ReservasPublicaPage() {
                     setWhatsapp(formatarNumeroLocal(e.target.value, pais));
                   }}
                   placeholder={paisIso === "BR" ? "(11) 99999-9999" : `${getPaisByIso(paisIso).minLen} dígitos`}
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                  className={fieldInputCls}
                 />
               </div>
             )}
-          </div>
+          </FormField>
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
           <button
             type="button"
@@ -466,60 +465,62 @@ export function ReservasPublicaPage() {
             </div>
           )}
 
-          <Input
-            label="Seu nome *"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
+          <FormField label="Seu nome *">
+            <input
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              className={fieldInputCls}
+            />
+          </FormField>
 
-          <Input
-            label="Email (opcional)"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="seu@email.com"
-          />
+          <FormField label="Email (opcional)">
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="seu@email.com"
+              className={fieldInputCls}
+            />
+          </FormField>
 
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Data *</label>
+          <FormField label="Data *">
             <input
               type="date"
               value={data}
               min={hojeISO}
               onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+              className={fieldInputCls}
             />
-          </div>
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">Pessoas *</label>
+          </FormField>
+
+          <FormField label="Pessoas *">
             <input
               type="number" inputMode="numeric"
               min={1} max={50}
               value={pessoas}
               onChange={(e) => { setPessoas(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+              className={fieldInputCls}
             />
-          </div>
+          </FormField>
 
-          <Input
-            label="Ocasião (opcional)"
-            value={ocasiao}
-            onChange={(e) => setOcasiao(e.target.value)}
-            placeholder="ex: Aniversário, almoço de negócios"
-          />
+          <FormField label="Ocasião (opcional)">
+            <input
+              value={ocasiao}
+              onChange={(e) => setOcasiao(e.target.value)}
+              placeholder="ex: Aniversário, almoço de negócios"
+              className={fieldInputCls}
+            />
+          </FormField>
 
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Observações (opcional)
-            </label>
+          <FormField label="Observações (opcional)">
             <textarea
               value={observacoes}
               onChange={(e) => setObservacoes(e.target.value)}
-              className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
               rows={3}
               placeholder="Restrições alimentares, mesa preferida, etc."
+              className={fieldInputCls + " resize-y"}
             />
-          </div>
+          </FormField>
 
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
 

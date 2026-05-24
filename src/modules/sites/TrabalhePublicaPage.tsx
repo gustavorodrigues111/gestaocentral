@@ -4,7 +4,6 @@ import { doc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { Input } from "../../core/ui/Input";
 import type { CandidaturaTrabalhe } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
@@ -13,6 +12,7 @@ import {
 } from "../eventos/paises";
 import { useSiteConfigPublic, explicarNotFound } from "./shared/useSiteConfigPublic";
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "./shared/SiteFormShell";
+import { FormField, fieldInputCls } from "./shared/FormField";
 
 // Página pública: candidato envia candidatura pra trabalhar no restaurante.
 // Rota: /trabalhe/:rid (sem auth). Cria doc em /candidaturasTrabalhe.
@@ -139,23 +139,22 @@ export function TrabalhePublicaPage() {
       subtitulo="Conta um pouco sobre você e em que área tem interesse de trabalhar."
     >
       <div className="space-y-4">
-        <Input
-          label="Seu nome *"
-          value={form.nome}
-          onChange={(e) => update("nome", e.target.value)}
-        />
+        <FormField label="Seu nome *">
+          <input
+            value={form.nome}
+            onChange={(e) => update("nome", e.target.value)}
+            className={fieldInputCls}
+          />
+        </FormField>
 
-        {/* WhatsApp com seletor de DDI — reusa componente dos Eventos */}
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            WhatsApp *
-          </label>
+        {/* WhatsApp com seletor de DDI */}
+        <FormField label="WhatsApp *">
           {form.paisIso === "OUTROS" ? (
-            <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
+            <div className="grid grid-cols-[110px_70px_1fr] gap-1.5">
               <select
                 value={form.paisIso}
                 onChange={(e) => { update("paisIso", e.target.value); update("whatsapp", ""); update("ddiManual", ""); }}
-                className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                className={fieldInputCls}
               >
                 {PAISES.map(p => (
                   <option key={p.iso} value={p.iso}>{p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}</option>
@@ -166,22 +165,22 @@ export function TrabalhePublicaPage() {
                 value={form.ddiManual}
                 onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
                 placeholder="DDI"
-                className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm tabular-nums"
+                className={fieldInputCls + " tabular-nums"}
               />
               <input
                 type="tel" inputMode="numeric"
                 value={form.whatsapp}
                 onChange={(e) => update("whatsapp", e.target.value)}
                 placeholder="Número"
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                className={fieldInputCls}
               />
             </div>
           ) : (
-            <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+            <div className="grid grid-cols-[110px_1fr] gap-1.5">
               <select
                 value={form.paisIso}
                 onChange={(e) => { update("paisIso", e.target.value); update("whatsapp", ""); }}
-                className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                className={fieldInputCls}
               >
                 {PAISES.map(p => (
                   <option key={p.iso} value={p.iso}>{p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}</option>
@@ -195,57 +194,57 @@ export function TrabalhePublicaPage() {
                   update("whatsapp", formatarNumeroLocal(e.target.value, pais));
                 }}
                 placeholder={form.paisIso === "BR" ? "(11) 99999-9999" : `${getPaisByIso(form.paisIso).minLen} dígitos`}
-                className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+                className={fieldInputCls}
               />
             </div>
           )}
-        </div>
+        </FormField>
 
-        <Input
-          label="Email *"
-          type="email"
-          value={form.email}
-          onChange={(e) => update("email", e.target.value)}
-        />
+        <FormField label="Email *">
+          <input
+            type="email"
+            value={form.email}
+            onChange={(e) => update("email", e.target.value)}
+            className={fieldInputCls}
+          />
+        </FormField>
 
-        <Input
-          label="Área / vaga de interesse *"
-          value={form.areaInteresse}
-          onChange={(e) => update("areaInteresse", e.target.value)}
-          placeholder="ex: garçom, cozinha, bar, caixa, gerência"
-        />
+        <FormField label="Área / vaga de interesse *">
+          <input
+            value={form.areaInteresse}
+            onChange={(e) => update("areaInteresse", e.target.value)}
+            placeholder="ex: garçom, cozinha, bar, caixa, gerência"
+            className={fieldInputCls}
+          />
+        </FormField>
 
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Experiência (opcional)
-          </label>
+        <FormField label="Experiência (opcional)">
           <textarea
             value={form.experiencia}
             onChange={(e) => update("experiencia", e.target.value)}
-            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
             rows={3}
             placeholder="Onde trabalhou antes, há quanto tempo, etc."
+            className={fieldInputCls + " resize-y"}
           />
-        </div>
+        </FormField>
 
-        <Input
-          label="Disponibilidade (opcional)"
-          value={form.disponibilidade}
-          onChange={(e) => update("disponibilidade", e.target.value)}
-          placeholder="ex: imediata, em 30 dias, finais de semana"
-        />
+        <FormField label="Disponibilidade (opcional)">
+          <input
+            value={form.disponibilidade}
+            onChange={(e) => update("disponibilidade", e.target.value)}
+            placeholder="ex: imediata, em 30 dias, finais de semana"
+            className={fieldInputCls}
+          />
+        </FormField>
 
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Currículo (PDF ou imagem, opcional, máx 10MB)
-          </label>
+        <FormField label="Currículo (PDF ou imagem, opcional, máx 10MB)">
           <input
             type="file"
             accept="application/pdf,image/*"
             onChange={(e) => setCurriculo(e.target.files?.[0] || null)}
-            className="mt-1 block w-full text-sm"
+            className="block w-full text-sm"
           />
-        </div>
+        </FormField>
 
         {erro && <div className="text-sm text-rose-600">{erro}</div>}
 

@@ -4,7 +4,6 @@ import { useParams } from "react-router-dom";
 import { collection, doc, getDocs, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { Input } from "../../core/ui/Input";
 import type {
   EscopoPacote, EspacoEvento, LeadEvento, ModeloEvento,
   OcasiaoEvento, PacoteEvento,
@@ -19,6 +18,7 @@ import {
 } from "./paises";
 import { useSiteConfigPublic } from "../sites/shared/useSiteConfigPublic";
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "../sites/shared/SiteFormShell";
+import { FormField, fieldInputCls } from "../sites/shared/FormField";
 
 // Página pública: cliente registra interesse num evento.
 // Rota: /eventos/:rid (sem auth). Visual segue o tema do site do
@@ -287,122 +287,111 @@ export function EventosPublicaPage() {
     >
       <div className="space-y-4">
         {/* Contato */}
-        <div className="grid grid-cols-1 gap-3">
-          <Input
-            label="Seu nome *"
+        <FormField label="Seu nome *">
+          <input
             value={form.nome}
             onChange={(e) => update("nome", e.target.value)}
             placeholder="João da Silva"
+            className={fieldInputCls}
           />
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              WhatsApp *
-            </label>
-            {form.paisIso === "OUTROS" ? (
-              <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
-                <select
-                  value={form.paisIso}
-                  onChange={(e) => {
-                    update("paisIso", e.target.value);
-                    update("whatsapp", "");
-                    update("ddiManual", "");
-                  }}
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-                >
-                  {PAISES.map(p => (
-                    <option key={p.iso} value={p.iso}>
-                      {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="tel" inputMode="numeric"
-                  value={form.ddiManual}
-                  onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="DDI"
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm tabular-nums"
-                />
-                <input
-                  type="tel" inputMode="numeric"
-                  value={form.whatsapp}
-                  onChange={(e) => update("whatsapp", e.target.value)}
-                  placeholder="Número"
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-                />
-              </div>
-            ) : (
-              <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
-                <select
-                  value={form.paisIso}
-                  onChange={(e) => {
-                    update("paisIso", e.target.value);
-                    update("whatsapp", "");
-                  }}
-                  className="px-2 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-                >
-                  {PAISES.map(p => (
-                    <option key={p.iso} value={p.iso}>
-                      {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  type="tel" inputMode="numeric"
-                  value={form.whatsapp}
-                  onChange={(e) => {
-                    const pais = getPaisByIso(form.paisIso);
-                    update("whatsapp", formatarNumeroLocal(e.target.value, pais));
-                  }}
-                  placeholder={
-                    form.paisIso === "BR"
-                      ? "(11) 99999-9999"
-                      : `${getPaisByIso(form.paisIso).minLen} dígitos`
-                  }
-                  className="px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
-                />
-              </div>
-            )}
-          </div>
-          <Input
-            label="Email *"
+        </FormField>
+
+        <FormField label="WhatsApp *">
+          {form.paisIso === "OUTROS" ? (
+            <div className="grid grid-cols-[110px_70px_1fr] gap-1.5">
+              <select
+                value={form.paisIso}
+                onChange={(e) => { update("paisIso", e.target.value); update("whatsapp", ""); update("ddiManual", ""); }}
+                className={fieldInputCls}
+              >
+                {PAISES.map(p => (
+                  <option key={p.iso} value={p.iso}>
+                    {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel" inputMode="numeric"
+                value={form.ddiManual}
+                onChange={(e) => update("ddiManual", e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="DDI"
+                className={fieldInputCls + " tabular-nums"}
+              />
+              <input
+                type="tel" inputMode="numeric"
+                value={form.whatsapp}
+                onChange={(e) => update("whatsapp", e.target.value)}
+                placeholder="Número"
+                className={fieldInputCls}
+              />
+            </div>
+          ) : (
+            <div className="grid grid-cols-[110px_1fr] gap-1.5">
+              <select
+                value={form.paisIso}
+                onChange={(e) => { update("paisIso", e.target.value); update("whatsapp", ""); }}
+                className={fieldInputCls}
+              >
+                {PAISES.map(p => (
+                  <option key={p.iso} value={p.iso}>
+                    {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel" inputMode="numeric"
+                value={form.whatsapp}
+                onChange={(e) => {
+                  const pais = getPaisByIso(form.paisIso);
+                  update("whatsapp", formatarNumeroLocal(e.target.value, pais));
+                }}
+                placeholder={form.paisIso === "BR" ? "(11) 99999-9999" : `${getPaisByIso(form.paisIso).minLen} dígitos`}
+                className={fieldInputCls}
+              />
+            </div>
+          )}
+        </FormField>
+
+        <FormField label="Email *">
+          <input
             type="email"
             value={form.email}
             onChange={(e) => update("email", e.target.value)}
             placeholder="seunome@email.com"
+            className={fieldInputCls}
           />
-        </div>
+        </FormField>
 
         {/* PF / PJ */}
         <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Tipo
-          </label>
-          <div className="mt-1 grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => update("tipoPessoa", "PF")}
-              style={pillStyle(form.tipoPessoa === "PF", corPrimaria)}
-            >
-              Pessoa física
-            </button>
-            <button
-              type="button"
-              onClick={() => update("tipoPessoa", "PJ")}
-              style={pillStyle(form.tipoPessoa === "PJ", corPrimaria)}
-            >
-              Empresa
-            </button>
-          </div>
+          <FormField label="Tipo">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => update("tipoPessoa", "PF")}
+                style={pillStyle(form.tipoPessoa === "PF", corPrimaria)}
+              >
+                Pessoa física
+              </button>
+              <button
+                type="button"
+                onClick={() => update("tipoPessoa", "PJ")}
+                style={pillStyle(form.tipoPessoa === "PJ", corPrimaria)}
+              >
+                Empresa
+              </button>
+            </div>
+          </FormField>
           {form.tipoPessoa === "PJ" && (
             <div className="mt-3 space-y-3">
-              <div>
-                <Input
-                  label="CNPJ *"
+              <FormField label="CNPJ *">
+                <input
                   value={form.cnpj}
                   onChange={(e) => update("cnpj", e.target.value)}
                   onBlur={onCnpjBlur}
                   placeholder="00.000.000/0000-00"
                   inputMode="numeric"
+                  className={fieldInputCls}
                 />
                 {buscandoCNPJ && (
                   <p className="text-[11px] mt-1" style={{ color: corPrimaria }}>
@@ -414,65 +403,73 @@ export function EventosPublicaPage() {
                     Não consegui buscar — preencha a razão social manualmente.
                   </p>
                 )}
-              </div>
-              <Input
-                label="Razão social *"
-                value={form.razaoSocial}
-                onChange={(e) => update("razaoSocial", e.target.value)}
-              />
+              </FormField>
+              <FormField label="Razão social *">
+                <input
+                  value={form.razaoSocial}
+                  onChange={(e) => update("razaoSocial", e.target.value)}
+                  className={fieldInputCls}
+                />
+              </FormField>
             </div>
           )}
         </div>
 
         {/* Data + alternativa */}
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Data desejada *"
-            type="date"
-            value={form.dataDesejada}
-            onChange={(e) => update("dataDesejada", e.target.value)}
-          />
-          <Input
-            label="Alternativa (opcional)"
-            type="date"
-            value={form.dataAlternativa}
-            onChange={(e) => update("dataAlternativa", e.target.value)}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField label="Data desejada *">
+            <input
+              type="date"
+              value={form.dataDesejada}
+              onChange={(e) => update("dataDesejada", e.target.value)}
+              className={fieldInputCls}
+            />
+          </FormField>
+          <FormField label="Alternativa (opcional)">
+            <input
+              type="date"
+              value={form.dataAlternativa}
+              onChange={(e) => update("dataAlternativa", e.target.value)}
+              className={fieldInputCls}
+            />
+          </FormField>
         </div>
 
         {/* Horários início + fim */}
-        <div className="grid grid-cols-2 gap-3">
-          <Input
-            label="Início *"
-            type="time"
-            value={form.horaInicio}
-            onChange={(e) => update("horaInicio", e.target.value)}
-          />
-          <Input
-            label="Término *"
-            type="time"
-            value={form.horaFim}
-            onChange={(e) => update("horaFim", e.target.value)}
-          />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <FormField label="Início *">
+            <input
+              type="time"
+              value={form.horaInicio}
+              onChange={(e) => update("horaInicio", e.target.value)}
+              className={fieldInputCls}
+            />
+          </FormField>
+          <FormField label="Término *">
+            <input
+              type="time"
+              value={form.horaFim}
+              onChange={(e) => update("horaFim", e.target.value)}
+              className={fieldInputCls}
+            />
+          </FormField>
         </div>
 
-        {/* Pax + Ocasião */}
-        <Input
-          label="Quantos convidados? *"
-          type="number"
-          value={form.numConvidados}
-          onChange={(e) => update("numConvidados", e.target.value)}
-          placeholder="ex: 30"
-        />
+        <FormField label="Quantos convidados? *">
+          <input
+            type="number"
+            value={form.numConvidados}
+            onChange={(e) => update("numConvidados", e.target.value)}
+            placeholder="ex: 30"
+            className={fieldInputCls}
+          />
+        </FormField>
 
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Ocasião *
-          </label>
+        <FormField label="Ocasião *">
           <select
             value={form.ocasiao}
             onChange={(e) => update("ocasiao", e.target.value as OcasiaoEvento | "")}
-            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
+            className={fieldInputCls}
           >
             <option value="">— selecione —</option>
             <option value="aniversario">{OCASIAO_LABEL.aniversario}</option>
@@ -481,21 +478,17 @@ export function EventosPublicaPage() {
             <option value="outros">{OCASIAO_LABEL.outros}</option>
           </select>
           {form.ocasiao === "outros" && (
-            <Input
-              label=""
+            <input
               value={form.ocasiaoOutros}
               onChange={(e) => update("ocasiaoOutros", e.target.value)}
               placeholder="Descreve a ocasião"
-              className="mt-2"
+              className={fieldInputCls + " mt-2"}
             />
           )}
-        </div>
+        </FormField>
 
         {/* Modelo do evento */}
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Modelo de evento *
-          </label>
+        <FormField label="Modelo de evento *">
           <div className="mt-1 grid grid-cols-1 gap-1.5">
             <button
               type="button"
@@ -518,35 +511,32 @@ export function EventosPublicaPage() {
               </span>
             </button>
           </div>
-          {form.modeloEvento === "pacote_por_pessoa" && (
-            <div className="mt-3">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-                O pacote inclui:
-              </label>
-              <div className="mt-1 grid grid-cols-1 gap-1.5">
-                {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
-                  <button
-                    key={opt}
-                    type="button"
-                    onClick={() => update("escopoPacote", opt)}
-                    style={optionStyle(form.escopoPacote === opt, corPrimaria)}
-                  >
-                    {ESCOPO_PACOTE_LABEL[opt]}
-                  </button>
-                ))}
-              </div>
-              {form.escopoPacote === "outro" && (
-                <Input
-                  label=""
-                  value={form.escopoPacoteOutro}
-                  onChange={(e) => update("escopoPacoteOutro", e.target.value)}
-                  placeholder="Descreve o que quer no pacote"
-                  className="mt-2"
-                />
-              )}
+        </FormField>
+
+        {form.modeloEvento === "pacote_por_pessoa" && (
+          <FormField label="O pacote inclui *">
+            <div className="grid grid-cols-1 gap-1.5">
+              {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => update("escopoPacote", opt)}
+                  style={optionStyle(form.escopoPacote === opt, corPrimaria)}
+                >
+                  {ESCOPO_PACOTE_LABEL[opt]}
+                </button>
+              ))}
             </div>
-          )}
-        </div>
+            {form.escopoPacote === "outro" && (
+              <input
+                value={form.escopoPacoteOutro}
+                onChange={(e) => update("escopoPacoteOutro", e.target.value)}
+                placeholder="Descreve o que quer no pacote"
+                className={fieldInputCls + " mt-2"}
+              />
+            )}
+          </FormField>
+        )}
 
         {/* Música / decoração */}
         <div className="grid grid-cols-1 gap-2">
@@ -566,11 +556,8 @@ export function EventosPublicaPage() {
 
         {/* Pacote sugerido (do restaurante) */}
         {pacotes.length > 0 && (
-          <div>
-            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Tem algum pacote nosso em mente? (opcional)
-            </label>
-            <div className="mt-1 grid grid-cols-1 gap-1.5">
+          <FormField label="Tem algum pacote nosso em mente? (opcional)">
+            <div className="grid grid-cols-1 gap-1.5">
               <button
                 type="button"
                 onClick={() => update("pacoteSugeridoId", "")}
@@ -597,22 +584,18 @@ export function EventosPublicaPage() {
                 </button>
               ))}
             </div>
-          </div>
+          </FormField>
         )}
 
-        {/* Observações */}
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-            Conta mais (opcional)
-          </label>
+        <FormField label="Conta mais (opcional)">
           <textarea
             value={form.observacoesCliente}
             onChange={(e) => update("observacoesCliente", e.target.value)}
-            className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 bg-white text-sm"
             rows={3}
             placeholder="restrições alimentares, expectativa de orçamento, dúvidas..."
+            className={fieldInputCls + " resize-y"}
           />
-        </div>
+        </FormField>
 
         {erroGeral && <div className="text-sm text-rose-600">{erroGeral}</div>}
 
