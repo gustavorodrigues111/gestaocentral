@@ -93,14 +93,30 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
   // Click num feriado sugerido NÃO salva direto — apenas pré-preenche o
   // form de "Nova exceção" com data + motivo. User decide aberto/fechado,
-  // turnos e reservas antes de salvar. Default fechado (caso comum em
-  // feriado) mas alterável no toggle Aberto/Fechado.
+  // turnos e reservas antes de salvar.
+  //
+  // Default herda do horário padrão daquele dia da semana:
+  //   - Dia normalmente fechado → exceção começa fechada
+  //   - Dia normalmente aberto  → exceção começa aberta com os MESMOS
+  //                                turnos do horário padrão (assim
+  //                                feriados em dia útil viram "aberto
+  //                                no horário normal" se o user quiser).
+  //
+  // Reservas continuam em modo "padrão" (herda janela semanal) — user
+  // decide se quer customizar.
   function abrirEdicaoFeriado(f: FeriadoBR) {
     if (excecoes.some(e => e.data === f.date)) return; // dedupe — já existe
+    const dow = new Date(f.date + "T12:00:00").getDay();
+    const horarioDia = horarios.find(h => h.dia === dow);
+    const fechadoNoDia = !horarioDia || horarioDia.fechado;
+    const turnosHerdados = horarioDia && !horarioDia.fechado && horarioDia.turnos.length > 0
+      ? horarioDia.turnos.map(t => ({ abre: t.abre, fecha: t.fecha }))
+      : [{ abre: "19:00", fecha: "23:00" }];
+
     setNova({
       data: f.date,
-      fechado: true,                                  // default sensato pra feriado
-      turnosNova: [{ abre: "19:00", fecha: "23:00" }],
+      fechado: fechadoNoDia,
+      turnosNova: turnosHerdados,
       motivo: f.name,
       reservaModo: "padrao",
       slotsCustom: [],
