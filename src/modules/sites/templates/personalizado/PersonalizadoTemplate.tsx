@@ -61,6 +61,18 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     if (!isMobile) setMenuAberto(false);
   }, [isMobile]);
 
+  // Scrolled: vira true quando o usuário rolou pra fora do hero.
+  // Usado pra mostrar a logo no header só depois disso, mantendo o topo
+  // limpo enquanto a logo grande do hero ainda está visível.
+  // Threshold conservador: ~280px cobre logo grande + slogan no hero.
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    function onScroll() { setScrolled(window.scrollY > 280); }
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
   // Carrega Google Fonts dinamicamente — só as fontes que estão sendo usadas
   useEffect(() => {
     const links: HTMLLinkElement[] = [];
@@ -114,12 +126,15 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       minHeight: "100vh",
     }}>
       {/* HEADER — desktop tem nav inline; mobile tem hamburger que abre
-          dropdown abaixo do header com os mesmos links em coluna. */}
+          dropdown abaixo do header com os mesmos links em coluna.
+          Background + borda só aparecem depois que rola (junto com a logo)
+          pra deixar o hero "respirar" inteiro no topo da página. */}
       <header style={{
         position: "sticky", top: 0, zIndex: 50,
-        backgroundColor: "rgba(247,243,233,0.95)",
-        backdropFilter: "blur(8px)",
-        borderBottom: `1px solid ${corSecundaria}30`,
+        backgroundColor: scrolled ? "rgba(247,243,233,0.95)" : "transparent",
+        backdropFilter: scrolled ? "blur(8px)" : "none",
+        borderBottom: scrolled ? `1px solid ${corSecundaria}30` : "1px solid transparent",
+        transition: "background-color 0.25s ease, border-color 0.25s ease",
       }}>
         <div style={{
           maxWidth: 1100, margin: "0 auto",
@@ -127,61 +142,78 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           display: "flex", alignItems: "center", justifyContent: "space-between",
           gap: 16,
         }}>
+          {/* Logo/título do header — só aparece depois que rola pra fora do hero.
+              Mantém o slot reservado (mesma altura) pra não causar layout shift
+              quando aparece. Fade + slide suave pra ficar elegante. */}
           <div style={{
             fontFamily: fonteHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
             display: "flex", alignItems: "center",
+            height: isMobile ? 32 : 36,
+            opacity: scrolled ? 1 : 0,
+            transform: scrolled ? "translateY(0)" : "translateY(-6px)",
+            transition: "opacity 0.25s ease, transform 0.25s ease",
+            pointerEvents: scrolled ? "auto" : "none",
           }}>
             {cfg.logoUrl
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: isMobile ? 32 : 36, width: "auto", display: "block" }} />
               : (cfg.slogan || cfg.slug)}
           </div>
-          {isMobile ? (
-            <button
-              type="button"
-              onClick={() => setMenuAberto(v => !v)}
-              aria-label={menuAberto ? "Fechar menu" : "Abrir menu"}
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: 8,
-                cursor: "pointer",
-                display: "flex", flexDirection: "column",
-                gap: 4,
-                width: 36, height: 36,
-                alignItems: "center", justifyContent: "center",
-                color: corPrimaria,
-              }}
-            >
-              {/* Hambúrguer estilizado: 3 barras → vira X quando aberto */}
-              <span style={{
-                display: "block", width: 22, height: 2,
-                backgroundColor: corPrimaria,
-                transition: "transform 0.2s, opacity 0.2s",
-                transform: menuAberto ? "translateY(6px) rotate(45deg)" : "none",
-              }} />
-              <span style={{
-                display: "block", width: 22, height: 2,
-                backgroundColor: corPrimaria,
-                transition: "opacity 0.2s",
-                opacity: menuAberto ? 0 : 1,
-              }} />
-              <span style={{
-                display: "block", width: 22, height: 2,
-                backgroundColor: corPrimaria,
-                transition: "transform 0.2s",
-                transform: menuAberto ? "translateY(-6px) rotate(-45deg)" : "none",
-              }} />
-            </button>
-          ) : (
-            <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
-              <NavLink href="#historia">Sobre</NavLink>
-              <NavLink href="#cardapio">Cardápio</NavLink>
-              <NavLink href="#horario">Horário</NavLink>
-              {cfg.features.hasLaje && <NavLink href="#laje">Laje</NavLink>}
-              {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`}>Reservas</NavLink>}
-              <NavLink href="#contato">Contato</NavLink>
-            </nav>
-          )}
+          {/* Cor adaptativa do menu: claro (corFundo) enquanto sobreposto à hero
+              escura; primária quando o header já está sólido. Transição suave. */}
+          {(() => {
+            const menuCor = scrolled ? corPrimaria : corFundo;
+            const navCor = scrolled ? corTexto : corFundo;
+            if (isMobile) {
+              return (
+                <button
+                  type="button"
+                  onClick={() => setMenuAberto(v => !v)}
+                  aria-label={menuAberto ? "Fechar menu" : "Abrir menu"}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    padding: 8,
+                    cursor: "pointer",
+                    display: "flex", flexDirection: "column",
+                    gap: 4,
+                    width: 36, height: 36,
+                    alignItems: "center", justifyContent: "center",
+                    color: menuCor,
+                  }}
+                >
+                  {/* Hambúrguer estilizado: 3 barras → vira X quando aberto */}
+                  <span style={{
+                    display: "block", width: 22, height: 2,
+                    backgroundColor: menuCor,
+                    transition: "transform 0.2s, opacity 0.2s, background-color 0.25s ease",
+                    transform: menuAberto ? "translateY(6px) rotate(45deg)" : "none",
+                  }} />
+                  <span style={{
+                    display: "block", width: 22, height: 2,
+                    backgroundColor: menuCor,
+                    transition: "opacity 0.2s, background-color 0.25s ease",
+                    opacity: menuAberto ? 0 : 1,
+                  }} />
+                  <span style={{
+                    display: "block", width: 22, height: 2,
+                    backgroundColor: menuCor,
+                    transition: "transform 0.2s, background-color 0.25s ease",
+                    transform: menuAberto ? "translateY(-6px) rotate(-45deg)" : "none",
+                  }} />
+                </button>
+              );
+            }
+            return (
+              <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
+                <NavLink href="#historia" cor={navCor}>Sobre</NavLink>
+                <NavLink href="#cardapio" cor={navCor}>Cardápio</NavLink>
+                <NavLink href="#horario" cor={navCor}>Horário</NavLink>
+                {cfg.features.hasLaje && <NavLink href="#laje" cor={navCor}>Laje</NavLink>}
+                {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`} cor={navCor}>Reservas</NavLink>}
+                <NavLink href="#contato" cor={navCor}>Contato</NavLink>
+              </nav>
+            );
+          })()}
         </div>
         {/* Dropdown do menu mobile — aparece abaixo do header sticky */}
         {isMobile && menuAberto && (
@@ -350,7 +382,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${corSecundaria}30` }}>
                     <div style={{
                       fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
-                      color: corSecundaria, marginBottom: 14, fontWeight: 600, textAlign: "center",
+                      color: corPrimaria, marginBottom: 14, fontWeight: 600, textAlign: "center",
                     }}>
                       {t("horarioProximosAvisosLabel", "Próximos avisos")}
                     </div>
@@ -375,7 +407,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                           }}>
                             <div style={{
                               fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
-                              color: corSecundaria, fontWeight: 600,
+                              color: corPrimaria, fontWeight: 600,
                             }}>
                               {diaSemana}
                             </div>
@@ -649,11 +681,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
 
   // ─── Helpers internos (closure sobre cores dinâmicas) ─────────────────────
 
-  function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+  function NavLink({ href, children, cor }: { href: string; children: React.ReactNode; cor?: string }) {
     return (
       <a href={href} style={{
-        color: corTexto, textDecoration: "none",
+        color: cor ?? corTexto, textDecoration: "none",
         fontSize: 14, fontWeight: 500,
+        transition: "color 0.25s ease",
       }}>{children}</a>
     );
   }
