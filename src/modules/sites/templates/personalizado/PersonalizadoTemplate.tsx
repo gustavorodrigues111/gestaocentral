@@ -226,11 +226,28 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       <section style={{
         background: heroBg,
         color: corFundo,
-        minHeight: "70vh",
         display: "flex", alignItems: "center",
-        padding: "80px 20px",
+        padding: isMobile ? "56px 20px" : "72px 20px",
       }}>
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
+          {/* Logo grande no topo do hero — branca/invertida pra
+              destacar sobre o fundo escuro. Só aparece se tem logo. */}
+          {cfg.logoUrl && (
+            <img
+              src={cfg.logoUrl}
+              alt="Logo"
+              style={{
+                maxWidth: isMobile ? 200 : 280,
+                width: "auto",
+                height: "auto",
+                marginBottom: 28,
+                filter: "brightness(0) invert(1)",
+                display: "block",
+                marginLeft: "auto",
+                marginRight: "auto",
+              }}
+            />
+          )}
           {cfg.slogan && (
             <p style={{
               fontFamily: fonteSubtitulo,
@@ -241,59 +258,41 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             </p>
           )}
           <h1 style={{
-            fontFamily: fonteHeading, fontSize: "clamp(40px, 7vw, 84px)",
-            lineHeight: 1.05, margin: "0 0 24px 0", letterSpacing: "-0.01em",
+            fontFamily: fonteHeading,
+            fontSize: isMobile ? "clamp(36px, 9vw, 56px)" : "clamp(40px, 7vw, 84px)",
+            lineHeight: 1.05, margin: "0 0 20px 0", letterSpacing: "-0.01em",
             whiteSpace: "pre-line",
           }}>
             {t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}
           </h1>
           <p style={{
             fontFamily: fonteSubtitulo,
-            fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 36px",
+            fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
             lineHeight: 1.55,
           }}>
             {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
           </p>
-          {/* CTAs do hero: prioriza Instagram + WhatsApp se cadastrados.
-              Cada um vai pro link da rede social (a do tipo "whatsapp" tem
-              fallback pro waLink derivado do telefone). Se nenhum existe,
-              fallback pro botão antigo de reserva (rola pra seção). */}
+          {/* CTA do hero: Instagram (se cadastrado).
+              WhatsApp já tem o botão flutuante 💬 no canto da tela, então
+              fica fora daqui pra não duplicar. Fallback: botão de reserva. */}
           {(() => {
             const insta = cfg.redes.find(r => r.tipo === "instagram" && r.url);
-            const wa = whatsappRede || (waLink ? { tipo: "whatsapp", url: waLink } : null);
-            if (insta || wa) {
+            if (insta) {
               return (
-                <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-                  {insta && (
-                    <a
-                      href={insta.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={socialButtonHero(corSecundaria)}
-                      title="Instagram"
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    >
-                      <span style={{ fontSize: 14 }}>📷</span> Instagram
-                    </a>
-                  )}
-                  {wa && (
-                    <a
-                      href={wa.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={socialButtonHero(corSecundaria)}
-                      title="WhatsApp"
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
-                    >
-                      <span style={{ fontSize: 14 }}>💬</span> WhatsApp
-                    </a>
-                  )}
-                </div>
+                <a
+                  href={insta.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={socialButtonHero(corSecundaria)}
+                  title="Instagram"
+                  onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
+                >
+                  <span style={{ fontSize: 14 }}>📷</span> Instagram
+                </a>
               );
             }
-            // Fallback: botão de reserva antigo
+            // Fallback: botão de reserva antigo (rola pra seção)
             if (cfg.features.hasReservas) {
               return (
                 <a href="#reservas" style={primaryButton(corSecundaria)}>
