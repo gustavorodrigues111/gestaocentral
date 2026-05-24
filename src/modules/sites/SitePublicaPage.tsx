@@ -8,8 +8,13 @@ import { db } from "../../core/firebase/config";
 import type { SiteConfig } from "../../core/types";
 import { SiteRenderer } from "./templates/SiteRenderer";
 
-export function SitePublicaPage() {
-  const { slug } = useParams<{ slug: string }>();
+// slugFromHost: opcional, usado quando o site é acessado via domínio
+// próprio (ex: lobozo.com.br) — a gente já sabe qual restaurante é
+// pelo host e não precisa do path /site/<slug>. Tem prioridade sobre
+// o param da URL.
+export function SitePublicaPage({ slugFromHost }: { slugFromHost?: string }) {
+  const params = useParams<{ slug: string }>();
+  const slug = slugFromHost || params.slug;
   const [config, setConfig] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<"nao_encontrado" | "nao_publicado" | "" >("");

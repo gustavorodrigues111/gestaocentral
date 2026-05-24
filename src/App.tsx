@@ -36,6 +36,7 @@ import { ReservasPublicaPage } from "./modules/sites/ReservasPublicaPage";
 import { PoliticaPrivacidadePage } from "./modules/sites/PoliticaPrivacidadePage";
 import { ExcluirDadosPage } from "./modules/sites/ExcluirDadosPage";
 import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
+import { getSlugFromHost } from "./modules/sites/shared/customDomain";
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
@@ -211,9 +212,14 @@ function App() {
   );
 }
 
-// Root domain (planejamento.app, www.planejamento.app) → tela de boas-vindas
-// que pede o subdomínio do restaurante. Outros hosts → app normal.
+// Resolução do host raiz:
+//   1) Domínio próprio de restaurante (lobozo.com.br, etc) → SitePublicaPage
+//      direto, sem precisar de path /site/<slug>.
+//   2) planejamento.app / www.planejamento.app → tela de boas-vindas.
+//   3) admin.planejamento.app (ou qualquer outro) → app normal (login admin).
 function RootOrShell() {
+  const slugDoHost = getSlugFromHost();
+  if (slugDoHost) return <SitePublicaPage slugFromHost={slugDoHost} />;
   if (isWelcomePageHost()) return <WelcomePage />;
   return <ProtectedShell />;
 }
