@@ -54,9 +54,12 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
     return () => { links.forEach(l => l.remove()); };
   }, []);
 
+  // Hero: cor sólida primária ou imagem com overlay escuro neutro
+  // (overlay preto preserva qualquer cor da imagem, ao contrário do verde
+  // que tava antes que dava muddy).
   const heroBg = cfg.heroImagemUrl
-    ? `linear-gradient(rgba(15,40,20,0.55), rgba(15,40,20,0.75)), url(${cfg.heroImagemUrl}) center/cover`
-    : `linear-gradient(135deg, ${corPrimaria}, #0d3315)`;
+    ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.65)), url(${cfg.heroImagemUrl}) center/cover`
+    : corPrimaria;
 
   const grupos = agruparHorarios(cfg.horarios);
   const excecoes = proximasExcecoes(cfg.excecoes, 3);

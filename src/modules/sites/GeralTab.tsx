@@ -344,28 +344,51 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
       {/* TEMA */}
       <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-          Tema visual
-        </h3>
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+            Tema visual
+          </h3>
+          {!inputDisabled && (
+            <button
+              type="button"
+              onClick={() => {
+                if (!confirm("Limpar todas as customizações do tema? O site volta ao visual padrão do template selecionado.")) return;
+                setForm(f => f ? {
+                  ...f,
+                  tema: {
+                    corPrimaria: "", corSecundaria: "", corFundo: "", corTexto: "",
+                    fonteHeading: "", fonteCorpo: "", raioBorda: "",
+                  },
+                } : f);
+              }}
+              className="text-xs text-indigo-600 hover:underline"
+            >
+              ↺ usar padrão do template
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Sobrescreve as cores/fontes definidas pelo template. Campos vazios = template decide.
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ColorInput label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={inputDisabled} />
-          <ColorInput label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={inputDisabled} />
-          <ColorInput label="Cor de fundo" value={form.tema.corFundo || "#ffffff"} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
-          <ColorInput label="Cor de texto" value={form.tema.corTexto || "#1a1a1a"} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Fonte heading (CSS font-family)"
             value={form.tema.fonteHeading || ""}
             onChange={(e) => atualizarTema("fonteHeading", e.target.value)}
-            placeholder="ex: 'Playfair Display', serif"
+            placeholder="(padrão do template)"
             disabled={inputDisabled}
           />
           <Input
             label="Fonte corpo (CSS font-family)"
             value={form.tema.fonteCorpo || ""}
             onChange={(e) => atualizarTema("fonteCorpo", e.target.value)}
-            placeholder="ex: 'Inter', sans-serif"
+            placeholder="(padrão do template)"
             disabled={inputDisabled}
           />
         </div>
@@ -687,6 +710,48 @@ function ColorInput({ label, value, onChange, disabled }: {
           disabled={disabled}
           className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-mono tabular-nums"
         />
+      </div>
+    </div>
+  );
+}
+
+// ColorInput com suporte a valor vazio (usa "padrão do template")
+// e botão pra limpar e voltar ao default.
+function ColorInputComLimpar({ label, value, onChange, disabled }: {
+  label: string; value: string; onChange: (v: string) => void; disabled?: boolean;
+}) {
+  const vazio = !value || !value.trim();
+  return (
+    <div>
+      <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+        {label}
+      </label>
+      <div className="mt-1 flex items-center gap-1.5">
+        <input
+          type="color"
+          value={value || "#888888"}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={disabled}
+          className={`w-9 h-9 rounded border border-gray-300 dark:border-gray-700 cursor-pointer disabled:opacity-50 ${vazio ? "opacity-40" : ""}`}
+        />
+        <input
+          type="text"
+          value={value || ""}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="(template)"
+          disabled={disabled}
+          className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-mono tabular-nums"
+        />
+        {!disabled && !vazio && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            title="Limpar (voltar pro padrão do template)"
+            className="text-xs text-gray-400 hover:text-rose-600 px-1"
+          >
+            ✕
+          </button>
+        )}
       </div>
     </div>
   );
