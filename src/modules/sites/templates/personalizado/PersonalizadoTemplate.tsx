@@ -176,8 +176,16 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       rel="noreferrer"
                       style={socialButtonHero(corSecundaria, corFundo)}
                       title="Instagram"
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+                        e.currentTarget.style.borderColor = `${corFundo}80`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.borderColor = `${corFundo}40`;
+                      }}
                     >
-                      <span style={{ fontSize: 18 }}>📷</span> Instagram
+                      <span style={{ fontSize: 14 }}>📷</span> Instagram
                     </a>
                   )}
                   {wa && (
@@ -187,8 +195,16 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       rel="noreferrer"
                       style={socialButtonHero(corSecundaria, corFundo)}
                       title="WhatsApp"
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
+                        e.currentTarget.style.borderColor = `${corFundo}80`;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = "transparent";
+                        e.currentTarget.style.borderColor = `${corFundo}40`;
+                      }}
                     >
-                      <span style={{ fontSize: 18 }}>💬</span> WhatsApp
+                      <span style={{ fontSize: 14 }}>💬</span> WhatsApp
                     </a>
                   )}
                 </div>
@@ -559,26 +575,24 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     };
   }
 
-  // Botão social pro hero (Instagram, WhatsApp). Outline elegante:
-  // border na cor secundária, fundo translúcido, texto claro pro hero
-  // escuro funcionar bem com qualquer cor primária.
+  // Botão social pro hero (Instagram, WhatsApp). Estilo minimalista:
+  // border bem fina, sem uppercase, sem letterspacing — convite
+  // discreto, não comando.
   function socialButtonHero(cor: string, fundoTexto: string): React.CSSProperties {
+    void cor;
     return {
       display: "inline-flex",
       alignItems: "center",
-      gap: 8,
-      padding: "12px 24px",
-      backgroundColor: "rgba(255,255,255,0.1)",
+      gap: 6,
+      padding: "8px 18px",
+      backgroundColor: "transparent",
       color: fundoTexto,
       textDecoration: "none",
       fontSize: 14,
-      fontWeight: 600,
-      letterSpacing: "0.05em",
-      textTransform: "uppercase",
+      fontWeight: 400,
       borderRadius: 999,
-      border: `1.5px solid ${cor}`,
-      backdropFilter: "blur(4px)",
-      transition: "background-color 0.2s",
+      border: `1px solid ${fundoTexto}40`,
+      transition: "border-color 0.2s, background-color 0.2s",
     };
   }
 }
