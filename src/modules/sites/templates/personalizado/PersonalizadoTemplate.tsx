@@ -247,6 +247,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 <NavLink href="#horario" cor={corTexto}>Horário</NavLink>
                 {cfg.features.hasLaje && <NavLink href="#laje" cor={corTexto}>Laje</NavLink>}
                 {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`} cor={corTexto}>Reservas</NavLink>}
+                {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && <NavLink href="#delivery" cor={corTexto}>Delivery</NavLink>}
                 <NavLink href="#contato" cor={corTexto}>Contato</NavLink>
               </nav>
             );
@@ -281,6 +282,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               {cfg.features.hasReservas && (
                 <MobileMenuLink href={`/reservas/${cfg.restaurantId}`} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                   Reservas
+                </MobileMenuLink>
+              )}
+              {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && (
+                <MobileMenuLink href="#delivery" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Delivery
                 </MobileMenuLink>
               )}
               <MobileMenuLink href="#contato" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
