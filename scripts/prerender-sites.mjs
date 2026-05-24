@@ -12,16 +12,15 @@
 // Custom domains (lobozo.com.br) são roteados pra esses HTMLs via
 // vercel.json rewrites.
 //
-// Credenciais: lê FIREBASE_SERVICE_ACCOUNT do ambiente (JSON string).
-// No Vercel, configurar como secret env var.
-// Local: criar .env.local ou exportar FIREBASE_SERVICE_ACCOUNT antes
-// de rodar `npm run build`.
+// USA Firestore REST API com API KEY pública — não precisa de service
+// account (algumas orgs Google Cloud bloqueiam criação de chaves de
+// service account via policy). A API key é a mesma usada pelo cliente
+// web (VITE_FIREBASE_API_KEY) — é pública por design, e a leitura
+// respeita as Firestore Rules (sitesConfig já tem read público).
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,35 +31,20 @@ const TEMPLATE_HTML = path.join(DIST_DIR, "index.html");
 async function main() {
   console.log("[prerender-sites] iniciando...");
 
-  // Sem FIREBASE_SERVICE_ACCOUNT, o prerender é NO-OP gracioso — não
-  // bloqueia o build. Site funciona como SPA puro (renderiza client-side
-  // após query no Firestore). Isso permite:
-  //   - Build no Vercel funcionar antes do user configurar o secret
-  //   - Build local em dev sem precisar de service account
-  // Pra ATIVAR o SSG, define FIREBASE_SERVICE_ACCOUNT no Vercel env vars
-  // (Settings → Environment Variables) com o JSON inteiro da chave.
-  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!serviceAccountJson) {
-    console.log("[prerender-sites] FIREBASE_SERVICE_ACCOUNT ausente — pulando SSG (build segue como SPA puro)");
+  // Lê env (Vite expõe com prefixo VITE_ no client, mas no build server
+  // estão disponíveis sem prefixo no process.env).
+  const projectId =
+    process.env.VITE_FIREBASE_PROJECT_ID ||
+    process.env.FIREBASE_PROJECT_ID ||
+    "gestaocentral-85b13";
+  const apiKey =
+    process.env.VITE_FIREBASE_API_KEY ||
+    process.env.FIREBASE_API_KEY;
+
+  if (!apiKey) {
+    console.log("[prerender-sites] VITE_FIREBASE_API_KEY ausente — pulando SSG (build segue como SPA puro)");
     return;
   }
-
-  // Inicializa Firebase Admin SDK só com a service account do env.
-  // Não tentamos applicationDefault() porque no Vercel ele não funciona
-  // (sem gcloud configurado) e o erro só aparece quando vamos consultar.
-  if (getApps().length === 0) {
-    try {
-      const credentials = JSON.parse(serviceAccountJson);
-      initializeApp({ credential: cert(credentials) });
-      console.log("[prerender-sites] Firebase Admin inicializado");
-    } catch (e) {
-      console.error("[prerender-sites] FIREBASE_SERVICE_ACCOUNT mal formado:", e.message);
-      console.warn("[prerender-sites] pulando SSG — checa o JSON da service account no Vercel env");
-      return; // não bloqueia build
-    }
-  }
-
-  const db = getFirestore();
 
   // Carrega o template HTML uma vez
   let template;
@@ -71,23 +55,41 @@ async function main() {
     throw e;
   }
 
-  // Busca todos os sitesConfig publicados
-  const snap = await db.collection("sitesConfig").where("publicado", "==", true).get();
-  console.log(`[prerender-sites] ${snap.size} site(s) publicado(s) encontrado(s)`);
+  // Busca todos os sitesConfig via Firestore REST API.
+  // Rules permitem read público em sitesConfig, então API key basta.
+  const restUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/sitesConfig?key=${apiKey}&pageSize=100`;
+  const res = await fetch(restUrl);
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.warn(`[prerender-sites] Firestore REST falhou (HTTP ${res.status}): ${errorText.slice(0, 200)}`);
+    console.warn("[prerender-sites] pulando SSG (build segue como SPA puro)");
+    return;
+  }
+
+  const restData = await res.json();
+  const docs = restData.documents || [];
+  console.log(`[prerender-sites] ${docs.length} doc(s) em sitesConfig`);
 
   let gerados = 0;
-  for (const doc of snap.docs) {
-    const data = doc.data();
+  for (const doc of docs) {
+    // doc.name = "projects/.../databases/.../documents/sitesConfig/<docId>"
+    const docId = doc.name.split("/").pop();
+    const data = parseFirestoreFields(doc.fields || {});
+
+    if (!data.publicado) {
+      console.log(`[prerender-sites] - ${docId} (slug=${data.slug || "?"}) não publicado — pulando`);
+      continue;
+    }
+
     const slug = data.slug;
     if (!slug || typeof slug !== "string") {
-      console.warn(`[prerender-sites] doc ${doc.id} sem slug — pulando`);
+      console.warn(`[prerender-sites] doc ${docId} sem slug — pulando`);
       continue;
     }
 
     // Sanitiza JSON pra inline no script tag (escapa </ pra evitar XSS-like)
-    // O JSON.stringify já cuida da maior parte; só precisamos do </
-    const dataJson = JSON.stringify({ id: doc.id, ...data })
-      .replace(/</g, "\\u003c");
+    const fullData = { id: docId, ...data };
+    const dataJson = JSON.stringify(fullData).replace(/</g, "\\u003c");
 
     // Constrói meta tags pra SEO + social preview
     const restNome = data.metaTitulo || slug;
@@ -105,16 +107,13 @@ async function main() {
       ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : "",
       `<meta property="og:type" content="website" />`,
       `<meta name="twitter:card" content="summary_large_image" />`,
-      // Site config injetado pro client picar
       `<script id="__site_config__">window.__SITE_CONFIG__ = ${dataJson};</script>`,
     ].filter(Boolean).join("\n    ");
 
-    // Substitui o <title> padrão e injeta as tags antes do </head>
     let html = template
       .replace(/<title>[^<]*<\/title>/, "")
       .replace(/<\/head>/, `${headInjections}\n  </head>`);
 
-    // Escreve em dist/site/<slug>/index.html (rota /site/<slug>)
     const outDir = path.join(DIST_DIR, "site", slug);
     await fs.mkdir(outDir, { recursive: true });
     await fs.writeFile(path.join(outDir, "index.html"), html, "utf8");
@@ -125,9 +124,35 @@ async function main() {
   console.log(`[prerender-sites] concluído — ${gerados} HTML(s) gerado(s)`);
 }
 
-// Escape HTML pra atributos de meta tags. Cobre o caso comum sem usar
-// dependência externa. Note: o JSON do __SITE_CONFIG__ não passa por aqui
-// — já é stringificado e o `<` cobre o </
+// Converte a estrutura "fields" do Firestore REST API pra objeto JS normal.
+// Cada campo vem como { stringValue, integerValue, booleanValue, mapValue,
+// arrayValue, ... } dependendo do tipo. Recursivo pra mapValue/arrayValue.
+function parseFirestoreFields(fields) {
+  const result = {};
+  for (const [key, val] of Object.entries(fields)) {
+    result[key] = parseFirestoreValue(val);
+  }
+  return result;
+}
+
+function parseFirestoreValue(val) {
+  if (!val || typeof val !== "object") return val;
+  if ("stringValue" in val) return val.stringValue;
+  if ("integerValue" in val) return parseInt(val.integerValue, 10);
+  if ("doubleValue" in val) return val.doubleValue;
+  if ("booleanValue" in val) return val.booleanValue;
+  if ("nullValue" in val) return null;
+  if ("timestampValue" in val) return val.timestampValue;
+  if ("mapValue" in val) return parseFirestoreFields(val.mapValue.fields || {});
+  if ("arrayValue" in val) {
+    return (val.arrayValue.values || []).map(parseFirestoreValue);
+  }
+  if ("referenceValue" in val) return val.referenceValue;
+  // Tipo desconhecido — devolve o objeto original pra debug
+  return val;
+}
+
+// Escape HTML pra atributos de meta tags
 function escapeHtml(s) {
   return String(s)
     .replace(/&/g, "&amp;")
@@ -139,9 +164,8 @@ function escapeHtml(s) {
 
 // Engole qualquer erro inesperado pra NÃO BLOQUEAR o build do Vercel.
 // SSG é optimization, não requirement — site funciona como SPA puro
-// se o prerender falhar. Erro fica visível no log do Vercel pra debug.
+// se o prerender falhar.
 main().catch((e) => {
   console.error("[prerender-sites] falhou (build continua sem SSG):", e);
-  // Saída 0 deliberada — não derruba build.
   process.exit(0);
 });
