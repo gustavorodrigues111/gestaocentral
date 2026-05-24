@@ -12,7 +12,7 @@ const TAMANHO_MAX_MB = 5;
 
 type Props = {
   rid: string;
-  tipo: "logo" | "hero";
+  tipo: "logo" | "hero" | "favicon";
   label: string;
   descricao: string;
   url: string;

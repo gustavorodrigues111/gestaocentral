@@ -39,6 +39,24 @@ function getInjectedConfig(slug: string | undefined): SiteConfig | null {
   return injected;
 }
 
+// Atualiza o <link rel="icon"> com o favicon do restaurante. Se cfg
+// não tem faviconUrl, usa logoUrl como fallback (browsers renderizam
+// PNG/JPG como favicon sem problema). Se nada disponível, deixa o
+// favicon padrão do projeto (/favicon.svg).
+function atualizarFavicon(cfg: SiteConfig | null) {
+  if (typeof document === "undefined") return;
+  const url = cfg?.faviconUrl || cfg?.logoUrl;
+  if (!url) return;
+  // Remove TODOS os links de icon antigos (incluindo o /favicon.svg
+  // hardcoded no index.html). Sem isso, o browser pode preferir o
+  // primeiro em vez do dinâmico.
+  document.querySelectorAll('link[rel~="icon"]').forEach(el => el.remove());
+  const link = document.createElement("link");
+  link.rel = "icon";
+  link.href = url;
+  document.head.appendChild(link);
+}
+
 // slugFromHost: opcional, usado quando o site é acessado via domínio
 // próprio (ex: lobozo.com.br) — a gente já sabe qual restaurante é
 // pelo host e não precisa do path /site/<slug>. Tem prioridade sobre
@@ -52,6 +70,14 @@ export function SitePublicaPage({ slugFromHost }: { slugFromHost?: string }) {
   const [config, setConfig] = useState<SiteConfig | null>(injectedInicial);
   const [loading, setLoading] = useState(!injectedInicial);
   const [erro, setErro] = useState<"nao_encontrado" | "nao_publicado" | "" >("");
+
+  // Sempre que config muda (injetado, JSON, Firestore), atualiza favicon
+  // e title. Concentrado num único effect — mais simples que duplicar
+  // setDocumentTitle/Favicon em cada caminho de fetch.
+  useEffect(() => {
+    if (!config) return;
+    atualizarFavicon(config);
+  }, [config]);
 
   useEffect(() => {
     if (!slug) return;

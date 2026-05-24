@@ -771,7 +771,8 @@ export function ReservasPublicaPage() {
                       onClick={() => { setData(d.data); setSlotHorario(""); setSalaoId(""); }}
                       style={{
                         flex: "1 1 calc(33.33% - 8px)",   // 3 chips por linha (6 = 2 linhas de 3)
-                        minWidth: 78, maxWidth: 140,
+                        minWidth: 78,
+                        // Sem maxWidth — preenche a largura do form igual outros campos
                         padding: "10px 14px",
                         borderRadius: 12,
                         border: `1px solid ${ativo ? corPrimaria : "#d1d5db"}`,
@@ -803,13 +804,12 @@ export function ReservasPublicaPage() {
                 })}
               </div>
             )}
-            {/* Date picker como fallback pra qualquer data dentro da janela.
-                Visualmente é um botão estilizado igual aos chips — clica,
-                abre o picker nativo do device via showPicker(). Mantém
-                consistência visual e funciona bem em iOS/Android/desktop.
-
-                O <input type="date"> fica ESCONDIDO, só serve como handle
-                pra disparar o picker (showPicker é o método W3C oficial). */}
+            {/* Date picker fallback — pattern <label> com input invisível
+                por cima do conteúdo visual. Click anywhere na área cai
+                NO INPUT (que está com opacity:0 mas pointerEvents:auto),
+                que dispara o picker nativo do device. Mais confiável que
+                showPicker() programático — funciona em todo iOS, Android,
+                Chrome, Firefox, Safari desktop. */}
             {(() => {
               const dataEhDeUmChip = diasDisponiveis.some(d => d.data === data);
               const labelBotao = data && !dataEhDeUmChip
@@ -820,50 +820,33 @@ export function ReservasPublicaPage() {
                 d.setDate(d.getDate() + janelaDias);
                 return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
               })();
+              const ativo = data && !dataEhDeUmChip;
               return (
-                <div style={{ marginTop: 12, position: "relative" }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const input = dateInputRef.current;
-                      if (!input) return;
-                      // showPicker() é o método W3C oficial pra abrir o picker
-                      // nativo programaticamente. Disponível em todos os
-                      // browsers modernos. Fallback: focus dispara em iOS.
-                      try {
-                        if (typeof input.showPicker === "function") {
-                          input.showPicker();
-                        } else {
-                          input.click();
-                        }
-                      } catch {
-                        input.click();
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "12px 16px",
-                      borderRadius: 12,
-                      border: `1px solid ${data && !dataEhDeUmChip ? corPrimaria : "#d1d5db"}`,
-                      backgroundColor: data && !dataEhDeUmChip ? `${corPrimaria}10` : "#fff",
-                      color: data && !dataEhDeUmChip ? corPrimaria : "#666",
-                      fontSize: 14,
-                      cursor: "pointer",
-                      textAlign: "left",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      transition: "background-color 0.15s, border-color 0.15s",
-                    }}
-                  >
-                    <span style={{ fontSize: 16 }}>📅</span>
-                    <span>{labelBotao}</span>
-                  </button>
-                  {/* Input escondido — recebe o click do showPicker(). Não
-                      usa display:none porque alguns browsers ignoram
-                      showPicker() em inputs hidden. Posição absoluta +
-                      opacity:0 + pointer-events:none = invisível e não
-                      capturável, mas funcional pra API. */}
+                <label
+                  style={{
+                    marginTop: 12,
+                    position: "relative",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    width: "100%",
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: `1px solid ${ativo ? corPrimaria : "#d1d5db"}`,
+                    backgroundColor: ativo ? `${corPrimaria}10` : "#fff",
+                    color: ativo ? corPrimaria : "#666",
+                    fontSize: 14,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "background-color 0.15s, border-color 0.15s",
+                    overflow: "hidden",
+                  }}
+                >
+                  <span style={{ fontSize: 16, pointerEvents: "none" }}>📅</span>
+                  <span style={{ pointerEvents: "none" }}>{labelBotao}</span>
+                  {/* Input invisível em cima — recebe o tap e abre native picker.
+                      opacity:0 + width/height 100% absoluto = botão "fantasma"
+                      que captura cliques. cursor:pointer pra UX consistente. */}
                   <input
                     ref={dateInputRef}
                     type="date"
@@ -874,14 +857,18 @@ export function ReservasPublicaPage() {
                     style={{
                       position: "absolute",
                       inset: 0,
+                      width: "100%",
+                      height: "100%",
                       opacity: 0,
-                      pointerEvents: "none",
-                      width: "100%", height: "100%",
+                      cursor: "pointer",
+                      border: "none",
+                      padding: 0,
+                      background: "transparent",
+                      // Tamanho > 0 importante pra iOS reconhecer como interativo
+                      fontSize: 16,
                     }}
-                    tabIndex={-1}
-                    aria-hidden
                   />
-                </div>
+                </label>
               );
             })()}
           </FormField>

@@ -232,6 +232,15 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           onChange={(v) => atualizar("heroImagemUrl", v)}
           disabled={inputDisabled}
         />
+        <UploadImagem
+          rid={rid}
+          tipo="favicon"
+          label="Favicon (ícone da aba do navegador)"
+          descricao="Imagem pequena que aparece na aba do navegador e nos favoritos. Quadrada, idealmente 32×32 ou 64×64 pixels. Se vazio, o navegador usa um padrão."
+          url={form.faviconUrl || ""}
+          onChange={(v) => atualizar("faviconUrl", v)}
+          disabled={inputDisabled}
+        />
       </section>
 
       {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
