@@ -459,40 +459,37 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           laje: () => (cfg.features.hasLaje && cfg.features.hasEventos) ? {
             titulo: t("lajeTitulo", "Eventos na Laje"),
             conteudo: (
-              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
-                  {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
-                </p>
-                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("lajeCtaLabel", "Solicitar proposta")}
-                </Link>
-              </div>
+              <CtaConteudo
+                texto={t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
+                ctaTo={`/eventos/${cfg.restaurantId}`}
+                ctaLabel={t("lajeCtaLabel", "Solicitar proposta")}
+                primaryButton={primaryButton}
+                corPrimaria={corPrimaria}
+              />
             ),
           } : null,
           eventos: () => (cfg.features.hasEventos && !cfg.features.hasLaje) ? {
             titulo: t("eventosTitulo", "Eventos privados"),
             conteudo: (
-              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
-                  {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
-                </p>
-                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("eventosCtaLabel", "Solicitar proposta")}
-                </Link>
-              </div>
+              <CtaConteudo
+                texto={t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
+                ctaTo={`/eventos/${cfg.restaurantId}`}
+                ctaLabel={t("eventosCtaLabel", "Solicitar proposta")}
+                primaryButton={primaryButton}
+                corPrimaria={corPrimaria}
+              />
             ),
           } : null,
           reservas: () => cfg.features.hasReservas ? {
             titulo: t("reservasTitulo", "Reservas"),
             conteudo: (
-              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
-                  {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
-                </p>
-                <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("reservasCtaLabel", "Reservar mesa")}
-                </Link>
-              </div>
+              <CtaConteudo
+                texto={t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
+                ctaTo={`/reservas/${cfg.restaurantId}`}
+                ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
+                primaryButton={primaryButton}
+                corPrimaria={corPrimaria}
+              />
             ),
           } : null,
           delivery: () => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? {
@@ -510,14 +507,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           trabalhe: () => cfg.features.hasTrabalheConosco ? {
             titulo: t("trabalheTitulo", "Venha trabalhar com a gente"),
             conteudo: (
-              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
-                  {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
-                </p>
-                <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("trabalheCtaLabel", "Enviar candidatura")}
-                </Link>
-              </div>
+              <CtaConteudo
+                texto={t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
+                ctaTo={`/trabalhe/${cfg.restaurantId}`}
+                ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
+                primaryButton={primaryButton}
+                corPrimaria={corPrimaria}
+              />
             ),
           } : null,
           contato: () => {
@@ -669,35 +665,41 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           const bg = idxRenderizado % 2 === 0 ? corFundo : "#ffffff";
 
           if (!isMobile && b && ehPar(a.id, b.id)) {
+            // Cada coluna pareada vira flex-column. h2 fica no topo, o
+            // conteúdo cresce (flex:1) e o botão CTA dentro do conteúdo
+            // ganha marginTop:auto — assim os botões ficam alinhados no
+            // rodapé entre as 2 colunas mesmo com textos de tamanhos
+            // diferentes.
+            const colunaStyle: React.CSSProperties = {
+              display: "flex",
+              flexDirection: "column",
+            };
             nodes.push(
               <section key={`${a.id}-${b.id}`} id={`pair-${a.id}-${b.id}`} style={{
                 padding: "80px 20px", backgroundColor: bg,
               }}>
-                {/* Grid sem gap + linha divisória sólida no meio (separator
-                    visual). Cada coluna ganha seu próprio padding interno.
-                    "grid-template-columns: 1fr 1px 1fr" reserva 1px exato
-                    pra divisora — sem hack de margin negativa. */}
                 <div style={{
                   maxWidth: 1300, margin: "0 auto",
                   display: "grid",
                   gridTemplateColumns: "1fr 1px 1fr",
                   alignItems: "stretch",
                 }}>
-                  <div id={a.id} style={{ paddingRight: 48 }}>
+                  <div id={a.id} style={{ ...colunaStyle, paddingRight: 48 }}>
                     <h2 style={tituloSectionStyle}>{a.titulo}</h2>
-                    {a.conteudo}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                      {a.conteudo}
+                    </div>
                   </div>
-                  {/* Divisora vertical — usa cor primária com opacity baixa
-                      (cor de destaque mas sutil). alignSelf stretch força
-                      a div esticar a altura inteira do row. */}
                   <div aria-hidden style={{
                     backgroundColor: corPrimaria,
                     opacity: 0.35,
                     alignSelf: "stretch",
                   }} />
-                  <div id={b.id} style={{ paddingLeft: 48 }}>
+                  <div id={b.id} style={{ ...colunaStyle, paddingLeft: 48 }}>
                     <h2 style={tituloSectionStyle}>{b.titulo}</h2>
-                    {b.conteudo}
+                    <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                      {b.conteudo}
+                    </div>
                   </div>
                 </div>
               </section>
@@ -1027,6 +1029,41 @@ function HistoriaExpansivel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CtaConteudo ──────────────────────────────────────────────────────
+// Conteúdo padrão das seções "texto + botão" (Reservas, Eventos, Laje,
+// Trabalhe). Estruturado como flex column com `flex: 1` + botão dentro de
+// container com `marginTop: auto` — assim os botões ficam alinhados no
+// rodapé quando essas seções entram em pares no desktop (mesmo com textos
+// de tamanhos diferentes).
+function CtaConteudo({
+  texto, ctaTo, ctaLabel, primaryButton, corPrimaria,
+}: {
+  texto: string;
+  ctaTo: string;
+  ctaLabel: string;
+  primaryButton: (cor: string) => React.CSSProperties;
+  corPrimaria: string;
+}) {
+  return (
+    <div style={{
+      maxWidth: 600, margin: "0 auto", textAlign: "center",
+      display: "flex", flexDirection: "column",
+      flex: 1,
+      width: "100%",
+    }}>
+      <p style={{
+        fontSize: 17, lineHeight: 1.7,
+        marginBottom: 24, whiteSpace: "pre-wrap",
+      }}>
+        {texto}
+      </p>
+      <div style={{ marginTop: "auto" }}>
+        <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>
+      </div>
     </div>
   );
 }
