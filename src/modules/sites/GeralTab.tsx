@@ -686,6 +686,7 @@ function TextosSection({ form, setForm, disabled }: {
 
   // Definição dos campos por grupo (ordem = ordem no site).
   // "fromTop" = campo está em SiteConfig.slogan / .historia (não em .textos).
+  // "acao" = pra campos CTA, descreve o que o botão faz quando clicado.
   type Campo = {
     chave?: keyof NonNullable<SiteConfig["textos"]>;
     fromTop?: "slogan" | "historia";
@@ -693,6 +694,7 @@ function TextosSection({ form, setForm, disabled }: {
     placeholder: string;
     longo?: boolean;
     dica?: string;
+    acao?: string;
   };
   const grupos: { titulo: string; campos: Campo[] }[] = [
     {
@@ -701,7 +703,9 @@ function TextosSection({ form, setForm, disabled }: {
         { fromTop: "slogan",      label: "Slogan / tagline (acima do título)", placeholder: "ex: laboratório gastronômico" },
         { chave: "heroTitulo",    label: "Título do hero", placeholder: "ex: Cozinha caipira,\\nfeita com tempo.", longo: true, dica: "Use \\n pra quebra de linha" },
         { chave: "heroSubtitulo", label: "Subtítulo", placeholder: "Texto curto abaixo do título", longo: true },
-        { chave: "heroCtaLabel",  label: "Botão de CTA", placeholder: "Faça sua reserva" },
+        { chave: "heroCtaLabel",  label: "Botão CTA do Hero",
+          placeholder: "Faça sua reserva",
+          acao: "→ rola até a seção Reservas" },
       ],
     },
     {
@@ -729,7 +733,9 @@ function TextosSection({ form, setForm, disabled }: {
       campos: [
         { chave: "lajeTitulo",    label: "Título", placeholder: "Eventos na Laje" },
         { chave: "lajeTexto",     label: "Texto", placeholder: "Descreva o espaço da laje", longo: true },
-        { chave: "lajeCtaLabel",  label: "Botão CTA", placeholder: "Solicitar proposta" },
+        { chave: "lajeCtaLabel",  label: "Botão CTA da Laje",
+          placeholder: "Solicitar proposta",
+          acao: "→ abre formulário público de eventos (/eventos/:rid)" },
       ],
     },
     {
@@ -737,7 +743,9 @@ function TextosSection({ form, setForm, disabled }: {
       campos: [
         { chave: "eventosTitulo",   label: "Título", placeholder: "Eventos privados" },
         { chave: "eventosTexto",    label: "Texto", placeholder: "Descreva sua oferta", longo: true },
-        { chave: "eventosCtaLabel", label: "Botão CTA", placeholder: "Solicitar proposta" },
+        { chave: "eventosCtaLabel", label: "Botão CTA de Eventos",
+          placeholder: "Solicitar proposta",
+          acao: "→ abre formulário público de eventos (/eventos/:rid)" },
       ],
     },
     {
@@ -745,7 +753,9 @@ function TextosSection({ form, setForm, disabled }: {
       campos: [
         { chave: "reservasTitulo",   label: "Título", placeholder: "Reservas" },
         { chave: "reservasTexto",    label: "Texto", placeholder: "Política de reserva", longo: true },
-        { chave: "reservasCtaLabel", label: "Botão CTA", placeholder: "💬 Reservar pelo WhatsApp" },
+        { chave: "reservasCtaLabel", label: "Botão CTA de Reservas",
+          placeholder: "💬 Reservar pelo WhatsApp",
+          acao: "→ abre WhatsApp com o telefone configurado (ou a rede social do tipo whatsapp)" },
       ],
     },
     {
@@ -759,7 +769,9 @@ function TextosSection({ form, setForm, disabled }: {
       campos: [
         { chave: "trabalheTitulo",   label: "Título", placeholder: "Venha trabalhar com a gente" },
         { chave: "trabalheTexto",    label: "Texto", placeholder: "Conta sobre as oportunidades", longo: true },
-        { chave: "trabalheCtaLabel", label: "Botão CTA", placeholder: "Enviar candidatura" },
+        { chave: "trabalheCtaLabel", label: "Botão CTA de Trabalhe",
+          placeholder: "Enviar candidatura",
+          acao: "→ abre formulário público de candidatura (/trabalhe/:rid)" },
       ],
     },
     {
@@ -811,8 +823,13 @@ function TextosSection({ form, setForm, disabled }: {
                   const key = c.chave || c.fromTop || c.label;
                   return (
                     <div key={key}>
-                      <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500">
-                        {c.label}
+                      <label className="text-[10px] uppercase font-bold tracking-wider text-gray-500 flex items-center gap-2 flex-wrap">
+                        <span>{c.label}</span>
+                        {c.acao && (
+                          <span className="text-[10px] normal-case font-normal tracking-normal text-indigo-600 dark:text-indigo-400">
+                            {c.acao}
+                          </span>
+                        )}
                       </label>
                       {c.longo ? (
                         <textarea
