@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
-import { agruparHorarios, formatarDataCurta, proximasExcecoes } from "../../shared/horarioUtils";
+import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink } from "../../shared/enderecoUtils";
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
