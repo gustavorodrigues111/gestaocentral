@@ -7,7 +7,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -18,6 +18,7 @@ import { AdmissaoConfig } from "./AdmissaoConfig";
 import { CandidaturasTab } from "./CandidaturasTab";
 import type { Restaurant } from "../../core/types";
 import { canConfigurar } from "../../core/auth/permissions";
+import { TabBadge } from "../../core/ui/TabBadge";
 
 type TabId = "lista" | "kanban" | "candidaturas" | "config";
 
@@ -48,6 +49,45 @@ export function AdmissaoPage() {
   const podeConfig = canConfigurar(me, rid, "admissao");
 
   const [tab, setTab] = useState<TabId>("lista");
+
+  // Contagens pra badges nas tabs:
+  // - Lista/Kanban: admissões ainda em curso (não concluídas/canceladas)
+  // - Candidaturas: candidaturas com status "nova" (recém recebidas)
+  const [countAdmissoesAtivas, setCountAdmissoesAtivas] = useState(0);
+  const [countCandidaturasNovas, setCountCandidaturasNovas] = useState(0);
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = onSnapshot(
+      query(collection(db, "admissoes"), where("restaurantId", "==", rid)),
+      (snap) => {
+        const ativas = snap.docs.filter(d => {
+          const s = (d.data() as { status?: string }).status;
+          return s && s !== "concluida" && s !== "cancelada";
+        }).length;
+        setCountAdmissoesAtivas(ativas);
+      },
+    );
+    return () => unsub();
+  }, [rid]);
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = onSnapshot(
+      query(
+        collection(db, "candidaturasTrabalhe"),
+        where("restaurantId", "==", rid),
+        where("status", "==", "nova"),
+      ),
+      (snap) => setCountCandidaturasNovas(snap.size),
+    );
+    return () => unsub();
+  }, [rid]);
+
+  const badges: Record<TabId, number> = {
+    lista: countAdmissoesAtivas,
+    kanban: countAdmissoesAtivas,
+    candidaturas: countCandidaturasNovas,
+    config: 0,
+  };
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -87,6 +127,7 @@ export function AdmissaoPage() {
               }`}
             >
               {t.icon} {t.label}
+              <TabBadge count={badges[t.id]} />
             </button>
           );
         })}

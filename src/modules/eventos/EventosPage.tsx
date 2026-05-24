@@ -1,11 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse, canConfig } from "../../core/auth/permissions";
 import { EspacoConfigTab } from "./EspacoConfigTab";
 import { PacotesTab } from "./PacotesTab";
 import { KanbanTab } from "./KanbanTab";
+import { TabBadge } from "../../core/ui/TabBadge";
 
 type Tab = "kanban" | "pacotes" | "config";
 
@@ -23,6 +26,21 @@ export function EventosPage() {
   const podeConfigurar = canConfig(me, rid, "eventos");
 
   const [tab, setTab] = useState<Tab>("kanban");
+
+  // Badge "novos leads" no Kanban — leads com status "novo" precisam triagem
+  const [novosLeads, setNovosLeads] = useState(0);
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = onSnapshot(
+      query(
+        collection(db, "leadsEvento"),
+        where("restaurantId", "==", rid),
+        where("status", "==", "novo"),
+      ),
+      (snap) => setNovosLeads(snap.size),
+    );
+    return () => unsub();
+  }, [rid]);
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -57,7 +75,7 @@ export function EventosPage() {
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800">
-        <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban</TabButton>
+        <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban<TabBadge count={novosLeads} /></TabButton>
         <TabButton active={tab === "pacotes"} onClick={() => setTab("pacotes")}>📦 Pacotes</TabButton>
         {podeConfigurar && (
           <TabButton active={tab === "config"} onClick={() => setTab("config")}>⚙️ Configurações</TabButton>

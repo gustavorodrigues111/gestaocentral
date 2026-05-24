@@ -13,6 +13,7 @@ import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { MesasTab } from "./MesasTab";
 import { SaloesTab } from "./SaloesTab";
+import { TabBadge } from "../../core/ui/TabBadge";
 // JanelasTab agora vive no módulo "Horários" — não importa mais aqui.
 import type { Salao } from "../../core/types";
 
@@ -146,6 +147,16 @@ export function ReservasPage() {
       .slice(0, 50);
   }, [reservas, today]);
 
+  // Pendentes confirmação (reservas públicas que admin ainda não confirmou) —
+  // usado pra badge de notificação na tab "Próximas".
+  const pendentesConfirmacao = useMemo(() => {
+    return reservas.filter(r => r.data >= today && r.status === "pendente").length;
+  }, [reservas, today]);
+  // Pendentes do DIA atual — badge na agenda do dia
+  const pendentesDoDia = useMemo(() => {
+    return reservasDoDia.filter(r => r.status === "pendente").length;
+  }, [reservasDoDia]);
+
   // Histórico de canceladas + no-show — preserva o registro do cliente
   const canceladas = useMemo(() => {
     return reservas
@@ -237,13 +248,13 @@ export function ReservasPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["agenda",     `📅 Agenda do dia (${reservasDoDia.length})`],
-          ["proximas",   `⏰ Próximas (${proximas.length})`],
-          ["canceladas", `🗑 Canceladas (${canceladas.length})`],
-          ["clientes",   `👥 Clientes (${clientes.length})`],
-          ["saloes",     `🏛️ Salões (${saloes.filter(s => s.ativo).length})`],
-          ["mesas",      `🪑 Mesas (${mesas.filter(m => m.ativa).length})`],
-        ] as const).map(([id, label]) => (
+          ["agenda",     `📅 Agenda do dia (${reservasDoDia.length})`, pendentesDoDia],
+          ["proximas",   `⏰ Próximas (${proximas.length})`, pendentesConfirmacao],
+          ["canceladas", `🗑 Canceladas (${canceladas.length})`, 0],
+          ["clientes",   `👥 Clientes (${clientes.length})`, 0],
+          ["saloes",     `🏛️ Salões (${saloes.filter(s => s.ativo).length})`, 0],
+          ["mesas",      `🪑 Mesas (${mesas.filter(m => m.ativa).length})`, 0],
+        ] as const).map(([id, label, badge]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -254,6 +265,7 @@ export function ReservasPage() {
             }`}
           >
             {label}
+            <TabBadge count={badge} />
           </button>
         ))}
       </div>
