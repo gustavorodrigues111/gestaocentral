@@ -770,8 +770,10 @@ export function ReservasPublicaPage() {
             {/* Date picker como fallback pra qualquer data dentro da janela.
                 Aparece quando o cliente quer reservar fora dos 6 chips
                 (ex: aniversário em 60 dias). Limitado pela janela configurada. */}
-            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 12, color: "#666" }}>ou escolha outra data:</span>
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
+                ou escolha outra data:
+              </div>
               <input
                 type="date"
                 value={data}
@@ -783,7 +785,6 @@ export function ReservasPublicaPage() {
                 })()}
                 onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
                 className={fieldInputCls}
-                style={{ maxWidth: 180, flex: "0 1 auto" }}
               />
             </div>
           </FormField>
