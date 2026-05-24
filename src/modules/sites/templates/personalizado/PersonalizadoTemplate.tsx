@@ -158,11 +158,24 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: isMobile ? 32 : 36, width: "auto", display: "block" }} />
               : (cfg.slogan || cfg.slug)}
           </div>
-          {/* Cor adaptativa do menu: claro (corFundo) enquanto sobreposto à hero
-              escura; primária quando o header já está sólido. Transição suave. */}
+          {/* Menu/hamburger ganham um "chip" próprio com background creme +
+              blur. Assim o menu fica visível desde o topo (mesmo com o
+              header transparente sobre a hero escura), enquanto a logo do
+              header continua escondida até rolar. Quando o header já está
+              sólido, o chip se funde naturalmente. */}
           {(() => {
-            const menuCor = scrolled ? corPrimaria : corFundo;
-            const navCor = scrolled ? corTexto : corFundo;
+            // Estilo de pílula compartilhado entre nav e hamburger.
+            // Mais marcado quando o header está transparente, mais sutil quando sólido.
+            const chipBg = scrolled
+              ? "transparent"
+              : `${corFundo}d9`;             // ~85% opaco
+            const chipBorder = scrolled
+              ? "1px solid transparent"
+              : `1px solid ${corSecundaria}40`;
+            const chipBlur = scrolled ? "none" : "blur(6px)";
+            const chipTransition =
+              "background-color 0.25s ease, border-color 0.25s ease";
+
             if (isMobile) {
               return (
                 <button
@@ -170,47 +183,59 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   onClick={() => setMenuAberto(v => !v)}
                   aria-label={menuAberto ? "Fechar menu" : "Abrir menu"}
                   style={{
-                    background: "transparent",
-                    border: "none",
+                    background: chipBg,
+                    backdropFilter: chipBlur,
+                    border: chipBorder,
+                    borderRadius: 999,
                     padding: 8,
                     cursor: "pointer",
                     display: "flex", flexDirection: "column",
                     gap: 4,
-                    width: 36, height: 36,
+                    width: 40, height: 40,
                     alignItems: "center", justifyContent: "center",
-                    color: menuCor,
+                    color: corPrimaria,
+                    transition: chipTransition,
                   }}
                 >
                   {/* Hambúrguer estilizado: 3 barras → vira X quando aberto */}
                   <span style={{
                     display: "block", width: 22, height: 2,
-                    backgroundColor: menuCor,
-                    transition: "transform 0.2s, opacity 0.2s, background-color 0.25s ease",
+                    backgroundColor: corPrimaria,
+                    transition: "transform 0.2s, opacity 0.2s",
                     transform: menuAberto ? "translateY(6px) rotate(45deg)" : "none",
                   }} />
                   <span style={{
                     display: "block", width: 22, height: 2,
-                    backgroundColor: menuCor,
-                    transition: "opacity 0.2s, background-color 0.25s ease",
+                    backgroundColor: corPrimaria,
+                    transition: "opacity 0.2s",
                     opacity: menuAberto ? 0 : 1,
                   }} />
                   <span style={{
                     display: "block", width: 22, height: 2,
-                    backgroundColor: menuCor,
-                    transition: "transform 0.2s, background-color 0.25s ease",
+                    backgroundColor: corPrimaria,
+                    transition: "transform 0.2s",
                     transform: menuAberto ? "translateY(-6px) rotate(-45deg)" : "none",
                   }} />
                 </button>
               );
             }
             return (
-              <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
-                <NavLink href="#historia" cor={navCor}>Sobre</NavLink>
-                <NavLink href="#cardapio" cor={navCor}>Cardápio</NavLink>
-                <NavLink href="#horario" cor={navCor}>Horário</NavLink>
-                {cfg.features.hasLaje && <NavLink href="#laje" cor={navCor}>Laje</NavLink>}
-                {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`} cor={navCor}>Reservas</NavLink>}
-                <NavLink href="#contato" cor={navCor}>Contato</NavLink>
+              <nav style={{
+                display: "flex", gap: 4,
+                fontSize: 14, fontWeight: 500,
+                backgroundColor: chipBg,
+                backdropFilter: chipBlur,
+                border: chipBorder,
+                borderRadius: 999,
+                padding: "6px 12px",
+                transition: chipTransition,
+              }}>
+                <NavLink href="#historia" cor={corTexto}>Sobre</NavLink>
+                <NavLink href="#cardapio" cor={corTexto}>Cardápio</NavLink>
+                <NavLink href="#horario" cor={corTexto}>Horário</NavLink>
+                {cfg.features.hasLaje && <NavLink href="#laje" cor={corTexto}>Laje</NavLink>}
+                {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`} cor={corTexto}>Reservas</NavLink>}
+                <NavLink href="#contato" cor={corTexto}>Contato</NavLink>
               </nav>
             );
           })()}
@@ -689,8 +714,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       <a href={href} style={{
         color: cor ?? corTexto, textDecoration: "none",
         fontSize: 14, fontWeight: 500,
-        transition: "color 0.25s ease",
-      }}>{children}</a>
+        padding: "4px 10px",
+        borderRadius: 999,
+        transition: "color 0.25s ease, background-color 0.15s ease",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${corPrimaria}10`; }}
+      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+      >{children}</a>
     );
   }
 
