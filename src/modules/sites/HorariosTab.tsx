@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { ExcecaoHorarioSite, HorarioFuncionamentoDia, SiteConfig } from "../../core/types";
+import type {
+  ExcecaoHorarioSite, HorarioFuncionamentoDia, Salao,
+  SiteConfig, SlotReserva,
+} from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
 
 type Props = {
@@ -25,9 +30,38 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
+  // Salões ativos do restaurante — usado pra editar slots de reserva na
+  // exceção. Carrega assim que entra na aba (não exige hasReservas estar
+  // ligado pra carregar; só pra exibir a UI).
+  const [saloes, setSaloes] = useState<Salao[]>([]);
+  useEffect(() => {
+    const q = query(collection(db, "saloes"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, snap => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Salao)
+        .filter(s => s.ativo)
+        .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
+      setSaloes(list);
+    });
+    return () => unsub();
+  }, [rid]);
+  const hasReservasFeature = !!cfgRemoto?.features?.hasReservas;
+
   // Exceção sendo criada
-  const [nova, setNova] = useState<{ data: string; fechado: boolean; abre: string; fecha: string; motivo: string }>({
+  const [nova, setNova] = useState<{
+    data: string;
+    fechado: boolean;
+    abre: string;
+    fecha: string;
+    motivo: string;
+    // Reservas nessa data:
+    //  - "padrao"  → herda janela semanal (se fechado, sem reservas)
+    //  - "sem"     → sem reservas mesmo (slotsReservaCustom = [])
+    //  - "custom"  → usa slotsCustom definidos abaixo
+    reservaModo: "padrao" | "sem" | "custom";
+    slotsCustom: SlotReserva[];
+  }>({
     data: "", fechado: false, abre: "19:00", fecha: "23:00", motivo: "",
+    reservaModo: "padrao", slotsCustom: [],
   });
 
   useEffect(() => {
@@ -76,17 +110,66 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
       return;
     }
     if (!me) return;
+    // Resolve slotsReservaCustom conforme o modo escolhido pelo usuário
+    let slotsReservaCustom: SlotReserva[] | undefined;
+    if (nova.reservaModo === "sem") {
+      slotsReservaCustom = [];
+    } else if (nova.reservaModo === "custom") {
+      // Valida slots customizados
+      for (const s of nova.slotsCustom) {
+        if (!/^\d{2}:\d{2}$/.test(s.horario)) {
+          alert(`Horário de reserva inválido: "${s.horario || "(vazio)"}". Use HH:MM`);
+          return;
+        }
+        if (s.salaoIds.length === 0) {
+          alert(`Slot ${s.horario}: escolha pelo menos 1 salão.`);
+          return;
+        }
+      }
+      slotsReservaCustom = [...nova.slotsCustom].sort((a, b) => a.horario.localeCompare(b.horario));
+    }
     const ex: ExcecaoHorarioSite = {
       id: `exc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       data: nova.data,
       fechado: nova.fechado,
       turnos: nova.fechado ? undefined : [{ abre: nova.abre, fecha: nova.fecha }],
+      slotsReservaCustom,
       motivo: nova.motivo.trim() || undefined,
       criadoEm: new Date().toISOString(),
       criadoPor: me.id,
     };
     setExcecoes(es => [...es, ex].sort((a, b) => a.data.localeCompare(b.data)));
-    setNova({ data: "", fechado: false, abre: "19:00", fecha: "23:00", motivo: "" });
+    setNova({
+      data: "", fechado: false, abre: "19:00", fecha: "23:00", motivo: "",
+      reservaModo: "padrao", slotsCustom: [],
+    });
+  }
+
+  // Helpers pra editar slotsCustom da exceção nova
+  function addSlotCustom() {
+    setNova(n => ({
+      ...n,
+      slotsCustom: [...n.slotsCustom, { horario: "", salaoIds: saloes.map(s => s.id) }],
+    }));
+  }
+  function removerSlotCustom(idx: number) {
+    setNova(n => ({ ...n, slotsCustom: n.slotsCustom.filter((_, i) => i !== idx) }));
+  }
+  function updateSlotCustom(idx: number, patch: Partial<SlotReserva>) {
+    setNova(n => ({
+      ...n,
+      slotsCustom: n.slotsCustom.map((s, i) => i === idx ? { ...s, ...patch } : s),
+    }));
+  }
+  function toggleSalaoNoSlotCustom(idx: number, salaoId: string) {
+    setNova(n => ({
+      ...n,
+      slotsCustom: n.slotsCustom.map((s, i) => {
+        if (i !== idx) return s;
+        const ja = s.salaoIds.includes(salaoId);
+        return { ...s, salaoIds: ja ? s.salaoIds.filter(x => x !== salaoId) : [...s.salaoIds, salaoId] };
+      }),
+    }));
   }
   function delExcecao(id: string) {
     setExcecoes(es => es.filter(e => e.id !== id));
@@ -227,6 +310,110 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                 <Input label="Fecha" type="time" value={nova.fecha} onChange={(e) => setNova({ ...nova, fecha: e.target.value })} />
               </div>
             )}
+
+            {/* Bloco de RESERVAS na data — só aparece se feature ligada + tem salões */}
+            {hasReservasFeature && saloes.length > 0 && (
+              <div className="mt-3 p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800">
+                <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2">
+                  🎫 Reservas nessa data
+                </div>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {(["padrao", "sem", "custom"] as const).map(modo => {
+                    const ativo = nova.reservaModo === modo;
+                    const labels = {
+                      padrao: nova.fechado
+                        ? "Sem reservas (data fechada)"
+                        : "Usar horários padrão do dia da semana",
+                      sem: "Sem reservas nessa data (mesmo aberto)",
+                      custom: "Personalizar horários de reserva pra essa data",
+                    };
+                    const subs = {
+                      padrao: nova.fechado
+                        ? "Como a casa está fechada, reservas ficam bloqueadas automaticamente."
+                        : "Reservas usam as janelas configuradas em Reservas → Janelas.",
+                      sem: "Útil pra evento privado: casa aberta mas sem aceitar reservas externas.",
+                      custom: "Define horários e salões específicos só pra essa data.",
+                    };
+                    // "padrao" + fechado é o estado natural quando fecha — não exige escolha extra
+                    const disabled = modo === "custom" && nova.fechado;
+                    return (
+                      <button
+                        key={modo}
+                        type="button"
+                        disabled={disabled}
+                        onClick={() => setNova(n => ({ ...n, reservaModo: modo }))}
+                        className={`text-left px-3 py-2 rounded-lg text-sm border ${
+                          ativo
+                            ? "bg-indigo-100 border-indigo-300 dark:bg-indigo-900/30 dark:border-indigo-700"
+                            : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"
+                        } ${disabled ? "opacity-40 cursor-not-allowed" : ""}`}
+                      >
+                        <div className="font-medium">{labels[modo]}</div>
+                        <div className="text-[11px] opacity-70 mt-0.5">{subs[modo]}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Editor de slots customizados */}
+                {nova.reservaModo === "custom" && !nova.fechado && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+                        Horários de reserva nessa data
+                      </div>
+                      <Button size="sm" variant="secondary" onClick={addSlotCustom}>+ horário</Button>
+                    </div>
+                    {nova.slotsCustom.length === 0 ? (
+                      <div className="text-xs text-gray-500 italic">
+                        Adicione pelo menos 1 horário de reserva.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {nova.slotsCustom.map((s, i) => (
+                          <div key={i} className="border border-gray-200 dark:border-gray-800 rounded-lg p-2 bg-white dark:bg-gray-900">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <input
+                                type="time"
+                                value={s.horario}
+                                onChange={(e) => updateSlotCustom(i, { horario: e.target.value })}
+                                className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                              />
+                              <span className="text-xs text-gray-500">salões:</span>
+                              {saloes.map(sal => {
+                                const on = s.salaoIds.includes(sal.id);
+                                return (
+                                  <button
+                                    key={sal.id}
+                                    type="button"
+                                    onClick={() => toggleSalaoNoSlotCustom(i, sal.id)}
+                                    className={`text-xs px-2 py-1 rounded-full border transition-colors ${
+                                      on
+                                        ? "bg-indigo-100 border-indigo-300 text-indigo-800 dark:bg-indigo-900/40 dark:border-indigo-700 dark:text-indigo-300"
+                                        : "bg-white border-gray-300 text-gray-600 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400"
+                                    }`}
+                                  >
+                                    {on ? "✓ " : ""}{sal.nome}
+                                  </button>
+                                );
+                              })}
+                              <button
+                                type="button"
+                                onClick={() => removerSlotCustom(i)}
+                                className="ml-auto text-xs text-rose-600 hover:underline"
+                              >
+                                remover
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
             <Button size="sm" onClick={addExcecao}>+ Adicionar exceção</Button>
           </div>
         )}
@@ -257,6 +444,18 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                         <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
                           {e.turnos?.map(t => `${t.abre}–${t.fecha}`).join(", ") || "aberto"}
                         </span>
+                      )}
+                      {hasReservasFeature && (
+                        e.slotsReservaCustom === undefined ? null
+                        : e.slotsReservaCustom.length === 0 ? (
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300" title="Reservas desabilitadas nessa data">
+                            sem reservas
+                          </span>
+                        ) : (
+                          <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" title={e.slotsReservaCustom.map(s => s.horario).join(", ")}>
+                            🎫 reservas custom ({e.slotsReservaCustom.length})
+                          </span>
+                        )
                       )}
                       {passada && <span className="text-[10px] text-gray-400">(passou)</span>}
                     </div>

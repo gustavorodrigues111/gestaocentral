@@ -187,15 +187,41 @@ export function ReservasPublicaPage() {
   }
 
   // ──────────────── Slots disponíveis do dia ────────────────
-  // Pega janelas do dia da semana selecionado e calcula vagas por slot/salão
+  // Regra de precedência:
+  //  1. Se há exceção pra essa data no SiteConfig:
+  //     - exc.fechado === true  → sem reservas (casa fechada)
+  //     - exc.slotsReservaCustom === [] → sem reservas (sem aceitar reservas)
+  //     - exc.slotsReservaCustom = [...] → usa esses slots customizados
+  //     - exc.slotsReservaCustom undefined → herda janela semanal
+  //  2. Senão, usa janela do dia da semana padrão.
   const slotsDisponiveis = useMemo(() => {
     if (!data || !config) return [];
-    const dow = new Date(data + "T12:00:00").getDay();
-    const janela = config.janelas?.find(j => j.dia === dow);
-    if (!janela || janela.slots.length === 0) return [];
     const pax = parseInt(pessoas, 10) || 0;
 
-    return janela.slots.map(slot => {
+    // Procura exceção pra essa data específica
+    const excecao = siteConfig?.excecoes?.find(e => e.data === data);
+    let slotsBase: { horario: string; salaoIds: string[] }[];
+    if (excecao) {
+      if (excecao.fechado) return [];
+      if (excecao.slotsReservaCustom !== undefined) {
+        if (excecao.slotsReservaCustom.length === 0) return [];
+        slotsBase = excecao.slotsReservaCustom;
+      } else {
+        // Sem custom — herda janela semanal
+        const dow = new Date(data + "T12:00:00").getDay();
+        const janela = config.janelas?.find(j => j.dia === dow);
+        if (!janela || janela.slots.length === 0) return [];
+        slotsBase = janela.slots;
+      }
+    } else {
+      // Dia normal — usa janela do dia da semana
+      const dow = new Date(data + "T12:00:00").getDay();
+      const janela = config.janelas?.find(j => j.dia === dow);
+      if (!janela || janela.slots.length === 0) return [];
+      slotsBase = janela.slots;
+    }
+
+    return slotsBase.map(slot => {
       // Pra cada salão habilitado nesse slot, computa vagas
       const salaoStatus = slot.salaoIds.map(sId => {
         const sal = saloes.find(s => s.id === sId);
@@ -250,7 +276,7 @@ export function ReservasPublicaPage() {
       const algumDisponivel = salaoStatus.some(s => s.disponivel);
       return { horario: slot.horario, salaoStatus, algumDisponivel };
     });
-  }, [data, config, saloes, reservasDoDia, pessoas]);
+  }, [data, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
 
   // ──────────────── Submit ────────────────
   async function submit() {

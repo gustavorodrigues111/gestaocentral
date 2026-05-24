@@ -2100,11 +2100,18 @@ export type HorarioFuncionamentoDia = {
 
 // Exceção pontual (feriado, evento especial). Sobrescreve o horário padrão
 // num dia específico OU range de dias. Compartilhado com módulo Reservas.
+//
+// Reservas nessa data:
+//   - slotsReservaCustom undefined → herda janelas semanais (se fechado,
+//     reservas desabilitadas; senão, slots normais do dia da semana)
+//   - slotsReservaCustom = []      → sem reservas nessa data (mesmo aberto)
+//   - slotsReservaCustom = [...]   → usa esses slots customizados
 export type ExcecaoHorarioSite = {
   id: string;
   data: string;                      // YYYY-MM-DD
   fechado: boolean;
   turnos?: { abre: string; fecha: string }[];
+  slotsReservaCustom?: SlotReserva[];
   motivo?: string;                   // "Feriado de Natal", "Réveillon especial"
   criadoEm: string;
   criadoPor: string;

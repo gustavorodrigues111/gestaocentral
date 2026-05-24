@@ -62,11 +62,20 @@ export function SiteFormShell({ siteConfig, titulo, subtitulo, maxWidth = 560, c
     return () => { links.forEach(l => l.remove()); };
   }, [tema?.fonteHeading, tema?.fonteCorpo]);
 
-  // Link de volta pro site só aparece se tem slug + site publicado.
-  // (sem isso o link levaria pra /site/<slug> que diria "em manutenção")
-  const voltarHref = (siteConfig?.slug && siteConfig?.publicado)
+  // Voltar é universal: tenta history.back() primeiro (volta pra exatamente
+  // de onde veio — funciona em 99% dos casos). Se não tiver histórico,
+  // fallback pro /site/<slug> (se publicado).
+  const voltarHrefFallback = (siteConfig?.slug && siteConfig?.publicado)
     ? `/site/${siteConfig.slug}`
-    : null;
+    : "/";
+  function onVoltar(e: React.MouseEvent) {
+    e.preventDefault();
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.location.href = voltarHrefFallback;
+    }
+  }
 
   return (
     <div style={{
@@ -107,19 +116,19 @@ export function SiteFormShell({ siteConfig, titulo, subtitulo, maxWidth = 560, c
             )}
           </div>
 
-          {/* Voltar pro site */}
-          {voltarHref && (
-            <a
-              href={voltarHref}
-              style={{
-                fontSize: 14, color: corPrimaria,
-                textDecoration: "none", fontWeight: 500,
-                whiteSpace: "nowrap",
-              }}
-            >
-              ← Voltar pro site
-            </a>
-          )}
+          {/* Voltar — sempre visível. Usa history.back() pra voltar pra
+              página de onde veio (site público, preview, ou qualquer outra). */}
+          <a
+            href={voltarHrefFallback}
+            onClick={onVoltar}
+            style={{
+              fontSize: 14, color: corPrimaria,
+              textDecoration: "none", fontWeight: 500,
+              whiteSpace: "nowrap",
+            }}
+          >
+            ← Voltar
+          </a>
         </div>
       </header>
 
@@ -203,9 +212,17 @@ export function SiteFormScreen({ siteConfig, icone, titulo, mensagem }: ScreenPr
     return () => { links.forEach(l => l.remove()); };
   }, [tema?.fonteHeading, tema?.fonteCorpo]);
 
-  const voltarHref = (siteConfig?.slug && siteConfig?.publicado)
+  const voltarHrefFallback = (siteConfig?.slug && siteConfig?.publicado)
     ? `/site/${siteConfig.slug}`
-    : null;
+    : "/";
+  function onVoltar(e: React.MouseEvent) {
+    e.preventDefault();
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      window.history.back();
+    } else {
+      window.location.href = voltarHrefFallback;
+    }
+  }
 
   return (
     <div style={{
@@ -235,19 +252,18 @@ export function SiteFormScreen({ siteConfig, icone, titulo, mensagem }: ScreenPr
         <div style={{ fontSize: 14, color: "#666", lineHeight: 1.6 }}>
           {mensagem}
         </div>
-        {voltarHref && (
-          <a
-            href={voltarHref}
-            style={{
-              display: "inline-block",
-              marginTop: 24,
-              fontSize: 14, color: corPrimaria,
-              textDecoration: "none", fontWeight: 500,
-            }}
-          >
-            ← Voltar pro site
-          </a>
-        )}
+        <a
+          href={voltarHrefFallback}
+          onClick={onVoltar}
+          style={{
+            display: "inline-block",
+            marginTop: 24,
+            fontSize: 14, color: corPrimaria,
+            textDecoration: "none", fontWeight: 500,
+          }}
+        >
+          ← Voltar
+        </a>
       </div>
     </div>
   );

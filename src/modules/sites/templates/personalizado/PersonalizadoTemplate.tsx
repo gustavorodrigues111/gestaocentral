@@ -395,9 +395,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     }}>
                       {t("horarioProximosAvisosLabel", "Próximos avisos")}
                     </div>
+                    {/* Cards de datas especiais sempre centralizados e
+                        equidistantes (justify-center + flex-wrap). Cada
+                        card tem largura fixa pra alinhamento consistente. */}
                     <div style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                      display: "flex",
+                      flexWrap: "wrap",
+                      justifyContent: "center",
                       gap: 10,
                     }}>
                       {excecoes.map(e => {
@@ -413,6 +417,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                               ? `${corSecundaria}10`
                               : "#ffffff",
                             textAlign: "center",
+                            width: 160,
                           }}>
                             <div style={{
                               fontSize: 11,
