@@ -2039,8 +2039,13 @@ export type TemaSite = {
   corSecundaria: string;             // "#d4af37"
   corFundo?: string;                 // "#fff" default
   corTexto?: string;                 // "#1a1a1a" default
-  fonteHeading?: string;             // CSS font-family
-  fonteCorpo?: string;
+  // Fontes — CSS font-family strings. Se preenchidas, sobrescrevem o
+  // default do template. Carregadas dinamicamente do Google Fonts pelo
+  // site público — referenciam IDs do catálogo em
+  // src/modules/sites/templates/fontesDisponiveis.ts.
+  fonteHeading?: string;             // títulos grandes (hero h1, section h2)
+  fonteSubtitulo?: string;           // subtítulos / texto-destaque
+  fonteCorpo?: string;               // texto regular
   raioBorda?: string;                // "8px"
 };
 

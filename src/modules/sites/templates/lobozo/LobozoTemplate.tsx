@@ -14,6 +14,7 @@ import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, formatarDataCurta, proximasExcecoes } from "../../shared/horarioUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink } from "../../shared/enderecoUtils";
+import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 
 type Props = { siteConfig: SiteConfig };
 
@@ -31,11 +32,17 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
   const corSecundaria = cfg.tema.corSecundaria || PADRAO_SECUNDARIA;
   const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
   const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
-  // Fontes dinâmicas — sobrescreve as Google Fonts da marca se tema definir
-  const fontHeading = cfg.tema.fonteHeading || "'DM Serif Display', Georgia, serif";
-  const fontBody = cfg.tema.fonteCorpo || "'Inter', system-ui, sans-serif";
 
-  // Carrega Google Fonts dinamicamente (preconnect + link)
+  // Fontes — resolve via catálogo (id) ou fallback pros defaults da marca.
+  // Heading/Subtitulo/Corpo são 3 fontes independentes selecionáveis no admin.
+  const fonteHeading = findFonte(cfg.tema.fonteHeading)?.cssFamily
+    || "'DM Serif Display', Georgia, serif";
+  const fonteSubtitulo = findFonte(cfg.tema.fonteSubtitulo)?.cssFamily
+    || fonteHeading; // default: usa a mesma do heading
+  const fonteCorpo = findFonte(cfg.tema.fonteCorpo)?.cssFamily
+    || "'Inter', system-ui, sans-serif";
+
+  // Carrega Google Fonts dinamicamente — só as fontes que estão sendo usadas
   useEffect(() => {
     const links: HTMLLinkElement[] = [];
     function addLink(href: string, opts: Partial<HTMLLinkElement> = {}) {
@@ -47,12 +54,17 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
     }
     addLink("https://fonts.googleapis.com", { rel: "preconnect" });
     addLink("https://fonts.gstatic.com", { rel: "preconnect", crossOrigin: "anonymous" });
-    addLink(
-      "https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600;700&display=swap",
-      { rel: "stylesheet" },
-    );
+    // Pega os ids das fontes ativas (heading, subtítulo, corpo)
+    // + sempre garante DM Serif Display + Inter (defaults do Lobozó)
+    const ids = [
+      cfg.tema.fonteHeading || "dm-serif-display",
+      cfg.tema.fonteSubtitulo || cfg.tema.fonteHeading || "dm-serif-display",
+      cfg.tema.fonteCorpo || "inter",
+    ];
+    const url = googleFontsUrl(ids);
+    if (url) addLink(url, { rel: "stylesheet" });
     return () => { links.forEach(l => l.remove()); };
-  }, []);
+  }, [cfg.tema.fonteHeading, cfg.tema.fonteSubtitulo, cfg.tema.fonteCorpo]);
 
   // Hero: cor sólida primária ou imagem com overlay escuro neutro
   // (overlay preto preserva qualquer cor da imagem, ao contrário do verde
@@ -77,7 +89,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
   return (
     <div style={{
-      fontFamily: fontBody,
+      fontFamily: fonteCorpo,
       color: "#1a1a1a",
       backgroundColor: corFundo,
       minHeight: "100vh",
@@ -95,7 +107,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
         }}>
           <div style={{
-            fontFamily: fontHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
+            fontFamily: fonteHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
           }}>
             {cfg.logoUrl
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: 36, width: "auto" }} />
@@ -123,6 +135,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
           {cfg.slogan && (
             <p style={{
+              fontFamily: fonteSubtitulo,
               fontSize: 13, letterSpacing: "0.3em", textTransform: "uppercase",
               color: corSecundaria, marginBottom: 16, opacity: 0.95,
             }}>
@@ -130,13 +143,14 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             </p>
           )}
           <h1 style={{
-            fontFamily: fontHeading, fontSize: "clamp(40px, 7vw, 84px)",
+            fontFamily: fonteHeading, fontSize: "clamp(40px, 7vw, 84px)",
             lineHeight: 1.05, margin: "0 0 24px 0", letterSpacing: "-0.01em",
             whiteSpace: "pre-line",
           }}>
             {t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}
           </h1>
           <p style={{
+            fontFamily: fonteSubtitulo,
             fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 36px",
             lineHeight: 1.55,
           }}>
@@ -336,7 +350,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
         textAlign: "center",
       }}>
         <div style={{
-          fontFamily: fontHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
+          fontFamily: fonteHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
         }}>
           lobozó
         </div>
@@ -383,7 +397,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
       <section id={id} style={{ padding: "80px 20px", backgroundColor: bg }}>
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <h2 style={{
-            fontFamily: fontHeading,
+            fontFamily: fonteHeading,
             fontSize: "clamp(32px, 5vw, 48px)",
             textAlign: "center", margin: "0 0 48px 0", color: corPrimaria,
             letterSpacing: "-0.01em",

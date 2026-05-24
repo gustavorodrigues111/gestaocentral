@@ -5,6 +5,10 @@ import { Input } from "../../core/ui/Input";
 import type { LinkDelivery, RedeSocial, SiteConfig, TemaSite } from "../../core/types";
 import { defaultSiteConfig, useSiteConfig } from "./useSiteConfig";
 import { defaultTextosByTemplate } from "./templates/textosDefaults";
+import {
+  FONTES_SITE, CATEGORIA_LABEL, findFonte, googleFontsUrl,
+  type FonteSite,
+} from "./templates/fontesDisponiveis";
 import { buscarCep, formatarCep, limparCep, validarCep } from "./cepHelper";
 import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
@@ -563,19 +567,26 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo || ""} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
           <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto || ""} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Fonte heading (CSS font-family)"
+        <div className="grid grid-cols-1 gap-3">
+          <FonteSelector
+            label="Fonte dos títulos"
+            descricao="Hero, títulos de seção"
             value={form.tema.fonteHeading || ""}
-            onChange={(e) => atualizarTema("fonteHeading", e.target.value)}
-            placeholder="(padrão do template)"
+            onChange={(v) => atualizarTema("fonteHeading", v)}
             disabled={inputDisabled}
           />
-          <Input
-            label="Fonte corpo (CSS font-family)"
+          <FonteSelector
+            label="Fonte de subtítulos"
+            descricao="Slogan, eyebrow, texto-destaque"
+            value={form.tema.fonteSubtitulo || ""}
+            onChange={(v) => atualizarTema("fonteSubtitulo", v)}
+            disabled={inputDisabled}
+          />
+          <FonteSelector
+            label="Fonte de corpo"
+            descricao="Parágrafos, listas, texto comum"
             value={form.tema.fonteCorpo || ""}
-            onChange={(e) => atualizarTema("fonteCorpo", e.target.value)}
-            placeholder="(padrão do template)"
+            onChange={(v) => atualizarTema("fonteCorpo", v)}
             disabled={inputDisabled}
           />
         </div>
@@ -868,6 +879,96 @@ function TemplateCard({ label, descricao, ativo, onClick, disabled }: {
       <div className="font-bold text-sm">{label}</div>
       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{descricao}</div>
     </button>
+  );
+}
+
+// Selector de fonte com preview ao vivo. Quando o user seleciona uma fonte,
+// carrega ela do Google Fonts pra renderizar o preview.
+function FonteSelector({ label, descricao, value, onChange, disabled }: {
+  label: string;
+  descricao: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}) {
+  const fonteAtual = findFonte(value);
+
+  // Pre-carrega todas as fontes do catálogo na primeira vez que o seletor
+  // aparece, pra preview funcionar. Tem peso, então só se o user estiver
+  // editando (não disabled).
+  useEffect(() => {
+    if (disabled) return;
+    const ids = FONTES_SITE.map(f => f.id);
+    const url = googleFontsUrl(ids);
+    if (!url) return;
+    // Evita duplicar
+    const ja = document.querySelector(`link[data-fontes-preview="1"]`);
+    if (ja) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = url;
+    link.setAttribute("data-fontes-preview", "1");
+    document.head.appendChild(link);
+    // Não removemos no cleanup — pode ser usado em outros lugares
+  }, [disabled]);
+
+  // Agrupa por categoria
+  const grupos: { categoria: FonteSite["categoria"]; fontes: FonteSite[] }[] =
+    (["serif_elegante", "sans_moderna", "display", "script"] as FonteSite["categoria"][])
+      .map(c => ({ categoria: c, fontes: FONTES_SITE.filter(f => f.categoria === c) }));
+
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            {label}
+          </label>
+          <p className="text-[10px] text-gray-400">{descricao}</p>
+        </div>
+        {!disabled && value && (
+          <button
+            type="button"
+            onClick={() => onChange("")}
+            className="text-[10px] text-gray-400 hover:text-rose-600"
+          >
+            ↺ usar padrão do template
+          </button>
+        )}
+      </div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+        style={{ fontFamily: fonteAtual?.cssFamily }}
+      >
+        <option value="">— padrão do template —</option>
+        {grupos.map(g => (
+          <optgroup key={g.categoria} label={CATEGORIA_LABEL[g.categoria]}>
+            {g.fontes.map(f => (
+              <option key={f.id} value={f.id} style={{ fontFamily: f.cssFamily }}>
+                {f.nome}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </select>
+      {/* Preview */}
+      {fonteAtual && (
+        <div
+          className="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3"
+          style={{ fontFamily: fonteAtual.cssFamily }}
+        >
+          <div style={{ fontSize: 28, lineHeight: 1.1, fontWeight: fonteAtual.categoria === "sans_moderna" ? 600 : 400 }}>
+            Bom apetite
+          </div>
+          <div style={{ fontSize: 14, color: "#666", marginTop: 4 }}>
+            The quick brown fox jumps over the lazy dog.
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
