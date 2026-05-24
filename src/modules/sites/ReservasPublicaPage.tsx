@@ -297,9 +297,11 @@ export function ReservasPublicaPage() {
   }, [data, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
 
   // ──────────────── Próximos dias disponíveis ────────────────
-  // Lista os próximos 30 dias e filtra os SEM janelas configuradas
-  // (fechado, sem slot, ou exceção sem reservas). Não considera lotação
-  // por slot — isso fica pro slot picker depois.
+  // Lista os próximos 7 dias DISPONÍVEIS (com janelas configuradas) —
+  // varre até 60 dias à frente caso muitos sejam fechados/sem slots.
+  // Não considera lotação por slot — isso fica pro slot picker depois.
+  const MAX_DIAS = 7;
+  const RANGE_VARREDURA = 60;
   const diasDisponiveis = useMemo(() => {
     if (!config) return [];
     const hojeBase = new Date(hojeISO + "T12:00:00");
@@ -312,7 +314,7 @@ export function ReservasPublicaPage() {
     const sCurto = ["dom","seg","ter","qua","qui","sex","sáb"];
     const sLong = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
 
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < RANGE_VARREDURA && result.length < MAX_DIAS; i++) {
       const d = new Date(hojeBase);
       d.setDate(d.getDate() + i);
       const dataIso = d.toISOString().slice(0, 10);
@@ -609,10 +611,9 @@ export function ReservasPublicaPage() {
               </div>
             ) : (
               <div style={{
-                display: "flex", gap: 8, overflowX: "auto",
-                paddingBottom: 4,
-                scrollSnapType: "x mandatory",
-                WebkitOverflowScrolling: "touch",
+                display: "flex", gap: 8,
+                flexWrap: "wrap",
+                justifyContent: "flex-start",
               }}>
                 {diasDisponiveis.map(d => {
                   const ativo = data === d.data;
@@ -622,9 +623,8 @@ export function ReservasPublicaPage() {
                       type="button"
                       onClick={() => { setData(d.data); setSlotHorario(""); setSalaoId(""); }}
                       style={{
-                        flex: "0 0 auto",
-                        scrollSnapAlign: "start",
-                        minWidth: 72,
+                        flex: "1 1 calc(25% - 8px)",  // ~4 chips por linha
+                        minWidth: 78, maxWidth: 110,
                         padding: "10px 14px",
                         borderRadius: 12,
                         border: `1px solid ${ativo ? corPrimaria : "#d1d5db"}`,

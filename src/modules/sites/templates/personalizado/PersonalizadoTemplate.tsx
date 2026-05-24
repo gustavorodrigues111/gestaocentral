@@ -1135,13 +1135,20 @@ function CardapioPreview({
               click nas setas funcionar. Em vez disso, hint clicável
               abaixo serve pra abrir o PDF completo. */}
           <div style={previewWrapperStyle}>
+            {/* iframe propositalmente OVERSIZE — overflow:hidden do parent
+                clipa a área extra. Truque empurra as scrollbars verticais
+                e horizontais do PDF viewer pra fora do viewport visível,
+                já que muitos viewers ignoram scrollbar=0 no hash. */}
             <iframe
               key={`${pdfUrl}#${pagina}`}
               src={iframeSrc}
               title="Preview do cardápio"
               scrolling="no"
               style={{
-                width: "100%", height: "100%",
+                width: "calc(100% + 20px)",
+                height: "calc(100% + 20px)",
+                marginRight: -20,
+                marginBottom: -20,
                 border: "none", display: "block",
               }}
               loading="lazy"
