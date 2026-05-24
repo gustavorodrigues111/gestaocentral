@@ -687,11 +687,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     <h2 style={tituloSectionStyle}>{a.titulo}</h2>
                     {a.conteudo}
                   </div>
-                  {/* Divisora vertical — alignSelf stretch força a div
-                      esticar a altura inteira do row (sem isso colapsa). */}
+                  {/* Divisora vertical — usa cor primária com opacity baixa
+                      (cor de destaque mas sutil). alignSelf stretch força
+                      a div esticar a altura inteira do row. */}
                   <div aria-hidden style={{
-                    backgroundColor: corSecundaria,
-                    opacity: 0.5,
+                    backgroundColor: corPrimaria,
+                    opacity: 0.35,
                     alignSelf: "stretch",
                   }} />
                   <div id={b.id} style={{ paddingLeft: 48 }}>

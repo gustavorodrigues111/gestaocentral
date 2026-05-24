@@ -75,6 +75,17 @@ export function ReservasPublicaPage() {
   // Slot selecionado
   const [slotHorario, setSlotHorario] = useState("");
   const [salaoId, setSalaoId] = useState("");
+  // Indisponíveis expandidos no slot picker (chave: "slot|salaoId")
+  const [indisponiveisAbertos, setIndisponiveisAbertos] = useState<Set<string>>(new Set());
+  function toggleIndisponivel(slot: string, salId: string) {
+    setIndisponiveisAbertos(prev => {
+      const k = `${slot}|${salId}`;
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k);
+      else next.add(k);
+      return next;
+    });
+  }
 
   // Data mínima = hoje
   const hojeISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -732,36 +743,71 @@ export function ReservasPublicaPage() {
                         <span className="text-xs text-gray-500">sem vagas</span>
                       )}
                     </div>
-                    {slot.algumDisponivel && (
-                      <div className="mt-2 grid grid-cols-1 gap-1.5">
-                        {slot.salaoStatus.map(({ salao: sal, disponivel, descricao }) => {
-                          const salSel = ativo && salaoId === sal.id;
-                          return (
-                            <button
-                              key={sal.id}
-                              type="button"
-                              disabled={!disponivel}
-                              onClick={() => { setSlotHorario(slot.horario); setSalaoId(sal.id); setErro(""); }}
-                              style={salaoOptionStyle(salSel, disponivel, corPrimaria)}
-                            >
-                              <div className="flex items-center justify-between gap-2">
+                    {slot.algumDisponivel && (() => {
+                      // Ordena salões: disponíveis primeiro, indisponíveis depois.
+                      const disponiveis = slot.salaoStatus.filter(s => s.disponivel);
+                      const indisponiveis = slot.salaoStatus.filter(s => !s.disponivel);
+                      return (
+                        <div className="mt-2 grid grid-cols-1 gap-1.5">
+                          {/* Disponíveis em destaque */}
+                          {disponiveis.map(({ salao: sal }) => {
+                            const salSel = ativo && salaoId === sal.id;
+                            return (
+                              <button
+                                key={sal.id}
+                                type="button"
+                                onClick={() => { setSlotHorario(slot.horario); setSalaoId(sal.id); setErro(""); }}
+                                style={salaoOptionStyle(salSel, true, corPrimaria)}
+                              >
                                 <div>
                                   <div className="font-semibold">{sal.nome}</div>
                                   {sal.descricao && (
                                     <div className="text-xs opacity-70 mt-0.5">{sal.descricao}</div>
                                   )}
                                 </div>
-                                {!disponivel && descricao && (
-                                  <div className="text-xs whitespace-nowrap" style={{ opacity: 0.7 }}>
-                                    {descricao}
+                              </button>
+                            );
+                          })}
+                          {/* Indisponíveis compactos — só nome + chevron. Click
+                              expande pra mostrar motivo (sem permitir reserva). */}
+                          {indisponiveis.map(({ salao: sal, descricao }) => {
+                            const expandido = indisponiveisAbertos.has(`${slot.horario}|${sal.id}`);
+                            return (
+                              <button
+                                key={sal.id}
+                                type="button"
+                                onClick={() => toggleIndisponivel(slot.horario, sal.id)}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 8,
+                                  fontSize: 13,
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                  border: "1px solid #e5e7eb",
+                                  backgroundColor: "#fafafa",
+                                  color: "#888",
+                                  width: "100%",
+                                  transition: "background-color 0.15s",
+                                }}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span>{sal.nome}</span>
+                                  <span className="text-[11px] opacity-60">
+                                    {expandido ? "▲ indisponível" : "▼ indisponível"}
+                                  </span>
+                                </div>
+                                {expandido && (descricao || sal.descricao) && (
+                                  <div className="text-xs mt-1.5 pt-1.5 border-t border-gray-200" style={{ color: "#888" }}>
+                                    {descricao && <div>{descricao}</div>}
+                                    {sal.descricao && <div className="opacity-70 mt-0.5">{sal.descricao}</div>}
                                   </div>
                                 )}
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
