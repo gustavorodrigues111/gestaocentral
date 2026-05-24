@@ -244,6 +244,66 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     return diff < 30;
   });
 
+  // Bloco de sugestões de feriado — separado do JSX principal pra
+  // poder ser posicionado ANTES da seção de exceções pontuais.
+  const feriadosSugestoesUi = podeEditar ? (
+    <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" open>
+      <summary className="cursor-pointer px-3 py-2 list-none">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+            📅 Sugestões de feriados
+          </h3>
+          <span className="text-xs text-gray-400">
+            {feriadosErro
+              ? "(erro ao buscar)"
+              : feriados.length === 0
+                ? "(carregando...)"
+                : `(${feriados.filter(f => !excecoes.some(e => e.data === f.date)).length} disponíveis)`}
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-500 mt-1">
+          Próximos 6 meses — feriados nacionais (BrasilAPI) {ufRestaurante && `+ estaduais (${ufRestaurante})`}.
+          1 clique marca como exceção fechada. Municipais e aniversário da cidade: adicione manualmente.
+        </p>
+      </summary>
+      {feriadosErro ? (
+        <p className="px-3 pb-3 text-xs text-rose-600">⚠ {feriadosErro}</p>
+      ) : (
+        <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+          {feriados.map(f => {
+            const ja = excecoes.some(e => e.data === f.date);
+            const d = new Date(f.date + "T12:00:00");
+            const diaSemana = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"][d.getDay()];
+            const tipoLabel = f.type === "nacional" ? "🇧🇷 nacional" : f.type === "estadual" ? `🏛️ ${f.uf}` : "🏙️ municipal";
+            return (
+              <button
+                key={`${f.date}_${f.name}`}
+                type="button"
+                disabled={ja}
+                onClick={() => adicionarFeriadoComoExcecao(f)}
+                className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
+                  ja
+                    ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 opacity-50 cursor-not-allowed"
+                    : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/20"
+                }`}
+              >
+                <div className="flex items-baseline justify-between gap-2">
+                  <div className="font-semibold tabular-nums">
+                    {String(d.getDate()).padStart(2, "0")}/{String(d.getMonth() + 1).padStart(2, "0")}/{d.getFullYear()}
+                  </div>
+                  <div className="text-[10px] text-gray-500">{diaSemana}</div>
+                </div>
+                <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{f.name}</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">{tipoLabel}</div>
+                {ja && <div className="text-[10px] text-emerald-600 mt-0.5">✓ já adicionado</div>}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </details>
+  ) : null;
+
   return (
     <div className="space-y-6">
       {/* Horário padrão */}
@@ -311,16 +371,28 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </div>
       </section>
 
-      {/* Exceções */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-          Exceções pontuais
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Use pra dias específicos: feriados, fechamento por evento privado, abertura especial. <br/>
-          O módulo <strong>Reservas</strong> lê dessa mesma lista — fechar aqui bloqueia reservas
-          automaticamente no dia.
-        </p>
+      {/* Sugestões de feriados — em cima, pra usuário marcar com 1 clique
+          antes de partir pra criar exceções manuais.
+          Bloco completo (UI) está mais abaixo — ver `feriadosSugestoesUi`. */}
+      {feriadosSugestoesUi}
+
+      {/* Exceções pontuais — vira accordion. Default open quando há
+          exceções cadastradas; fechado quando vazio. */}
+      <details className="space-y-3 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" open={excecoesVisiveis.length > 0}>
+        <summary className="cursor-pointer px-3 py-2 list-none">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+              ✂ Exceções pontuais ({excecoesVisiveis.length})
+            </h3>
+            <span className="text-xs text-gray-400">▼ expandir / fechar</span>
+          </div>
+          <p className="text-[11px] text-gray-500 mt-1">
+            Datas específicas: feriados, fechamento por evento privado, abertura especial.
+            O módulo Reservas lê dessa lista — fechar aqui bloqueia reservas no dia.
+          </p>
+        </summary>
+
+        <div className="px-3 pb-3 space-y-3">
 
         {/* Adicionar nova */}
         {podeEditar && (
@@ -494,68 +566,12 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
               </div>
             )}
 
-            <Button size="sm" onClick={addExcecao}>+ Adicionar exceção</Button>
+            <Button size="sm" onClick={addExcecao}>✓ Salvar essa exceção</Button>
           </div>
         )}
 
-        {/* Sugestões de feriados nacionais + estaduais (BrasilAPI + curado) */}
-        {podeEditar && (
-          <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-            <summary className="cursor-pointer px-3 py-2 list-none">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <div className="font-semibold text-sm text-gray-700 dark:text-gray-300">
-                  📅 Sugestões de feriados
-                </div>
-                <span className="text-xs text-gray-400">
-                  {feriadosErro
-                    ? "(erro ao buscar)"
-                    : feriados.length === 0
-                      ? "(carregando...)"
-                      : `(${feriados.filter(f => !excecoes.some(e => e.data === f.date)).length} disponíveis)`}
-                </span>
-              </div>
-              <p className="text-[11px] text-gray-500 mt-1">
-                Próximos 6 meses — feriados nacionais (BrasilAPI) {ufRestaurante && `+ estaduais (${ufRestaurante})`}.
-                1 clique marca como exceção fechada. Municipais e aniversário da cidade: adicione manualmente.
-              </p>
-            </summary>
-            {feriadosErro ? (
-              <p className="px-3 pb-3 text-xs text-rose-600">⚠ {feriadosErro}</p>
-            ) : (
-              <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                {feriados.map(f => {
-                  const ja = excecoes.some(e => e.data === f.date);
-                  const d = new Date(f.date + "T12:00:00");
-                  const diaSemana = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"][d.getDay()];
-                  const tipoLabel = f.type === "nacional" ? "🇧🇷 nacional" : f.type === "estadual" ? `🏛️ ${f.uf}` : "🏙️ municipal";
-                  return (
-                    <button
-                      key={`${f.date}_${f.name}`}
-                      type="button"
-                      disabled={ja}
-                      onClick={() => adicionarFeriadoComoExcecao(f)}
-                      className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${
-                        ja
-                          ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/50 opacity-50 cursor-not-allowed"
-                          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/20"
-                      }`}
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <div className="font-semibold tabular-nums">
-                          {String(d.getDate()).padStart(2, "0")}/{String(d.getMonth() + 1).padStart(2, "0")}/{d.getFullYear()}
-                        </div>
-                        <div className="text-[10px] text-gray-500">{diaSemana}</div>
-                      </div>
-                      <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{f.name}</div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">{tipoLabel}</div>
-                      {ja && <div className="text-[10px] text-emerald-600 mt-0.5">✓ já adicionado</div>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </details>
-        )}
+        {/* (Sugestões de feriados vivem agora ANTES da seção de exceções —
+            ver feriadosSugestoesUi acima do <details>.) */}
 
         {/* Lista de exceções */}
         {excecoesVisiveis.length === 0 ? (
@@ -612,7 +628,8 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
             })}
           </div>
         )}
-      </section>
+        </div>
+      </details>
 
       {/* Footer salvar */}
       {podeEditar && (

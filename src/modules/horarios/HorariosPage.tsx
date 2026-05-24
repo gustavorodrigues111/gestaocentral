@@ -66,7 +66,7 @@ export function HorariosPage() {
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
           ["funcionamento", "📆 Funcionamento + Datas especiais"],
-          ["janelas",       `🎫 Janelas de Reserva (${saloes.filter(s => s.ativo).length} salão${saloes.filter(s => s.ativo).length === 1 ? "" : "ões"})`],
+          ["janelas",       `🎫 Janelas de Reserva (${saloes.filter(s => s.ativo).length} ${saloes.filter(s => s.ativo).length === 1 ? "salão" : "salões"})`],
         ] as const).map(([id, label]) => (
           <button
             key={id}
