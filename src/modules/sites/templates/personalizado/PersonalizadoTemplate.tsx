@@ -159,11 +159,51 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           }}>
             {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
           </p>
-          {cfg.features.hasReservas && (
-            <a href="#reservas" style={primaryButton(corSecundaria)}>
-              {t("heroCtaLabel", "Faça sua reserva")}
-            </a>
-          )}
+          {/* CTAs do hero: prioriza Instagram + WhatsApp se cadastrados.
+              Cada um vai pro link da rede social (a do tipo "whatsapp" tem
+              fallback pro waLink derivado do telefone). Se nenhum existe,
+              fallback pro botão antigo de reserva (rola pra seção). */}
+          {(() => {
+            const insta = cfg.redes.find(r => r.tipo === "instagram" && r.url);
+            const wa = whatsappRede || (waLink ? { tipo: "whatsapp", url: waLink } : null);
+            if (insta || wa) {
+              return (
+                <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+                  {insta && (
+                    <a
+                      href={insta.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={socialButtonHero(corSecundaria, corFundo)}
+                      title="Instagram"
+                    >
+                      <span style={{ fontSize: 18 }}>📷</span> Instagram
+                    </a>
+                  )}
+                  {wa && (
+                    <a
+                      href={wa.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={socialButtonHero(corSecundaria, corFundo)}
+                      title="WhatsApp"
+                    >
+                      <span style={{ fontSize: 18 }}>💬</span> WhatsApp
+                    </a>
+                  )}
+                </div>
+              );
+            }
+            // Fallback: botão de reserva antigo
+            if (cfg.features.hasReservas) {
+              return (
+                <a href="#reservas" style={primaryButton(corSecundaria)}>
+                  {t("heroCtaLabel", "Faça sua reserva")}
+                </a>
+              );
+            }
+            return null;
+          })()}
         </div>
       </section>
 
@@ -516,6 +556,29 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       fontWeight: 600,
       border: `2px solid ${cor}`,
       borderRadius: 4,
+    };
+  }
+
+  // Botão social pro hero (Instagram, WhatsApp). Outline elegante:
+  // border na cor secundária, fundo translúcido, texto claro pro hero
+  // escuro funcionar bem com qualquer cor primária.
+  function socialButtonHero(cor: string, fundoTexto: string): React.CSSProperties {
+    return {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      padding: "12px 24px",
+      backgroundColor: "rgba(255,255,255,0.1)",
+      color: fundoTexto,
+      textDecoration: "none",
+      fontSize: 14,
+      fontWeight: 600,
+      letterSpacing: "0.05em",
+      textTransform: "uppercase",
+      borderRadius: 999,
+      border: `1.5px solid ${cor}`,
+      backdropFilter: "blur(4px)",
+      transition: "background-color 0.2s",
     };
   }
 }
