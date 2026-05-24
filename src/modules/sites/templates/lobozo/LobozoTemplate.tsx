@@ -17,11 +17,24 @@ import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink } from "../../shared
 
 type Props = { siteConfig: SiteConfig };
 
-const COR_VERDE = "#1a5c2a";
-const COR_DOURADO = "#b8923a";
-const COR_CREME = "#f7f3e9";
+// Defaults do Lobozó — usados quando cfg.tema não tem override.
+// Se você mudar a cor primária / secundária / fundo / texto na aba Geral,
+// vai sobrescrever esses valores.
+const PADRAO_PRIMARIA = "#1a5c2a";   // verde-mata
+const PADRAO_SECUNDARIA = "#b8923a"; // dourado-velho
+const PADRAO_FUNDO = "#f7f3e9";       // creme
+const PADRAO_TEXTO = "#1a1a1a";
 
 export function LobozoTemplate({ siteConfig: cfg }: Props) {
+  // Cores dinâmicas — pega do tema se preenchido, senão usa defaults da marca
+  const corPrimaria = cfg.tema.corPrimaria || PADRAO_PRIMARIA;
+  const corSecundaria = cfg.tema.corSecundaria || PADRAO_SECUNDARIA;
+  const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
+  const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
+  // Fontes dinâmicas — sobrescreve as Google Fonts da marca se tema definir
+  const fontHeading = cfg.tema.fonteHeading || "'DM Serif Display', Georgia, serif";
+  const fontBody = cfg.tema.fonteCorpo || "'Inter', system-ui, sans-serif";
+
   // Carrega Google Fonts dinamicamente (preconnect + link)
   useEffect(() => {
     const links: HTMLLinkElement[] = [];
@@ -41,12 +54,9 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
     return () => { links.forEach(l => l.remove()); };
   }, []);
 
-  const fontHeading = "'DM Serif Display', Georgia, serif";
-  const fontBody = "'Inter', system-ui, sans-serif";
-
   const heroBg = cfg.heroImagemUrl
     ? `linear-gradient(rgba(15,40,20,0.55), rgba(15,40,20,0.75)), url(${cfg.heroImagemUrl}) center/cover`
-    : `linear-gradient(135deg, ${COR_VERDE}, #0d3315)`;
+    : `linear-gradient(135deg, ${corPrimaria}, #0d3315)`;
 
   const grupos = agruparHorarios(cfg.horarios);
   const excecoes = proximasExcecoes(cfg.excecoes, 3);
@@ -66,7 +76,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
     <div style={{
       fontFamily: fontBody,
       color: "#1a1a1a",
-      backgroundColor: COR_CREME,
+      backgroundColor: corFundo,
       minHeight: "100vh",
     }}>
       {/* HEADER */}
@@ -74,7 +84,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
         position: "sticky", top: 0, zIndex: 50,
         backgroundColor: "rgba(247,243,233,0.95)",
         backdropFilter: "blur(8px)",
-        borderBottom: `1px solid ${COR_DOURADO}30`,
+        borderBottom: `1px solid ${corSecundaria}30`,
       }}>
         <div style={{
           maxWidth: 1100, margin: "0 auto",
@@ -82,7 +92,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
         }}>
           <div style={{
-            fontFamily: fontHeading, fontSize: 22, color: COR_VERDE, letterSpacing: "0.02em",
+            fontFamily: fontHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
           }}>
             {cfg.logoUrl
               ? <img src={cfg.logoUrl} alt="Logo" style={{ height: 36, width: "auto" }} />
@@ -102,7 +112,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
       {/* HERO */}
       <section style={{
         background: heroBg,
-        color: COR_CREME,
+        color: corFundo,
         minHeight: "70vh",
         display: "flex", alignItems: "center",
         padding: "80px 20px",
@@ -111,7 +121,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           {cfg.slogan && (
             <p style={{
               fontSize: 13, letterSpacing: "0.3em", textTransform: "uppercase",
-              color: COR_DOURADO, marginBottom: 16, opacity: 0.95,
+              color: corSecundaria, marginBottom: 16, opacity: 0.95,
             }}>
               {cfg.slogan}
             </p>
@@ -130,7 +140,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
           </p>
           {cfg.features.hasReservas && (
-            <a href="#reservas" style={primaryButton(COR_DOURADO)}>
+            <a href="#reservas" style={primaryButton(corSecundaria)}>
               {t("heroCtaLabel", "Faça sua reserva")}
             </a>
           )}
@@ -139,7 +149,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* HISTÓRIA */}
       {cfg.historia && (
-        <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={COR_CREME}>
+        <Section id="historia" titulo={t("historiaTitulo", "A nossa história")} bg={corFundo}>
           <div style={{
             maxWidth: 720, margin: "0 auto", fontSize: 17, lineHeight: 1.7,
             whiteSpace: "pre-wrap",
@@ -159,7 +169,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             {cfg.cardapioPdfPtUrl && (
               <a
                 href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer"
-                style={menuButton(COR_VERDE, COR_CREME)}
+                style={menuButton(corPrimaria, corFundo)}
               >
                 🇧🇷 Cardápio (Português)
               </a>
@@ -167,7 +177,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             {cfg.cardapioPdfEnUrl && (
               <a
                 href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer"
-                style={menuButton(COR_VERDE, COR_CREME)}
+                style={menuButton(corPrimaria, corFundo)}
               >
                 🇺🇸 Menu (English)
               </a>
@@ -177,17 +187,17 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
       )}
 
       {/* HORÁRIO */}
-      <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={COR_CREME}>
+      <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={corFundo}>
         <div style={{
           maxWidth: 500, margin: "0 auto",
           background: "#ffffff",
           borderRadius: 8, padding: 24,
-          border: `1px solid ${COR_DOURADO}30`,
+          border: `1px solid ${corSecundaria}30`,
         }}>
           {grupos.map((g, i) => (
             <div key={i} style={{
               display: "flex", justifyContent: "space-between", padding: "10px 0",
-              borderBottom: i < grupos.length - 1 ? `1px dashed ${COR_DOURADO}30` : "none",
+              borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none",
               fontSize: 15,
             }}>
               <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
@@ -197,10 +207,10 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             </div>
           ))}
           {excecoes.length > 0 && (
-            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${COR_DOURADO}30` }}>
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${corSecundaria}30` }}>
               <div style={{
                 fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
-                color: COR_DOURADO, marginBottom: 8, fontWeight: 600,
+                color: corSecundaria, marginBottom: 8, fontWeight: 600,
               }}>
                 {t("horarioProximosAvisosLabel", "Próximos avisos")}
               </div>
@@ -224,7 +234,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
               {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
             </p>
-            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
+            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
               {t("lajeCtaLabel", "Solicitar proposta")}
             </Link>
           </div>
@@ -238,7 +248,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
               {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
             </p>
-            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
+            <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
               {t("eventosCtaLabel", "Solicitar proposta")}
             </Link>
           </div>
@@ -247,13 +257,13 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* RESERVAS */}
       {cfg.features.hasReservas && (
-        <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={COR_CREME}>
+        <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={corFundo}>
           <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
             <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
               {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
             </p>
             {waLink && (
-              <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(COR_DOURADO)}>
+              <a href={waLink} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>
                 {t("reservasCtaLabel", "💬 Reservar pelo WhatsApp")}
               </a>
             )}
@@ -270,7 +280,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           }}>
             {cfg.delivery.map((d, i) => (
               <a key={i} href={d.url} target="_blank" rel="noreferrer"
-                 style={menuButton(COR_VERDE, COR_CREME)}>
+                 style={menuButton(corPrimaria, corFundo)}>
                 {d.label || labelDelivery(d.plataforma)}
               </a>
             ))}
@@ -280,12 +290,12 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* TRABALHE CONOSCO */}
       {cfg.features.hasTrabalheConosco && (
-        <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={COR_CREME}>
+        <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={corFundo}>
           <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
             <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
               {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
             </p>
-            <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(COR_VERDE)}>
+            <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
               {t("trabalheCtaLabel", "Enviar candidatura")}
             </Link>
           </div>
@@ -304,7 +314,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
             <p style={{ marginBottom: 16, color: "#555" }}>{enderecoLinhaDois(cfg.endereco)}</p>
           )}
           <a href={googleMapsLink(cfg.endereco)} target="_blank" rel="noreferrer"
-             style={{ color: COR_VERDE, textDecoration: "underline", fontSize: 15 }}>
+             style={{ color: corPrimaria, textDecoration: "underline", fontSize: 15 }}>
             ver no Google Maps →
           </a>
           {(cfg.telefone || cfg.emailContato) && (
@@ -318,12 +328,12 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
 
       {/* FOOTER */}
       <footer style={{
-        backgroundColor: COR_VERDE, color: COR_CREME,
+        backgroundColor: corPrimaria, color: corFundo,
         padding: "40px 20px 24px",
         textAlign: "center",
       }}>
         <div style={{
-          fontFamily: fontHeading, fontSize: 24, marginBottom: 16, color: COR_DOURADO,
+          fontFamily: fontHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
         }}>
           lobozó
         </div>
@@ -331,7 +341,7 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
           <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
             {cfg.redes.filter(r => r.url).map((r, i) => (
               <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                 style={{ color: COR_CREME, textDecoration: "none", fontSize: 14 }}>
+                 style={{ color: corFundo, textDecoration: "none", fontSize: 14 }}>
                 {iconRede(r.tipo)} {labelRede(r.tipo, r.label)}
               </a>
             ))}
@@ -351,71 +361,70 @@ export function LobozoTemplate({ siteConfig: cfg }: Props) {
       )}
     </div>
   );
-}
 
-// ─── Sub-componentes ────────────────────────────────────────────────────────
+  // ─── Helpers internos (closure sobre cores dinâmicas) ─────────────────────
 
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <a href={href} style={{
-      color: "#1a1a1a", textDecoration: "none",
-      fontSize: 14, fontWeight: 500,
-    }}>{children}</a>
-  );
-}
+  function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+    return (
+      <a href={href} style={{
+        color: corTexto, textDecoration: "none",
+        fontSize: 14, fontWeight: 500,
+      }}>{children}</a>
+    );
+  }
 
-function Section({ id, titulo, bg, children }: {
-  id: string; titulo: string; bg: string; children: React.ReactNode;
-}) {
-  return (
-    <section id={id} style={{ padding: "80px 20px", backgroundColor: bg }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <h2 style={{
-          fontFamily: "'DM Serif Display', serif",
-          fontSize: "clamp(32px, 5vw, 48px)",
-          textAlign: "center", margin: "0 0 48px 0", color: COR_VERDE,
-          letterSpacing: "-0.01em",
-        }}>
-          {titulo}
-        </h2>
-        {children}
-      </div>
-    </section>
-  );
-}
+  function Section({ id, titulo, bg, children }: {
+    id: string; titulo: string; bg: string; children: React.ReactNode;
+  }) {
+    return (
+      <section id={id} style={{ padding: "80px 20px", backgroundColor: bg }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <h2 style={{
+            fontFamily: fontHeading,
+            fontSize: "clamp(32px, 5vw, 48px)",
+            textAlign: "center", margin: "0 0 48px 0", color: corPrimaria,
+            letterSpacing: "-0.01em",
+          }}>
+            {titulo}
+          </h2>
+          {children}
+        </div>
+      </section>
+    );
+  }
 
-// ─── Styles inline (reusáveis) ──────────────────────────────────────────────
+  function primaryButton(cor: string): React.CSSProperties {
+    return {
+      display: "inline-block",
+      padding: "14px 32px",
+      backgroundColor: cor,
+      // Dourado tem brilho — texto preto contrasta melhor. Outras cores, fundo claro.
+      color: cor === corSecundaria ? "#1a1a1a" : corFundo,
+      textDecoration: "none",
+      fontSize: 15,
+      fontWeight: 600,
+      letterSpacing: "0.05em",
+      textTransform: "uppercase",
+      borderRadius: 4,
+      border: "none",
+      cursor: "pointer",
+      transition: "transform 0.15s ease",
+    };
+  }
 
-function primaryButton(cor: string): React.CSSProperties {
-  return {
-    display: "inline-block",
-    padding: "14px 32px",
-    backgroundColor: cor,
-    color: cor === COR_DOURADO ? "#1a1a1a" : COR_CREME,
-    textDecoration: "none",
-    fontSize: 15,
-    fontWeight: 600,
-    letterSpacing: "0.05em",
-    textTransform: "uppercase",
-    borderRadius: 4,
-    border: "none",
-    cursor: "pointer",
-    transition: "transform 0.15s ease",
-  };
-}
-
-function menuButton(cor: string, fundo: string): React.CSSProperties {
-  return {
-    display: "inline-block",
-    padding: "16px 28px",
-    backgroundColor: fundo,
-    color: cor,
-    textDecoration: "none",
-    fontSize: 15,
-    fontWeight: 600,
-    border: `2px solid ${cor}`,
-    borderRadius: 4,
-  };
+  function menuButton(cor: string, fundo: string): React.CSSProperties {
+    return {
+      display: "inline-block",
+      padding: "16px 28px",
+      backgroundColor: fundo,
+      color: cor,
+      textDecoration: "none",
+      fontSize: 15,
+      fontWeight: 600,
+      border: `2px solid ${cor}`,
+      borderRadius: 4,
+    };
+  }
 }
 
 const whatsappFloat: React.CSSProperties = {
