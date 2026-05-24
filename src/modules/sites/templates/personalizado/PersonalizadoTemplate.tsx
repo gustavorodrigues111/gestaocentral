@@ -308,8 +308,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           {cfg.slogan && (
             <p style={{
               fontFamily: fonteSubtitulo,
-              fontSize: 13, letterSpacing: "0.3em", textTransform: "uppercase",
+              fontSize: 14,
               color: corSecundaria, marginBottom: 16, opacity: 0.95,
+              whiteSpace: "pre-wrap",
             }}>
               {cfg.slogan}
             </p>
@@ -318,7 +319,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             fontFamily: fonteHeading,
             fontSize: isMobile ? "clamp(36px, 9vw, 56px)" : "clamp(40px, 7vw, 84px)",
             lineHeight: 1.05, margin: "0 0 20px 0", letterSpacing: "-0.01em",
-            whiteSpace: "pre-line",
+            whiteSpace: "pre-wrap",
           }}>
             {t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}
           </h1>
@@ -326,6 +327,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             fontFamily: fonteSubtitulo,
             fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
             lineHeight: 1.55,
+            whiteSpace: "pre-wrap",
           }}>
             {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
           </p>
@@ -389,7 +391,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       // e suporta \n pra quebrar em duas linhas.
                       fontSize: 13, letterSpacing: "0.04em",
                       color: corPrimaria, marginBottom: 14, fontWeight: 600,
-                      textAlign: "center", whiteSpace: "pre-line", lineHeight: 1.35,
+                      textAlign: "center", whiteSpace: "pre-wrap", lineHeight: 1.35,
                     }}>
                       {t("horarioProximosAvisosLabel", "Próximos avisos")}
                     </div>
@@ -413,7 +415,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                             textAlign: "center",
                           }}>
                             <div style={{
-                              fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
+                              fontSize: 11,
                               color: corPrimaria, fontWeight: 600,
                             }}>
                               {diaSemana}
@@ -452,7 +454,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           laje: (bg) => (cfg.features.hasLaje && cfg.features.hasEventos) ? (
             <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg={bg}>
               <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
                   {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
                 </p>
                 <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
@@ -464,7 +466,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           eventos: (bg) => (cfg.features.hasEventos && !cfg.features.hasLaje) ? (
             <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg={bg}>
               <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-line" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
                   {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
                 </p>
                 <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
@@ -476,7 +478,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           reservas: (bg) => cfg.features.hasReservas ? (
             <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={bg}>
               <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
                   {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
                 </p>
                 <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
@@ -499,7 +501,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           trabalhe: (bg) => cfg.features.hasTrabalheConosco ? (
             <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={bg}>
               <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-line" }}>
+                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
                   {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
                 </p>
                 <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
@@ -671,7 +673,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             </div>
           );
         })()}
-        <div style={{ fontSize: 12, opacity: 0.7 }}>
+        <div style={{ fontSize: 12, opacity: 0.7, whiteSpace: "pre-wrap" }}>
           © {new Date().getFullYear()} — {t("rodapeDireitos", "Todos os direitos reservados.")}
         </div>
       </footer>
@@ -768,6 +770,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             fontSize: "clamp(32px, 5vw, 48px)",
             textAlign: "center", margin: "0 0 48px 0", color: corPrimaria,
             letterSpacing: "-0.01em",
+            whiteSpace: "pre-wrap",
           }}>
             {titulo}
           </h2>
@@ -787,12 +790,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       textDecoration: "none",
       fontSize: 15,
       fontWeight: 600,
-      letterSpacing: "0.05em",
-      textTransform: "uppercase",
       borderRadius: 4,
       border: "none",
       cursor: "pointer",
       transition: "transform 0.15s ease",
+      // Respeita case e \n do label que o usuário escreveu no admin.
+      whiteSpace: "pre-wrap",
     };
   }
 

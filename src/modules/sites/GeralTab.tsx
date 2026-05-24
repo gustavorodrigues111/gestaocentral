@@ -687,110 +687,131 @@ function TextosSection({ form, setForm, disabled }: {
   }
 
   // Definição dos campos por grupo (ordem = ordem no site).
-  // "fromTop" = campo está em SiteConfig.slogan / .historia (não em .textos).
-  // "acao" = pra campos CTA, descreve o que o botão faz quando clicado.
+  //  - "fromTop"  = campo está em SiteConfig.slogan / .historia (não em .textos)
+  //  - "acao"     = pra campos CTA, descreve o que o botão faz quando clicado
+  //  - "rows"     = altura da textarea (default 2). Todos os campos são
+  //                 multilinhas — case e \n são respeitados em qualquer um.
+  //  - "condicao" = legenda quando a seção depende de uma feature
   type Campo = {
     chave?: keyof NonNullable<SiteConfig["textos"]>;
     fromTop?: "slogan" | "historia";
     label: string;
     placeholder: string;
-    longo?: boolean;
+    rows?: number;
     dica?: string;
     acao?: string;
   };
-  const grupos: { titulo: string; campos: Campo[] }[] = [
+  const grupos: { titulo: string; campos: Campo[]; condicao?: string }[] = [
     {
       titulo: "Hero (topo da página)",
       campos: [
-        { fromTop: "slogan",      label: "Slogan / tagline (acima do título)", placeholder: "ex: laboratório gastronômico" },
-        { chave: "heroTitulo",    label: "Título do hero", placeholder: "ex: Cozinha caipira,\\nfeita com tempo.", longo: true, dica: "Use \\n pra quebra de linha" },
-        { chave: "heroSubtitulo", label: "Subtítulo", placeholder: "Texto curto abaixo do título", longo: true },
-        { chave: "heroCtaLabel",  label: "Botão CTA do Hero",
+        { fromTop: "slogan",      label: "Slogan / tagline",
+          placeholder: "ex: laboratório gastronômico",
+          dica: "Aparece pequeno acima do título grande do hero.",
+        },
+        { chave: "heroTitulo",    label: "Título grande do hero",
+          placeholder: "ex: Cozinha caipira,\nfeita com tempo.",
+          rows: 3 },
+        { chave: "heroSubtitulo", label: "Subtítulo do hero",
+          placeholder: "Texto curto abaixo do título",
+          rows: 3 },
+        { chave: "heroCtaLabel",  label: "Botão de chamada (CTA) do hero",
           placeholder: "Faça sua reserva",
-          acao: "→ abre formulário público de reservas (/reservas/:rid)" },
+          acao: "→ abre /reservas/:rid (se a feature de reservas estiver ligada)" },
       ],
     },
     {
       titulo: "História",
       campos: [
         { chave: "historiaTitulo", label: "Título da seção", placeholder: "A nossa história" },
-        { fromTop: "historia",     label: "Texto da história", placeholder: "Conta a história do restaurante (vai pro site público)", longo: true },
+        { fromTop: "historia",     label: "Texto da história",
+          placeholder: "Conta a história do restaurante.",
+          rows: 8,
+          dica: "Textos longos ganham um \"Ver mais\" automático no site.",
+        },
       ],
     },
     {
       titulo: "Cardápio",
       campos: [
-        { chave: "cardapioTitulo", label: "Título", placeholder: "Cardápio" },
+        { chave: "cardapioTitulo", label: "Título da seção", placeholder: "Cardápio" },
       ],
     },
     {
       titulo: "Horário",
       campos: [
-        { chave: "horarioTitulo",              label: "Título", placeholder: "Horário de funcionamento" },
-        { chave: "horarioProximosAvisosLabel", label: "Label dos avisos",
-          placeholder: "Próximos avisos", longo: true,
-          dica: "Pode usar maiúscula/minúscula como quiser. Use \\n pra quebra de linha." },
+        { chave: "horarioTitulo", label: "Título da seção", placeholder: "Horário de funcionamento" },
+        { chave: "horarioProximosAvisosLabel", label: "Título dos avisos especiais",
+          placeholder: "Próximos avisos",
+          rows: 2,
+          dica: "Aparece acima dos cards de feriados/exceções. Ex: \"Funcionaremos nos seguintes feriados:\"" },
       ],
     },
     {
-      titulo: "Eventos na Laje (só se hasLaje)",
+      titulo: "Laje (rooftop)",
+      condicao: "só aparece se features.hasLaje + hasEventos",
       campos: [
-        { chave: "lajeTitulo",    label: "Título", placeholder: "Eventos na Laje" },
-        { chave: "lajeTexto",     label: "Texto", placeholder: "Descreva o espaço da laje", longo: true },
-        { chave: "lajeCtaLabel",  label: "Botão CTA da Laje",
+        { chave: "lajeTitulo",    label: "Título da seção", placeholder: "Eventos na Laje" },
+        { chave: "lajeTexto",     label: "Texto", placeholder: "Descreva o espaço da laje", rows: 4 },
+        { chave: "lajeCtaLabel",  label: "Botão da Laje",
           placeholder: "Solicitar proposta",
-          acao: "→ abre formulário público de eventos (/eventos/:rid)" },
+          acao: "→ abre /eventos/:rid" },
       ],
     },
     {
-      titulo: "Eventos genéricos (só se hasEventos sem Laje)",
+      titulo: "Eventos privados",
+      condicao: "só aparece se features.hasEventos sem hasLaje",
       campos: [
-        { chave: "eventosTitulo",   label: "Título", placeholder: "Eventos privados" },
-        { chave: "eventosTexto",    label: "Texto", placeholder: "Descreva sua oferta", longo: true },
-        { chave: "eventosCtaLabel", label: "Botão CTA de Eventos",
+        { chave: "eventosTitulo",   label: "Título da seção", placeholder: "Eventos privados" },
+        { chave: "eventosTexto",    label: "Texto", placeholder: "Descreva sua oferta", rows: 4 },
+        { chave: "eventosCtaLabel", label: "Botão de Eventos",
           placeholder: "Solicitar proposta",
-          acao: "→ abre formulário público de eventos (/eventos/:rid)" },
+          acao: "→ abre /eventos/:rid" },
       ],
     },
     {
       titulo: "Reservas",
+      condicao: "só aparece se features.hasReservas",
       campos: [
-        { chave: "reservasTitulo",   label: "Título", placeholder: "Reservas" },
-        { chave: "reservasTexto",    label: "Texto", placeholder: "Política de reserva", longo: true },
-        { chave: "reservasCtaLabel", label: "Botão CTA de Reservas",
+        { chave: "reservasTitulo",   label: "Título da seção", placeholder: "Reservas" },
+        { chave: "reservasTexto",    label: "Texto", placeholder: "Política de reserva", rows: 4 },
+        { chave: "reservasCtaLabel", label: "Botão de Reservas",
           placeholder: "Reservar mesa",
-          acao: "→ abre formulário público de reservas (/reservas/:rid)" },
+          acao: "→ abre /reservas/:rid" },
       ],
     },
     {
-      titulo: "Delivery (só se hasDelivery)",
+      titulo: "Delivery",
+      condicao: "só aparece se features.hasDelivery + links configurados",
       campos: [
-        { chave: "deliveryTitulo", label: "Título", placeholder: "Peça pra casa" },
+        { chave: "deliveryTitulo", label: "Título da seção", placeholder: "Peça pra casa" },
       ],
     },
     {
       titulo: "Trabalhe Conosco",
+      condicao: "só aparece se features.hasTrabalheConosco",
       campos: [
-        { chave: "trabalheTitulo",   label: "Título", placeholder: "Venha trabalhar com a gente" },
-        { chave: "trabalheTexto",    label: "Texto", placeholder: "Conta sobre as oportunidades", longo: true },
-        { chave: "trabalheCtaLabel", label: "Botão CTA de Trabalhe",
+        { chave: "trabalheTitulo",   label: "Título da seção", placeholder: "Venha trabalhar com a gente" },
+        { chave: "trabalheTexto",    label: "Texto", placeholder: "Conta sobre as oportunidades", rows: 4 },
+        { chave: "trabalheCtaLabel", label: "Botão de Candidatura",
           placeholder: "Enviar candidatura",
-          acao: "→ abre formulário público de candidatura (/trabalhe/:rid)" },
+          acao: "→ abre /trabalhe/:rid" },
       ],
     },
     {
       titulo: "Contato",
       campos: [
-        { chave: "contatoTitulo", label: "Título", placeholder: "Como chegar" },
+        { chave: "contatoTitulo", label: "Título da seção", placeholder: "Como chegar" },
       ],
     },
     {
       titulo: "Rodapé",
       campos: [
         { chave: "rodapeDireitos",
-          label: "Texto de direitos autorais",
+          label: "Texto após © e o ano",
           placeholder: "Lobozó Cozinha LTDA. Todos os direitos reservados.",
-          dica: "Aparece no rodapé do site, depois do © e o ano atual." },
+          rows: 2,
+        },
       ],
     },
   ];
@@ -825,10 +846,23 @@ function TextosSection({ form, setForm, disabled }: {
           <span className="text-xs text-gray-400">▼ expandir / fechar</span>
         </summary>
         <div className="px-3 pb-3 pt-1 space-y-4">
+          {/* Dica universal — vale pra todos os campos */}
+          <div className="rounded-lg border border-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 dark:border-indigo-800 px-3 py-2 text-[11px] text-indigo-900 dark:text-indigo-200">
+            Todos os campos respeitam maiúscula/minúscula como digitados e
+            aceitam <strong>quebra de linha</strong> (Enter).
+          </div>
+
           {grupos.map(g => (
             <div key={g.titulo}>
-              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
-                {g.titulo}
+              <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                  {g.titulo}
+                </div>
+                {g.condicao && (
+                  <div className="text-[10px] text-gray-400 italic">
+                    {g.condicao}
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 {g.campos.map(c => {
@@ -844,24 +878,14 @@ function TextosSection({ form, setForm, disabled }: {
                           </span>
                         )}
                       </label>
-                      {c.longo ? (
-                        <textarea
-                          value={valor}
-                          onChange={(e) => setValor(c, e.target.value)}
-                          placeholder={c.placeholder}
-                          disabled={disabled}
-                          rows={c.fromTop === "historia" ? 6 : 2}
-                          className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                        />
-                      ) : (
-                        <input
-                          value={valor}
-                          onChange={(e) => setValor(c, e.target.value)}
-                          placeholder={c.placeholder}
-                          disabled={disabled}
-                          className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                        />
-                      )}
+                      <textarea
+                        value={valor}
+                        onChange={(e) => setValor(c, e.target.value)}
+                        placeholder={c.placeholder}
+                        disabled={disabled}
+                        rows={c.rows ?? 2}
+                        className="mt-0.5 w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm resize-y"
+                      />
                       {c.dica && (
                         <p className="text-[10px] text-gray-400 mt-0.5">{c.dica}</p>
                       )}
