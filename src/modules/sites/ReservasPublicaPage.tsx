@@ -285,6 +285,58 @@ export function ReservasPublicaPage() {
     });
   }, [data, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
 
+  // ──────────────── Próximos dias disponíveis ────────────────
+  // Lista os próximos 30 dias e filtra os SEM janelas configuradas
+  // (fechado, sem slot, ou exceção sem reservas). Não considera lotação
+  // por slot — isso fica pro slot picker depois.
+  const diasDisponiveis = useMemo(() => {
+    if (!config) return [];
+    const hojeBase = new Date(hojeISO + "T12:00:00");
+    const result: Array<{
+      data: string; diaSemanaCurto: string; diaSemanaLong: string;
+      dia: number; mes: number; mesLabel: string;
+      hasExcecao: boolean; motivo?: string;
+    }> = [];
+    const meses = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+    const sCurto = ["dom","seg","ter","qua","qui","sex","sáb"];
+    const sLong = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(hojeBase);
+      d.setDate(d.getDate() + i);
+      const dataIso = d.toISOString().slice(0, 10);
+      const dow = d.getDay();
+      // Aplica regra de precedência (mesma do slotsDisponiveis)
+      const exc = siteConfig?.excecoes?.find(e => e.data === dataIso);
+      let temSlot = false;
+      if (exc) {
+        if (exc.fechado) continue;
+        if (exc.slotsReservaCustom !== undefined) {
+          if (exc.slotsReservaCustom.length === 0) continue;
+          temSlot = exc.slotsReservaCustom.some(s => s.salaoIds.length > 0);
+        } else {
+          const j = config.janelas?.find(jw => jw.dia === dow);
+          temSlot = !!j && j.slots.length > 0;
+        }
+      } else {
+        const j = config.janelas?.find(jw => jw.dia === dow);
+        temSlot = !!j && j.slots.length > 0;
+      }
+      if (!temSlot) continue;
+      result.push({
+        data: dataIso,
+        diaSemanaCurto: sCurto[dow]!,
+        diaSemanaLong: sLong[dow]!,
+        dia: d.getDate(),
+        mes: d.getMonth() + 1,
+        mesLabel: meses[d.getMonth()]!,
+        hasExcecao: !!exc,
+        motivo: exc?.motivo,
+      });
+    }
+    return result;
+  }, [config, siteConfig?.excecoes, hojeISO]);
+
   // ──────────────── Submit ────────────────
   async function submit() {
     setErro("");
@@ -538,14 +590,61 @@ export function ReservasPublicaPage() {
             />
           </FormField>
 
-          <FormField label="Data *">
-            <input
-              type="date"
-              value={data}
-              min={hojeISO}
-              onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-              className={fieldInputCls}
-            />
+          <FormField label="Data *" dica="Mostrando próximos dias com horários disponíveis">
+            {diasDisponiveis.length === 0 ? (
+              <div className="text-sm rounded-lg p-3 bg-amber-50 border border-amber-200 text-amber-800">
+                Nenhuma data com reservas disponíveis nos próximos 30 dias.
+                Fale com a casa pelo WhatsApp.
+              </div>
+            ) : (
+              <div style={{
+                display: "flex", gap: 8, overflowX: "auto",
+                paddingBottom: 4,
+                scrollSnapType: "x mandatory",
+                WebkitOverflowScrolling: "touch",
+              }}>
+                {diasDisponiveis.map(d => {
+                  const ativo = data === d.data;
+                  return (
+                    <button
+                      key={d.data}
+                      type="button"
+                      onClick={() => { setData(d.data); setSlotHorario(""); setSalaoId(""); }}
+                      style={{
+                        flex: "0 0 auto",
+                        scrollSnapAlign: "start",
+                        minWidth: 72,
+                        padding: "10px 14px",
+                        borderRadius: 12,
+                        border: `1px solid ${ativo ? corPrimaria : "#d1d5db"}`,
+                        backgroundColor: ativo ? `${corPrimaria}15` : "#fff",
+                        color: ativo ? corPrimaria : "#1a1a1a",
+                        cursor: "pointer",
+                        textAlign: "center",
+                        transition: "background-color 0.15s, border-color 0.15s",
+                      }}
+                      title={d.motivo}
+                    >
+                      <div style={{ fontSize: 11, textTransform: "lowercase", opacity: 0.7 }}>
+                        {d.diaSemanaCurto}
+                      </div>
+                      <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}>
+                        {String(d.dia).padStart(2, "0")}
+                      </div>
+                      <div style={{ fontSize: 10, textTransform: "lowercase", opacity: 0.7, marginTop: 2 }}>
+                        {d.mesLabel}
+                      </div>
+                      {d.hasExcecao && (
+                        <div style={{
+                          fontSize: 8, marginTop: 3, color: corPrimaria,
+                          textTransform: "uppercase", fontWeight: 700,
+                        }}>★</div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </FormField>
 
           <FormField label="Pessoas *">

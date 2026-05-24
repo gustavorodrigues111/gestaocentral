@@ -9,7 +9,7 @@ import type {
   SiteConfig, SlotReserva,
 } from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
-import { buscarFeriadosProximos12Meses, type FeriadoBR } from "./feriadosHelper";
+import { buscarFeriadosProximos, type FeriadoBR } from "./feriadosHelper";
 
 type Props = {
   rid: string;
@@ -74,16 +74,18 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     }
   }, [cfgRemoto]);
 
-  // Feriados sugeridos via BrasilAPI (cache 24h em localStorage)
+  // Feriados sugeridos (BrasilAPI nacionais + tabela estadual por UF do
+  // restaurante, próximos 6 meses, cache 24h em localStorage)
+  const ufRestaurante = cfgRemoto?.endereco?.uf;
   const [feriados, setFeriados] = useState<FeriadoBR[]>([]);
   const [feriadosErro, setFeriadosErro] = useState<string | null>(null);
   useEffect(() => {
     let cancelado = false;
-    buscarFeriadosProximos12Meses()
+    buscarFeriadosProximos(ufRestaurante, 6)
       .then(list => { if (!cancelado) setFeriados(list); })
       .catch(e => { if (!cancelado) setFeriadosErro(e?.message || "Erro ao buscar feriados"); });
     return () => { cancelado = true; };
-  }, []);
+  }, [ufRestaurante]);
 
   // Adiciona um feriado da BrasilAPI como exceção (fechado por padrão)
   function adicionarFeriadoComoExcecao(f: FeriadoBR) {
@@ -496,13 +498,13 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
           </div>
         )}
 
-        {/* Sugestões de feriados nacionais (BrasilAPI) */}
+        {/* Sugestões de feriados nacionais + estaduais (BrasilAPI + curado) */}
         {podeEditar && (
           <details className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
             <summary className="cursor-pointer px-3 py-2 list-none">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <div className="font-semibold text-sm text-gray-700 dark:text-gray-300">
-                  📅 Sugestões de feriados nacionais
+                  📅 Sugestões de feriados
                 </div>
                 <span className="text-xs text-gray-400">
                   {feriadosErro
@@ -513,8 +515,8 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                 </span>
               </div>
               <p className="text-[11px] text-gray-500 mt-1">
-                Próximos 12 meses, via BrasilAPI. 1 clique marca como exceção fechada.
-                Estaduais e municipais ficam pra depois — por enquanto, adicione manualmente.
+                Próximos 6 meses — feriados nacionais (BrasilAPI) {ufRestaurante && `+ estaduais (${ufRestaurante})`}.
+                1 clique marca como exceção fechada. Municipais e aniversário da cidade: adicione manualmente.
               </p>
             </summary>
             {feriadosErro ? (
@@ -524,9 +526,11 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                 {feriados.map(f => {
                   const ja = excecoes.some(e => e.data === f.date);
                   const d = new Date(f.date + "T12:00:00");
+                  const diaSemana = ["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"][d.getDay()];
+                  const tipoLabel = f.type === "nacional" ? "🇧🇷 nacional" : f.type === "estadual" ? `🏛️ ${f.uf}` : "🏙️ municipal";
                   return (
                     <button
-                      key={f.date}
+                      key={`${f.date}_${f.name}`}
                       type="button"
                       disabled={ja}
                       onClick={() => adicionarFeriadoComoExcecao(f)}
@@ -536,10 +540,14 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                           : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/20"
                       }`}
                     >
-                      <div className="font-semibold tabular-nums">
-                        {String(d.getDate()).padStart(2, "0")}/{String(d.getMonth() + 1).padStart(2, "0")}/{d.getFullYear()}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <div className="font-semibold tabular-nums">
+                          {String(d.getDate()).padStart(2, "0")}/{String(d.getMonth() + 1).padStart(2, "0")}/{d.getFullYear()}
+                        </div>
+                        <div className="text-[10px] text-gray-500">{diaSemana}</div>
                       </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400">{f.name}</div>
+                      <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">{f.name}</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">{tipoLabel}</div>
                       {ja && <div className="text-[10px] text-emerald-600 mt-0.5">✓ já adicionado</div>}
                     </button>
                   );
