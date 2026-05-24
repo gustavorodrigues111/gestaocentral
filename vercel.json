@@ -3,13 +3,13 @@
     {
       "source": "/",
       "has": [{ "type": "host", "value": "lobozo.com.br" }],
-      "destination": "/site/lobozo/index.html"
+      "destination": "/site/lobozo/"
     },
     {
       "source": "/",
       "has": [{ "type": "host", "value": "www.lobozo.com.br" }],
-      "destination": "/site/lobozo/index.html"
+      "destination": "/site/lobozo/"
     },
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    { "source": "/((?!api/|site/).*)", "destination": "/index.html" }
   ]
 }
