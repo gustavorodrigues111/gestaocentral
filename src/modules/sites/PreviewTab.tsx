@@ -29,20 +29,26 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
   }
   if (!config) return <div className="text-sm text-gray-500">Sem configuração — vai na aba Geral.</div>;
 
-  const url = `/site/${config.slug}`;
+  // Preview interno (ignora publicado, lê pelo rid) vs URL pública real
+  const previewUrl = `/site-preview/${rid}`;
+  const publicUrl = `/site/${config.slug}`;
   const naoPublicado = !config.publicado;
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-center gap-2 text-sm">
-          <span className="text-gray-500">URL:</span>
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          <span className="text-gray-500">URL pública:</span>
           <code className="px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-xs">
-            {window.location.origin}{url}
+            {window.location.origin}{publicUrl}
           </code>
-          <a href={url} target="_blank" rel="noreferrer"
+          <a href={publicUrl} target="_blank" rel="noreferrer"
              className="text-xs text-indigo-600 hover:underline">
             abrir ↗
+          </a>
+          <a href={previewUrl} target="_blank" rel="noreferrer"
+             className="text-xs text-indigo-600 hover:underline">
+            preview interno ↗
           </a>
         </div>
         <div className="flex items-center gap-1">
@@ -63,9 +69,9 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
 
       {naoPublicado && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200">
-          ⚠ Site está marcado como <strong>não publicado</strong>. O preview aqui mostra como ele
-          ficará, mas a URL pública vai retornar "em manutenção" pra qualquer um que tentar
-          abrir. Marca como publicado na aba Geral quando estiver pronto.
+          ⚠ Site está marcado como <strong>não publicado</strong>. Você consegue ver o preview aqui,
+          mas a URL pública vai retornar "em manutenção" pra qualquer pessoa que tentar abrir.
+          Marca como publicado na aba Geral quando estiver pronto.
         </div>
       )}
 
@@ -76,7 +82,7 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
             <span className="w-2 h-2 rounded-full bg-amber-400" />
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
           </div>
-          <span className="font-mono ml-2">{url}</span>
+          <span className="font-mono ml-2">preview · {config.slug}</span>
         </div>
         <div style={{
           display: "flex", justifyContent: "center",
@@ -86,7 +92,7 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
           <iframe
             // Força reload com timestamp pra refletir mudanças no siteConfig
             key={config.updatedAt}
-            src={url}
+            src={previewUrl}
             title="Preview do site"
             style={{
               width: viewport === "mobile" ? 390 : "100%",

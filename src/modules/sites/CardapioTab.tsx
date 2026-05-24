@@ -38,8 +38,8 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
       <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-900 dark:text-indigo-200">
         <p className="font-semibold mb-1">📋 Cardápios em PDF</p>
         <p className="text-[13px] opacity-90">
-          Suba 2 versões — português e inglês. O site público mostra o que você subiu aqui;
-          atualizar o PDF atualiza o site na hora. Máx {TAMANHO_MAX_MB}MB cada.
+          Suba 2 versões — português e inglês. <strong>O upload salva automaticamente</strong> —
+          não precisa clicar em "salvar". O site público atualiza na hora. Máx {TAMANHO_MAX_MB}MB cada.
         </p>
       </div>
 
@@ -89,6 +89,7 @@ function CardapioCard({
   const [uploading, setUploading] = useState(false);
   const [progresso, setProgresso] = useState(0);
   const [erro, setErro] = useState("");
+  const [acabouDeSalvar, setAcabouDeSalvar] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   async function uploadFile(file: File) {
@@ -130,6 +131,9 @@ function CardapioCard({
           };
       await onSave(parcial);
       setProgresso(100);
+      setAcabouDeSalvar(true);
+      // Mensagem some depois de 4s
+      setTimeout(() => setAcabouDeSalvar(false), 4000);
     } catch (e) {
       console.error(e);
       setErro(e instanceof Error ? e.message : "Erro ao fazer upload");
@@ -233,6 +237,11 @@ function CardapioCard({
               </div>
               <p className="text-[11px] text-gray-500">Enviando... {progresso}%</p>
             </div>
+          )}
+          {acabouDeSalvar && !uploading && (
+            <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
+              ✓ Salvo automaticamente — site público atualizado.
+            </p>
           )}
           {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
           {url && !uploading && (
