@@ -1062,6 +1062,11 @@ export type ConfiguracaoReservas = {
   restaurantId: string;
   janelas: JanelaDiaReserva[];        // 7 entries (1 por dia da semana)
   duracaoSlotMin: number;             // duração da reserva em minutos (default 90)
+  // Quantos dias à frente o cliente público pode reservar.
+  // Default 90 (~3 meses). O form mostra 6 chips de datas disponíveis
+  // dentro dessa janela + botão "Ver outra data" pra escolher qualquer
+  // data dentro do range.
+  janelaAntecedenciaDias?: number;
   // Template da mensagem de WhatsApp que admin manda pra confirmar reserva
   // antes do dia. Variáveis suportadas (substituídas no momento de mandar):
   //   {primeiro_nome} {nome} {restaurante} {data} {hora} {pax} {salao}
@@ -1070,6 +1075,10 @@ export type ConfiguracaoReservas = {
   atualizadoEm: string;
   atualizadoPor: string;
 };
+
+// Default da janela de antecedência (em dias) quando o restaurante
+// não customizou. Usado pelo form público pra limitar o seletor de datas.
+export const DEFAULT_JANELA_ANTECEDENCIA_DIAS = 90;
 
 // Template padrão usado quando o restaurante ainda não customizou o seu.
 // Variáveis viram literais no texto até serem substituídas.

@@ -9,6 +9,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   Cliente, ClientePublicLookup, ConfiguracaoReservas, Reserva, ReservaPII, Salao,
 } from "../../core/types";
+import { DEFAULT_JANELA_ANTECEDENCIA_DIAS } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
@@ -324,11 +325,12 @@ export function ReservasPublicaPage() {
   }, [data, hojeISO, agoraComBuffer, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
 
   // ──────────────── Próximos dias disponíveis ────────────────
-  // Lista os próximos 7 dias DISPONÍVEIS (com janelas configuradas) —
-  // varre até 60 dias à frente caso muitos sejam fechados/sem slots.
-  // Não considera lotação por slot — isso fica pro slot picker depois.
+  // Lista os próximos 6 dias DISPONÍVEIS (com janelas configuradas) —
+  // varre até `janelaAntecedenciaDias` dias à frente (configurável por
+  // restaurante, default 90). Quem quiser data específica além das 6
+  // chips clica em "Ver outra data" e usa o date picker nativo.
   const MAX_DIAS = 6;
-  const RANGE_VARREDURA = 60;
+  const janelaDias = config?.janelaAntecedenciaDias || DEFAULT_JANELA_ANTECEDENCIA_DIAS;
   const diasDisponiveis = useMemo(() => {
     if (!config) return [];
     const hojeBase = new Date(hojeISO + "T12:00:00");
@@ -341,7 +343,7 @@ export function ReservasPublicaPage() {
     const sCurto = ["dom","seg","ter","qua","qui","sex","sáb"];
     const sLong = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
 
-    for (let i = 0; i < RANGE_VARREDURA && result.length < MAX_DIAS; i++) {
+    for (let i = 0; i < janelaDias && result.length < MAX_DIAS; i++) {
       const d = new Date(hojeBase);
       d.setDate(d.getDate() + i);
       // Igual ao hojeISO: monta em horário LOCAL, não UTC
@@ -381,7 +383,7 @@ export function ReservasPublicaPage() {
       });
     }
     return result;
-  }, [config, siteConfig?.excecoes, hojeISO, agoraComBuffer]);
+  }, [config, siteConfig?.excecoes, hojeISO, agoraComBuffer, janelaDias]);
 
   // ──────────────── Submit ────────────────
   async function submit() {
@@ -665,10 +667,10 @@ export function ReservasPublicaPage() {
             />
           </FormField>
 
-          <FormField label="Data *" dica="Mostrando próximos dias com horários disponíveis">
+          <FormField label="Data *" dica="Próximos dias disponíveis — ou escolha uma data específica">
             {diasDisponiveis.length === 0 ? (
               <div className="text-sm rounded-lg p-3 bg-amber-50 border border-amber-200 text-amber-800">
-                Nenhuma data com reservas disponíveis nos próximos 30 dias.
+                Nenhuma data com reservas disponíveis nos próximos {janelaDias} dias.
                 Fale com a casa pelo WhatsApp.
               </div>
             ) : (
@@ -685,8 +687,8 @@ export function ReservasPublicaPage() {
                       type="button"
                       onClick={() => { setData(d.data); setSlotHorario(""); setSalaoId(""); }}
                       style={{
-                        flex: "1 1 calc(25% - 8px)",  // ~4 chips por linha
-                        minWidth: 78, maxWidth: 110,
+                        flex: "1 1 calc(33.33% - 8px)",   // 3 chips por linha (6 = 2 linhas de 3)
+                        minWidth: 78, maxWidth: 140,
                         padding: "10px 14px",
                         borderRadius: 12,
                         border: `1px solid ${ativo ? corPrimaria : "#d1d5db"}`,
@@ -718,6 +720,25 @@ export function ReservasPublicaPage() {
                 })}
               </div>
             )}
+            {/* Date picker como fallback pra qualquer data dentro da janela.
+                Aparece quando o cliente quer reservar fora dos 6 chips
+                (ex: aniversário em 60 dias). Limitado pela janela configurada. */}
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 12, color: "#666" }}>ou escolha outra data:</span>
+              <input
+                type="date"
+                value={data}
+                min={hojeISO}
+                max={(() => {
+                  const d = new Date(hojeISO + "T12:00:00");
+                  d.setDate(d.getDate() + janelaDias);
+                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                })()}
+                onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
+                className={fieldInputCls}
+                style={{ maxWidth: 180, flex: "0 1 auto" }}
+              />
+            </div>
           </FormField>
 
           <FormField label="Pessoas *">

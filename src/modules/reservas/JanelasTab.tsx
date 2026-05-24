@@ -7,6 +7,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   ConfiguracaoReservas, JanelaDiaReserva, Salao, SlotReserva,
 } from "../../core/types";
+import { DEFAULT_JANELA_ANTECEDENCIA_DIAS } from "../../core/types";
 
 type Props = {
   restaurantId: string;
@@ -32,6 +33,7 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
   const [cfg, setCfg] = useState<ConfiguracaoReservas | null>(null);
   const [loading, setLoading] = useState(true);
   const [duracao, setDuracao] = useState("90");
+  const [janelaAntecedencia, setJanelaAntecedencia] = useState(String(DEFAULT_JANELA_ANTECEDENCIA_DIAS));
   const [janelas, setJanelas] = useState<JanelaDiaReserva[]>([]);
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
@@ -44,11 +46,13 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
         const data = { id: snap.id, ...snap.data() } as ConfiguracaoReservas;
         setCfg(data);
         setDuracao(String(data.duracaoSlotMin ?? 90));
+        setJanelaAntecedencia(String(data.janelaAntecedenciaDias ?? DEFAULT_JANELA_ANTECEDENCIA_DIAS));
         setJanelas(normalizar(data.janelas));
       } else {
         // Default: 7 dias sem slots (fechado)
         setCfg(null);
         setDuracao("90");
+        setJanelaAntecedencia(String(DEFAULT_JANELA_ANTECEDENCIA_DIAS));
         setJanelas(DIAS.map(d => ({ dia: d.id, slots: [] })));
       }
       setLoading(false);
@@ -94,6 +98,11 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
       setErro("Duração da reserva precisa ficar entre 15 e 480 minutos");
       return;
     }
+    const antec = parseInt(janelaAntecedencia, 10);
+    if (!antec || antec < 1 || antec > 365) {
+      setErro("Janela de antecedência precisa ficar entre 1 e 365 dias");
+      return;
+    }
     // Validações por slot
     for (const j of janelas) {
       for (const s of j.slots) {
@@ -121,6 +130,10 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
         restaurantId,
         janelas: ordenadas,
         duracaoSlotMin: dur,
+        janelaAntecedenciaDias: antec,
+        // Preserva templateConfirmacao do doc atual — sem isso, salvar
+        // aqui zera o template editado em outra aba.
+        ...(cfg?.templateConfirmacao ? { templateConfirmacao: cfg.templateConfirmacao } : {}),
         atualizadoEm: now,
         atualizadoPor: pessoaId,
       };
@@ -146,20 +159,34 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
 
   return (
     <div className="space-y-4">
-      {/* Header com duração padrão */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
-          <Input
-            label="Duração padrão da reserva (minutos)"
-            type="number" min={15} max={480}
-            value={duracao}
-            onChange={(e) => setDuracao(e.target.value)}
-            disabled={!podeConfig}
-          />
-          <p className="text-[11px] text-gray-500">
-            Tempo estimado que a mesa fica ocupada (afeta cálculo de
-            disponibilidade futuro entre slots).
-          </p>
+      {/* Header com duração padrão + janela de antecedência */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <Input
+              label="Duração padrão da reserva (minutos)"
+              type="number" min={15} max={480}
+              value={duracao}
+              onChange={(e) => setDuracao(e.target.value)}
+              disabled={!podeConfig}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">
+              Tempo estimado que a mesa fica ocupada (cálculo de disponibilidade).
+            </p>
+          </div>
+          <div>
+            <Input
+              label="Janela de antecedência (dias)"
+              type="number" min={1} max={365}
+              value={janelaAntecedencia}
+              onChange={(e) => setJanelaAntecedencia(e.target.value)}
+              disabled={!podeConfig}
+            />
+            <p className="text-[11px] text-gray-500 mt-1">
+              Quantos dias à frente o cliente público pode reservar.
+              Default: {DEFAULT_JANELA_ANTECEDENCIA_DIAS} (~3 meses).
+            </p>
+          </div>
         </div>
       </div>
 
