@@ -785,6 +785,9 @@ function TextosSection({ form, setForm, disabled }: {
       condicao: "só aparece se features.hasDelivery + links configurados",
       campos: [
         { chave: "deliveryTitulo", label: "Título da seção", placeholder: "Peça pra casa" },
+        { chave: "deliveryTexto",  label: "Texto (opcional)",
+          placeholder: "Ex: Não pode vir? A gente entrega.",
+          rows: 3 },
       ],
     },
     {

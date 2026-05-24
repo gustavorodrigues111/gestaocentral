@@ -2222,6 +2222,7 @@ export type SiteConfig = {
     reservasTexto?: string;
     reservasCtaLabel?: string;
     deliveryTitulo?: string;
+    deliveryTexto?: string;
     trabalheTitulo?: string;
     trabalheTexto?: string;
     trabalheCtaLabel?: string;

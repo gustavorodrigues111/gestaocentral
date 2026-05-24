@@ -501,12 +501,31 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           delivery: () => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? {
             titulo: t("deliveryTitulo", "Peça pra casa"),
             conteudo: (
-              <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap", maxWidth: 700, margin: "0 auto" }}>
-                {(cfg.delivery || []).map((d, i) => (
-                  <a key={i} href={d.url} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-                    {d.label || labelDelivery(d.plataforma)}
-                  </a>
-                ))}
+              <div style={{
+                maxWidth: 600, margin: "0 auto", textAlign: "center",
+                display: "flex", flexDirection: "column",
+                flex: 1, width: "100%",
+                gap: 32, // mesma equidistância dos outros CtaConteudo
+              }}>
+                {t("deliveryTexto", "") && (
+                  <p style={{
+                    fontSize: 17, lineHeight: 1.7,
+                    margin: 0, whiteSpace: "pre-wrap",
+                  }}>
+                    {t("deliveryTexto", "")}
+                  </p>
+                )}
+                <div style={{
+                  marginTop: "auto",  // empurra pro rodapé em par
+                  display: "flex", gap: 12,
+                  justifyContent: "center", flexWrap: "wrap",
+                }}>
+                  {(cfg.delivery || []).map((d, i) => (
+                    <a key={i} href={d.url} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                      {d.label || labelDelivery(d.plataforma)}
+                    </a>
+                  ))}
+                </div>
               </div>
             ),
           } : null,
