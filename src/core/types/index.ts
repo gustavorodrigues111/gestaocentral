@@ -2141,10 +2141,13 @@ export type SiteConfig = {
   // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
   slug: string;
   // Qual template visual usar pra renderizar o site público.
-  // Cada template tem layout/tipografia/mood próprios, otimizados pra
-  // identidade de uma marca específica. "default" = template genérico
-  // (fallback enquanto não tiver template dedicado).
-  templateId: "lobozo" | "sororoca" | "puba" | "default";
+  // - "personalizado": template completo (header sticky, hero grande, todas
+  //   as seções), pensado pra ser adaptado por cor/fonte/logo de cada marca.
+  //   Defaults vêm com paleta verde+dourado + DM Serif Display — você
+  //   sobrescreve tudo no admin.
+  // - "default": template super-simples, layout minimalista.
+  // Valor legado "lobozo" é aceito como alias de "personalizado".
+  templateId: "personalizado" | "default" | "lobozo";
   // Status
   publicado: boolean;                // se false, site retorna 404 público
   // Auditoria

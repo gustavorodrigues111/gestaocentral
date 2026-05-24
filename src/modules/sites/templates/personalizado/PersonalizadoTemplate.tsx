@@ -1,11 +1,15 @@
-// Template visual do Lobozó — caipira refinado.
-// Paleta: verde-mata + dourado-velho + creme.
-// Tipografia: DM Serif Display (heading) + Inter (corpo) — ambos Google Fonts.
+// Template "Personalizado" — base completa, pensada pra adaptar-se à
+// identidade de qualquer marca por meio de cor/fonte/logo no admin.
+// Layout: header sticky → hero grande → história → cardápio → horário
+// → laje/eventos → reservas → delivery → trabalhe → contato → footer.
+//
+// Defaults vêm com paleta verde+dourado + DM Serif Display + Inter
+// (inspirado no Lobozó), mas o usuário sobrescreve no editor.
 //
 // Pesos performance:
-//  - Fontes carregadas com display=swap (não bloqueia)
-//  - 1 foto hero opcional (se não tiver, gradiente bem feito)
-//  - Mapa = link pra Google Maps (sem iframe pesado)
+//  - Google Fonts com display=swap (não bloqueia)
+//  - 1 foto hero opcional (cor sólida quando ausente)
+//  - Mapa = link Google Maps (sem iframe pesado)
 //  - Cardápio = botão abre PDF (sem embed)
 //  - Sem libs extras
 
@@ -18,15 +22,13 @@ import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 
 type Props = { siteConfig: SiteConfig };
 
-// Defaults do Lobozó — usados quando cfg.tema não tem override.
-// Se você mudar a cor primária / secundária / fundo / texto na aba Geral,
-// vai sobrescrever esses valores.
+// Defaults — usados quando cfg.tema não tem override
 const PADRAO_PRIMARIA = "#1a5c2a";   // verde-mata
 const PADRAO_SECUNDARIA = "#b8923a"; // dourado-velho
 const PADRAO_FUNDO = "#f7f3e9";       // creme
 const PADRAO_TEXTO = "#1a1a1a";
 
-export function LobozoTemplate({ siteConfig: cfg }: Props) {
+export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   // Cores dinâmicas — pega do tema se preenchido, senão usa defaults da marca
   const corPrimaria = cfg.tema.corPrimaria || PADRAO_PRIMARIA;
   const corSecundaria = cfg.tema.corSecundaria || PADRAO_SECUNDARIA;

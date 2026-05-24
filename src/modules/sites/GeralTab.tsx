@@ -602,36 +602,20 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <TemplateCard
-            templateId="lobozo"
-            label="🌿 Lobozó"
-            descricao="Caipira refinado — verde + dourado, serif rústica"
-            ativo={form.templateId === "lobozo"}
-            onClick={() => atualizar("templateId", "lobozo")}
+            templateId="personalizado"
+            label="✨ Personalizado"
+            descricao="Layout completo — hero, todas as seções. Adapta por cor/fonte/logo."
+            ativo={form.templateId === "personalizado" || form.templateId === "lobozo"}
+            onClick={() => atualizar("templateId", "personalizado")}
             disabled={inputDisabled}
           />
           <TemplateCard
             templateId="default"
             label="📄 Default"
-            descricao="Genérico limpo — usa as cores do tema"
+            descricao="Layout minimalista — sem hero, foco em conteúdo direto."
             ativo={form.templateId === "default"}
             onClick={() => atualizar("templateId", "default")}
             disabled={inputDisabled}
-          />
-          <TemplateCard
-            templateId="sororoca"
-            label="🌾 Sororoca"
-            descricao="Em breve"
-            ativo={false}
-            onClick={() => {}}
-            disabled
-          />
-          <TemplateCard
-            templateId="puba"
-            label="🌑 Puba"
-            descricao="Em breve"
-            ativo={false}
-            onClick={() => {}}
-            disabled
           />
         </div>
       </section>

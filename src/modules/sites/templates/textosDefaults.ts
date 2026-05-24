@@ -6,8 +6,10 @@ import type { SiteConfig } from "../../../core/types";
 
 export type TextosDefaults = NonNullable<SiteConfig["textos"]>;
 
-// Defaults do Lobozó — caipira refinado
-const DEFAULTS_LOBOZO: TextosDefaults = {
+// Defaults do template "Personalizado" — texto-modelo inspirado no Lobozó
+// (caipira refinado). Usado como ponto de partida; cada restaurante edita
+// no admin pra refletir sua própria copy.
+const DEFAULTS_PERSONALIZADO: TextosDefaults = {
   heroTitulo: "Cozinha caipira,\nfeita com tempo.",
   heroSubtitulo: "Um laboratório gastronômico no coração da Vila Madalena.",
   heroCtaLabel: "Faça sua reserva",
@@ -58,9 +60,10 @@ const DEFAULTS_GENERICO: TextosDefaults = {
 
 export function defaultTextosByTemplate(templateId: SiteConfig["templateId"]): TextosDefaults {
   switch (templateId) {
-    case "lobozo": return DEFAULTS_LOBOZO;
-    // case "sororoca": return DEFAULTS_SORORoca;
-    // case "puba":     return DEFAULTS_PUBA;
-    default: return DEFAULTS_GENERICO;
+    case "personalizado":
+    case "lobozo":          // alias legado
+      return DEFAULTS_PERSONALIZADO;
+    default:
+      return DEFAULTS_GENERICO;
   }
 }
