@@ -4,6 +4,12 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { LinkDelivery, RedeSocial, SiteConfig, TemaSite } from "../../core/types";
 import { defaultSiteConfig, useSiteConfig } from "./useSiteConfig";
+import { defaultTextosByTemplate } from "./templates/textosDefaults";
+import { buscarCep, formatarCep, limparCep, validarCep } from "./cepHelper";
+import {
+  formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
+  validarDDIManual, validarNumeroLocal,
+} from "../eventos/paises";
 
 type Props = {
   rid: string;
@@ -29,10 +35,46 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
-  // Sync inicial com o snapshot remoto
+  // Sync inicial com o snapshot remoto.
+  // Pré-preenche textos vazios com os defaults do template — assim user
+  // edita a partir do texto-padrão da marca, não a partir de campo vazio.
   useEffect(() => {
-    if (cfgRemoto && !form) setForm(cfgRemoto);
+    if (cfgRemoto && !form) {
+      const defaults = defaultTextosByTemplate(cfgRemoto.templateId);
+      const textosAtuais = cfgRemoto.textos || {};
+      const textosCompletos: typeof defaults = { ...defaults, ...textosAtuais };
+      setForm({ ...cfgRemoto, textos: textosCompletos });
+    }
   }, [cfgRemoto, form]);
+
+  // Estado pra busca de CEP
+  const [buscandoCep, setBuscandoCep] = useState(false);
+  const [cepNaoEncontrado, setCepNaoEncontrado] = useState(false);
+
+  // Telefone separado em DDI + número (igual form de eventos)
+  // Pra dar import/export simples, derivamos do form.telefone se ele tem
+  // "+DDI..." salvo. Pra novo cadastro, começa BR.
+  const [telPaisIso, setTelPaisIso] = useState<string>(() => {
+    const tel = cfgRemoto?.telefone || "";
+    if (!tel) return PAIS_BR.iso;
+    // Tenta detectar país pelo prefixo (+55, +1, etc)
+    const d = tel.replace(/[^\d+]/g, "");
+    for (const p of PAISES) {
+      if (p.ddi && d.startsWith(`+${p.ddi}`)) return p.iso;
+    }
+    return PAIS_BR.iso;
+  });
+  const [telDdiManual, setTelDdiManual] = useState("");
+  const [telLocal, setTelLocal] = useState(() => {
+    const tel = cfgRemoto?.telefone || "";
+    const d = tel.replace(/[^\d+]/g, "");
+    const pais = PAISES.find(p => p.ddi && d.startsWith(`+${p.ddi}`));
+    if (pais) {
+      const semDdi = d.slice(`+${pais.ddi}`.length);
+      return formatarNumeroLocal(semDdi, pais);
+    }
+    return d;
+  });
 
   if (loading || !form) return <div className="text-sm text-gray-500">Carregando...</div>;
   if (erro === "permission_denied") {
@@ -58,6 +100,58 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
   }
   function atualizarFeature<K extends keyof SiteConfig["features"]>(k: K, v: boolean) {
     setForm(f => f ? { ...f, features: { ...f.features, [k]: v } } : f);
+  }
+
+  async function buscarCepAuto(cep: string) {
+    if (!validarCep(cep)) {
+      setCepNaoEncontrado(false);
+      return;
+    }
+    setBuscandoCep(true);
+    setCepNaoEncontrado(false);
+    try {
+      const dados = await buscarCep(cep);
+      if (dados) {
+        // Só preenche campos vazios — não sobrescreve o que o user já digitou
+        setForm(f => {
+          if (!f) return f;
+          return {
+            ...f,
+            endereco: {
+              ...f.endereco,
+              cep: cep,
+              rua: f.endereco.rua || dados.logradouro,
+              bairro: f.endereco.bairro || dados.bairro,
+              cidade: f.endereco.cidade || dados.cidade,
+              uf: f.endereco.uf || dados.uf,
+            },
+          };
+        });
+      } else {
+        setCepNaoEncontrado(true);
+      }
+    } catch {
+      setCepNaoEncontrado(true);
+    } finally {
+      setBuscandoCep(false);
+    }
+  }
+
+  function atualizarTelefone(novoLocal: string, novoPaisIso?: string, novoDdiManual?: string) {
+    const isoFinal = novoPaisIso ?? telPaisIso;
+    const ddiManualFinal = novoDdiManual ?? telDdiManual;
+    const pais = getPaisByIso(isoFinal);
+    setTelLocal(novoLocal);
+    if (isoFinal !== telPaisIso) setTelPaisIso(isoFinal);
+    if (ddiManualFinal !== telDdiManual) setTelDdiManual(ddiManualFinal);
+    // Atualiza form.telefone só se tiver número válido
+    const ddi = pais.iso === "OUTROS" ? ddiManualFinal : pais.ddi;
+    const limpo = novoLocal.replace(/\D/g, "");
+    if (ddi && limpo.length >= 4) {
+      atualizar("telefone", montarE164(ddi, novoLocal));
+    } else if (!novoLocal) {
+      atualizar("telefone", "");
+    }
   }
 
   function addRede() {
@@ -153,11 +247,39 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </p>
       </section>
 
+      {/* TEXTOS DAS SEÇÕES — logo após história pra facilitar a leitura */}
+      <TextosSection form={form} setForm={setForm} disabled={inputDisabled} />
+
       {/* ENDEREÇO */}
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
           Endereço
         </h3>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Comece pelo CEP — o sistema busca rua, bairro, cidade e UF automaticamente.
+        </p>
+        {/* CEP no topo + auto-busca */}
+        <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr] gap-3 items-start">
+          <div>
+            <Input
+              label="CEP *"
+              value={formatarCep(form.endereco.cep || "")}
+              onChange={(e) => atualizarEndereco("cep", limparCep(e.target.value))}
+              onBlur={(e) => buscarCepAuto(e.target.value)}
+              placeholder="00000-000"
+              disabled={inputDisabled}
+              inputMode="numeric"
+            />
+            {buscandoCep && (
+              <p className="text-[11px] text-indigo-600 mt-1">🔎 buscando endereço...</p>
+            )}
+            {cepNaoEncontrado && !buscandoCep && (
+              <p className="text-[11px] text-amber-600 mt-1">
+                CEP não encontrado — preencha manualmente.
+              </p>
+            )}
+          </div>
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input
             label="Rua"
@@ -200,12 +322,6 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             />
           </div>
           <Input
-            label="CEP"
-            value={form.endereco.cep || ""}
-            onChange={(e) => atualizarEndereco("cep", e.target.value)}
-            disabled={inputDisabled}
-          />
-          <Input
             label="URL Google Maps (compartilhamento)"
             value={form.endereco.googleMapsUrl || ""}
             onChange={(e) => atualizarEndereco("googleMapsUrl", e.target.value)}
@@ -220,22 +336,93 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
           Contato
         </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Telefone"
-            value={form.telefone || ""}
-            onChange={(e) => atualizar("telefone", e.target.value)}
-            placeholder="+55 11 99999-9999"
-            disabled={inputDisabled}
-          />
-          <Input
-            label="Email de contato"
-            type="email"
-            value={form.emailContato || ""}
-            onChange={(e) => atualizar("emailContato", e.target.value)}
-            disabled={inputDisabled}
-          />
+        {/* Telefone com seletor de DDI + validação por país */}
+        <div>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Telefone / WhatsApp
+          </label>
+          {telPaisIso === "OUTROS" ? (
+            <div className="mt-1 grid grid-cols-[110px_70px_1fr] gap-1.5">
+              <select
+                value={telPaisIso}
+                onChange={(e) => atualizarTelefone("", e.target.value, "")}
+                disabled={inputDisabled}
+                className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              >
+                {PAISES.map(p => (
+                  <option key={p.iso} value={p.iso}>
+                    {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel" inputMode="numeric"
+                value={telDdiManual}
+                onChange={(e) => atualizarTelefone(telLocal, telPaisIso, e.target.value.replace(/\D/g, "").slice(0, 4))}
+                placeholder="DDI"
+                disabled={inputDisabled}
+                className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm tabular-nums"
+              />
+              <input
+                type="tel" inputMode="numeric"
+                value={telLocal}
+                onChange={(e) => atualizarTelefone(e.target.value)}
+                placeholder="Número"
+                disabled={inputDisabled}
+                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              />
+            </div>
+          ) : (
+            <div className="mt-1 grid grid-cols-[110px_1fr] gap-1.5">
+              <select
+                value={telPaisIso}
+                onChange={(e) => atualizarTelefone("", e.target.value)}
+                disabled={inputDisabled}
+                className="px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              >
+                {PAISES.map(p => (
+                  <option key={p.iso} value={p.iso}>
+                    {p.flag} {p.iso === "OUTROS" ? "Outro" : `+${p.ddi}`}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="tel" inputMode="numeric"
+                value={telLocal}
+                onChange={(e) => {
+                  const pais = getPaisByIso(telPaisIso);
+                  atualizarTelefone(formatarNumeroLocal(e.target.value, pais));
+                }}
+                placeholder={telPaisIso === "BR" ? "(11) 99999-9999" : `${getPaisByIso(telPaisIso).minLen} dígitos`}
+                disabled={inputDisabled}
+                className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              />
+            </div>
+          )}
+          {telLocal && (() => {
+            const pais = getPaisByIso(telPaisIso);
+            const valido = pais.iso === "OUTROS"
+              ? validarDDIManual(telDdiManual) && telLocal.replace(/\D/g, "").length >= 4
+              : validarNumeroLocal(telLocal, pais);
+            if (!valido) {
+              return (
+                <p className="text-[11px] text-amber-600 mt-1">
+                  {pais.iso === "BR"
+                    ? "Confira DDD + número (10 ou 11 dígitos)"
+                    : `${pais.nome} pede ${pais.minLen === pais.maxLen ? pais.minLen : `${pais.minLen}-${pais.maxLen}`} dígitos`}
+                </p>
+              );
+            }
+            return null;
+          })()}
         </div>
+        <Input
+          label="Email de contato"
+          type="email"
+          value={form.emailContato || ""}
+          onChange={(e) => atualizar("emailContato", e.target.value)}
+          disabled={inputDisabled}
+        />
       </section>
 
       {/* REDES SOCIAIS */}
@@ -393,9 +580,6 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           />
         </div>
       </section>
-
-      {/* TEXTOS DAS SEÇÕES */}
-      <TextosSection form={form} setForm={setForm} disabled={inputDisabled} />
 
       {/* TEMPLATE */}
       <section className="space-y-3">
