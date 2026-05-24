@@ -370,70 +370,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           } : null,
           cardapio: () => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
-            conteudo: (
-              <div style={{ maxWidth: 900, margin: "0 auto" }}>
-                {/* Preview da 1ª página do PDF — clicável (abre o PDF
-                    completo em nova aba). pointer-events:none no iframe
-                    deixa o click passar pro <a> pai. Aspect-ratio A4 pra
-                    PDF caber sem cortar; #view=Fit faz a página caber
-                    inteira no viewport do iframe. */}
-                {cfg.cardapioPdfPtUrl && (
-                  <a
-                    href={cfg.cardapioPdfPtUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    title="Abrir cardápio completo em nova aba"
-                    style={{
-                      display: "block",
-                      position: "relative",
-                      aspectRatio: "1 / 1.414", // A4
-                      maxWidth: isMobile ? "100%" : 760,
-                      margin: "0 auto 24px",
-                      borderRadius: 8,
-                      overflow: "hidden",
-                      border: `1px solid ${corSecundaria}40`,
-                      backgroundColor: "#fff",
-                      boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
-                      cursor: "pointer",
-                      textDecoration: "none",
-                    }}
-                  >
-                    <iframe
-                      src={`${cfg.cardapioPdfPtUrl}#page=1&toolbar=0&navpanes=0&scrollbar=0&view=Fit`}
-                      title="Preview do cardápio"
-                      style={{
-                        width: "100%", height: "100%",
-                        border: "none", display: "block",
-                        pointerEvents: "none",
-                      }}
-                      loading="lazy"
-                    />
-                    {/* Hint visual "abrir completo" no canto */}
-                    <div style={{
-                      position: "absolute", bottom: 12, right: 12,
-                      backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
-                      padding: "6px 14px", borderRadius: 999,
-                      fontSize: 12, fontWeight: 500,
-                      backdropFilter: "blur(4px)",
-                    }}>
-                      🔍 abrir completo
-                    </div>
-                  </a>
-                )}
-                <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
-                  {cfg.cardapioPdfPtUrl && (
-                    <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-                      🇧🇷 Cardápio (Português)
-                    </a>
-                  )}
-                  {cfg.cardapioPdfEnUrl && (
-                    <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
-                      🇺🇸 Menu (English)
-                    </a>
-                  )}
-                </div>
-              </div>
-            ),
+            conteudo: <CardapioPreview cfg={cfg} isMobile={isMobile} corPrimaria={corPrimaria} corSecundaria={corSecundaria} corFundo={corFundo} menuButton={menuButton} />,
           } : null,
           horario: () => {
             // Cards de exceção — mesmo render usado em mobile (lista cheia)
@@ -631,9 +568,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       onPointerEnter={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.borderColor = corPrimaria; }}
                       onPointerLeave={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.borderColor = `${corSecundaria}40`; }}
                     >
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 22, color: corPrimaria }}>📍</span>
-                        <div style={{ textAlign: "left" }}>
+                      <div style={{ textAlign: "center" }}>
+                        <div style={{ textAlign: "center" }}>
                           {enderecoLinhaUm(cfg.endereco) && (
                             <div style={{ fontSize: 16, fontWeight: 600 }}>
                               {enderecoLinhaUm(cfg.endereco)}
@@ -742,7 +678,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   display: "grid", gridTemplateColumns: "1fr 1fr",
                   gap: 60, alignItems: "start",
                 }}>
-                  <div id={a.id}>
+                  <div id={a.id} style={{
+                    // Linha divisória delicada à direita (entre as duas colunas)
+                    borderRight: `1px solid ${corSecundaria}30`,
+                    paddingRight: 60,
+                    marginRight: -60, // compensa o gap pra borda ficar centralizada
+                  }}>
                     <h2 style={tituloSectionStyle}>{a.titulo}</h2>
                     {a.conteudo}
                   </div>
@@ -1078,6 +1019,159 @@ function HistoriaExpansivel({
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── CardapioPreview ──────────────────────────────────────────────────
+// Preview do cardápio:
+//   - Desktop: aspect A4 com setas pra navegar entre páginas. Click no
+//     preview abre o PDF completo em nova aba.
+//   - Mobile: altura adaptável (sem aspect ratio fixo — muitos cardápios
+//     são landscape e cortavam com aspect portrait). FitH faz o PDF
+//     ocupar 100% da largura sem cortar.
+function CardapioPreview({
+  cfg, isMobile, corPrimaria, corSecundaria, corFundo, menuButton,
+}: {
+  cfg: SiteConfig;
+  isMobile: boolean;
+  corPrimaria: string;
+  corSecundaria: string;
+  corFundo: string;
+  menuButton: (cor: string, fundo: string) => React.CSSProperties;
+}) {
+  const [pagina, setPagina] = useState(1);
+  const pdfUrl = cfg.cardapioPdfPtUrl;
+  // Hash do iframe muda quando a página muda — força o PDF re-render
+  const viewMode = isMobile ? "FitH" : "Fit";
+  const iframeSrc = pdfUrl
+    ? `${pdfUrl}#page=${pagina}&toolbar=0&navpanes=0&scrollbar=0&view=${viewMode}`
+    : "";
+
+  // Estilo do container do preview — adapta entre mobile e desktop
+  const previewWrapperStyle: React.CSSProperties = isMobile
+    ? {
+        width: "100%",
+        height: "75vh",                    // adapta à altura do viewport
+        position: "relative",
+        borderRadius: 8,
+        overflow: "hidden",
+        border: `1px solid ${corSecundaria}40`,
+        backgroundColor: "#fff",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+      }
+    : {
+        position: "relative",
+        aspectRatio: "1 / 1.414",
+        maxWidth: 760,
+        margin: "0 auto",
+        borderRadius: 8,
+        overflow: "hidden",
+        border: `1px solid ${corSecundaria}40`,
+        backgroundColor: "#fff",
+        boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+      };
+
+  function seta(direcao: "prev" | "next") {
+    return (
+      <button
+        type="button"
+        aria-label={direcao === "prev" ? "Página anterior" : "Próxima página"}
+        onClick={() => setPagina(p => direcao === "prev" ? Math.max(1, p - 1) : p + 1)}
+        disabled={direcao === "prev" && pagina === 1}
+        style={{
+          position: "absolute",
+          top: "50%", transform: "translateY(-50%)",
+          [direcao === "prev" ? "left" : "right"]: 12,
+          width: 44, height: 44,
+          borderRadius: "50%",
+          border: `1px solid ${corSecundaria}40`,
+          backgroundColor: "rgba(255,255,255,0.95)",
+          backdropFilter: "blur(4px)",
+          color: corPrimaria,
+          fontSize: 20, fontWeight: 700,
+          cursor: direcao === "prev" && pagina === 1 ? "not-allowed" : "pointer",
+          opacity: direcao === "prev" && pagina === 1 ? 0.3 : 1,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.12)",
+          zIndex: 2,
+          transition: "background-color 0.15s, transform 0.15s",
+        }}
+        onPointerEnter={(e) => {
+          if (e.pointerType === "touch") return;
+          e.currentTarget.style.backgroundColor = "#fff";
+          e.currentTarget.style.transform = "translateY(-50%) scale(1.05)";
+        }}
+        onPointerLeave={(e) => {
+          if (e.pointerType === "touch") return;
+          e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.95)";
+          e.currentTarget.style.transform = "translateY(-50%)";
+        }}
+      >
+        {direcao === "prev" ? "‹" : "›"}
+      </button>
+    );
+  }
+
+  return (
+    <div style={{ maxWidth: 900, margin: "0 auto" }}>
+      {pdfUrl && (
+        <div style={{ position: "relative", marginBottom: 24 }}>
+          {/* Wrapper visual + iframe — não envolvido em <a> pq queremos
+              click nas setas funcionar. Em vez disso, hint clicável
+              abaixo serve pra abrir o PDF completo. */}
+          <div style={previewWrapperStyle}>
+            <iframe
+              key={`${pdfUrl}#${pagina}`}
+              src={iframeSrc}
+              title="Preview do cardápio"
+              style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+              loading="lazy"
+            />
+            {/* Setas — só desktop. Mobile usa o botão "abrir completo" pra ver tudo. */}
+            {!isMobile && seta("prev")}
+            {!isMobile && seta("next")}
+            {!isMobile && (
+              <div style={{
+                position: "absolute", bottom: 12, left: 12,
+                backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
+                padding: "4px 12px", borderRadius: 999,
+                fontSize: 11, fontWeight: 500,
+              }}>
+                pág. {pagina}
+              </div>
+            )}
+            {/* Hint abrir completo */}
+            <a
+              href={pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                position: "absolute", bottom: 12, right: 12,
+                backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
+                padding: "6px 14px", borderRadius: 999,
+                fontSize: 12, fontWeight: 500,
+                textDecoration: "none",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              🔍 abrir completo
+            </a>
+          </div>
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, justifyContent: "center", flexWrap: "wrap" }}>
+        {cfg.cardapioPdfPtUrl && (
+          <a href={cfg.cardapioPdfPtUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+            🇧🇷 Cardápio (Português)
+          </a>
+        )}
+        {cfg.cardapioPdfEnUrl && (
+          <a href={cfg.cardapioPdfEnUrl} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+            🇺🇸 Menu (English)
+          </a>
+        )}
+      </div>
     </div>
   );
 }

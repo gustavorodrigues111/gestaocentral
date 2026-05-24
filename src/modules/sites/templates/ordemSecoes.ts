@@ -36,9 +36,9 @@ export const ORDEM_PADRAO: SecaoId[] = [
   "reservas",   // par com laje OU com eventos (next item filtrado)
   "eventos",    // entra como par de reservas quando !hasLaje
   "delivery",
-  "trabalhe",
   "horario",    // par com contato no desktop
   "contato",
+  "trabalhe",   // final — depois de horário/contato (recrutamento é footer)
 ];
 
 // Sanitiza o array salvo no Firestore — remove IDs inválidos, adiciona
