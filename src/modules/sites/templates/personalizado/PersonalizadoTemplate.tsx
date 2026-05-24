@@ -1185,7 +1185,14 @@ function CardapioPreview({
     ? ""
     : isMobile
       ? `https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`
-      : `${pdfUrl}#page=${pagina}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`;
+      // FitH (fit horizontally) ancora a página no topo do iframe e ajusta
+      // o zoom pra largura da página = largura do iframe. Combinado com
+      // iframe de altura exata = altura da página (aspectRatio 1/1.414),
+      // a página 1 preenche o quadro sem deixar pixel de pág 2 vazar.
+      // view=Fit não funciona aqui — o Chrome às vezes entra em modo
+      // "continuous scroll" e mostra topo da próxima página no espaço
+      // que sobra.
+      : `${pdfUrl}#page=${pagina}&toolbar=0&navpanes=0&scrollbar=0&view=FitH&pagemode=none`;
 
   // Estilo do container do preview — adapta entre mobile e desktop
   const previewWrapperStyle: React.CSSProperties = isMobile
@@ -1277,10 +1284,14 @@ function CardapioPreview({
                 height: "100%",
                 border: "none", display: "block",
               } : {
+                // OVERSIZE só na largura — empurra a scrollbar vertical do
+                // PDF viewer pra fora do viewport (sem isso aparece uma
+                // listra cinza na borda direita). Altura fica EXATAMENTE
+                // igual à do wrapper (aspect 1/1.414) pra não sobrar pixel
+                // de página 2 no rodapé.
                 width: "calc(100% + 20px)",
-                height: "calc(100% + 20px)",
+                height: "100%",
                 marginRight: -20,
-                marginBottom: -20,
                 border: "none", display: "block",
               }}
               loading="lazy"
