@@ -54,17 +54,29 @@ export function agruparHorarios(horarios: HorarioFuncionamentoDia[]): {
   }));
 }
 
-// Próximas exceções (futuras + hoje), limitadas a N
+// Próximas exceções (futuras + hoje), dentro de uma janela de N dias.
+// Default: janela de 30 dias + máximo 6 itens. Exceções muito distantes
+// não aparecem no site (poluem) — só quando ficarem perto da data.
 export function proximasExcecoes(
   excecoes: ExcecaoHorarioSite[] | undefined,
-  limit = 3,
+  limit = 6,
+  diasJanela = 30,
 ): ExcecaoHorarioSite[] {
   if (!excecoes) return [];
-  const hojeYmd = new Date().toISOString().slice(0, 10);
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  const limiteSuperior = new Date(hoje);
+  limiteSuperior.setDate(limiteSuperior.getDate() + diasJanela);
+  const hojeYmd = isoLocalDate(hoje);
+  const limiteYmd = isoLocalDate(limiteSuperior);
   return excecoes
-    .filter(e => e.data >= hojeYmd)
+    .filter(e => e.data >= hojeYmd && e.data <= limiteYmd)
     .sort((a, b) => a.data.localeCompare(b.data))
     .slice(0, limit);
+}
+
+function isoLocalDate(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Formata data YYYY-MM-DD → DD/MM ou "hoje", "amanhã"

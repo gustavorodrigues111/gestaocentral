@@ -260,7 +260,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           ) : null,
           horario: (bg) => (
             <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={bg}>
-              <div style={{ maxWidth: 500, margin: "0 auto", background: "#ffffff", borderRadius: 8, padding: 24, border: `1px solid ${corSecundaria}30` }}>
+              <div style={{ maxWidth: 600, margin: "0 auto", background: "#ffffff", borderRadius: 8, padding: 24, border: `1px solid ${corSecundaria}30` }}>
                 {grupos.map((g, i) => (
                   <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none", fontSize: 15 }}>
                     <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
@@ -270,17 +270,64 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   </div>
                 ))}
                 {excecoes.length > 0 && (
-                  <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${corSecundaria}30` }}>
-                    <div style={{ fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase", color: corSecundaria, marginBottom: 8, fontWeight: 600 }}>
+                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${corSecundaria}30` }}>
+                    <div style={{
+                      fontSize: 11, letterSpacing: "0.15em", textTransform: "uppercase",
+                      color: corSecundaria, marginBottom: 14, fontWeight: 600, textAlign: "center",
+                    }}>
                       {t("horarioProximosAvisosLabel", "Próximos avisos")}
                     </div>
-                    {excecoes.map(e => (
-                      <div key={e.id} style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>
-                        <strong>{formatarDataCurta(e.data)}</strong>{" — "}
-                        {e.fechado ? "fechado" : (e.turnos?.map(tu => `${tu.abre}–${tu.fecha}`).join(", ") || "horário especial")}
-                        {e.motivo && ` (${e.motivo})`}
-                      </div>
-                    ))}
+                    <div style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))",
+                      gap: 10,
+                    }}>
+                      {excecoes.map(e => {
+                        const d = new Date(e.data + "T12:00:00");
+                        const diaSemana = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][d.getDay()];
+                        const dataCurta = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+                        return (
+                          <div key={e.id} style={{
+                            padding: "10px 12px",
+                            borderRadius: 6,
+                            border: `1px solid ${corSecundaria}30`,
+                            backgroundColor: e.fechado
+                              ? `${corSecundaria}10`
+                              : "#ffffff",
+                            textAlign: "center",
+                          }}>
+                            <div style={{
+                              fontSize: 10, textTransform: "uppercase", letterSpacing: "0.1em",
+                              color: corSecundaria, fontWeight: 600,
+                            }}>
+                              {diaSemana}
+                            </div>
+                            <div style={{
+                              fontSize: 18, fontWeight: 700, color: "#1a1a1a", marginTop: 2,
+                              fontFamily: fonteHeading,
+                            }}>
+                              {dataCurta}
+                            </div>
+                            <div style={{
+                              fontSize: 12, marginTop: 6, color: e.fechado ? corSecundaria : "#555",
+                              fontWeight: e.fechado ? 600 : 400,
+                            }}>
+                              {e.fechado
+                                ? "Fechado"
+                                : (e.turnos?.map(tu => `${tu.abre}–${tu.fecha}`).join(" / ") || "Horário especial")}
+                            </div>
+                            {e.motivo && (
+                              <div style={{
+                                fontSize: 11, marginTop: 4, color: "#888", fontStyle: "italic",
+                                lineHeight: 1.3,
+                              }}>
+                                {e.motivo}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
