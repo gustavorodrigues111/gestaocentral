@@ -25,7 +25,7 @@ export const MODULES: ModuleDef[] = [
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
   { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
   { id: "comunicados",      area: "escritorio", label: "Comunicados",      icon: "📣", status: "ativo",     etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
-  { id: "sites",            area: "escritorio", label: "Sites",            icon: "🌐", status: "ativo",     etapa: "em_desenvolvimento", desc: "Site público do restaurante: história, horário, cardápio, forms" },
+  { id: "sites",            area: "escritorio", label: "Sites",            icon: "🌐", status: "ativo",     etapa: "beta",               desc: "Site público do restaurante: história, horário, cardápio, forms" },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna" },
   { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", etapa: "em_desenvolvimento", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"] },
 
@@ -38,7 +38,7 @@ export const MODULES: ModuleDef[] = [
 
   // ═══ OPERAÇÃO (laranja) ═══
   { id: "ocorrencias",      area: "operacao", label: "Ocorrências",        icon: "🚨", status: "ativo",     etapa: "em_desenvolvimento", desc: "Log de ocorrências do dia-a-dia",       dependsOn: ["pessoas"] },
-  { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "ativo",     etapa: "em_desenvolvimento", desc: "Reservas de mesa e base de clientes",    dependsOn: ["pessoas"] },
+  { id: "reservas",         area: "operacao", label: "Reservas + CRM",     icon: "🎫", status: "ativo",     etapa: "beta",               desc: "Reservas de mesa e base de clientes",    dependsOn: ["pessoas"] },
   { id: "horarios",         area: "operacao", label: "Horários",           icon: "🕒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Horário semanal + datas especiais + janelas de reserva — fonte da verdade pro site e reservas" },
   { id: "eventos",          area: "operacao", label: "Eventos",            icon: "🎉", status: "ativo",     etapa: "em_desenvolvimento", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
   { id: "checklists",       area: "operacao", label: "Checklists",         icon: "✅", status: "ativo",     etapa: "em_desenvolvimento", desc: "Checklists operacionais",                dependsOn: ["pessoas"] },

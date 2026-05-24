@@ -628,8 +628,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       rel="noreferrer"
                       style={cardLink}
                       title="Abrir no app de mapas"
-                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = corPrimaria; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${corSecundaria}40`; }}
+                      onPointerEnter={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.borderColor = corPrimaria; }}
+                      onPointerLeave={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.borderColor = `${corSecundaria}40`; }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 22, color: corPrimaria }}>📍</span>
@@ -662,11 +662,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                           rel="noreferrer"
                           style={pillLink}
                           title="Abrir no WhatsApp"
-                          onMouseEnter={(e) => {
+                          onPointerEnter={(e) => { if (e.pointerType === "touch") return;
                             e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
                             e.currentTarget.style.borderColor = corPrimaria;
                           }}
-                          onMouseLeave={(e) => {
+                          onPointerLeave={(e) => { if (e.pointerType === "touch") return;
                             e.currentTarget.style.backgroundColor = "transparent";
                             e.currentTarget.style.borderColor = `${corSecundaria}50`;
                           }}
@@ -679,11 +679,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                           href={mailHref}
                           style={pillLink}
                           title="Enviar email"
-                          onMouseEnter={(e) => {
+                          onPointerEnter={(e) => { if (e.pointerType === "touch") return;
                             e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
                             e.currentTarget.style.borderColor = corPrimaria;
                           }}
-                          onMouseLeave={(e) => {
+                          onPointerLeave={(e) => { if (e.pointerType === "touch") return;
                             e.currentTarget.style.backgroundColor = "transparent";
                             e.currentTarget.style.borderColor = `${corSecundaria}50`;
                           }}
@@ -824,8 +824,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               style={socialFloat({
                 background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
               })}
-              onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+              onPointerEnter={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.transform = "scale(1.05)"; }}
+              onPointerLeave={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.transform = "scale(1)"; }}
             >
               <InstagramIcon />
             </a>
@@ -836,8 +836,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             href={waLink} target="_blank" rel="noreferrer"
             aria-label="WhatsApp"
             style={socialFloat({ background: "#25d366" })}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.05)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
+            onPointerEnter={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.transform = "scale(1.05)"; }}
+            onPointerLeave={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.transform = "scale(1)"; }}
           >
             <WhatsAppIcon />
           </a>
@@ -857,8 +857,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         borderRadius: 999,
         transition: "color 0.25s ease, background-color 0.15s ease",
       }}
-      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = `${corPrimaria}10`; }}
-      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = "transparent"; }}
+      onPointerEnter={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.backgroundColor = `${corPrimaria}10`; }}
+      onPointerLeave={(e) => { if (e.pointerType === "touch") return; e.currentTarget.style.backgroundColor = "transparent"; }}
       >{children}</a>
     );
   }
@@ -1061,11 +1061,15 @@ function HistoriaExpansivel({
               cursor: "pointer",
               transition: "background-color 0.15s, border-color 0.15s",
             }}
-            onMouseEnter={(e) => {
+            // onPointerEnter dispara só com mouse (não em touch), evitando
+            // o "hover-then-click" do iOS que exigia 2 taps.
+            onPointerEnter={(e) => {
+              if (e.pointerType === "touch") return;
               e.currentTarget.style.backgroundColor = `${corPrimaria}10`;
               e.currentTarget.style.borderColor = `${corPrimaria}80`;
             }}
-            onMouseLeave={(e) => {
+            onPointerLeave={(e) => {
+              if (e.pointerType === "touch") return;
               e.currentTarget.style.backgroundColor = "transparent";
               e.currentTarget.style.borderColor = `${corPrimaria}40`;
             }}
