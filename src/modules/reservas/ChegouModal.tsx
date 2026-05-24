@@ -38,12 +38,6 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
-  // Salão da reserva (pra restringir mesas)
-  const salaoDaReserva = useMemo(
-    () => saloes.find(s => s.id === reserva.salaoId) || null,
-    [saloes, reserva.salaoId],
-  );
-
   // Mesas que outras reservas já estão usando no mesmo slot (ignorando a
   // própria reserva e canceladas/no-show). Pra não confundir, exibe como
   // ocupadas mas permite forçar — hostess decide na hora.
@@ -58,19 +52,46 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
     return s;
   }, [reservasDoDia, reserva.id, reserva.horario]);
 
-  // Agrupa mesas: do salão da reserva > outros salões > sem salão
-  const grupos = useMemo(() => {
+  // Agrupa mesas POR salão pra exibir todas. Cliente reservou um salão
+  // específico mas, se chegou e tem espaço em outro, hostess pode sentar
+  // em qualquer mesa — todas precisam aparecer aqui (nada de accordion
+  // escondendo outros salões).
+  //
+  // Ordem de exibição: salão da reserva primeiro (destacado), depois os
+  // outros pela ordem do cadastro. Mesas sem salaoId (legado) por último,
+  // em accordion (caso raro).
+  const gruposPorSalao = useMemo(() => {
     const ativas = mesas.filter(m => m.ativa);
     ativas.sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome));
 
-    const doSalao = ativas.filter(m => salaoDaReserva && m.salaoId === salaoDaReserva.id);
-    const outrosSaloes = ativas.filter(m =>
-      m.salaoId && (!salaoDaReserva || m.salaoId !== salaoDaReserva.id)
-    );
-    const semSalao = ativas.filter(m => !m.salaoId);
+    const porSalao = new Map<string, Mesa[]>();
+    const semSalao: Mesa[] = [];
+    for (const m of ativas) {
+      if (!m.salaoId) {
+        semSalao.push(m);
+        continue;
+      }
+      const arr = porSalao.get(m.salaoId) || [];
+      arr.push(m);
+      porSalao.set(m.salaoId, arr);
+    }
 
-    return { doSalao, outrosSaloes, semSalao };
-  }, [mesas, salaoDaReserva]);
+    // Ordena salões: o da reserva primeiro, depois pela ordem do cadastro
+    const saloesOrdenados = [...saloes].sort((a, b) => {
+      const aEhDaReserva = a.id === reserva.salaoId ? 0 : 1;
+      const bEhDaReserva = b.id === reserva.salaoId ? 0 : 1;
+      if (aEhDaReserva !== bEhDaReserva) return aEhDaReserva - bEhDaReserva;
+      return (a.ordem ?? 999) - (b.ordem ?? 999);
+    });
+
+    const grupos: { salao: Salao; ehDaReserva: boolean; mesas: Mesa[] }[] = [];
+    for (const s of saloesOrdenados) {
+      const list = porSalao.get(s.id) || [];
+      if (list.length === 0) continue;
+      grupos.push({ salao: s, ehDaReserva: s.id === reserva.salaoId, mesas: list });
+    }
+    return { grupos, semSalao };
+  }, [mesas, saloes, reserva.salaoId]);
 
   async function salvar() {
     if (!me) return;
@@ -155,7 +176,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
   }
 
   const semMesasNoSistema =
-    grupos.doSalao.length === 0 && grupos.outrosSaloes.length === 0 && grupos.semSalao.length === 0;
+    gruposPorSalao.grupos.length === 0 && gruposPorSalao.semSalao.length === 0;
 
   return (
     <Modal title={`🪑 Cliente chegou — ${reserva.clienteNomeSnapshot || "Reserva"}`} onClose={onClose} maxWidth="max-w-lg">
@@ -176,36 +197,31 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
               Nenhuma mesa cadastrada ainda. Vá em <strong>Configurações → Mesas</strong> pra cadastrar.
             </div>
           ) : (
-            <div className="space-y-3">
-              {grupos.doSalao.length > 0 && (
-                <div>
-                  {salaoDaReserva && (
-                    <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">
-                      {salaoDaReserva.nome}
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
+              {gruposPorSalao.grupos.map(({ salao, ehDaReserva, mesas: list }) => (
+                <div key={salao.id}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-600 dark:text-gray-400">
+                      🏛️ {salao.nome}
                     </div>
-                  )}
+                    {ehDaReserva && (
+                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                        ★ salão da reserva
+                      </span>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                    {grupos.doSalao.map(renderMesa)}
+                    {list.map(renderMesa)}
                   </div>
                 </div>
-              )}
-              {grupos.outrosSaloes.length > 0 && (
+              ))}
+              {gruposPorSalao.semSalao.length > 0 && (
                 <details>
                   <summary className="text-[10px] uppercase tracking-wider text-gray-500 cursor-pointer hover:text-gray-700">
-                    ▼ Mesas de outros salões ({grupos.outrosSaloes.length})
+                    ▼ Sem salão atribuído ({gruposPorSalao.semSalao.length})
                   </summary>
                   <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1.5">
-                    {grupos.outrosSaloes.map(renderMesa)}
-                  </div>
-                </details>
-              )}
-              {grupos.semSalao.length > 0 && (
-                <details>
-                  <summary className="text-[10px] uppercase tracking-wider text-gray-500 cursor-pointer hover:text-gray-700">
-                    ▼ Sem salão atribuído ({grupos.semSalao.length})
-                  </summary>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1.5">
-                    {grupos.semSalao.map(renderMesa)}
+                    {gruposPorSalao.semSalao.map(renderMesa)}
                   </div>
                 </details>
               )}

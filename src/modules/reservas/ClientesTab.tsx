@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { Cliente, Reserva } from "../../core/types";
@@ -15,6 +16,13 @@ type Props = {
 };
 
 export function ClientesTab({ restaurantId, podeConfig }: Props) {
+  const { pessoa } = useAuth();
+  // Exclusão hard de cliente é restrita ao master — apaga referência em
+  // /reservas, /notasCliente e /clientesPublicLookup. Pra LGPD (cliente
+  // solicita exclusão dos próprios dados), o fluxo correto é via
+  // /r/excluir-dados/:rid → /solicitacoesExclusao, que admin processa
+  // formalmente. Pra dedupes, usa o banner "Mesclar".
+  const podeExcluirCliente = !!pessoa?.isMaster;
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
@@ -348,10 +356,10 @@ export function ClientesTab({ restaurantId, podeConfig }: Props) {
                   <div className="flex gap-1 flex-wrap">
                     <Button variant="secondary" size="sm" onClick={() => setVerHistorico(c)}>📊 Histórico</Button>
                     {podeConfig && (
-                      <>
-                        <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
-                        <Button variant="danger" size="sm" onClick={() => excluir(c)}>×</Button>
-                      </>
+                      <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
+                    )}
+                    {podeExcluirCliente && (
+                      <Button variant="danger" size="sm" onClick={() => excluir(c)} title="Exclusão hard (só master). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>
                     )}
                   </div>
                 </div>
