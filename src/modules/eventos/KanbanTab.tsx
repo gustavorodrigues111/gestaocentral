@@ -38,27 +38,45 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   const [leads, setLeads] = useState<LeadEvento[]>([]);
   const [pacotes, setPacotes] = useState<PacoteEvento[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string>("");
   const [leadAbertoId, setLeadAbertoId] = useState<string | null>(null);
   const [mostrarPerdidos, setMostrarPerdidos] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
     const q = query(collection(db, "leadsEvento"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as LeadEvento);
-      list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-      setLeads(list);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as LeadEvento);
+        list.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        setLeads(list);
+        setLoading(false);
+        setErro("");
+      },
+      (err) => {
+        setLoading(false);
+        // Mensagem mais útil pra erro de permissão (rules não publicadas)
+        if (err.code === "permission-denied") {
+          setErro("permission_denied");
+        } else {
+          setErro(err.message || "Erro ao carregar leads");
+        }
+      },
+    );
     return () => unsub();
   }, [rid]);
 
   useEffect(() => {
     if (!rid) return;
     const q = query(collection(db, "pacotesEvento"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      setPacotes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as PacoteEvento));
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        setPacotes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as PacoteEvento));
+      },
+      () => { /* silent — KanbanTab usa pacotes só como nice-to-have */ },
+    );
     return () => unsub();
   }, [rid]);
 
@@ -90,6 +108,30 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   );
 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
+
+  if (erro === "permission_denied") {
+    return (
+      <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">
+          ⚠ Regras do Firestore não publicadas
+        </p>
+        <p className="text-rose-800 dark:text-rose-300 text-[13px]">
+          As regras de acesso pras coleções de Eventos ainda não foram publicadas.
+          Rode no terminal:
+        </p>
+        <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-200">
+          firebase deploy --only firestore:rules --project gestaocentral
+        </code>
+      </div>
+    );
+  }
+  if (erro) {
+    return (
+      <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm text-rose-800 dark:text-rose-300">
+        ⚠ {erro}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">

@@ -22,17 +22,26 @@ type Props = {
 export function EspacoConfigTab({ rid, podeEditar }: Props) {
   const [espacos, setEspacos] = useState<EspacoEvento[]>([]);
   const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!rid) return;
     const q = query(collection(db, "espacosEvento"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as EspacoEvento);
-      list.sort((a, b) => a.nome.localeCompare(b.nome));
-      setEspacos(list);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as EspacoEvento);
+        list.sort((a, b) => a.nome.localeCompare(b.nome));
+        setEspacos(list);
+        setLoading(false);
+        setErro("");
+      },
+      (err) => {
+        setLoading(false);
+        setErro(err.code === "permission-denied" ? "permission_denied" : (err.message || "Erro"));
+      },
+    );
     return () => unsub();
   }, [rid]);
 
@@ -81,6 +90,24 @@ export function EspacoConfigTab({ rid, podeEditar }: Props) {
 
   if (loading) {
     return <div className="text-sm text-gray-500">Carregando...</div>;
+  }
+  if (erro === "permission_denied") {
+    return (
+      <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">
+          ⚠ Regras do Firestore não publicadas
+        </p>
+        <p className="text-rose-800 dark:text-rose-300 text-[13px]">
+          Rode no terminal:
+        </p>
+        <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-200">
+          firebase deploy --only firestore:rules --project gestaocentral
+        </code>
+      </div>
+    );
+  }
+  if (erro) {
+    return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
   }
 
   return (
