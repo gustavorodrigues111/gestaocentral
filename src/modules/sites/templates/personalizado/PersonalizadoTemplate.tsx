@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
-import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink } from "../../shared/enderecoUtils";
+import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl } from "../../shared/enderecoUtils";
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
 
@@ -518,6 +518,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           } : null,
           contato: () => {
             const mapsHref = googleMapsLink(cfg.endereco);
+            const mapsEmbed = googleMapsEmbedUrl(cfg.endereco);
             const telDigitos = (cfg.telefone || "").replace(/[^\d+]/g, "");
             const waHref = telDigitos
               ? `https://api.whatsapp.com/send?phone=${encodeURIComponent(telDigitos)}`
@@ -553,6 +554,29 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               titulo: t("contatoTitulo", "Como chegar"),
               conteudo: (
                 <div style={{ maxWidth: 560, margin: "0 auto", textAlign: "center" }}>
+                  {/* Preview do mapa via Google Maps embed (sem API key).
+                      Aspect 16/9 pra ficar discreto no mobile e crescer
+                      no desktop. Pointer-events liberados pra usuário
+                      mexer/arrastar dentro. */}
+                  {mapsEmbed && (
+                    <div style={{
+                      width: "100%",
+                      aspectRatio: "16 / 9",
+                      borderRadius: 8,
+                      overflow: "hidden",
+                      border: `1px solid ${corSecundaria}40`,
+                      marginBottom: 20,
+                      boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
+                    }}>
+                      <iframe
+                        src={mapsEmbed}
+                        title="Mapa"
+                        style={{ width: "100%", height: "100%", border: "none", display: "block" }}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    </div>
+                  )}
                   {/* Endereço — card único clicável */}
                   {(enderecoLinhaUm(cfg.endereco) || enderecoLinhaDois(cfg.endereco)) && (
                     <a

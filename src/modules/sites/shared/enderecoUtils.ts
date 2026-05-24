@@ -30,3 +30,11 @@ export function googleMapsLink(end: SiteConfig["endereco"]): string {
   const query = [end.rua, end.numero, end.bairro, end.cidade, end.uf].filter(Boolean).join(" ");
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
+
+// URL pro iframe embed do Google Maps (sem API key — usa endpoint público).
+// Retorna null quando o endereço não tem dados mínimos pra render decente.
+export function googleMapsEmbedUrl(end: SiteConfig["endereco"]): string | null {
+  const query = [end.rua, end.numero, end.bairro, end.cidade, end.uf].filter(Boolean).join(" ");
+  if (!query) return null;
+  return `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed`;
+}
