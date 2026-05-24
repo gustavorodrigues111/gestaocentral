@@ -743,23 +743,54 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         }
 
         // 2b) Pair fallback dinâmico: em sites simples (sem laje, eventos
-        // e delivery), reordena trabalhe pra ficar logo depois de reservas
-        // — assim o par "reservas+trabalhe" se forma. Sem essa reordenação,
-        // trabalhe ficaria isolado no fim e reservas isolada antes do bloco
-        // horário+contato. Em sites com qualquer dessas features (como o
-        // Lobozó), mantém a ordem natural — não interfere nos pares nativos.
+        // e delivery), reordena pra:
+        //   - trabalhe ficar logo depois de reservas (forma o par
+        //     "reservas+trabalhe")
+        //   - o bloco "reservas+trabalhe" vir DEPOIS de "horario+contato"
+        //     — fluxo mais natural: o cliente lê info da casa (sobre,
+        //     cardápio, horário, endereço) e só então é convidado a reservar
+        //     ou trabalhar conosco no rodapé.
+        // Sites com laje/eventos/delivery (Lobozó) mantêm a ordem natural —
+        // não interfere nos pares nativos.
         const hasLajeAtiva = !!cfg.features.hasLaje;
         const hasEventosAtivo = !!cfg.features.hasEventos;
         const hasDeliveryAtivo = !!cfg.features.hasDelivery
           && !!cfg.delivery && cfg.delivery.length > 0;
         const ehSiteSimples = !hasLajeAtiva && !hasEventosAtivo && !hasDeliveryAtivo;
         if (ehSiteSimples) {
+          // Passo 1: cola trabalhe logo depois de reservas
           const reservasIdx = items.findIndex(it => it.id === "reservas");
           const trabalheIdx = items.findIndex(it => it.id === "trabalhe");
           if (reservasIdx !== -1 && trabalheIdx !== -1 && trabalheIdx !== reservasIdx + 1) {
             const [trabalheItem] = items.splice(trabalheIdx, 1);
             const novoReservasIdx = items.findIndex(it => it.id === "reservas");
             items.splice(novoReservasIdx + 1, 0, trabalheItem!);
+          }
+          // Passo 2: move o bloco [reservas, trabalhe] pra DEPOIS de
+          // [horario, contato]. Remove os 2 do meio e re-insere depois
+          // do contato (se ambos existirem na lista).
+          const rIdx = items.findIndex(it => it.id === "reservas");
+          const cIdx = items.findIndex(it => it.id === "contato");
+          if (rIdx !== -1 && cIdx !== -1 && rIdx < cIdx) {
+            const tIdx = items.findIndex(it => it.id === "trabalhe");
+            // Remove reservas + trabalhe (consecutivos) e re-insere após contato.
+            // splice em sequência: pega o item por id pra evitar problema com
+            // índices que mudam após cada splice.
+            const reservasItem = items.splice(rIdx, 1)[0]!;
+            const trabalheItemNovo = tIdx > rIdx
+              ? items.splice(tIdx - 1, 1)[0]!  // -1 porque já removemos reservas
+              : null;
+            // Recalcula índice do contato pós-remoções
+            const contatoIdxFinal = items.findIndex(it => it.id === "contato");
+            if (contatoIdxFinal !== -1) {
+              const inserts: Item[] = [reservasItem];
+              if (trabalheItemNovo) inserts.push(trabalheItemNovo);
+              items.splice(contatoIdxFinal + 1, 0, ...inserts);
+            } else {
+              // Sem contato? volta os itens pro fim mesmo
+              items.push(reservasItem);
+              if (trabalheItemNovo) items.push(trabalheItemNovo);
+            }
           }
         }
 
