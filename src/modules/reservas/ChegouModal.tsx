@@ -148,91 +148,170 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
     }
   }
 
+  const pax = reserva.pessoas || 1;
+
+  // Status visual de cada mesa pra reserva atual:
+  //   "ideal"     — capacidade exata
+  //   "ok"        — capacidade maior (cabe sobrando)
+  //   "pequena"   — não cabe a reserva (mostra mas em cinza)
+  //   "ocupada"   — outra reserva tá usando no mesmo slot
+  function statusMesa(m: Mesa): "ideal" | "ok" | "pequena" | "ocupada" {
+    if (mesasOcupadasNoSlot.has(m.id)) return "ocupada";
+    if (m.capacidade === pax) return "ideal";
+    if (m.capacidade > pax) return "ok";
+    return "pequena";
+  }
+
   function renderMesa(m: Mesa) {
     const ativo = mesaId === m.id;
-    const ocupada = mesasOcupadasNoSlot.has(m.id);
-    const capacidadeOk = m.capacidade >= (reserva.pessoas || 1);
+    const status = statusMesa(m);
+    // Estilos por status — visual de "tile" de mesa, número grande e cap pequena.
+    let containerCls = "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 hover:border-indigo-400";
+    let badge = "";
+    let badgeCls = "";
+    if (ativo) {
+      containerCls = "bg-indigo-600 border-indigo-600 text-white shadow-md";
+    } else if (status === "ocupada") {
+      containerCls = "bg-gray-50 dark:bg-gray-900/50 border-gray-200 dark:border-gray-800 text-gray-400 line-through";
+      badge = "ocupada";
+      badgeCls = "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300";
+    } else if (status === "ideal") {
+      containerCls = "bg-emerald-50 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 hover:border-emerald-500";
+      badge = "ideal";
+      badgeCls = "bg-emerald-200 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200";
+    } else if (status === "pequena") {
+      containerCls = "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 text-gray-500 opacity-70 hover:opacity-100";
+      badge = "pequena";
+      badgeCls = "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300";
+    }
     return (
       <button
         key={m.id}
         type="button"
         onClick={() => setMesaId(m.id)}
-        className={`relative px-3 py-2 rounded-lg border text-left transition-colors ${
-          ativo
-            ? "border-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-            : ocupada
-              ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-500"
-              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 hover:border-indigo-300"
-        }`}
+        className={`relative aspect-[5/4] flex flex-col items-center justify-center rounded-xl border-2 transition-all ${containerCls}`}
+        title={`Mesa ${m.nome} · ${m.capacidade} pax`}
       >
-        <div className="font-bold">{m.nome}</div>
-        <div className="text-[11px] opacity-70 flex items-center gap-2">
-          <span>{m.capacidade} pax</span>
-          {ocupada && <span className="text-rose-600">· ocupada</span>}
-          {!capacidadeOk && !ocupada && <span className="text-amber-600">· pequena pra {reserva.pessoas} pax</span>}
+        <div className="text-2xl font-bold leading-none">{m.nome}</div>
+        <div className={`text-[11px] mt-1 ${ativo ? "opacity-90" : "opacity-70"}`}>
+          {m.capacidade} pax
         </div>
+        {badge && !ativo && (
+          <span className={`absolute -top-1.5 -right-1.5 text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${badgeCls}`}>
+            {badge}
+          </span>
+        )}
       </button>
     );
+  }
+
+  // Ordena dentro do salão: ideais → ok → pequenas → ocupadas, todas
+  // mantendo ordem do cadastro como desempate.
+  function ordenarMesasPorAdequacao(list: Mesa[]): Mesa[] {
+    const peso = (m: Mesa) => {
+      const s = statusMesa(m);
+      if (s === "ideal") return 0;
+      if (s === "ok") return 1;
+      if (s === "pequena") return 2;
+      return 3; // ocupada
+    };
+    return [...list].sort((a, b) => {
+      const pa = peso(a), pb = peso(b);
+      if (pa !== pb) return pa - pb;
+      return (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome);
+    });
   }
 
   const semMesasNoSistema =
     gruposPorSalao.grupos.length === 0 && gruposPorSalao.semSalao.length === 0;
 
-  return (
-    <Modal title={`🪑 Cliente chegou — ${reserva.clienteNomeSnapshot || "Reserva"}`} onClose={onClose} maxWidth="max-w-lg">
-      <div className="space-y-4">
-        {/* Resumo da reserva */}
-        <div className="text-xs rounded-lg p-3 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-          ⏰ {reserva.horario} · 👥 {reserva.pessoas} pessoa(s)
-          {reserva.salaoNomeSnapshot && <> · 🏛️ {reserva.salaoNomeSnapshot}</>}
-        </div>
+  const mesaSelecionada = mesaId ? mesas.find(m => m.id === mesaId) : null;
+  const salaoSelecionado = mesaSelecionada?.salaoId
+    ? saloes.find(s => s.id === mesaSelecionada.salaoId)
+    : null;
 
-        {/* Escolha de mesa */}
-        <div>
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-2">
-            Em que mesa sentou? *
-          </label>
-          {semMesasNoSistema ? (
-            <div className="text-sm rounded-lg p-3 bg-amber-50 border border-amber-200 text-amber-800">
-              Nenhuma mesa cadastrada ainda. Vá em <strong>Configurações → Mesas</strong> pra cadastrar.
-            </div>
-          ) : (
-            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-1">
-              {gruposPorSalao.grupos.map(({ salao, ehDaReserva, mesas: list }) => (
-                <div key={salao.id}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="text-[10px] uppercase tracking-wider font-bold text-gray-600 dark:text-gray-400">
-                      🏛️ {salao.nome}
-                    </div>
-                    {ehDaReserva && (
-                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                        ★ salão da reserva
-                      </span>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-                    {list.map(renderMesa)}
-                  </div>
-                </div>
-              ))}
-              {gruposPorSalao.semSalao.length > 0 && (
-                <details>
-                  <summary className="text-[10px] uppercase tracking-wider text-gray-500 cursor-pointer hover:text-gray-700">
-                    ▼ Sem salão atribuído ({gruposPorSalao.semSalao.length})
-                  </summary>
-                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1.5">
-                    {gruposPorSalao.semSalao.map(renderMesa)}
-                  </div>
-                </details>
+  return (
+    <Modal title={`🪑 Cliente chegou — ${reserva.clienteNomeSnapshot || "Reserva"}`} onClose={onClose} maxWidth="max-w-xl">
+      <div className="space-y-4">
+        {/* Resumo da reserva — chips horizontais */}
+        <div className="flex flex-wrap gap-2 text-sm">
+          <Chip>⏰ {reserva.horario}</Chip>
+          <Chip>👥 {reserva.pessoas} {reserva.pessoas === 1 ? "pessoa" : "pessoas"}</Chip>
+          {reserva.salaoNomeSnapshot && <Chip>🏛️ {reserva.salaoNomeSnapshot}</Chip>}
+          {mesaSelecionada && (
+            <Chip cor="indigo">
+              ✓ Mesa {mesaSelecionada.nome}
+              {salaoSelecionado && salaoSelecionado.id !== reserva.salaoId && (
+                <> · {salaoSelecionado.nome}</>
               )}
-            </div>
+            </Chip>
           )}
         </div>
+
+        {/* Grid de mesas */}
+        {semMesasNoSistema ? (
+          <div className="text-sm rounded-lg p-4 bg-amber-50 border border-amber-200 text-amber-800">
+            <strong>Nenhuma mesa cadastrada ainda.</strong>
+            <br />
+            Vá em <strong>Configurações → Mesas</strong> e use "⚡ Adicionar várias" pra cadastrar.
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-[420px] overflow-y-auto pr-1">
+            {gruposPorSalao.grupos.map(({ salao, ehDaReserva, mesas: list }) => (
+              <div key={salao.id}>
+                <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white dark:bg-gray-950 py-1 z-10">
+                  <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
+                    🏛️ {salao.nome}
+                  </div>
+                  {ehDaReserva && (
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                      ★ salão da reserva
+                    </span>
+                  )}
+                  <span className="text-[10px] text-gray-400">
+                    ({list.length} {list.length === 1 ? "mesa" : "mesas"})
+                  </span>
+                </div>
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {ordenarMesasPorAdequacao(list).map(renderMesa)}
+                </div>
+              </div>
+            ))}
+            {gruposPorSalao.semSalao.length > 0 && (
+              <details>
+                <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700 mb-2">
+                  ▼ Sem salão atribuído ({gruposPorSalao.semSalao.length})
+                </summary>
+                <div className="grid grid-cols-4 sm:grid-cols-5 gap-2">
+                  {ordenarMesasPorAdequacao(gruposPorSalao.semSalao).map(renderMesa)}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+
+        {/* Legenda visual */}
+        {!semMesasNoSistema && (
+          <div className="flex flex-wrap gap-3 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-200 dark:bg-emerald-900/60"></span> ideal ({pax} pax)
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-white dark:bg-gray-900 border border-gray-300"></span> cabe
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-gray-100 dark:bg-gray-800 border border-gray-300"></span> menor que reserva
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block w-2.5 h-2.5 rounded-sm bg-rose-100 dark:bg-rose-900/40"></span> ocupada no slot
+            </span>
+          </div>
+        )}
 
         {/* Nota opcional */}
         <div>
           <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">
-            Nota (opcional) — vai pro histórico do cliente
+            📝 Nota (opcional) — vai pro histórico do cliente
           </label>
           <textarea
             value={nota}
@@ -258,5 +337,17 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Chip horizontal — usado no resumo da reserva no topo do modal
+function Chip({ children, cor = "gray" }: { children: React.ReactNode; cor?: "gray" | "indigo" }) {
+  const cls = cor === "indigo"
+    ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-900"
+    : "bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-800";
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium ${cls}`}>
+      {children}
+    </span>
   );
 }
