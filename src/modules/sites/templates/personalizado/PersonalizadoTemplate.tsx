@@ -61,13 +61,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     if (!isMobile) setMenuAberto(false);
   }, [isMobile]);
 
-  // Scrolled: vira true quando o usuário rolou pra fora do hero.
-  // Usado pra mostrar a logo no header só depois disso, mantendo o topo
-  // limpo enquanto a logo grande do hero ainda está visível.
-  // Threshold conservador: ~280px cobre logo grande + slogan no hero.
+  // Scrolled: vira true quando user rola um pouquinho.
+  // Threshold baixo (~60px) porque o header começa EXPANDIDO (bege +
+  // logo grande em cores próprias) e encolhe assim que começa a rolar.
+  // O hero vermelho com texto/CTA fica abaixo do header expandido.
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
-    function onScroll() { setScrolled(window.scrollY > 280); }
+    function onScroll() { setScrolled(window.scrollY > 60); }
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -137,56 +137,67 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: corFundo,
       minHeight: "100vh",
     }}>
-      {/* HEADER — desktop tem nav inline; mobile tem hamburger que abre
-          dropdown abaixo do header com os mesmos links em coluna.
-          Background + borda só aparecem depois que rola (junto com a logo)
-          pra deixar o hero "respirar" inteiro no topo da página. */}
+      {/* HEADER — bege sempre visível, EXPANDIDO (logo grande em cores
+          próprias) no topo da página; ENCOLHE pra compacto quando o user
+          rola. Logo sempre nas cores originais (sem filtro branco). Hero
+          vermelho com texto + CTA vive abaixo do header. */}
       <header style={{
         position: "sticky", top: 0, zIndex: 50,
-        backgroundColor: scrolled ? "rgba(247,243,233,0.95)" : "transparent",
-        backdropFilter: scrolled ? "blur(8px)" : "none",
+        backgroundColor: corFundo,                                // bege sólido sempre
         borderBottom: scrolled ? `1px solid ${corSecundaria}30` : "1px solid transparent",
-        transition: "background-color 0.25s ease, border-color 0.25s ease",
+        transition: "border-color 0.3s ease",
       }}>
         <div style={{
           maxWidth: 1100, margin: "0 auto",
-          padding: isMobile ? "10px 16px" : "12px 20px",
-          display: "flex", alignItems: "center", justifyContent: "space-between",
-          gap: 16,
+          padding: scrolled
+            ? (isMobile ? "10px 16px" : "12px 20px")
+            : (isMobile ? "20px 16px 16px" : "28px 20px 20px"),
+          display: "flex",
+          flexDirection: scrolled ? "row" : "column",
+          alignItems: "center",
+          justifyContent: scrolled ? "space-between" : "center",
+          gap: scrolled ? 16 : 14,
+          transition: "padding 0.3s ease, gap 0.3s ease",
         }}>
-          {/* Logo/título do header — só aparece depois que rola pra fora do hero.
-              Mantém o slot reservado (mesma altura) pra não causar layout shift
-              quando aparece. Fade + slide suave pra ficar elegante. */}
+          {/* Logo — sempre em cores próprias (sem filtro). Animação suave
+              de tamanho entre expandido (~80/100px) e compacto (~32/36px). */}
           <div style={{
-            fontFamily: fonteHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
-            display: "flex", alignItems: "center",
-            height: isMobile ? 32 : 36,
-            opacity: scrolled ? 1 : 0,
-            transform: scrolled ? "translateY(0)" : "translateY(-6px)",
-            transition: "opacity 0.25s ease, transform 0.25s ease",
-            pointerEvents: scrolled ? "auto" : "none",
+            fontFamily: fonteHeading,
+            color: corPrimaria,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "all 0.3s ease",
           }}>
             {cfg.logoUrl
-              ? <img src={cfg.logoUrl} alt="Logo" style={{ height: isMobile ? 32 : 36, width: "auto", display: "block" }} />
-              : (cfg.slogan || cfg.slug)}
+              ? <img
+                  src={cfg.logoUrl}
+                  alt="Logo"
+                  style={{
+                    height: scrolled
+                      ? (isMobile ? 32 : 36)
+                      : (isMobile ? 72 : 100),
+                    width: "auto", display: "block",
+                    transition: "height 0.3s ease",
+                  }}
+                />
+              : (
+                <span style={{
+                  fontSize: scrolled ? 22 : (isMobile ? 36 : 48),
+                  letterSpacing: "0.02em",
+                  transition: "font-size 0.3s ease",
+                }}>
+                  {cfg.slogan || cfg.slug}
+                </span>
+              )}
           </div>
-          {/* Menu/hamburger ganham um "chip" próprio com background creme +
-              blur. Assim o menu fica visível desde o topo (mesmo com o
-              header transparente sobre a hero escura), enquanto a logo do
-              header continua escondida até rolar. Quando o header já está
-              sólido, o chip se funde naturalmente. */}
+          {/* Menu/hamburger — o header bege é sólido sempre, então o nav
+              não precisa mais de "chip" com blur. Visual simples e direto. */}
           {(() => {
-            // Estilo de pílula compartilhado entre nav e hamburger.
-            // Mais marcado quando o header está transparente, mais sutil quando sólido.
-            const chipBg = scrolled
-              ? "transparent"
-              : `${corFundo}d9`;             // ~85% opaco
-            const chipBorder = scrolled
-              ? "1px solid transparent"
-              : `1px solid ${corSecundaria}40`;
-            const chipBlur = scrolled ? "none" : "blur(6px)";
-            const chipTransition =
-              "background-color 0.25s ease, border-color 0.25s ease";
+            // Sem chip — o header já é bege sólido, então fundo transparente
+            // funciona sem precisar de pílula destacada.
+            const chipBg = "transparent";
+            const chipBorder = "1px solid transparent";
+            const chipBlur = "none";
+            const chipTransition = "background-color 0.25s ease, border-color 0.25s ease";
 
             if (isMobile) {
               return (
@@ -305,24 +316,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         padding: isMobile ? "56px 20px" : "72px 20px",
       }}>
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
-          {/* Logo grande no topo do hero — branca/invertida pra
-              destacar sobre o fundo escuro. Só aparece se tem logo. */}
-          {cfg.logoUrl && (
-            <img
-              src={cfg.logoUrl}
-              alt="Logo"
-              style={{
-                maxWidth: isMobile ? 200 : 280,
-                width: "auto",
-                height: "auto",
-                marginBottom: 28,
-                filter: "brightness(0) invert(1)",
-                display: "block",
-                marginLeft: "auto",
-                marginRight: "auto",
-              }}
-            />
-          )}
+          {/* Logo NÃO aparece mais aqui — vive no header bege acima
+              (expandido com cores próprias, encolhe ao rolar). Hero focado
+              em slogan/título/subtítulo/CTA. */}
           {cfg.slogan && (
             <p style={{
               fontFamily: fonteSubtitulo,
