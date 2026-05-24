@@ -7,7 +7,7 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  ConfiguracaoReservas, Reserva, Salao,
+  Cliente, ConfiguracaoReservas, Reserva, Salao,
 } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
@@ -54,9 +54,12 @@ export function ReservasPublicaPage() {
   const [erro, setErro] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Cliente reconhecido (se WhatsApp já apareceu antes)
+  // Cliente reconhecido (se WhatsApp já apareceu antes).
+  // clienteId: se reservas anteriores já tinham um cliente vinculado, reusa o
+  // mesmo id pra manter o CRM coerente. null = vai criar novo no submit.
   const [clienteReconhecido, setClienteReconhecido] = useState<{
     nome: string; email?: string; ultimaData?: string; totalReservas: number;
+    clienteId: string | null;
   } | null>(null);
 
   // Form state
@@ -150,11 +153,15 @@ export function ReservasPublicaPage() {
         const docs = snap.docs.map(d => d.data() as Reserva)
           .sort((a, b) => (b.registradoEm || "").localeCompare(a.registradoEm || ""));
         const ultima = docs[0]!;
+        // Procura uma reserva qualquer que já tenha clienteId vinculado —
+        // reusa pra manter o CRM coerente (mesmo cliente, todas as reservas)
+        const comClienteId = docs.find(d => d.clienteId);
         setClienteReconhecido({
           nome: ultima.clienteNomeSnapshot,
           email: ultima.clienteEmailSnapshot,
           ultimaData: ultima.data,
           totalReservas: docs.length,
+          clienteId: comClienteId?.clienteId || null,
         });
         setNome(ultima.clienteNomeSnapshot);
         if (ultima.clienteEmailSnapshot) setEmail(ultima.clienteEmailSnapshot);
@@ -292,18 +299,40 @@ export function ReservasPublicaPage() {
       const id = `res_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date().toISOString();
       const sal = saloes.find(s => s.id === salaoId);
+      const telefoneE164 = montarE164(
+        pais.iso === "OUTROS" ? ddiManual : pais.ddi,
+        whatsapp,
+      );
+
+      // ─── Cliente: reusa se já tem um vinculado, senão cria novo ───
+      // Importante pro CRM: cada reserva pública gera (ou referencia) um
+      // doc em /clientes, que aparece automaticamente na aba Clientes.
+      let clienteIdFinal: string;
+      if (clienteReconhecido?.clienteId) {
+        clienteIdFinal = clienteReconhecido.clienteId;
+      } else {
+        clienteIdFinal = `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        const cliente: Cliente = {
+          id: clienteIdFinal,
+          restaurantId: rid,
+          nome: nome.trim(),
+          telefone: telefoneE164,
+          email: email.trim() || undefined,
+          criadoEm: now,
+          criadoPor: "publico",
+          atualizadoEm: now,
+        };
+        await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
+      }
 
       const reserva: Reserva = {
         id,
         restaurantId: rid,
         data,
         horario: slotHorario,
-        clienteId: null,
+        clienteId: clienteIdFinal,
         clienteNomeSnapshot: nome.trim(),
-        clienteTelefoneSnapshot: montarE164(
-          pais.iso === "OUTROS" ? ddiManual : pais.ddi,
-          whatsapp,
-        ),
+        clienteTelefoneSnapshot: telefoneE164,
         clienteEmailSnapshot: email.trim() || undefined,
         pessoas: parseInt(pessoas, 10),
         salaoId,
