@@ -687,10 +687,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     <h2 style={tituloSectionStyle}>{a.titulo}</h2>
                     {a.conteudo}
                   </div>
+                  {/* Divisora vertical — alignSelf stretch força a div
+                      esticar a altura inteira do row (sem isso colapsa). */}
                   <div aria-hidden style={{
                     backgroundColor: corSecundaria,
-                    opacity: 0.25,
-                    width: 1,
+                    opacity: 0.5,
+                    alignSelf: "stretch",
                   }} />
                   <div id={b.id} style={{ paddingLeft: 48 }}>
                     <h2 style={tituloSectionStyle}>{b.titulo}</h2>
@@ -1047,11 +1049,17 @@ function CardapioPreview({
 }) {
   const [pagina, setPagina] = useState(1);
   const pdfUrl = cfg.cardapioPdfPtUrl;
-  // Hash do iframe muda quando a página muda — força o PDF re-render
-  const viewMode = isMobile ? "FitH" : "Fit";
-  const iframeSrc = pdfUrl
-    ? `${pdfUrl}#page=${pagina}&toolbar=0&navpanes=0&scrollbar=0&view=${viewMode}`
-    : "";
+  // No iOS Safari, o viewer nativo de PDF ignora os hash params
+  // (#page, #view=FitH, #toolbar=0), o que faz o PDF não preencher a
+  // largura do iframe no mobile. Solução: usar Google Docs Viewer no
+  // mobile, que renderiza o PDF como sequência de imagens e SEMPRE
+  // ocupa 100% da largura. Desktop continua iframe nativo + setas
+  // (mais responsivo, sem dependência externa).
+  const iframeSrc = !pdfUrl
+    ? ""
+    : isMobile
+      ? `https://docs.google.com/gview?url=${encodeURIComponent(pdfUrl)}&embedded=true`
+      : `${pdfUrl}#page=${pagina}&toolbar=0&navpanes=0&scrollbar=0&view=Fit`;
 
   // Estilo do container do preview — adapta entre mobile e desktop
   const previewWrapperStyle: React.CSSProperties = isMobile
@@ -1134,13 +1142,25 @@ function CardapioPreview({
               style={{
                 width: "100%", height: "100%",
                 border: "none", display: "block",
-                // Bloqueia scroll/interação do PDF viewer interno —
-                // navegação entre páginas só pelas setas. Mobile mantém
-                // pointerEvents pra scroll natural funcionar dentro do FitH.
-                pointerEvents: isMobile ? "auto" : "none",
               }}
               loading="lazy"
             />
+            {/* Overlay invisível bloqueia scroll/clicks DENTRO do PDF
+                viewer no desktop. Sem isso o scroll roda as páginas do
+                PDF debaixo das setas. Mobile usa GDV (interação nativa
+                OK pra scroll entre páginas). */}
+            {!isMobile && (
+              <div
+                aria-hidden
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 1,
+                  // Background imperceptível só pra capturar eventos
+                  backgroundColor: "transparent",
+                }}
+              />
+            )}
             {/* Setas — só desktop. Mobile usa o botão "abrir completo" pra ver tudo. */}
             {!isMobile && seta("prev")}
             {!isMobile && seta("next")}
@@ -1150,6 +1170,7 @@ function CardapioPreview({
                 backgroundColor: "rgba(0,0,0,0.78)", color: "#fff",
                 padding: "4px 12px", borderRadius: 999,
                 fontSize: 11, fontWeight: 500,
+                zIndex: 2,                                  // acima do overlay
               }}>
                 pág. {pagina}
               </div>
@@ -1166,6 +1187,7 @@ function CardapioPreview({
                 fontSize: 12, fontWeight: 500,
                 textDecoration: "none",
                 backdropFilter: "blur(4px)",
+                zIndex: 2,                                  // acima do overlay
               }}
             >
               🔍 abrir completo
