@@ -31,6 +31,7 @@ const DEFAULTS_PERSONALIZADO: TextosDefaults = {
   trabalheTexto: "Sempre buscando gente boa pra somar no time.",
   trabalheCtaLabel: "Enviar candidatura",
   contatoTitulo: "Como chegar",
+  rodapeDireitos: "Todos os direitos reservados.",
 };
 
 // Defaults genéricos — usado pelo template default
@@ -56,6 +57,7 @@ const DEFAULTS_GENERICO: TextosDefaults = {
   trabalheTexto: "",
   trabalheCtaLabel: "Enviar candidatura",
   contatoTitulo: "Como chegar",
+  rodapeDireitos: "Todos os direitos reservados.",
 };
 
 export function defaultTextosByTemplate(templateId: SiteConfig["templateId"]): TextosDefaults {

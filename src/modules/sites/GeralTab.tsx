@@ -782,6 +782,15 @@ function TextosSection({ form, setForm, disabled }: {
         { chave: "contatoTitulo", label: "Título", placeholder: "Como chegar" },
       ],
     },
+    {
+      titulo: "Rodapé",
+      campos: [
+        { chave: "rodapeDireitos",
+          label: "Texto de direitos autorais",
+          placeholder: "Lobozó Cozinha LTDA. Todos os direitos reservados.",
+          dica: "Aparece no rodapé do site, depois do © e o ano atual." },
+      ],
+    },
   ];
 
   const totalPreenchidos = Object.values(textos).filter(v => !!(v && v.trim())).length;

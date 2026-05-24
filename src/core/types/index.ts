@@ -2143,6 +2143,7 @@ export type SiteConfig = {
     trabalheCtaLabel?: string;
     contatoTitulo?: string;
     historiaTitulo?: string;
+    rodapeDireitos?: string;           // texto após "© ano —" no footer
   };
   // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
   slug: string;

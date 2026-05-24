@@ -13,7 +13,7 @@
 //  - Cardápio = botão abre PDF (sem embed)
 //  - Sem libs extras
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { SiteConfig } from "../../../../core/types";
 import { agruparHorarios, formatarDataCurta, proximasExcecoes } from "../../shared/horarioUtils";
@@ -44,6 +44,17 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     || fonteHeading; // default: usa a mesma do heading
   const fonteCorpo = findFonte(cfg.tema.fonteCorpo)?.cssFamily
     || "'Inter', system-ui, sans-serif";
+
+  // Detecta mobile pra ajustar header (esconde nav, encolhe padding).
+  // 768px = breakpoint padrão Tailwind md.
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== "undefined" ? window.innerWidth < 768 : false
+  );
+  useEffect(() => {
+    function onResize() { setIsMobile(window.innerWidth < 768); }
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // Carrega Google Fonts dinamicamente — só as fontes que estão sendo usadas
   useEffect(() => {
@@ -97,7 +108,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: corFundo,
       minHeight: "100vh",
     }}>
-      {/* HEADER */}
+      {/* HEADER — logo sempre aparece. Nav só em desktop (no mobile o
+          user rola e vê as seções; manter nav apertado fica horrível) */}
       <header style={{
         position: "sticky", top: 0, zIndex: 50,
         backgroundColor: "rgba(247,243,233,0.95)",
@@ -106,24 +118,29 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       }}>
         <div style={{
           maxWidth: 1100, margin: "0 auto",
-          padding: "12px 20px",
-          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16,
+          padding: isMobile ? "10px 16px" : "12px 20px",
+          display: "flex", alignItems: "center",
+          justifyContent: isMobile ? "center" : "space-between",
+          gap: 16,
         }}>
           <div style={{
             fontFamily: fonteHeading, fontSize: 22, color: corPrimaria, letterSpacing: "0.02em",
+            display: "flex", alignItems: "center",
           }}>
             {cfg.logoUrl
-              ? <img src={cfg.logoUrl} alt="Logo" style={{ height: 36, width: "auto" }} />
+              ? <img src={cfg.logoUrl} alt="Logo" style={{ height: isMobile ? 32 : 36, width: "auto", display: "block" }} />
               : (cfg.slogan || cfg.slug)}
           </div>
-          <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
-            <NavLink href="#historia">Sobre</NavLink>
-            <NavLink href="#cardapio">Cardápio</NavLink>
-            <NavLink href="#horario">Horário</NavLink>
-            {cfg.features.hasLaje && <NavLink href="#laje">Laje</NavLink>}
-            {cfg.features.hasReservas && <NavLink href="#reservas">Reservas</NavLink>}
-            <NavLink href="#contato">Contato</NavLink>
-          </nav>
+          {!isMobile && (
+            <nav style={{ display: "flex", gap: 18, fontSize: 14, fontWeight: 500 }}>
+              <NavLink href="#historia">Sobre</NavLink>
+              <NavLink href="#cardapio">Cardápio</NavLink>
+              <NavLink href="#horario">Horário</NavLink>
+              {cfg.features.hasLaje && <NavLink href="#laje">Laje</NavLink>}
+              {cfg.features.hasReservas && <NavLink href="#reservas">Reservas</NavLink>}
+              <NavLink href="#contato">Contato</NavLink>
+            </nav>
+          )}
         </div>
       </header>
 
@@ -468,24 +485,33 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         {(cfg.logoUrl || cfg.slogan) && (
           <div style={{
             fontFamily: fonteHeading, fontSize: 24, marginBottom: 16, color: corSecundaria,
+            display: "flex", justifyContent: "center", alignItems: "center",
           }}>
             {cfg.logoUrl
-              ? <img src={cfg.logoUrl} alt="" style={{ height: 40, width: "auto", filter: "brightness(0) invert(1)", opacity: 0.85 }} />
-              : cfg.slogan}
+              ? <img src={cfg.logoUrl} alt="" style={{ height: 40, width: "auto", filter: "brightness(0) invert(1)", opacity: 0.85, display: "block", margin: "0 auto" }} />
+              : <span>{cfg.slogan}</span>}
           </div>
         )}
-        {cfg.redes.length > 0 && (
-          <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
-            {cfg.redes.filter(r => r.url).map((r, i) => (
-              <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                 style={{ color: corFundo, textDecoration: "none", fontSize: 14 }}>
-                {iconRede(r.tipo)} {labelRede(r.tipo, r.label)}
-              </a>
-            ))}
-          </div>
-        )}
+        {/* Redes sociais no footer — Instagram E WhatsApp ficam fora
+            (já estão no hero como botões). Mostra Facebook/TikTok/etc. */}
+        {(() => {
+          const redesFooter = cfg.redes.filter(r =>
+            r.url && r.tipo !== "instagram" && r.tipo !== "whatsapp"
+          );
+          if (redesFooter.length === 0) return null;
+          return (
+            <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
+              {redesFooter.map((r, i) => (
+                <a key={i} href={r.url} target="_blank" rel="noreferrer"
+                   style={{ color: corFundo, textDecoration: "none", fontSize: 14 }}>
+                  {iconRede(r.tipo)} {labelRede(r.tipo, r.label)}
+                </a>
+              ))}
+            </div>
+          );
+        })()}
         <div style={{ fontSize: 12, opacity: 0.7 }}>
-          © {new Date().getFullYear()} {cfg.restaurantId}
+          © {new Date().getFullYear()} — {t("rodapeDireitos", "Todos os direitos reservados.")}
         </div>
       </footer>
 
