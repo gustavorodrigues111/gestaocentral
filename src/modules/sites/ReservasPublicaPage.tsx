@@ -327,7 +327,7 @@ export function ReservasPublicaPage() {
   // Lista os próximos 7 dias DISPONÍVEIS (com janelas configuradas) —
   // varre até 60 dias à frente caso muitos sejam fechados/sem slots.
   // Não considera lotação por slot — isso fica pro slot picker depois.
-  const MAX_DIAS = 7;
+  const MAX_DIAS = 6;
   const RANGE_VARREDURA = 60;
   const diasDisponiveis = useMemo(() => {
     if (!config) return [];
