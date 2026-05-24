@@ -20,7 +20,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { initializeApp, cert, applicationDefault, getApps } from "firebase-admin/app";
+import { initializeApp, cert, getApps } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -32,30 +32,31 @@ const TEMPLATE_HTML = path.join(DIST_DIR, "index.html");
 async function main() {
   console.log("[prerender-sites] iniciando...");
 
-  // Inicializa Firebase Admin SDK
+  // Sem FIREBASE_SERVICE_ACCOUNT, o prerender é NO-OP gracioso — não
+  // bloqueia o build. Site funciona como SPA puro (renderiza client-side
+  // após query no Firestore). Isso permite:
+  //   - Build no Vercel funcionar antes do user configurar o secret
+  //   - Build local em dev sem precisar de service account
+  // Pra ATIVAR o SSG, define FIREBASE_SERVICE_ACCOUNT no Vercel env vars
+  // (Settings → Environment Variables) com o JSON inteiro da chave.
+  const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!serviceAccountJson) {
+    console.log("[prerender-sites] FIREBASE_SERVICE_ACCOUNT ausente — pulando SSG (build segue como SPA puro)");
+    return;
+  }
+
+  // Inicializa Firebase Admin SDK só com a service account do env.
+  // Não tentamos applicationDefault() porque no Vercel ele não funciona
+  // (sem gcloud configurado) e o erro só aparece quando vamos consultar.
   if (getApps().length === 0) {
-    const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-    if (serviceAccountJson) {
-      try {
-        const credentials = JSON.parse(serviceAccountJson);
-        initializeApp({ credential: cert(credentials) });
-        console.log("[prerender-sites] usando FIREBASE_SERVICE_ACCOUNT (cert)");
-      } catch (e) {
-        console.error("[prerender-sites] FIREBASE_SERVICE_ACCOUNT mal formado:", e.message);
-        // Sai com sucesso (não bloqueia build em dev local sem creds)
-        return;
-      }
-    } else {
-      // Tenta application default (gcloud auth / VM metadata). Em dev local
-      // sem gcloud configurado, falha — mas não bloqueia o build.
-      try {
-        initializeApp({ credential: applicationDefault() });
-        console.log("[prerender-sites] usando applicationDefault()");
-      } catch (e) {
-        console.warn("[prerender-sites] sem credenciais Firebase Admin — pulando pre-render");
-        console.warn("[prerender-sites] (defina FIREBASE_SERVICE_ACCOUNT pra ativar)");
-        return;
-      }
+    try {
+      const credentials = JSON.parse(serviceAccountJson);
+      initializeApp({ credential: cert(credentials) });
+      console.log("[prerender-sites] Firebase Admin inicializado");
+    } catch (e) {
+      console.error("[prerender-sites] FIREBASE_SERVICE_ACCOUNT mal formado:", e.message);
+      console.warn("[prerender-sites] pulando SSG — checa o JSON da service account no Vercel env");
+      return; // não bloqueia build
     }
   }
 
@@ -136,7 +137,11 @@ function escapeHtml(s) {
     .replace(/'/g, "&#39;");
 }
 
+// Engole qualquer erro inesperado pra NÃO BLOQUEAR o build do Vercel.
+// SSG é optimization, não requirement — site funciona como SPA puro
+// se o prerender falhar. Erro fica visível no log do Vercel pra debug.
 main().catch((e) => {
-  console.error("[prerender-sites] falhou:", e);
-  process.exit(1);
+  console.error("[prerender-sites] falhou (build continua sem SSG):", e);
+  // Saída 0 deliberada — não derruba build.
+  process.exit(0);
 });
