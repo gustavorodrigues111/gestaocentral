@@ -576,6 +576,11 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             onChange={(v) => atualizarTema("fonteCorpo", v)}
             disabled={inputDisabled}
           />
+          <EscalaTextoControl
+            value={form.tema.escalaTexto ?? 1}
+            onChange={(v) => atualizarTema("escalaTexto", v)}
+            disabled={inputDisabled}
+          />
         </div>
       </section>
 
@@ -892,6 +897,56 @@ function TextosSection({ form, setForm, disabled }: {
 // TemplateCard removido junto com o picker de template — só 1 layout
 // ativo hoje. Se voltar a ter múltiplos templates, restaura essa função
 // e a seção em GeralTab.
+
+// EscalaTextoControl — slider pra ajustar o tamanho base do texto do
+// site público. Fontes serifadas/decorativas (Fraunces, DM Serif Display)
+// ficam visualmente menores no mesmo px que sans-serif (Inter). Esse
+// controle multiplica o tamanho do corpo de 0.85x até 1.30x sem mexer
+// em todas as font-size individuais.
+function EscalaTextoControl({ value, onChange, disabled }: {
+  value: number;
+  onChange: (v: number) => void;
+  disabled?: boolean;
+}) {
+  const pct = Math.round((value || 1) * 100);
+  return (
+    <div>
+      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">
+        Tamanho do texto
+      </label>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+        Ajusta o corpo do texto (parágrafos, listas, botões). Útil quando a
+        fonte escolhida fica pequena visualmente. <strong>{pct}%</strong>
+        {value === 1 && <span className="text-gray-400"> · padrão</span>}
+      </p>
+      <div className="flex items-center gap-3">
+        <span className="text-[10px] text-gray-500 w-8">85%</span>
+        <input
+          type="range"
+          min={0.85}
+          max={1.30}
+          step={0.01}
+          value={value || 1}
+          onChange={(e) => onChange(parseFloat(e.target.value))}
+          disabled={disabled}
+          className="flex-1"
+        />
+        <span className="text-[10px] text-gray-500 w-8 text-right">130%</span>
+        {value !== 1 && (
+          <button
+            type="button"
+            onClick={() => onChange(1)}
+            disabled={disabled}
+            className="text-[11px] text-gray-500 hover:text-gray-700 underline px-1"
+            title="Voltar ao padrão"
+          >
+            ↺
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Editor de ordem das seções do site — setas ↑↓ pra mover.
 // Hero fica sempre primeiro, Footer sempre último — não entram aqui.

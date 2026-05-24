@@ -37,6 +37,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
   const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
 
+  // Escala do texto de corpo — multiplica os tamanhos base. Útil pra fontes
+  // serifadas/decorativas que ficam visualmente menores. Clamp em [0.85, 1.30]
+  // pra não desfigurar o layout.
+  const escalaTexto = Math.min(1.30, Math.max(0.85, cfg.tema.escalaTexto || 1));
+  // Helper: converte um tamanho base (em px) pro tamanho escalado, arredondado.
+  const tx = (px: number) => Math.round(px * escalaTexto);
+
   // Fontes — resolve via catálogo (id) ou fallback pros defaults da marca.
   // Heading/Subtitulo/Corpo são 3 fontes independentes selecionáveis no admin.
   const fonteHeading = findFonte(cfg.tema.fonteHeading)?.cssFamily
@@ -355,7 +362,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           </h1>
           <p style={{
             fontFamily: fonteSubtitulo,
-            fontSize: 17, opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
+            fontSize: tx(17), opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
             lineHeight: 1.55,
             whiteSpace: "pre-wrap",
           }}>
@@ -437,7 +444,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                     gap: 12,
                     padding: "12px 0",
                     borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none",
-                    fontSize: 16,
+                    fontSize: tx(16),
                   }}>
                     <span style={{
                       fontWeight: 600, textTransform: "capitalize",
@@ -532,7 +539,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               }}>
                 {t("deliveryTexto", "") && (
                   <p style={{
-                    fontSize: 17, lineHeight: 1.7,
+                    fontSize: tx(17), lineHeight: 1.7,
                     margin: 0, whiteSpace: "pre-wrap",
                   }}>
                     {t("deliveryTexto", "")}
@@ -1020,7 +1027,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       // Dourado tem brilho — texto preto contrasta melhor. Outras cores, fundo claro.
       color: cor === corSecundaria ? "#1a1a1a" : corFundo,
       textDecoration: "none",
-      fontSize: 15,
+      fontSize: tx(15),
       fontWeight: 600,
       borderRadius: 4,
       border: "none",
@@ -1038,7 +1045,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: fundo,
       color: cor,
       textDecoration: "none",
-      fontSize: 15,
+      fontSize: tx(15),
       fontWeight: 600,
       border: `2px solid ${cor}`,
       borderRadius: 4,

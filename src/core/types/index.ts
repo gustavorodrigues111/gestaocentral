@@ -2242,6 +2242,16 @@ export type TemaSite = {
   fonteHeading?: string;             // títulos grandes (hero h1, section h2)
   fonteSubtitulo?: string;           // subtítulos / texto-destaque
   fonteCorpo?: string;               // texto regular
+  // Multiplicador do tamanho base do texto. Fontes serifadas/decorativas
+  // (Fraunces, DM Serif Display) costumam parecer menores que sans-serif
+  // (Inter) no mesmo tamanho — esse fator compensa sem mexer em todas
+  // as font-size individuais.
+  //   1.0  → padrão (default)
+  //   1.10 → ~10% maior (~2pt em fonte 18-20)
+  //   1.15 → ~15% maior
+  // Aplica em parágrafos, listas, texto de corpo. Títulos têm seu próprio
+  // tamanho já calculado por clamp() e não escalam (não precisam).
+  escalaTexto?: number;
   raioBorda?: string;                // "8px"
 };
 
