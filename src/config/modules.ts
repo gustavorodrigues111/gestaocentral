@@ -25,6 +25,7 @@ export const MODULES: ModuleDef[] = [
   { id: "fechamentoEscala", area: "escritorio", label: "Fechamento Escala",icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Fechar escala mensal e ajustes",         dependsOn: ["escala", "gorjetas", "vt"] },
   { id: "compras",          area: "escritorio", label: "Compras",          icon: "🛒", status: "ativo",     etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
   { id: "comunicados",      area: "escritorio", label: "Comunicados",      icon: "📣", status: "ativo",     etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
+  { id: "sites",            area: "escritorio", label: "Sites",            icon: "🌐", status: "ativo",     etapa: "em_desenvolvimento", desc: "Site público do restaurante: história, horário, cardápio, forms" },
   { id: "recursos",         area: "escritorio", label: "Biblioteca",       icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna" },
   { id: "faleDp",           area: "escritorio", label: "Fale com DP",      icon: "💬", status: "planejado", etapa: "em_desenvolvimento", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"] },
 

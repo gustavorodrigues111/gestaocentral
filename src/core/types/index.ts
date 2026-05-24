@@ -9,7 +9,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao";
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites";
 
 // ─── PERMISSÕES ───
 
@@ -30,6 +30,11 @@ export type PessoaSpecialPermissions = {
   pessoasExcluir?: boolean;             // pode excluir pessoas DEFINITIVAMENTE
   gorjetasConfigurarRegra?: boolean;    // pode mexer na regra de divisão de gorjeta (assembleia)
   escalaReabrir?: boolean;              // pode reabrir mês de escala fechado
+  // Sites — granulares (módulo "sites" controla acesso base via canUse;
+  // estas flags refinam o que a pessoa pode editar):
+  sitesCardapio?: boolean;              // pode trocar o PDF do cardápio (PT/EN)
+  sitesGeral?: boolean;                 // pode editar tudo o resto do site
+                                        // (história, horários, contato, redes, flags, tema)
 };
 
 // Etapa de maturidade do módulo (independente de `status`).
@@ -2003,4 +2008,146 @@ export type LogMensagemEvento = {
   enviadoPor: string;
   enviadoPorNome: string;
   canal: "whatsapp_wame" | "whatsapp_api" | "email";
+};
+
+// ─── SITES ─────────────────────────────────────────────────────────────────
+// Módulo "Sites" — gerencia o site público de cada restaurante (substitui Wix).
+// 1 doc por restaurante em /sitesConfig, com id = restaurantId.
+// Conteúdo é renderizado pelo app público (rota /site/:slug ou domínio próprio).
+
+// Horário padrão semanal. Cada dia pode ter 0, 1 ou 2 turnos (ex: almoço + jantar).
+export type HorarioFuncionamentoDia = {
+  dia: number;                       // 0 = domingo, 6 = sábado
+  fechado: boolean;                  // se true, ignora turnos
+  turnos: { abre: string; fecha: string }[];  // "HH:MM" cada
+};
+
+// Exceção pontual (feriado, evento especial). Sobrescreve o horário padrão
+// num dia específico OU range de dias. Compartilhado com módulo Reservas.
+export type ExcecaoHorarioSite = {
+  id: string;
+  data: string;                      // YYYY-MM-DD
+  fechado: boolean;
+  turnos?: { abre: string; fecha: string }[];
+  motivo?: string;                   // "Feriado de Natal", "Réveillon especial"
+  criadoEm: string;
+  criadoPor: string;
+};
+
+export type TemaSite = {
+  corPrimaria: string;               // "#1a5c2a"
+  corSecundaria: string;             // "#d4af37"
+  corFundo?: string;                 // "#fff" default
+  corTexto?: string;                 // "#1a1a1a" default
+  fonteHeading?: string;             // CSS font-family
+  fonteCorpo?: string;
+  raioBorda?: string;                // "8px"
+};
+
+export type RedeSocial = {
+  tipo: "instagram" | "facebook" | "whatsapp" | "tiktok" | "youtube" | "outro";
+  url: string;
+  label?: string;                    // se outro
+};
+
+export type LinkDelivery = {
+  plataforma: "ifood" | "rappi" | "uber" | "proprio" | "outro";
+  url: string;
+  label?: string;
+};
+
+export type SiteConfig = {
+  id: string;                        // = restaurantId
+  restaurantId: string;
+  // Conteúdo editorial
+  slogan?: string;                   // tagline curta no hero
+  historia: string;                  // texto longo, parágrafos
+  // Hero
+  heroImagemUrl?: string;            // Storage URL
+  heroVideoUrl?: string;             // opcional
+  // Contato
+  endereco: {
+    rua: string;
+    numero?: string;
+    complemento?: string;
+    bairro?: string;
+    cidade: string;
+    uf: string;
+    cep?: string;
+    googleMapsUrl?: string;          // se preenchido, vira link/embed
+    latLng?: { lat: number; lng: number };  // pra Schema.org SEO
+  };
+  telefone?: string;
+  emailContato?: string;
+  // Horário
+  horarios: HorarioFuncionamentoDia[];  // 7 entries (1 por dia da semana)
+  excecoes: ExcecaoHorarioSite[];    // ordenadas por data
+  // Cardápio (PDF — sempre)
+  cardapioPdfPtUrl?: string;
+  cardapioPdfPtAtualizadoEm?: string;
+  cardapioPdfPtAtualizadoPor?: string;
+  cardapioPdfEnUrl?: string;
+  cardapioPdfEnAtualizadoEm?: string;
+  cardapioPdfEnAtualizadoPor?: string;
+  // Redes
+  redes: RedeSocial[];
+  // Features (controla seções no site)
+  features: {
+    hasDelivery: boolean;
+    hasEventos: boolean;
+    hasLaje: boolean;                // só Lobozó por enquanto — seção dedicada
+    hasTrabalheConosco: boolean;
+    hasReservas: boolean;
+    hasGaleria: boolean;             // não usado por enquanto (Instagram serve)
+  };
+  delivery?: LinkDelivery[];          // só se hasDelivery
+  // Tema
+  tema: TemaSite;
+  // Assets
+  logoUrl?: string;
+  faviconUrl?: string;
+  ogImageUrl?: string;               // pra SEO/social share
+  // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
+  slug: string;
+  // Status
+  publicado: boolean;                // se false, site retorna 404 público
+  // Auditoria
+  createdAt: string;
+  updatedAt: string;
+  updatedBy?: string;
+};
+
+// ─── TRABALHE CONOSCO ──────────────────────────────────────────────────────
+// Candidatura simples vinda do site público. Não é Admissão — é só
+// "lead de candidato" pra você triar depois.
+
+export type StatusCandidatura =
+  | "nova"
+  | "em_analise"
+  | "aprovada_pra_admissao"       // movida pro módulo Admissão
+  | "rejeitada"
+  | "arquivada";
+
+export type CandidaturaTrabalhe = {
+  id: string;
+  restaurantId: string;
+  status: StatusCandidatura;
+  // Dados do candidato
+  nome: string;
+  whatsapp: string;                  // E.164
+  email: string;
+  areaInteresse: string;             // texto livre ou lista
+  experiencia?: string;              // descrição livre
+  disponibilidade?: string;          // "imediato", "30 dias", etc
+  curriculoUrl?: string;             // upload opcional
+  // Atribuição
+  responsavelId?: string;
+  responsavelNome?: string;
+  observacoesInternas?: string;
+  // Auditoria
+  origem: "publico" | "manual";
+  createdAt: string;
+  updatedAt: string;
+  rejeitadaEm?: string;
+  motivoRejeicao?: string;
 };

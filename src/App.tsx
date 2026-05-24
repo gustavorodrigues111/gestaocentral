@@ -29,6 +29,7 @@ import { AdmissaoPage } from "./modules/admissao/AdmissaoPage";
 import { AdmissaoPublicaPage } from "./modules/admissao/AdmissaoPublicaPage";
 import { EventosPage } from "./modules/eventos/EventosPage";
 import { EventosPublicaPage } from "./modules/eventos/EventosPublicaPage";
+import { SitesPage } from "./modules/sites/SitesPage";
 import { ArquiteturaPage } from "./modules/arquitetura/ArquiteturaPage";
 import { PortalPage } from "./modules/portalEmpregado/PortalPage";
 
@@ -70,6 +71,7 @@ function ModuleRouter() {
     case "excecoes":      return <RegistrosPontoPage key={k} />;
     case "admissao":      return <AdmissaoPage key={k} />;
     case "eventos":       return <EventosPage key={k} />;
+    case "sites":         return <SitesPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
