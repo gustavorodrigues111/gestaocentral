@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, where,
+  collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -19,6 +19,7 @@ import { useSiteConfigPublic, explicarNotFound } from "./shared/useSiteConfigPub
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "./shared/SiteFormShell";
 import { FormField, fieldInputCls } from "./shared/FormField";
 import { upsertClienteLookup } from "../reservas/clienteLookup";
+import { criarNotaCliente } from "../reservas/notasCliente";
 
 // Página pública: cliente solicita reserva de mesa.
 // Rota: /reservas/:rid (sem auth).
@@ -64,6 +65,10 @@ export function ReservasPublicaPage() {
   // mas seguem editáveis.
   const [lookupState, setLookupState] = useState<"idle" | "checking" | "found" | "notfound">("idle");
   const [clienteIdConhecido, setClienteIdConhecido] = useState<string | null>(null);
+  // Snapshot dos valores do lookup — usado pra detectar se o cliente
+  // alterou nome/email e logar a mudança na nota do CRM.
+  const [nomeOriginalLookup, setNomeOriginalLookup] = useState<string | null>(null);
+  const [emailOriginalLookup, setEmailOriginalLookup] = useState<string | null>(null);
 
   // Form state
   const [paisIso, setPaisIso] = useState(PAIS_BR.iso);
@@ -194,9 +199,14 @@ export function ReservasPublicaPage() {
         if (!nome.trim()) setNome(lk.nome || "");
         if (!email.trim() && lk.email) setEmail(lk.email);
         setClienteIdConhecido(lk.clienteId);
+        // Guarda os originais pra detectar edição no submit
+        setNomeOriginalLookup(lk.nome || null);
+        setEmailOriginalLookup(lk.email || null);
         setLookupState("found");
       } else {
         setClienteIdConhecido(null);
+        setNomeOriginalLookup(null);
+        setEmailOriginalLookup(null);
         setLookupState("notfound");
       }
     } catch (e) {
@@ -210,7 +220,8 @@ export function ReservasPublicaPage() {
 
   function validateDetails(): string | null {
     if (!nome.trim()) return "Preenche seu nome.";
-    if (email.trim() && !validarEmail(email)) return "Email inválido.";
+    if (!email.trim()) return "Email é obrigatório — usamos pra te enviar a confirmação.";
+    if (!validarEmail(email)) return "Email inválido.";
     if (!data) return "Escolhe a data da reserva.";
     if (data < hojeISO) return "A data não pode ser no passado.";
     const n = parseInt(pessoas, 10);
@@ -411,24 +422,60 @@ export function ReservasPublicaPage() {
       // clienteId (mantém histórico do CRM contíguo — admin vê todas as
       // reservas da pessoa sob o mesmo registro). Senão, cria novo.
       //
-      // Quando reconhecido, NÃO sobrescrevemos /clientes — pode ter
-      // dados curados pelo admin (aniversário, restrições, tags). O lookup
-      // é atualizado abaixo com o nome/email mais recente que a pessoa
-      // digitou; admin reconcilia no CRM se quiser.
+      // Se o cliente alterou nome ou email na tela, ATUALIZA o cadastro
+      // em /clientes (só esses 2 campos — outros como aniversário, tags,
+      // restrições continuam intocados, são curados pelo admin) e cria
+      // uma nota no log explicando a mudança (admin vê o histórico).
       const clienteIdFinal = clienteIdConhecido
         || `cli_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const nomeNovo = nome.trim();
+      const emailNovo = email.trim();
+
       if (!clienteIdConhecido) {
+        // Cliente novo — cria
         const cliente: Cliente = {
           id: clienteIdFinal,
           restaurantId: rid,
-          nome: nome.trim(),
+          nome: nomeNovo,
           telefone: telefoneE164,
-          email: email.trim() || undefined,
+          email: emailNovo || undefined,
           criadoEm: now,
           criadoPor: "publico",
           atualizadoEm: now,
         };
         await setDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(cliente));
+      } else {
+        // Cliente reconhecido — detecta mudanças vs original do lookup
+        const nomeMudou = nomeOriginalLookup !== null && nomeNovo !== nomeOriginalLookup;
+        const emailMudou = (emailOriginalLookup || "") !== emailNovo;
+        if (nomeMudou || emailMudou) {
+          try {
+            // Atualiza só os campos que mudaram (preserva tags, observações, etc)
+            const patch: Partial<Cliente> = { atualizadoEm: now };
+            if (nomeMudou) patch.nome = nomeNovo;
+            if (emailMudou) patch.email = emailNovo || undefined;
+            await updateDoc(doc(db, "clientes", clienteIdFinal), sanitizeForFirestore(patch));
+          } catch (e) {
+            // Update pode falhar por rules se cliente foi criado fora desse fluxo —
+            // não bloqueia a reserva, só loga.
+            console.warn("[reservas] update cliente falhou:", e);
+          }
+          // Cria nota no log do cliente registrando o que mudou
+          const partesDaNota: string[] = [];
+          if (nomeMudou) partesDaNota.push(`nome: "${nomeOriginalLookup}" → "${nomeNovo}"`);
+          if (emailMudou) partesDaNota.push(`email: "${emailOriginalLookup || "(vazio)"}" → "${emailNovo}"`);
+          try {
+            await criarNotaCliente({
+              restaurantId: rid,
+              clienteId: clienteIdFinal,
+              texto: `Cliente atualizou ${partesDaNota.join(" e ")} ao fazer nova reserva pelo site.`,
+              criadoPor: "publico",
+              criadoPorNome: "Cliente via site",
+            });
+          } catch (e) {
+            console.warn("[reservas] criar nota falhou:", e);
+          }
+        }
       }
 
       // Upsert do lookup público — ID determinístico permite que próximas
@@ -657,7 +704,7 @@ export function ReservasPublicaPage() {
             />
           </FormField>
 
-          <FormField label="Email (opcional)">
+          <FormField label="Email *" dica="Usamos pra enviar a confirmação">
             <input
               type="email"
               value={email}

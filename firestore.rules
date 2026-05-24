@@ -171,7 +171,10 @@ service cloud.firestore {
     }
     // Clientes do CRM: read authed (admin). Create público permitido com
     // guards — o form de reservas cria o cliente junto com a reserva.
-    // Update/delete só authed pra proteger stats do CRM.
+    // Update público restrito a nome/email/telefone/atualizadoEm — usado
+    // quando cliente reconhecido pelo lookup altera seus dados ao fazer
+    // nova reserva. Campos sensíveis (aniversário, restrições, tags,
+    // stats) só admin mexe.
     match /clientes/{id} {
       allow read: if authed();
       allow create: if authed()
@@ -182,13 +185,34 @@ service cloud.firestore {
           && request.resource.data.telefone is string
           && request.resource.data.telefone.size() > 0
         );
-      allow update, delete: if authed();
+      allow update: if authed()
+        || (
+          // Public update: só altera nome/email/telefone/atualizadoEm.
+          // Não pode mudar restaurantId, criadoEm, ou campos do CRM
+          // (aniversario, tags, totalReservas, etc).
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['nome', 'email', 'telefone', 'atualizadoEm'])
+        );
+      allow delete: if authed();
     }
     // ── /notasCliente ── log cronológico de anotações sobre clientes ───
     // Criadas pelo admin (chegada do cliente, observação no CRM, etc).
-    // Read/create/delete só authed — sem exposição pública nunca.
+    // Também aceita create público (form de reservas) com guards estritos
+    // — usado pra logar quando cliente altera nome/email ao reservar.
     match /notasCliente/{id} {
-      allow read, create, update, delete: if authed();
+      allow read: if authed();
+      allow create: if authed()
+        || (
+          // Public create: shape mínimo + criadoPor="publico" (não pode
+          // fingir ser admin). Sem possibilidade de logar coisa qualquer.
+          request.resource.data.restaurantId is string
+          && request.resource.data.clienteId is string
+          && request.resource.data.texto is string
+          && request.resource.data.texto.size() > 0
+          && request.resource.data.texto.size() < 500
+          && request.resource.data.criadoPor == "publico"
+        );
+      allow update, delete: if authed();
     }
     // ── /clientesPublicLookup ── reconhecimento de cliente recorrente no
     // form público de reservas, SEM expor /clientes (que tem aniversário,
