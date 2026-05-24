@@ -373,123 +373,128 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               </div>
             </Section>
           ) : null,
-          horario: (bg) => (
-            <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={bg}>
-              <div style={{ maxWidth: 600, margin: "0 auto", background: "#ffffff", borderRadius: 8, padding: 24, border: `1px solid ${corSecundaria}30` }}>
+          horario: (bg) => {
+            // Cards de exceção — mesmo render usado em mobile (lista cheia)
+            // ou desktop coluna direita.
+            const cardsExcecoes = excecoes.map(e => {
+              const d = new Date(e.data + "T12:00:00");
+              const diaSemana = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][d.getDay()];
+              const dataCurta = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+              return (
+                <div key={e.id} style={{
+                  padding: "10px 12px",
+                  borderRadius: 6,
+                  border: `1px solid ${corSecundaria}30`,
+                  backgroundColor: e.fechado ? `${corSecundaria}10` : "#ffffff",
+                  textAlign: "center",
+                  width: 160,
+                }}>
+                  <div style={{ fontSize: 11, color: corPrimaria, fontWeight: 600 }}>{diaSemana}</div>
+                  <div style={{
+                    fontSize: 18, fontWeight: 700, color: "#1a1a1a", marginTop: 2,
+                    fontFamily: fonteHeading,
+                  }}>{dataCurta}</div>
+                  <div style={{
+                    fontSize: 12, marginTop: 6,
+                    color: e.fechado ? corSecundaria : "#555",
+                    fontWeight: e.fechado ? 600 : 400,
+                  }}>
+                    {e.fechado ? "Fechado" : (e.turnos?.map(tu => `${tu.abre}–${tu.fecha}`).join(" / ") || "Horário especial")}
+                  </div>
+                  {e.motivo && (
+                    <div style={{ fontSize: 11, marginTop: 4, color: "#888", fontStyle: "italic", lineHeight: 1.3 }}>
+                      {e.motivo}
+                    </div>
+                  )}
+                </div>
+              );
+            });
+            const listaSemana = (
+              <div style={{
+                background: "#ffffff", borderRadius: 8, padding: 24,
+                border: `1px solid ${corSecundaria}30`,
+              }}>
                 {grupos.map((g, i) => (
-                  <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "10px 0", borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none", fontSize: 15 }}>
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between",
+                    padding: "10px 0",
+                    borderBottom: i < grupos.length - 1 ? `1px dashed ${corSecundaria}30` : "none",
+                    fontSize: 15,
+                  }}>
                     <span style={{ fontWeight: 600, textTransform: "capitalize" }}>{g.diasLabel}</span>
                     <span style={{ color: g.fechado ? "#999" : "#1a1a1a" }}>
                       {g.fechado ? "fechado" : g.turnosLabel}
                     </span>
                   </div>
                 ))}
-                {excecoes.length > 0 && (
-                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: `1px solid ${corSecundaria}30` }}>
-                    <div style={{
-                      // Preserva case do usuário (pode misturar Maiúscula/minúscula)
-                      // e suporta \n pra quebrar em duas linhas.
-                      fontSize: 13, letterSpacing: "0.04em",
-                      color: corPrimaria, marginBottom: 14, fontWeight: 600,
-                      textAlign: "center", whiteSpace: "pre-wrap", lineHeight: 1.35,
-                    }}>
-                      {t("horarioProximosAvisosLabel", "Próximos avisos")}
-                    </div>
-                    {/* Cards de datas especiais sempre centralizados e
-                        equidistantes (justify-center + flex-wrap). Cada
-                        card tem largura fixa pra alinhamento consistente. */}
-                    <div style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      justifyContent: "center",
-                      gap: 10,
-                    }}>
-                      {excecoes.map(e => {
-                        const d = new Date(e.data + "T12:00:00");
-                        const diaSemana = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"][d.getDay()];
-                        const dataCurta = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
-                        return (
-                          <div key={e.id} style={{
-                            padding: "10px 12px",
-                            borderRadius: 6,
-                            border: `1px solid ${corSecundaria}30`,
-                            backgroundColor: e.fechado
-                              ? `${corSecundaria}10`
-                              : "#ffffff",
-                            textAlign: "center",
-                            width: 160,
-                          }}>
-                            <div style={{
-                              fontSize: 11,
-                              color: corPrimaria, fontWeight: 600,
-                            }}>
-                              {diaSemana}
-                            </div>
-                            <div style={{
-                              fontSize: 18, fontWeight: 700, color: "#1a1a1a", marginTop: 2,
-                              fontFamily: fonteHeading,
-                            }}>
-                              {dataCurta}
-                            </div>
-                            <div style={{
-                              fontSize: 12, marginTop: 6, color: e.fechado ? corSecundaria : "#555",
-                              fontWeight: e.fechado ? 600 : 400,
-                            }}>
-                              {e.fechado
-                                ? "Fechado"
-                                : (e.turnos?.map(tu => `${tu.abre}–${tu.fecha}`).join(" / ") || "Horário especial")}
-                            </div>
-                            {e.motivo && (
-                              <div style={{
-                                fontSize: 11, marginTop: 4, color: "#888", fontStyle: "italic",
-                                lineHeight: 1.3,
-                              }}>
-                                {e.motivo}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
+              </div>
+            );
+            const blocoAvisos = excecoes.length > 0 ? (
+              <div>
+                <div style={{
+                  fontSize: 13, letterSpacing: "0.04em",
+                  color: corPrimaria, marginBottom: 14, fontWeight: 600,
+                  textAlign: "center", whiteSpace: "pre-wrap", lineHeight: 1.35,
+                }}>
+                  {t("horarioProximosAvisosLabel", "Próximos avisos")}
+                </div>
+                <div style={{
+                  display: "flex", flexWrap: "wrap",
+                  justifyContent: "center", gap: 10,
+                }}>
+                  {cardsExcecoes}
+                </div>
+              </div>
+            ) : null;
+
+            // Desktop: 2 cols (lista | avisos) quando há avisos.
+            // Mobile ou sem avisos: stack normal.
+            const usarDuasColunas = !isMobile && excecoes.length > 0;
+            return (
+              <Section id="horario" titulo={t("horarioTitulo", "Horário de funcionamento")} bg={bg}>
+                {usarDuasColunas ? (
+                  <div style={{
+                    maxWidth: 1000, margin: "0 auto",
+                    display: "grid", gridTemplateColumns: "1fr 1fr",
+                    gap: 40, alignItems: "start",
+                  }}>
+                    {listaSemana}
+                    {blocoAvisos}
+                  </div>
+                ) : (
+                  <div style={{ maxWidth: 600, margin: "0 auto" }}>
+                    {listaSemana}
+                    {blocoAvisos && <div style={{ marginTop: 28 }}>{blocoAvisos}</div>}
                   </div>
                 )}
-              </div>
-            </Section>
-          ),
+              </Section>
+            );
+          },
           laje: (bg) => (cfg.features.hasLaje && cfg.features.hasEventos) ? (
             <Section id="laje" titulo={t("lajeTitulo", "Eventos na Laje")} bg={bg}>
-              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
-                  {t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
-                </p>
-                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("lajeCtaLabel", "Solicitar proposta")}
-                </Link>
-              </div>
+              <CtaSection
+                texto={t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
+                ctaTo={`/eventos/${cfg.restaurantId}`}
+                ctaLabel={t("lajeCtaLabel", "Solicitar proposta")}
+              />
             </Section>
           ) : null,
           eventos: (bg) => (cfg.features.hasEventos && !cfg.features.hasLaje) ? (
             <Section id="eventos" titulo={t("eventosTitulo", "Eventos privados")} bg={bg}>
-              <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 28, whiteSpace: "pre-wrap" }}>
-                  {t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
-                </p>
-                <Link to={`/eventos/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("eventosCtaLabel", "Solicitar proposta")}
-                </Link>
-              </div>
+              <CtaSection
+                texto={t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
+                ctaTo={`/eventos/${cfg.restaurantId}`}
+                ctaLabel={t("eventosCtaLabel", "Solicitar proposta")}
+              />
             </Section>
           ) : null,
           reservas: (bg) => cfg.features.hasReservas ? (
             <Section id="reservas" titulo={t("reservasTitulo", "Reservas")} bg={bg}>
-              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
-                  {t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
-                </p>
-                <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("reservasCtaLabel", "Reservar mesa")}
-                </Link>
-              </div>
+              <CtaSection
+                texto={t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
+                ctaTo={`/reservas/${cfg.restaurantId}`}
+                ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
+              />
             </Section>
           ) : null,
           delivery: (bg) => (cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0) ? (
@@ -505,14 +510,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           ) : null,
           trabalhe: (bg) => cfg.features.hasTrabalheConosco ? (
             <Section id="trabalhe" titulo={t("trabalheTitulo", "Venha trabalhar com a gente")} bg={bg}>
-              <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
-                <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
-                  {t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
-                </p>
-                <Link to={`/trabalhe/${cfg.restaurantId}`} style={primaryButton(corPrimaria)}>
-                  {t("trabalheCtaLabel", "Enviar candidatura")}
-                </Link>
-              </div>
+              <CtaSection
+                texto={t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
+                ctaTo={`/trabalhe/${cfg.restaurantId}`}
+                ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
+              />
             </Section>
           ) : null,
           contato: (bg) => {
@@ -761,6 +763,44 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       >
         {children}
       </a>
+    );
+  }
+
+  // Layout compartilhado pras seções "texto + CTA" (Reservas / Trabalhe /
+  // Eventos / Laje). Desktop: 2 colunas (texto à esquerda, botão grande à
+  // direita centralizado verticalmente). Mobile: stack, botão embaixo.
+  function CtaSection({ texto, ctaTo, ctaLabel }: {
+    texto: string; ctaTo: string; ctaLabel: string;
+  }) {
+    if (isMobile) {
+      return (
+        <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+          <p style={{ fontSize: 17, lineHeight: 1.7, marginBottom: 24, whiteSpace: "pre-wrap" }}>
+            {texto}
+          </p>
+          <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>
+        </div>
+      );
+    }
+    return (
+      <div style={{
+        maxWidth: 900, margin: "0 auto",
+        display: "grid", gridTemplateColumns: "1.4fr 1fr",
+        gap: 48, alignItems: "center",
+      }}>
+        <p style={{
+          fontSize: 18, lineHeight: 1.65,
+          margin: 0, whiteSpace: "pre-wrap",
+          textAlign: "left",
+        }}>
+          {texto}
+        </p>
+        <div style={{ textAlign: "center" }}>
+          <Link to={ctaTo} style={{ ...primaryButton(corPrimaria), fontSize: 16, padding: "16px 36px" }}>
+            {ctaLabel}
+          </Link>
+        </div>
+      </div>
     );
   }
 
