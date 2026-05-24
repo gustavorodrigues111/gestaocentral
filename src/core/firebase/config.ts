@@ -6,7 +6,7 @@
 // das Firestore Rules (versionadas no firestore.rules) + Firebase App Check.
 
 import { initializeApp } from "firebase/app";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
@@ -41,7 +41,16 @@ let storage: FirebaseStorage;
 try {
   validateConfig();
   app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
+  // initializeFirestore (em vez de getFirestore) permite configurar o
+  // transporte. experimentalAutoDetectLongPolling resolve o caso do Safari
+  // iOS com iCloud Private Relay / Privacidade Avançada — esses modos
+  // bloqueiam streams/WebSocket que o Firestore usa por default, e o
+  // Firestore tem que cair pra long-polling. Sem isso, o site público
+  // ficava preso em "Carregando..." no Safari mobile com privacidade
+  // avançada ativa.
+  db = initializeFirestore(app, {
+    experimentalAutoDetectLongPolling: true,
+  });
   auth = getAuth(app);
   storage = getStorage(app);
 
