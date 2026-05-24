@@ -279,7 +279,7 @@ export function EventosPublicaPage() {
               </p>
             )}
             <p className="text-xs text-gray-500 dark:text-gray-500 mt-3">
-              Conta pra gente sobre seu evento — retornamos em até 24h via WhatsApp.
+              Conta pra gente sobre seu evento — retornaremos em breve via WhatsApp.
             </p>
           </div>
 
