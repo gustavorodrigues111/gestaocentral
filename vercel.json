@@ -1,5 +1,15 @@
 {
   "rewrites": [
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "lobozo.com.br" }],
+      "destination": "/site/lobozo/index.html"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.lobozo.com.br" }],
+      "destination": "/site/lobozo/index.html"
+    },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ]
 }
