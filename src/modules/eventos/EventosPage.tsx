@@ -1,12 +1,18 @@
+import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse, canConfig } from "../../core/auth/permissions";
+import { EspacoConfigTab } from "./EspacoConfigTab";
+import { PacotesTab } from "./PacotesTab";
+import { KanbanTab } from "./KanbanTab";
 
-// Página esqueleto do módulo Eventos. PR1 só registra a rota + permissão.
-// Próximos PRs adicionam: cadastro de Espaço (PR2), Pacote (PR3), formulário
-// público (PR4), Kanban + Card (PR5), proposta (PR6), pagamento (PR7), BEO
-// e templates (PR8).
+type Tab = "kanban" | "pacotes" | "config";
+
+// Página esqueleto do módulo Eventos.
+// PR1: rota + permissão.
+// PR2 (atual): tab Configurações com cadastro de Espaço.
+// PR3+: Pacotes, Kanban, Card do Lead, Proposta, Pagamento, BEO, Templates.
 export function EventosPage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -15,6 +21,8 @@ export function EventosPage() {
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "eventos");
   const podeConfigurar = canConfig(me, rid, "eventos");
+
+  const [tab, setTab] = useState<Tab>("kanban");
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -32,7 +40,7 @@ export function EventosPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto py-4 space-y-4">
+    <div className="max-w-6xl mx-auto py-4 space-y-4">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
@@ -47,25 +55,46 @@ export function EventosPage() {
         </div>
       </div>
 
-      <div className="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-4 text-sm text-indigo-900 dark:text-indigo-200">
-        <p className="font-semibold mb-1">🚧 Módulo sendo construído por etapas</p>
-        <p className="text-[13px] opacity-90">
-          Esqueleto criado (rota + permissão). Próximos passos:
-        </p>
-        <ol className="text-[13px] mt-2 list-decimal pl-5 space-y-0.5 opacity-90">
-          <li>Cadastrar o espaço (Laje) e seus recursos nas Configurações</li>
-          <li>Cadastrar pacotes de evento</li>
-          <li>Liberar o formulário público pra cliente preencher interesse</li>
-          <li>Kanban de leads + montagem de proposta</li>
-          <li>BEO + templates de mensagem</li>
-        </ol>
+      {/* Tabs */}
+      <div className="flex border-b border-gray-200 dark:border-gray-800">
+        <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban</TabButton>
+        <TabButton active={tab === "pacotes"} onClick={() => setTab("pacotes")}>📦 Pacotes</TabButton>
         {podeConfigurar && (
-          <p className="text-[12px] mt-3 opacity-80">
-            (Você tem permissão de configurar — quando os cadastros estiverem prontos, vão
-            aparecer aqui pra você.)
-          </p>
+          <TabButton active={tab === "config"} onClick={() => setTab("config")}>⚙️ Configurações</TabButton>
         )}
       </div>
+
+      {tab === "kanban" && (
+        <KanbanTab rid={rid} podeEditar={podeConfigurar} />
+      )}
+
+      {tab === "pacotes" && (
+        <PacotesTab rid={rid} podeEditar={podeConfigurar} />
+      )}
+
+      {tab === "config" && podeConfigurar && (
+        <EspacoConfigTab rid={rid} podeEditar={podeConfigurar} />
+      )}
     </div>
+  );
+}
+
+function TabButton({ active, onClick, children }: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+        active
+          ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+          : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

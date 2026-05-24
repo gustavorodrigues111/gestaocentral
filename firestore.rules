@@ -157,6 +157,34 @@ service cloud.firestore {
         );
     }
 
+    // ── /eventos ── módulo de gestão de eventos privados ────────────────
+    // Espaços e Pacotes: read público (pra página de captação mostrar
+    // capacidade / cardápios) + write só authed.
+    match /espacosEvento/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
+    }
+    match /pacotesEvento/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
+    }
+    // Lead: create público (cliente registra interesse via form público),
+    // mas o status inicial precisa ser "novo" e origem "publico" — não
+    // pode burlar criando lead já "confirmado". Read/update/delete = authed.
+    match /leadsEvento/{id} {
+      allow read: if authed();
+      allow create: if authed()
+        || (
+          request.resource.data.status == "novo"
+          && request.resource.data.origem == "publico"
+        );
+      allow update, delete: if authed();
+    }
+    match /propostasEvento/{id} { allow read, write: if authed(); }
+    match /beosEvento/{id}      { allow read, write: if authed(); }
+    match /logsEvento/{id}      { allow read, write: if authed(); }
+    match /templatesEvento/{id} { allow read, write: if authed(); }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
