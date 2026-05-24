@@ -2,6 +2,10 @@ import type { HorarioFuncionamentoDia, ExcecaoHorarioSite } from "../../../core/
 
 const DIAS_CURTOS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const DIAS_LONGOS = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+// Ordem visual: segunda → domingo (semana operacional do restaurante).
+// Pra agrupar dias consecutivos, mapeamos cada dia da semana (0..6) num
+// índice de "posição" na semana ordenada. Domingo = 6 (último).
+const POSICAO_SEMANA = [6, 0, 1, 2, 3, 4, 5] as const; // dom=6, seg=0, ter=1, ..., sáb=5
 
 // Agrupa dias com horário idêntico ("Seg–Qui • 19h–23h").
 // Útil pra mostrar horário compacto no site público.
@@ -10,8 +14,10 @@ export function agruparHorarios(horarios: HorarioFuncionamentoDia[]): {
   turnosLabel: string;
   fechado: boolean;
 }[] {
-  // Ordena dom→sáb
-  const ordenados = [...horarios].sort((a, b) => a.dia - b.dia);
+  // Ordena seg→dom usando POSICAO_SEMANA (domingo vai pro fim)
+  const ordenados = [...horarios].sort(
+    (a, b) => POSICAO_SEMANA[a.dia] - POSICAO_SEMANA[b.dia]
+  );
   const grupos: {
     diasLabel: string;
     turnosLabel: string;
@@ -25,8 +31,15 @@ export function agruparHorarios(horarios: HorarioFuncionamentoDia[]): {
     const ultimaKey = ultimo
       ? (ultimo.fechado ? "fechado" : ultimo.turnosLabel.replace(/ /g, ""))
       : null;
-    // Junta se for consecutivo E mesmo horário
-    if (ultimo && ultimaKey === key && ultimo.diasIdx[ultimo.diasIdx.length - 1] === h.dia - 1) {
+    // Junta se for consecutivo NA ORDEM SEG→DOM E mesmo horário.
+    // "Consecutivo" agora usa POSICAO_SEMANA: ex. sexta (5) → sábado (6) tem
+    // posições 4 → 5 (consecutivas). Sábado (6) → domingo (0) tem 5 → 6,
+    // também consecutivas nessa ordem.
+    const posicaoUltima = ultimo
+      ? POSICAO_SEMANA[ultimo.diasIdx[ultimo.diasIdx.length - 1]!]
+      : -2;
+    const posicaoAtual = POSICAO_SEMANA[h.dia];
+    if (ultimo && ultimaKey === key && posicaoUltima === posicaoAtual - 1) {
       ultimo.diasIdx.push(h.dia);
     } else {
       grupos.push({
@@ -40,11 +53,11 @@ export function agruparHorarios(horarios: HorarioFuncionamentoDia[]): {
   // Monta diasLabel
   for (const g of grupos) {
     if (g.diasIdx.length === 1) {
-      g.diasLabel = DIAS_LONGOS[g.diasIdx[0]];
+      g.diasLabel = DIAS_LONGOS[g.diasIdx[0]!]!;
     } else if (g.diasIdx.length === 2) {
-      g.diasLabel = `${DIAS_CURTOS[g.diasIdx[0]]}, ${DIAS_CURTOS[g.diasIdx[1]]}`;
+      g.diasLabel = `${DIAS_CURTOS[g.diasIdx[0]!]}, ${DIAS_CURTOS[g.diasIdx[1]!]}`;
     } else {
-      g.diasLabel = `${DIAS_CURTOS[g.diasIdx[0]]} – ${DIAS_CURTOS[g.diasIdx[g.diasIdx.length - 1]]}`;
+      g.diasLabel = `${DIAS_CURTOS[g.diasIdx[0]!]} – ${DIAS_CURTOS[g.diasIdx[g.diasIdx.length - 1]!]}`;
     }
   }
   return grupos.map(g => ({
