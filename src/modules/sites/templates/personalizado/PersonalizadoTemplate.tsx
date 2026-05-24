@@ -174,16 +174,10 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       href={insta.url}
                       target="_blank"
                       rel="noreferrer"
-                      style={socialButtonHero(corSecundaria, corFundo)}
+                      style={socialButtonHero(corSecundaria)}
                       title="Instagram"
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
-                        e.currentTarget.style.borderColor = `${corFundo}80`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.borderColor = `${corFundo}40`;
-                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
                     >
                       <span style={{ fontSize: 14 }}>📷</span> Instagram
                     </a>
@@ -193,16 +187,10 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                       href={wa.url}
                       target="_blank"
                       rel="noreferrer"
-                      style={socialButtonHero(corSecundaria, corFundo)}
+                      style={socialButtonHero(corSecundaria)}
                       title="WhatsApp"
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
-                        e.currentTarget.style.borderColor = `${corFundo}80`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "transparent";
-                        e.currentTarget.style.borderColor = `${corFundo}40`;
-                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = "0.85"; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
                     >
                       <span style={{ fontSize: 14 }}>💬</span> WhatsApp
                     </a>
@@ -575,24 +563,23 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     };
   }
 
-  // Botão social pro hero (Instagram, WhatsApp). Estilo minimalista:
-  // border bem fina, sem uppercase, sem letterspacing — convite
-  // discreto, não comando.
-  function socialButtonHero(cor: string, fundoTexto: string): React.CSSProperties {
-    void cor;
+  // Botão social pro hero (Instagram, WhatsApp). Fundo cor secundária,
+  // texto preto (contraste alto sobre amarelo/dourado/cores claras).
+  // Sem uppercase, sem letterspacing — pílula discreta mas presente.
+  function socialButtonHero(cor: string): React.CSSProperties {
     return {
       display: "inline-flex",
       alignItems: "center",
       gap: 6,
       padding: "8px 18px",
-      backgroundColor: "transparent",
-      color: fundoTexto,
+      backgroundColor: cor,
+      color: "#1a1a1a",
       textDecoration: "none",
       fontSize: 14,
-      fontWeight: 400,
+      fontWeight: 500,
       borderRadius: 999,
-      border: `1px solid ${fundoTexto}40`,
-      transition: "border-color 0.2s, background-color 0.2s",
+      border: "none",
+      transition: "opacity 0.2s, transform 0.15s",
     };
   }
 }
