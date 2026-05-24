@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
@@ -96,6 +96,12 @@ export function ReservasPublicaPage() {
       return next;
     });
   }
+
+  // Ref pro input date hidden — usado pra abrir o picker nativo via
+  // showPicker() quando o user clica no botão estilizado "Outra data".
+  // Evita o visual zuado do <input type="date"> no iOS Safari (texto
+  // centralizado, indicador irregular, altura inconsistente).
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   // Data mínima = hoje (formato YYYY-MM-DD em horário LOCAL — toISOString
   // é UTC e quebra a virada de dia em fuso GMT-3 nas primeiras 3h da
@@ -768,25 +774,86 @@ export function ReservasPublicaPage() {
               </div>
             )}
             {/* Date picker como fallback pra qualquer data dentro da janela.
-                Aparece quando o cliente quer reservar fora dos 6 chips
-                (ex: aniversário em 60 dias). Limitado pela janela configurada. */}
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 12, color: "#666", marginBottom: 6 }}>
-                ou escolha outra data:
-              </div>
-              <input
-                type="date"
-                value={data}
-                min={hojeISO}
-                max={(() => {
-                  const d = new Date(hojeISO + "T12:00:00");
-                  d.setDate(d.getDate() + janelaDias);
-                  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-                })()}
-                onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
-                className={fieldInputCls}
-              />
-            </div>
+                Visualmente é um botão estilizado igual aos chips — clica,
+                abre o picker nativo do device via showPicker(). Mantém
+                consistência visual e funciona bem em iOS/Android/desktop.
+
+                O <input type="date"> fica ESCONDIDO, só serve como handle
+                pra disparar o picker (showPicker é o método W3C oficial). */}
+            {(() => {
+              const dataEhDeUmChip = diasDisponiveis.some(d => d.data === data);
+              const labelBotao = data && !dataEhDeUmChip
+                ? formatarDataBotao(data)
+                : "Escolher outra data";
+              const dataMaxima = (() => {
+                const d = new Date(hojeISO + "T12:00:00");
+                d.setDate(d.getDate() + janelaDias);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+              })();
+              return (
+                <div style={{ marginTop: 12, position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const input = dateInputRef.current;
+                      if (!input) return;
+                      // showPicker() é o método W3C oficial pra abrir o picker
+                      // nativo programaticamente. Disponível em todos os
+                      // browsers modernos. Fallback: focus dispara em iOS.
+                      try {
+                        if (typeof input.showPicker === "function") {
+                          input.showPicker();
+                        } else {
+                          input.click();
+                        }
+                      } catch {
+                        input.click();
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "12px 16px",
+                      borderRadius: 12,
+                      border: `1px solid ${data && !dataEhDeUmChip ? corPrimaria : "#d1d5db"}`,
+                      backgroundColor: data && !dataEhDeUmChip ? `${corPrimaria}10` : "#fff",
+                      color: data && !dataEhDeUmChip ? corPrimaria : "#666",
+                      fontSize: 14,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      transition: "background-color 0.15s, border-color 0.15s",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>📅</span>
+                    <span>{labelBotao}</span>
+                  </button>
+                  {/* Input escondido — recebe o click do showPicker(). Não
+                      usa display:none porque alguns browsers ignoram
+                      showPicker() em inputs hidden. Posição absoluta +
+                      opacity:0 + pointer-events:none = invisível e não
+                      capturável, mas funcional pra API. */}
+                  <input
+                    ref={dateInputRef}
+                    type="date"
+                    value={data}
+                    min={hojeISO}
+                    max={dataMaxima}
+                    onChange={(e) => { setData(e.target.value); setSlotHorario(""); setSalaoId(""); }}
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      opacity: 0,
+                      pointerEvents: "none",
+                      width: "100%", height: "100%",
+                    }}
+                    tabIndex={-1}
+                    aria-hidden
+                  />
+                </div>
+              );
+            })()}
           </FormField>
 
           <FormField label="Pessoas *">
@@ -1046,4 +1113,14 @@ function formatarDataBR(iso: string): ReactNode {
   if (!iso) return "—";
   const d = new Date(iso + "T12:00:00");
   return d.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
+}
+
+// Versão curta pra rótulo de botão — ex: "Seg, 24 de mai"
+function formatarDataBotao(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso + "T12:00:00");
+  const dow = d.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "");
+  const dia = String(d.getDate()).padStart(2, "0");
+  const mes = d.toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  return `${dow.charAt(0).toUpperCase()}${dow.slice(1)}, ${dia} de ${mes}`;
 }
