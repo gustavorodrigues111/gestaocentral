@@ -6,17 +6,19 @@ import { canUse, canConfig } from "../../core/auth/permissions";
 import { GeralTab } from "./GeralTab";
 import { HorariosTab } from "./HorariosTab";
 import { CardapioTab } from "./CardapioTab";
-import { CandidaturasTab } from "./CandidaturasTab";
 
-type Tab = "geral" | "horarios" | "cardapio" | "candidaturas" | "preview";
+type Tab = "geral" | "horarios" | "cardapio" | "preview";
 
-// Página esqueleto do módulo Sites — Fase 1.
-// As tabs ficam vazias até as próximas fases:
-//   Fase 2: Geral (história, contato, redes, flags, tema)
-//   Fase 3: Horários (padrão + exceções)
-//   Fase 4: Cardápio (PDFs PT+EN)
-//   Fase 5: Candidaturas (form Trabalhe Conosco)
-//   Fase 6: Preview (esqueleto do site público)
+// Módulo Sites — controla o site público do restaurante.
+// Tabs:
+//   📝 Geral       (Fase 2): história, contato, redes, flags, tema
+//   🕒 Horários    (Fase 3): padrão + exceções
+//   📋 Cardápio    (Fase 4): PDFs PT/EN
+//   👁️ Preview     (Fase 6): site público renderizado
+//
+// Form Trabalhe Conosco → criado a partir do site público, mas as
+// candidaturas são gerenciadas em /r/:rid/admissao → tab Candidaturas
+// (módulo dedicado já existente, evita confusão de escopo).
 export function SitesPage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -75,9 +77,6 @@ export function SitesPage() {
         <TabButton active={tab === "cardapio"} onClick={() => setTab("cardapio")} disabled={!podeCardapio}>
           📋 Cardápio
         </TabButton>
-        <TabButton active={tab === "candidaturas"} onClick={() => setTab("candidaturas")} disabled={!podeGeral}>
-          💼 Candidaturas
-        </TabButton>
         <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
           👁️ Preview
         </TabButton>
@@ -92,9 +91,6 @@ export function SitesPage() {
       )}
       {tab === "cardapio" && (
         <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />
-      )}
-      {tab === "candidaturas" && (
-        <CandidaturasTab rid={rid} podeEditar={podeGeral} />
       )}
       {tab === "preview" && <PlaceholderTab fase={6} titulo="Preview do site público" descricao="Renderiza o site como o cliente vai ver, lendo do conteúdo configurado nas outras tabs." />}
     </div>
