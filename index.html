@@ -2,9 +2,49 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link id="__favicon" rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Gestão Central</title>
+
+    <!-- Detecta host de restaurante (lobozo.com.br, etc) e atualiza
+         favicon + title ANTES do React montar. Lê /sites/<slug>.json
+         (gerado pelo SSG, servido pela CDN, ~50ms). Sem isso, o browser
+         cacheia o favicon default e ignora updates posteriores feitos
+         via React useEffect. -->
+    <script>
+      (function() {
+        var host = window.location.hostname.toLowerCase();
+        // Mapeamento simplificado — espelha src/modules/sites/shared/customDomain.ts.
+        // Se adicionar restaurante novo, atualizar aqui também.
+        var hosts = {
+          "lobozo.com.br":     "lobozo",
+          "www.lobozo.com.br": "lobozo",
+        };
+        var slug = hosts[host];
+        if (!slug) return;
+        // Tenta o JSON pré-renderizado (CDN-cached, instante). Se falhar,
+        // o React vai cuidar via useEffect depois.
+        fetch("/sites/" + slug + ".json", { cache: "default" })
+          .then(function(r) { return r.ok ? r.json() : null; })
+          .then(function(cfg) {
+            if (!cfg) return;
+            var favUrl = cfg.faviconUrl || cfg.logoUrl;
+            if (favUrl) {
+              var link = document.getElementById("__favicon");
+              if (link) {
+                link.href = favUrl;
+                link.removeAttribute("type"); // pode não ser SVG
+              }
+            }
+            // Atualiza title (cliente vê o nome certo na aba enquanto carrega)
+            if (cfg.slug) {
+              var nome = cfg.slug.charAt(0).toUpperCase() + cfg.slug.slice(1);
+              document.title = nome;
+            }
+          })
+          .catch(function() { /* silencioso — fallback no React */ });
+      })();
+    </script>
 
     <!-- Preconnect — abre a conexão TCP/TLS pros hosts críticos antes
          do JS executar. Economiza ~200-400ms na 1ª request pra cada
