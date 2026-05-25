@@ -655,20 +655,20 @@
     .step-break-title { font-size: 30px; }
     .step-break-lede { font-size: 16px; }
 
-    /* Cards de "outros jogos" ficam mais compactos no mobile: layout em
-       2 colunas internas (data/hora à esquerda, jogo à direita) aproveita
-       o espaço vazio. Tamanhos reduzidos pra não dominar a tela. */
-    .match--discount {
+    /* Todos os cards (Brasil + outros) ganham layout 2-col interno no mobile:
+       data/hora à esquerda, jogo à direita, botões em full-width abaixo.
+       Aproveita o espaço vazio que sobrava com layout vertical em 1 col. */
+    .match {
       display: grid;
       grid-template-columns: minmax(0, auto) minmax(0, 1fr);
       column-gap: 14px;
       row-gap: 2px;
       padding: 14px 14px 12px;
     }
-    .match--discount .match-day   { grid-column: 1; grid-row: 1; }
-    .match--discount .match-date  { grid-column: 1; grid-row: 2; font-size: 22px; }
-    .match--discount .match-time  { grid-column: 1; grid-row: 3; margin-bottom: 0; }
-    .match--discount .match-teams {
+    .match .match-day   { grid-column: 1; grid-row: 1; }
+    .match .match-date  { grid-column: 1; grid-row: 2; font-size: 22px; }
+    .match .match-time  { grid-column: 1; grid-row: 3; margin-bottom: 0; }
+    .match .match-teams {
       grid-column: 2;
       grid-row: 1 / 4;
       align-self: center;
@@ -676,13 +676,13 @@
       font-size: 15px;
       margin: 0;
     }
-    .match--discount .match-packages {
+    .match .match-packages {
       grid-column: 1 / -1;
       margin-top: 10px;
       padding-top: 10px;
       gap: 6px;
     }
-    .match--discount .pkg-btn { padding: 8px 10px; font-size: 11px; }
+    .match .pkg-btn { padding: 8px 10px; font-size: 11px; }
     .match--discount .match-discount-badge { font-size: 9px; padding: 3px 6px; }
   }
 
