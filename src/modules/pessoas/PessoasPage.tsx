@@ -3,9 +3,11 @@ import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
+import { Button } from "../../core/ui/Button";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
 import { AlteracoesTab } from "./AlteracoesTab";
+import { ImportLoteHorariosModal } from "./ImportLoteHorariosModal";
 
 // Tab "🎯 Templates" foi removida — templates de permissão eram do sistema
 // antigo (presets de ver/configurar pra clonar). Substituído pela Pagina
@@ -19,7 +21,9 @@ export function PessoasPage() {
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const [tab, setTab] = useState<Tab>("pessoas");
+  const [showImportHorarios, setShowImportHorarios] = useState(false);
   const podeVer = canVer(me, rid, "pessoas");
+  const isMaster = !!me?.isMaster;
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -41,8 +45,19 @@ export function PessoasPage() {
 
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">👤 Pessoas</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">{activeRestaurant.nome}</p>
+      <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">👤 Pessoas</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
+        </div>
+        {/* PROVISÓRIO — botão master pra importar horários em lote (migração
+            do AppTip pro Planejamento). Remover quando não precisar mais. */}
+        {isMaster && (
+          <Button variant="secondary" size="sm" onClick={() => setShowImportHorarios(true)}>
+            🧪 Importar horários (lote)
+          </Button>
+        )}
+      </div>
 
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6">
         {tabs.map(t => (
@@ -63,6 +78,13 @@ export function PessoasPage() {
       {tab === "pessoas"    && <PessoasList    restaurantId={rid} />}
       {tab === "cargos"     && <CargosTab      restaurantId={rid} />}
       {tab === "alteracoes" && <AlteracoesTab  restaurantId={rid} />}
+
+      {showImportHorarios && (
+        <ImportLoteHorariosModal
+          restaurantId={rid}
+          onClose={() => setShowImportHorarios(false)}
+        />
+      )}
     </div>
   );
 }
