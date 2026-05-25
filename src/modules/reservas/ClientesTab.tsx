@@ -13,16 +13,30 @@ import { phoneKey, upsertClienteLookup } from "./clienteLookup";
 type Props = {
   restaurantId: string;
   podeConfig: boolean;
+  // Capabilities granulares (sistema novo). Opcionais — caller pode não
+  // passar, e a tab cai no comportamento legado baseado em podeConfig.
+  podeEditarCliente?: boolean;
+  podeExcluirCliente?: boolean;
+  podeMesclar?: boolean;
 };
 
-export function ClientesTab({ restaurantId, podeConfig }: Props) {
+export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeExcluirCliente, podeMesclar }: Props) {
+  // Backward compat: se capabilities granulares não vieram, herda do
+  // podeConfig legado. Quando a Rodada 3+ migrar callers pra sempre passar
+  // explicitamente, podemos remover esse fallback.
+  const canEditar = podeEditarCliente ?? podeConfig;
+  const canMesclar = podeMesclar ?? podeConfig;
+  // Mantém refs vivas durante refactor — uso real em Rodada 3
+  void canEditar; void canMesclar;
   const { pessoa } = useAuth();
   // Exclusão hard de cliente é restrita ao master — apaga referência em
   // /reservas, /notasCliente e /clientesPublicLookup. Pra LGPD (cliente
   // solicita exclusão dos próprios dados), o fluxo correto é via
   // /r/excluir-dados/:rid → /solicitacoesExclusao, que admin processa
   // formalmente. Pra dedupes, usa o banner "Mesclar".
-  const podeExcluirCliente = !!pessoa?.isMaster;
+  // Prop podeExcluirCliente (sistema novo de perfis) tem priority; fallback
+  // pra isMaster pra retrocompat de callers que ainda não passam o prop.
+  const podeExcluirClienteEfetivo = podeExcluirCliente ?? !!pessoa?.isMaster;
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
@@ -358,8 +372,8 @@ export function ClientesTab({ restaurantId, podeConfig }: Props) {
                     {podeConfig && (
                       <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
                     )}
-                    {podeExcluirCliente && (
-                      <Button variant="danger" size="sm" onClick={() => excluir(c)} title="Exclusão hard (só master). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>
+                    {podeExcluirClienteEfetivo && (
+                      <Button variant="danger" size="sm" onClick={() => excluir(c)} title="Exclusão hard (master ou perfil com permissão). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>
                     )}
                   </div>
                 </div>

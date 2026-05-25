@@ -4,7 +4,7 @@ import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/f
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
@@ -46,8 +46,28 @@ export function ReservasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "reservas");
-  const podeConfig = canConfigurar(me, rid, "reservas");
+
+  // Checks granulares baseados em Perfis de Acesso. Pra cada ação especifica,
+  // chama can("reservas", "ação"). Master sempre true, pessoas com perfil
+  // respeitam as ações marcadas, pessoas sem perfil caem no fallback
+  // legado (canVer/canConfigurar internos).
+  const { can } = useCanAcao(rid);
+  const podeVer = can("reservas", "verFuturas") || can("reservas", "verPassadas")
+    || can("reservas", "criar") || can("reservas", "editar")
+    || can("reservas", "verCRM") || can("reservas", "configurar");
+  const podeConfig = can("reservas", "configurar");
+  // Granular: cada ação no botão respectivo
+  const podeVerPassadas = can("reservas", "verPassadas");
+  const podeCriar       = can("reservas", "criar");
+  const podeEditar      = can("reservas", "editar");
+  const podeCancelar    = can("reservas", "cancelar");
+  const podeChegou      = can("reservas", "chegou");
+  const podeWhatsapp    = can("reservas", "whatsapp");
+  const podeNota        = can("reservas", "notaCliente");
+  const podeMesclar     = can("reservas", "mesclar");
+  const podeVerCRM      = can("reservas", "verCRM");
+  const podeEditarCliente  = can("reservas", "editarCliente");
+  const podeExcluirCliente = can("reservas", "excluirCliente");
 
   const [tab, setTab] = useState<Tab>("reservas");
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -226,7 +246,9 @@ export function ReservasPage() {
     return { pendentes, chegou, noShow, totalPessoas };
   }, [reservasDoDia]);
 
-  // Calcula os 7 chips visíveis a partir do offset atual
+  // Calcula os 7 chips visíveis a partir do offset atual.
+  // Filtra chips de dias passados se a pessoa não tem verPassadas — chip
+  // some completamente (não renderiza disabled, evita click acidental).
   const chips = useMemo(() => {
     const base = new Date(today + "T12:00:00");
     base.setDate(base.getDate() + chipOffset);
@@ -235,6 +257,7 @@ export function ReservasPage() {
       const d = new Date(base);
       d.setDate(d.getDate() + i);
       const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      if (!podeVerPassadas && iso < today) continue;
       result.push({
         data: iso,
         dia: d.getDate(),
@@ -244,7 +267,7 @@ export function ReservasPage() {
       });
     }
     return result;
-  }, [chipOffset, today]);
+  }, [chipOffset, today, podeVerPassadas]);
 
   async function setStatus(r: Reserva, status: ReservaStatus) {
     if (!me) return;
@@ -321,18 +344,22 @@ export function ReservasPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎫 Reservas + CRM</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
         </div>
-        {podeConfig && tab === "reservas" && (
+        {podeCriar && tab === "reservas" && (
           <Button onClick={() => setEditing("new")}>+ Nova reserva</Button>
         )}
       </div>
 
-      {/* Tabs nível superior — 3 só */}
+      {/* Tabs nível superior — Clientes só aparece com verCRM; Config só com configurar */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["reservas", "📅 Reservas",     pendentesHoje],
-          ["clientes", `👥 Clientes (${clientes.length})`, 0],
-          ["config",   "⚙️ Configurações", 0],
-        ] as const).map(([id, label, badge]) => (
+          ["reservas", "📅 Reservas",     pendentesHoje] as const,
+          ...(podeVerCRM
+            ? [["clientes", `👥 Clientes (${clientes.length})`, 0] as const]
+            : []),
+          ...(podeConfig
+            ? [["config",   "⚙️ Configurações", 0] as const]
+            : []),
+        ]).map(([id, label, badge]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -384,11 +411,11 @@ export function ReservasPage() {
                           </span>
                         </div>
                       </div>
-                      {podeConfig && (
+                      {(podeChegou || podeEditar || podeCancelar) && (
                         <div className="flex gap-1 flex-wrap">
-                          <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}>🪑 Veio</Button>
-                          <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}>😶 Não veio</Button>
-                          <Button variant="secondary" size="sm" onClick={() => setStatus(r, "cancelada")}>✕ Cancelar</Button>
+                          {podeChegou && <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}>🪑 Veio</Button>}
+                          {podeEditar  && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}>😶 Não veio</Button>}
+                          {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "cancelada")}>✕ Cancelar</Button>}
                         </div>
                       )}
                     </div>
@@ -398,12 +425,15 @@ export function ReservasPage() {
             </div>
           )}
 
-          {/* Chips de 7 dias com setas de navegação */}
+          {/* Chips de 7 dias com setas de navegação.
+              Quem não tem verPassadas só navega de hoje em diante — botão ◀
+              fica desabilitado quando chipOffset chegaria a negativo. */}
           <div className="flex items-center gap-2">
             <Button
               variant="secondary" size="sm"
-              onClick={() => setChipOffset(o => o - CHIPS_DIAS)}
-              title={`Ver ${CHIPS_DIAS} dias anteriores`}
+              onClick={() => setChipOffset(o => Math.max(podeVerPassadas ? Number.NEGATIVE_INFINITY : 0, o - CHIPS_DIAS))}
+              disabled={!podeVerPassadas && chipOffset <= 0}
+              title={podeVerPassadas ? `Ver ${CHIPS_DIAS} dias anteriores` : "Sem permissão pra ver reservas passadas"}
             >◀</Button>
 
             <div className="flex-1 grid grid-cols-7 gap-1.5">
@@ -489,7 +519,7 @@ export function ReservasPage() {
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="text-4xl mb-3">📅</div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem reservas pra esse dia</p>
-              {podeConfig && (
+              {podeCriar && (
                 <p className="text-sm text-gray-500 mt-2">Adicione clicando em "+ Nova reserva"</p>
               )}
             </div>
@@ -506,7 +536,7 @@ export function ReservasPage() {
                         key={r.id}
                         reserva={r}
                         clientes={clientes}
-                        podeConfig={podeConfig}
+                        acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
                         onEditar={() => setEditing(r)}
                         onStatus={(s) => setStatus(r, s)}
                         onWhatsapp={() => abrirWhatsappConfirmacao(r)}
@@ -532,7 +562,7 @@ export function ReservasPage() {
                     key={r.id}
                     reserva={r}
                     clientes={clientes}
-                    podeConfig={podeConfig}
+                    acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
                     onEditar={() => setEditing(r)}
                     onStatus={(s) => setStatus(r, s)}
                     onWhatsapp={() => abrirWhatsappConfirmacao(r)}
@@ -545,12 +575,18 @@ export function ReservasPage() {
       )}
 
       {/* ───────────────── TAB CLIENTES ───────────────── */}
-      {tab === "clientes" && (
-        <ClientesTab restaurantId={rid} podeConfig={podeConfig} />
+      {tab === "clientes" && podeVerCRM && (
+        <ClientesTab
+          restaurantId={rid}
+          podeConfig={podeConfig}
+          podeEditarCliente={podeEditarCliente}
+          podeExcluirCliente={podeExcluirCliente}
+          podeMesclar={podeMesclar}
+        />
       )}
 
       {/* ───────────────── TAB CONFIGURAÇÕES ───────────────── */}
-      {tab === "config" && me && (
+      {tab === "config" && podeConfig && me && (
         <ConfigTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} />
       )}
 
@@ -597,25 +633,41 @@ export function ReservasPage() {
   );
 
   // ───────────────── ReservaCard (inline, fecha sobre setStatus) ─────
+  // Aplica regras de PII: em reservas CANCELADAS, esconde dados não-essenciais
+  // (observações, tags, ocasião, restrições alimentares) pra quem NÃO tem
+  // acesso ao CRM completo (verCRM). Mantém nome+telefone+horário/pessoas/
+  // salão/mesa — info operacional mínima.
   function ReservaCard({
-    reserva, clientes, podeConfig, onEditar, onStatus, onWhatsapp,
+    reserva, clientes, acoes, onEditar, onStatus, onWhatsapp,
   }: {
     reserva: Reserva;
     clientes: Cliente[];
-    podeConfig: boolean;
+    acoes: {
+      podeEditar: boolean;
+      podeCancelar: boolean;
+      podeChegou: boolean;
+      podeWhatsapp: boolean;
+      podeVerCRM: boolean;
+      podeNota: boolean;
+    };
     onEditar: () => void;
     onStatus: (s: ReservaStatus) => void;
     onWhatsapp: () => void;
   }) {
     const temCliente = !!reserva.clienteId && !!clientes.find(c => c.id === reserva.clienteId);
     const cliente = reserva.clienteId ? clientes.find(c => c.id === reserva.clienteId) : null;
+    // PII-light: reservas canceladas só mostram nome+telefone+dados básicos
+    // pra quem não tem CRM. Operacional minimal — não vaza histórico de
+    // ocasiões, observações ou tags pra todo mundo do salão.
+    const piiLight = reserva.status === "cancelada" && !acoes.podeVerCRM;
+    const podeAlgumaAcao = acoes.podeEditar || acoes.podeCancelar || acoes.podeChegou || acoes.podeWhatsapp;
     return (
       <div className={`rounded-xl border p-3 ${STATUS_CLS[reserva.status]}`}>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-gray-900 dark:text-gray-100">{reserva.clienteNomeSnapshot}</span>
-              {cliente && cliente.tags && cliente.tags.length > 0 && (
+              {!piiLight && cliente && cliente.tags && cliente.tags.length > 0 && (
                 cliente.tags.map(t => (
                   <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
                     🏷️ {t}
@@ -625,7 +677,7 @@ export function ReservasPage() {
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_BADGE_CLS[reserva.status]}`}>
                 {RESERVA_STATUS_ICON[reserva.status]} {RESERVA_STATUS_LABEL[reserva.status]}
               </span>
-              {reserva.ocasiao && (
+              {!piiLight && reserva.ocasiao && (
                 <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
                   🎉 {reserva.ocasiao}
                 </span>
@@ -638,40 +690,40 @@ export function ReservasPage() {
               {reserva.mesaNomeSnapshot && <span>🪑 {reserva.mesaNomeSnapshot}</span>}
               {reserva.clienteTelefoneSnapshot && <span>📞 {reserva.clienteTelefoneSnapshot}</span>}
             </div>
-            {(reserva.observacoes || cliente?.restricoesAlimentares) && (
+            {!piiLight && (reserva.observacoes || cliente?.restricoesAlimentares) && (
               <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
                 {cliente?.restricoesAlimentares && <>⚠ {cliente.restricoesAlimentares}{reserva.observacoes ? " · " : ""}</>}
                 {reserva.observacoes && <>📝 {reserva.observacoes}</>}
               </div>
             )}
           </div>
-          {podeConfig && (
+          {podeAlgumaAcao && (
             <div className="flex gap-1 flex-wrap">
-              {/* Histórico do cliente (mode=recente, 6 meses) — sempre que tem cliente */}
-              {temCliente && (
+              {/* Histórico do cliente (mode=recente, 6 meses) — só com verCRM */}
+              {temCliente && acoes.podeVerCRM && (
                 <Button variant="secondary" size="sm" onClick={() => setHistoricoReserva(reserva)} title="Ver últimas reservas e notas deste cliente">
                   📊 Histórico
                 </Button>
               )}
               {/* WhatsApp confirmar — só pra pendente/confirmada */}
-              {(reserva.status === "pendente" || reserva.status === "confirmada") && reserva.clienteTelefoneSnapshot && (
+              {acoes.podeWhatsapp && (reserva.status === "pendente" || reserva.status === "confirmada") && reserva.clienteTelefoneSnapshot && (
                 <Button variant="secondary" size="sm" onClick={onWhatsapp} title="Abre WhatsApp com mensagem de confirmação">
                   📱 Confirmar via WhatsApp
                 </Button>
               )}
-              {reserva.status === "pendente" && (
+              {acoes.podeEditar && reserva.status === "pendente" && (
                 <Button variant="secondary" size="sm" onClick={() => onStatus("confirmada")}>✓ Cliente confirmou</Button>
               )}
               {(reserva.status === "pendente" || reserva.status === "confirmada") && (
                 <>
-                  <Button variant="secondary" size="sm" onClick={() => onStatus("chegou")}>🪑 Chegou</Button>
-                  <Button variant="secondary" size="sm" onClick={() => onStatus("no_show")}>😶 No-show</Button>
+                  {acoes.podeChegou && <Button variant="secondary" size="sm" onClick={() => onStatus("chegou")}>🪑 Chegou</Button>}
+                  {acoes.podeEditar && <Button variant="secondary" size="sm" onClick={() => onStatus("no_show")}>😶 No-show</Button>}
                 </>
               )}
-              {reserva.status !== "cancelada" && reserva.status !== "chegou" && (
+              {acoes.podeCancelar && reserva.status !== "cancelada" && reserva.status !== "chegou" && (
                 <Button variant="secondary" size="sm" onClick={() => onStatus("cancelada")}>✕ Cancelar</Button>
               )}
-              <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>
+              {acoes.podeEditar && <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>}
             </div>
           )}
         </div>
