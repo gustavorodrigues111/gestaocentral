@@ -12,6 +12,7 @@ import type {
   Pessoa,
 } from "../../core/types";
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
+import { ImportLoteFreelasModal } from "./ImportLoteFreelasModal";
 import { LancamentoTab } from "./LancamentoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
@@ -51,6 +52,7 @@ export function FreelasPage() {
   const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
   const [showNovoTurno, setShowNovoTurno] = useState(false);
+  const [showImportLote, setShowImportLote] = useState(false);
 
   // Se a aba atual sumir (mudou permissão), pula pra primeira disponível
   useEffect(() => {
@@ -130,6 +132,13 @@ export function FreelasPage() {
               + Cadastrar freela
             </Button>
           )}
+          {/* PROVISÓRIO — botão de importação em lote pra master.
+              Remover quando não precisar mais. Ver ImportLoteFreelasModal. */}
+          {isMaster && tab === "lancamentos" && (
+            <Button variant="secondary" size="sm" onClick={() => setShowImportLote(true)}>
+              🧪 Importar lote
+            </Button>
+          )}
         </div>
       </div>
 
@@ -200,6 +209,13 @@ export function FreelasPage() {
           restaurantId={rid}
           onSaved={() => setShowCadastro(false)}
           onClose={() => setShowCadastro(false)}
+        />
+      )}
+      {showImportLote && (
+        <ImportLoteFreelasModal
+          restaurantId={rid}
+          onClose={() => setShowImportLote(false)}
+          onImported={() => { /* fica aberto pro user ver o log */ }}
         />
       )}
     </div>
