@@ -447,6 +447,61 @@
     color: var(--ink-soft);
   }
 
+  /* Cards de "outros jogos" — recebem badge de 20% OFF no canto.
+     Estrela aparece nos âncora (campo star: true no array). */
+  .match--discount {
+    position: relative;
+  }
+
+  .match-discount-badge {
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    background: var(--red);
+    color: #fff;
+    font-family: 'Jost', sans-serif;
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    padding: 4px 8px;
+    line-height: 1;
+  }
+
+  .match-star {
+    color: var(--red);
+    font-size: 13px;
+    margin-left: 4px;
+    vertical-align: 2px;
+  }
+
+  /* Header da seção "Outros Jogos" — destaque em vermelho pra contrastar
+     com a seção do Brasil acima. */
+  .section-label--discount {
+    color: var(--red);
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .section-label--discount .label-pill {
+    background: var(--red);
+    color: #fff;
+    padding: 3px 8px;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    border-radius: 2px;
+  }
+
+  .matches-note {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink-soft);
+    margin: -16px 0 24px;
+    line-height: 1.4;
+  }
+
   .condition-item {
     text-align: left;
   }
@@ -628,9 +683,19 @@
 
     <div class="matches">
       <div class="section-label">Jogos do Brasil · Grupo C</div>
-      <!-- Cards renderizados via JS a partir do array JOGOS no script.
-           Pra adicionar nova data, edita o array — não duplica HTML. -->
-      <div class="matches-grid" id="matches-grid"></div>
+      <!-- Cards renderizados via JS a partir dos arrays JOGOS_BRASIL e
+           JOGOS_OUTROS no script. Pra adicionar data, edita o array
+           correspondente — não duplica HTML. -->
+      <div class="matches-grid" id="matches-grid-brasil"></div>
+    </div>
+
+    <div class="matches">
+      <div class="section-label section-label--discount">
+        Outros Jogos
+        <span class="label-pill">20% OFF</span>
+      </div>
+      <p class="matches-note">Mesmos pacotes com 20% de desconto pra jogos das demais seleções nas quintas, sextas e sábados.</p>
+      <div class="matches-grid" id="matches-grid-outros"></div>
     </div>
 
     <footer class="footer">
@@ -646,46 +711,81 @@
 
   <script>
     // -------------------------------------------------------------------
-    // JOGOS — lista de partidas exibidas na página. Pra adicionar uma nova
-    // data (oitavas, quartas, etc.), basta acrescentar um objeto aqui.
+    // JOGOS — duas listas:
+    //   JOGOS_BRASIL: jogos do Brasil (preço cheio)
+    //   JOGOS_OUTROS: outras seleções (recebem 20% OFF automaticamente)
     //
-    //   { day: 'Sábado', date: '13/06', time: '19h00', teams: 'Brasil x Marrocos' }
-    //
-    // - day:   nome do dia da semana (ex.: 'Sábado')
-    // - date:  no formato DD/MM (é a chave usada por RESERVADOS)
-    // - time:  formato livre, ex.: '19h00', '21h30'
-    // - teams: 'A x B' (vira 'A × B' no card, com quebra de linha)
+    // Campos:
+    //   day:   nome do dia ('Sábado')
+    //   date:  'DD/MM' — é a chave usada por RESERVADOS
+    //   time:  formato livre ('19h00', '21h30')
+    //   teams: 'A x B' → vira 'A × B' com quebra de linha
+    //   star:  (opcional, só em JOGOS_OUTROS) marca jogo "âncora" com ⭐
     // -------------------------------------------------------------------
-    var JOGOS = [
+    var JOGOS_BRASIL = [
       { day: 'Sábado', date: '13/06', time: '19h00', teams: 'Brasil x Marrocos' },
       { day: 'Sexta',  date: '19/06', time: '21h30', teams: 'Brasil x Haiti'    },
       { day: 'Quarta', date: '24/06', time: '19h00', teams: 'Escócia x Brasil'  }
     ];
 
+    // Jogos qui/sex/sáb entre 16h e 21h. star=true marca os "âncora" (seleções
+    // tradicionais ou rivais do Brasil) — recebem destaque visual.
+    var JOGOS_OUTROS = [
+      // Quintas
+      { day: 'Quinta', date: '11/06', time: '16h00', teams: 'México x África do Sul' },
+      { day: 'Quinta', date: '18/06', time: '16h00', teams: 'Suíça x Bósnia' },
+      { day: 'Quinta', date: '18/06', time: '19h00', teams: 'Canadá x Qatar' },
+      { day: 'Quinta', date: '25/06', time: '17h00', teams: 'Curaçao x Costa do Marfim' },
+      { day: 'Quinta', date: '25/06', time: '17h00', teams: 'Equador x Alemanha', star: true },
+      { day: 'Quinta', date: '25/06', time: '20h00', teams: 'Japão x Suécia' },
+      { day: 'Quinta', date: '25/06', time: '20h00', teams: 'Tunísia x Países Baixos', star: true },
+      // Sextas
+      { day: 'Sexta',  date: '12/06', time: '16h00', teams: 'Canadá x Bósnia' },
+      { day: 'Sexta',  date: '19/06', time: '16h00', teams: 'EUA x Austrália' },
+      { day: 'Sexta',  date: '19/06', time: '19h00', teams: 'Escócia x Marrocos' },
+      { day: 'Sexta',  date: '26/06', time: '16h00', teams: 'Noruega x França', star: true },
+      { day: 'Sexta',  date: '26/06', time: '16h00', teams: 'Senegal x Iraque' },
+      { day: 'Sexta',  date: '26/06', time: '21h00', teams: 'Cabo Verde x Arábia Saudita' },
+      { day: 'Sexta',  date: '26/06', time: '21h00', teams: 'Uruguai x Espanha', star: true },
+      // Sábados
+      { day: 'Sábado', date: '13/06', time: '16h00', teams: 'Qatar x Suíça' },
+      { day: 'Sábado', date: '20/06', time: '17h00', teams: 'Alemanha x Costa do Marfim', star: true },
+      { day: 'Sábado', date: '20/06', time: '21h00', teams: 'Equador x Curaçao' },
+      { day: 'Sábado', date: '27/06', time: '18h00', teams: 'Panamá x Inglaterra', star: true },
+      { day: 'Sábado', date: '27/06', time: '18h00', teams: 'Croácia x Gana' },
+      { day: 'Sábado', date: '27/06', time: '20h30', teams: 'Colômbia x Portugal', star: true },
+      { day: 'Sábado', date: '27/06', time: '20h30', teams: 'Congo x Uzbequistão' }
+    ];
+
     // -------------------------------------------------------------------
-    // DATAS JÁ RESERVADAS — quando o Gustavo me avisar que uma data fechou,
-    // basta adicionar a string aqui (formato 'DD/MM') e fazer push. O card
-    // do jogo fica em estado "RESERVADO" e os botões de pacote somem.
+    // DATAS JÁ RESERVADAS — usa formato 'DD/MM' OU 'DD/MM HH:MM'.
+    //   'DD/MM'        → bloqueia TODOS os jogos daquele dia
+    //   'DD/MM HH:MM'  → bloqueia só o jogo específico do horário
     //
-    // Exemplo: var RESERVADOS = ['13/06'];   // bloqueia o jogo do dia 13/06
+    // Ex.: ['13/06']               → bloqueia tudo no 13/06
+    //      ['25/06 17h00']         → bloqueia só o jogo das 17h no 25/06
     // -------------------------------------------------------------------
     var RESERVADOS = [];
 
     (function () {
       var WHATSAPP = '5511917560073';
-      var PACOTES_MSG = {
-        locacao: 'Locação da Laje (R$ 3.500)',
-        comidas: 'Espaço exclusivo com comidas inclusas, bebidas à parte (R$ 200/pessoa)',
-        tudo:    'Tudo incluso — comidas e bebidas (R$ 480/pessoa)'
-      };
-      var PACOTES_LABEL = [
-        { id: 'locacao', label: 'Locação da Laje',  price: 'R$ 3.500'  },
-        { id: 'comidas', label: 'Comidas inclusas', price: 'R$ 200/p'  },
-        { id: 'tudo',    label: 'Tudo incluso',     price: 'R$ 480/p'  }
+      var DESCONTO_OUTROS = 0.20; // 20% off pra jogos fora do JOGOS_BRASIL
+
+      // Preços base (cheios) por pacote.
+      var PACOTES = [
+        { id: 'locacao', label: 'Locação da Laje',  fullName: 'Locação da Laje', valor: 3500, sufixo: '' },
+        { id: 'comidas', label: 'Comidas inclusas', fullName: 'Espaço exclusivo com comidas inclusas, bebidas à parte', valor: 200, sufixo: '/p' },
+        { id: 'tudo',    label: 'Tudo incluso',     fullName: 'Tudo incluso — comidas e bebidas', valor: 480, sufixo: '/p' }
       ];
 
-      var grid = document.getElementById('matches-grid');
-      if (!grid) return;
+      function fmtBRL(n) {
+        // 3500 -> '3.500'; 200 -> '200'
+        return n.toLocaleString('pt-BR');
+      }
+
+      function priceLabel(valor, sufixo) {
+        return 'R$ ' + fmtBRL(valor) + sufixo;
+      }
 
       // Helper: escapa texto pra interpolação segura no HTML.
       function esc(s) {
@@ -694,37 +794,68 @@
         });
       }
 
-      JOGOS.forEach(function (j) {
+      // Confere se a data/horário do jogo está em RESERVADOS.
+      function isSold(j) {
+        if (RESERVADOS.indexOf(j.date) !== -1) return true;
+        if (RESERVADOS.indexOf(j.date + ' ' + j.time) !== -1) return true;
+        return false;
+      }
+
+      function renderCard(j, opts) {
+        opts = opts || {};
         var teamsHtml = esc(j.teams).replace(/ x /i, '<br>× ');
-        var sold = RESERVADOS.indexOf(j.date) !== -1;
+        if (j.star) teamsHtml += ' <span class="match-star" title="Seleção destaque">★</span>';
+
+        var sold = isSold(j);
+        var classes = ['match'];
+        if (opts.discount) classes.push('match--discount');
+        if (sold) classes.push('match--sold');
+
+        var badgeHtml = (opts.discount && !sold) ? '<span class="match-discount-badge">-20%</span>' : '';
 
         var inner;
         if (sold) {
-          inner = '<div class="match-sold-badge">Reservado<small>Outras datas disponíveis abaixo</small></div>';
+          inner = '<div class="match-sold-badge">Reservado<small>Outras datas disponíveis</small></div>';
         } else {
-          inner = '<div class="match-packages">' + PACOTES_LABEL.map(function (p) {
-            var msg = 'Olá! Tenho interesse no pacote ' + PACOTES_MSG[p.id] +
+          inner = '<div class="match-packages">' + PACOTES.map(function (p) {
+            var valor = opts.discount ? Math.round(p.valor * (1 - DESCONTO_OUTROS)) : p.valor;
+            var precoLabel = priceLabel(valor, p.sufixo);
+            var precoMsg   = priceLabel(valor, p.sufixo === '/p' ? '/pessoa' : '');
+            var msg = 'Olá! Tenho interesse no pacote ' + p.fullName +
+                      ' (' + precoMsg + (opts.discount ? ', com 20% de desconto Copa' : '') + ')' +
                       ' para o jogo ' + j.teams +
                       ' no dia ' + j.date + ' às ' + j.time +
                       '. Podemos conversar?';
             var href = 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(msg);
             return '<a class="pkg-btn" href="' + href + '" target="_blank" rel="noopener">' +
                      '<span class="pkg-label">' + esc(p.label) + '</span>' +
-                     '<span class="pkg-price">' + esc(p.price) + '</span>' +
+                     '<span class="pkg-price">' + esc(precoLabel) + '</span>' +
                    '</a>';
           }).join('') + '</div>';
         }
 
         var card = document.createElement('div');
-        card.className = 'match' + (sold ? ' match--sold' : '');
+        card.className = classes.join(' ');
         card.innerHTML =
+          badgeHtml +
           '<div class="match-day">'  + esc(j.day)  + '</div>' +
           '<div class="match-date">' + esc(j.date) + '</div>' +
           '<div class="match-time">' + esc(j.time) + '</div>' +
           '<div class="match-teams">' + teamsHtml + '</div>' +
           inner;
-        grid.appendChild(card);
-      });
+        return card;
+      }
+
+      function renderInto(gridId, jogos, opts) {
+        var grid = document.getElementById(gridId);
+        if (!grid) return;
+        jogos.forEach(function (j) {
+          grid.appendChild(renderCard(j, opts));
+        });
+      }
+
+      renderInto('matches-grid-brasil', JOGOS_BRASIL, { discount: false });
+      renderInto('matches-grid-outros', JOGOS_OUTROS, { discount: true  });
     })();
   </script>
 
