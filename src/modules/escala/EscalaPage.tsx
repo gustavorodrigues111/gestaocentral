@@ -1280,14 +1280,24 @@ function Grade({
                   const isToday = d === hojeYmd;
                   const cellKey = `${e.id}|${d}`;
                   const isSelected = selecionadas.has(cellKey);
-                  // Unidade efetiva do dia (só se status é "trabalho")
-                  const unidadeIdDoDia = usaMultiUnidades
+                  // Unidade do dia em 2 camadas:
+                  //  - "override": mudou a unidade especificamente nesse dia
+                  //    (vem de unidadesPrevistas/unidadesReais). Aparece a badge.
+                  //  - "efetiva": pra filtro, fallback: override → derived (do
+                  //    workSchedule do dia) → unidadePadraoId do empregado.
+                  //    Sem esse fallback, filtro esmaece célula errada quando
+                  //    a unidade vem da unidade padrão.
+                  const unidadeOverride = usaMultiUnidades
                     ? escala?.[versao === "prevista" ? "unidadesPrevistas" : "unidadesReais"]?.[e.id]?.[d]
                     : undefined;
-                  const unidadeBadge = unidadeIdDoDia
-                    ? (unidadesAtivas.find(u => u.id === unidadeIdDoDia)?.nome?.[0]?.toUpperCase() || "?")
+                  const unidadeIdDoDia = unidadeOverride
+                    || derived?.unidadeId
+                    || e.unidadePadraoId
+                    || undefined;
+                  const unidadeBadge = unidadeOverride
+                    ? (unidadesAtivas.find(u => u.id === unidadeOverride)?.nome?.[0]?.toUpperCase() || "?")
                     : undefined;
-                  // Filtro: se há filtroUnidadeId, esmaece células de outra unidade quando trabalho
+                  // Filtro: esmaece células de TRABALHO em unidade diferente da filtrada
                   const status = override || derived?.status;
                   const ocultaPorFiltro = !!(
                     filtroUnidadeId && status === "trabalho" && unidadeIdDoDia !== filtroUnidadeId
