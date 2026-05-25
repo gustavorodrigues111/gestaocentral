@@ -99,10 +99,10 @@ async function main() {
       || `Site oficial do restaurante ${restNome}`;
     const ogImage = data.heroImagemUrl || data.logoUrl || "";
 
-    // Favicon: usa faviconUrl se setado, senão tenta logoUrl. Removemos
-    // o <link rel="icon"> default do template e injetamos o do restaurante
-    // — assim a aba do navegador mostra o ícone certo já no SSG (sem
-    // depender de JS injetar depois).
+    // Favicon: usa faviconUrl se setado, senão tenta logoUrl. Em vez de
+    // remover o link default + injetar um novo (regex frágil dependendo da
+    // ordem de atributos), SUBSTITUÍMOS o href do link com id="__favicon"
+    // que o template já tem. Garante 1 só link rel=icon no HTML final.
     const faviconUrl = data.faviconUrl || data.logoUrl || "";
 
     const headInjections = [
@@ -113,16 +113,23 @@ async function main() {
       ogImage ? `<meta property="og:image" content="${escapeHtml(ogImage)}" />` : "",
       `<meta property="og:type" content="website" />`,
       `<meta name="twitter:card" content="summary_large_image" />`,
-      faviconUrl ? `<link rel="icon" href="${escapeHtml(faviconUrl)}" />` : "",
       `<script id="__site_config__">window.__SITE_CONFIG__ = ${dataJson};</script>`,
     ].filter(Boolean).join("\n    ");
 
     let html = template
       .replace(/<title>[^<]*<\/title>/, "")
-      // Remove o <link rel="icon"> default do template se vamos injetar
-      // um custom (favicon do restaurante)
-      .replace(/<link rel="icon"[^>]*\/?>/g, faviconUrl ? "" : "$&")
       .replace(/<\/head>/, `${headInjections}\n  </head>`);
+
+    // Substitui o link __favicon (default /favicon.svg) pelo favicon do
+    // restaurante. Match permissivo: pega qualquer <link ... id="__favicon" ...>
+    // independente da ordem dos atributos. Se faviconUrl vazio, deixa
+    // como está (default svg).
+    if (faviconUrl) {
+      html = html.replace(
+        /<link\b[^>]*id="__favicon"[^>]*\/?>/,
+        `<link id="__favicon" rel="icon" href="${escapeHtml(faviconUrl)}" />`,
+      );
+    }
 
     const outDir = path.join(DIST_DIR, "site", slug);
     await fs.mkdir(outDir, { recursive: true });
