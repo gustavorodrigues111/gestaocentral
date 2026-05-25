@@ -259,9 +259,11 @@
     margin-bottom: 48px;
   }
 
+  /* auto-fit: 3 cards na fase de grupos cabem em 3 colunas; ao incluir
+     mais jogos (oitavas/quartas/etc.) quebra em linhas extras sozinho. */
   .matches-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
     gap: 14px;
   }
 
@@ -573,45 +575,9 @@
 
     <div class="matches">
       <div class="section-label">Jogos do Brasil · Grupo C</div>
-      <div class="matches-grid">
-
-        <div class="match" data-date="13/06" data-time="19h00" data-teams="Brasil x Marrocos">
-          <div class="match-day">Sábado</div>
-          <div class="match-date">13/06</div>
-          <div class="match-time">19h00</div>
-          <div class="match-teams">Brasil<br>× Marrocos</div>
-          <div class="match-packages">
-            <a class="pkg-btn" data-pkg="locacao"><span class="pkg-label">Locação da Laje</span><span class="pkg-price">R$ 3.500</span></a>
-            <a class="pkg-btn" data-pkg="comidas"><span class="pkg-label">Comidas inclusas</span><span class="pkg-price">R$ 200/p</span></a>
-            <a class="pkg-btn" data-pkg="tudo"><span class="pkg-label">Tudo incluso</span><span class="pkg-price">R$ 480/p</span></a>
-          </div>
-        </div>
-
-        <div class="match" data-date="19/06" data-time="21h30" data-teams="Brasil x Haiti">
-          <div class="match-day">Sexta</div>
-          <div class="match-date">19/06</div>
-          <div class="match-time">21h30</div>
-          <div class="match-teams">Brasil<br>× Haiti</div>
-          <div class="match-packages">
-            <a class="pkg-btn" data-pkg="locacao"><span class="pkg-label">Locação da Laje</span><span class="pkg-price">R$ 3.500</span></a>
-            <a class="pkg-btn" data-pkg="comidas"><span class="pkg-label">Comidas inclusas</span><span class="pkg-price">R$ 200/p</span></a>
-            <a class="pkg-btn" data-pkg="tudo"><span class="pkg-label">Tudo incluso</span><span class="pkg-price">R$ 480/p</span></a>
-          </div>
-        </div>
-
-        <div class="match" data-date="24/06" data-time="19h00" data-teams="Escócia x Brasil">
-          <div class="match-day">Quarta</div>
-          <div class="match-date">24/06</div>
-          <div class="match-time">19h00</div>
-          <div class="match-teams">Escócia<br>× Brasil</div>
-          <div class="match-packages">
-            <a class="pkg-btn" data-pkg="locacao"><span class="pkg-label">Locação da Laje</span><span class="pkg-price">R$ 3.500</span></a>
-            <a class="pkg-btn" data-pkg="comidas"><span class="pkg-label">Comidas inclusas</span><span class="pkg-price">R$ 200/p</span></a>
-            <a class="pkg-btn" data-pkg="tudo"><span class="pkg-label">Tudo incluso</span><span class="pkg-price">R$ 480/p</span></a>
-          </div>
-        </div>
-
-      </div>
+      <!-- Cards renderizados via JS a partir do array JOGOS no script.
+           Pra adicionar nova data, edita o array — não duplica HTML. -->
+      <div class="matches-grid" id="matches-grid"></div>
     </div>
 
     <footer class="footer">
@@ -627,6 +593,23 @@
 
   <script>
     // -------------------------------------------------------------------
+    // JOGOS — lista de partidas exibidas na página. Pra adicionar uma nova
+    // data (oitavas, quartas, etc.), basta acrescentar um objeto aqui.
+    //
+    //   { day: 'Sábado', date: '13/06', time: '19h00', teams: 'Brasil x Marrocos' }
+    //
+    // - day:   nome do dia da semana (ex.: 'Sábado')
+    // - date:  no formato DD/MM (é a chave usada por RESERVADOS)
+    // - time:  formato livre, ex.: '19h00', '21h30'
+    // - teams: 'A x B' (vira 'A × B' no card, com quebra de linha)
+    // -------------------------------------------------------------------
+    var JOGOS = [
+      { day: 'Sábado', date: '13/06', time: '19h00', teams: 'Brasil x Marrocos' },
+      { day: 'Sexta',  date: '19/06', time: '21h30', teams: 'Brasil x Haiti'    },
+      { day: 'Quarta', date: '24/06', time: '19h00', teams: 'Escócia x Brasil'  }
+    ];
+
+    // -------------------------------------------------------------------
     // DATAS JÁ RESERVADAS — quando o Gustavo me avisar que uma data fechou,
     // basta adicionar a string aqui (formato 'DD/MM') e fazer push. O card
     // do jogo fica em estado "RESERVADO" e os botões de pacote somem.
@@ -635,44 +618,59 @@
     // -------------------------------------------------------------------
     var RESERVADOS = [];
 
-    // Hidrata os links de cada botão de pacote com a mensagem do WhatsApp
-    // pré-preenchida (data + jogo + pacote). Evita duplicar 9 URLs no HTML.
     (function () {
       var WHATSAPP = '5511917560073';
-      var PACOTES = {
+      var PACOTES_MSG = {
         locacao: 'Locação da Laje (R$ 3.500)',
         comidas: 'Espaço exclusivo com comidas inclusas, bebidas à parte (R$ 200/pessoa)',
         tudo:    'Tudo incluso — comidas e bebidas (R$ 480/pessoa)'
       };
+      var PACOTES_LABEL = [
+        { id: 'locacao', label: 'Locação da Laje',  price: 'R$ 3.500'  },
+        { id: 'comidas', label: 'Comidas inclusas', price: 'R$ 200/p'  },
+        { id: 'tudo',    label: 'Tudo incluso',     price: 'R$ 480/p'  }
+      ];
 
-      document.querySelectorAll('.match').forEach(function (m) {
-        var date  = m.dataset.date;
-        var time  = m.dataset.time;
-        var teams = m.dataset.teams;
+      var grid = document.getElementById('matches-grid');
+      if (!grid) return;
 
-        // Data reservada → marca o card e remove os botões.
-        if (RESERVADOS.indexOf(date) !== -1) {
-          m.classList.add('match--sold');
-          var pkgs = m.querySelector('.match-packages');
-          if (pkgs) {
-            var badge = document.createElement('div');
-            badge.className = 'match-sold-badge';
-            badge.innerHTML = 'Reservado<small>Outras datas disponíveis abaixo</small>';
-            pkgs.parentNode.replaceChild(badge, pkgs);
-          }
-          return;
+      // Helper: escapa texto pra interpolação segura no HTML.
+      function esc(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+        });
+      }
+
+      JOGOS.forEach(function (j) {
+        var teamsHtml = esc(j.teams).replace(/ x /i, '<br>× ');
+        var sold = RESERVADOS.indexOf(j.date) !== -1;
+
+        var inner;
+        if (sold) {
+          inner = '<div class="match-sold-badge">Reservado<small>Outras datas disponíveis abaixo</small></div>';
+        } else {
+          inner = '<div class="match-packages">' + PACOTES_LABEL.map(function (p) {
+            var msg = 'Olá! Tenho interesse no pacote ' + PACOTES_MSG[p.id] +
+                      ' para o jogo ' + j.teams +
+                      ' no dia ' + j.date + ' às ' + j.time +
+                      '. Podemos conversar?';
+            var href = 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(msg);
+            return '<a class="pkg-btn" href="' + href + '" target="_blank" rel="noopener">' +
+                     '<span class="pkg-label">' + esc(p.label) + '</span>' +
+                     '<span class="pkg-price">' + esc(p.price) + '</span>' +
+                   '</a>';
+          }).join('') + '</div>';
         }
 
-        m.querySelectorAll('.pkg-btn').forEach(function (btn) {
-          var pkg = PACOTES[btn.dataset.pkg] || '';
-          var msg = 'Olá! Tenho interesse no pacote ' + pkg +
-                    ' para o jogo ' + teams +
-                    ' no dia ' + date + ' às ' + time +
-                    '. Podemos conversar?';
-          btn.href = 'https://wa.me/' + WHATSAPP + '?text=' + encodeURIComponent(msg);
-          btn.target = '_blank';
-          btn.rel = 'noopener';
-        });
+        var card = document.createElement('div');
+        card.className = 'match' + (sold ? ' match--sold' : '');
+        card.innerHTML =
+          '<div class="match-day">'  + esc(j.day)  + '</div>' +
+          '<div class="match-date">' + esc(j.date) + '</div>' +
+          '<div class="match-time">' + esc(j.time) + '</div>' +
+          '<div class="match-teams">' + teamsHtml + '</div>' +
+          inner;
+        grid.appendChild(card);
       });
     })();
   </script>
