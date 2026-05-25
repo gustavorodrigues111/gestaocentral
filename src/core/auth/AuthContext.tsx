@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -12,23 +12,105 @@ import type { Pessoa } from "../types";
 
 type AuthState = {
   fbUser: FirebaseUser | null;
+  /**
+   * Pessoa "ativa": é a impersonada se isImpersonating, senão a real.
+   * 99% das telas usam essa — vê o mundo pela ótica dela.
+   */
   pessoa: Pessoa | null;
+  /** Pessoa real (logada via Firebase Auth). Não muda em impersonação. */
+  pessoaReal: Pessoa | null;
+  /** True quando master tá visualizando como outra pessoa. */
+  isImpersonating: boolean;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  /**
+   * Master inicia visualização como outra pessoa. Só master pode usar.
+   * Auth real do Firebase continua sendo o master — então rules deixam
+   * fazer tudo. UI fica view-only por convenção (mostra banner avisando).
+   */
+  startImpersonate: (pessoaId: string) => void;
+  /** Sai do modo "ver como" e volta a ser ele mesmo. */
+  stopImpersonate: () => void;
 };
 
 const AuthCtx = createContext<AuthState | null>(null);
 
 const POLL_INTERVAL_MS = 30_000;  // 30s — detecta inativação
+const IMPERSONATE_KEY = "impersonate_pessoa_id";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
-  const [pessoa, setPessoa] = useState<Pessoa | null>(null);
+  const [pessoaReal, setPessoaReal] = useState<Pessoa | null>(null);
+  const [pessoaImpersonada, setPessoaImpersonada] = useState<Pessoa | null>(null);
+  // Lê id de impersonação do sessionStorage no boot (sobrevive a refresh
+  // mas some quando fecha a aba — comportamento intencional).
+  const [impersonatedId, setImpersonatedId] = useState<string | null>(() => {
+    try {
+      return typeof sessionStorage !== "undefined"
+        ? sessionStorage.getItem(IMPERSONATE_KEY)
+        : null;
+    } catch {
+      return null;
+    }
+  });
   const [loading, setLoading] = useState(true);
   // pessoaDocId resolvido (pode diferir de uid se a pessoa foi cadastrada com auto-id)
   const pessoaDocIdRef = useRef<string | null>(null);
+
+  // ── Carregar pessoa impersonada quando o id muda ──────────────────────────
+  useEffect(() => {
+    if (!impersonatedId) {
+      setPessoaImpersonada(null);
+      return;
+    }
+    // Só permite impersonar se o usuário real é master (defesa em
+    // profundidade — botão de iniciar também checa).
+    if (!pessoaReal?.isMaster) {
+      setPessoaImpersonada(null);
+      return;
+    }
+    let cancelado = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "pessoas", impersonatedId));
+        if (cancelado) return;
+        if (!snap.exists()) {
+          setPessoaImpersonada(null);
+          stopImpersonateInternal();
+          return;
+        }
+        setPessoaImpersonada({ id: snap.id, ...snap.data() } as Pessoa);
+      } catch (e) {
+        console.error("Erro carregando pessoa impersonada:", e);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [impersonatedId, pessoaReal?.isMaster]);
+
+  function stopImpersonateInternal() {
+    setImpersonatedId(null);
+    setPessoaImpersonada(null);
+    try { sessionStorage.removeItem(IMPERSONATE_KEY); } catch { /* noop */ }
+  }
+
+  const startImpersonate = useCallback((pessoaId: string) => {
+    if (!pessoaReal?.isMaster) {
+      console.warn("startImpersonate: só master pode impersonar");
+      return;
+    }
+    if (pessoaId === pessoaReal.id) {
+      console.warn("startImpersonate: ignorado — você não pode impersonar a si mesmo");
+      return;
+    }
+    try { sessionStorage.setItem(IMPERSONATE_KEY, pessoaId); } catch { /* noop */ }
+    setImpersonatedId(pessoaId);
+  }, [pessoaReal]);
+
+  const stopImpersonate = useCallback(() => {
+    stopImpersonateInternal();
+  }, []);
 
   // ── Auth state listener (1 vez) ───────────────────────────────────────────
   useEffect(() => {
@@ -36,8 +118,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsub = onAuthStateChanged(auth, async (user) => {
       setFbUser(user);
       if (!user) {
-        setPessoa(null);
+        setPessoaReal(null);
         pessoaDocIdRef.current = null;
+        // Sair de impersonação se a sessão acabar
+        stopImpersonateInternal();
         setLoading(false);
         return;
       }
@@ -50,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const q = query(collection(db, "pessoas"), where("email", "==", user.email), limit(1));
           const qsnap = await getDocs(q);
           if (qsnap.empty) {
-            setPessoa(null);
+            setPessoaReal(null);
             pessoaDocIdRef.current = null;
             setLoading(false);
             return;
@@ -70,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await refreshPessoa(docId);
       } catch (e) {
         console.error("Erro resolvendo pessoa:", e);
-        setPessoa(null);
+        setPessoaReal(null);
         setLoading(false);
       }
     });
@@ -91,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const snap = await getDoc(doc(db, "pessoas", docId));
       if (!snap.exists()) {
-        setPessoa(null);
+        setPessoaReal(null);
         setLoading(false);
         return;
       }
@@ -102,7 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         await fbSignOut(auth).catch(() => {});
         return;
       }
-      setPessoa(data);
+      setPessoaReal(data);
       setLoading(false);
     } catch (e) {
       console.error("Erro lendo pessoa:", e);
@@ -120,8 +204,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await fbSignOut(auth);
   }
 
+  // Pessoa "ativa" exposta às telas: impersonada quando em modo "ver como",
+  // senão a real. isImpersonating só vale se REALMENTE temos a pessoa
+  // impersonada carregada (evita flash de UI errada durante load).
+  const isImpersonating = !!pessoaImpersonada && pessoaImpersonada.id !== pessoaReal?.id;
+  const pessoa = isImpersonating ? pessoaImpersonada : pessoaReal;
+
   return (
-    <AuthCtx.Provider value={{ fbUser, pessoa, loading, signIn, signUp, signOut }}>
+    <AuthCtx.Provider value={{
+      fbUser, pessoa, pessoaReal, isImpersonating, loading,
+      signIn, signUp, signOut,
+      startImpersonate, stopImpersonate,
+    }}>
       {children}
     </AuthCtx.Provider>
   );

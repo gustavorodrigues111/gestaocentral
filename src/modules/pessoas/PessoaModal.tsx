@@ -16,7 +16,7 @@ import { logAudit } from "../../core/audit/versionedChange";
 import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 type Tab = "identidade" | "vinculos" | "permissoes";
 
@@ -111,12 +111,21 @@ function TabIdentidade({
   onCreated: () => void;
   onClose: () => void;
 }) {
-  const { pessoa: me } = useAuth();
+  const { pessoa: me, pessoaReal, startImpersonate } = useAuth();
   const { restaurants } = useRestaurant();
+  const navigate = useNavigate();
   const isNew = !pessoa;
   const isInativa = !!pessoa && pessoa.ativa === false;
   const subdomainAtivo = restaurants.find((r) => r.id === restaurantId)?.subdomain || null;
   const conviteUrl = pessoa && !isInativa ? buildConviteWhatsLink(pessoa, subdomainAtivo) : null;
+
+  // "Visualizar como" — só master, não na própria pessoa, não em nova,
+  // não em inativada. Inicia impersonação + redireciona pro home.
+  const podeVisualizarComo = !!pessoaReal?.isMaster
+    && !!pessoa
+    && pessoa.id !== pessoaReal.id
+    && !isInativa
+    && !isNew;
 
   const [form, setForm] = useState({
     nome: pessoa?.nome || "",
@@ -333,6 +342,20 @@ function TabIdentidade({
                   className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600"
                 >
                   💬 Convidar via WhatsApp
+                </Button>
+              )}
+              {podeVisualizarComo && pessoa && (
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    startImpersonate(pessoa.id);
+                    onClose();
+                    navigate("/");
+                  }}
+                  title="Entra na tela como essa pessoa pra ver o que ela vê (master vê tudo, esse modo simula a visão limitada)"
+                  className="!bg-amber-600 hover:!bg-amber-700 !border-amber-600"
+                >
+                  👁️ Visualizar como
                 </Button>
               )}
               <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
