@@ -279,9 +279,9 @@ export function GorjetasPage() {
             <Button
               size="sm"
               onClick={() => setShowPublicar(true)}
-              title="Publicar gorjetas pros empregados verem (congela a divisão)"
+              title="Abre seleção pra você escolher quais dias publicar — depois confirma a divisão"
             >
-              📢 Publicar gorjetas ({qtdPublicaveis})
+              📢 Selecionar gorjetas a publicar ({qtdPublicaveis})
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
