@@ -186,7 +186,10 @@ export function VTPage() {
     if (rascunho) return rascunho;
     const pago = lotesDoMes.find(l => l.status === "pago");
     if (pago) return pago;
-    return lotesDoMes[0]; // cancelado / outro
+    // Só tem lote(s) cancelado(s): NÃO é "ativo" — assim o botão
+    // "Lançar pra pagamento" volta a aparecer e o user pode criar
+    // um novo lote pro mês.
+    return null;
   }, [lotesDoMes]);
 
   // Linhas preview (quando não há lote ainda) — calcula do empregado + escala
