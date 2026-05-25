@@ -47,6 +47,40 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     [shifts],
   );
 
+  // Subconjunto que JÁ tem valor selecionado (valorTipo + valorUnit) — pode
+  // ser confirmado em lote sem precisar abrir um por um.
+  const aPrecificarComValor = useMemo(
+    () => aPrecificar.filter((s) => !!s.valorTipo && (s.valorUnit ?? 0) > 0),
+    [aPrecificar],
+  );
+
+  async function confirmarTodosComValor() {
+    if (!me || aPrecificarComValor.length === 0) return;
+    setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      const batch = writeBatch(db);
+      for (const s of aPrecificarComValor) {
+        const horas = calcHoras(s.entrada, s.saida, s.intervalo);
+        const total = calcTotal(s.valorTipo, s.valorUnit, horas);
+        batch.update(doc(db, "freelaShifts", s.id), {
+          status: "fechamento",
+          horas,
+          totalCalc: total,
+          confirmadoEm: now,
+          confirmadoPor: me.id,
+          updatedAt: now,
+        });
+      }
+      await batch.commit();
+    } catch (e) {
+      console.error("[confirmarTodosComValor]", e);
+      alert(`Erro ao confirmar em lote: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   // Prontos pra lote: status="fechamento" sem lote ainda.
   const prontosLote = useMemo(
     () => shifts.filter((s) => s.status === "fechamento" && !s.lotePagamentoId),
@@ -174,12 +208,24 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
 
       {/* ─── Aguardando precificação ─── */}
       <section>
-        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">
-          🏷️ Aguardando precificação
-          <span className="ml-2 text-[11px] text-gray-500 font-normal">
-            ({aPrecificar.length} — operacional fechou, falta DP precificar)
-          </span>
-        </h3>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+            🏷️ Aguardando precificação
+            <span className="ml-2 text-[11px] text-gray-500 font-normal">
+              ({aPrecificar.length} — operacional fechou, falta DP precificar)
+            </span>
+          </h3>
+          {aPrecificarComValor.length > 0 && podeEditar && (
+            <Button
+              size="sm"
+              onClick={confirmarTodosComValor}
+              disabled={salvando}
+              title="Confirma de uma vez todos os turnos que já têm valor selecionado"
+            >
+              ✅ Confirmar {aPrecificarComValor.length} com valor
+            </Button>
+          )}
+        </div>
         {aPrecificar.length === 0 ? (
           <EmptyState texto="Nenhum turno aguardando precificação." />
         ) : (
@@ -421,7 +467,7 @@ function usePrecificar(shift: FreelaShift, todosShifts: FreelaShift[]) {
   async function confirmar() {
     if (!me) return;
     if (!valorUnit) { alert("Selecione uma tarifa antes de confirmar."); return; }
-    if (!confirm(`Confirmar ${shift.nomeSnapshot}? Total ${fmtBR(total)}.`)) return;
+    // Sem confirm() — ação reversível via "Reabrir" depois.
     await persistir({
       status: "fechamento",
       confirmadoEm: new Date().toISOString(),
