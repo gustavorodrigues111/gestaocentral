@@ -9,6 +9,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
 import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
+import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
 import { AREAS, VT_LOTE_STATUS_LABEL } from "../../core/types";
 import {
@@ -662,6 +663,38 @@ export function VTPage() {
                   <Button variant="danger" onClick={() => cancelarLote(loteAtivo)}>✕ Cancelar (master)</Button>
                 )}
               </div>
+            )}
+            {/* Exportar CSV pra Caju — disponível em qualquer lote (rascunho
+                ou pago). Pago: pra re-baixar caso precise reenviar. Rascunho:
+                pra validar números antes de marcar como pago. */}
+            {loteAtivo && loteAtivo.status !== "cancelado" && podeConfig && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  const slug = (activeRestaurant?.nome || "restaurante")
+                    .toLowerCase()
+                    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+                    .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+                  const r = exportarLoteCaju({ lote: loteAtivo, empregados, restaurantSlug: slug });
+                  baixarCsvCaju(r);
+                  // Resumo + lista de ignorados (se houver).
+                  const totalBR = r.totalValor.toFixed(2).replace(".", ",");
+                  const ignoradasTxt = r.ignoradas.length === 0
+                    ? "Nenhuma linha ignorada."
+                    : `${r.ignoradas.length} linha(s) ignorada(s):\n` +
+                      r.ignoradas.map(i => `  • ${i.nome}: ${i.motivo}`).join("\n");
+                  alert(
+                    `✅ CSV exportado: ${r.filename}\n\n` +
+                    `${r.qtdLinhasOk} colaborador(es) — R$ ${totalBR}\n\n` +
+                    ignoradasTxt + "\n\n" +
+                    `Confirme o total no Caju (Pedidos → Importar planilha).`
+                  );
+                }}
+                title="Gera CSV no formato do Caju (CPF;;Mobilidade;0)"
+              >
+                📥 Exportar CSV pra Caju
+              </Button>
             )}
           </div>
 
