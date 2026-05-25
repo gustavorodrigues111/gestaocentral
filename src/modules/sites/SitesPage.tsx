@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canUse, canConfig } from "../../core/auth/permissions";
+import { canUse } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
 import { CardapioTab } from "./CardapioTab";
 import { PreviewTab } from "./PreviewTab";
@@ -29,12 +30,18 @@ export function SitesPage() {
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "sites");
-  const podeConfigurar = canConfig(me, rid, "sites");
 
-  // Permissões granulares
+  // Permissões granulares — sistema novo de perfis. Mantém specialPermissions
+  // como fallback pra retrocompat de configs antigas.
+  const { can } = useCanAcao(rid);
   const special = me?.specialPermissions?.[rid];
-  const podeCardapio = !!me?.isMaster || podeConfigurar || !!special?.sitesCardapio;
-  const podeGeral = !!me?.isMaster || podeConfigurar || !!special?.sitesGeral;
+  const podeCardapio = !!me?.isMaster || can("sites", "uploadCardapio")
+    || !!special?.sitesCardapio;
+  // "Geral" = pode mexer em qualquer parte editorial (textos, contato, tema, assets)
+  const podeGeral = !!me?.isMaster
+    || can("sites", "editarTextos") || can("sites", "editarContato")
+    || can("sites", "editarTema") || can("sites", "uploadAssets")
+    || !!special?.sitesGeral;
 
   const [tab, setTab] = useState<Tab>("geral");
 
@@ -84,7 +91,16 @@ export function SitesPage() {
 
       {/* Conteúdo */}
       {tab === "geral" && (
-        <GeralTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
+        <GeralTab
+          rid={rid}
+          nomeRestaurante={activeRestaurant.nome}
+          podeEditar={podeGeral}
+          podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
+          podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
+          podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
+          podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
+          podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
+        />
       )}
       {tab === "cardapio" && (
         <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />

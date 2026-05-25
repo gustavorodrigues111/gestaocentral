@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { canConfigurar } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { PessoaModal } from "./PessoaModal";
@@ -28,7 +28,15 @@ export function PessoasList({ restaurantId }: Props) {
   const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
   const [editing, setEditing] = useState<Pessoa | "new" | null>(null);
   const [vinculando, setVinculando] = useState(false);
-  const podeConfig = canConfigurar(me, restaurantId, "pessoas");
+  // Gates granulares de ações (sistema novo de perfis)
+  const { can } = useCanAcao(restaurantId);
+  const podeCriar = !!me?.isMaster || can("pessoas", "criar");
+  const podeVincular = !!me?.isMaster || can("pessoas", "atribuirRest");
+  // podeConfig mantido como proxy genérico — usado em outros pontos do file
+  // que ainda dependem da semântica "pode mexer em pessoas". Será substituído
+  // por gates específicos quando refinarmos detalhes em rodadas futuras.
+  const podeConfig = !!me?.isMaster || podeCriar || podeVincular
+    || can("pessoas", "editarDados") || can("pessoas", "demitir") || can("pessoas", "excluir");
 
   // Pessoas com acesso a esse restaurante
   useEffect(() => {
@@ -101,12 +109,16 @@ export function PessoasList({ restaurantId }: Props) {
     <div>
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <p className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} pessoa(s)</p>
-        {podeConfig && (
+        {(podeCriar || podeVincular) && (
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setVinculando(true)} title="Vincular pessoa já cadastrada em outro restaurante">
-              🔗 Vincular existente
-            </Button>
-            <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>
+            {podeVincular && (
+              <Button variant="secondary" onClick={() => setVinculando(true)} title="Vincular pessoa já cadastrada em outro restaurante">
+                🔗 Vincular existente
+              </Button>
+            )}
+            {podeCriar && (
+              <Button onClick={() => setEditing("new")}>+ Nova pessoa</Button>
+            )}
           </div>
         )}
       </div>

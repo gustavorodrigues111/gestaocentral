@@ -21,6 +21,13 @@ type Props = {
   rid: string;
   nomeRestaurante: string;
   podeEditar: boolean;
+  // Capabilities granulares (sistema novo de perfis). Opcionais — se não
+  // vierem, herdam de podeEditar (fallback pro modo legado).
+  podeEditarTextos?: boolean;
+  podeEditarContato?: boolean;
+  podeEditarTema?: boolean;
+  podeUploadAssets?: boolean;
+  podePublicar?: boolean;
 };
 
 const TIPO_REDE_OPCOES: RedeSocial["tipo"][] = ["instagram", "whatsapp", "facebook", "tiktok", "youtube", "outro"];
@@ -34,7 +41,16 @@ const TIPO_DELIVERY_LABEL: Record<LinkDelivery["plataforma"], string> = {
   ifood: "iFood", rappi: "Rappi", uber: "Uber Eats", proprio: "Próprio", outro: "Outro",
 };
 
-export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
+export function GeralTab({
+  rid, nomeRestaurante, podeEditar,
+  podeEditarTextos, podeEditarContato, podeEditarTema, podeUploadAssets, podePublicar,
+}: Props) {
+  // Resolve capabilities: granulares se vieram, senão herda podeEditar
+  const canTextos  = podeEditarTextos  ?? podeEditar;
+  const canContato = podeEditarContato ?? podeEditar;
+  const canTema    = podeEditarTema    ?? podeEditar;
+  const canAssets  = podeUploadAssets  ?? podeEditar;
+  const canPubl    = podePublicar      ?? podeEditar;
   const { pessoa: me } = useAuth();
   const { config: cfgRemoto, existe, loading, erro, save } = useSiteConfig(rid, nomeRestaurante);
   const [form, setForm] = useState<SiteConfig | null>(null);
@@ -198,7 +214,17 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
     setForm(defaultSiteConfig(rid, nomeRestaurante));
   }
 
+  // Disabled por seção — cada uma respeita sua própria capability.
+  // Inputs "neutros" (endereço, contato, redes, features, delivery) usam
+  // `inputDisabled` geral = !podeEditar. Refinamento granular dessas seções
+  // específicas pode ser feito em rodada futura — por ora `canContato`
+  // serve só pra calcular `podeEditar` no agregado do SitesPage.
+  void canContato;
   const inputDisabled = !podeEditar;
+  const textosDisabled  = !canTextos;
+  const temaDisabled    = !canTema;
+  const assetsDisabled  = !canAssets;
+  const publicDisabled  = !canPubl;
 
   return (
     <div className="space-y-6">
@@ -221,7 +247,7 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           descricao="Aparece no header do site e no rodapé. Use PNG com fundo transparente pra melhor resultado."
           url={form.logoUrl || ""}
           onChange={(v) => atualizar("logoUrl", v)}
-          disabled={inputDisabled}
+          disabled={assetsDisabled}
         />
         <UploadImagem
           rid={rid}
@@ -230,7 +256,7 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           descricao="Aparece como fundo do hero (com overlay escuro). Se não tiver, o hero usa só cor sólida da marca."
           url={form.heroImagemUrl || ""}
           onChange={(v) => atualizar("heroImagemUrl", v)}
-          disabled={inputDisabled}
+          disabled={assetsDisabled}
         />
         <UploadImagem
           rid={rid}
@@ -239,13 +265,13 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           descricao="Imagem pequena que aparece na aba do navegador e nos favoritos. Quadrada, idealmente 32×32 ou 64×64 pixels. Se vazio, o navegador usa um padrão."
           url={form.faviconUrl || ""}
           onChange={(v) => atualizar("faviconUrl", v)}
-          disabled={inputDisabled}
+          disabled={assetsDisabled}
         />
       </section>
 
       {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
           em ordem de aparição. */}
-      <TextosSection form={form} setForm={setForm} disabled={inputDisabled} />
+      <TextosSection form={form} setForm={setForm} disabled={textosDisabled} />
 
       {/* ORDEM DAS SEÇÕES — reordena o site público */}
       <OrdemSecoesSection form={form} setForm={setForm} disabled={inputDisabled} />
@@ -553,7 +579,7 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
             Tema visual
           </h3>
-          {!inputDisabled && (
+          {!temaDisabled && (
             <button
               type="button"
               onClick={() => {
@@ -576,10 +602,10 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           Sobrescreve as cores/fontes definidas pelo template. Campos vazios = template decide.
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ColorInputComLimpar label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={inputDisabled} />
-          <ColorInputComLimpar label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={inputDisabled} />
-          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo || ""} onChange={(v) => atualizarTema("corFundo", v)} disabled={inputDisabled} />
-          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto || ""} onChange={(v) => atualizarTema("corTexto", v)} disabled={inputDisabled} />
+          <ColorInputComLimpar label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={temaDisabled} />
+          <ColorInputComLimpar label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={temaDisabled} />
+          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo || ""} onChange={(v) => atualizarTema("corFundo", v)} disabled={temaDisabled} />
+          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto || ""} onChange={(v) => atualizarTema("corTexto", v)} disabled={temaDisabled} />
         </div>
         <div className="grid grid-cols-1 gap-3">
           <FonteSelector
@@ -587,26 +613,26 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             descricao="Hero, títulos de seção"
             value={form.tema.fonteHeading || ""}
             onChange={(v) => atualizarTema("fonteHeading", v)}
-            disabled={inputDisabled}
+            disabled={temaDisabled}
           />
           <FonteSelector
             label="Fonte de subtítulos"
             descricao="Slogan, eyebrow, texto-destaque"
             value={form.tema.fonteSubtitulo || ""}
             onChange={(v) => atualizarTema("fonteSubtitulo", v)}
-            disabled={inputDisabled}
+            disabled={temaDisabled}
           />
           <FonteSelector
             label="Fonte de corpo"
             descricao="Parágrafos, listas, texto comum"
             value={form.tema.fonteCorpo || ""}
             onChange={(v) => atualizarTema("fonteCorpo", v)}
-            disabled={inputDisabled}
+            disabled={temaDisabled}
           />
           <EscalasTextoControl
             tema={form.tema}
             onChange={(campo, v) => atualizarTema(campo, v)}
-            disabled={inputDisabled}
+            disabled={temaDisabled}
           />
         </div>
       </section>
@@ -626,7 +652,7 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             label="Site publicado (visível pro público)"
             checked={form.publicado}
             onChange={(v) => atualizar("publicado", v)}
-            disabled={inputDisabled}
+            disabled={publicDisabled}
           />
         </div>
         <Input
@@ -634,7 +660,7 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
           value={form.slug}
           onChange={(e) => atualizar("slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ""))}
           placeholder="lobozo"
-          disabled={inputDisabled}
+          disabled={publicDisabled}
         />
         <p className="text-[11px] text-gray-500 dark:text-gray-400 -mt-2">
           URL preview: <code>/site/{form.slug}</code> {form.publicado && form.slug && (

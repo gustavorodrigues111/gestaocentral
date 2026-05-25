@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -141,6 +142,8 @@ function TabIdentidade({
   const [showExcluir, setShowExcluir] = useState(false);
 
   const podeExcluir = canExcluirPessoa(me, restaurantId);
+  const { can } = useCanAcao(restaurantId);
+  const podeDemitir = !!me?.isMaster || can("pessoas", "demitir");
 
   // Detecção de pessoa duplicada por CPF — quando user tenta criar nova com
   // CPF que já existe (em qualquer restaurante). Oferece vincular em vez de
@@ -358,15 +361,19 @@ function TabIdentidade({
                   👁️ Visualizar como
                 </Button>
               )}
-              <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
-                🚫 Inativar pessoa
-              </Button>
+              {podeDemitir && (
+                <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
+                  🚫 Inativar pessoa
+                </Button>
+              )}
             </>
           ) : (
             <>
-              <Button size="sm" onClick={() => setShowReativar(true)}>
-                ✓ Reativar pessoa
-              </Button>
+              {podeDemitir && (
+                <Button size="sm" onClick={() => setShowReativar(true)}>
+                  ✓ Reativar pessoa
+                </Button>
+              )}
               {podeExcluir && (
                 <Button variant="danger" size="sm" onClick={() => setShowExcluir(true)}>
                   🗑 Excluir definitivamente

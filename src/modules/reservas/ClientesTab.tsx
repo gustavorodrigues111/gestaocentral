@@ -22,12 +22,10 @@ type Props = {
 
 export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeExcluirCliente, podeMesclar }: Props) {
   // Backward compat: se capabilities granulares não vieram, herda do
-  // podeConfig legado. Quando a Rodada 3+ migrar callers pra sempre passar
-  // explicitamente, podemos remover esse fallback.
+  // podeConfig legado. Os 3 gates abaixo governam botões/cards específicos.
   const canEditar = podeEditarCliente ?? podeConfig;
   const canMesclar = podeMesclar ?? podeConfig;
-  // Mantém refs vivas durante refactor — uso real em Rodada 3
-  void canEditar; void canMesclar;
+  const canCriar = canEditar;  // criar cliente segue o gate de editar
   const { pessoa } = useAuth();
   // Exclusão hard de cliente é restrita ao master — apaga referência em
   // /reservas, /notasCliente e /clientesPublicLookup. Pra LGPD (cliente
@@ -218,7 +216,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
         <div className="text-sm text-gray-600 dark:text-gray-400">
           {clientes.length} cliente(s) cadastrado(s)
         </div>
-        {podeConfig && (
+        {canCriar && (
           <Button onClick={() => setEditing("new")}>+ Novo cliente</Button>
         )}
       </div>
@@ -260,7 +258,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
         </div>
       )}
 
-      {podeConfig && grupoDuplicados.length > 0 && (
+      {canMesclar && grupoDuplicados.length > 0 && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3 space-y-2">
           <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2">
             ⚠ {grupoDuplicados.length} {grupoDuplicados.length === 1 ? "grupo" : "grupos"} de clientes com telefone igual
@@ -369,7 +367,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
                   </div>
                   <div className="flex gap-1 flex-wrap">
                     <Button variant="secondary" size="sm" onClick={() => setVerHistorico(c)}>📊 Histórico</Button>
-                    {podeConfig && (
+                    {canEditar && (
                       <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
                     )}
                     {podeExcluirClienteEfetivo && (
