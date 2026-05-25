@@ -47,7 +47,7 @@ type ItemValidado =
   | { ok: true; item: ItemImport; cpfDigits: string }
   | { ok: false; raw: unknown; errors: string[] };
 
-function validarItem(raw: unknown): ItemValidado {
+function validarItem(raw: unknown, allowMissingCpf: boolean): ItemValidado {
   const errors: string[] = [];
   if (!raw || typeof raw !== "object") {
     return { ok: false, raw, errors: ["item não é um objeto"] };
@@ -57,8 +57,13 @@ function validarItem(raw: unknown): ItemValidado {
   const nome = typeof r.nome === "string" ? r.nome.trim() : "";
   if (!nome) errors.push("nome vazio");
 
+  // CPF opcional pra master (allowMissingCpf=true), obrigatório pros demais.
   const cpfDigits = onlyDigits(String(r.cpf ?? ""));
-  if (cpfDigits.length !== 11) errors.push(`cpf inválido (${cpfDigits.length} dígitos, esperado 11)`);
+  if (cpfDigits.length === 0) {
+    if (!allowMissingCpf) errors.push("cpf vazio (obrigatório)");
+  } else if (cpfDigits.length !== 11) {
+    errors.push(`cpf inválido (${cpfDigits.length} dígitos, esperado 11)`);
+  }
 
   const pix = typeof r.pix === "string" ? r.pix.trim() : "";
   if (!pix) errors.push("pix vazio");
@@ -177,7 +182,8 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
       setParseErr("o JSON precisa ser um array de objetos");
       return;
     }
-    setResultados(parsed.map(validarItem));
+    const allowMissingCpf = !!me?.isMaster;
+    setResultados(parsed.map((r) => validarItem(r, allowMissingCpf)));
   }
 
   async function importar() {
@@ -235,15 +241,28 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
 
       for (let i = 0; i < validos.length; i++) {
         const { item, cpfDigits } = validos[i];
+        // Chave do cache: usa CPF se tem, senão "pix:" + pix (pra dedup
+        // dentro do batch de pessoas sem CPF).
+        const cacheKey = cpfDigits || `pix:${item.pix}`;
         try {
-          let pessoa = cache.get(cpfDigits) || null;
+          let pessoa = cache.get(cacheKey) || null;
 
           if (!pessoa) {
-            const snap = await getDocs(
-              query(collection(db, "pessoas"), where("cpf", "==", cpfDigits), limit(1)),
-            );
-            if (!snap.empty) {
-              pessoa = { id: snap.docs[0].id, ...snap.docs[0].data() } as Pessoa;
+            // Resolve pessoa: por CPF se tem, senão por PIX (fallback master).
+            if (cpfDigits) {
+              const snap = await getDocs(
+                query(collection(db, "pessoas"), where("cpf", "==", cpfDigits), limit(1)),
+              );
+              if (!snap.empty) {
+                pessoa = { id: snap.docs[0].id, ...snap.docs[0].data() } as Pessoa;
+              }
+            } else {
+              const snap = await getDocs(
+                query(collection(db, "pessoas"), where("pix", "==", item.pix), limit(1)),
+              );
+              if (!snap.empty) {
+                pessoa = { id: snap.docs[0].id, ...snap.docs[0].data() } as Pessoa;
+              }
             }
           }
 
@@ -251,7 +270,7 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             const ref = await addDoc(collection(db, "pessoas"), {
               email: "",
               nome: item.nome,
-              cpf: cpfDigits,
+              cpf: cpfDigits, // string vazia se sem CPF
               whatsapp: item.whatsapp || "",
               pix: item.pix,
               isMaster: false,
@@ -273,7 +292,8 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
               ativa: true,
               createdAt: now,
             };
-            log.push(`✅ ${item.nome} — pessoa criada`);
+            const aviso = cpfDigits ? "" : " ⚠️ SEM CPF — completar depois em Pessoas";
+            log.push(`✅ ${item.nome} — pessoa criada${aviso}`);
           } else if (!pessoa.restaurantIds.includes(restaurantId)) {
             const novosIds = [...pessoa.restaurantIds, restaurantId];
             const novasPerms = { ...(pessoa.permissions || {}), [restaurantId]: {} };
@@ -286,12 +306,12 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           } else {
             log.push(`↪ ${item.nome} — pessoa já existente`);
           }
-          cache.set(cpfDigits, pessoa);
+          cache.set(cacheKey, pessoa);
 
-          // ── Dedup do turno (chave por pessoaId+date ou cpf+date)
+          // ── Dedup do turno (chave por pessoaId+date; cpf+date só se tiver CPF)
           const keyPid = `pid:${pessoa.id}-${item.data}`;
-          const keyCpf = `cpf:${cpfDigits}-${item.data}`;
-          if (dedupKeys.has(keyPid) || dedupKeys.has(keyCpf)) {
+          const keyCpf = cpfDigits ? `cpf:${cpfDigits}-${item.data}` : null;
+          if (dedupKeys.has(keyPid) || (keyCpf && dedupKeys.has(keyCpf))) {
             log.push(`   ⏭ turno ${item.data} já existe pra ${item.nome} — pulado`);
             setImportLog([...log]);
             pulados++;
@@ -327,7 +347,8 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             empregadoId: null,
             pessoaId: pessoa.id,
             nomeSnapshot: item.nome,
-            cpfSnapshot: cpfDigits,
+            // cpfSnapshot só entra se tiver CPF (evita string vazia no doc)
+            ...(cpfDigits ? { cpfSnapshot: cpfDigits } : {}),
             pixSnapshot: item.pix,
             ...(item.whatsapp ? { whatsappSnapshot: item.whatsapp } : {}),
             date: item.data,
@@ -352,7 +373,7 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           await addDoc(collection(db, "freelaShifts"), payload);
           // Marca como dedup pro próximo turno do mesmo lote não duplicar
           dedupKeys.add(keyPid);
-          dedupKeys.add(keyCpf);
+          if (keyCpf) dedupKeys.add(keyCpf);
           criados++;
 
           const totalStr = totalCalc != null ? ` = R$ ${totalCalc.toFixed(2)}` : "";
@@ -386,7 +407,10 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             objeto cria 1 turno; se o CPF não existir em Pessoas, cria a pessoa também.
           </p>
           <p>
-            Campos obrigatórios: <code>nome, cpf, pix, data (YYYY-MM-DD), area, valorTipo, valorUnit</code>.
+            Campos obrigatórios: <code>nome, pix, data (YYYY-MM-DD), area, valorTipo, valorUnit</code>.
+            {me?.isMaster
+              ? <> <strong>CPF opcional pra master</strong> (cria pessoa sem CPF; complete depois em Pessoas).</>
+              : <> <code>cpf</code> obrigatório.</>}
           </p>
           <p>
             Opcionais: <code>whatsapp, entrada/saida (HH:MM), intervaloMinutos (número), observacao</code>.
