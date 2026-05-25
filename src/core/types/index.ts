@@ -1412,20 +1412,9 @@ export type Pedido = {
   atualizadoEm: string;
 };
 
-// ─── TEMPLATES DE PERMISSÃO ───
-
-export type PermissionTemplate = {
-  id: string;
-  restaurantId: string;          // por restaurante (cada um tem seu vocabulário)
-  nome: string;                  // ex: "Líder de Salão", "DP Sororoca"
-  descricao?: string;
-  permissions: RestaurantPermissions;  // o conjunto que aplica ao marcar o template
-  specialPermissions?: PessoaSpecialPermissions;
-  ordem?: number;
-  ativo: boolean;
-  createdAt: string;
-  createdBy: string;
-};
+// ─── TEMPLATES DE PERMISSÃO (REMOVIDO — Rodada 5) ───
+// PermissionTemplate era o sistema antigo de presets de ver/configurar.
+// Substituído por AccessProfile em /accessProfiles. Tipo removido.
 
 // ─── HISTÓRICO E AUDIT LOG ───
 

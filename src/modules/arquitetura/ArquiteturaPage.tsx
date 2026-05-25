@@ -238,7 +238,7 @@ const ENTITIES: Entity[] = [
       { label: "tem N", to: "EscalaMes" },
       { label: "tem N", to: "Gorjeta" },
       { label: "tem N", to: "VTFolha" },
-      { label: "tem N", to: "PermissionTemplate" },
+      { label: "tem N", to: "AccessProfile" },
     ],
   },
   {
@@ -297,11 +297,11 @@ const ENTITIES: Entity[] = [
     relations: [{ label: "depende de", to: "EscalaMes" }, { label: "depende de", to: "Empregado" }],
   },
   {
-    name: "PermissionTemplate", icon: "🎯",
-    desc: "Conjunto pré-definido de permissões (ex: 'Líder Sororoca'). Cadastrável.",
-    collection: "permissionTemplates",
-    status: "planejado",
-    fields: ["id", "restaurantId", "nome", "descricao?", "permissions{moduloId: {ver, configurar}}", "ativo"],
+    name: "AccessProfile", icon: "🛡️",
+    desc: "Perfil de Acesso. Master define o que cada perfil pode fazer (ações granulares). Pessoas recebem 1 perfil por restaurante.",
+    collection: "accessProfiles",
+    status: "ativo",
+    fields: ["id", "nome", "descricao?", "builtin", "restaurantId? (null=global)", "permissions{moduloId: {acaoId: boolean}}", "criadoEm", "criadoPor"],
     relations: [{ label: "aplicado a N", to: "Pessoa" }],
   },
   {

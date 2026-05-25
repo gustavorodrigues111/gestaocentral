@@ -73,10 +73,13 @@ service cloud.firestore {
       allow create, update, delete: if isMaster();
     }
 
-    // ── /permissionTemplates ── presets de permissão, só master ─────────
+    // ── /permissionTemplates ── DESCONTINUADO (Rodada 5) ────────────────
+    // Sistema antigo de templates de ver/configurar. Substituído por
+    // /accessProfiles. Read autenticado mantido pra docs históricos não
+    // dispararem permission-denied em queries residuais. Write travado.
     match /permissionTemplates/{id} {
       allow read:   if authed();
-      allow create, update, delete: if isMaster();
+      allow create, update, delete: if false;
     }
 
     // ── /accessProfiles ── sistema novo de perfis de acesso ─────────────
