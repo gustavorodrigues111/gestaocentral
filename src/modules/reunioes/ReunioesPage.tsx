@@ -5,6 +5,8 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
+import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
@@ -34,6 +36,12 @@ export function ReunioesPage() {
   const restaurant = restaurants.find(r => r.id === rid) || null;
   const podeVer = canVer(me, rid, "reunioes");
   const podeConfig = canConfigurar(me, rid, "reunioes");
+  // Granular — só pra distinguir self-service do resto
+  const { can } = useCanAcao(rid);
+  const podeVerTodas = !!me?.isMaster
+    || can("reunioes", "verTodas") || can("reunioes", "criar")
+    || can("reunioes", "editar") || can("reunioes", "pauta")
+    || can("reunioes", "verPassadas");
 
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,12 +85,14 @@ export function ReunioesPage() {
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeVer) {
+  if (!podeVer || !podeVerTodas) {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
-      </div>
+      <SelfServiceRedirect
+        restaurantId={rid}
+        icone="🗣️"
+        titulo="Suas reuniões estão no Meu Portal"
+        descricao="Essa tela é a agenda completa do restaurante. Pra ver as reuniões agendadas pra você, vai em Meu Portal."
+      />
     );
   }
 

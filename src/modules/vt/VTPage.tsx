@@ -5,6 +5,8 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
+import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
 import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
@@ -53,6 +55,10 @@ export function VTPage() {
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "vt");
   const podeConfig = canConfig(me, rid, "vt");
+  // Granular: pessoa com só `verProprio` (self-service) cai no Meu Portal
+  const { can } = useCanAcao(rid);
+  const podeVerTime = !!me?.isMaster
+    || can("vt", "verTime") || can("vt", "configurar") || can("vt", "registrarPg");
   const isMaster = !!me?.isMaster;
 
   const hoje = new Date();
@@ -487,12 +493,14 @@ export function VTPage() {
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
   }
-  if (!podeUsar) {
+  if (!podeUsar || !podeVerTime) {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
-      </div>
+      <SelfServiceRedirect
+        restaurantId={rid}
+        icone="🚌"
+        titulo="Seu VT está no Meu Portal"
+        descricao="Essa tela é a visão de gestão (todo o time). Pra ver seu VT pessoal, vai em Meu Portal."
+      />
     );
   }
 

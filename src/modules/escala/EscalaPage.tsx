@@ -5,6 +5,8 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canReabrirEscala, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
+import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -48,6 +50,19 @@ export function EscalaPage() {
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "escala");
   const podeConfig = canConfig(me, rid, "escala");
+  // Gates granulares (sistema novo). Renomeados com prefixo `acao` pra não
+  // colidir com vars locais legadas (ex: podeEditar abaixo já considera
+  // fechamento de mês + outras regras de negócio).
+  const { can } = useCanAcao(rid);
+  const podeVerTime       = !!me?.isMaster
+    || can("escala", "verTime") || can("escala", "editar")
+    || can("escala", "aprovarTrocas") || can("escala", "publicar")
+    || can("escala", "exportar") || can("escala", "planejarPrevista");
+  const acaoEditarEscala  = !!me?.isMaster || can("escala", "editar");
+  const acaoAprovarTrocas = !!me?.isMaster || can("escala", "aprovarTrocas");
+  const acaoPublicar      = !!me?.isMaster || can("escala", "publicar");
+  const acaoExportar      = !!me?.isMaster || can("escala", "exportar");
+  void acaoEditarEscala; void acaoAprovarTrocas; void acaoPublicar; void acaoExportar;
 
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -469,12 +484,14 @@ export function EscalaPage() {
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
   }
-  if (!podeUsar) {
+  if (!podeUsar || !podeVerTime) {
     return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
-      </div>
+      <SelfServiceRedirect
+        restaurantId={rid}
+        icone="📆"
+        titulo="Sua escala está no Meu Portal"
+        descricao="Essa tela é a visão de gestão (todo o time). Pra ver sua escala pessoal, vai em Meu Portal."
+      />
     );
   }
 
