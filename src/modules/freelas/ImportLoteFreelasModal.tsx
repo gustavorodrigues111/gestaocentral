@@ -352,11 +352,6 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           else if (item.data === today) status = "aberto";
           else status = horas != null ? "fechamento" : "aberto";
 
-          // Intervalo em formato HH:MM (pra exibir no fechamento)
-          const intervaloStr = item.intervaloMinutos != null
-            ? `${String(Math.floor(item.intervaloMinutos / 60)).padStart(2, "0")}:${String(item.intervaloMinutos % 60).padStart(2, "0")}`
-            : undefined;
-
           const payload: Record<string, unknown> = {
             restaurantId,
             empregadoId: null,
@@ -371,7 +366,9 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             area: item.area,
             ...(item.entrada ? { entrada: item.entrada } : {}),
             ...(item.saida ? { saida: item.saida } : {}),
-            ...(intervaloStr ? { intervalo: intervaloStr } : {}),
+            // Intervalo: schema do FreelaShift espera NÚMERO em minutos
+            // (não string "HH:MM"). calcHoras() consome direto.
+            ...(item.intervaloMinutos != null ? { intervalo: item.intervaloMinutos } : {}),
             ...(horas != null ? { horas } : {}),
             ...(item.valorTipo ? { valorTipo: item.valorTipo } : {}),
             ...(item.valorUnit != null ? { valorUnit: item.valorUnit } : {}),

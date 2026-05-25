@@ -7,7 +7,12 @@ export function onlyDigits(s: string | undefined | null): string {
 // Calcula horas totais decimais a partir de entrada/saída/intervalo.
 // Aceita saída no dia seguinte (overnight) — se "saida" < "entrada" considera +24h.
 // Retorna horas com 2 casas decimais.
-export function calcHoras(entrada?: string, saida?: string, intervalo?: number): number {
+//
+// `intervalo` aceita:
+//   - number (minutos) — formato canônico
+//   - string "HH:MM" — defensivo pra docs antigos do batch import que
+//     gravaram intervalo como string ("01:00" em vez de 60)
+export function calcHoras(entrada?: string, saida?: string, intervalo?: number | string): number {
   if (!entrada || !saida) return 0;
   const [hi, mi] = entrada.split(":").map((x) => parseInt(x, 10));
   const [ho, mo] = saida.split(":").map((x) => parseInt(x, 10));
@@ -15,7 +20,19 @@ export function calcHoras(entrada?: string, saida?: string, intervalo?: number):
   let inicio = hi * 60 + mi;
   let fim = ho * 60 + mo;
   if (fim < inicio) fim += 24 * 60;
-  const minutos = Math.max(0, fim - inicio - (intervalo || 0));
+  // Normaliza intervalo pra minutos
+  let intervMin = 0;
+  if (typeof intervalo === "number" && Number.isFinite(intervalo)) {
+    intervMin = intervalo;
+  } else if (typeof intervalo === "string" && intervalo) {
+    const m = intervalo.match(/^(\d{1,2}):(\d{2})$/);
+    if (m) intervMin = parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+    else {
+      const asNum = parseInt(intervalo, 10);
+      if (!Number.isNaN(asNum)) intervMin = asNum;
+    }
+  }
+  const minutos = Math.max(0, fim - inicio - intervMin);
   return Math.round((minutos / 60) * 100) / 100;
 }
 
