@@ -3,9 +3,10 @@
 // pelo admin por WhatsApp ~2h antes). Esse aqui é só o "recibo" que o
 // cliente tem como garantia/registro.
 //
-// Implementação: escreve doc em /mail. A Firebase Extension "Trigger
-// Email from Firestore" lê esse doc e dispara o email via SMTP
-// (configurado com Gmail Workspace).
+// IMPLEMENTAÇÃO: chama /api/send-email (Vercel route) que dispara via Resend.
+// A escolha por Resend (não Firebase Extension) está documentada em
+// api/send-email.ts — TL;DR: org policies do Workspace bloqueiam build da
+// Cloud Function que a extension precisa.
 
 import type { SiteConfig } from "../../../core/types";
 
@@ -24,18 +25,19 @@ type Args = {
   siteConfig: SiteConfig;
 };
 
-export type EmailMailDoc = {
+// Estrutura do email pronta pra enviar via QUALQUER transport. Não tem
+// `from` — quem decide é a API route (`/api/send-email`) com base na
+// env `RESEND_FROM_DEFAULT`, pra centralizar identidade do remetente.
+export type EmailComprovanteReserva = {
   to: string;
   replyTo?: string;
-  message: {
-    subject: string;
-    html: string;
-    text?: string;          // versão sem HTML (clientes que bloqueiam)
-  };
+  subject: string;
+  html: string;
+  text: string;
 };
 
-// Constrói o doc /mail que a Firebase Extension vai enviar.
-export function montarEmailComprovanteReserva(args: Args): EmailMailDoc {
+// Constrói o payload de email a partir dos dados da reserva.
+export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReserva {
   const dataLegivel = formatarDataExtensa(args.data);
   const restNome = args.restauranteNome;
   const subject = `Recebemos sua reserva no ${restNome} — ${dataLegivel}, ${args.horario}`;
@@ -154,8 +156,45 @@ export function montarEmailComprovanteReserva(args: Args): EmailMailDoc {
   return {
     to: args.emailDestinatario,
     replyTo: args.siteConfig.emailContato || undefined,
-    message: { subject, html, text },
+    subject,
+    html,
+    text,
   };
+}
+
+// Dispara o email via Vercel route → Resend. Não joga exception em erro de
+// rede — devolve { ok, error? } pra caller decidir se mostra no UI. Falha
+// aqui NÃO deve bloquear a reserva (admin tem WhatsApp como canal primário
+// e a reserva já foi gravada).
+export async function enviarEmailComprovanteReserva(
+  payload: EmailComprovanteReserva,
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  try {
+    const resp = await fetch("/api/send-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: payload.to,
+        replyTo: payload.replyTo,
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
+      }),
+    });
+    const data = await resp.json().catch(() => ({} as Record<string, unknown>));
+    if (!resp.ok) {
+      const errMsg = typeof (data as { error?: unknown }).error === "string"
+        ? (data as { error: string }).error
+        : `HTTP ${resp.status}`;
+      return { ok: false, error: errMsg };
+    }
+    const id = typeof (data as { id?: unknown }).id === "string"
+      ? (data as { id: string }).id
+      : "";
+    return { ok: true, id };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "erro de rede" };
+  }
 }
 
 // Dom 25 de maio de 2026

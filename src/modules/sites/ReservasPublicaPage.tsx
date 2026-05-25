@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  addDoc, collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where,
+  collection, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -20,7 +20,7 @@ import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "./shared/Site
 import { FormField, fieldInputCls } from "./shared/FormField";
 import { upsertClienteLookup } from "../reservas/clienteLookup";
 import { criarNotaCliente } from "../reservas/notasCliente";
-import { montarEmailComprovanteReserva } from "./email/comprovanteReserva";
+import { montarEmailComprovanteReserva, enviarEmailComprovanteReserva } from "./email/comprovanteReserva";
 
 // Página pública: cliente solicita reserva de mesa.
 // Rota: /reservas/:rid (sem auth).
@@ -533,31 +533,29 @@ export function ReservasPublicaPage() {
         setDoc(doc(db, "reservasPII", id), sanitizeForFirestore(reservaPII)),
       ]);
 
-      // Email de comprovante — escreve em /mail. A Firebase Extension
-      // "Trigger Email" lê esse doc e dispara o envio via SMTP (Gmail
-      // Workspace configurado no projeto). Falha aqui NÃO bloqueia o
-      // sucesso da reserva — admin tem contato pelo WhatsApp.
+      // Email de comprovante — dispara via Resend (Vercel route /api/send-email).
+      // Falha aqui NÃO bloqueia o sucesso da reserva — admin tem WhatsApp como
+      // canal primário e a reserva já foi gravada.
       if (siteConfig) {
-        try {
-          // Nome do restaurante pra exibir no email — pega do
-          // metaTitulo se admin customizou, senão capitaliza o slug.
-          const restNome = (siteConfig as { metaTitulo?: string }).metaTitulo
-            || siteConfig.slug.charAt(0).toUpperCase() + siteConfig.slug.slice(1);
-          const mailDoc = montarEmailComprovanteReserva({
-            emailDestinatario: emailNovo,
-            nomeDestinatario: nomeNovo,
-            data,
-            horario: slotHorario,
-            pessoas: parseInt(pessoas, 10),
-            salaoNome: sal?.nome,
-            ocasiao: ocasiao.trim() || undefined,
-            observacoes: observacoes.trim() || undefined,
-            restauranteNome: restNome,
-            siteConfig,
-          });
-          await addDoc(collection(db, "mail"), mailDoc);
-        } catch (e) {
-          console.warn("[reservas] email de comprovante falhou (reserva salva):", e);
+        // Nome do restaurante pra exibir no email — pega do metaTitulo se
+        // admin customizou, senão capitaliza o slug.
+        const restNome = (siteConfig as { metaTitulo?: string }).metaTitulo
+          || siteConfig.slug.charAt(0).toUpperCase() + siteConfig.slug.slice(1);
+        const payload = montarEmailComprovanteReserva({
+          emailDestinatario: emailNovo,
+          nomeDestinatario: nomeNovo,
+          data,
+          horario: slotHorario,
+          pessoas: parseInt(pessoas, 10),
+          salaoNome: sal?.nome,
+          ocasiao: ocasiao.trim() || undefined,
+          observacoes: observacoes.trim() || undefined,
+          restauranteNome: restNome,
+          siteConfig,
+        });
+        const r = await enviarEmailComprovanteReserva(payload);
+        if (!r.ok) {
+          console.warn("[reservas] email de comprovante falhou (reserva salva):", r.error);
         }
       }
 

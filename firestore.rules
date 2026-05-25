@@ -195,31 +195,18 @@ service cloud.firestore {
         );
       allow delete: if authed();
     }
-    // ── /mail ── fila de emails da Firebase Extension "Trigger Email" ────
-    // Quando um doc é criado aqui, a extension lê e dispara email via
-    // SMTP. Hoje usamos pra emails de comprovante de reserva (form
-    // público) e potencialmente outros transactionais.
-    //
-    // Public create permitido com guards estritos pra não virar vetor
-    // de spam — limita tamanho do payload e exige shape correto.
-    // Read/update/delete só authed (admin pode ver fila + status).
+    // ── /mail ── DESCONTINUADO ─────────────────────────────────────────
+    // Era a fila da Firebase Extension "Trigger Email" — abandonada porque
+    // org policy do Workspace bloqueia o build da Cloud Function. Migrado
+    // pra Resend via Vercel route /api/send-email (ver api/send-email.ts).
+    // Mantém leitura authed pros docs antigos que ficaram no histórico;
+    // create público bloqueado pra não acumular lixo (não tem worker lendo).
     match /mail/{id} {
       allow read: if authed();
-      allow create: if authed()
-        || (
-          request.resource.data.to is string
-          && request.resource.data.to.size() < 200
-          && request.resource.data.message.subject is string
-          && request.resource.data.message.subject.size() < 200
-          && request.resource.data.message.html is string
-          && request.resource.data.message.html.size() < 50000
-        );
-      // Extension precisa de update pra marcar status — só authed
-      // (a extension roda com credencial de serviço, conta como authed).
-      allow update, delete: if authed();
+      allow create, update, delete: if authed();
     }
 
-    // ── /notasCliente ── log cronológico de anotações sobre clientes ───
+// ── /notasCliente ── log cronológico de anotações sobre clientes ───
     // Criadas pelo admin (chegada do cliente, observação no CRM, etc).
     // Também aceita create público (form de reservas) com guards estritos
     // — usado pra logar quando cliente altera nome/email ao reservar.

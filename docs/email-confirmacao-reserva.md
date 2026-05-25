@@ -1,154 +1,117 @@
-# 📧 Email de confirmação de reserva — plano técnico
+# 📧 Email de comprovante de reserva
 
-> Guardado pra implementar depois. Não está em produção.
+> Estado: **implementado, aguardando setup Resend pra entrar em produção**.
 > Última revisão: 2026-05-24
 
-## Objetivo
+## O que é
 
-Quando cliente cria reserva pelo form público (`/reservas/:rid`):
-- Recebe email automático com comprovante (data, hora, salão, pessoas, ocasião, observações)
-- Email tem 2 botões:
-  - **✎ Alterar** — abre form pra escolher novo slot, sistema re-valida disponibilidade
-  - **✕ Cancelar** — confirma e marca status=cancelada (cliente preserva no CRM)
+Quando cliente cria reserva pelo form público (`/reservas/:rid`), recebe email com:
+- Comprovante: data, hora, salão, pessoas, ocasião, observações
+- Branding do restaurante (cor primária + logo + endereço)
+- Mensagem: "aguardando confirmação — te avisamos pelo WhatsApp"
 
-## Stack proposta
+**Não é a confirmação.** Confirmação é outra etapa, feita pelo admin via WhatsApp (botão "Confirmar" na tab Reservas). Esse email aqui é só o registro inicial pro cliente.
+
+## Stack
 
 | Camada | Tecnologia | Custo |
 |---|---|---|
-| Provider de email | **Resend** | $0 (free tier: 3k/mês, 100/dia) |
-| Backend | **Vercel Function** (`/api/...`) | $0 (incluso no plan) |
-| Firestore | Admin SDK pra ler/escrever | insignificante |
-| Token assinado | HMAC-SHA256 com secret em env var | $0 |
+| Provider de email | **Resend** | $0 (free: 3k/mês, 100/dia) |
+| Backend | **Vercel Function** `/api/send-email` | $0 (incluso) |
+| HTML render | Inline styles em `comprovanteReserva.ts` | — |
 
-Alternativas: Sendgrid, AWS SES — mais barato em volume, mais setup. Resend é o sweet spot pra MVP.
+### Por que não Firebase Extension "Trigger Email"?
 
-## Arquitetura
+Tentamos primeiro. **A extension precisa deployar uma Cloud Function v2 e a org policy do Workspace `gestaocentral-85b13` bloqueia a permissão necessária no service account de build.** Mesma policy bloqueia criação de chave de service account (ver `scripts/prerender-sites.mjs`).
 
-### Vercel Function
+Resend é HTTP puro, sem dependência de Cloud Functions ou service accounts — imune às policies.
 
-`POST /api/reservas/enviar-confirmacao`
-
-Recebe `{ reservaId }`. Lê reserva + sitesConfig do restaurante (cor/logo/nome). Gera token HMAC, renderiza HTML do email com a marca do restaurante, envia via Resend. Atualiza `reserva.emailEnviadoEm`.
-
-### Schema novo na Reserva
-
-```ts
-type Reserva = {
-  // ... campos existentes ...
-  emailEnviadoEm?: string;      // ISO timestamp
-  tokenAcoes?: string;          // hash HMAC pra autenticar links
-};
-```
-
-Token gerado uma vez na criação, salvo no doc. Vercel function valida comparando o hash.
-
-### Disparo
-
-Frontend (ReservasPublicaPage) chama a function imediatamente após criar a reserva:
-
-```ts
-await setDoc(doc(db, "reservas", id), ...);
-await fetch("/api/reservas/enviar-confirmacao", {
-  method: "POST",
-  body: JSON.stringify({ reservaId: id }),
-});
-```
-
-Sem await crítico — se falhar, cliente continua vendo "Reserva enviada!". Erro vai pro log.
-
-### Email template (HTML inline)
+## Arquivos
 
 ```
-┌────────────────────────────────────┐
-│       [Logo do restaurante]        │
-│                                    │
-│     Sua reserva está pendente      │
-│                                    │
-│   Olá Gustavo,                     │
-│                                    │
-│   📅 Sex, 30/05/2026               │
-│   🕒 19:30                         │
-│   🏛️ Salão Principal               │
-│   👥 4 pessoas                     │
-│   📝 Aniversário                   │
-│                                    │
-│   Confirmamos pelo WhatsApp        │
-│   em breve.                        │
-│                                    │
-│   ┌──────────┐  ┌──────────┐      │
-│   │ Alterar  │  │ Cancelar │      │
-│   └──────────┘  └──────────┘      │
-│                                    │
-│   [endereço] · [telefone]          │
-│   Powered by Planejamento.app      │
-└────────────────────────────────────┘
+src/modules/sites/email/comprovanteReserva.ts
+  ├── montarEmailComprovanteReserva()    ← renderiza HTML/text/subject
+  └── enviarEmailComprovanteReserva()    ← POSTa em /api/send-email
+
+api/send-email.ts                         ← Vercel route, valida + chama Resend
+src/modules/sites/ReservasPublicaPage.tsx ← chama o sender após salvar a reserva
 ```
 
-Marca/logo/cor vêm do `sitesConfig` — cada restaurante sai com sua identidade.
+## Setup Resend (1x, ~15 min)
 
-### Páginas públicas novas
+### 1. Conta + domínio
 
-**`/r/reserva/<id>?t=<token>&acao=cancelar|alterar`**
+1. Cria conta em https://resend.com (pode logar com Google `gustavo@quibebe.com.br`)
+2. **Domains** → **Add Domain** → `lobozo.com.br`
+3. Resend mostra 3 registros DNS pra adicionar:
+   - **SPF** (TXT) — `v=spf1 include:_spf.resend.com ~all`
+   - **DKIM** (TXT em `resend._domainkey.lobozo.com.br`) — chave pública longa
+   - **MX feedback** (MX em `feedback-smtp.lobozo.com.br`) — `feedback-smtp.us-east-1.amazonses.com`
+4. Adicionar esses 3 no **Registro.br** → Painel DNS do `lobozo.com.br`. Propagação ~5–30 min.
+5. Voltar no Resend → **Verify Domain**. Status vai pra **Verified** quando os 3 registros propagaram.
 
-- Valida token (HMAC compare)
-- Token inválido → "Link expirado ou inválido"
-- `acao=cancelar` → modal de confirmação → atualiza status
-- `acao=alterar` → reabre slot picker com a data/hora/salão atuais pré-selecionados, valida disponibilidade ao confirmar
-- Sem acao → mostra comprovante visual (mesmo do email)
+> ⚠️ Se já tem SPF no domínio (improvável aqui, mas comum quando alguém adiciona Google + Mailgun + etc), **não criar 2 registros TXT SPF** — junta tudo num só: `v=spf1 include:_spf.google.com include:_spf.resend.com ~all`.
 
-### Segurança
+### 2. API Key
 
-- Token = `HMAC-SHA256(reservaId + clienteEmail, SECRET)` — secret em env var Vercel
-- Validação sempre compara hashes em tempo constante (`crypto.timingSafeEqual`)
-- Sem expiração — link válido enquanto a reserva existir
-- Rate limit na function (max 10 emails/IP/hora) pra evitar spam
+1. Resend → **API Keys** → **Create API Key**
+2. Nome: `gestaocentral-prod`
+3. Permission: **Sending access** (não precisa de "Full access")
+4. Domain: `lobozo.com.br` (restringe ao domínio verificado — bom pra segurança)
+5. Copia a key — começa com `re_...`. **Mostra só uma vez**, salva no 1Password.
 
-## Variáveis de ambiente (Vercel)
+### 3. Env vars na Vercel
 
-```
-RESEND_API_KEY=re_xxxxxxxxxxx
-RESERVA_TOKEN_SECRET=<random 32-char string>
-FIREBASE_ADMIN_PROJECT_ID=gestaocentral-85b13
-FIREBASE_ADMIN_CLIENT_EMAIL=xxx@xxx.iam.gserviceaccount.com
-FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nxxx\n-----END..."
-```
+Em https://vercel.com → projeto `gestaocentral` → **Settings** → **Environment Variables**:
 
-Service account JSON baixa do Firebase Console → Service accounts → "Generate new private key".
-
-## Pré-requisitos (1x setup)
-
-1. Criar conta Resend (https://resend.com) — gratuito
-2. Verificar domínio `planejamento.app` no Resend — adicionar 3 registros DNS (DKIM + SPF) no Vercel
-3. Baixar service account JSON do Firebase
-4. Adicionar env vars no Vercel dashboard
-
-## Roadmap de implementação
-
-Estimativa total: **1.5–2 dias** de trabalho.
-
-| Fase | Tarefa | Tempo |
+| Nome | Valor | Environments |
 |---|---|---|
-| 1 | Schema: adicionar `tokenAcoes`, `emailEnviadoEm` em Reserva | 30min |
-| 2 | Vercel function `/api/reservas/enviar-confirmacao` (envio + token) | 3h |
-| 3 | Template HTML do email com cores do tema | 2h |
-| 4 | Frontend chama a function após criar reserva | 30min |
-| 5 | Página `/r/reserva/<id>` — comprovante + ações | 4h |
-| 6 | Fluxo cancelar (modal confirma + update status) | 1h |
-| 7 | Fluxo alterar (slot picker reusado + revalida) | 3h |
-| 8 | Testes ponta a ponta + ajustes | 2h |
+| `RESEND_API_KEY` | `re_xxxxxxxxxxxxxxxx` | Production, Preview |
+| `RESEND_FROM_DEFAULT` | `Lobozó <reservas@lobozo.com.br>` | Production, Preview |
 
-## Extensões futuras (Fase 2)
+Salva → faz **Redeploy** do último deploy de produção (Settings → Deployments → ⋯ → Redeploy) pra pegar as env vars.
 
-- Email automático quando admin **confirma** ("✓ Reserva confirmada")
-- Email automático quando admin **cancela** ("Reserva cancelada pela casa")
-- Lembrete D-1 (cron: enviar reminder na véspera)
-- Página de cancelamento mostra calendário pra escolher data alternativa direto
-- Configuração por restaurante: habilitar/desabilitar cada tipo de email
+### 4. Teste
 
-## Custos esperados em produção
+1. Abre `https://lobozo.com.br/reservas/<rid>` em aba anônima
+2. Preenche reserva com **teu** email
+3. Confirma e vê se chega o email com cara do Lobozó
 
-- Resend free tier: 3.000 emails/mês cobre até ~100 reservas/dia/restaurante
-- Acima disso: $20/mês Resend Pro (50k emails)
-- Vercel functions: free tier cobre milhares de invocações/dia
+Se chegar → tá funcionando. ✅
+Se NÃO chegar:
+- Checa pasta de spam
+- Vercel → projeto → **Functions** → log do `/api/send-email` — vai mostrar o erro do Resend (ex: domínio não verificado, key inválida, sender não autorizado)
+- Resend → **Logs** — mostra cada tentativa de envio + estado de entrega (delivered/bounced/complained)
 
-Pra Lobozó (estimativa ~30 reservas/dia × 30 dias = 900/mês) — gratuito por muito tempo.
+## Dev/preview sem domínio verificado
+
+Em deploy preview da Vercel ou local, se `RESEND_FROM_DEFAULT` não tiver setado, a function cai pra `onboarding@resend.dev` (sender de teste do Resend). Esse sender **só envia pro email cadastrado na conta Resend** (anti-spam). Útil pra testar o fluxo, ruim pra produção real.
+
+Pra evitar confusão, configura `RESEND_FROM_DEFAULT` em todos os environments (Production + Preview + Development).
+
+## Custos esperados
+
+- **Resend Free:** 3.000 emails/mês, 100/dia
+- **Lobozó projeção:** 30 reservas/dia × 30 = 900 emails/mês → cabe no free tier por muito tempo
+- Acima disso: Resend Pro $20/mês (50k emails)
+
+## Extensões futuras (não implementadas)
+
+- Email quando admin **confirma** ("✓ Sua reserva foi confirmada")
+- Email quando admin **cancela** ("Não conseguimos confirmar")
+- Lembrete D-1 (cron na véspera)
+- Links "Alterar" / "Cancelar" no email (precisa HMAC token + páginas públicas — ver versão antiga deste doc no git history)
+
+## Troubleshooting
+
+### "RESEND_API_KEY não configurada nas env vars"
+A env não tá setada na Vercel, ou o deploy foi feito antes de setar. **Redeploy** depois de adicionar.
+
+### Resend retorna `validation_error` com mensagem sobre `from`
+Domínio não verificado, ou `from` aponta pra domínio diferente do verificado. Confere em Resend → Domains se `lobozo.com.br` está **Verified** (verde).
+
+### Email vai pra spam
+Garantir que SPF + DKIM passaram (Resend mostra ✓ no painel). Se DKIM falha, normalmente é o registro DNS errado — copia/cola direto do Resend, sem editar.
+
+### "Erro de rede" no log do frontend
+Vercel function timeout (15s) ou Resend fora do ar. Frontend já trata silenciosamente — reserva NÃO falha, só o email. Cliente vê tela de sucesso normalmente, admin tem WhatsApp como canal primário.
