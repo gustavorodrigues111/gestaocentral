@@ -2,11 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { PessoaModal } from "./PessoaModal";
 import { VincularPessoaModal } from "./VincularPessoaModal";
+import { horarioBadgeProps, statusHorarioEmpregado } from "./horarioStatus";
 import type { Area, Cargo, Empregado, Pessoa } from "../../core/types";
 import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
 
@@ -18,6 +20,8 @@ type Props = { restaurantId: string };
 
 export function PessoasList({ restaurantId }: Props) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const restaurant = restaurants.find((r) => r.id === restaurantId) || null;
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -208,6 +212,18 @@ export function PessoasList({ restaurantId }: Props) {
                         👥 {cargo.nome}
                       </span>
                     )}
+                    {emp && cargo && (() => {
+                      const badge = horarioBadgeProps(statusHorarioEmpregado(emp, restaurant));
+                      if (!badge) return null;
+                      return (
+                        <span
+                          className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${badge.classes}`}
+                          title={badge.tooltip}
+                        >
+                          {badge.texto}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {p.email || <span className="italic">sem email</span>}
