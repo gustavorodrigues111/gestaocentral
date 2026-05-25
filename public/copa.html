@@ -447,6 +447,21 @@
     color: var(--ink-soft);
   }
 
+  /* HIERARQUIA VISUAL DOS CARDS:
+     - Brasil (.match sem .match--discount) → bege escuro + sombra forte
+     - Estrela em outros jogos (.match--star) → vermelho mais marcado + sombra vermelha
+     - Outros sem estrela → fundo vermelho sutil padrão
+     Inspiração: papel impresso com peso de elevação diferente. */
+
+  /* Jogos do Brasil — destaque máximo (data principal) */
+  .match:not(.match--discount) {
+    background: var(--bg-deep);
+    border-color: var(--ink);
+    box-shadow:
+      0 4px 16px -6px rgba(26, 22, 18, 0.20),
+      0 2px 4px -1px rgba(200, 32, 47, 0.08);
+  }
+
   /* Cards de "outros jogos" — recebem badge de 20% OFF no canto.
      Estrela aparece nos âncora (campo star: true no array).
      Background levemente avermelhado pra distinguir da seção do Brasil. */
@@ -454,6 +469,15 @@
     position: relative;
     background: rgba(200, 32, 47, 0.04);
     border-color: rgba(200, 32, 47, 0.25);
+  }
+
+  /* Jogos âncora (seleções tradicionais, com ★) — destaque secundário */
+  .match--star.match--discount {
+    background: rgba(200, 32, 47, 0.09);
+    border-color: rgba(200, 32, 47, 0.5);
+    box-shadow:
+      0 4px 14px -6px rgba(200, 32, 47, 0.30),
+      0 1px 3px -1px rgba(26, 22, 18, 0.10);
   }
 
   /* Conteúdo em duas colunas internas: data/hora à esquerda, jogo à direita.
@@ -919,6 +943,7 @@
         var classes = ['match'];
         if (opts.discount) classes.push('match--discount');
         if (sold) classes.push('match--sold');
+        if (j.star) classes.push('match--star');
 
         var badgeHtml = (opts.discount && !sold) ? '<span class="match-discount-badge">-20%</span>' : '';
 
