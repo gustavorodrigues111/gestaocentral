@@ -502,6 +502,51 @@
     line-height: 1.4;
   }
 
+  /* Divisor "Pacotes → Datas". Resolve confusão no mobile (long scroll
+     sem separação clara entre o que escolher de pacote vs. de data). */
+  .step-break {
+    text-align: center;
+    padding: 48px 0 32px;
+    margin-top: 16px;
+    border-top: 1.5px solid var(--ink);
+  }
+
+  .step-break-eyebrow {
+    font-family: 'Jost', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--red);
+    margin-bottom: 16px;
+  }
+
+  .step-break-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.05;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-bottom: 14px;
+  }
+
+  .step-break-title em {
+    font-style: italic;
+    color: var(--red);
+    font-weight: 500;
+  }
+
+  .step-break-lede {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 17px;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    max-width: 440px;
+    margin: 0 auto;
+  }
+
   .condition-item {
     text-align: left;
   }
@@ -583,6 +628,11 @@
     .footer { flex-direction: column; align-items: flex-start; }
     .footer-mark { text-align: left; }
     .tier-price .amount { font-size: 28px; }
+
+    /* No mobile o divisor ganha mais respiro pra separar bem pacotes de jogos. */
+    .step-break { padding: 36px 0 24px; margin-top: 24px; }
+    .step-break-title { font-size: 30px; }
+    .step-break-lede { font-size: 16px; }
   }
 
   /* Print */
@@ -679,6 +729,14 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Divisor "Pacotes → Datas". Crítico no mobile, onde tudo vira scroll
+         único e sem isso o usuário não percebe que mudou de seção. -->
+    <div class="step-break">
+      <div class="step-break-eyebrow">Próximo passo</div>
+      <h2 class="step-break-title">Escolha sua <em>data</em></h2>
+      <p class="step-break-lede">Selecione o jogo e o pacote no botão. A gente confirma tudo no WhatsApp.</p>
     </div>
 
     <div class="matches">
