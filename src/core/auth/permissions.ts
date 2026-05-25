@@ -1,7 +1,20 @@
+// Sistema de permissões — baseado em AccessProfile (perfis de acesso).
+//
+// Pessoa em qualquer restaurante precisa de profileId pra ter acesso ao
+// módulo. Master ignora isso (bypass total). Sistema legado de
+// permissions[rid][moduleId].{ver,configurar} foi REMOVIDO (Rodada 5).
+//
+// canVer/canConfigurar continuam existindo como compatibilidade com pages
+// não migradas — internamente consultam o perfil via o mesmo mecanismo.
+// pessoa.permissions[rid] é derivada do perfil pelo bridge no AuthContext.
+
 import type { Pessoa, ModuleId, AccessProfile } from "../types";
 import { BUILTIN_BY_ID } from "./builtinProfiles";
 
 // Pode VER o módulo neste restaurante?
+// Implementação: pessoa.permissions[rid][moduleId] é derivada do perfil
+// pelo bridge no AuthContext. Pages legadas que ainda chamam canVer/canConfigurar
+// recebem resposta correta sem precisar refactor.
 export function canVer(pessoa: Pessoa | null, restaurantId: string, moduleId: ModuleId): boolean {
   if (!pessoa) return false;
   if (pessoa.isMaster) return true;
@@ -24,20 +37,6 @@ export function hasAnyAccess(pessoa: Pessoa | null, restaurantId: string): boole
   const perms = pessoa.permissions?.[restaurantId];
   if (!perms) return false;
   return Object.values(perms).some(p => p.ver || p.configurar);
-}
-
-// Permissão especial: pode excluir pessoas DEFINITIVAMENTE neste restaurante?
-export function canExcluirPessoa(pessoa: Pessoa | null, restaurantId: string): boolean {
-  if (!pessoa) return false;
-  if (pessoa.isMaster) return true;
-  return pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true;
-}
-
-// Permissão especial: pode reabrir mês de escala fechado?
-export function canReabrirEscala(pessoa: Pessoa | null, restaurantId: string): boolean {
-  if (!pessoa) return false;
-  if (pessoa.isMaster) return true;
-  return pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true;
 }
 
 /**
@@ -89,23 +88,8 @@ export const canUse = canVer;
 export const canConfig = canConfigurar;
 
 // ════════════════════════════════════════════════════════════════════════════
-//  SISTEMA NOVO — canAcao() granular baseado em AccessProfile.
-//
-//  Convive com o sistema antigo (canVer/canConfigurar) durante a transição.
-//  Pages migradas chamam canAcao(); pages não-migradas seguem com canVer.
-//  Pessoas sem profile atribuído caem no fallback legado (mapeamento
-//  heurístico do ver/configurar → ações específicas).
+//  canAcao() — checagem granular baseada em AccessProfile.
 // ════════════════════════════════════════════════════════════════════════════
-
-export type CanAcaoOpts = {
-  /**
-   * Quando a pessoa não tem profile e o módulo não está mapeado no fallback
-   * legado, retorna esse valor. Default: false. Útil em ações totalmente
-   * novas (que não existiam no sistema antigo) — pode forçar `true` durante
-   * dev pra não bloquear quem não migrou ainda.
-   */
-  fallbackQuandoSemMapeamento?: boolean;
-};
 
 /**
  * Resolve um perfil pelo id, com priority: built-in > custom Firestore.
@@ -130,12 +114,10 @@ export function resolverPerfil(
  *
  * Ordem de resolução:
  *   1. Master sempre permite.
- *   2. Se pessoa tem profileId pro rid → checa permissions[moduleId][actionId].
- *   3. Senão → fallback legado: mapeia algumas ações pra ver/configurar.
- *   4. Senão → opts.fallbackQuandoSemMapeamento (default false).
+ *   2. Pessoa precisa ter profileId pra esse restaurante.
+ *   3. Profile.permissions[moduleId][actionId] decide.
  *
- * `perfisCustom` é a lista carregada do Firestore. Pra evitar prop-drilling,
- * o caller normalmente vem dum hook (useAccessProfiles).
+ * Sem profile = sem permissão (não tem fallback legado mais — Rodada 5 removeu).
  */
 export function canAcao(
   pessoa: Pessoa | null,
@@ -143,34 +125,15 @@ export function canAcao(
   moduleId: string,
   actionId: string,
   perfisCustom: AccessProfile[] = [],
-  opts: CanAcaoOpts = {},
 ): boolean {
   if (!pessoa) return false;
   if (pessoa.isMaster) return true;
   if (!pessoa.restaurantIds.includes(restaurantId)) return false;
-
-  // Sistema novo: profile atribuído pra esse restaurante
   const profileId = pessoa.profileIds?.[restaurantId];
-  if (profileId) {
-    const profile = resolverPerfil(profileId, perfisCustom);
-    if (profile) {
-      return profile.permissions?.[moduleId]?.[actionId] === true;
-    }
-    // profile id existe mas não resolveu (foi deletado?) — cai no fallback
-  }
-
-  // Fallback legado: mapeia algumas ações comuns pra ver/configurar.
-  // Vai sendo apertado conforme as pages migram e built-in profiles
-  // cobrem mais. Por enquanto: ações que começam com "ver" → canVer,
-  // "configurar"/"editar"/"criar"/"deletar" → canConfigurar. Heurística.
-  const moduleAsLegacy = moduleId as ModuleId;
-  const ehLeitura = actionId.startsWith("ver") || actionId === "ler"
-    || actionId === "verPropria" || actionId === "verExtratoProprio";
-  if (ehLeitura) {
-    return canVer(pessoa, restaurantId, moduleAsLegacy);
-  }
-  return canConfigurar(pessoa, restaurantId, moduleAsLegacy)
-    || (opts.fallbackQuandoSemMapeamento ?? false);
+  if (!profileId) return false;
+  const profile = resolverPerfil(profileId, perfisCustom);
+  if (!profile) return false;
+  return profile.permissions?.[moduleId]?.[actionId] === true;
 }
 
 /**
@@ -187,14 +150,33 @@ export function canAcessarModulo(
   if (!pessoa) return false;
   if (pessoa.isMaster) return true;
   const profileId = pessoa.profileIds?.[restaurantId];
-  if (profileId) {
-    const profile = resolverPerfil(profileId, perfisCustom);
-    if (profile) {
-      const mod = profile.permissions?.[moduleId];
-      if (!mod) return false;
-      return Object.values(mod).some(v => v === true);
-    }
-  }
-  return canVer(pessoa, restaurantId, moduleId as ModuleId)
-    || canConfigurar(pessoa, restaurantId, moduleId as ModuleId);
+  if (!profileId) return false;
+  const profile = resolverPerfil(profileId, perfisCustom);
+  if (!profile) return false;
+  const mod = profile.permissions?.[moduleId];
+  if (!mod) return false;
+  return Object.values(mod).some(v => v === true);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Helpers especiais — substituem specialPermissions legado
+//
+//  Antes essas viviam em pessoa.specialPermissions. Agora vêm direto do
+//  perfil. Funções continuam pra evitar refactor em cada chamador.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Pode excluir pessoa definitivamente neste restaurante? */
+export function canExcluirPessoa(pessoa: Pessoa | null, restaurantId: string): boolean {
+  if (!pessoa) return false;
+  if (pessoa.isMaster) return true;
+  // Mantém specialPermissions como fallback enquanto bridge atualiza pessoa.
+  // O bridge mapeia profile.pessoas.excluir → specialPermissions.pessoasExcluir.
+  return pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true;
+}
+
+/** Pode reabrir mês de escala fechado neste restaurante? */
+export function canReabrirEscala(pessoa: Pessoa | null, restaurantId: string): boolean {
+  if (!pessoa) return false;
+  if (pessoa.isMaster) return true;
+  return pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true;
 }

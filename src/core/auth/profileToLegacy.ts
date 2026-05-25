@@ -24,9 +24,12 @@ import type {
 import { resolverPerfil } from "./permissions";
 
 /**
- * Aplica os perfis (profileIds) da pessoa SOBRE suas permissions legadas.
- * Pra cada rid com profileId, sobrescreve permissions[rid] e specialPermissions[rid]
- * derivadas do perfil. Sem profileId pro rid, mantém o legado original.
+ * Aplica os perfis (profileIds) da pessoa sobre suas permissions efetivas.
+ * Pra cada rid, calcula permissions[rid] e specialPermissions[rid]
+ * DERIVADAS do perfil — ignora completamente qualquer permissions legado
+ * que possa existir no doc Firestore (Rodada 5 removeu o sistema antigo).
+ *
+ * Sem profileId pro rid → pessoa fica SEM permissões nesse restaurante.
  * Master é retornado intacto (bypass via isMaster nas checks).
  */
 export function aplicarPerfisNaPessoa(
@@ -35,12 +38,11 @@ export function aplicarPerfisNaPessoa(
 ): Pessoa {
   if (pessoa.isMaster) return pessoa;
   const profileIds = pessoa.profileIds || {};
-  if (Object.keys(profileIds).length === 0) return pessoa;
 
-  const novasPermissions = { ...(pessoa.permissions || {}) };
-  const novasSpecials: Record<string, PessoaSpecialPermissions> = {
-    ...(pessoa.specialPermissions || {}),
-  };
+  // Zera permissions e specialPermissions — vão ser recalculadas só a
+  // partir do perfil. Quem não tem profileId pra um rid → sem acesso.
+  const novasPermissions: Record<string, ReturnType<typeof mapearProfilePraLegacy>> = {};
+  const novasSpecials: Record<string, PessoaSpecialPermissions> = {};
 
   for (const [rid, profileId] of Object.entries(profileIds)) {
     if (!profileId) continue;
