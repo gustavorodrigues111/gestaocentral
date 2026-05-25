@@ -5,10 +5,12 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
-import { TemplatesTab } from "./TemplatesTab";
 import { AlteracoesTab } from "./AlteracoesTab";
 
-type Tab = "pessoas" | "cargos" | "templates" | "alteracoes";
+// Tab "🎯 Templates" foi removida — templates de permissão eram do sistema
+// antigo (presets de ver/configurar pra clonar). Substituído pela Pagina
+// /perfis (master only) onde se cria perfis reutilizáveis.
+type Tab = "pessoas" | "cargos" | "alteracoes";
 
 export function PessoasPage() {
   const { pessoa: me } = useAuth();
@@ -34,7 +36,6 @@ export function PessoasPage() {
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: "pessoas",    label: "Pessoas",    icon: "👤" },
     { id: "cargos",     label: "Cargos",     icon: "🏷️" },
-    { id: "templates",  label: "Templates",  icon: "🎯" },
     { id: "alteracoes", label: "Alterações", icon: "📋" },
   ];
 
@@ -61,7 +62,6 @@ export function PessoasPage() {
 
       {tab === "pessoas"    && <PessoasList    restaurantId={rid} />}
       {tab === "cargos"     && <CargosTab      restaurantId={rid} />}
-      {tab === "templates"  && <TemplatesTab   restaurantId={rid} />}
       {tab === "alteracoes" && <AlteracoesTab  restaurantId={rid} />}
     </div>
   );

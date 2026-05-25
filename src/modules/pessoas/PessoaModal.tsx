@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -12,14 +12,13 @@ import { EmpregadoModal } from "./EmpregadoModal";
 import { InativarModal } from "./InativarModal";
 import { ReativarModal } from "./ReativarModal";
 import { ExcluirModal } from "./ExcluirModal";
-import { getModule } from "../../config/modules";
 import { logAudit } from "../../core/audit/versionedChange";
-import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa, Restaurant } from "../../core/types";
+import type { Cargo, Empregado, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { Link, useNavigate } from "react-router-dom";
 
-type Tab = "identidade" | "vinculos" | "permissoes";
+type Tab = "identidade" | "vinculos";
 
 type Props = {
   pessoa: Pessoa | null;          // null = criar nova
@@ -37,7 +36,8 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
   const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
     { id: "identidade", label: "📇 Identidade" },
     { id: "vinculos",   label: "🤝 Vínculos",   disabled: isNew },
-    { id: "permissoes", label: "🔐 Permissões", disabled: isNew },
+    // Tab "🔐 Permissões" removida — atribuição de perfil agora fica no
+    // tab Identidade, e checkboxes ver/configurar legados saíram.
   ];
 
   return (
@@ -73,7 +73,6 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
 
       {tab === "identidade" && <TabIdentidade pessoa={pessoa} restaurantId={restaurantId} onCreated={onClose} onClose={onClose} />}
       {tab === "vinculos"   && pessoa && <TabVinculos pessoa={pessoa} restaurantId={restaurantId} />}
-      {tab === "permissoes" && pessoa && <TabPermissoes pessoa={pessoa} restaurantId={restaurantId} />}
     </Modal>
   );
 }
@@ -333,6 +332,12 @@ function TabIdentidade({
         />
       </div>
 
+      {/* Atribuição de perfil de acesso — substitui a tab "🔐 Permissões"
+          antiga (checkboxes ver/configurar) que foi removida. */}
+      {!isNew && pessoa && (
+        <PerfilAcessoSection pessoa={pessoa} restaurantId={restaurantId} />
+      )}
+
       {!isNew && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
           {!isInativa ? (
@@ -536,355 +541,6 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
   );
 }
 
-// ════════════════════════════════════════════════════════════════
-// TAB 3: PERMISSÕES
-// ════════════════════════════════════════════════════════════════
-
-function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: string }) {
-  const { restaurants } = useRestaurant();
-  const activeRestaurant = restaurants.find(r => r.id === restaurantId);
-  // Filtra módulos: só os IDs que existem no registry (ignora resíduos como "equipe" antigo)
-  const modulosAtivos = useMemo(
-    () => (activeRestaurant?.modulosAtivos || []).filter(id => getModule(id)),
-    [activeRestaurant?.modulosAtivos],
-  );
-  const unidadesAtivas = (activeRestaurant?.unidades || []).filter(u => u.ativa);
-  const usaMultiUnidades = unidadesAtivas.length > 1;
-
-  const [perms, setPerms] = useState<Record<string, ModulePermission>>(
-    (pessoa.permissions?.[restaurantId] as Record<string, ModulePermission>) || {}
-  );
-  const [pessoasExcluir, setPessoasExcluir] = useState<boolean>(
-    pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true
-  );
-  const [gorjetasConfigurarRegra, setGorjetasConfigurarRegra] = useState<boolean>(
-    pessoa.specialPermissions?.[restaurantId]?.gorjetasConfigurarRegra === true
-  );
-  const [escalaReabrir, setEscalaReabrir] = useState<boolean>(
-    pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true
-  );
-  const [saving, setSaving] = useState(false);
-  const [savedAt, setSavedAt] = useState("");
-  const [erro, setErro] = useState("");
-
-  // Estado "dirty" — true se o user mexeu em algo desde o último save / abertura.
-  // Usado pra evitar resync com snapshot apagando edições locais não salvas.
-  const [dirty, setDirty] = useState(false);
-
-  // Resync com snapshot quando pessoa muda OU quando troca de restaurante,
-  // MAS só se não tem edições locais pendentes (pra não estragar UX do user).
-  useEffect(() => {
-    if (dirty) return;
-    setPerms((pessoa.permissions?.[restaurantId] as Record<string, ModulePermission>) || {});
-    setPessoasExcluir(pessoa.specialPermissions?.[restaurantId]?.pessoasExcluir === true);
-    setGorjetasConfigurarRegra(pessoa.specialPermissions?.[restaurantId]?.gorjetasConfigurarRegra === true);
-    setEscalaReabrir(pessoa.specialPermissions?.[restaurantId]?.escalaReabrir === true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pessoa.id, restaurantId, pessoa.permissions, pessoa.specialPermissions]);
-
-  // Templates do restaurante (pra o seletor "Aplicar template")
-  const [templates, setTemplates] = useState<PermissionTemplate[]>([]);
-  useEffect(() => {
-    if (!restaurantId) return;
-    const q = query(
-      collection(db, "permissionTemplates"),
-      where("restaurantId", "==", restaurantId),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as PermissionTemplate);
-      setTemplates(list.filter(t => t.ativo).sort((a, b) =>
-        (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome)
-      ));
-    });
-    return () => unsub();
-  }, [restaurantId]);
-
-  function togglePerm(moduleId: string, kind: "ver" | "configurar") {
-    setDirty(true);
-    setPerms(p => {
-      const cur = p[moduleId] || { ver: false, configurar: false };
-      const next = { ...cur, [kind]: !cur[kind] };
-      if (kind === "configurar" && next.configurar && !next.ver) next.ver = true;
-      if (kind === "ver" && !next.ver) {
-        next.configurar = false;
-        // Sem acesso → limpa escopo de unidade também
-        delete next.unidades;
-      }
-      return { ...p, [moduleId]: next };
-    });
-  }
-
-  function toggleUnidadePerm(moduleId: string, unidadeId: string) {
-    setDirty(true);
-    setPerms(p => {
-      const cur = p[moduleId] || { ver: false, configurar: false };
-      const atual = cur.unidades || [];
-      const next = { ...cur };
-      if (atual.includes(unidadeId)) {
-        const filtrado = atual.filter(u => u !== unidadeId);
-        if (filtrado.length === 0) delete next.unidades;
-        else next.unidades = filtrado;
-      } else {
-        next.unidades = [...atual, unidadeId];
-      }
-      return { ...p, [moduleId]: next };
-    });
-  }
-
-  function limparEscopoUnidade(moduleId: string) {
-    setDirty(true);
-    setPerms(p => {
-      const cur = p[moduleId];
-      if (!cur) return p;
-      const next = { ...cur };
-      delete next.unidades;
-      return { ...p, [moduleId]: next };
-    });
-  }
-
-  function aplicarTemplate(templateId: string) {
-    const t = templates.find(x => x.id === templateId);
-    if (!t) return;
-    if (!confirm(`Aplicar template "${t.nome}"? Isso SOBRESCREVE as permissões atuais.`)) return;
-    setDirty(true);
-    setPerms(t.permissions || {});
-    setPessoasExcluir(!!t.specialPermissions?.pessoasExcluir);
-    setGorjetasConfigurarRegra(!!t.specialPermissions?.gorjetasConfigurarRegra);
-    setEscalaReabrir(!!t.specialPermissions?.escalaReabrir);
-  }
-
-  async function salvar() {
-    setSaving(true);
-    setErro("");
-    try {
-      const limpo: Record<string, ModulePermission> = {};
-      Object.entries(perms).forEach(([k, v]) => {
-        if (v.ver || v.configurar) limpo[k] = v;
-      });
-      // BUG histórico: setDoc com merge: true faz DEEP MERGE nos sub-mapas, então
-      // chaves omitidas no novo `limpo` ficavam intactas no Firestore (impossível
-      // "desmarcar" uma permissão). Usar dot-notation `permissions.<rid>` faz o
-      // Firestore SUBSTITUIR o sub-mapa inteiro, mantendo outros restaurantes
-      // intactos (merge ainda funciona no top-level pros outros campos do doc).
-      const especiais = { pessoasExcluir, gorjetasConfigurarRegra, escalaReabrir };
-      await updateDoc(doc(db, "pessoas", pessoa.id), {
-        [`permissions.${restaurantId}`]: limpo,
-        [`specialPermissions.${restaurantId}`]: especiais,
-      });
-      setSavedAt(new Date().toLocaleTimeString("pt-BR"));
-      setDirty(false);
-    } catch (e) {
-      console.error("Erro ao salvar permissões:", e);
-      const msg = e instanceof Error ? e.message : String(e);
-      // Mensagem amigável pros casos mais comuns
-      if (msg.includes("permission") || msg.includes("Missing or insufficient")) {
-        setErro("Sem permissão pra editar permissões dessa pessoa. Só o master pode mexer aqui.");
-      } else if (msg.includes("not-found") || msg.includes("No document to update")) {
-        setErro("Pessoa não encontrada no banco. Feche e abra de novo.");
-      } else {
-        setErro("Erro ao salvar: " + msg);
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (modulosAtivos.length === 0) {
-    return (
-      <p className="text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-lg">
-        Nenhum módulo ativo neste restaurante. Ative módulos em Configurações antes de definir permissões.
-      </p>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {/* Sistema NOVO de Perfis de Acesso — opcional por enquanto. Se a
-          pessoa tem perfil atribuído, ele governa as ações granularmente.
-          Sem perfil, cai no sistema antigo (ver/configurar abaixo). */}
-      <PerfilAcessoSection pessoa={pessoa} restaurantId={restaurantId} />
-
-      <p className="text-xs text-gray-500 dark:text-gray-400">
-        Marca o que essa pessoa pode neste restaurante. <strong>Configurar</strong> implica <strong>Ver</strong>.
-        Sem nenhum check em todos = sem acesso a esse módulo.
-      </p>
-
-      {templates.length > 0 && (
-        <div className="flex items-center gap-2 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2">
-          <span className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">🎯 Aplicar template:</span>
-          <select
-            onChange={(e) => { if (e.target.value) { aplicarTemplate(e.target.value); e.target.value = ""; } }}
-            value=""
-            className="text-xs px-2 py-1 rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900"
-          >
-            <option value="">— escolher —</option>
-            {templates.map(t => (
-              <option key={t.id} value={t.id}>{t.nome}</option>
-            ))}
-          </select>
-          <span className="text-[10px] text-indigo-600 dark:text-indigo-400">sobrescreve o que tá marcado</span>
-        </div>
-      )}
-
-      {/* Permissões agrupadas por etapa de maturidade: Estável, Beta, Em desenvolvimento.
-          O agrupamento é só visual — não muda o que é salvo. */}
-      {(["estavel", "beta", "em_desenvolvimento"] as const).map(grupo => {
-        const modulosDoGrupo = modulosAtivos.filter(m => {
-          const mod = getModule(m as ModuleId);
-          if (!mod) return false;
-          if (grupo === "estavel") return !mod.etapa;
-          return mod.etapa === grupo;
-        });
-        if (modulosDoGrupo.length === 0) return null;
-
-        const grupoLabel = grupo === "estavel"
-          ? "Estável"
-          : grupo === "beta"
-          ? "🧪 Beta"
-          : "🚧 Em desenvolvimento";
-        const grupoDesc = grupo === "estavel"
-          ? "Funcionalidades consolidadas — comportamento previsível"
-          : grupo === "beta"
-          ? "Funcionando, mas ainda recebendo ajustes — feedback bem-vindo"
-          : "Em construção — comportamento pode mudar, bugs esperados";
-
-        return (
-          <div key={grupo} className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
-            <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-800">
-              <div className="text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-                {grupoLabel}
-              </div>
-              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{grupoDesc}</div>
-            </div>
-            <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 bg-gray-50/50 dark:bg-gray-800/30 text-xs font-semibold text-gray-600 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
-              <div>Módulo</div>
-              <div className="text-center">Ver</div>
-              <div className="text-center">Configurar</div>
-            </div>
-            {modulosDoGrupo.map(m => {
-              const mod = getModule(m as ModuleId);
-              if (!mod) return null;
-              const p = perms[m] || { ver: false, configurar: false };
-              const temAcessoNoModulo = p.ver || p.configurar;
-              const mostrarEscopo = usaMultiUnidades && temAcessoNoModulo && unidadesAtivas.length > 0;
-              const unidadesEscopoCount = p.unidades?.length || 0;
-              return (
-                <div key={m} className="border-t border-gray-100 dark:border-gray-800">
-                  <div className="grid grid-cols-[1fr_60px_80px] gap-2 px-3 py-2 items-center text-sm">
-                    <div className="text-gray-800 dark:text-gray-200 flex items-center gap-2">
-                      <span className="text-base">{mod.icon}</span>
-                      <span>{mod.label}</span>
-                    </div>
-                    <div className="text-center">
-                      <input type="checkbox" checked={p.ver} onChange={() => togglePerm(m, "ver")} />
-                    </div>
-                    <div className="text-center">
-                      <input type="checkbox" checked={p.configurar} onChange={() => togglePerm(m, "configurar")} />
-                    </div>
-                  </div>
-                  {mostrarEscopo && (
-                    <div className="px-3 pb-2 -mt-1 flex items-center gap-2 flex-wrap text-xs">
-                      <span className="text-gray-500 dark:text-gray-400">🏢 Em:</span>
-                      <button
-                        type="button"
-                        onClick={() => limparEscopoUnidade(m)}
-                        className={`px-2 py-0.5 rounded-full transition-colors ${
-                          unidadesEscopoCount === 0
-                            ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
-                            : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-                        }`}
-                        title="Permite acessar dados de todas as unidades"
-                      >
-                        Todas
-                      </button>
-                      {unidadesAtivas.map(u => {
-                        const selecionada = (p.unidades || []).includes(u.id);
-                        return (
-                          <button
-                            key={u.id}
-                            type="button"
-                            onClick={() => toggleUnidadePerm(m, u.id)}
-                            className={`px-2 py-0.5 rounded-full transition-colors ${
-                              selecionada
-                                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium"
-                                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-                            }`}
-                          >
-                            {selecionada ? "✓ " : ""}{u.nome}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        );
-      })}
-
-      <div className="border border-gray-200 dark:border-gray-800 rounded-lg p-3 bg-rose-50/30 dark:bg-rose-900/10">
-        <div className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-2">
-          Permissões especiais
-        </div>
-        <div className="space-y-2">
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={pessoasExcluir}
-              onChange={(e) => { setDirty(true); setPessoasExcluir(e.target.checked); }}
-              className="mt-0.5"
-            />
-            <span className="flex-1">
-              🗑️ Pode <strong>excluir definitivamente</strong> pessoas
-              <span className="block text-xs text-gray-500">Perigoso — só pra usuários muito confiáveis (DP master).</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={gorjetasConfigurarRegra}
-              onChange={(e) => { setDirty(true); setGorjetasConfigurarRegra(e.target.checked); }}
-              className="mt-0.5"
-            />
-            <span className="flex-1">
-              💸 Pode <strong>alterar regra de divisão de gorjeta</strong> (assembleia)
-              <span className="block text-xs text-gray-500">Mesmo se tiver "Configurar" no módulo de Gorjetas, mexer na regra exige essa permissão extra.</span>
-            </span>
-          </label>
-          <label className="flex items-start gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={escalaReabrir}
-              onChange={(e) => { setDirty(true); setEscalaReabrir(e.target.checked); }}
-              className="mt-0.5"
-            />
-            <span className="flex-1">
-              🔓 Pode <strong>reabrir mês de escala fechado</strong>
-              <span className="block text-xs text-gray-500">Reabrir afeta gorjetas/VT já calculados — operação rara.</span>
-            </span>
-          </label>
-        </div>
-      </div>
-
-      {erro && (
-        <div className="rounded-lg bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
-          ⚠️ {erro}
-        </div>
-      )}
-      {dirty && !erro && (
-        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
-          Você tem alterações não salvas. Clique em <strong>Salvar permissões</strong> abaixo.
-        </div>
-      )}
-
-      <div className="flex justify-end gap-3 items-center pt-3 border-t border-gray-200 dark:border-gray-800">
-        <span className="text-xs text-emerald-600">{savedAt && !dirty && `✓ Salvo às ${savedAt}`}</span>
-        <Button onClick={salvar} disabled={saving || !dirty}>{saving ? "..." : "Salvar permissões"}</Button>
-      </div>
-    </div>
-  );
-}
 
 // ════════════════════════════════════════════════════════════════
 // Bloco da aba Vínculos: outros restaurantes que essa Pessoa tem em
