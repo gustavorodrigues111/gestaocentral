@@ -1,0 +1,105 @@
+// Bridge entre AccessProfile (sistema novo, granular) e o sistema legado
+// (RestaurantPermissions com ver/configurar + PessoaSpecialPermissions).
+//
+// Por que existe: o sistema novo expõe ~155 ações granulares mas as ~24
+// pages atuais ainda checam canVer/canConfigurar legados. Em vez de migrar
+// cada page (refactor doloroso, error-prone), o AuthContext aplica esse
+// mapeador no momento que expõe a pessoa. Resultado:
+//
+//   profile.permissions.reservas = { criar: true, editar: true, ... }
+//                                 ↓
+//   pessoa.permissions.<rid>.reservas = { ver: true, configurar: true }
+//                                 ↓
+//   canVer(...)/canConfigurar(...) já existentes funcionam.
+//
+// Trade-off: perde granularidade nos checks legados. Quem tem profile com
+// `criar=true,editar=false` aparece como `configurar=true` (algumas pages
+// vão permitir editar mesmo bloqueado no perfil). Quando migrarmos a page
+// pra canAcao() granular, esse trade-off some.
+
+import type {
+  AccessProfile, PermissoesPerfil, Pessoa, PessoaSpecialPermissions,
+  RestaurantPermissions,
+} from "../types";
+import { resolverPerfil } from "./permissions";
+
+/**
+ * Aplica os perfis (profileIds) da pessoa SOBRE suas permissions legadas.
+ * Pra cada rid com profileId, sobrescreve permissions[rid] e specialPermissions[rid]
+ * derivadas do perfil. Sem profileId pro rid, mantém o legado original.
+ * Master é retornado intacto (bypass via isMaster nas checks).
+ */
+export function aplicarPerfisNaPessoa(
+  pessoa: Pessoa,
+  perfisCustom: AccessProfile[],
+): Pessoa {
+  if (pessoa.isMaster) return pessoa;
+  const profileIds = pessoa.profileIds || {};
+  if (Object.keys(profileIds).length === 0) return pessoa;
+
+  const novasPermissions = { ...(pessoa.permissions || {}) };
+  const novasSpecials: Record<string, PessoaSpecialPermissions> = {
+    ...(pessoa.specialPermissions || {}),
+  };
+
+  for (const [rid, profileId] of Object.entries(profileIds)) {
+    if (!profileId) continue;
+    const profile = resolverPerfil(profileId, perfisCustom);
+    if (!profile) continue;
+    novasPermissions[rid] = mapearProfilePraLegacy(profile.permissions);
+    novasSpecials[rid] = mapearProfilePraSpecial(profile.permissions);
+  }
+
+  return {
+    ...pessoa,
+    permissions: novasPermissions,
+    specialPermissions: novasSpecials,
+  };
+}
+
+// ─── Mapeamento: profile.permissions[mod][acao] → { ver, configurar } ────
+
+const ACOES_LEITURA = new Set([
+  "ver", "verPropria", "verExtratoProprio", "verLista", "verDetalhes",
+  "verCRM", "verFuturas", "verPassadas", "verTime", "verPedidos",
+  "verCiclos", "verLeads", "verCandidaturas", "verCatalogo", "verVagas",
+  "verTodas", "verLeituras", "verRelatoriosLote", "verInconformidades",
+  "verProprio", "ler", "submeter", "candidatar", "executar",
+  "compatibilidade", "estatistics", "exportar",
+]);
+
+function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions {
+  const out: RestaurantPermissions = {};
+  for (const [moduleId, acoes] of Object.entries(perms)) {
+    const ativas = Object.entries(acoes).filter(([, v]) => v === true);
+    if (ativas.length === 0) continue;
+    // ver = qualquer ação habilitada (= qualquer acesso ao módulo)
+    const hasVer = true;
+    // configurar = qualquer ação "de escrita" habilitada
+    const hasConfigurar = ativas.some(([aid]) => !ACOES_LEITURA.has(aid));
+    out[moduleId] = { ver: hasVer, configurar: hasConfigurar };
+  }
+  return out;
+}
+
+// ─── Mapeamento de specialPermissions ─────────────────────────────────────
+// Algumas ações sensíveis do sistema antigo viviam em specialPermissions.
+// Mapeamos pra delas continuarem funcionando quando rege um profile.
+
+function mapearProfilePraSpecial(perms: PermissoesPerfil): PessoaSpecialPermissions {
+  return {
+    // pessoas.excluir → pessoasExcluir
+    pessoasExcluir: perms.pessoas?.excluir === true,
+    // gorjetas.configurarRegra → gorjetasConfigurarRegra (assembleia)
+    gorjetasConfigurarRegra: perms.gorjetas?.configurarRegra === true,
+    // fechamentoEscala.reabrir → escalaReabrir
+    escalaReabrir: perms.fechamentoEscala?.reabrir === true,
+    // sites.uploadCardapio → sitesCardapio
+    sitesCardapio: perms.sites?.uploadCardapio === true,
+    // sites.editarTextos|editarContato|editarTema|uploadAssets → sitesGeral
+    sitesGeral: perms.sites?.editarTextos === true
+      || perms.sites?.editarContato === true
+      || perms.sites?.editarTema === true
+      || perms.sites?.uploadAssets === true,
+  };
+}

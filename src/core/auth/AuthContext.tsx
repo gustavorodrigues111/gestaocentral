@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
@@ -6,9 +6,11 @@ import {
   signOut as fbSignOut,
   type User as FirebaseUser,
 } from "firebase/auth";
-import { doc, getDoc, getDocs, query, collection, where, limit, updateDoc } from "firebase/firestore";
+import { doc, getDoc, getDocs, query, collection, where, limit, onSnapshot, updateDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
-import type { Pessoa } from "../types";
+import type { AccessProfile, Pessoa } from "../types";
+import { BUILTIN_PROFILES, BUILTIN_BY_ID } from "./builtinProfiles";
+import { aplicarPerfisNaPessoa } from "./profileToLegacy";
 
 type AuthState = {
   fbUser: FirebaseUser | null;
@@ -58,6 +60,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   // pessoaDocId resolvido (pode diferir de uid se a pessoa foi cadastrada com auto-id)
   const pessoaDocIdRef = useRef<string | null>(null);
+
+  // ── Perfis de Acesso — carregados aqui no Auth pra mesclar nas
+  // permissões da pessoa antes de expor às telas. Faz com que TODOS os
+  // módulos respeitem perfis via canVer/canConfigurar legados, sem precisar
+  // refactor cada page. Detalhes em profileToLegacy.ts.
+  const [perfisCustomDb, setPerfisCustomDb] = useState<AccessProfile[]>([]);
+  useEffect(() => {
+    if (!fbUser) {
+      setPerfisCustomDb([]);
+      return;
+    }
+    const unsub = onSnapshot(
+      collection(db, "accessProfiles"),
+      (snap) => {
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as AccessProfile);
+        setPerfisCustomDb(list);
+      },
+      () => { /* permission-denied silencioso — pessoa não autenticada ainda */ },
+    );
+    return () => unsub();
+  }, [fbUser]);
+
+  // Merge built-ins + DB (DB overrides built-in de mesmo id)
+  const perfisMerged = useMemo<AccessProfile[]>(() => {
+    const overrides = new Map(perfisCustomDb.map(p => [p.id, p]));
+    const out: AccessProfile[] = [];
+    for (const bi of BUILTIN_PROFILES) out.push(overrides.get(bi.id) ?? bi);
+    for (const p of perfisCustomDb) {
+      if (!BUILTIN_BY_ID[p.id]) out.push(p);
+    }
+    return out;
+  }, [perfisCustomDb]);
 
   // ── Carregar pessoa impersonada quando o id muda ──────────────────────────
   useEffect(() => {
@@ -208,7 +242,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // senão a real. isImpersonating só vale se REALMENTE temos a pessoa
   // impersonada carregada (evita flash de UI errada durante load).
   const isImpersonating = !!pessoaImpersonada && pessoaImpersonada.id !== pessoaReal?.id;
-  const pessoa = isImpersonating ? pessoaImpersonada : pessoaReal;
+  const pessoaBase = isImpersonating ? pessoaImpersonada : pessoaReal;
+
+  // Aplica os perfis de acesso sobre as permissões da pessoa. Permite TODOS
+  // os módulos (mesmo sem refactor pra canAcao granular) responderem aos
+  // perfis automaticamente via canVer/canConfigurar legados. Master é
+  // retornado intacto (bypass via isMaster).
+  const pessoa = useMemo<Pessoa | null>(() => {
+    if (!pessoaBase) return null;
+    return aplicarPerfisNaPessoa(pessoaBase, perfisMerged);
+  }, [pessoaBase, perfisMerged]);
 
   return (
     <AuthCtx.Provider value={{
