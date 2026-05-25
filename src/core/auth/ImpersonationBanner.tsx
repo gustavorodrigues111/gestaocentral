@@ -17,8 +17,12 @@ export function ImpersonationBanner() {
   if (!isImpersonating || !pessoa || !pessoaReal) return null;
 
   return (
+    // Sem sticky/z-index — o AppShell coloca esse banner no flow normal
+    // ACIMA da sidebar + header. Assim a sidebar abre abaixo dele sem
+    // sobreposição. Banner já sempre fica visível porque o shell é
+    // h-screen flex-col (não rola).
     <div
-      className="sticky top-0 z-[60] bg-amber-500 text-white shadow-md"
+      className="bg-amber-500 text-white shadow-md shrink-0"
       role="alert"
     >
       <div className="max-w-screen-2xl mx-auto px-2 sm:px-4 py-1 sm:py-1.5 flex items-center gap-2">

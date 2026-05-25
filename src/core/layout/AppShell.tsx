@@ -25,14 +25,20 @@ export function AppShell({ children }: { children?: ReactNode }) {
     // scrolls independentes. Sem isso, conteúdo longo empurrava a página
     // inteira pra baixo e a sidebar acompanhava — perdia a referência
     // de menu fixo. Em telas curtas a sidebar mesmo rola interna.
-    <div className="h-screen overflow-hidden flex bg-gray-50 dark:bg-gray-950">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <ImpersonationBanner />
-        <Header onToggleSidebar={() => setSidebarOpen(s => !s)} />
-        <main className="flex-1 overflow-auto p-6">
-          {children || <Outlet />}
-        </main>
+    //
+    // ImpersonationBanner fica no TOPO ABSOLUTO do shell (acima de
+    // sidebar + header), pra não sobrepor a navegação quando master tá
+    // visualizando como outra pessoa. Sidebar abre ABAIXO dele.
+    <div className="h-screen overflow-hidden flex flex-col bg-gray-50 dark:bg-gray-950">
+      <ImpersonationBanner />
+      <div className="flex-1 flex min-h-0">
+        <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <Header onToggleSidebar={() => setSidebarOpen(s => !s)} />
+          <main className="flex-1 overflow-auto p-6">
+            {children || <Outlet />}
+          </main>
+        </div>
       </div>
     </div>
   );
