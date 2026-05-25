@@ -428,19 +428,28 @@ export function VTPage() {
     const motivo = prompt("Motivo da reabertura:");
     if (motivo === null) return;
     const now = new Date().toISOString();
-    const evento: VTLoteEvento = { acao: "reaberto", em: now, por: me.id, porNome: me.nome, motivo: motivo || undefined };
-    await updateDoc(doc(db, "vtLotes", lote.id), {
-      status: "rascunho",
-      pagoEm: null,
-      pagoPor: null,
-      pagoPorNome: null,
-      canceladoEm: null,
-      canceladoPor: null,
-      canceladoPorNome: null,
-      motivoCancelamento: "",
-      historico: [...(lote.historico || []), evento],
-      updatedAt: now,
-    });
+    // Não usar `undefined` em objeto que vai pro Firestore — só inclui motivo
+    // quando tem texto. Se vier vazio, omite o campo.
+    const evento: VTLoteEvento = motivo.trim()
+      ? { acao: "reaberto", em: now, por: me.id, porNome: me.nome, motivo: motivo.trim() }
+      : { acao: "reaberto", em: now, por: me.id, porNome: me.nome };
+    try {
+      await updateDoc(doc(db, "vtLotes", lote.id), {
+        status: "rascunho",
+        pagoEm: null,
+        pagoPor: null,
+        pagoPorNome: null,
+        canceladoEm: null,
+        canceladoPor: null,
+        canceladoPorNome: null,
+        motivoCancelamento: "",
+        historico: [...(lote.historico || []), evento],
+        updatedAt: now,
+      });
+    } catch (e) {
+      console.error("[reabrirLote]", e);
+      alert(`Erro ao reabrir lote: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // Cancelar lote — só master
@@ -450,16 +459,23 @@ export function VTPage() {
     const motivo = prompt("Motivo do cancelamento:");
     if (motivo === null) return;
     const now = new Date().toISOString();
-    const evento: VTLoteEvento = { acao: "cancelado", em: now, por: me.id, porNome: me.nome, motivo: motivo || undefined };
-    await updateDoc(doc(db, "vtLotes", lote.id), {
-      status: "cancelado",
-      canceladoEm: now,
-      canceladoPor: me.id,
-      canceladoPorNome: me.nome,
-      motivoCancelamento: motivo || "",
-      historico: [...(lote.historico || []), evento],
-      updatedAt: now,
-    });
+    const evento: VTLoteEvento = motivo.trim()
+      ? { acao: "cancelado", em: now, por: me.id, porNome: me.nome, motivo: motivo.trim() }
+      : { acao: "cancelado", em: now, por: me.id, porNome: me.nome };
+    try {
+      await updateDoc(doc(db, "vtLotes", lote.id), {
+        status: "cancelado",
+        canceladoEm: now,
+        canceladoPor: me.id,
+        canceladoPorNome: me.nome,
+        motivoCancelamento: motivo.trim() || "",
+        historico: [...(lote.historico || []), evento],
+        updatedAt: now,
+      });
+    } catch (e) {
+      console.error("[cancelarLote]", e);
+      alert(`Erro ao cancelar lote: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // ─── Edição de linhas DENTRO DE UM LOTE EM RASCUNHO ────────────────────────

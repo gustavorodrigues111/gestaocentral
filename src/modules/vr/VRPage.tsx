@@ -191,16 +191,23 @@ export function VRPage() {
     const motivo = prompt("Motivo do cancelamento do lote VR:");
     if (motivo === null) return;
     const nowIso = new Date().toISOString();
-    const evento: VRLoteEvento = { acao: "cancelado", em: nowIso, por: me.id, porNome: me.nome, motivo: motivo || "" };
-    await updateDoc(doc(db, "vrLotes", lote.id), {
-      status: "cancelado",
-      canceladoEm: nowIso,
-      canceladoPor: me.id,
-      canceladoPorNome: me.nome,
-      motivoCancelamento: motivo || "",
-      historico: [...(lote.historico || []), evento],
-      updatedAt: nowIso,
-    });
+    const evento: VRLoteEvento = motivo.trim()
+      ? { acao: "cancelado", em: nowIso, por: me.id, porNome: me.nome, motivo: motivo.trim() }
+      : { acao: "cancelado", em: nowIso, por: me.id, porNome: me.nome };
+    try {
+      await updateDoc(doc(db, "vrLotes", lote.id), {
+        status: "cancelado",
+        canceladoEm: nowIso,
+        canceladoPor: me.id,
+        canceladoPorNome: me.nome,
+        motivoCancelamento: motivo.trim() || "",
+        historico: [...(lote.historico || []), evento],
+        updatedAt: nowIso,
+      });
+    } catch (e) {
+      console.error("[VR cancelarLote]", e);
+      alert(`Erro ao cancelar lote: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   async function reabrirLote(lote: VRLote) {
@@ -209,14 +216,19 @@ export function VRPage() {
     if (!ok) return;
     const nowIso = new Date().toISOString();
     const evento: VRLoteEvento = { acao: "reaberto", em: nowIso, por: me.id, porNome: me.nome };
-    await updateDoc(doc(db, "vrLotes", lote.id), {
-      status: "rascunho",
-      pagoEm: null,
-      pagoPor: null,
-      pagoPorNome: null,
-      historico: [...(lote.historico || []), evento],
-      updatedAt: nowIso,
-    });
+    try {
+      await updateDoc(doc(db, "vrLotes", lote.id), {
+        status: "rascunho",
+        pagoEm: null,
+        pagoPor: null,
+        pagoPorNome: null,
+        historico: [...(lote.historico || []), evento],
+        updatedAt: nowIso,
+      });
+    } catch (e) {
+      console.error("[VR reabrirLote]", e);
+      alert(`Erro ao reabrir lote: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   // ─── Edição inline de linha (só rascunho) ─────────────────────────────────
