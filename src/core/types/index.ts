@@ -1640,9 +1640,9 @@ export type FreelaPagamentoResumoPessoa = {
   pessoaId?: string | null;
   empregadoId?: string | null;
   nome: string;
-  pix?: string;
-  cpf?: string;
-  whatsapp?: string;
+  pix?: string | null;
+  cpf?: string | null;
+  whatsapp?: string | null;
   qtdShifts: number;
   totalHoras: number;
   totalValor: number;

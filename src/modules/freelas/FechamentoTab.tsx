@@ -89,13 +89,15 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: 
       const resumoMap = new Map<string, FreelaPagamentoResumoPessoa>();
       for (const s of selecShifts) {
         const key = s.pessoaId ? `pes:${s.pessoaId}` : s.empregadoId ? `emp:${s.empregadoId}` : `nome:${s.nomeSnapshot}`;
+        // IMPORTANTE: Firestore rejeita undefined nos campos. Usa null no
+        // lugar (cpf/pix/whatsapp podem faltar pra shifts antigos sem snapshot).
         const r = resumoMap.get(key) || {
           pessoaId: s.pessoaId || null,
           empregadoId: s.empregadoId || null,
           nome: s.nomeSnapshot,
-          pix: s.pixSnapshot,
-          cpf: s.cpfSnapshot,
-          whatsapp: s.whatsappSnapshot,
+          pix: s.pixSnapshot ?? null,
+          cpf: s.cpfSnapshot ?? null,
+          whatsapp: s.whatsappSnapshot ?? null,
           qtdShifts: 0, totalHoras: 0, totalValor: 0,
         };
         r.qtdShifts += 1;
@@ -138,8 +140,8 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: 
       setObs("");
       alert(`Lote ${numero} criado.`);
     } catch (e) {
-      console.error(e);
-      alert("Erro ao gerar lote.");
+      console.error("[gerarLote]", e);
+      alert(`Erro ao gerar lote: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setSalvando(false);
     }
