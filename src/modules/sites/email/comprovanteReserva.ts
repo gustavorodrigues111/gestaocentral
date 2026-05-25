@@ -1,7 +1,11 @@
-// Email de comprovante da reserva, enviado imediatamente após o cliente
-// submeter o form público. NÃO é a confirmação (essa é outra etapa, feita
-// pelo admin por WhatsApp ~2h antes). Esse aqui é só o "recibo" que o
-// cliente tem como garantia/registro.
+// Email de CONFIRMAÇÃO da reserva, enviado imediatamente após o cliente
+// submeter o form público. A reserva já é considerada confirmada — esse
+// email é o registro/comprovante.
+//
+// Nota sobre o "WhatsApp no dia": o restaurante pode (opcionalmente)
+// reconfirmar presença pelo WhatsApp algumas horas antes da reserva, pra
+// reduzir no-show. Isso é uma cortesia da casa, não um "vamos confirmar SE
+// está confirmada". O email deixa isso claro pro cliente.
 //
 // IMPLEMENTAÇÃO: chama /api/send-email (Vercel route) que dispara via Resend.
 // A escolha por Resend (não Firebase Extension) está documentada em
@@ -40,12 +44,22 @@ export type EmailComprovanteReserva = {
 export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReserva {
   const dataLegivel = formatarDataExtensa(args.data);
   const restNome = args.restauranteNome;
-  const subject = `Recebemos sua reserva no ${restNome} — ${dataLegivel}, ${args.horario}`;
+  const subject = `Reserva confirmada no ${restNome} — ${dataLegivel}, ${args.horario}`;
 
   const corPrimaria = args.siteConfig.tema?.corPrimaria || "#1a5c2a";
   const corFundo = args.siteConfig.tema?.corFundo || "#f7f3e9";
   const enderecoLinhas = montarEnderecoLinhas(args.siteConfig);
   const telefoneFmt = args.siteConfig.telefone ? formatarTelefonePtBR(args.siteConfig.telefone) : "";
+
+  // Links de ação: WhatsApp pré-preenchido com os dados da reserva. Sem
+  // telefone configurado, não renderiza os botões (não tem pra onde mandar).
+  const waLinkAlterar = montarWaLink(args.siteConfig.telefone, restNome, "alterar", {
+    dataLegivel, horario: args.horario, pessoas: args.pessoas, nome: args.nomeDestinatario,
+  });
+  const waLinkCancelar = montarWaLink(args.siteConfig.telefone, restNome, "cancelar", {
+    dataLegivel, horario: args.horario, pessoas: args.pessoas, nome: args.nomeDestinatario,
+  });
+  const temBotoes = !!waLinkAlterar && !!waLinkCancelar;
 
   // HTML estilizado inline — clientes de email não aceitam <style> tags.
   // Estrutura: header colorido + bloco dados + observações + footer.
@@ -62,7 +76,7 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
     <!-- Header -->
     <div style="background-color:${corPrimaria};padding:32px 24px;border-radius:12px 12px 0 0;text-align:center;color:#fff;">
       <div style="font-size:14px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;">${escapeHtml(restNome)}</div>
-      <div style="font-size:24px;font-weight:700;margin-top:8px;">Recebemos sua reserva</div>
+      <div style="font-size:24px;font-weight:700;margin-top:8px;">✓ Reserva confirmada</div>
     </div>
 
     <!-- Corpo -->
@@ -71,9 +85,7 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
         Olá <strong>${escapeHtml(args.nomeDestinatario)}</strong>,
       </p>
       <p style="margin:0 0 24px 0;font-size:15px;line-height:1.6;">
-        Este é o comprovante da sua reserva no <strong>${escapeHtml(restNome)}</strong>.
-        Em breve confirmaremos pelo WhatsApp se a reserva está confirmada — esse
-        email é só o registro inicial.
+        Sua reserva no <strong>${escapeHtml(restNome)}</strong> está <strong style="color:${corPrimaria};">confirmada</strong>. Te esperamos!
       </p>
 
       <!-- Detalhes -->
@@ -110,9 +122,27 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
         <div style="font-size:14px;line-height:1.5;color:#444;">${escapeHtml(args.observacoes)}</div>
       </div>` : ""}
 
-      <!-- Status -->
-      <div style="border-left:3px solid ${corPrimaria};padding:10px 14px;background-color:${corPrimaria}10;border-radius:4px;font-size:13px;color:#444;margin-bottom:24px;">
-        <strong>Status:</strong> aguardando confirmação. Te avisamos pelo WhatsApp algumas horas antes pra confirmar.
+      ${temBotoes ? `
+      <!-- Botões de ação: Alterar / Cancelar via WhatsApp -->
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;color:#666;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px;">Precisa mudar alguma coisa?</div>
+        <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%;">
+          <tr>
+            <td style="padding-right:6px;width:50%;">
+              <a href="${waLinkAlterar}" style="display:block;text-align:center;padding:12px 16px;background-color:${corPrimaria};color:${corFundo};text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;">✎ Alterar</a>
+            </td>
+            <td style="padding-left:6px;width:50%;">
+              <a href="${waLinkCancelar}" style="display:block;text-align:center;padding:12px 16px;background-color:#fff;color:#c44;text-decoration:none;font-size:14px;font-weight:600;border-radius:6px;border:1.5px solid #c44;">✕ Cancelar</a>
+            </td>
+          </tr>
+        </table>
+        <div style="font-size:11px;color:#999;margin-top:8px;text-align:center;">Os botões abrem o WhatsApp do restaurante.</div>
+      </div>` : ""}
+
+      <!-- Nota sobre WhatsApp opcional do restaurante -->
+      <div style="border-left:3px solid ${corPrimaria};padding:10px 14px;background-color:${corPrimaria}10;border-radius:4px;font-size:13px;color:#444;margin-bottom:24px;line-height:1.5;">
+        Algumas vezes entramos em contato pelo WhatsApp no dia da reserva
+        pra reconfirmar sua presença — fica de olho!
       </div>
 
       <!-- Contato/endereço -->
@@ -124,8 +154,7 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
 
     <!-- Footer -->
     <div style="text-align:center;padding:16px;font-size:11px;color:#999;">
-      Esse email é só um comprovante automático. Pra alterar ou cancelar a reserva,
-      ${telefoneFmt ? `fale com a gente pelo WhatsApp` : `entre em contato pelo site`}.
+      Esse email é um comprovante automático da sua reserva.
     </div>
   </div>
 </body>
@@ -133,12 +162,11 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
 
   // Versão texto puro pra clientes que bloqueiam HTML
   const text = [
-    `${restNome} — Recebemos sua reserva`,
+    `${restNome} — Reserva confirmada ✓`,
     "",
     `Olá ${args.nomeDestinatario},`,
     "",
-    `Este é o comprovante da sua reserva no ${restNome}.`,
-    `Em breve confirmaremos pelo WhatsApp.`,
+    `Sua reserva no ${restNome} está confirmada. Te esperamos!`,
     "",
     `Data: ${dataLegivel}`,
     `Horário: ${args.horario}`,
@@ -147,7 +175,10 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
     args.ocasiao ? `Ocasião: ${args.ocasiao}` : "",
     args.observacoes ? `Observações: ${args.observacoes}` : "",
     "",
-    "Status: aguardando confirmação",
+    temBotoes ? `Pra alterar: ${waLinkAlterar}` : "",
+    temBotoes ? `Pra cancelar: ${waLinkCancelar}` : "",
+    temBotoes ? "" : "",
+    "Algumas vezes entramos em contato pelo WhatsApp no dia da reserva pra reconfirmar sua presença.",
     "",
     enderecoLinhas ? enderecoLinhas.replace(/<br>/g, "\n") : "",
     telefoneFmt ? `Telefone: ${telefoneFmt}` : "",
@@ -195,6 +226,36 @@ export async function enviarEmailComprovanteReserva(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "erro de rede" };
   }
+}
+
+// Monta link wa.me pré-preenchido pra alterar ou cancelar reserva. Retorna
+// "" se não houver telefone configurado — caller checa antes de renderizar.
+// DDI 55 é adicionado se número for BR (10/11 dígitos). Texto inclui dados
+// da reserva pra atendente já saber qual é sem perguntar.
+function montarWaLink(
+  telefone: string | undefined,
+  restNome: string,
+  acao: "alterar" | "cancelar",
+  ctx: { dataLegivel: string; horario: string; pessoas: number; nome: string },
+): string {
+  if (!telefone) return "";
+  let d = telefone.replace(/\D/g, "");
+  if (!d) return "";
+  // Normaliza pra E.164 BR (55 + 10 ou 11 dígitos)
+  if (d.length === 10 || d.length === 11) d = "55" + d;
+  if (d.length < 12) return "";
+
+  const verbo = acao === "alterar" ? "alterar" : "cancelar";
+  const linhas = [
+    `Olá! Quero ${verbo} minha reserva no ${restNome}.`,
+    "",
+    `Reserva no nome de ${ctx.nome}:`,
+    `📅 ${ctx.dataLegivel}`,
+    `⏰ ${ctx.horario}`,
+    `👥 ${ctx.pessoas} ${ctx.pessoas === 1 ? "pessoa" : "pessoas"}`,
+  ];
+  const texto = linhas.join("\n");
+  return `https://wa.me/${d}?text=${encodeURIComponent(texto)}`;
 }
 
 // Dom 25 de maio de 2026
