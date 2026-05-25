@@ -365,6 +365,48 @@
     color: var(--bg);
   }
 
+  /* Estado "data reservada" — jogo inteiro indisponível.
+     Aplicado em JS quando a data do card está em RESERVADOS no script. */
+  .match--sold {
+    background: rgba(26, 22, 18, 0.04);
+    border-style: dashed;
+  }
+
+  .match--sold .match-day,
+  .match--sold .match-date,
+  .match--sold .match-time,
+  .match--sold .match-teams {
+    opacity: 0.45;
+  }
+
+  .match-sold-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: auto;
+    padding: 14px 12px;
+    border-top: 1px solid var(--rule);
+    font-family: 'Jost', sans-serif;
+    font-weight: 700;
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--red);
+    text-align: center;
+  }
+
+  .match-sold-badge small {
+    display: block;
+    margin-top: 6px;
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--ink-soft);
+  }
+
   .condition-item {
     text-align: left;
   }
@@ -584,6 +626,15 @@
   </div>
 
   <script>
+    // -------------------------------------------------------------------
+    // DATAS JÁ RESERVADAS — quando o Gustavo me avisar que uma data fechou,
+    // basta adicionar a string aqui (formato 'DD/MM') e fazer push. O card
+    // do jogo fica em estado "RESERVADO" e os botões de pacote somem.
+    //
+    // Exemplo: var RESERVADOS = ['13/06'];   // bloqueia o jogo do dia 13/06
+    // -------------------------------------------------------------------
+    var RESERVADOS = [];
+
     // Hidrata os links de cada botão de pacote com a mensagem do WhatsApp
     // pré-preenchida (data + jogo + pacote). Evita duplicar 9 URLs no HTML.
     (function () {
@@ -593,10 +644,25 @@
         comidas: 'Espaço exclusivo com comidas inclusas, bebidas à parte (R$ 200/pessoa)',
         tudo:    'Tudo incluso — comidas e bebidas (R$ 480/pessoa)'
       };
+
       document.querySelectorAll('.match').forEach(function (m) {
         var date  = m.dataset.date;
         var time  = m.dataset.time;
         var teams = m.dataset.teams;
+
+        // Data reservada → marca o card e remove os botões.
+        if (RESERVADOS.indexOf(date) !== -1) {
+          m.classList.add('match--sold');
+          var pkgs = m.querySelector('.match-packages');
+          if (pkgs) {
+            var badge = document.createElement('div');
+            badge.className = 'match-sold-badge';
+            badge.innerHTML = 'Reservado<small>Outras datas disponíveis abaixo</small>';
+            pkgs.parentNode.replaceChild(badge, pkgs);
+          }
+          return;
+        }
+
         m.querySelectorAll('.pkg-btn').forEach(function (btn) {
           var pkg = PACOTES[btn.dataset.pkg] || '';
           var msg = 'Olá! Tenho interesse no pacote ' + pkg +
