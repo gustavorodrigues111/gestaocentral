@@ -936,12 +936,16 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
   onChange: (campo: keyof TemaSite, v: number) => void;
   disabled?: boolean;
 }) {
-  // Defaults pra cada escala. Se escalaCorpo undefined mas escalaTexto
-  // setado (config antiga), usa o antigo como display inicial.
+  // Defaults — campos novos têm fallback pros legados pra preservar o
+  // efeito visual de configs pré-feature:
+  //   escalaCorpo                  ← escalaTexto (config muito antiga)
+  //   escalaMenuDesktop/Mobile/Botoes ← escalaPequenos (config intermediária)
   const valHero = tema.escalaHero ?? 1;
   const valTitulos = tema.escalaTitulos ?? 1;
   const valCorpo = tema.escalaCorpo ?? tema.escalaTexto ?? 1;
-  const valPequenos = tema.escalaPequenos ?? 1;
+  const valMenuDesktop = tema.escalaMenuDesktop ?? tema.escalaPequenos ?? 1;
+  const valMenuMobile = tema.escalaMenuMobile ?? tema.escalaPequenos ?? 1;
+  const valBotoes = tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
 
   return (
     <div className="space-y-3">
@@ -950,8 +954,8 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
           Tamanhos das fontes
         </label>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          4 categorias independentes — útil pra balancear quando uma fonte
-          fica pequena/grande em algum nível. <strong>100%</strong> = padrão do template.
+          6 categorias independentes — balanceia quando uma fonte fica
+          pequena/grande em algum nível. <strong>100%</strong> = padrão do template.
         </p>
       </div>
       <SliderEscala
@@ -974,16 +978,30 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
         value={valCorpo}
         onChange={(v) => {
           onChange("escalaCorpo", v);
-          // Limpa o campo legado pra evitar 2 fontes de verdade
+          // Limpa o campo legado muito antigo pra evitar 2 fontes da verdade
           if (tema.escalaTexto !== undefined) onChange("escalaTexto", 1);
         }}
         disabled={disabled}
       />
       <SliderEscala
-        label="Botões e navegação"
-        descricao="Menu, CTAs, footer, labels"
-        value={valPequenos}
-        onChange={(v) => onChange("escalaPequenos", v)}
+        label="Menu desktop"
+        descricao="Nav superior (Sobre, Cardápio, …) + redes do footer"
+        value={valMenuDesktop}
+        onChange={(v) => onChange("escalaMenuDesktop", v)}
+        disabled={disabled}
+      />
+      <SliderEscala
+        label="Menu mobile"
+        descricao="Itens do menu hamburguer no celular"
+        value={valMenuMobile}
+        onChange={(v) => onChange("escalaMenuMobile", v)}
+        disabled={disabled}
+      />
+      <SliderEscala
+        label="Botões"
+        descricao="CTAs (Reservar, Solicitar, iFood, …)"
+        value={valBotoes}
+        onChange={(v) => onChange("escalaBotoes", v)}
         disabled={disabled}
       />
     </div>

@@ -37,27 +37,35 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
   const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
 
-  // Escalas tipográficas — 4 categorias independentes. Multiplicam os
+  // Escalas tipográficas — 6 categorias independentes. Multiplicam os
   // tamanhos base. Clamp em [0.85, 1.40] pra não desfigurar layout.
-  //   escalaHero      → Hero h1 (titulão do topo)
-  //   escalaTitulos   → Títulos de seção (h2)
-  //   escalaCorpo     → Parágrafos, descrições
-  //   escalaPequenos  → Botões, nav, labels, footer
-  // Backward compat: campo antigo `escalaTexto` mexia só em alguns textos
-  // de corpo — vira fallback pra escalaCorpo quando não setada explícita.
-  const clampEscala = (v: number | undefined) =>
-    Math.min(1.40, Math.max(0.85, v || 1));
+  //   escalaHero          → Hero h1 (titulão do topo)
+  //   escalaTitulos       → Títulos de seção (h2)
+  //   escalaCorpo         → Parágrafos, descrições
+  //   escalaMenuDesktop   → Nav superior + footer social
+  //   escalaMenuMobile    → Menu hamburguer
+  //   escalaBotoes        → CTAs (Reservar, etc)
+  // Backward compat:
+  //   - `escalaTexto` (config muito antiga) → fallback pra escalaCorpo
+  //   - `escalaPequenos` (config pré-separação) → fallback pros 3 menores
+  const clampEscala = (v: number | undefined, fallback?: number) =>
+    Math.min(1.40, Math.max(0.85, v ?? fallback ?? 1));
+  const legadoPequenos = cfg.tema.escalaPequenos; // raw, sem default
   const escalaHero = clampEscala(cfg.tema.escalaHero);
   const escalaTitulos = clampEscala(cfg.tema.escalaTitulos);
   const escalaCorpo = clampEscala(cfg.tema.escalaCorpo ?? cfg.tema.escalaTexto);
-  const escalaPequenos = clampEscala(cfg.tema.escalaPequenos);
+  const escalaMenuDesktop = clampEscala(cfg.tema.escalaMenuDesktop, legadoPequenos);
+  const escalaMenuMobile = clampEscala(cfg.tema.escalaMenuMobile, legadoPequenos);
+  const escalaBotoes = clampEscala(cfg.tema.escalaBotoes, legadoPequenos);
 
   // Helpers — converte um tamanho base (em px) pro escalado, arredondado.
   // Pras escalas Hero e Títulos, o uso predominante é via clamp() — usadas
   // diretamente nas chamadas a clampEscalado() abaixo (sem helper extra).
   // `tx` é alias de txCorpo pra retrocompat de chamadas antigas no template.
   const txCorpo = (px: number) => Math.round(px * escalaCorpo);
-  const txPequeno = (px: number) => Math.round(px * escalaPequenos);
+  const txMenuDesktop = (px: number) => Math.round(px * escalaMenuDesktop);
+  const txMenuMobile = (px: number) => Math.round(px * escalaMenuMobile);
+  const txBotao = (px: number) => Math.round(px * escalaBotoes);
   const tx = txCorpo;
 
   // Pra clamp() do CSS — escala cada componente em px (ignora vw, que é
@@ -290,7 +298,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             return (
               <nav style={{
                 display: "flex", gap: 4,
-                fontSize: txPequeno(14), fontWeight: 500,
+                fontSize: txMenuDesktop(14), fontWeight: 500,
                 backgroundColor: chipBg,
                 backdropFilter: chipBlur,
                 border: chipBorder,
@@ -922,7 +930,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
               {redesFooter.map((r, i) => (
                 <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                   style={{ color: corFundo, textDecoration: "none", fontSize: txPequeno(14) }}>
+                   style={{ color: corFundo, textDecoration: "none", fontSize: txMenuDesktop(14) }}>
                   {iconRede(r.tipo)} {labelRede(r.tipo, r.label)}
                 </a>
               ))}
@@ -989,9 +997,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     return (
       <a href={href} style={{
         color: cor ?? corTexto, textDecoration: "none",
-        // Escala "Botões e navegação" — esse é o controle principal do
-        // tamanho do menu superior.
-        fontSize: txPequeno(14), fontWeight: 500,
+        // Escala "Menu desktop" — controla tamanho do nav superior.
+        fontSize: txMenuDesktop(14), fontWeight: 500,
         padding: "4px 10px",
         borderRadius: 999,
         transition: "color 0.25s ease, background-color 0.15s ease",
@@ -1016,9 +1023,10 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         style={{
           color: cor,
           textDecoration: "none",
-          // Mesma escala do NavLink — menu hamburguer e nav superior
-          // respondem juntos ao slider "Botões e navegação".
-          fontSize: txPequeno(16),
+          // Escala "Menu mobile" — separada do NavLink desktop pra permitir
+          // ajuste independente (hambúrguer ocupa mais espaço, fonte maior
+          // costuma fazer sentido em mobile).
+          fontSize: txMenuMobile(16),
           fontWeight: 500,
           padding: "14px 20px",
           borderBottom: `1px solid ${corBorda}20`,
@@ -1061,7 +1069,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       // Dourado tem brilho — texto preto contrasta melhor. Outras cores, fundo claro.
       color: cor === corSecundaria ? "#1a1a1a" : corFundo,
       textDecoration: "none",
-      fontSize: txPequeno(15),
+      fontSize: txBotao(15),
       fontWeight: 600,
       borderRadius: 4,
       border: "none",
@@ -1079,7 +1087,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: fundo,
       color: cor,
       textDecoration: "none",
-      fontSize: txPequeno(15),
+      fontSize: txBotao(15),
       fontWeight: 600,
       border: `2px solid ${cor}`,
       borderRadius: 4,

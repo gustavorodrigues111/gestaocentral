@@ -2263,18 +2263,26 @@ export type TemaSite = {
   // grande demais (algumas display fonts), sem mexer em cada font-size.
   //
   // Aplicação no template:
-  //   escalaHero      → Hero h1 (o titulão do topo)
-  //   escalaTitulos   → Títulos de seção (h2: "História", "Cardápio", etc)
-  //   escalaCorpo     → Parágrafos, descrições, subtítulos
-  //   escalaPequenos  → Botões, navegação, labels, footer
+  //   escalaHero          → Hero h1 (o titulão do topo)
+  //   escalaTitulos       → Títulos de seção (h2: História, Cardápio, etc)
+  //   escalaCorpo         → Parágrafos, descrições, subtítulos
+  //   escalaMenuDesktop   → Nav superior (desktop) + redes sociais footer
+  //   escalaMenuMobile    → Menu hamburguer (mobile)
+  //   escalaBotoes        → CTAs (Reservar, Solicitar proposta, iFood, etc)
   //
-  // Backward compat: `escalaTexto` (campo antigo, mexia só em alguns textos
-  // de corpo) é lido como fallback pra escalaCorpo se essa não tiver setada.
+  // Backward compat:
+  //   - `escalaTexto` (config muito antiga) → fallback pra escalaCorpo
+  //   - `escalaPequenos` (config intermediária, antes da separação menu/botões)
+  //     → fallback pros 3 campos novos (menuDesktop, menuMobile, botoes)
   escalaHero?: number;
   escalaTitulos?: number;
   escalaCorpo?: number;
+  escalaMenuDesktop?: number;
+  escalaMenuMobile?: number;
+  escalaBotoes?: number;
+  /** @deprecated Use escalaMenuDesktop/Mobile + escalaBotoes. Mantido pra retrocompat. */
   escalaPequenos?: number;
-  /** @deprecated Use escalaCorpo. Mantido só pra retrocompat de configs antigas. */
+  /** @deprecated Use escalaCorpo. Mantido só pra retrocompat de configs muito antigas. */
   escalaTexto?: number;
   raioBorda?: string;                // "8px"
 };
