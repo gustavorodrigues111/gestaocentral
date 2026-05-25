@@ -76,15 +76,40 @@ const ACOES_LEITURA = new Set([
   "compatibilidade", "estatistics", "exportar",
 ]);
 
+// Ações específicas que são SELF-SERVICE: quando a pessoa só tem essas
+// num módulo, ela NÃO deve abrir a tela admin do módulo — ela tem o
+// "Meu Portal" pra ver seus próprios dados. Por isso essas ações NÃO
+// contam pra "ver legado" — `canVer` fica false e a página de gestão
+// bloqueia/redireciona. O Meu Portal tem suas próprias checagens
+// (independente do legado).
+//
+// Indexado por moduleId pra distinguir "verPropria" de escala (self) de
+// "verPropria" de trilha (que não está em self-service hoje).
+const ACOES_SELF_SERVICE: Record<string, Set<string>> = {
+  escala:   new Set(["verPropria"]),
+  gorjetas: new Set(["verExtratoProprio"]),
+  vt:       new Set(["verProprio"]),
+  reunioes: new Set(["verPropria"]),
+};
+
 function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions {
   const out: RestaurantPermissions = {};
   for (const [moduleId, acoes] of Object.entries(perms)) {
     const ativas = Object.entries(acoes).filter(([, v]) => v === true);
     if (ativas.length === 0) continue;
-    // ver = qualquer ação habilitada (= qualquer acesso ao módulo)
+
+    // Filtra ações self-service: NÃO contam pra abrir tela admin desse módulo
+    // (a pessoa vê seus dados no Meu Portal, não na tela de gestão).
+    const selfServiceDoModulo = ACOES_SELF_SERVICE[moduleId];
+    const ativasNaoSelf = selfServiceDoModulo
+      ? ativas.filter(([aid]) => !selfServiceDoModulo.has(aid))
+      : ativas;
+    if (ativasNaoSelf.length === 0) continue;  // só self-service -> não entra na tela admin
+
+    // ver = qualquer ação NÃO-self-service habilitada
     const hasVer = true;
     // configurar = qualquer ação "de escrita" habilitada
-    const hasConfigurar = ativas.some(([aid]) => !ACOES_LEITURA.has(aid));
+    const hasConfigurar = ativasNaoSelf.some(([aid]) => !ACOES_LEITURA.has(aid));
     out[moduleId] = { ver: hasVer, configurar: hasConfigurar };
   }
   return out;

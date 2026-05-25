@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -29,6 +30,15 @@ export function GorjetasPage() {
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "gorjetas");
   const podeConfig = canConfig(me, rid, "gorjetas");
+  // Esta tela é GESTÃO de gorjetas (lançamentos diários, divisão do mês,
+  // visão de todo o time). Quem só tem `verExtratoProprio` (self-service)
+  // deve ir pro Meu Portal pra ver o extrato pessoal — não entra aqui.
+  const { can } = useCanAcao(rid);
+  const podeVerTime = !!me?.isMaster
+    || can("gorjetas", "verTime")
+    || can("gorjetas", "lancar")
+    || can("gorjetas", "configurarRegra")
+    || can("gorjetas", "exportar");
 
   const hoje = new Date();
   const [ano, setAno] = useState(hoje.getFullYear());
@@ -193,6 +203,29 @@ export function GorjetasPage() {
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
+      </div>
+    );
+  }
+  // Self-service only: tem `verExtratoProprio` mas nenhuma capability de
+  // gestão (verTime/lancar/configurarRegra/exportar). Redireciona pro Meu
+  // Portal onde fica o extrato pessoal.
+  if (!podeVerTime) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center space-y-3">
+        <div className="text-4xl">💰</div>
+        <p className="text-gray-700 dark:text-gray-300 font-medium">
+          Sua gorjeta está no Meu Portal
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Essa tela é a visão de gestão (todo o time). Pra ver seu extrato
+          pessoal, vai em "👤 Meu Portal" no menu lateral.
+        </p>
+        <Link
+          to={`/portal/${rid}`}
+          className="inline-block px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700"
+        >
+          Ir pro Meu Portal
+        </Link>
       </div>
     );
   }
