@@ -24,10 +24,24 @@ type ItemImport = {
   data: string; // YYYY-MM-DD
   area: Area;
   entrada?: string; // HH:MM
+  saida?: string;   // HH:MM
+  intervaloMinutos?: number; // minutos de intervalo (ex: 60)
   valorTipo: "hora" | "diaria";
   valorUnit: number;
   observacao?: string;
 };
+
+// Calcula horas líquidas dado entrada/saída em HH:MM e intervalo em minutos.
+// Lida com virada de meia-noite (saida < entrada).
+function calcHorasLiquidas(entrada: string, saida: string, intervaloMin: number): number {
+  const [h1, m1] = entrada.split(":").map(Number);
+  const [h2, m2] = saida.split(":").map(Number);
+  let minEntrada = h1 * 60 + m1;
+  let minSaida   = h2 * 60 + m2;
+  if (minSaida < minEntrada) minSaida += 24 * 60;
+  const liquido = minSaida - minEntrada - (intervaloMin || 0);
+  return Math.max(0, liquido) / 60;
+}
 
 type ItemValidado =
   | { ok: true; item: ItemImport; cpfDigits: string }
@@ -60,6 +74,17 @@ function validarItem(raw: unknown): ItemValidado {
   const entrada = typeof r.entrada === "string" && r.entrada.trim() ? r.entrada.trim() : undefined;
   if (entrada && !/^\d{1,2}:\d{2}$/.test(entrada)) errors.push(`entrada inválida ("${entrada}", use HH:MM)`);
 
+  const saida = typeof r.saida === "string" && r.saida.trim() ? r.saida.trim() : undefined;
+  if (saida && !/^\d{1,2}:\d{2}$/.test(saida)) errors.push(`saida inválida ("${saida}", use HH:MM)`);
+  if (saida && !entrada) errors.push("saida informada sem entrada");
+
+  let intervaloMinutos: number | undefined;
+  if (r.intervaloMinutos != null) {
+    const n = typeof r.intervaloMinutos === "number" ? r.intervaloMinutos : Number(r.intervaloMinutos);
+    if (!Number.isFinite(n) || n < 0) errors.push(`intervaloMinutos inválido ("${r.intervaloMinutos}")`);
+    else intervaloMinutos = n;
+  }
+
   const valorTipo = r.valorTipo === "hora" || r.valorTipo === "diaria" ? r.valorTipo : null;
   if (!valorTipo) errors.push(`valorTipo inválido (use "hora" ou "diaria")`);
 
@@ -82,6 +107,8 @@ function validarItem(raw: unknown): ItemValidado {
       data,
       area,
       entrada,
+      saida,
+      intervaloMinutos,
       valorTipo: valorTipo!,
       valorUnit,
       observacao: observacao || undefined,
@@ -104,10 +131,12 @@ const EXEMPLO = JSON.stringify(
       whatsapp: "11999998888",
       data: "2026-05-30",
       area: "Cozinha",
-      entrada: "18:00",
-      valorTipo: "diaria",
-      valorUnit: 200,
-      observacao: "evento copa",
+      entrada: "14:00",
+      saida: "23:00",
+      intervaloMinutos: 60,
+      valorTipo: "hora",
+      valorUnit: 25,
+      observacao: "",
     },
   ],
   null,
@@ -165,6 +194,45 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
       const today = todayYmd();
       const now = new Date().toISOString();
 
+      // ── Dedup: pré-carrega turnos existentes do restaurante nas datas que
+      // o lote vai usar e monta um Set de chaves. Pula no loop se já existir.
+      // Chaves: "pid:<pessoaId>-<date>" e "cpf:<cpfSnapshot>-<date>" pra
+      // cobrir tanto lançamentos via UI (que podem usar empregadoId) quanto
+      // batch (sempre pessoaId).
+      const datasUnicas = Array.from(new Set(validos.map((v) => v.item.data)));
+      const dedupKeys = new Set<string>();
+      try {
+        // Firestore `in` aceita até 30 valores; 17 turnos ≈ 7 datas únicas, ok.
+        if (datasUnicas.length > 0 && datasUnicas.length <= 30) {
+          const shiftsExistentes = await getDocs(
+            query(
+              collection(db, "freelaShifts"),
+              where("restaurantId", "==", restaurantId),
+              where("date", "in", datasUnicas),
+            ),
+          );
+          shiftsExistentes.forEach((d) => {
+            const s = d.data() as Record<string, unknown>;
+            const date = s.date as string;
+            const pid = s.pessoaId as string | null;
+            const cpf = s.cpfSnapshot as string | undefined;
+            if (pid) dedupKeys.add(`pid:${pid}-${date}`);
+            if (cpf) dedupKeys.add(`cpf:${onlyDigits(cpf)}-${date}`);
+          });
+          log.push(`Dedup: ${shiftsExistentes.size} turno(s) existente(s) encontrado(s) nessas datas.`);
+        } else if (datasUnicas.length > 30) {
+          log.push(`⚠️ ${datasUnicas.length} datas únicas (>30) — dedup pulada, cuidado com duplicações.`);
+        }
+        setImportLog([...log]);
+      } catch (e) {
+        log.push(`⚠️ Falha ao pré-carregar dedup: ${e instanceof Error ? e.message : String(e)}. Continuando sem proteção.`);
+        setImportLog([...log]);
+      }
+
+      let criados = 0;
+      let pulados = 0;
+      let falhas = 0;
+
       for (let i = 0; i < validos.length; i++) {
         const { item, cpfDigits } = validos[i];
         try {
@@ -180,7 +248,6 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           }
 
           if (!pessoa) {
-            // cria pessoa nova
             const ref = await addDoc(collection(db, "pessoas"), {
               email: "",
               nome: item.nome,
@@ -208,7 +275,6 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             };
             log.push(`✅ ${item.nome} — pessoa criada`);
           } else if (!pessoa.restaurantIds.includes(restaurantId)) {
-            // pessoa existe mas não tá vinculada a esse restaurante: adiciona
             const novosIds = [...pessoa.restaurantIds, restaurantId];
             const novasPerms = { ...(pessoa.permissions || {}), [restaurantId]: {} };
             await updateDoc(doc(db, "pessoas", pessoa.id), {
@@ -222,8 +288,39 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           }
           cache.set(cpfDigits, pessoa);
 
-          // status: agendado se data futura, aberto se hoje
-          const status = item.data > today ? "agendado" : "aberto";
+          // ── Dedup do turno (chave por pessoaId+date ou cpf+date)
+          const keyPid = `pid:${pessoa.id}-${item.data}`;
+          const keyCpf = `cpf:${cpfDigits}-${item.data}`;
+          if (dedupKeys.has(keyPid) || dedupKeys.has(keyCpf)) {
+            log.push(`   ⏭ turno ${item.data} já existe pra ${item.nome} — pulado`);
+            setImportLog([...log]);
+            pulados++;
+            continue;
+          }
+
+          // Cálculo de horas e total (se possível)
+          let horas: number | null = null;
+          let totalCalc: number | null = null;
+          if (item.entrada && item.saida) {
+            horas = calcHorasLiquidas(item.entrada, item.saida, item.intervaloMinutos || 0);
+          }
+          if (item.valorTipo === "diaria") {
+            totalCalc = item.valorUnit;
+          } else if (item.valorTipo === "hora" && horas != null) {
+            totalCalc = +(horas * item.valorUnit).toFixed(2);
+          }
+
+          // Status: agendado se futuro, aberto se hoje, fechamento se passado
+          // E o turno já está completo (entrada+saida calculadas).
+          let status: "agendado" | "aberto" | "fechamento";
+          if (item.data > today) status = "agendado";
+          else if (item.data === today) status = "aberto";
+          else status = horas != null ? "fechamento" : "aberto";
+
+          // Intervalo em formato HH:MM (pra exibir no fechamento)
+          const intervaloStr = item.intervaloMinutos != null
+            ? `${String(Math.floor(item.intervaloMinutos / 60)).padStart(2, "0")}:${String(item.intervaloMinutos % 60).padStart(2, "0")}`
+            : undefined;
 
           const payload: Record<string, unknown> = {
             restaurantId,
@@ -237,8 +334,12 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             scheduledDate: item.data,
             area: item.area,
             ...(item.entrada ? { entrada: item.entrada } : {}),
+            ...(item.saida ? { saida: item.saida } : {}),
+            ...(intervaloStr ? { intervalo: intervaloStr } : {}),
+            ...(horas != null ? { horas } : {}),
             valorTipo: item.valorTipo,
             valorUnit: item.valorUnit,
+            ...(totalCalc != null ? { totalCalc } : {}),
             status,
             lotePagamentoId: null,
             ...(item.observacao ? { observacao: item.observacao } : {}),
@@ -249,16 +350,24 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           };
 
           await addDoc(collection(db, "freelaShifts"), payload);
-          log.push(`   📌 turno ${item.data} ${item.area} (${item.valorTipo} R$ ${item.valorUnit}) lançado`);
+          // Marca como dedup pro próximo turno do mesmo lote não duplicar
+          dedupKeys.add(keyPid);
+          dedupKeys.add(keyCpf);
+          criados++;
+
+          const totalStr = totalCalc != null ? ` = R$ ${totalCalc.toFixed(2)}` : "";
+          const horasStr = horas != null ? ` (${horas.toFixed(2)}h)` : "";
+          log.push(`   📌 turno ${item.data} ${item.area}${horasStr} · ${item.valorTipo} R$ ${item.valorUnit}${totalStr} · status=${status}`);
           setImportLog([...log]);
         } catch (e) {
+          falhas++;
           log.push(`❌ ${item.nome} — erro: ${e instanceof Error ? e.message : String(e)}`);
           setImportLog([...log]);
         }
       }
 
       log.push("");
-      log.push(`Fim. ${validos.length} item(ns) processado(s).`);
+      log.push(`Fim. ${criados} criado(s), ${pulados} pulado(s) (já existiam), ${falhas} falha(s).`);
       setImportLog([...log]);
       onImported();
     } catch (e) {
@@ -278,10 +387,18 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           </p>
           <p>
             Campos obrigatórios: <code>nome, cpf, pix, data (YYYY-MM-DD), area, valorTipo, valorUnit</code>.
-            Opcionais: <code>whatsapp, entrada (HH:MM), observacao</code>.
+          </p>
+          <p>
+            Opcionais: <code>whatsapp, entrada/saida (HH:MM), intervaloMinutos (número), observacao</code>.
+            Quando entrada+saída+intervalo vêm preenchidos, o turno já é lançado
+            com horas e total calculados, status <code>"fechamento"</code> (pronto pro DP).
           </p>
           <p>
             Áreas válidas: <code>{AREAS.join(", ")}</code> · valorTipo: <code>"hora"</code> ou <code>"diaria"</code>.
+          </p>
+          <p className="text-amber-700 dark:text-amber-400">
+            ⏭ Proteção anti-duplicação ativa: turnos com mesma pessoa + data
+            que já existem no restaurante são pulados (log mostra).
           </p>
         </div>
 
