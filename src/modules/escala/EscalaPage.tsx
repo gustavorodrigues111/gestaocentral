@@ -424,16 +424,28 @@ export function EscalaPage() {
     }
     const now = new Date().toISOString();
     // PRIMEIRO fechamento: copia a prevista pra praticada (espelho inicial).
-    // Re-fechamentos (após reabrir+ajustar): NÃO sobrescreve a praticada
-    // (preserva edições). Detecta "primeiro fechamento" por previstaReabertaEm
-    // ainda não existir — ou seja, nunca foi reaberta antes.
+    // Re-fechamentos (após reabrir+ajustar): pergunta ao usuário se quer
+    // sobrescrever a Praticada com a Prevista atualizada. Se a Praticada
+    // tiver edições manuais, o aviso é mais forte (vai perder essas edições).
     const isPrimeiroFechamento = !escala?.previstaReabertaEm;
+    let deveReplicarPraticada = isPrimeiroFechamento;
+    if (!isPrimeiroFechamento) {
+      const aviso = praticadaTemEdicaoManual
+        ? "⚠️ ATENÇÃO: a Praticada tem edições manuais que serão PERDIDAS.\n\n"
+        : "";
+      deveReplicarPraticada = confirm(
+        aviso +
+        "Replicar as alterações da Prevista pra Praticada?\n\n" +
+        "✅ Sim — Praticada vira espelho da Prevista atualizada.\n" +
+        "❌ Não — Praticada continua como está; só a Prevista é atualizada."
+      );
+    }
     await setDoc(doc(db, "escalas", escalaId), {
       id: escalaId,
       restaurantId: rid,
       ano, mes,
       prevista: novaPrevista,
-      ...(isPrimeiroFechamento ? { real: novaPrevista } : {}),
+      ...(deveReplicarPraticada ? { real: novaPrevista } : {}),
       previstaFechadaEm: now,
       previstaFechadaPor: me.id,
       previstaFechadaPorNome: me.nome,
