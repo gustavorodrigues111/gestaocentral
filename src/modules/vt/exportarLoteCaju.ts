@@ -51,13 +51,14 @@ export function exportarLoteCaju(params: {
   for (const linha of lote.linhas) {
     const emp = empMap[linha.empregadoId];
 
-    // Filtro: empregado marcado como "recebe VT por fora do Caju" (PIX direto,
-    // dinheiro, etc.) — NÃO entra no CSV. Mas aparece no "ignoradas" pra você
-    // lembrar de pagar manualmente.
-    if (emp?.vtForaCaju) {
+    // Filtro: empregado com "recebe pelo Caju" desmarcado (vtRecebePeloCaju
+    // explicitamente false). Ausente/true = recebe via Caju (vai no CSV).
+    // False explícito = recebe por outro meio (PIX direto, etc.) — fica fora
+    // do CSV mas aparece em "ignoradas" pra lembrar do pagamento manual.
+    if (emp?.vtRecebePeloCaju === false) {
       ignoradas.push({
         nome: linha.nome,
-        motivo: `Recebe por fora do Caju — pagar manualmente (R$ ${linha.total.toFixed(2).replace(".", ",")})`,
+        motivo: `Não recebe pelo Caju — pagar manualmente (R$ ${linha.total.toFixed(2).replace(".", ",")})`,
         total: linha.total,
       });
       continue;

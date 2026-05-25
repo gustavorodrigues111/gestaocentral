@@ -79,7 +79,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
     empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
   );
-  const [vtForaCaju, setVtForaCaju] = useState(empregado?.vtForaCaju ?? false);
+  // Default true (recebe via Caju). Só vira false se o user desmarcar.
+  const [vtRecebePeloCaju, setVtRecebePeloCaju] = useState(empregado?.vtRecebePeloCaju ?? true);
   // VR — só aparece se o restaurante tem "vr" em modulosAtivos
   const usaVR = !!restaurant?.modulosAtivos?.includes("vr");
   const [vrAtivo, setVrAtivo] = useState(empregado?.vrAtivo ?? false);
@@ -89,7 +90,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vrAuxilioFixoMensal, setVrAuxilioFixoMensal] = useState<string>(
     empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
   );
-  const [vrForaCaju, setVrForaCaju] = useState(empregado?.vrForaCaju ?? false);
+  const [vrRecebePeloCaju, setVrRecebePeloCaju] = useState(empregado?.vrRecebePeloCaju ?? true);
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -194,15 +195,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       if ((empregado.vrAuxilioFixoMensal ?? 0) !== novoVrAuxFixo) {
         nonCritical.vrAuxilioFixoMensal = novoVrAuxFixo;
       }
-      const novoVrForaCaju = !!vrForaCaju;
-      if ((empregado.vrForaCaju ?? false) !== novoVrForaCaju) {
-        nonCritical.vrForaCaju = novoVrForaCaju;
+      const novoVrRec = !!vrRecebePeloCaju;
+      if ((empregado.vrRecebePeloCaju ?? true) !== novoVrRec) {
+        nonCritical.vrRecebePeloCaju = novoVrRec;
       }
     }
-    // Flag vtForaCaju (atualiza imediato — só afeta export do CSV).
-    const novoVtForaCaju = !!vtForaCaju;
-    if ((empregado.vtForaCaju ?? false) !== novoVtForaCaju) {
-      nonCritical.vtForaCaju = novoVtForaCaju;
+    // Flag vtRecebePeloCaju — só afeta o export do CSV pro Caju.
+    const novoVtRec = !!vtRecebePeloCaju;
+    if ((empregado.vtRecebePeloCaju ?? true) !== novoVtRec) {
+      nonCritical.vtRecebePeloCaju = novoVtRec;
     }
     return { criticas, nonCritical };
   }
@@ -285,14 +286,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
             vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
           } : {}),
-          ...(vtForaCaju ? { vtForaCaju: true } : {}),
+          // Só grava se for false (default = ausente = true = recebe via Caju)
+          ...(vtRecebePeloCaju === false ? { vtRecebePeloCaju: false } : {}),
           ...(usaVR ? {
             vrAtivo: !!vrAtivo,
             ...(vrAtivo ? { vrValorDiario: parseFloat(vrValorDiario) } : {}),
             ...((parseFloat(vrAuxilioFixoMensal) || 0) > 0 ? {
               vrAuxilioFixoMensal: parseFloat(vrAuxilioFixoMensal),
             } : {}),
-            ...(vrForaCaju ? { vrForaCaju: true } : {}),
+            ...(vrRecebePeloCaju === false ? { vrRecebePeloCaju: false } : {}),
           } : {}),
           email: pessoa?.email || null,
           telefone: pessoa?.whatsapp || null,
@@ -624,21 +626,21 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </p>
           </div>
 
-          {/* Flag "recebe por fora do Caju" — fica no lote pra você pagar
-              mas é excluído do CSV exportado pra Caju. */}
+          {/* Flag "recebe pelo Caju" — default ON. Desmarcar exclui do CSV
+              mas mantém no lote (pagamento manual). */}
           {(vtAtivo || (parseFloat(vtAuxilioFixoMensal) || 0) > 0) && (
             <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
               <input
                 type="checkbox"
-                checked={vtForaCaju}
-                onChange={(e) => setVtForaCaju(e.target.checked)}
+                checked={vtRecebePeloCaju}
+                onChange={(e) => setVtRecebePeloCaju(e.target.checked)}
                 className="mt-0.5"
               />
               <span>
-                <span className="font-medium">Recebe VT por fora do Caju</span>
+                <span className="font-medium">Recebe VT pelo Caju</span>
                 <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                  Marque se essa pessoa recebe via PIX direto ou outro meio. Continua aparecendo
-                  no lote, mas fica de fora do CSV exportado pro Caju.
+                  Desmarque se essa pessoa recebe por PIX direto ou outro meio.
+                  Continua aparecendo no lote (você precisa pagar), mas fica fora do CSV exportado pro Caju.
                 </span>
               </span>
             </label>
@@ -686,15 +688,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                 <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
                   <input
                     type="checkbox"
-                    checked={vrForaCaju}
-                    onChange={(e) => setVrForaCaju(e.target.checked)}
+                    checked={vrRecebePeloCaju}
+                    onChange={(e) => setVrRecebePeloCaju(e.target.checked)}
                     className="mt-0.5"
                   />
                   <span>
-                    <span className="font-medium">Recebe VR por fora do Caju</span>
+                    <span className="font-medium">Recebe VR pelo Caju</span>
                     <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                      PIX direto ou outro meio. Aparece no lote pra pagamento, mas
-                      fica fora do CSV pro Caju.
+                      Desmarque se recebe por PIX direto ou outro meio. Continua no lote,
+                      mas fica fora do CSV pro Caju.
                     </span>
                   </span>
                 </label>
