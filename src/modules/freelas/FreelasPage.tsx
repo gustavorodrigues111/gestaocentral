@@ -191,6 +191,7 @@ export function FreelasPage() {
       {tab === "fechamento" && podeDp && (
         <FechamentoTab
           restaurantId={rid}
+          restaurant={activeRestaurant}
           shifts={shifts}
           pagamentos={pagamentos}
           podeEditar={podeDp}

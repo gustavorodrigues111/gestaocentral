@@ -5,15 +5,17 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
   AREAS, type Area, type FreelaPagamento,
-  type FreelaPagamentoResumoPessoa, type FreelaShift,
+  type FreelaPagamentoResumoPessoa, type FreelaShift, type Restaurant,
 } from "../../core/types";
 import {
   VALORES_DIARIA, VALORES_HORA,
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
+import { gerarLotePDF } from "./gerarLotePDF";
 
 type Props = {
   restaurantId: string;
+  restaurant: Restaurant | null;
   shifts: FreelaShift[];
   pagamentos: FreelaPagamento[];
   podeEditar: boolean;
@@ -32,7 +34,7 @@ const AREA_ICONE: Record<Area, string> = {
 //     1. Lotes pendentes (banner amarelo)
 //     2. Aguardando precificação (status=aberto + entrada+saída)
 //     3. Prontos pra lote      (status=fechamento sem lote)
-export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: Props) {
+export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, podeEditar }: Props) {
   const { pessoa: me } = useAuth();
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [obs, setObs] = useState("");
@@ -158,7 +160,13 @@ export function FechamentoTab({ restaurantId, shifts, pagamentos, podeEditar }: 
           </div>
           <div className="space-y-1 text-xs text-amber-700 dark:text-amber-200">
             {lotesPendentes.map((p) => (
-              <LotePendenteRow key={p.id} lote={p} podeEditar={podeEditar} />
+              <LotePendenteRow
+                key={p.id}
+                lote={p}
+                shifts={shifts}
+                restaurant={restaurant}
+                podeEditar={podeEditar}
+              />
             ))}
           </div>
         </div>
@@ -661,9 +669,30 @@ function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle }: { shift: 
 }
 
 // ─── Lote pendente ────────────────────────────────────────────────────────
-function LotePendenteRow({ lote, podeEditar }: { lote: FreelaPagamento; podeEditar: boolean }) {
+function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
+  lote: FreelaPagamento;
+  shifts: FreelaShift[];
+  restaurant: Restaurant | null;
+  podeEditar: boolean;
+}) {
   const { pessoa: me } = useAuth();
   const [salvando, setSalvando] = useState(false);
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+
+  async function exportarPDF() {
+    if (!restaurant) return;
+    setGerandoPdf(true);
+    try {
+      const shiftsDoLote = shifts.filter((s) => lote.shiftIds.includes(s.id));
+      const doc = await gerarLotePDF({ lote, shifts: shiftsDoLote, restaurant });
+      doc.save(`${lote.numero}.pdf`);
+    } catch (e) {
+      console.error("[exportarPDF pendente]", e);
+      alert(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
 
   async function marcarPago() {
     if (!me) return;
@@ -707,6 +736,15 @@ function LotePendenteRow({ lote, podeEditar }: { lote: FreelaPagamento; podeEdit
       </div>
       {podeEditar && (
         <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={exportarPDF}
+            disabled={gerandoPdf || !restaurant}
+            className="text-[11px] text-indigo-700 dark:text-indigo-400 hover:underline disabled:opacity-50"
+            title="Baixar PDF do lote pra conferir antes de pagar"
+          >
+            {gerandoPdf ? "Gerando…" : "📄 PDF"}
+          </button>
           <button type="button" onClick={cancelar} disabled={salvando} className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={marcarPago} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
         </div>
