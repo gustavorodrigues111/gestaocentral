@@ -5,6 +5,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
@@ -25,6 +26,12 @@ export function ComunicadosPage() {
   const restaurant = restaurants.find(r => r.id === rid) || null;
   const podeVer = canVer(me, rid, "comunicados");
   const podeConfig = canConfigurar(me, rid, "comunicados");
+  // Granular: criar/editar/deletar separados. Fallback pra podeConfig
+  // quando o perfil não veio (sistema antigo ainda regendo).
+  const { can } = useCanAcao(rid);
+  const podeCriar   = !!me?.isMaster || can("comunicados", "criar")   || podeConfig;
+  const podeEditar  = !!me?.isMaster || can("comunicados", "editar")  || podeConfig;
+  const podeDeletar = !!me?.isMaster || can("comunicados", "deletar") || podeConfig;
 
   const [comunicados, setComunicados] = useState<Comunicado[]>([]);
   const [leituras, setLeituras] = useState<ComunicadoLeitura[]>([]);
@@ -100,7 +107,7 @@ export function ComunicadosPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">📣 Comunicados</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
         </div>
-        {podeConfig && (
+        {podeCriar && (
           <Button onClick={() => setEditing("new")}>+ Novo comunicado</Button>
         )}
       </div>
@@ -137,7 +144,7 @@ export function ComunicadosPage() {
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhum comunicado encontrado" : "Nenhum comunicado cadastrado"}
           </p>
-          {!search && podeConfig && (
+          {!search && podeCriar && (
             <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Novo comunicado"</p>
           )}
         </div>
@@ -166,10 +173,10 @@ export function ComunicadosPage() {
                     {inativo && <span className="text-[10px] text-gray-500 uppercase">Inativo</span>}
                     {expirado && <span className="text-[10px] text-gray-500 uppercase">Expirado</span>}
                   </div>
-                  {podeConfig && (
+                  {(podeEditar || podeDeletar) && (
                     <div className="flex gap-1">
-                      <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
-                      <Button variant="danger" size="sm" onClick={() => excluir(c)}>🗑</Button>
+                      {podeEditar && <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>}
+                      {podeDeletar && <Button variant="danger" size="sm" onClick={() => excluir(c)}>🗑</Button>}
                     </div>
                   )}
                 </div>
