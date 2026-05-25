@@ -229,6 +229,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "vr",
+    icon: "🍱",
+    label: "VR (Vale Refeição)",
+    desc: "Cadastro e pagamento de VR diário por pessoa (só restaurantes que usam)",
+    area: "time",
+    acoes: [
+      { id: "ver",         label: "Ver VR de todos", sensivel: true },
+      { id: "configurar",  label: "Lançar lote, marcar pago, exportar pra Caju", sensivel: true },
+    ],
+  },
+  {
     id: "freelas",
     icon: "👤",
     label: "Freelas",

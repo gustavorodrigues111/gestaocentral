@@ -79,6 +79,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
     empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
   );
+  // VR — só aparece se o restaurante tem "vr" em modulosAtivos
+  const usaVR = !!restaurant?.modulosAtivos?.includes("vr");
+  const [vrAtivo, setVrAtivo] = useState(empregado?.vrAtivo ?? false);
+  const [vrValorDiario, setVrValorDiario] = useState<string>(
+    empregado?.vrValorDiario ? String(empregado.vrValorDiario) : ""
+  );
+  const [vrAuxilioFixoMensal, setVrAuxilioFixoMensal] = useState<string>(
+    empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
+  );
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -169,6 +178,21 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     if ((empregado.unidadePadraoId || null) !== novoUnidadePadrao) {
       nonCritical.unidadePadraoId = novoUnidadePadrao;
     }
+    // VR (sem versionamento por enquanto — atualiza imediato).
+    if (usaVR) {
+      const novoVrAtivo = !!vrAtivo;
+      if ((empregado.vrAtivo ?? false) !== novoVrAtivo) {
+        nonCritical.vrAtivo = novoVrAtivo;
+      }
+      const novoVrValor = vrAtivo ? parseFloat(vrValorDiario) : 0;
+      if ((empregado.vrValorDiario ?? 0) !== novoVrValor) {
+        nonCritical.vrValorDiario = novoVrValor;
+      }
+      const novoVrAuxFixo = parseFloat(vrAuxilioFixoMensal) || 0;
+      if ((empregado.vrAuxilioFixoMensal ?? 0) !== novoVrAuxFixo) {
+        nonCritical.vrAuxilioFixoMensal = novoVrAuxFixo;
+      }
+    }
     return { criticas, nonCritical };
   }
 
@@ -214,6 +238,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         setErr("VT ativo exige valor da passagem"); return;
       }
     }
+    if (usaVR && vrAtivo) {
+      if (!vrValorDiario || parseFloat(vrValorDiario) <= 0) {
+        setErr("VR ativo exige valor diário"); return;
+      }
+    }
     if (!me) return;
     setErr("");
 
@@ -244,6 +273,13 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           } : {}),
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
             vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
+          } : {}),
+          ...(usaVR ? {
+            vrAtivo: !!vrAtivo,
+            ...(vrAtivo ? { vrValorDiario: parseFloat(vrValorDiario) } : {}),
+            ...((parseFloat(vrAuxilioFixoMensal) || 0) > 0 ? {
+              vrAuxilioFixoMensal: parseFloat(vrAuxilioFixoMensal),
+            } : {}),
           } : {}),
           email: pessoa?.email || null,
           telefone: pessoa?.whatsapp || null,
@@ -574,6 +610,46 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               Independente do VT diário — pode haver auxílio fixo sem passagens.
             </p>
           </div>
+
+          {/* VR — só aparece se o restaurante tem "vr" em modulosAtivos.
+              Quibebe é o caso atual. Master ativa pelo painel /admin. */}
+          {usaVR && (
+            <>
+              <div className="border-t border-gray-200 dark:border-gray-800 pt-3 mt-1">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={vrAtivo} onChange={(e) => setVrAtivo(e.target.checked)} />
+                  <span className="font-medium">🍱 Recebe Vale Refeição</span>
+                </label>
+                {vrAtivo && (
+                  <div className="mt-2">
+                    <Input
+                      label="Valor diário (R$) *"
+                      type="number" min="0" step="0.01"
+                      value={vrValorDiario}
+                      onChange={(e) => setVrValorDiario(e.target.value)}
+                      placeholder="ex: 25,00"
+                    />
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                      Multiplicado pelos dias trabalhados na escala prevista do mês.
+                      Falta justificada NÃO desconta (regra do VR).
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div>
+                <Input
+                  label="Auxílio fixo mensal VR (R$)"
+                  type="number" min="0" step="0.01"
+                  value={vrAuxilioFixoMensal}
+                  onChange={(e) => setVrAuxilioFixoMensal(e.target.value)}
+                  placeholder="ex: 0,00"
+                />
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Valor fixo mensal de VR (não proporcional). Opcional.
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
         {err && <div className="text-sm text-rose-600">{err}</div>}

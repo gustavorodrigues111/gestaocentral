@@ -88,6 +88,9 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       verProprio: true, verTime: true,
       configurar: true, registrarPg: true,
     },
+    vr: {
+      ver: true, configurar: true,
+    },
     freelas: {
       verVagas: true, candidatar: true,
       criarVaga: true, atribuir: true, avaliar: true,

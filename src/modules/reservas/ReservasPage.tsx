@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -87,6 +87,9 @@ export function ReservasPage() {
   // Offset (em dias) do primeiro chip da janela em relação a HOJE.
   // 0 = janela começa hoje. Permite navegar setas pra frente/trás.
   const [chipOffset, setChipOffset] = useState(0);
+  // Datepicker on-demand: só revela o <input type="date"> quando o
+  // usuário clica no botão 📅. Reduz ruído visual na agenda do dia.
+  const [dateOpen, setDateOpen] = useState(false);
 
   // Template de confirmação (vive em /configReservas/{rid})
   const [templateConfirmacao, setTemplateConfirmacao] = useState<string | undefined>(undefined);
@@ -333,10 +336,6 @@ export function ReservasPage() {
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
   }, [reservasAtivasDoDia]);
 
-  const dataAtualLabel = new Date(dataAtual + "T12:00:00").toLocaleDateString("pt-BR", {
-    weekday: "long", day: "2-digit", month: "long", year: "numeric",
-  });
-
   return (
     <div className="max-w-5xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
@@ -483,29 +482,33 @@ export function ReservasPage() {
             >▶</Button>
           </div>
 
-          {/* Botões de atalho — Hoje + datepicker pra dia fora da janela */}
-          <div className="flex items-center justify-between flex-wrap gap-2 text-sm">
-            <div className="capitalize text-gray-600 dark:text-gray-400 font-medium">
-              {dataAtualLabel}
-            </div>
-            <div className="flex items-center gap-1.5">
-              {dataAtual !== today && (
-                <Button variant="secondary" size="sm" onClick={() => { setDataAtual(today); setChipOffset(0); }}>
-                  Voltar pra hoje
-                </Button>
-              )}
+          {/* Botões de atalho — "Voltar pra hoje" (quando aplicável) +
+              botão 📅 que revela o datepicker on-demand. A data atual já é
+              comunicada pelo chip selecionado; redundância removida. */}
+          <div className="flex items-center justify-end gap-1.5 text-sm">
+            {dataAtual !== today && (
+              <Button variant="secondary" size="sm" onClick={() => { setDataAtual(today); setChipOffset(0); setDateOpen(false); }}>
+                Voltar pra hoje
+              </Button>
+            )}
+            {dateOpen ? (
               <input
                 type="date"
                 value={dataAtual}
-                onChange={(e) => setDataAtual(e.target.value)}
+                onChange={(e) => { setDataAtual(e.target.value); setDateOpen(false); }}
+                onBlur={() => setDateOpen(false)}
+                autoFocus
                 className="px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-                title="Escolher data específica"
               />
-            </div>
+            ) : (
+              <Button variant="secondary" size="sm" onClick={() => setDateOpen(true)} title="Ir pra outra data">
+                📅 Ir pra data
+              </Button>
+            )}
           </div>
 
-          {/* Stats do dia */}
-          <div className="grid grid-cols-4 gap-2">
+          {/* Stats do dia — 2x2 no mobile, linha única no desktop */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <StatCard label="A vir" value={statsDia.pendentes} cor="text-blue-700 dark:text-blue-400" />
             <StatCard label="Chegaram" value={statsDia.chegou} cor="text-emerald-700 dark:text-emerald-400" />
             <StatCard label="No-show" value={statsDia.noShow} cor="text-rose-700 dark:text-rose-400" />
@@ -660,30 +663,63 @@ export function ReservasPage() {
     // pra quem não tem CRM. Operacional minimal — não vaza histórico de
     // ocasiões, observações ou tags pra todo mundo do salão.
     const piiLight = reserva.status === "cancelada" && !acoes.podeVerCRM;
-    const podeAlgumaAcao = acoes.podeEditar || acoes.podeCancelar || acoes.podeChegou || acoes.podeWhatsapp;
+    const st = reserva.status;
+    const isAberta = st === "pendente" || st === "confirmada";
+
+    // No-show só fica disponível ≥30min depois do horário marcado, pra
+    // evitar marcação acidental antes da hora. Sem horário definido,
+    // libera (caso de borda em legados).
+    const podeMostrarNoShow = isAberta && acoes.podeEditar && (() => {
+      if (!reserva.horario) return true;
+      const ts = new Date(`${reserva.data}T${reserva.horario}:00`).getTime();
+      return Date.now() >= ts + 30 * 60 * 1000;
+    })();
+
+    // Hierarquia visual dos botões — 1 primário por estado:
+    //  - pendente   → WhatsApp primário + "Confirmou" secundário
+    //  - confirmada → Chegou primário
+    //  - resto      → sem botões, só kebab
+    const showWhatsAsPrimary    = st === "pendente"   && acoes.podeWhatsapp && !!reserva.clienteTelefoneSnapshot;
+    const showConfirmouSecondary = st === "pendente"   && acoes.podeEditar;
+    const showChegouAsPrimary   = st === "confirmada" && acoes.podeChegou;
+    const temPrimarios = showWhatsAsPrimary || showConfirmouSecondary || showChegouAsPrimary;
+
+    // Acumula o que vai no kebab pra saber se renderiza o botão ⋯
+    const temHistorico   = temCliente && acoes.podeVerCRM;
+    const temWaSecundario = st === "confirmada" && acoes.podeWhatsapp && !!reserva.clienteTelefoneSnapshot;
+    const temChegouKebab  = st === "pendente"   && acoes.podeChegou;
+    const temCancelar    = acoes.podeCancelar && st !== "cancelada" && st !== "chegou";
+    const temEditarKebab = acoes.podeEditar;
+    const temAlgumKebab  = temHistorico || temWaSecundario || temChegouKebab || podeMostrarNoShow || temCancelar || temEditarKebab;
+
     return (
       <div className={`rounded-xl border p-3 ${STATUS_CLS[reserva.status]}`}>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
+            {/* Nome destacado + badge de status ao lado */}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-gray-900 dark:text-gray-100">{reserva.clienteNomeSnapshot}</span>
-              {!piiLight && cliente && cliente.tags && cliente.tags.length > 0 && (
-                cliente.tags.map(t => (
-                  <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                    🏷️ {t}
-                  </span>
-                ))
-              )}
+              <span className="text-base font-bold text-gray-900 dark:text-gray-100">{reserva.clienteNomeSnapshot}</span>
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_BADGE_CLS[reserva.status]}`}>
                 {RESERVA_STATUS_ICON[reserva.status]} {RESERVA_STATUS_LABEL[reserva.status]}
               </span>
-              {!piiLight && reserva.ocasiao && (
-                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
-                  🎉 {reserva.ocasiao}
-                </span>
-              )}
             </div>
-            <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-3 flex-wrap mt-0.5">
+            {/* Tags + ocasião numa linha própria, só se houver — evita poluir o header */}
+            {!piiLight && ((cliente?.tags && cliente.tags.length > 0) || reserva.ocasiao) && (
+              <div className="flex items-center gap-1 flex-wrap mt-1">
+                {cliente?.tags?.map(t => (
+                  <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                    🏷️ {t}
+                  </span>
+                ))}
+                {reserva.ocasiao && (
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
+                    🎉 {reserva.ocasiao}
+                  </span>
+                )}
+              </div>
+            )}
+            {/* Meta compacta — ícones menores, gap reduzido pra caber no mobile */}
+            <div className="text-xs text-gray-700 dark:text-gray-300 flex items-center gap-2 flex-wrap mt-1">
               <span>⏰ {reserva.horario}</span>
               <span>👥 {reserva.pessoas}</span>
               {reserva.salaoNomeSnapshot && <span>🏛️ {reserva.salaoNomeSnapshot}</span>}
@@ -697,36 +733,67 @@ export function ReservasPage() {
               </div>
             )}
           </div>
-          {podeAlgumaAcao && (
-            <div className="flex gap-1 flex-wrap">
-              {/* Histórico do cliente (mode=recente, 6 meses) — só com verCRM */}
-              {temCliente && acoes.podeVerCRM && (
-                <Button variant="secondary" size="sm" onClick={() => setHistoricoReserva(reserva)} title="Ver últimas reservas e notas deste cliente">
-                  📊 Histórico
-                </Button>
-              )}
-              {/* WhatsApp confirmar — só pra pendente/confirmada */}
-              {acoes.podeWhatsapp && (reserva.status === "pendente" || reserva.status === "confirmada") && reserva.clienteTelefoneSnapshot && (
-                <Button variant="secondary" size="sm" onClick={onWhatsapp} title="Abre WhatsApp com mensagem de confirmação">
-                  📱 Confirmar via WhatsApp
-                </Button>
-              )}
-              {acoes.podeEditar && reserva.status === "pendente" && (
-                <Button variant="secondary" size="sm" onClick={() => onStatus("confirmada")}>✓ Cliente confirmou</Button>
-              )}
-              {(reserva.status === "pendente" || reserva.status === "confirmada") && (
+          {/* Kebab no canto superior direito — ações secundárias / destrutivas */}
+          {temAlgumKebab && (
+            <KebabMenu>
+              {(close) => (
                 <>
-                  {acoes.podeChegou && <Button variant="secondary" size="sm" onClick={() => onStatus("chegou")}>🪑 Chegou</Button>}
-                  {acoes.podeEditar && <Button variant="secondary" size="sm" onClick={() => onStatus("no_show")}>😶 No-show</Button>}
+                  {temHistorico && (
+                    <KebabItem onClick={() => { setHistoricoReserva(reserva); close(); }}>
+                      📊 Histórico do cliente
+                    </KebabItem>
+                  )}
+                  {temWaSecundario && (
+                    <KebabItem onClick={() => { onWhatsapp(); close(); }}>
+                      📱 Reenviar WhatsApp
+                    </KebabItem>
+                  )}
+                  {temChegouKebab && (
+                    <KebabItem onClick={() => { onStatus("chegou"); close(); }}>
+                      🪑 Chegou
+                    </KebabItem>
+                  )}
+                  {podeMostrarNoShow && (
+                    <KebabItem onClick={() => { onStatus("no_show"); close(); }}>
+                      😶 No-show
+                    </KebabItem>
+                  )}
+                  {temCancelar && (
+                    <KebabItem danger onClick={() => { onStatus("cancelada"); close(); }}>
+                      ✕ Cancelar
+                    </KebabItem>
+                  )}
+                  {temEditarKebab && (
+                    <KebabItem onClick={() => { onEditar(); close(); }}>
+                      ✎ Editar
+                    </KebabItem>
+                  )}
                 </>
               )}
-              {acoes.podeCancelar && reserva.status !== "cancelada" && reserva.status !== "chegou" && (
-                <Button variant="secondary" size="sm" onClick={() => onStatus("cancelada")}>✕ Cancelar</Button>
-              )}
-              {acoes.podeEditar && <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>}
-            </div>
+            </KebabMenu>
           )}
         </div>
+
+        {/* Botões primários — em row horizontal abaixo do header */}
+        {temPrimarios && (
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+            {showWhatsAsPrimary && (
+              <Button variant="primary" size="sm" onClick={onWhatsapp} title="Abre WhatsApp com mensagem de confirmação">
+                📱 Confirmar WhatsApp
+              </Button>
+            )}
+            {showConfirmouSecondary && (
+              <Button variant="secondary" size="sm" onClick={() => onStatus("confirmada")}>
+                ✓ Confirmou
+              </Button>
+            )}
+            {showChegouAsPrimary && (
+              <Button variant="primary" size="sm" onClick={() => onStatus("chegou")}>
+                🪑 Chegou
+              </Button>
+            )}
+          </div>
+        )}
       </div>
     );
   }
@@ -739,5 +806,67 @@ function StatCard({ label, value, cor }: { label: string; value: number; cor: st
       <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
       <div className={`text-2xl font-bold ${cor}`}>{value}</div>
     </div>
+  );
+}
+
+// ───────────────── KebabMenu ─────────────────
+// Menu de ações secundárias do card. Render-prop expõe `close` pra cada
+// item fechar o menu após disparar a ação. Click fora também fecha.
+function KebabMenu({ children }: { children: (close: () => void) => ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const close = () => setOpen(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        title="Mais ações"
+        aria-label="Mais ações"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        <span className="text-lg leading-none">⋯</span>
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 z-20 min-w-[200px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1"
+        >
+          {children(close)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KebabItem({ onClick, children, danger = false }: { onClick: () => void; children: ReactNode; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 ${
+        danger ? "text-rose-700 dark:text-rose-400" : "text-gray-700 dark:text-gray-200"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

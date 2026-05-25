@@ -48,7 +48,7 @@ export type ModuleId =
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
-  | "fechamentoEscala" | "gorjetas" | "vt" | "compras" | "recursos" | "faleDp"
+  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "compras" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites";
 
 // ─── PERMISSÕES ───
@@ -163,6 +163,13 @@ export type Empregado = {
   // Auxílio fixo mensal (R$) — valor cheio adicionado ao VT do mês (não proporcional).
   // Independente de vtAtivo: pode haver empregado só com auxílio fixo (sem passagens).
   vtAuxilioFixoMensal?: number;
+
+  // VR (Vale Refeição) — só usado quando Restaurant.usaVR = true.
+  // Mesma lógica do VT mas com valor diário direto (sem "passagens por dia"),
+  // e o desconto por absenteísmo NÃO conta falta justificada (regra de negócio).
+  vrAtivo?: boolean;
+  vrValorDiario?: number;       // R$ por dia trabalhado
+  vrAuxilioFixoMensal?: number; // R$ — adicional fixo mensal (independente de vrAtivo)
 
   // Multi-unidades — só faz sentido quando restaurante.multiUnidades = true.
   // Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade
@@ -736,6 +743,80 @@ export type VTLote = {
   historico: VTLoteEvento[];
 
   updatedAt: string;
+};
+
+// ─── VR (Vale Refeição) ─────────────────────────────────────────────────────
+// Espelho simplificado do VT — só MVP por enquanto, sem parcial/ajuste/etc.
+// Ativa restaurante a restaurante via `modulosAtivos` (adiciona "vr").
+
+export type VRLoteStatus = "rascunho" | "pago" | "cancelado";
+
+export type VRLoteLinha = {
+  empregadoId: string;
+  nome: string;                  // snapshot
+  cargoNome: string;             // snapshot
+  area: Area;                    // snapshot
+
+  // Snapshot do cadastro no momento da criação
+  valorDiario: number;           // R$ por dia trabalhado
+  diasTrabalhados: number;       // contados da escala prevista do mês
+
+  // Componentes do total
+  auxFixoMensal: number;         // R$
+  vrBase: number;                // dias × valorDiario
+
+  // Desconto sugerido — REGRA VR: não conta falta_j (justificada).
+  descontoSugeridoAtivo: boolean;
+  descontoSugerido: number;
+  descontoSugeridoJustificativa?: string;
+  descontoSugeridoRefMes?: string; // "YYYY-MM"
+
+  // Lançamentos manuais
+  descontoManual: number;
+  auxPontual: number;
+
+  total: number;                 // auxFixo + vrBase − descontoSugerido(se ativo) − descontoManual + auxPontual
+};
+
+export type VRLoteEvento = {
+  acao: "criado" | "pago" | "reaberto" | "cancelado";
+  em: string;
+  por: string;
+  porNome?: string;
+  motivo?: string;
+};
+
+export type VRLote = {
+  id: string;
+  restaurantId: string;
+  ano: number;
+  mes: number;
+  status: VRLoteStatus;
+
+  linhas: VRLoteLinha[];
+
+  totalGeral: number;
+  totalPorArea: { [area: string]: number };
+
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  pagoEm?: string | null;
+  pagoPor?: string | null;
+  pagoPorNome?: string | null;
+  canceladoEm?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNome?: string | null;
+  motivoCancelamento?: string;
+
+  historico: VRLoteEvento[];
+  updatedAt: string;
+};
+
+export const VR_LOTE_STATUS_LABEL: Record<VRLoteStatus, string> = {
+  rascunho:  "Rascunho",
+  pago:      "Pago",
+  cancelado: "Cancelado",
 };
 
 // ─── COMUNICADOS ────────────────────────────────────────────────────────────
