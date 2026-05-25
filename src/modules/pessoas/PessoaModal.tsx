@@ -15,6 +15,8 @@ import { getModule } from "../../config/modules";
 import { logAudit } from "../../core/audit/versionedChange";
 import type { Cargo, Empregado, ModuleId, ModulePermission, PermissionTemplate, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { Link } from "react-router-dom";
 
 type Tab = "identidade" | "vinculos" | "permissoes";
 
@@ -667,6 +669,11 @@ function TabPermissoes({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId:
 
   return (
     <div className="space-y-3">
+      {/* Sistema NOVO de Perfis de Acesso — opcional por enquanto. Se a
+          pessoa tem perfil atribuído, ele governa as ações granularmente.
+          Sem perfil, cai no sistema antigo (ver/configurar abaixo). */}
+      <PerfilAcessoSection pessoa={pessoa} restaurantId={restaurantId} />
+
       <p className="text-xs text-gray-500 dark:text-gray-400">
         Marca o que essa pessoa pode neste restaurante. <strong>Configurar</strong> implica <strong>Ver</strong>.
         Sem nenhum check em todos = sem acesso a esse módulo.
@@ -989,6 +996,92 @@ function OutrosRestaurantesVinculados({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── PerfilAcessoSection ─────────────────────────────────────────────────
+// Dropdown pra atribuir um AccessProfile (sistema novo) à pessoa neste
+// restaurante. Em transição: se setado, o profile rege; se vazio, sistema
+// antigo (ver/configurar abaixo) rege. Master ignora isso.
+//
+// Salva direto no Firestore — não usa o ciclo dirty/save do tab de
+// permissões antigo (que é ver/configurar). Quando o sistema antigo for
+// aposentado, essa section vira o único controle de permissão.
+function PerfilAcessoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: string }) {
+  const { perfis, loading } = useAccessProfiles();
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  const profileIdAtual = pessoa.profileIds?.[restaurantId] || "";
+
+  // Filtra perfis disponíveis pra esse restaurante: globais + específicos desse rid
+  const disponiveis = perfis.filter(p =>
+    p.restaurantId === null || p.restaurantId === restaurantId
+  );
+
+  async function alterar(novoProfileId: string) {
+    if (pessoa.isMaster) return;
+    setSalvando(true);
+    setErro("");
+    try {
+      const profileIds = { ...(pessoa.profileIds || {}) };
+      if (novoProfileId) profileIds[restaurantId] = novoProfileId;
+      else delete profileIds[restaurantId];
+      await updateDoc(doc(db, "pessoas", pessoa.id), {
+        profileIds,
+        atualizadoEm: new Date().toISOString(),
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  if (pessoa.isMaster) {
+    return (
+      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
+        👑 <strong>Master</strong> — acesso total a tudo, perfil de acesso não se aplica.
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+          🛡️ Perfil de Acesso
+        </div>
+        <div className="text-[11px] text-indigo-600 dark:text-indigo-400">
+          Sistema novo · gerencie em <Link to="/perfis" className="underline">Perfis de Acesso</Link>
+        </div>
+      </div>
+      {loading ? (
+        <p className="text-xs text-gray-500">Carregando perfis…</p>
+      ) : (
+        <select
+          value={profileIdAtual}
+          onChange={(e) => alterar(e.target.value)}
+          disabled={salvando}
+          className="w-full border border-indigo-300 dark:border-indigo-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        >
+          <option value="">— Sem perfil (usa sistema antigo abaixo) —</option>
+          {disponiveis.map(p => (
+            <option key={p.id} value={p.id}>
+              {p.nome}
+              {p.builtin ? " (built-in)" : ""}
+              {p.restaurantId === null ? " · global" : " · exclusivo"}
+            </option>
+          ))}
+        </select>
+      )}
+      {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+      <p className="text-[11px] text-gray-600 dark:text-gray-400">
+        Atribuir um perfil substitui o sistema antigo (ver/configurar) por
+        ações granulares. Telas que ainda não foram migradas continuam usando
+        as permissões antigas mesmo com perfil atribuído — transição gradual.
+      </p>
     </div>
   );
 }
