@@ -12,6 +12,7 @@ import { EmpregadoModal } from "./EmpregadoModal";
 import { InativarModal } from "./InativarModal";
 import { ReativarModal } from "./ReativarModal";
 import { ExcluirModal } from "./ExcluirModal";
+import { LiberarEmailModal } from "./LiberarEmailModal";
 import { logAudit } from "../../core/audit/versionedChange";
 import type { Cargo, Empregado, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
@@ -139,6 +140,7 @@ function TabIdentidade({
   const [showInativar, setShowInativar] = useState(false);
   const [showReativar, setShowReativar] = useState(false);
   const [showExcluir, setShowExcluir] = useState(false);
+  const [showLiberarEmail, setShowLiberarEmail] = useState(false);
 
   const podeExcluir = canExcluirPessoa(me, restaurantId);
   const { can } = useCanAcao(restaurantId);
@@ -379,6 +381,19 @@ function TabIdentidade({
                   ✓ Reativar pessoa
                 </Button>
               )}
+              {/* "Liberar email" — só faz sentido em pessoa inativa que ainda
+                  tem email setado. Histórico preservado, mas o email vira
+                  livre pra uma nova pessoa usar. */}
+              {pessoa && pessoa.email && podeDemitir && (
+                <Button
+                  size="sm"
+                  onClick={() => setShowLiberarEmail(true)}
+                  title="Libera o email dessa pessoa pra outra usar (histórico fica preservado)"
+                  className="!bg-amber-600 hover:!bg-amber-700 !border-amber-600"
+                >
+                  🔓 Liberar email
+                </Button>
+              )}
               {podeExcluir && (
                 <Button variant="danger" size="sm" onClick={() => setShowExcluir(true)}>
                   🗑 Excluir definitivamente
@@ -429,6 +444,15 @@ function TabIdentidade({
         <ExcluirModal
           pessoa={pessoa}
           onClose={() => { setShowExcluir(false); onClose(); }}
+        />
+      )}
+      {showLiberarEmail && pessoa && me && (
+        <LiberarEmailModal
+          pessoa={pessoa}
+          masterId={me.id}
+          masterNome={me.nome}
+          onClose={() => setShowLiberarEmail(false)}
+          onFeito={() => { setShowLiberarEmail(false); onClose(); }}
         />
       )}
     </div>
