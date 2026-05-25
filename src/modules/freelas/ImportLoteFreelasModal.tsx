@@ -26,8 +26,8 @@ type ItemImport = {
   entrada?: string; // HH:MM
   saida?: string;   // HH:MM
   intervaloMinutos?: number; // minutos de intervalo (ex: 60)
-  valorTipo: "hora" | "diaria";
-  valorUnit: number;
+  valorTipo?: "hora" | "diaria";
+  valorUnit?: number;
   observacao?: string;
 };
 
@@ -90,13 +90,24 @@ function validarItem(raw: unknown, allowMissingCpf: boolean): ItemValidado {
     else intervaloMinutos = n;
   }
 
-  const valorTipo = r.valorTipo === "hora" || r.valorTipo === "diaria" ? r.valorTipo : null;
-  if (!valorTipo) errors.push(`valorTipo inválido (use "hora" ou "diaria")`);
-
-  const valorUnit = typeof r.valorUnit === "number" ? r.valorUnit
-                  : typeof r.valorUnit === "string" ? Number(r.valorUnit.replace(",", "."))
-                  : NaN;
-  if (!Number.isFinite(valorUnit) || valorUnit <= 0) errors.push(`valorUnit inválido ("${r.valorUnit}")`);
+  // valorTipo e valorUnit opcionais — se ausentes, o turno é lançado sem
+  // valor (você define depois na aba Fechamento). Se um vier, o outro tb.
+  let valorTipo: "hora" | "diaria" | undefined;
+  let valorUnit: number | undefined;
+  const temTipo = r.valorTipo === "hora" || r.valorTipo === "diaria";
+  const temUnit = r.valorUnit != null && r.valorUnit !== "";
+  if (temTipo || temUnit) {
+    if (!temTipo) errors.push(`valorTipo obrigatório quando valorUnit informado (use "hora" ou "diaria")`);
+    else valorTipo = r.valorTipo as "hora" | "diaria";
+    if (!temUnit) errors.push(`valorUnit obrigatório quando valorTipo informado`);
+    else {
+      const n = typeof r.valorUnit === "number" ? r.valorUnit
+              : typeof r.valorUnit === "string" ? Number(r.valorUnit.replace(",", "."))
+              : NaN;
+      if (!Number.isFinite(n) || n <= 0) errors.push(`valorUnit inválido ("${r.valorUnit}")`);
+      else valorUnit = n;
+    }
+  }
 
   const observacao = typeof r.observacao === "string" ? r.observacao.trim() : "";
 
@@ -324,14 +335,18 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
           if (item.entrada && item.saida) {
             horas = calcHorasLiquidas(item.entrada, item.saida, item.intervaloMinutos || 0);
           }
-          if (item.valorTipo === "diaria") {
-            totalCalc = item.valorUnit;
-          } else if (item.valorTipo === "hora" && horas != null) {
-            totalCalc = +(horas * item.valorUnit).toFixed(2);
+          if (item.valorTipo && item.valorUnit != null) {
+            if (item.valorTipo === "diaria") {
+              totalCalc = item.valorUnit;
+            } else if (item.valorTipo === "hora" && horas != null) {
+              totalCalc = +(horas * item.valorUnit).toFixed(2);
+            }
           }
 
-          // Status: agendado se futuro, aberto se hoje, fechamento se passado
-          // E o turno já está completo (entrada+saida calculadas).
+          // Status: agendado se futuro, aberto se hoje. Pra data passada:
+          // - se tem horas E valor → fechamento (pronto pra fechar lote)
+          // - se tem horas mas sem valor → fechamento (DP define valor ali)
+          // - sem horas → aberto
           let status: "agendado" | "aberto" | "fechamento";
           if (item.data > today) status = "agendado";
           else if (item.data === today) status = "aberto";
@@ -358,8 +373,8 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             ...(item.saida ? { saida: item.saida } : {}),
             ...(intervaloStr ? { intervalo: intervaloStr } : {}),
             ...(horas != null ? { horas } : {}),
-            valorTipo: item.valorTipo,
-            valorUnit: item.valorUnit,
+            ...(item.valorTipo ? { valorTipo: item.valorTipo } : {}),
+            ...(item.valorUnit != null ? { valorUnit: item.valorUnit } : {}),
             ...(totalCalc != null ? { totalCalc } : {}),
             status,
             lotePagamentoId: null,
@@ -378,7 +393,10 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
 
           const totalStr = totalCalc != null ? ` = R$ ${totalCalc.toFixed(2)}` : "";
           const horasStr = horas != null ? ` (${horas.toFixed(2)}h)` : "";
-          log.push(`   📌 turno ${item.data} ${item.area}${horasStr} · ${item.valorTipo} R$ ${item.valorUnit}${totalStr} · status=${status}`);
+          const valorStr = item.valorTipo && item.valorUnit != null
+            ? `${item.valorTipo} R$ ${item.valorUnit}`
+            : "sem valor (define no fechamento)";
+          log.push(`   📌 turno ${item.data} ${item.area}${horasStr} · ${valorStr}${totalStr} · status=${status}`);
           setImportLog([...log]);
         } catch (e) {
           falhas++;
@@ -407,15 +425,17 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             objeto cria 1 turno; se o CPF não existir em Pessoas, cria a pessoa também.
           </p>
           <p>
-            Campos obrigatórios: <code>nome, pix, data (YYYY-MM-DD), area, valorTipo, valorUnit</code>.
+            Campos obrigatórios: <code>nome, pix, data (YYYY-MM-DD), area</code>.
             {me?.isMaster
               ? <> <strong>CPF opcional pra master</strong> (cria pessoa sem CPF; complete depois em Pessoas).</>
               : <> <code>cpf</code> obrigatório.</>}
           </p>
           <p>
-            Opcionais: <code>whatsapp, entrada/saida (HH:MM), intervaloMinutos (número), observacao</code>.
+            Opcionais: <code>whatsapp, entrada/saida (HH:MM), intervaloMinutos, valorTipo, valorUnit, observacao</code>.
             Quando entrada+saída+intervalo vêm preenchidos, o turno já é lançado
-            com horas e total calculados, status <code>"fechamento"</code> (pronto pro DP).
+            com horas calculadas. <code>valorTipo</code> e <code>valorUnit</code> podem
+            ficar pra depois — você define direto no fechamento (o sistema sugere
+            o último valor da pessoa).
           </p>
           <p>
             Áreas válidas: <code>{AREAS.join(", ")}</code> · valorTipo: <code>"hora"</code> ou <code>"diaria"</code>.
@@ -476,12 +496,20 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
 
             {validos.length > 0 && (
               <div className="text-xs space-y-1 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded p-2">
-                {validos.map((v, i) => (
-                  <div key={i} className="flex justify-between gap-2">
-                    <span><strong>{v.item.nome}</strong> · {v.item.data} · {v.item.area}{v.item.entrada ? ` · ${v.item.entrada}` : ""}</span>
-                    <span className="text-gray-500">{v.item.valorTipo === "diaria" ? "diária" : "/h"} R$ {v.item.valorUnit}</span>
-                  </div>
-                ))}
+                {validos.map((v, i) => {
+                  const horario = v.item.entrada && v.item.saida
+                    ? ` · ${v.item.entrada}→${v.item.saida}`
+                    : v.item.entrada ? ` · ${v.item.entrada}` : "";
+                  const valor = v.item.valorTipo && v.item.valorUnit != null
+                    ? `${v.item.valorTipo === "diaria" ? "diária" : "/h"} R$ ${v.item.valorUnit}`
+                    : <span className="italic text-gray-400">sem valor</span>;
+                  return (
+                    <div key={i} className="flex justify-between gap-2">
+                      <span><strong>{v.item.nome}</strong> · {v.item.data} · {v.item.area}{horario}</span>
+                      <span className="text-gray-500">{valor}</span>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
