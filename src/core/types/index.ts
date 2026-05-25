@@ -1,3 +1,42 @@
+// ─── PERFIL DE ACESSO ─────────────────────────────────────────────────────
+// Sistema novo de permissões — substitui (gradualmente) o `permissions`
+// baseado em ver/configurar. Master define perfis, atribui a pessoas.
+//
+// Estrutura:
+//   - Coleção Firestore `/accessProfiles` (custom + meta de built-ins
+//     editados localmente)
+//   - Constantes em src/core/auth/builtinProfiles.ts pra os built-ins de
+//     fábrica (Master implícito + Gerente de Restaurante por enquanto)
+//   - Pessoa.profileIds[rid] aponta pro id do perfil que rege ela naquele
+//     restaurante
+//
+// Catálogo de ações disponíveis em src/core/auth/actionCatalog.ts.
+
+export type PermissoesPerfil = {
+  // Mapa moduleId → actionId → boolean. Ações ausentes = false (negadas).
+  // Ações presentes com true = permitidas. Mantemos a estrutura como mapa
+  // (vs array) pra checks O(1) no canAcao().
+  [moduleId: string]: { [actionId: string]: boolean };
+};
+
+export type AccessProfile = {
+  id: string;
+  nome: string;                       // "Gerente de Restaurante", etc.
+  descricao?: string;
+  builtin: boolean;                   // built-in vem do código, não pode deletar (mas pode editar)
+  /**
+   * Escopo de aplicação:
+   *   null  → global (aparece no dropdown de todo restaurante)
+   *   "X"   → exclusivo do restaurante X (só aparece nele)
+   */
+  restaurantId: string | null;
+  permissions: PermissoesPerfil;
+  criadoPor?: string;                 // pessoaId
+  criadoEm: string;                   // ISO
+  atualizadoPor?: string;
+  atualizadoEm?: string;
+};
+
 // ─── TIPOS BASE ───
 
 export type ModuleArea = "operacao" | "time" | "escritorio";
@@ -448,6 +487,17 @@ export type Pessoa = {
   restaurantIds: string[];
   permissions: { [restaurantId: string]: RestaurantPermissions };
   specialPermissions?: { [restaurantId: string]: PessoaSpecialPermissions };
+
+  // ── Perfis de Acesso (sistema novo, em transição) ────────────────────────
+  // Map restaurantId → id do AccessProfile que rege essa pessoa nesse
+  // restaurante. undefined ou ausente = só self-service. Master ignora isso
+  // (sempre tem tudo).
+  //
+  // Convivência com `permissions` legado: o helper canAcao() checa primeiro
+  // o profile; se a pessoa não tem profile pra esse rid, faz fallback no
+  // mapeamento velho ver/configurar. Conforme as pages migram pra canAcao(),
+  // o sistema antigo vai sendo aposentado.
+  profileIds?: { [restaurantId: string]: string };
 
   // "Convite simplificado": quando a pessoa é vinculada a um restaurante novo,
   // o rid entra aqui pra virar um badge "📨 Você foi adicionada a X" no header

@@ -79,6 +79,15 @@ service cloud.firestore {
       allow create, update, delete: if isMaster();
     }
 
+    // ── /accessProfiles ── sistema novo de perfis de acesso ─────────────
+    // Todos authed leem (precisam pra resolver canAcao). Só master cria/edita.
+    // Built-ins vivem no código (src/core/auth/builtinProfiles.ts) — Firestore
+    // armazena custom + overrides de built-ins (mesmo id).
+    match /accessProfiles/{id} {
+      allow read:   if authed();
+      allow create, update, delete: if isMaster();
+    }
+
     // ── /auditLog ── append-only ────────────────────────────────────────
     match /auditLog/{id} {
       allow read:   if authed();

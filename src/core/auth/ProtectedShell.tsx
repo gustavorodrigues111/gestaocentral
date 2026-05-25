@@ -37,6 +37,7 @@ import { AdmissaoPage } from "../../modules/admissao/AdmissaoPage";
 import { EventosPage } from "../../modules/eventos/EventosPage";
 import { SitesPage } from "../../modules/sites/SitesPage";
 import { ArquiteturaPage } from "../../modules/arquitetura/ArquiteturaPage";
+import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
 import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
 
 function ModuleRouter() {
@@ -109,6 +110,7 @@ export function ProtectedShell() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/arquitetura" element={<ArquiteturaPage />} />
+            <Route path="/perfis" element={<PerfisAcessoPage />} />
             <Route path="/portal/:rid" element={<PortalPage />} />
             <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
             <Route path="*" element={<Navigate to="/" replace />} />

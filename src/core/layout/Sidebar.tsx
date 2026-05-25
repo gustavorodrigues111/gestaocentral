@@ -87,18 +87,32 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )}
 
           {pessoa?.isMaster && (
-            <NavLink
-              to="/arquitetura"
-              onClick={onClose}
-              className={({ isActive }) => `
-                block px-3 py-2 rounded-lg text-sm font-medium
-                ${isActive
-                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                  : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}
-              `}
-            >
-              🏗️ Arquitetura
-            </NavLink>
+            <>
+              <NavLink
+                to="/arquitetura"
+                onClick={onClose}
+                className={({ isActive }) => `
+                  block px-3 py-2 rounded-lg text-sm font-medium
+                  ${isActive
+                    ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}
+                `}
+              >
+                🏗️ Arquitetura
+              </NavLink>
+              <NavLink
+                to="/perfis"
+                onClick={onClose}
+                className={({ isActive }) => `
+                  block px-3 py-2 rounded-lg text-sm font-medium
+                  ${isActive
+                    ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}
+                `}
+              >
+                🛡️ Perfis de Acesso
+              </NavLink>
+            </>
           )}
 
           {areas.map(area => {
