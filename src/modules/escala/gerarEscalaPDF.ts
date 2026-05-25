@@ -142,8 +142,11 @@ export async function gerarEscalaPDF({
     })),
   ];
 
-  // Body agrupado por área: linha-separadora bold por área + linhas dos empregados
-  type Row = (string | { content: string; styles?: object })[];
+  // Body agrupado por área: linha-separadora bold por área + linhas dos empregados.
+  // Tipo permite tanto string solta quanto objeto com content + estilos + colSpan
+  // (autoTable suporta tudo isso na sua CellInput).
+  type Cell = string | { content: string; styles?: object; colSpan?: number };
+  type Row = Cell[];
   const body: Row[] = [];
 
   for (const area of AREAS) {
