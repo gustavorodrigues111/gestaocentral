@@ -7,6 +7,7 @@ import { useState } from "react";
 import { SaloesTab } from "./SaloesTab";
 import { MesasTab } from "./MesasTab";
 import { TemplateConfirmacaoTab } from "./TemplateConfirmacaoTab";
+import { EmailComprovanteTab } from "./EmailComprovanteTab";
 
 type Props = {
   restaurantId: string;
@@ -14,7 +15,7 @@ type Props = {
   pessoaId: string;
 };
 
-type SubTab = "saloes" | "mesas" | "template";
+type SubTab = "saloes" | "mesas" | "template" | "email";
 
 export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
   const [sub, setSub] = useState<SubTab>("saloes");
@@ -32,6 +33,9 @@ export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
         <SubTabButton ativo={sub === "template"} onClick={() => setSub("template")}>
           📱 Mensagem de confirmação
         </SubTabButton>
+        <SubTabButton ativo={sub === "email"} onClick={() => setSub("email")}>
+          📧 Email de comprovante
+        </SubTabButton>
       </div>
 
       {sub === "saloes" && (
@@ -42,6 +46,9 @@ export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
       )}
       {sub === "template" && (
         <TemplateConfirmacaoTab restaurantId={restaurantId} podeConfig={podeConfig} />
+      )}
+      {sub === "email" && (
+        <EmailComprovanteTab restaurantId={restaurantId} />
       )}
     </div>
   );

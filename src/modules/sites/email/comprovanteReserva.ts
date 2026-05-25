@@ -75,8 +75,17 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
   <div style="max-width:560px;margin:0 auto;padding:24px 16px;">
     <!-- Header -->
     <div style="background-color:${corPrimaria};padding:32px 24px;border-radius:12px 12px 0 0;text-align:center;color:#fff;">
-      <div style="font-size:14px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;">${escapeHtml(restNome)}</div>
-      <div style="font-size:24px;font-weight:700;margin-top:8px;">✓ Reserva confirmada</div>
+      ${args.siteConfig.logoUrl ? `
+      <!-- Logo numa "pill" branca pra contrastar com header colorido
+           (logos sao geralmente coloridos sobre transparente, ficariam
+           invisiveis sobre fundo da mesma cor). max-height:48 mantem
+           tamanho razoavel em mobile sem dominar o header. -->
+      <div style="display:inline-block;background-color:#fff;padding:10px 20px;border-radius:10px;margin-bottom:14px;">
+        <img src="${escapeHtml(args.siteConfig.logoUrl)}" alt="${escapeHtml(restNome)}"
+             style="display:block;max-height:48px;max-width:220px;width:auto;height:auto;" />
+      </div>` : `
+      <div style="font-size:14px;letter-spacing:1px;text-transform:uppercase;opacity:0.85;">${escapeHtml(restNome)}</div>`}
+      <div style="font-size:24px;font-weight:700;${args.siteConfig.logoUrl ? '' : 'margin-top:8px;'}">✓ Reserva confirmada</div>
     </div>
 
     <!-- Corpo -->
