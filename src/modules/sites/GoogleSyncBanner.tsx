@@ -1,45 +1,47 @@
-// Banner sticky que aparece quando admin alterou horários/exceções e ainda
-// não confirmou sincronização manual no Google Business. NÃO some sozinho —
-// admin tem que clicar "Já atualizei" pra limpar a flag.
+// Banner sticky de "atualizar no Google Business". Aparece se:
+//   • Horário regular foi alterado e admin ainda não marcou
+//     googleHorarioRegularOk = true, OU
+//   • Qualquer exceção tem googleSyncOk != true
+//
+// Não tem botão "limpar" no banner — admin confirma cada item via
+// checkbox individual (no card da exceção / abaixo do horário regular).
+// Banner some sozinho quando TODOS os pendentes virarem confirmados.
 //
 // Por que manual em vez de API oficial: Google Business API é gated por
-// aprovação (semanas/meses) e exige OAuth + 8 APIs habilitadas + quota
-// review. Para Lobozó (1-3 restaurantes) o custo:benefício compensa o
-// fluxo manual. Se um dia escalar, dá pra trocar pelo API real sem
-// quebrar essa UX (a flag ainda existe, só que limpa automaticamente).
+// aprovação (semanas/meses) e exige OAuth + 8 APIs + quota review. Para
+// 1-3 restaurantes, o checklist manual tem melhor custo:benefício. Se um
+// dia escalar, dá pra trocar pelo API real sem quebrar essa UX —
+// confirmação automática via PATCH bem-sucedido.
 
-import { useState } from "react";
+import type { ExcecaoHorarioSite } from "../../core/types";
 
 type Props = {
-  pendente: { desde: string; motivo: string } | null | undefined;
+  horarioRegularOk: boolean | undefined;        // undefined = nunca mexido, assume OK
+  excecoes: ExcecaoHorarioSite[];
   googleBusinessUrl?: string;
-  podeEditar: boolean;
-  onConfirmarAtualizacao: () => Promise<void>;
 };
 
-export function GoogleSyncBanner({
-  pendente,
-  googleBusinessUrl,
-  podeEditar,
-  onConfirmarAtualizacao,
-}: Props) {
-  const [confirmando, setConfirmando] = useState(false);
-  if (!pendente?.desde) return null;
+export function GoogleSyncBanner({ horarioRegularOk, excecoes, googleBusinessUrl }: Props) {
+  // Horário regular: só é pendência se foi explicitamente marcado como
+  // false. undefined trata como OK (sites pré-feature ou sem mudança).
+  const regularPendente = horarioRegularOk === false;
 
-  // Fallback pro painel geral do Google Business — se admin não setou
-  // o link específico do location, abre a listagem onde ele escolhe.
+  // Exceções: pendentes quando não tem confirmação positiva. Como nova
+  // exceção é criada com googleSyncOk = false, esse filter pega novas
+  // automaticamente. Exceções antigas (pré-feature) com undefined ficam
+  // visíveis aqui — admin marca de uma vez quando atualizar todas.
+  const excecoesPendentes = excecoes.filter(e => e.googleSyncOk !== true);
+
+  if (!regularPendente && excecoesPendentes.length === 0) return null;
+
   const url = googleBusinessUrl?.trim() || "https://business.google.com/";
-  const tempoAtras = formatarTempoAtras(pendente.desde);
 
-  async function confirmar() {
-    if (!podeEditar) return;
-    setConfirmando(true);
-    try {
-      await onConfirmarAtualizacao();
-    } finally {
-      setConfirmando(false);
-    }
+  const partes: string[] = [];
+  if (regularPendente) partes.push("horário regular semanal");
+  if (excecoesPendentes.length > 0) {
+    partes.push(`${excecoesPendentes.length} ${excecoesPendentes.length === 1 ? "data especial" : "datas especiais"}`);
   }
+  const resumoLinha = partes.join(" + ");
 
   return (
     <div
@@ -53,9 +55,21 @@ export function GoogleSyncBanner({
             Atualize também no Google Business
           </div>
           <div className="text-xs sm:text-sm text-amber-800 dark:text-amber-300 mt-0.5">
-            {pendente.motivo} — pendente {tempoAtras}.
-            Cliente pesquisando no Google ainda vê o horário antigo até você sincronizar manualmente.
+            Pendente: <strong>{resumoLinha}</strong>. Clientes pesquisando no Google
+            ainda veem os dados antigos até você espelhar lá manualmente.
           </div>
+          {excecoesPendentes.length > 0 && (
+            <div className="text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 mt-2 space-y-0.5">
+              {excecoesPendentes.slice(0, 5).map(e => (
+                <div key={e.id}>
+                  • {formatarData(e.data)} — {e.motivo || (e.fechado ? "fechado" : "horário especial")}
+                </div>
+              ))}
+              {excecoesPendentes.length > 5 && (
+                <div className="opacity-70">…e mais {excecoesPendentes.length - 5}</div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2 flex-wrap mt-3">
             <a
               href={url}
@@ -65,16 +79,9 @@ export function GoogleSyncBanner({
             >
               🔗 Abrir Google Business
             </a>
-            {podeEditar && (
-              <button
-                type="button"
-                onClick={confirmar}
-                disabled={confirmando}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md bg-white dark:bg-gray-800 border border-amber-300 dark:border-amber-700 text-amber-900 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors disabled:opacity-50"
-              >
-                {confirmando ? "Salvando..." : "✓ Já atualizei no Google"}
-              </button>
-            )}
+            <div className="inline-flex items-center text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 px-2">
+              Marque a caixinha em cada item após atualizar →
+            </div>
           </div>
         </div>
       </div>
@@ -82,22 +89,12 @@ export function GoogleSyncBanner({
   );
 }
 
-// "há 5 minutos", "há 2 horas", "ontem", "há 3 dias"
-function formatarTempoAtras(iso: string): string {
+function formatarData(iso: string): string {
   try {
-    const desde = new Date(iso).getTime();
-    if (Number.isNaN(desde)) return "";
-    const agora = Date.now();
-    const min = Math.floor((agora - desde) / 60000);
-    if (min < 1) return "agora";
-    if (min < 60) return `há ${min} min`;
-    const horas = Math.floor(min / 60);
-    if (horas < 24) return `há ${horas} ${horas === 1 ? "hora" : "horas"}`;
-    const dias = Math.floor(horas / 24);
-    if (dias === 1) return "desde ontem";
-    if (dias < 30) return `há ${dias} dias`;
-    return `desde ${new Date(iso).toLocaleDateString("pt-BR")}`;
+    const d = new Date(iso + "T12:00:00");
+    const dias = ["dom","seg","ter","qua","qui","sex","sáb"];
+    return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")} (${dias[d.getDay()]})`;
   } catch {
-    return "";
+    return iso;
   }
 }

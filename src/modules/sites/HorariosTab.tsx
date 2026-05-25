@@ -254,32 +254,44 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     if (!me) return;
     setSalvando(true);
     try {
-      const parcial: Partial<SiteConfig> = { horarios, excecoes };
-
-      // Detecta se horário regular ou exceções mudaram (vs estado remoto).
-      // Compare via JSON.stringify — basta pra detectar qualquer diff no
-      // shape (turnos, slots, etc). Se mudou, marca pendência de sync com
-      // Google Business pra mostrar o banner sticky. Não altera flag se
-      // admin só salvou sem mexer em nada relevante.
+      // Detecta mudanças vs estado remoto pra decidir como marcar as flags
+      // de Google sync. Confirmação positiva pré-existente (= true) só é
+      // PRESERVADA se o conteúdo é idêntico — qualquer mudança real reseta
+      // pra false (precisa confirmar de novo no Google).
       const horariosMudaram = JSON.stringify(horarios) !== JSON.stringify(cfgRemoto?.horarios || []);
-      const excecoesMudaram = JSON.stringify(excecoes) !== JSON.stringify(cfgRemoto?.excecoes || []);
-      if (horariosMudaram || excecoesMudaram) {
-        // Se já tinha pendência, preserva o `desde` antigo — a UX de
-        // "pendente há X" só faz sentido se contar desde a 1ª mudança
-        // não-confirmada, não desde a última.
-        const desdeExistente = cfgRemoto?.googleSyncPendente?.desde;
-        const motivo = horariosMudaram && excecoesMudaram
-          ? "Horários regulares e exceções alterados"
-          : horariosMudaram
-            ? "Horários regulares alterados"
-            : "Exceção/feriado alterado";
-        parcial.googleSyncPendente = {
-          desde: desdeExistente || new Date().toISOString(),
-          motivo,
+
+      // Pra exceções, comparamos item por item. Se o conteúdo da exceção
+      // (data, turnos, slots, motivo) mudou, reseta seu googleSyncOk pra
+      // false. Se idêntico, preserva a confirmação anterior. Item novo
+      // entra com googleSyncOk = false explícito.
+      const excecoesRemotas = cfgRemoto?.excecoes || [];
+      const excecoesProcessadas = excecoes.map(e => {
+        const remoto = excecoesRemotas.find(r => r.id === e.id);
+        // Compara só os campos que importam pro Google (não inclui flag)
+        const conteudoMudou = !remoto || JSON.stringify({
+          ...e, googleSyncOk: undefined,
+        }) !== JSON.stringify({ ...remoto, googleSyncOk: undefined });
+        return {
+          ...e,
+          googleSyncOk: conteudoMudou ? false : e.googleSyncOk,
         };
+      });
+
+      const parcial: Partial<SiteConfig> = {
+        horarios,
+        excecoes: excecoesProcessadas,
+      };
+
+      // Horário regular: reset pra false se mudou. Senão preserva
+      // (true ou undefined).
+      if (horariosMudaram) {
+        parcial.googleHorarioRegularOk = false;
       }
 
       await save(parcial, me.id);
+      // Aplica também no state local pra UI refletir imediato (sem
+      // esperar o snapshot do Firestore voltar)
+      setExcecoes(excecoesProcessadas);
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao salvar");
@@ -288,17 +300,29 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     }
   }
 
-  // Limpa a pendência de Google sync — chamado pelo banner quando admin
-  // clica "Já atualizei no Google". Usamos save com a flag undefined +
-  // merge:true — sanitizeForFirestore remove undefined, mas Firestore
-  // mantém o campo. Pra apagar de fato, gravamos um objeto vazio (que
-  // ainda é falsy na checagem do banner: !pendente?.desde).
-  async function confirmarSyncGoogle() {
+  // Marca/desmarca confirmação de Google sync pra UMA exceção específica.
+  // Save direto no Firestore — admin não precisa clicar "Salvar horários"
+  // depois (toggle é ação independente, intencional).
+  async function toggleGoogleSyncExcecao(id: string, valor: boolean) {
     if (!me) return;
-    await save(
-      { googleSyncPendente: { desde: "", motivo: "" } } as Partial<SiteConfig>,
-      me.id,
-    );
+    const novas = excecoes.map(e => e.id === id ? { ...e, googleSyncOk: valor } : e);
+    setExcecoes(novas);
+    try {
+      await save({ excecoes: novas }, me.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao salvar");
+      setExcecoes(excecoes); // reverte
+    }
+  }
+
+  // Marca/desmarca confirmação de Google sync do horário regular semanal.
+  async function toggleGoogleSyncRegular(valor: boolean) {
+    if (!me) return;
+    try {
+      await save({ googleHorarioRegularOk: valor }, me.id);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao salvar");
+    }
   }
 
   // Filtrar exceções: futuras + últimas 30 dias passadas (limpeza visual)
@@ -373,14 +397,13 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
   return (
     <div className="space-y-6">
-      {/* Banner Google Business — só aparece se houver pendência de sync.
-          Sticky no topo da aba (não some sozinho — admin tem que clicar
-          "Já atualizei" pra limpar). */}
+      {/* Banner Google Business — só aparece se houver pendência de sync
+          em ALGUM item (horário regular OU qualquer exceção). Some sozinho
+          quando admin marca a confirmação em todos os checkboxes individuais. */}
       <GoogleSyncBanner
-        pendente={cfgRemoto?.googleSyncPendente}
+        horarioRegularOk={cfgRemoto?.googleHorarioRegularOk}
+        excecoes={excecoes}
         googleBusinessUrl={cfgRemoto?.googleBusinessUrl}
-        podeEditar={podeEditar}
-        onConfirmarAtualizacao={confirmarSyncGoogle}
       />
 
       {/* Horário padrão */}
@@ -472,6 +495,29 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
             );
           })}
         </div>
+        {/* Checkbox de confirmação Google Business pro horário regular.
+            Quando admin altera+salva, é resetado pra false. Se marca,
+            banner do topo some (assumindo todas exceções OK também).
+            Posição: logo abaixo da grade dos 7 dias, mesma visual hierarchy. */}
+        {podeEditar && (
+          <label
+            className={`flex items-center gap-2 text-xs rounded-lg border px-3 py-2 cursor-pointer select-none transition-colors ${
+              cfgRemoto?.googleHorarioRegularOk === false
+                ? "border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300"
+                : "border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400"
+            }`}
+          >
+            <input
+              type="checkbox"
+              checked={cfgRemoto?.googleHorarioRegularOk !== false}
+              onChange={(e) => toggleGoogleSyncRegular(e.target.checked)}
+              className="accent-emerald-600"
+            />
+            <span>
+              <strong>Espelhado no Google Business</strong> — desmarca automaticamente quando você altera os horários acima.
+            </span>
+          </label>
+        )}
       </section>
 
       {/* Sugestões de feriados — em cima, pra usuário marcar com 1 clique
@@ -721,11 +767,34 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{e.motivo}</div>
                     )}
                   </div>
-                  {podeEditar && (
-                    <button onClick={() => delExcecao(e.id)} className="text-xs text-rose-600 hover:underline px-2 shrink-0">
-                      apagar
-                    </button>
-                  )}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {/* Checkbox de "atualizei no Google Business" — pendente
+                        quando exceção é criada/alterada. Não passou? Banner
+                        aparece. Marcou todas? Banner some. */}
+                    {podeEditar && !passada && (
+                      <label
+                        className={`flex items-center gap-1.5 text-[11px] cursor-pointer select-none rounded px-1.5 py-1 transition-colors ${
+                          e.googleSyncOk
+                            ? "text-emerald-700 dark:text-emerald-400"
+                            : "text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20"
+                        }`}
+                        title={e.googleSyncOk ? "Confirmado no Google Business" : "Confirme após espelhar no Google Business"}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!e.googleSyncOk}
+                          onChange={(ev) => toggleGoogleSyncExcecao(e.id, ev.target.checked)}
+                          className="accent-emerald-600"
+                        />
+                        Google
+                      </label>
+                    )}
+                    {podeEditar && (
+                      <button onClick={() => delExcecao(e.id)} className="text-xs text-rose-600 hover:underline px-2">
+                        apagar
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}

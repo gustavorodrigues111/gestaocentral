@@ -2235,6 +2235,12 @@ export type ExcecaoHorarioSite = {
   turnos?: { abre: string; fecha: string }[];
   slotsReservaCustom?: SlotReserva[];
   motivo?: string;                   // "Feriado de Natal", "Réveillon especial"
+  // Confirmação manual de que essa exceção foi refletida no Google Business.
+  // true = admin marcou checkbox. false/undefined = pendente. Banner sticky
+  // aparece quando qualquer exceção tem isso != true.
+  // Quando admin edita a exceção com mudança real, isso é resetado pra false
+  // automaticamente (precisa confirmar de novo no Google).
+  googleSyncOk?: boolean;
   criadoEm: string;
   criadoPor: string;
 };
@@ -2378,14 +2384,13 @@ export type SiteConfig = {
   // cola uma vez (https://business.google.com/edit/l/<locationId> ou só
   // business.google.com/). Banner de "atualizar no Google" usa esse link.
   googleBusinessUrl?: string;
-  // Quando horário regular ou exceção/feriado é alterado, marcamos aqui
-  // pra mostrar banner sticky "atualize no Google Business" — admin tem
-  // que clicar pra limpar (não some sozinho). Implementação manual em vez
-  // de API oficial porque GBP API exige aprovação Google (semanas/meses).
-  googleSyncPendente?: {
-    desde: string;                   // ISO timestamp da 1ª mudança não-confirmada
-    motivo: string;                  // resumo human do que mudou
-  };
+  // Confirmação manual de que o horário regular semanal está espelhado
+  // no Google Business. true = admin marcou checkbox. false = mudou e
+  // ainda não confirmou. undefined = nunca foi mexido (assume sincronizado
+  // pra não exibir banner em sites pré-feature).
+  // Confirmações das exceções vivem em cada item de `excecoes[]`
+  // (ExcecaoHorarioSite.googleSyncOk).
+  googleHorarioRegularOk?: boolean;
   // Auditoria
   createdAt: string;
   updatedAt: string;
