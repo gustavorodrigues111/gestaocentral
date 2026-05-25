@@ -37,12 +37,34 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
   const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
 
-  // Escala do texto de corpo — multiplica os tamanhos base. Útil pra fontes
-  // serifadas/decorativas que ficam visualmente menores. Clamp em [0.85, 1.30]
-  // pra não desfigurar o layout.
-  const escalaTexto = Math.min(1.30, Math.max(0.85, cfg.tema.escalaTexto || 1));
-  // Helper: converte um tamanho base (em px) pro tamanho escalado, arredondado.
-  const tx = (px: number) => Math.round(px * escalaTexto);
+  // Escalas tipográficas — 4 categorias independentes. Multiplicam os
+  // tamanhos base. Clamp em [0.85, 1.40] pra não desfigurar layout.
+  //   escalaHero      → Hero h1 (titulão do topo)
+  //   escalaTitulos   → Títulos de seção (h2)
+  //   escalaCorpo     → Parágrafos, descrições
+  //   escalaPequenos  → Botões, nav, labels, footer
+  // Backward compat: campo antigo `escalaTexto` mexia só em alguns textos
+  // de corpo — vira fallback pra escalaCorpo quando não setada explícita.
+  const clampEscala = (v: number | undefined) =>
+    Math.min(1.40, Math.max(0.85, v || 1));
+  const escalaHero = clampEscala(cfg.tema.escalaHero);
+  const escalaTitulos = clampEscala(cfg.tema.escalaTitulos);
+  const escalaCorpo = clampEscala(cfg.tema.escalaCorpo ?? cfg.tema.escalaTexto);
+  const escalaPequenos = clampEscala(cfg.tema.escalaPequenos);
+
+  // Helpers — converte um tamanho base (em px) pro escalado, arredondado.
+  // Pras escalas Hero e Títulos, o uso predominante é via clamp() — usadas
+  // diretamente nas chamadas a clampEscalado() abaixo (sem helper extra).
+  // `tx` é alias de txCorpo pra retrocompat de chamadas antigas no template.
+  const txCorpo = (px: number) => Math.round(px * escalaCorpo);
+  const txPequeno = (px: number) => Math.round(px * escalaPequenos);
+  const tx = txCorpo;
+
+  // Pra clamp() do CSS — escala cada componente em px (ignora vw, que é
+  // viewport-relative e não deve mudar). Ex: clampEscalado(36, 9, 56, escala)
+  // → "clamp(43px, 9vw, 67px)" com escala 1.20.
+  const clampEscalado = (minPx: number, vw: number, maxPx: number, escala: number) =>
+    `clamp(${Math.round(minPx * escala)}px, ${vw}vw, ${Math.round(maxPx * escala)}px)`;
 
   // Fontes — resolve via catálogo (id) ou fallback pros defaults da marca.
   // Heading/Subtitulo/Corpo são 3 fontes independentes selecionáveis no admin.
@@ -130,7 +152,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   // (2 colunas no desktop). Section single-col faz tamanho maior inline.
   const tituloSectionStyle: React.CSSProperties = {
     fontFamily: fonteHeading,
-    fontSize: "clamp(28px, 4vw, 40px)",
+    fontSize: clampEscalado(28, 4, 40, escalaTitulos),
     textAlign: "center",
     margin: "0 0 32px 0",
     color: corPrimaria,
@@ -268,7 +290,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             return (
               <nav style={{
                 display: "flex", gap: 4,
-                fontSize: 14, fontWeight: 500,
+                fontSize: txPequeno(14), fontWeight: 500,
                 backgroundColor: chipBg,
                 backdropFilter: chipBlur,
                 border: chipBorder,
@@ -345,7 +367,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           {cfg.slogan && (
             <p style={{
               fontFamily: fonteSubtitulo,
-              fontSize: 14,
+              fontSize: txCorpo(14),
               color: corSecundaria, marginBottom: 16, opacity: 0.95,
               whiteSpace: "pre-wrap",
             }}>
@@ -354,7 +376,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           )}
           <h1 style={{
             fontFamily: fonteHeading,
-            fontSize: isMobile ? "clamp(36px, 9vw, 56px)" : "clamp(40px, 7vw, 84px)",
+            fontSize: isMobile
+              ? clampEscalado(36, 9, 56, escalaHero)
+              : clampEscalado(40, 7, 84, escalaHero),
             lineHeight: 1.05, margin: "0 0 20px 0", letterSpacing: "-0.01em",
             whiteSpace: "pre-wrap",
           }}>
@@ -362,7 +386,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           </h1>
           <p style={{
             fontFamily: fonteSubtitulo,
-            fontSize: tx(17), opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
+            fontSize: txCorpo(17), opacity: 0.9, maxWidth: 560, margin: "0 auto 28px",
             lineHeight: 1.55,
             whiteSpace: "pre-wrap",
           }}>
@@ -391,7 +415,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         const conteudos: Record<SecaoId, (bg: string) => SecaoConteudo | null> = {
           historia: (bg) => cfg.historia ? {
             titulo: t("historiaTitulo", "A nossa história"),
-            conteudo: <HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} />,
+            conteudo: <HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} fontSizeCorpo={txCorpo(17)} />,
           } : null,
           cardapio: () => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
@@ -500,6 +524,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 ctaTo={`/eventos/${cfg.restaurantId}`}
                 ctaLabel={t("lajeCtaLabel", "Solicitar proposta")}
                 primaryButton={primaryButton}
+                fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
               />
             ),
@@ -512,6 +537,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 ctaTo={`/eventos/${cfg.restaurantId}`}
                 ctaLabel={t("eventosCtaLabel", "Solicitar proposta")}
                 primaryButton={primaryButton}
+                fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
               />
             ),
@@ -524,6 +550,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 ctaTo={`/reservas/${cfg.restaurantId}`}
                 ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
                 primaryButton={primaryButton}
+                fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
               />
             ),
@@ -567,6 +594,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 ctaTo={`/trabalhe/${cfg.restaurantId}`}
                 ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
                 primaryButton={primaryButton}
+                fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
               />
             ),
@@ -1006,7 +1034,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         <div style={{ maxWidth: 1100, margin: "0 auto" }}>
           <h2 style={{
             ...tituloSectionStyle,
-            fontSize: "clamp(32px, 5vw, 48px)",
+            // Single-column section usa título maior. Mesma escala da
+            // categoria Títulos (escalaTitulos) que tituloSectionStyle.
+            fontSize: clampEscalado(32, 5, 48, escalaTitulos),
             // marginBottom 32 dá mesmo espaçamento que o gap interno do
             // CtaConteudo (h2 → texto = texto → botão = equidistante).
             marginBottom: 32,
@@ -1027,7 +1057,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       // Dourado tem brilho — texto preto contrasta melhor. Outras cores, fundo claro.
       color: cor === corSecundaria ? "#1a1a1a" : corFundo,
       textDecoration: "none",
-      fontSize: tx(15),
+      fontSize: txPequeno(15),
       fontWeight: 600,
       borderRadius: 4,
       border: "none",
@@ -1045,7 +1075,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
       backgroundColor: fundo,
       color: cor,
       textDecoration: "none",
-      fontSize: tx(15),
+      fontSize: txPequeno(15),
       fontWeight: 600,
       border: `2px solid ${cor}`,
       borderRadius: 4,
@@ -1114,11 +1144,12 @@ function labelDelivery(plataforma: string): string {
 // um "Ver mais" pra expandir. Textos curtos passam direto sem botão.
 // Gradient fade no rodapé da versão recolhida pra deixar o corte suave.
 function HistoriaExpansivel({
-  texto, bgSecao, corPrimaria,
+  texto, bgSecao, corPrimaria, fontSizeCorpo,
 }: {
   texto: string;
   bgSecao: string;
   corPrimaria: string;
+  fontSizeCorpo?: number;          // se omitido, default 17
 }) {
   const [expandido, setExpandido] = useState(false);
   const [precisaExpandir, setPrecisaExpandir] = useState(false);
@@ -1139,7 +1170,7 @@ function HistoriaExpansivel({
         ref={ref}
         style={{
           position: "relative",
-          fontSize: 17, lineHeight: 1.7,
+          fontSize: fontSizeCorpo ?? 17, lineHeight: 1.7,
           whiteSpace: "pre-wrap",
           maxHeight: expandido || !precisaExpandir ? "none" : ALTURA_RECOLHIDO,
           overflow: "hidden",
@@ -1200,13 +1231,14 @@ function HistoriaExpansivel({
 // rodapé quando essas seções entram em pares no desktop (mesmo com textos
 // de tamanhos diferentes).
 function CtaConteudo({
-  texto, ctaTo, ctaLabel, primaryButton, corPrimaria,
+  texto, ctaTo, ctaLabel, primaryButton, corPrimaria, fontSizeCorpo,
 }: {
   texto: string;
   ctaTo: string;
   ctaLabel: string;
   primaryButton: (cor: string) => React.CSSProperties;
   corPrimaria: string;
+  fontSizeCorpo?: number;          // se omitido, usa default 17
 }) {
   return (
     <div style={{
@@ -1220,7 +1252,7 @@ function CtaConteudo({
       gap: 32,
     }}>
       <p style={{
-        fontSize: 17, lineHeight: 1.7,
+        fontSize: fontSizeCorpo ?? 17, lineHeight: 1.7,
         margin: 0, whiteSpace: "pre-wrap",
       }}>
         {texto}

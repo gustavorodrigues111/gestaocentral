@@ -2257,15 +2257,24 @@ export type TemaSite = {
   fonteHeading?: string;             // títulos grandes (hero h1, section h2)
   fonteSubtitulo?: string;           // subtítulos / texto-destaque
   fonteCorpo?: string;               // texto regular
-  // Multiplicador do tamanho base do texto. Fontes serifadas/decorativas
-  // (Fraunces, DM Serif Display) costumam parecer menores que sans-serif
-  // (Inter) no mesmo tamanho — esse fator compensa sem mexer em todas
-  // as font-size individuais.
-  //   1.0  → padrão (default)
-  //   1.10 → ~10% maior (~2pt em fonte 18-20)
-  //   1.15 → ~15% maior
-  // Aplica em parágrafos, listas, texto de corpo. Títulos têm seu próprio
-  // tamanho já calculado por clamp() e não escalam (não precisam).
+  // ── Escalas tipográficas (multiplicadores 0.85–1.40, default 1.0) ────
+  // Cada uma controla uma categoria visual independente. Útil quando a
+  // fonte escolhida fica visualmente pequena (Fraunces, DM Serif) ou
+  // grande demais (algumas display fonts), sem mexer em cada font-size.
+  //
+  // Aplicação no template:
+  //   escalaHero      → Hero h1 (o titulão do topo)
+  //   escalaTitulos   → Títulos de seção (h2: "História", "Cardápio", etc)
+  //   escalaCorpo     → Parágrafos, descrições, subtítulos
+  //   escalaPequenos  → Botões, navegação, labels, footer
+  //
+  // Backward compat: `escalaTexto` (campo antigo, mexia só em alguns textos
+  // de corpo) é lido como fallback pra escalaCorpo se essa não tiver setada.
+  escalaHero?: number;
+  escalaTitulos?: number;
+  escalaCorpo?: number;
+  escalaPequenos?: number;
+  /** @deprecated Use escalaCorpo. Mantido só pra retrocompat de configs antigas. */
   escalaTexto?: number;
   raioBorda?: string;                // "8px"
 };

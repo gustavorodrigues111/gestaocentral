@@ -603,9 +603,9 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             onChange={(v) => atualizarTema("fonteCorpo", v)}
             disabled={inputDisabled}
           />
-          <EscalaTextoControl
-            value={form.tema.escalaTexto ?? 1}
-            onChange={(v) => atualizarTema("escalaTexto", v)}
+          <EscalasTextoControl
+            tema={form.tema}
+            onChange={(campo, v) => atualizarTema(campo, v)}
             disabled={inputDisabled}
           />
         </div>
@@ -925,46 +925,111 @@ function TextosSection({ form, setForm, disabled }: {
 // ativo hoje. Se voltar a ter múltiplos templates, restaura essa função
 // e a seção em GeralTab.
 
-// EscalaTextoControl — slider pra ajustar o tamanho base do texto do
-// site público. Fontes serifadas/decorativas (Fraunces, DM Serif Display)
-// ficam visualmente menores no mesmo px que sans-serif (Inter). Esse
-// controle multiplica o tamanho do corpo de 0.85x até 1.30x sem mexer
-// em todas as font-size individuais.
-function EscalaTextoControl({ value, onChange, disabled }: {
+// EscalasTextoControl — 4 sliders pra controlar tamanho de cada categoria
+// tipográfica do site público de forma independente. Útil pra balancear
+// quando uma fonte fica visualmente pequena/grande em uma categoria mas
+// não em outras. Backward compat: se config tinha `escalaTexto` (campo
+// antigo), aparece pré-preenchido em `escalaCorpo` (efeito antigo era
+// nos textos de corpo).
+function EscalasTextoControl({ tema, onChange, disabled }: {
+  tema: TemaSite;
+  onChange: (campo: keyof TemaSite, v: number) => void;
+  disabled?: boolean;
+}) {
+  // Defaults pra cada escala. Se escalaCorpo undefined mas escalaTexto
+  // setado (config antiga), usa o antigo como display inicial.
+  const valHero = tema.escalaHero ?? 1;
+  const valTitulos = tema.escalaTitulos ?? 1;
+  const valCorpo = tema.escalaCorpo ?? tema.escalaTexto ?? 1;
+  const valPequenos = tema.escalaPequenos ?? 1;
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">
+          Tamanhos das fontes
+        </label>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          4 categorias independentes — útil pra balancear quando uma fonte
+          fica pequena/grande em algum nível. <strong>100%</strong> = padrão do template.
+        </p>
+      </div>
+      <SliderEscala
+        label="Título do hero"
+        descricao="Frase grande no topo do site"
+        value={valHero}
+        onChange={(v) => onChange("escalaHero", v)}
+        disabled={disabled}
+      />
+      <SliderEscala
+        label="Títulos das seções"
+        descricao="História, Cardápio, Reservas, etc."
+        value={valTitulos}
+        onChange={(v) => onChange("escalaTitulos", v)}
+        disabled={disabled}
+      />
+      <SliderEscala
+        label="Corpo de texto"
+        descricao="Parágrafos, descrições, subtítulos"
+        value={valCorpo}
+        onChange={(v) => {
+          onChange("escalaCorpo", v);
+          // Limpa o campo legado pra evitar 2 fontes de verdade
+          if (tema.escalaTexto !== undefined) onChange("escalaTexto", 1);
+        }}
+        disabled={disabled}
+      />
+      <SliderEscala
+        label="Botões e navegação"
+        descricao="Menu, CTAs, footer, labels"
+        value={valPequenos}
+        onChange={(v) => onChange("escalaPequenos", v)}
+        disabled={disabled}
+      />
+    </div>
+  );
+}
+
+// Slider unitário reusado pelas 4 categorias de escala tipográfica.
+function SliderEscala({ label, descricao, value, onChange, disabled }: {
+  label: string;
+  descricao: string;
   value: number;
   onChange: (v: number) => void;
   disabled?: boolean;
 }) {
   const pct = Math.round((value || 1) * 100);
+  const alterado = value !== 1;
   return (
-    <div>
-      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">
-        Tamanho do texto
-      </label>
-      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
-        Ajusta o corpo do texto (parágrafos, listas, botões). Útil quando a
-        fonte escolhida fica pequena visualmente. <strong>{pct}%</strong>
-        {value === 1 && <span className="text-gray-400"> · padrão</span>}
-      </p>
-      <div className="flex items-center gap-3">
-        <span className="text-[10px] text-gray-500 w-8">85%</span>
+    <div className="space-y-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-medium text-gray-700 dark:text-gray-300">{label}</div>
+          <div className="text-[10px] text-gray-500 dark:text-gray-400">{descricao}</div>
+        </div>
+        <div className={`text-[11px] font-mono tabular-nums shrink-0 ${alterado ? "text-indigo-600 dark:text-indigo-400 font-semibold" : "text-gray-500"}`}>
+          {pct}%
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-gray-400 w-7">85</span>
         <input
           type="range"
           min={0.85}
-          max={1.30}
+          max={1.40}
           step={0.01}
           value={value || 1}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           disabled={disabled}
           className="flex-1"
         />
-        <span className="text-[10px] text-gray-500 w-8 text-right">130%</span>
-        {value !== 1 && (
+        <span className="text-[10px] text-gray-400 w-7 text-right">140</span>
+        {alterado && (
           <button
             type="button"
             onClick={() => onChange(1)}
             disabled={disabled}
-            className="text-[11px] text-gray-500 hover:text-gray-700 underline px-1"
+            className="text-[11px] text-gray-500 hover:text-gray-700 underline px-0.5 shrink-0"
             title="Voltar ao padrão"
           >
             ↺
