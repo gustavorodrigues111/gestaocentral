@@ -191,6 +191,44 @@
     max-width: 420px;
   }
 
+  /* Botões de cardápio (PDF) dentro de cada pacote — quais cardápios
+     fazem sentido pra cada tier muda. Ver HTML abaixo. */
+  .tier-menus {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+
+  .menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border: 1px solid var(--rule-strong);
+    background: transparent;
+    color: var(--ink);
+    text-decoration: none;
+    font-family: 'Jost', sans-serif;
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+  }
+
+  .menu-btn:hover {
+    background: var(--ink);
+    color: var(--bg);
+    border-color: var(--ink);
+  }
+
+  .menu-btn::before {
+    content: '↗';
+    font-size: 13px;
+    line-height: 1;
+  }
+
   .tier-price {
     text-align: right;
     white-space: nowrap;
@@ -534,6 +572,11 @@
         <div>
           <div class="tier-name">Locação da Laje</div>
           <div class="tier-desc">Consumo de comidas e bebidas em comanda individual.</div>
+          <!-- Locação: comida e bebida à la carte → 2 cardápios com preço. -->
+          <div class="tier-menus">
+            <a class="menu-btn" href="/copa/cardapio-comidas.pdf" target="_blank" rel="noopener">Cardápio de comidas</a>
+            <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Carta de bebidas</a>
+          </div>
         </div>
         <div class="tier-price">
           <div class="amount">R$ 3.500</div>
@@ -544,7 +587,13 @@
       <div class="tier">
         <div>
           <div class="tier-name">Espaço exclusivo com comidas inclusas e bebidas à parte</div>
-          <div class="tier-desc">Cardápio conforme anexo.</div>
+          <div class="tier-desc">Comidas inclusas conforme cardápio do evento; bebidas em comanda individual.</div>
+          <!-- Comidas inclusas: comida no pacote (cardápio do evento) +
+               bebidas à parte com preço. -->
+          <div class="tier-menus">
+            <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Comidas do evento</a>
+            <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Bebidas (à parte)</a>
+          </div>
         </div>
         <div class="tier-price">
           <div class="amount">R$ 200</div>
@@ -559,7 +608,11 @@
       <div class="tier">
         <div>
           <div class="tier-name">Espaço exclusivo com comidas e bebidas inclusas</div>
-          <div class="tier-desc">Cardápio conforme anexo.</div>
+          <div class="tier-desc">Comidas e bebidas inclusas conforme cardápio do evento.</div>
+          <!-- Tudo incluso: 1 só cardápio (comidas + bebidas do pacote). -->
+          <div class="tier-menus">
+            <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Cardápio do evento</a>
+          </div>
         </div>
         <div class="tier-price">
           <div class="amount">R$ 480</div>
