@@ -37,36 +37,38 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const corFundo = cfg.tema.corFundo || PADRAO_FUNDO;
   const corTexto = cfg.tema.corTexto || PADRAO_TEXTO;
 
-  // Escalas tipográficas — 6 categorias independentes. Multiplicam os
-  // tamanhos base. Clamp em [0.85, 1.40] pra não desfigurar layout.
-  //   escalaHero          → Hero h1 (titulão do topo)
-  //   escalaTitulos       → Títulos de seção (h2)
-  //   escalaCorpo         → Parágrafos, descrições
-  //   escalaMenuDesktop   → Nav superior + footer social
-  //   escalaMenuMobile    → Menu hamburguer
-  //   escalaBotoes        → CTAs (Reservar, etc)
-  // Backward compat:
-  //   - `escalaTexto` (config muito antiga) → fallback pra escalaCorpo
-  //   - `escalaPequenos` (config pré-separação) → fallback pros 3 menores
+  // Escalas tipográficas — 5 categorias × 2 devices = 10 controles
+  // independentes. Multiplicam os tamanhos base. Clamp em [0.85, 1.40].
+  //
+  // O template detecta `isMobile` (via window.innerWidth com listener) e
+  // escolhe a escala apropriada por categoria. Exceção: Menu já era
+  // device-specific antes — desktop/mobile ficam separados sempre (NavLink
+  // só desktop, MobileMenuLink só mobile). As outras 4 categorias usam
+  // `isMobile ? mobile : desktop`.
+  //
+  // Backward compat: 4 níveis de configs antigas. Cada uma cai pro próximo
+  // fallback se o campo novo não existir. Ordem do mais específico pro
+  // mais genérico — tipo cascata de CSS.
   const clampEscala = (v: number | undefined, fallback?: number) =>
     Math.min(1.40, Math.max(0.85, v ?? fallback ?? 1));
-  const legadoPequenos = cfg.tema.escalaPequenos; // raw, sem default
-  const escalaHero = clampEscala(cfg.tema.escalaHero);
-  const escalaTitulos = clampEscala(cfg.tema.escalaTitulos);
-  const escalaCorpo = clampEscala(cfg.tema.escalaCorpo ?? cfg.tema.escalaTexto);
-  const escalaMenuDesktop = clampEscala(cfg.tema.escalaMenuDesktop, legadoPequenos);
-  const escalaMenuMobile = clampEscala(cfg.tema.escalaMenuMobile, legadoPequenos);
-  const escalaBotoes = clampEscala(cfg.tema.escalaBotoes, legadoPequenos);
+  const tm = cfg.tema;                    // alias curto (não colide com t() de tradução)
+  const legPeq = tm.escalaPequenos;       // config v2 (antes da separação menu/botões)
+  const legHero = tm.escalaHero;
+  const legTitulos = tm.escalaTitulos;
+  const legCorpo = tm.escalaCorpo ?? tm.escalaTexto;
+  const legBotoes = tm.escalaBotoes;
 
-  // Helpers — converte um tamanho base (em px) pro escalado, arredondado.
-  // Pras escalas Hero e Títulos, o uso predominante é via clamp() — usadas
-  // diretamente nas chamadas a clampEscalado() abaixo (sem helper extra).
-  // `tx` é alias de txCorpo pra retrocompat de chamadas antigas no template.
-  const txCorpo = (px: number) => Math.round(px * escalaCorpo);
-  const txMenuDesktop = (px: number) => Math.round(px * escalaMenuDesktop);
-  const txMenuMobile = (px: number) => Math.round(px * escalaMenuMobile);
-  const txBotao = (px: number) => Math.round(px * escalaBotoes);
-  const tx = txCorpo;
+  // 10 escalas finais — uma por categoria × device. Cascata de fallbacks.
+  const escalaHeroDesktop = clampEscala(tm.escalaHeroDesktop, legHero);
+  const escalaHeroMobile = clampEscala(tm.escalaHeroMobile, legHero);
+  const escalaTitulosDesktop = clampEscala(tm.escalaTitulosDesktop, legTitulos);
+  const escalaTitulosMobile = clampEscala(tm.escalaTitulosMobile, legTitulos);
+  const escalaCorpoDesktop = clampEscala(tm.escalaCorpoDesktop, legCorpo);
+  const escalaCorpoMobile = clampEscala(tm.escalaCorpoMobile, legCorpo);
+  const escalaMenuDesktop = clampEscala(tm.escalaMenuDesktop, legPeq);
+  const escalaMenuMobile = clampEscala(tm.escalaMenuMobile, legPeq);
+  const escalaBotoesDesktop = clampEscala(tm.escalaBotoesDesktop, legBotoes ?? legPeq);
+  const escalaBotoesMobile = clampEscala(tm.escalaBotoesMobile, legBotoes ?? legPeq);
 
   // Pra clamp() do CSS — escala cada componente em px (ignora vw, que é
   // viewport-relative e não deve mudar). Ex: clampEscalado(36, 9, 56, escala)
@@ -98,6 +100,25 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   useEffect(() => {
     if (!isMobile) setMenuAberto(false);
   }, [isMobile]);
+
+  // Escalas EFETIVAS (resolvem isMobile) — usadas pelos helpers tx() abaixo
+  // pra elementos que renderizam o mesmo componente em ambos os devices
+  // (hero h1, h2 de seção, parágrafos, botões). Menu é tratado à parte
+  // porque NavLink (desktop-only) e MobileMenuLink (mobile-only) são
+  // componentes distintos — cada um vincula direto ao seu device.
+  const escalaHero = isMobile ? escalaHeroMobile : escalaHeroDesktop;
+  const escalaTitulos = isMobile ? escalaTitulosMobile : escalaTitulosDesktop;
+  const escalaCorpo = isMobile ? escalaCorpoMobile : escalaCorpoDesktop;
+  const escalaBotao = isMobile ? escalaBotoesMobile : escalaBotoesDesktop;
+
+  // Helpers — converte um tamanho base (em px) pro escalado, arredondado.
+  // Pras categorias com clamp() (Hero, Títulos), usar clampEscalado() direto
+  // com a escala apropriada (sem helper extra). `tx` é alias antigo.
+  const txCorpo = (px: number) => Math.round(px * escalaCorpo);
+  const txMenuDesktop = (px: number) => Math.round(px * escalaMenuDesktop);
+  const txMenuMobile = (px: number) => Math.round(px * escalaMenuMobile);
+  const txBotao = (px: number) => Math.round(px * escalaBotao);
+  const tx = txCorpo;
 
   // Scrolled: vira true quando user rola um pouquinho.
   // Threshold baixo (~60px) porque o header começa EXPANDIDO (bege +

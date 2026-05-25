@@ -931,21 +931,65 @@ function TextosSection({ form, setForm, disabled }: {
 // não em outras. Backward compat: se config tinha `escalaTexto` (campo
 // antigo), aparece pré-preenchido em `escalaCorpo` (efeito antigo era
 // nos textos de corpo).
+// Matriz 5×2 de escalas tipográficas — cada categoria visual tem ajuste
+// independente pra desktop e mobile. Layout: 5 linhas (categorias), 2
+// colunas (devices). Em narrow viewport, as 2 colunas empilham.
+//
+// Backward compat: campos antigos sem device split (escalaHero, etc.)
+// viram fallback simétrico pros dois novos campos (desktop + mobile),
+// então ao migrar nada muda visualmente até o admin tocar o slider.
 function EscalasTextoControl({ tema, onChange, disabled }: {
   tema: TemaSite;
   onChange: (campo: keyof TemaSite, v: number) => void;
   disabled?: boolean;
 }) {
-  // Defaults — campos novos têm fallback pros legados pra preservar o
-  // efeito visual de configs pré-feature:
-  //   escalaCorpo                  ← escalaTexto (config muito antiga)
-  //   escalaMenuDesktop/Mobile/Botoes ← escalaPequenos (config intermediária)
-  const valHero = tema.escalaHero ?? 1;
-  const valTitulos = tema.escalaTitulos ?? 1;
-  const valCorpo = tema.escalaCorpo ?? tema.escalaTexto ?? 1;
-  const valMenuDesktop = tema.escalaMenuDesktop ?? tema.escalaPequenos ?? 1;
-  const valMenuMobile = tema.escalaMenuMobile ?? tema.escalaPequenos ?? 1;
-  const valBotoes = tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
+  // Helper: valor display de cada slider, com cascata de fallback.
+  // Mesma lógica do template (PersonalizadoTemplate.tsx) — assim o que o
+  // admin vê é exatamente o que o site renderiza.
+  const vHeroDsk = tema.escalaHeroDesktop ?? tema.escalaHero ?? 1;
+  const vHeroMob = tema.escalaHeroMobile ?? tema.escalaHero ?? 1;
+  const vTitDsk = tema.escalaTitulosDesktop ?? tema.escalaTitulos ?? 1;
+  const vTitMob = tema.escalaTitulosMobile ?? tema.escalaTitulos ?? 1;
+  const vCorDsk = tema.escalaCorpoDesktop ?? tema.escalaCorpo ?? tema.escalaTexto ?? 1;
+  const vCorMob = tema.escalaCorpoMobile ?? tema.escalaCorpo ?? tema.escalaTexto ?? 1;
+  const vMenDsk = tema.escalaMenuDesktop ?? tema.escalaPequenos ?? 1;
+  const vMenMob = tema.escalaMenuMobile ?? tema.escalaPequenos ?? 1;
+  const vBotDsk = tema.escalaBotoesDesktop ?? tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
+  const vBotMob = tema.escalaBotoesMobile ?? tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
+
+  // Cada categoria: label + descricao + 2 sliders (desktop + mobile)
+  const categorias = [
+    {
+      titulo: "Título do hero",
+      descricao: "Frase grande no topo do site",
+      dskVal: vHeroDsk,  dskCampo: "escalaHeroDesktop" as const,
+      mobVal: vHeroMob,  mobCampo: "escalaHeroMobile" as const,
+    },
+    {
+      titulo: "Títulos das seções",
+      descricao: "História, Cardápio, Reservas, etc.",
+      dskVal: vTitDsk, dskCampo: "escalaTitulosDesktop" as const,
+      mobVal: vTitMob, mobCampo: "escalaTitulosMobile" as const,
+    },
+    {
+      titulo: "Corpo de texto",
+      descricao: "Parágrafos, descrições, subtítulo do hero",
+      dskVal: vCorDsk, dskCampo: "escalaCorpoDesktop" as const,
+      mobVal: vCorMob, mobCampo: "escalaCorpoMobile" as const,
+    },
+    {
+      titulo: "Menu",
+      descricao: "Desktop: nav superior. Mobile: itens do hamburguer.",
+      dskVal: vMenDsk, dskCampo: "escalaMenuDesktop" as const,
+      mobVal: vMenMob, mobCampo: "escalaMenuMobile" as const,
+    },
+    {
+      titulo: "Botões",
+      descricao: "CTAs (Reservar, Solicitar, iFood, …)",
+      dskVal: vBotDsk, dskCampo: "escalaBotoesDesktop" as const,
+      mobVal: vBotMob, mobCampo: "escalaBotoesMobile" as const,
+    },
+  ];
 
   return (
     <div className="space-y-3">
@@ -954,64 +998,53 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
           Tamanhos das fontes
         </label>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          6 categorias independentes — balanceia quando uma fonte fica
-          pequena/grande em algum nível. <strong>100%</strong> = padrão do template.
+          5 categorias × 2 devices. Ajuste cada uma pra desktop e mobile
+          independentemente. <strong>100%</strong> = padrão do template.
         </p>
       </div>
-      <SliderEscala
-        label="Título do hero"
-        descricao="Frase grande no topo do site"
-        value={valHero}
-        onChange={(v) => onChange("escalaHero", v)}
-        disabled={disabled}
-      />
-      <SliderEscala
-        label="Títulos das seções"
-        descricao="História, Cardápio, Reservas, etc."
-        value={valTitulos}
-        onChange={(v) => onChange("escalaTitulos", v)}
-        disabled={disabled}
-      />
-      <SliderEscala
-        label="Corpo de texto"
-        descricao="Parágrafos, descrições, subtítulos"
-        value={valCorpo}
-        onChange={(v) => {
-          onChange("escalaCorpo", v);
-          // Limpa o campo legado muito antigo pra evitar 2 fontes da verdade
-          if (tema.escalaTexto !== undefined) onChange("escalaTexto", 1);
-        }}
-        disabled={disabled}
-      />
-      <SliderEscala
-        label="Menu desktop"
-        descricao="Nav superior (Sobre, Cardápio, …) + redes do footer"
-        value={valMenuDesktop}
-        onChange={(v) => onChange("escalaMenuDesktop", v)}
-        disabled={disabled}
-      />
-      <SliderEscala
-        label="Menu mobile"
-        descricao="Itens do menu hamburguer no celular"
-        value={valMenuMobile}
-        onChange={(v) => onChange("escalaMenuMobile", v)}
-        disabled={disabled}
-      />
-      <SliderEscala
-        label="Botões"
-        descricao="CTAs (Reservar, Solicitar, iFood, …)"
-        value={valBotoes}
-        onChange={(v) => onChange("escalaBotoes", v)}
-        disabled={disabled}
-      />
+      {/* Cabeçalho das 2 colunas — só renderiza em viewports onde o grid
+          fica lado a lado (sm+). Em mobile cada slider já tem label "Desktop"/"Mobile". */}
+      <div className="hidden sm:grid grid-cols-[1fr_1fr] gap-3 pl-1 pt-1">
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">🖥 Desktop</div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">📱 Mobile</div>
+      </div>
+      <div className="space-y-3">
+        {categorias.map(cat => (
+          <div
+            key={cat.titulo}
+            className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 space-y-2"
+          >
+            <div>
+              <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{cat.titulo}</div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400">{cat.descricao}</div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
+              <SliderEscalaCompact
+                deviceLabel="🖥 Desktop"
+                value={cat.dskVal}
+                onChange={(v) => onChange(cat.dskCampo, v)}
+                disabled={disabled}
+              />
+              <SliderEscalaCompact
+                deviceLabel="📱 Mobile"
+                value={cat.mobVal}
+                onChange={(v) => onChange(cat.mobCampo, v)}
+                disabled={disabled}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-// Slider unitário reusado pelas 4 categorias de escala tipográfica.
-function SliderEscala({ label, descricao, value, onChange, disabled }: {
-  label: string;
-  descricao: string;
+// Slider compacto pra uma célula da matriz 5×2 de escalas tipográficas.
+// Diferença vs SliderEscala antigo: não tem label/descrição próprios —
+// quem renderiza é a categoria pai (titulo+descricao) + cabeçalho da
+// coluna (Desktop/Mobile). Aqui só mostra device + slider + %.
+function SliderEscalaCompact({ deviceLabel, value, onChange, disabled }: {
+  deviceLabel: string;
   value: number;
   onChange: (v: number) => void;
   disabled?: boolean;
@@ -1021,16 +1054,18 @@ function SliderEscala({ label, descricao, value, onChange, disabled }: {
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[12px] font-medium text-gray-700 dark:text-gray-300">{label}</div>
-          <div className="text-[10px] text-gray-500 dark:text-gray-400">{descricao}</div>
+        {/* Em mobile (cards empilhados), mostra "Desktop"/"Mobile" no slider.
+            Em desktop, o cabeçalho da coluna já mostra — esconde aqui via sm:hidden. */}
+        <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium sm:hidden">
+          {deviceLabel}
         </div>
+        <div className="hidden sm:block text-[10px] text-gray-400 invisible">·</div>
         <div className={`text-[11px] font-mono tabular-nums shrink-0 ${alterado ? "text-indigo-600 dark:text-indigo-400 font-semibold" : "text-gray-500"}`}>
           {pct}%
         </div>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-[10px] text-gray-400 w-7">85</span>
+      <div className="flex items-center gap-1.5">
+        <span className="text-[9px] text-gray-400 w-5">85</span>
         <input
           type="range"
           min={0.85}
@@ -1039,9 +1074,9 @@ function SliderEscala({ label, descricao, value, onChange, disabled }: {
           value={value || 1}
           onChange={(e) => onChange(parseFloat(e.target.value))}
           disabled={disabled}
-          className="flex-1"
+          className="flex-1 min-w-0"
         />
-        <span className="text-[10px] text-gray-400 w-7 text-right">140</span>
+        <span className="text-[9px] text-gray-400 w-7 text-right">140</span>
         {alterado && (
           <button
             type="button"

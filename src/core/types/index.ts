@@ -2258,31 +2258,44 @@ export type TemaSite = {
   fonteSubtitulo?: string;           // subtítulos / texto-destaque
   fonteCorpo?: string;               // texto regular
   // ── Escalas tipográficas (multiplicadores 0.85–1.40, default 1.0) ────
-  // Cada uma controla uma categoria visual independente. Útil quando a
-  // fonte escolhida fica visualmente pequena (Fraunces, DM Serif) ou
-  // grande demais (algumas display fonts), sem mexer em cada font-size.
+  // 5 categorias × 2 devices = 10 controles independentes. Permite
+  // ajuste fino quando uma fonte fica pequena no desktop mas grande
+  // demais em mobile (ou vice-versa). Cada categoria visual tem 1 par:
   //
-  // Aplicação no template:
-  //   escalaHero          → Hero h1 (o titulão do topo)
-  //   escalaTitulos       → Títulos de seção (h2: História, Cardápio, etc)
-  //   escalaCorpo         → Parágrafos, descrições, subtítulos
-  //   escalaMenuDesktop   → Nav superior (desktop) + redes sociais footer
-  //   escalaMenuMobile    → Menu hamburguer (mobile)
-  //   escalaBotoes        → CTAs (Reservar, Solicitar proposta, iFood, etc)
+  //   Hero      → Título grande do topo (h1)
+  //   Titulos   → Cabeçalhos de seção (h2)
+  //   Corpo     → Parágrafos + subtítulo do hero
+  //   Menu      → Nav (desktop = NavLink, mobile = hamburguer)
+  //   Botoes    → CTAs (Reservar, Solicitar, iFood, etc.)
   //
-  // Backward compat:
-  //   - `escalaTexto` (config muito antiga) → fallback pra escalaCorpo
-  //   - `escalaPequenos` (config intermediária, antes da separação menu/botões)
-  //     → fallback pros 3 campos novos (menuDesktop, menuMobile, botoes)
-  escalaHero?: number;
-  escalaTitulos?: number;
-  escalaCorpo?: number;
+  // Backward compat (campos antigos):
+  //   - `escalaTexto` (config v1) → fallback pra escalaCorpo[Desktop|Mobile]
+  //   - `escalaPequenos` (config v2) → fallback pra Menu+Botões
+  //   - `escalaHero|Titulos|Corpo|Botoes` (config v3, sem device split) →
+  //     fallback pros pares Desktop/Mobile da MESMA categoria
+  //   - `escalaMenuDesktop|Mobile` já eram device-specific desde v3 e
+  //     ficam como estão (continuam sendo a fonte da verdade pra Menu).
+  escalaHeroDesktop?: number;
+  escalaHeroMobile?: number;
+  escalaTitulosDesktop?: number;
+  escalaTitulosMobile?: number;
+  escalaCorpoDesktop?: number;
+  escalaCorpoMobile?: number;
   escalaMenuDesktop?: number;
   escalaMenuMobile?: number;
+  escalaBotoesDesktop?: number;
+  escalaBotoesMobile?: number;
+  /** @deprecated Use escalaHeroDesktop/Mobile */
+  escalaHero?: number;
+  /** @deprecated Use escalaTitulosDesktop/Mobile */
+  escalaTitulos?: number;
+  /** @deprecated Use escalaCorpoDesktop/Mobile */
+  escalaCorpo?: number;
+  /** @deprecated Use escalaBotoesDesktop/Mobile */
   escalaBotoes?: number;
-  /** @deprecated Use escalaMenuDesktop/Mobile + escalaBotoes. Mantido pra retrocompat. */
+  /** @deprecated Use os campos específicos de Menu+Botões */
   escalaPequenos?: number;
-  /** @deprecated Use escalaCorpo. Mantido só pra retrocompat de configs muito antigas. */
+  /** @deprecated Use escalaCorpoDesktop/Mobile */
   escalaTexto?: number;
   raioBorda?: string;                // "8px"
 };
