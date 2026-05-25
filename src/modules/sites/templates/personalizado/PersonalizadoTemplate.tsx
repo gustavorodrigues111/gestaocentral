@@ -551,7 +551,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                   justifyContent: "center", flexWrap: "wrap",
                 }}>
                   {(cfg.delivery || []).map((d, i) => (
-                    <a key={i} href={d.url} target="_blank" rel="noreferrer" style={menuButton(corPrimaria, corFundo)}>
+                    <a key={i} href={d.url} target="_blank" rel="noreferrer" style={primaryButton(corPrimaria)}>
                       {d.label || labelDelivery(d.plataforma)}
                     </a>
                   ))}
