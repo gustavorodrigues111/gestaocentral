@@ -4,7 +4,7 @@ import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from 
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
@@ -35,8 +35,19 @@ export function OcorrenciasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "ocorrencias");
-  const podeConfig = canConfigurar(me, rid, "ocorrencias");
+
+  // Granular: cada ação é independente.
+  //   criar     → vê o botão "+ Nova ocorrência"
+  //   ver       → vê a lista de ocorrências registradas
+  //   editar    → pode mudar status (apurar/resolver/arquivar/reabrir), editar e excluir
+  //   estatistics → vê os cards de estatísticas no topo
+  // Acesso à página exige criar OU ver (qualquer um basta).
+  const isMaster = !!me?.isMaster;
+  const { can, loading: loadingPerfis } = useCanAcao(rid);
+  const podeCriar     = isMaster || can("ocorrencias", "criar");
+  const podeVer       = isMaster || can("ocorrencias", "ver");
+  const podeEditar    = isMaster || can("ocorrencias", "editar");
+  const podeStats     = isMaster || can("ocorrencias", "estatistics");
 
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -136,7 +147,10 @@ export function OcorrenciasPage() {
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeVer) {
+  if (loadingPerfis && !isMaster) {
+    return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões…</div>;
+  }
+  if (!podeVer && !podeCriar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -152,27 +166,41 @@ export function OcorrenciasPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🚨 Ocorrências</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
         </div>
-        {podeConfig && (
+        {podeCriar && (
           <Button onClick={() => setEditing("new")}>+ Nova ocorrência</Button>
         )}
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3 mb-4">
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">Hoje</div>
-          <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{hoje}</div>
+      {/* Stats — apenas pra quem tem permissão de estatísticas */}
+      {podeStats && (
+        <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Hoje</div>
+            <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{hoje}</div>
+          </div>
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Abertas</div>
+            <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{abertas}</div>
+          </div>
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+            <div className="text-[10px] uppercase tracking-wider text-gray-500">Graves (7d)</div>
+            <div className="text-2xl font-bold text-rose-700 dark:text-rose-400">{graves7d}</div>
+          </div>
         </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">Abertas</div>
-          <div className="text-2xl font-bold text-amber-700 dark:text-amber-400">{abertas}</div>
-        </div>
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-          <div className="text-[10px] uppercase tracking-wider text-gray-500">Graves (7d)</div>
-          <div className="text-2xl font-bold text-rose-700 dark:text-rose-400">{graves7d}</div>
-        </div>
-      </div>
+      )}
 
+      {/* Quem só pode registrar (sem ver lista) — placeholder e fim. */}
+      {!podeVer && podeCriar && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 text-center text-sm text-blue-800 dark:text-blue-300">
+          <div className="text-3xl mb-2">📝</div>
+          <p className="font-medium mb-1">Você pode registrar ocorrências</p>
+          <p className="text-xs">A lista das ocorrências registradas fica visível só pra gestores. Após enviar, o gestor é notificado.</p>
+        </div>
+      )}
+
+      {/* Busca + filtros + lista — visíveis só pra quem pode ver */}
+      {podeVer && (
+      <>
       <Input
         placeholder="🔍 Buscar por título, descrição, empregado, cliente..."
         value={search}
@@ -228,7 +256,7 @@ export function OcorrenciasPage() {
               ? "Nada encontrado"
               : "Nenhuma ocorrência aberta"}
           </p>
-          {!search && filtroStatus === "abertas" && podeConfig && (
+          {!search && filtroStatus === "abertas" && podeCriar && (
             <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Nova ocorrência"</p>
           )}
         </div>
@@ -260,7 +288,7 @@ export function OcorrenciasPage() {
                       </span>
                     )}
                   </div>
-                  {podeConfig && (
+                  {podeEditar && (
                     <div className="flex gap-1 flex-wrap">
                       {o.status === "aberta" && (
                         <Button variant="secondary" size="sm" onClick={() => setStatus(o, "em_apuracao")}>📋 Apurar</Button>
@@ -294,6 +322,8 @@ export function OcorrenciasPage() {
             );
           })}
         </div>
+      )}
+      </>
       )}
 
       {editing && (
