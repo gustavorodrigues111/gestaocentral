@@ -37,7 +37,7 @@ export function ReunioesPage() {
   const podeVer = canVer(me, rid, "reunioes");
   const podeConfig = canConfigurar(me, rid, "reunioes");
   // Granular — só pra distinguir self-service do resto
-  const { can } = useCanAcao(rid);
+  const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeVerTodas = !!me?.isMaster
     || can("reunioes", "verTodas") || can("reunioes", "criar")
     || can("reunioes", "editar") || can("reunioes", "pauta")
@@ -85,6 +85,9 @@ export function ReunioesPage() {
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
+  if (loadingPerfis && !me?.isMaster) {
+    return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões...</div>;
+  }
   if (!podeVer || !podeVerTodas) {
     return (
       <SelfServiceRedirect

@@ -33,7 +33,7 @@ export function GorjetasPage() {
   // Esta tela é GESTÃO de gorjetas (lançamentos diários, divisão do mês,
   // visão de todo o time). Quem só tem `verExtratoProprio` (self-service)
   // deve ir pro Meu Portal pra ver o extrato pessoal — não entra aqui.
-  const { can } = useCanAcao(rid);
+  const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeVerTime = !!me?.isMaster
     || can("gorjetas", "verTime")
     || can("gorjetas", "lancar")
@@ -197,6 +197,11 @@ export function GorjetasPage() {
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
+  }
+  // Espera perfis carregarem antes de decidir redirect — evita race
+  // condition onde can() retorna false até perfis chegarem do Firestore.
+  if (loadingPerfis && !me?.isMaster) {
+    return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões...</div>;
   }
   if (!podeUsar) {
     return (

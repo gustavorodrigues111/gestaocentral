@@ -56,7 +56,7 @@ export function VTPage() {
   const podeUsar = canUse(me, rid, "vt");
   const podeConfig = canConfig(me, rid, "vt");
   // Granular: pessoa com só `verProprio` (self-service) cai no Meu Portal
-  const { can } = useCanAcao(rid);
+  const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeVerTime = !!me?.isMaster
     || can("vt", "verTime") || can("vt", "configurar") || can("vt", "registrarPg");
   const isMaster = !!me?.isMaster;
@@ -492,6 +492,9 @@ export function VTPage() {
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
+  }
+  if (loadingPerfis && !me?.isMaster) {
+    return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões...</div>;
   }
   if (!podeUsar || !podeVerTime) {
     return (

@@ -53,7 +53,7 @@ export function EscalaPage() {
   // Gates granulares (sistema novo). Renomeados com prefixo `acao` pra não
   // colidir com vars locais legadas (ex: podeEditar abaixo já considera
   // fechamento de mês + outras regras de negócio).
-  const { can } = useCanAcao(rid);
+  const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeVerTime       = !!me?.isMaster
     || can("escala", "verTime") || can("escala", "editar")
     || can("escala", "aprovarTrocas") || can("escala", "publicar")
@@ -483,6 +483,13 @@ export function EscalaPage() {
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
+  }
+  // Espera perfis carregarem antes de decidir se redireciona — evita
+  // flash de "Sem permissão" / redirect indevido enquanto a lista de
+  // perfis ainda está chegando do Firestore. Master tem isMaster=true
+  // antes mesmo dos perfis carregarem (bypass), então não impacta ele.
+  if (loadingPerfis && !me?.isMaster) {
+    return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões...</div>;
   }
   if (!podeUsar || !podeVerTime) {
     return (
