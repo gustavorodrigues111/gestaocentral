@@ -10,6 +10,7 @@ import type {
 } from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
 import { buscarFeriadosProximos, type FeriadoBR } from "./feriadosHelper";
+import { GoogleSyncBanner } from "./GoogleSyncBanner";
 
 type Props = {
   rid: string;
@@ -254,6 +255,30 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     setSalvando(true);
     try {
       const parcial: Partial<SiteConfig> = { horarios, excecoes };
+
+      // Detecta se horário regular ou exceções mudaram (vs estado remoto).
+      // Compare via JSON.stringify — basta pra detectar qualquer diff no
+      // shape (turnos, slots, etc). Se mudou, marca pendência de sync com
+      // Google Business pra mostrar o banner sticky. Não altera flag se
+      // admin só salvou sem mexer em nada relevante.
+      const horariosMudaram = JSON.stringify(horarios) !== JSON.stringify(cfgRemoto?.horarios || []);
+      const excecoesMudaram = JSON.stringify(excecoes) !== JSON.stringify(cfgRemoto?.excecoes || []);
+      if (horariosMudaram || excecoesMudaram) {
+        // Se já tinha pendência, preserva o `desde` antigo — a UX de
+        // "pendente há X" só faz sentido se contar desde a 1ª mudança
+        // não-confirmada, não desde a última.
+        const desdeExistente = cfgRemoto?.googleSyncPendente?.desde;
+        const motivo = horariosMudaram && excecoesMudaram
+          ? "Horários regulares e exceções alterados"
+          : horariosMudaram
+            ? "Horários regulares alterados"
+            : "Exceção/feriado alterado";
+        parcial.googleSyncPendente = {
+          desde: desdeExistente || new Date().toISOString(),
+          motivo,
+        };
+      }
+
       await save(parcial, me.id);
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -261,6 +286,19 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
     } finally {
       setSalvando(false);
     }
+  }
+
+  // Limpa a pendência de Google sync — chamado pelo banner quando admin
+  // clica "Já atualizei no Google". Usamos save com a flag undefined +
+  // merge:true — sanitizeForFirestore remove undefined, mas Firestore
+  // mantém o campo. Pra apagar de fato, gravamos um objeto vazio (que
+  // ainda é falsy na checagem do banner: !pendente?.desde).
+  async function confirmarSyncGoogle() {
+    if (!me) return;
+    await save(
+      { googleSyncPendente: { desde: "", motivo: "" } } as Partial<SiteConfig>,
+      me.id,
+    );
   }
 
   // Filtrar exceções: futuras + últimas 30 dias passadas (limpeza visual)
@@ -335,6 +373,16 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
 
   return (
     <div className="space-y-6">
+      {/* Banner Google Business — só aparece se houver pendência de sync.
+          Sticky no topo da aba (não some sozinho — admin tem que clicar
+          "Já atualizei" pra limpar). */}
+      <GoogleSyncBanner
+        pendente={cfgRemoto?.googleSyncPendente}
+        googleBusinessUrl={cfgRemoto?.googleBusinessUrl}
+        podeEditar={podeEditar}
+        onConfirmarAtualizacao={confirmarSyncGoogle}
+      />
+
       {/* Horário padrão */}
       <section className="space-y-3">
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">

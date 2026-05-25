@@ -328,6 +328,24 @@ export function GeralTab({ rid, nomeRestaurante, podeEditar }: Props) {
             placeholder="https://maps.google.com/..."
             disabled={inputDisabled}
           />
+          {/* URL do painel do Google Business — usado pelo banner sticky de
+              "atualizar no Google" que aparece em Horários quando admin
+              muda horário/feriado. Opcional; se vazio, banner abre painel
+              genérico business.google.com onde admin escolhe location. */}
+          <div>
+            <Input
+              label="URL do Google Business (edição)"
+              value={form.googleBusinessUrl || ""}
+              onChange={(e) => atualizar("googleBusinessUrl", e.target.value)}
+              placeholder="https://business.google.com/edit/l/..."
+              disabled={inputDisabled}
+            />
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Link direto pro editor do seu Business Profile. Achar: business.google.com
+              → seu negócio → "Editar perfil" → copiar URL. Usado no lembrete
+              de "atualizar Google" depois de mudar horário ou feriado.
+            </p>
+          </div>
         </div>
       </section>
 

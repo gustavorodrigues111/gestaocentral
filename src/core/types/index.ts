@@ -2373,6 +2373,19 @@ export type SiteConfig = {
   templateId: "personalizado" | "default" | "lobozo";
   // Status
   publicado: boolean;                // se false, site retorna 404 público
+  // ── Google Business Profile (sync manual) ─────────────────────────────
+  // URL do painel de edição do Google Business desse restaurante. Admin
+  // cola uma vez (https://business.google.com/edit/l/<locationId> ou só
+  // business.google.com/). Banner de "atualizar no Google" usa esse link.
+  googleBusinessUrl?: string;
+  // Quando horário regular ou exceção/feriado é alterado, marcamos aqui
+  // pra mostrar banner sticky "atualize no Google Business" — admin tem
+  // que clicar pra limpar (não some sozinho). Implementação manual em vez
+  // de API oficial porque GBP API exige aprovação Google (semanas/meses).
+  googleSyncPendente?: {
+    desde: string;                   // ISO timestamp da 1ª mudança não-confirmada
+    motivo: string;                  // resumo human do que mudou
+  };
   // Auditoria
   createdAt: string;
   updatedAt: string;
