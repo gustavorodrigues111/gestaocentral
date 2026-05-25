@@ -76,6 +76,17 @@ export function EscalaPage() {
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
 
+  // ── Modais / filtro UI — useState TÊM que ficar aqui no topo, antes de
+  // qualquer return condicional. Antes estavam mais embaixo, depois dos
+  // returns de "Sem permissão"/redirect, violando Rules of Hooks. Quando
+  // a tela alternava entre redirect → conteúdo (ex: durante load de
+  // perfis), a sequência de hooks mudava e React crashava (tela em branco).
+  const [showFeriasLote, setShowFeriasLote] = useState(false);
+  const [showFecharMes, setShowFecharMes] = useState(false);
+  const [showReabrirMes, setShowReabrirMes] = useState(false);
+  const [showInversao, setShowInversao] = useState(false);
+  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
+
   // Quando carrega a escala / navega entre meses:
   //   - prevista fechada → abre na praticada (= real)
   //   - prevista NÃO fechada → força a view pra prevista (mesmo que estava em
@@ -507,11 +518,6 @@ export function EscalaPage() {
   const previstaFechada = !!escala?.previstaFechadaEm;
   const fase: EscalaFase = getEscalaFase(escala);
   const podeReabrir = canReabrirEscala(me, rid);
-  const [showFeriasLote, setShowFeriasLote] = useState(false);
-  const [showFecharMes, setShowFecharMes] = useState(false);
-  const [showReabrirMes, setShowReabrirMes] = useState(false);
-  const [showInversao, setShowInversao] = useState(false);
-  const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
 
   // Multi-unidades — derivados. UI multi-unit aparece quando há 2+ unidades
   // ativas; com 1 só, sistema age como single (auto-preenchido implicitamente).
