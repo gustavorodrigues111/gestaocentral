@@ -4,7 +4,8 @@ import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from 
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { Ideia, IdeiaStatus, Reuniao } from "../../core/types";
@@ -25,7 +26,13 @@ export function IdeiasPage() {
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
   const podeVer = canVer(me, rid, "ideias");
-  const podeConfig = canConfigurar(me, rid, "ideias");
+  // Gates granulares — Banco de ideias tem 2 "papéis": submissor (qualquer
+  // pessoa do time submete) e moderador (gestor classifica/executa).
+  const { can } = useCanAcao(rid);
+  const podeSubmeter = !!me?.isMaster || can("ideias", "submeter");
+  const podeModerar  = !!me?.isMaster || can("ideias", "moderar");
+  const podeExecutar = !!me?.isMaster || can("ideias", "executar");
+  void podeExecutar; // usado em refinamento futuro (botao "marcar implementada")
 
   const [ideias, setIdeias] = useState<Ideia[]>([]);
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
@@ -110,7 +117,7 @@ export function IdeiasPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">💡 Banco de Ideias</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
         </div>
-        {podeConfig && (
+        {podeSubmeter && (
           <Button onClick={() => setEditing("new")}>+ Nova ideia</Button>
         )}
       </div>
@@ -153,7 +160,7 @@ export function IdeiasPage() {
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhuma ideia encontrada" : "Sem ideias por aqui"}
           </p>
-          {!search && podeConfig && (
+          {!search && podeSubmeter && (
             <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Nova ideia"</p>
           )}
         </div>
@@ -179,19 +186,23 @@ export function IdeiasPage() {
                       </span>
                     )}
                   </div>
-                  {podeConfig && (
+                  {(podeModerar || podeExecutar) && (
                     <div className="flex gap-1 flex-wrap">
-                      {i.status === "aberta" && (
+                      {podeModerar && i.status === "aberta" && (
                         <Button variant="secondary" size="sm" onClick={() => setLevando(i)}>🗓️ Pra reunião</Button>
                       )}
-                      {(i.status === "em_pauta" || i.status === "discutida" || i.status === "descartada") && (
+                      {podeModerar && (i.status === "em_pauta" || i.status === "discutida" || i.status === "descartada") && (
                         <Button variant="secondary" size="sm" onClick={() => reabrir(i)}>↻ Reabrir</Button>
                       )}
-                      {i.status === "aberta" && (
+                      {podeModerar && i.status === "aberta" && (
                         <Button variant="secondary" size="sm" onClick={() => descartar(i)}>🗑 Descartar</Button>
                       )}
-                      <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
-                      <Button variant="danger" size="sm" onClick={() => excluir(i)}>×</Button>
+                      {podeModerar && (
+                        <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
+                      )}
+                      {podeModerar && (
+                        <Button variant="danger" size="sm" onClick={() => excluir(i)}>×</Button>
+                      )}
                     </div>
                   )}
                 </div>

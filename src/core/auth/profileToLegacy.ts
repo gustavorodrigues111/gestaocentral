@@ -59,12 +59,20 @@ export function aplicarPerfisNaPessoa(
 
 // ─── Mapeamento: profile.permissions[mod][acao] → { ver, configurar } ────
 
+// Ações estritamente de leitura — quando o perfil só tem essas habilitadas
+// num módulo, o legado canConfigurar fica false (mas canVer fica true).
+//
+// NÃO incluem ações que SÃO ESCRITA DO PRÓPRIO USUÁRIO (submeter ideia,
+// candidatar-se a freela, executar checklist). Essas precisam ser
+// classificadas como "configurar" no bridge senão telas legadas que
+// gateiam botões "+ Nova ideia" / "Candidatar" / "Executar" por
+// canConfigurar não mostram o botão pra quem tem só essa permissão.
 const ACOES_LEITURA = new Set([
   "ver", "verPropria", "verExtratoProprio", "verLista", "verDetalhes",
   "verCRM", "verFuturas", "verPassadas", "verTime", "verPedidos",
   "verCiclos", "verLeads", "verCandidaturas", "verCatalogo", "verVagas",
   "verTodas", "verLeituras", "verRelatoriosLote", "verInconformidades",
-  "verProprio", "ler", "submeter", "candidatar", "executar",
+  "verProprio", "ler",
   "compatibilidade", "estatistics", "exportar",
 ]);
 
