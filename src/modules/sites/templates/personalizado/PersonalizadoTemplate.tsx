@@ -922,7 +922,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             <div style={{ display: "flex", gap: 18, justifyContent: "center", marginBottom: 20 }}>
               {redesFooter.map((r, i) => (
                 <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                   style={{ color: corFundo, textDecoration: "none", fontSize: 14 }}>
+                   style={{ color: corFundo, textDecoration: "none", fontSize: txPequeno(14) }}>
                   {iconRede(r.tipo)} {labelRede(r.tipo, r.label)}
                 </a>
               ))}
@@ -989,7 +989,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     return (
       <a href={href} style={{
         color: cor ?? corTexto, textDecoration: "none",
-        fontSize: 14, fontWeight: 500,
+        // Escala "Botões e navegação" — esse é o controle principal do
+        // tamanho do menu superior.
+        fontSize: txPequeno(14), fontWeight: 500,
         padding: "4px 10px",
         borderRadius: 999,
         transition: "color 0.25s ease, background-color 0.15s ease",
@@ -1014,7 +1016,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
         style={{
           color: cor,
           textDecoration: "none",
-          fontSize: 16,
+          // Mesma escala do NavLink — menu hamburguer e nav superior
+          // respondem juntos ao slider "Botões e navegação".
+          fontSize: txPequeno(16),
           fontWeight: 500,
           padding: "14px 20px",
           borderBottom: `1px solid ${corBorda}20`,
