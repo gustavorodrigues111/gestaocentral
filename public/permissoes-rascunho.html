@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inventário de Permissões — Revisão</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    .action-line { transition: background-color 0.15s; }
+    .action-line.removed { opacity: 0.45; text-decoration: line-through; }
+    .action-line.renamed { background-color: rgb(243 232 255 / 0.6); }
+    .action-line.ok { background-color: rgb(220 252 231 / 0.5); }
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 8px; border-radius: 999px;
+      font-size: 11px; font-weight: 600;
+    }
+  </style>
+</head>
+<body class="bg-stone-50 text-stone-900 antialiased">
+  <div class="max-w-4xl mx-auto p-4 sm:p-6 pb-32">
+
+    <!-- Header -->
+    <header class="mb-6">
+      <h1 class="text-2xl font-bold mb-1">🛡️ Inventário de Permissões</h1>
+      <p class="text-sm text-stone-600">
+        Revise as ações que cada módulo vai expor no editor de perfis.
+        Marque ✅ pra confirmar, ✏️ pra renomear, ❌ pra remover.
+        Sugira ações faltando no fim de cada módulo.
+      </p>
+      <p class="text-xs text-stone-500 mt-2">
+        Seu progresso é salvo automaticamente nesse browser.
+        No fim, clique <strong>Exportar revisão</strong> e cole o JSON no chat.
+      </p>
+    </header>
+
+    <!-- Stats bar -->
+    <div class="bg-white border border-stone-200 rounded-lg p-3 sm:p-4 mb-4 sticky top-0 z-10 shadow-sm">
+      <div class="flex items-center justify-between gap-3 flex-wrap">
+        <div class="flex items-center gap-3 text-sm">
+          <span id="progress-text" class="font-medium">— de — ações revisadas</span>
+          <span class="text-stone-400">|</span>
+          <span class="text-stone-600">
+            ✅ <span id="stat-ok">0</span>
+            <span class="mx-1">·</span>
+            ✏️ <span id="stat-renamed">0</span>
+            <span class="mx-1">·</span>
+            ❌ <span id="stat-removed">0</span>
+          </span>
+        </div>
+        <div class="flex gap-2">
+          <button id="btn-reset" class="text-xs px-3 py-1.5 rounded-md text-rose-600 hover:bg-rose-50 transition-colors">
+            🔄 Resetar tudo
+          </button>
+          <button id="btn-export" class="text-xs px-3 py-1.5 rounded-md bg-stone-900 text-white hover:bg-stone-700 transition-colors font-medium">
+            📤 Exportar revisão
+          </button>
+        </div>
+      </div>
+      <div class="mt-2 h-1.5 bg-stone-100 rounded-full overflow-hidden">
+        <div id="progress-bar" class="h-full bg-emerald-500 transition-all" style="width: 0%"></div>
+      </div>
+    </div>
+
+    <!-- Self-service note -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-900">
+      <div class="font-semibold mb-1">📌 Self-service (baseline automático — não entra no inventário)</div>
+      <p>Qualquer pessoa cadastrada já tem acesso a: <strong>sua escala</strong>, <strong>sua gorjeta</strong>, <strong>FAQ</strong>, <strong>Fale com DP</strong>, <strong>reuniões agendadas (só aviso)</strong>. Esses módulos não aparecem aqui porque não precisam de configuração no perfil.</p>
+    </div>
+
+    <!-- Modules container -->
+    <div id="modules-container" class="space-y-3"></div>
+
+    <!-- Global notes -->
+    <div class="mt-6 bg-white border border-stone-200 rounded-lg p-4">
+      <label class="block text-sm font-semibold mb-2">💬 Notas gerais</label>
+      <p class="text-xs text-stone-500 mb-2">
+        Algo que não cabe nos botões acima? Estrutura, agrupamento, ideias de perfis padrão, etc.
+      </p>
+      <textarea
+        id="notes"
+        class="w-full border border-stone-300 rounded-md p-2 text-sm h-24 resize-y focus:outline-none focus:ring-2 focus:ring-stone-300"
+        placeholder="Ex: 'Acho que módulo X devia ser dividido em Y e Z' / 'Faltou ação W em Reservas'..."
+      ></textarea>
+    </div>
+
+    <!-- Footer info -->
+    <p class="text-center text-xs text-stone-400 mt-8">
+      Página descartável — vai ser removida do projeto depois que o sistema de perfis estiver implementado.
+    </p>
+  </div>
+
+  <!-- Export modal -->
+  <div id="export-modal" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-lg max-w-2xl w-full max-h-[80vh] flex flex-col">
+      <div class="p-4 border-b border-stone-200 flex items-center justify-between">
+        <h2 class="font-bold">📤 Sua revisão (JSON)</h2>
+        <button id="btn-close-modal" class="text-stone-400 hover:text-stone-700 text-xl leading-none">×</button>
+      </div>
+      <div class="p-4 overflow-auto flex-1">
+        <p class="text-xs text-stone-600 mb-2">
+          Copie o JSON abaixo e cole no chat. Ele contém suas decisões pra cada ação + sugestões novas + notas gerais.
+        </p>
+        <pre id="export-json" class="bg-stone-50 border border-stone-200 rounded p-3 text-xs overflow-auto whitespace-pre"></pre>
+      </div>
+      <div class="p-4 border-t border-stone-200 flex justify-end gap-2">
+        <button id="btn-copy-json" class="px-4 py-2 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 font-medium text-sm">
+          📋 Copiar pro clipboard
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ════════════════════════════════════════════════════════════════════
+    //  INVENTÁRIO INICIAL — proposta v0. Revisão do master define a v1.
+    // ════════════════════════════════════════════════════════════════════
+    const INVENTORY = [
+      {
+        id: "reservas",
+        icon: "📅",
+        label: "Reservas + CRM",
+        desc: "Reservas do dia, CRM de clientes, salões/mesas, templates",
+        actions: [
+          { id: "verFuturas",     label: "Ver reservas (hoje em diante)" },
+          { id: "verPassadas",    label: "Ver reservas passadas" },
+          { id: "criar",          label: "Criar nova reserva" },
+          { id: "editar",         label: "Editar reserva" },
+          { id: "cancelar",       label: "Cancelar reserva" },
+          { id: "chegou",         label: "Marcar 'chegou'" },
+          { id: "whatsapp",       label: "Disparar WhatsApp de confirmação" },
+          { id: "notaCliente",    label: "Adicionar nota ao cliente" },
+          { id: "mesclar",        label: "Mesclar clientes duplicados" },
+          { id: "verCRM",         label: "Ver tab Clientes (CRM completo)" },
+          { id: "editarCliente",  label: "Editar dados cadastrais do cliente" },
+          { id: "excluirCliente", label: "Excluir cliente" },
+          { id: "configurar",     label: "Configurar salões / mesas / templates" },
+        ],
+      },
+      {
+        id: "horarios",
+        icon: "🕐",
+        label: "Horários",
+        desc: "Horário regular semanal + exceções (feriados, datas especiais)",
+        actions: [
+          { id: "ver",                label: "Ver horários" },
+          { id: "editarRegular",      label: "Editar horário regular semanal" },
+          { id: "gerenciarExcecoes",  label: "Adicionar/editar/remover exceções" },
+          { id: "marcarSyncGoogle",   label: "Marcar sincronização com Google Business" },
+          { id: "configurarUrlGoogle",label: "Configurar URL do Google Business (Geral)" },
+        ],
+      },
+      {
+        id: "sites",
+        icon: "🌐",
+        label: "Sites",
+        desc: "Site público do restaurante (história, cardápio, contato, tema)",
+        actions: [
+          { id: "ver",            label: "Ver configuração do site" },
+          { id: "editarTextos",   label: "Editar textos (história, hero, etc)" },
+          { id: "editarContato",  label: "Editar contato (endereço, telefone, redes)" },
+          { id: "editarTema",     label: "Editar tema (cores, fontes, escalas)" },
+          { id: "uploadCardapio", label: "Trocar PDF do cardápio (PT/EN)" },
+          { id: "uploadAssets",   label: "Trocar logo / favicon / hero" },
+          { id: "publicar",       label: "Publicar / despublicar site" },
+        ],
+      },
+      {
+        id: "escala",
+        icon: "📆",
+        label: "Escala",
+        desc: "Escala mensal do time, trocas, fechamento",
+        actions: [
+          { id: "verPropria",     label: "Ver sua escala (já no self-service)" },
+          { id: "verTime",        label: "Ver escala de todos do time" },
+          { id: "editar",         label: "Editar escala (mudar turnos)" },
+          { id: "aprovarTrocas",  label: "Aprovar pedidos de troca" },
+          { id: "publicar",       label: "Publicar mês pra time ver" },
+          { id: "exportar",       label: "Exportar/imprimir escala" },
+        ],
+      },
+      {
+        id: "fechamentoEscala",
+        icon: "🔒",
+        label: "Fechamento de escala",
+        desc: "Fechar mês de escala (passa a contar pra gorjeta)",
+        actions: [
+          { id: "ver",      label: "Ver fechamentos passados" },
+          { id: "fechar",   label: "Fechar mês" },
+          { id: "reabrir",  label: "Reabrir mês fechado" },
+        ],
+      },
+      {
+        id: "gorjetas",
+        icon: "💰",
+        label: "Gorjetas",
+        desc: "Cálculo e distribuição de gorjeta",
+        actions: [
+          { id: "verExtratoProprio", label: "Ver seu extrato (já no self-service)" },
+          { id: "verTime",           label: "Ver gorjetas de todos do time" },
+          { id: "lancar",            label: "Lançar valor recebido no dia" },
+          { id: "configurarRegra",   label: "Editar regra de divisão (assembleia)" },
+          { id: "exportar",          label: "Exportar/imprimir relatório" },
+        ],
+      },
+      {
+        id: "vt",
+        icon: "🚌",
+        label: "VT (Vale Transporte)",
+        desc: "Cadastro e pagamento de VT por pessoa",
+        actions: [
+          { id: "verProprio",  label: "Ver seu VT (já no self-service?)" },
+          { id: "verTime",     label: "Ver VT de todos" },
+          { id: "configurar",  label: "Configurar VT por pessoa (valor, dias)" },
+          { id: "registrarPg", label: "Registrar pagamento mensal" },
+        ],
+      },
+      {
+        id: "compras",
+        icon: "🛒",
+        label: "Compras (AppMise)",
+        desc: "Ciclo de abastecimento: contagens → pedidos → recebimento",
+        actions: [
+          { id: "verPedidos",         label: "Ver pedidos" },
+          { id: "criarPedido",        label: "Criar pedido / aprovar sugestão" },
+          { id: "enviarWhatsapp",     label: "Enviar pedido via WhatsApp" },
+          { id: "receber",            label: "Receber pedido (conferência)" },
+          { id: "configurarFornecs",  label: "Configurar fornecedores" },
+          { id: "configurarProdutos", label: "Configurar produtos e categorias" },
+        ],
+      },
+      {
+        id: "contagens",
+        icon: "📦",
+        label: "Contagens (AppMise)",
+        desc: "Contagem de estoque ciclo a ciclo",
+        actions: [
+          { id: "lancar",           label: "Lançar contagem" },
+          { id: "verCiclos",        label: "Ver ciclos atuais e passados" },
+          { id: "abrirFecharCiclo", label: "Abrir / fechar ciclo" },
+          { id: "configurar",       label: "Configurar itens, categorias, estoques" },
+        ],
+      },
+      {
+        id: "checklists",
+        icon: "📋",
+        label: "Checklists operacionais",
+        desc: "Templates de checklist (abertura, fechamento, limpeza) e execuções",
+        actions: [
+          { id: "executar",    label: "Executar checklist do dia" },
+          { id: "verTime",     label: "Ver execuções de todos" },
+          { id: "configurar",  label: "Criar/editar templates" },
+        ],
+      },
+      {
+        id: "fichas",
+        icon: "📚",
+        label: "Fichas técnicas",
+        desc: "Custo de pratos, ingredientes, equipamentos",
+        actions: [
+          { id: "ver",         label: "Ver fichas técnicas" },
+          { id: "editar",      label: "Editar fichas" },
+          { id: "configInsumos", label: "Configurar insumos (preços, unidades)" },
+          { id: "configEquips",  label: "Configurar equipamentos" },
+        ],
+      },
+      {
+        id: "eventos",
+        icon: "🎉",
+        label: "Eventos privados",
+        desc: "Pedidos de evento na laje/espaço",
+        actions: [
+          { id: "verLeads",    label: "Ver leads / pedidos pendentes" },
+          { id: "editar",      label: "Editar pedido" },
+          { id: "responder",   label: "Aprovar / rejeitar / responder" },
+          { id: "configurar",  label: "Configurar espaços, capacidades" },
+        ],
+      },
+      {
+        id: "ocorrencias",
+        icon: "🚨",
+        label: "Ocorrências",
+        desc: "Registros de incidentes, problemas, ações corretivas",
+        actions: [
+          { id: "criar",       label: "Criar ocorrência" },
+          { id: "ver",         label: "Ver ocorrências" },
+          { id: "editar",      label: "Editar / atualizar status" },
+          { id: "estatistics", label: "Ver relatórios / estatísticas" },
+        ],
+      },
+      {
+        id: "freelas",
+        icon: "👤",
+        label: "Freelas",
+        desc: "Vagas pontuais (cobrir um turno, etc)",
+        actions: [
+          { id: "verVagas",   label: "Ver vagas disponíveis" },
+          { id: "candidatar", label: "Candidatar-se" },
+          { id: "criarVaga",  label: "Criar / publicar vaga" },
+          { id: "atribuir",   label: "Atribuir vaga a alguém" },
+          { id: "avaliar",    label: "Avaliar performance do freela" },
+        ],
+      },
+      {
+        id: "reunioes",
+        icon: "🗣️",
+        label: "Reuniões",
+        desc: "Agenda de reuniões, pautas, atas",
+        actions: [
+          { id: "verPropria", label: "Ver reuniões suas (já no self-service)" },
+          { id: "verTodas",   label: "Ver agenda completa do restaurante" },
+          { id: "criar",      label: "Agendar reunião" },
+          { id: "editar",     label: "Editar (mudar data, participantes)" },
+          { id: "pauta",      label: "Adicionar pauta / ações / decisões" },
+        ],
+      },
+      {
+        id: "trilha",
+        icon: "🎯",
+        label: "Trilha do empregado",
+        desc: "Histórico de carreira / eventos individuais",
+        actions: [
+          { id: "verPropria", label: "Ver sua trilha" },
+          { id: "verTime",    label: "Ver trilha de qualquer pessoa" },
+          { id: "lancar",     label: "Lançar evento na trilha (promoção, etc)" },
+          { id: "configurar", label: "Configurar tipos de evento, marcos" },
+        ],
+      },
+      {
+        id: "ideias",
+        icon: "💡",
+        label: "Banco de ideias",
+        desc: "Sugestões do time pra melhorar a casa",
+        actions: [
+          { id: "submeter", label: "Submeter ideia" },
+          { id: "ver",      label: "Ver ideias submetidas" },
+          { id: "moderar",  label: "Aprovar / rejeitar / classificar" },
+          { id: "executar", label: "Marcar como implementada" },
+        ],
+      },
+      {
+        id: "comunicados",
+        icon: "📢",
+        label: "Comunicados",
+        desc: "Anúncios da gestão pro time",
+        actions: [
+          { id: "ler",         label: "Ler comunicados (todos vêem por padrão)" },
+          { id: "criar",       label: "Criar comunicado" },
+          { id: "editar",      label: "Editar comunicado" },
+          { id: "deletar",     label: "Apagar comunicado" },
+          { id: "verLeituras", label: "Ver quem leu (acks)" },
+        ],
+      },
+      {
+        id: "admissao",
+        icon: "👋",
+        label: "Admissão",
+        desc: "Triagem de candidatos + processo de admissão",
+        actions: [
+          { id: "verCandidaturas", label: "Ver candidaturas (trabalhe-conosco)" },
+          { id: "triar",            label: "Triar / classificar candidato" },
+          { id: "iniciarAdmissao",  label: "Iniciar processo de admissão" },
+          { id: "concluirAdmissao", label: "Concluir (vira pessoa do time)" },
+          { id: "configurar",       label: "Configurar etapas do processo" },
+        ],
+      },
+      {
+        id: "recursos",
+        icon: "🧰",
+        label: "Recursos",
+        desc: "Catálogo de itens emprestáveis (uniforme, ferramenta, etc)",
+        actions: [
+          { id: "verCatalogo",   label: "Ver catálogo" },
+          { id: "solicitar",     label: "Solicitar recurso" },
+          { id: "aprovar",       label: "Aprovar / negar solicitação" },
+          { id: "configurar",    label: "Adicionar / editar itens do catálogo" },
+        ],
+      },
+      {
+        id: "excecoes",
+        icon: "⚠️",
+        label: "Exceções (Sólides)",
+        desc: "Inconformidades, ajustes de ponto, compatibilidade com Sólides",
+        actions: [
+          { id: "verInconformidades", label: "Ver inconformidades" },
+          { id: "ajustes",            label: "Aprovar / rejeitar ajustes de ponto" },
+          { id: "compatibilidade",    label: "Ver tab Compatibilidade Sólides" },
+          { id: "configurar",         label: "Configurar regras de exceção" },
+        ],
+      },
+      {
+        id: "pessoas",
+        icon: "👥",
+        label: "Pessoas",
+        desc: "Cadastro do time, cargos, restaurantes vinculados",
+        actions: [
+          { id: "verLista",        label: "Ver lista de pessoas" },
+          { id: "verDetalhes",     label: "Ver detalhes (CPF, endereço, contato)" },
+          { id: "criar",           label: "Criar nova pessoa" },
+          { id: "editarDados",     label: "Editar dados básicos (nome, contato)" },
+          { id: "atribuirCargo",   label: "Atribuir / mudar cargo" },
+          { id: "atribuirRest",    label: "Atribuir / remover restaurantes" },
+          { id: "atribuirPerfil",  label: "Atribuir perfil de acesso" },
+          { id: "demitir",         label: "Demitir / desativar" },
+          { id: "excluir",         label: "Excluir definitivamente" },
+        ],
+      },
+      {
+        id: "configuracoes",
+        icon: "⚙️",
+        label: "Configurações gerais",
+        desc: "Dados do restaurante, cargos, segurança",
+        actions: [
+          { id: "ver",            label: "Ver configurações" },
+          { id: "editarRest",     label: "Editar dados do restaurante" },
+          { id: "configCargos",   label: "Criar/editar cargos" },
+          { id: "configSeguranca",label: "Configurar segurança (2FA, sessão)" },
+        ],
+      },
+      {
+        id: "perfisAcesso",
+        icon: "🛡️",
+        label: "Perfis de Acesso",
+        desc: "ESSE módulo. Quem mexe nos perfis em si.",
+        actions: [
+          { id: "ver",      label: "Ver perfis existentes" },
+          { id: "criar",    label: "Criar novo perfil" },
+          { id: "editar",   label: "Editar perfil existente" },
+          { id: "excluir",  label: "Excluir perfil" },
+          { id: "atribuir", label: "Atribuir perfil a pessoas" },
+        ],
+      },
+    ];
+
+    // ════════════════════════════════════════════════════════════════════
+    //  STATE — persistido em localStorage
+    // ════════════════════════════════════════════════════════════════════
+    const STORAGE_KEY = "permissoes-rascunho-v1";
+    let state = loadState();
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return defaultState();
+        const parsed = JSON.parse(raw);
+        // Merge com defaults pra acomodar inventory novo
+        const def = defaultState();
+        return { ...def, ...parsed };
+      } catch {
+        return defaultState();
+      }
+    }
+    function defaultState() {
+      return { decisions: {}, newActions: {}, notes: "", expanded: {} };
+    }
+    function saveState() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  HELPERS
+    // ════════════════════════════════════════════════════════════════════
+    function getDecision(moduleId, actionId) {
+      return state.decisions[moduleId]?.[actionId];
+    }
+    function setDecision(moduleId, actionId, decision) {
+      if (!state.decisions[moduleId]) state.decisions[moduleId] = {};
+      if (!decision) delete state.decisions[moduleId][actionId];
+      else state.decisions[moduleId][actionId] = decision;
+      saveState();
+      render();
+    }
+    function escapeHtml(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  RENDER
+    // ════════════════════════════════════════════════════════════════════
+    function render() {
+      renderModules();
+      renderStats();
+    }
+
+    function renderModules() {
+      const container = document.getElementById("modules-container");
+      container.innerHTML = INVENTORY.map(mod => renderModule(mod)).join("");
+      attachModuleHandlers();
+    }
+
+    function renderModule(mod) {
+      const decisions = state.decisions[mod.id] || {};
+      const news = state.newActions[mod.id] || [];
+      const total = mod.actions.length + news.length;
+      const reviewed = Object.keys(decisions).filter(aId =>
+        mod.actions.some(a => a.id === aId) || news.some(n => n.id === aId)
+      ).length;
+      const okCount = Object.values(decisions).filter(d => d.status === "ok").length;
+      const renCount = Object.values(decisions).filter(d => d.status === "renamed").length;
+      const remCount = Object.values(decisions).filter(d => d.status === "removed").length;
+      const expanded = state.expanded[mod.id] !== false; // default open
+
+      return `
+        <div class="bg-white border border-stone-200 rounded-lg overflow-hidden" data-module="${mod.id}">
+          <button class="w-full p-3 sm:p-4 flex items-center justify-between gap-2 hover:bg-stone-50 transition-colors text-left" data-toggle="${mod.id}">
+            <div class="min-w-0 flex-1">
+              <div class="font-semibold text-sm sm:text-base flex items-center gap-2">
+                <span class="text-xl">${mod.icon}</span>
+                <span>${escapeHtml(mod.label)}</span>
+                <span class="text-stone-400 text-xs font-normal">(${reviewed}/${total})</span>
+              </div>
+              <div class="text-xs text-stone-500 mt-0.5 ml-8">${escapeHtml(mod.desc)}</div>
+            </div>
+            <div class="flex items-center gap-1 text-xs shrink-0">
+              ${okCount > 0 ? `<span class="badge bg-emerald-100 text-emerald-700">✅ ${okCount}</span>` : ""}
+              ${renCount > 0 ? `<span class="badge bg-purple-100 text-purple-700">✏️ ${renCount}</span>` : ""}
+              ${remCount > 0 ? `<span class="badge bg-rose-100 text-rose-700">❌ ${remCount}</span>` : ""}
+              <span class="text-stone-400 ml-1">${expanded ? "▾" : "▸"}</span>
+            </div>
+          </button>
+          ${expanded ? renderActions(mod, decisions, news) : ""}
+        </div>
+      `;
+    }
+
+    function renderActions(mod, decisions, news) {
+      const lines = [...mod.actions, ...news.map(n => ({ ...n, isNew: true }))];
+      return `
+        <div class="border-t border-stone-100 divide-y divide-stone-100">
+          ${lines.map(action => renderActionLine(mod, action, decisions[action.id])).join("")}
+          ${renderAddAction(mod.id)}
+          ${renderModuleBulkActions(mod.id)}
+        </div>
+      `;
+    }
+
+    function renderActionLine(mod, action, decision) {
+      const status = decision?.status || "";
+      const newLabel = decision?.newLabel;
+      const displayLabel = (status === "renamed" && newLabel) ? newLabel : action.label;
+
+      return `
+        <div class="action-line px-3 sm:px-4 py-2 flex items-center justify-between gap-2 ${status}" data-action="${action.id}" data-module="${mod.id}">
+          <div class="min-w-0 flex-1 text-sm">
+            ${action.isNew ? '<span class="badge bg-amber-100 text-amber-700 mr-2">novo</span>' : ''}
+            <span>${escapeHtml(displayLabel)}</span>
+            ${(status === "renamed" && newLabel && newLabel !== action.label) ? `<span class="text-xs text-stone-400 ml-2">(era: ${escapeHtml(action.label)})</span>` : ""}
+          </div>
+          <div class="flex gap-1 shrink-0">
+            <button class="btn-ok px-2 py-1 rounded text-sm ${status === "ok" ? "bg-emerald-200" : "hover:bg-emerald-50"}" title="Marcar OK">✅</button>
+            <button class="btn-rename px-2 py-1 rounded text-sm ${status === "renamed" ? "bg-purple-200" : "hover:bg-purple-50"}" title="Renomear">✏️</button>
+            <button class="btn-remove px-2 py-1 rounded text-sm ${status === "removed" ? "bg-rose-200" : "hover:bg-rose-50"}" title="Remover">❌</button>
+            ${action.isNew ? '<button class="btn-delete-new px-2 py-1 rounded text-sm hover:bg-stone-100 text-stone-400" title="Apagar sugestão">🗑</button>' : ""}
+          </div>
+        </div>
+      `;
+    }
+
+    function renderAddAction(moduleId) {
+      return `
+        <div class="px-3 sm:px-4 py-2 bg-stone-50/50 flex items-center gap-2">
+          <span class="text-stone-400 text-sm">💡</span>
+          <input
+            type="text"
+            placeholder="Sugerir nova ação nesse módulo..."
+            class="flex-1 border border-stone-200 bg-white rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-stone-300"
+            data-add-input="${moduleId}"
+          />
+          <button class="btn-add-action text-xs px-3 py-1 rounded bg-stone-200 hover:bg-stone-300 transition-colors font-medium" data-add-btn="${moduleId}">
+            + Adicionar
+          </button>
+        </div>
+      `;
+    }
+
+    function renderModuleBulkActions(moduleId) {
+      return `
+        <div class="px-3 sm:px-4 py-1.5 bg-stone-50 flex items-center justify-end gap-2 text-xs">
+          <button class="text-stone-500 hover:text-stone-800 underline" data-bulk="${moduleId}-ok">Marcar todas OK</button>
+          <span class="text-stone-300">·</span>
+          <button class="text-stone-500 hover:text-stone-800 underline" data-bulk="${moduleId}-clear">Limpar revisões</button>
+        </div>
+      `;
+    }
+
+    function renderStats() {
+      let total = 0;
+      let reviewed = 0;
+      let ok = 0, renamed = 0, removed = 0;
+      for (const mod of INVENTORY) {
+        const news = state.newActions[mod.id] || [];
+        const allActionIds = [...mod.actions.map(a => a.id), ...news.map(n => n.id)];
+        total += allActionIds.length;
+        for (const aId of allActionIds) {
+          const d = state.decisions[mod.id]?.[aId];
+          if (!d) continue;
+          reviewed++;
+          if (d.status === "ok") ok++;
+          else if (d.status === "renamed") renamed++;
+          else if (d.status === "removed") removed++;
+        }
+      }
+      document.getElementById("progress-text").textContent = `${reviewed} de ${total} ações revisadas`;
+      document.getElementById("stat-ok").textContent = ok;
+      document.getElementById("stat-renamed").textContent = renamed;
+      document.getElementById("stat-removed").textContent = removed;
+      const pct = total ? Math.round(100 * reviewed / total) : 0;
+      document.getElementById("progress-bar").style.width = pct + "%";
+    }
+
+    // ════════════════════════════════════════════════════════════════════
+    //  EVENT HANDLERS
+    // ════════════════════════════════════════════════════════════════════
+    function attachModuleHandlers() {
+      // Toggle module expanded
+      document.querySelectorAll("[data-toggle]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const mid = btn.dataset.toggle;
+          state.expanded[mid] = state.expanded[mid] === false ? true : false;
+          saveState();
+          render();
+        });
+      });
+
+      // Action buttons
+      document.querySelectorAll(".action-line").forEach(line => {
+        const mid = line.dataset.module;
+        const aid = line.dataset.action;
+
+        line.querySelector(".btn-ok").addEventListener("click", () => {
+          const current = getDecision(mid, aid);
+          if (current?.status === "ok") setDecision(mid, aid, null);
+          else setDecision(mid, aid, { status: "ok" });
+        });
+
+        line.querySelector(".btn-rename").addEventListener("click", () => {
+          const current = getDecision(mid, aid);
+          const action = findAction(mid, aid);
+          const originalLabel = action?.label || "";
+          const currentNew = current?.newLabel || originalLabel;
+          const novo = prompt("Novo nome pra ação:", currentNew);
+          if (novo === null) return;
+          const trimmed = novo.trim();
+          if (!trimmed) {
+            setDecision(mid, aid, null);
+            return;
+          }
+          setDecision(mid, aid, { status: "renamed", newLabel: trimmed });
+        });
+
+        line.querySelector(".btn-remove").addEventListener("click", () => {
+          const current = getDecision(mid, aid);
+          if (current?.status === "removed") setDecision(mid, aid, null);
+          else setDecision(mid, aid, { status: "removed" });
+        });
+
+        const delBtn = line.querySelector(".btn-delete-new");
+        if (delBtn) {
+          delBtn.addEventListener("click", () => {
+            if (!confirm("Apagar essa sugestão?")) return;
+            state.newActions[mid] = (state.newActions[mid] || []).filter(n => n.id !== aid);
+            if (state.decisions[mid]) delete state.decisions[mid][aid];
+            saveState();
+            render();
+          });
+        }
+      });
+
+      // Add new action
+      document.querySelectorAll("[data-add-btn]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const mid = btn.dataset.addBtn;
+          const input = document.querySelector(`[data-add-input="${mid}"]`);
+          addNewAction(mid, input.value);
+        });
+      });
+      document.querySelectorAll("[data-add-input]").forEach(input => {
+        input.addEventListener("keypress", (e) => {
+          if (e.key === "Enter") {
+            addNewAction(input.dataset.addInput, input.value);
+          }
+        });
+      });
+
+      // Bulk actions
+      document.querySelectorAll("[data-bulk]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const [mid, action] = btn.dataset.bulk.split("-");
+          const mod = INVENTORY.find(m => m.id === mid);
+          if (!mod) return;
+          if (action === "ok") {
+            const news = state.newActions[mid] || [];
+            for (const a of [...mod.actions, ...news]) {
+              if (!getDecision(mid, a.id)) {
+                if (!state.decisions[mid]) state.decisions[mid] = {};
+                state.decisions[mid][a.id] = { status: "ok" };
+              }
+            }
+          } else if (action === "clear") {
+            delete state.decisions[mid];
+          }
+          saveState();
+          render();
+        });
+      });
+    }
+
+    function findAction(moduleId, actionId) {
+      const mod = INVENTORY.find(m => m.id === moduleId);
+      if (!mod) return null;
+      const native = mod.actions.find(a => a.id === actionId);
+      if (native) return native;
+      const news = state.newActions[moduleId] || [];
+      return news.find(n => n.id === actionId);
+    }
+
+    function addNewAction(moduleId, label) {
+      const trimmed = label.trim();
+      if (!trimmed) return;
+      if (!state.newActions[moduleId]) state.newActions[moduleId] = [];
+      const tempId = "new_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      state.newActions[moduleId].push({ id: tempId, label: trimmed });
+      saveState();
+      render();
+    }
+
+    // Reset
+    document.getElementById("btn-reset").addEventListener("click", () => {
+      if (!confirm("Apagar TODAS as suas revisões? Não tem volta.")) return;
+      state = defaultState();
+      saveState();
+      document.getElementById("notes").value = "";
+      render();
+    });
+
+    // Notes
+    const notesEl = document.getElementById("notes");
+    notesEl.value = state.notes || "";
+    notesEl.addEventListener("input", () => {
+      state.notes = notesEl.value;
+      saveState();
+    });
+
+    // Export
+    document.getElementById("btn-export").addEventListener("click", () => {
+      const payload = buildExportPayload();
+      document.getElementById("export-json").textContent = JSON.stringify(payload, null, 2);
+      document.getElementById("export-modal").classList.remove("hidden");
+    });
+    document.getElementById("btn-close-modal").addEventListener("click", () => {
+      document.getElementById("export-modal").classList.add("hidden");
+    });
+    document.getElementById("btn-copy-json").addEventListener("click", async () => {
+      const json = document.getElementById("export-json").textContent;
+      try {
+        await navigator.clipboard.writeText(json);
+        const btn = document.getElementById("btn-copy-json");
+        const original = btn.textContent;
+        btn.textContent = "✓ Copiado!";
+        btn.classList.add("bg-emerald-700");
+        setTimeout(() => { btn.textContent = original; btn.classList.remove("bg-emerald-700"); }, 1500);
+      } catch (e) {
+        alert("Falha ao copiar. Selecione manualmente o texto.");
+      }
+    });
+
+    function buildExportPayload() {
+      const out = {
+        timestamp: new Date().toISOString(),
+        notes: state.notes || "",
+        modules: [],
+      };
+      for (const mod of INVENTORY) {
+        const decisions = state.decisions[mod.id] || {};
+        const news = state.newActions[mod.id] || [];
+        const moduleOut = {
+          id: mod.id,
+          label: mod.label,
+          actions: [],
+          newActions: [],
+        };
+        for (const a of mod.actions) {
+          const d = decisions[a.id];
+          moduleOut.actions.push({
+            id: a.id,
+            originalLabel: a.label,
+            status: d?.status || "pending",
+            ...(d?.status === "renamed" && d.newLabel ? { newLabel: d.newLabel } : {}),
+          });
+        }
+        for (const n of news) {
+          const d = decisions[n.id];
+          moduleOut.newActions.push({
+            tempId: n.id,
+            label: (d?.status === "renamed" && d.newLabel) ? d.newLabel : n.label,
+            removed: d?.status === "removed",
+          });
+        }
+        out.modules.push(moduleOut);
+      }
+      return out;
+    }
+
+    // Initial render
+    render();
+  </script>
+</body>
+</html>
