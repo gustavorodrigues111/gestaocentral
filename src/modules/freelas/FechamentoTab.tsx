@@ -591,8 +591,10 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
 }
 
 // ─── Linhas: Prontos pra lote ─────────────────────────────────────────────
+// Reabrir SEM confirm — operação reversível (basta clicar Confirmar de novo
+// na seção "Aguardando precificação"). Confirm() atrapalha em casos onde
+// o DP precisa reabrir vários turnos seguidos.
 async function reabrirShift(shift: FreelaShift) {
-  if (!confirm(`Reabrir turno de ${shift.nomeSnapshot}? Volta pra "Aguardando precificação" pra DP precificar de novo.`)) return;
   await updateDoc(doc(db, "freelaShifts", shift.id), {
     status: "aberto",
     confirmadoEm: null,
