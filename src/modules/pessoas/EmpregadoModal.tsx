@@ -79,6 +79,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
     empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
   );
+  const [vtForaCaju, setVtForaCaju] = useState(empregado?.vtForaCaju ?? false);
   // VR — só aparece se o restaurante tem "vr" em modulosAtivos
   const usaVR = !!restaurant?.modulosAtivos?.includes("vr");
   const [vrAtivo, setVrAtivo] = useState(empregado?.vrAtivo ?? false);
@@ -88,6 +89,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vrAuxilioFixoMensal, setVrAuxilioFixoMensal] = useState<string>(
     empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
   );
+  const [vrForaCaju, setVrForaCaju] = useState(empregado?.vrForaCaju ?? false);
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -192,6 +194,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       if ((empregado.vrAuxilioFixoMensal ?? 0) !== novoVrAuxFixo) {
         nonCritical.vrAuxilioFixoMensal = novoVrAuxFixo;
       }
+      const novoVrForaCaju = !!vrForaCaju;
+      if ((empregado.vrForaCaju ?? false) !== novoVrForaCaju) {
+        nonCritical.vrForaCaju = novoVrForaCaju;
+      }
+    }
+    // Flag vtForaCaju (atualiza imediato — só afeta export do CSV).
+    const novoVtForaCaju = !!vtForaCaju;
+    if ((empregado.vtForaCaju ?? false) !== novoVtForaCaju) {
+      nonCritical.vtForaCaju = novoVtForaCaju;
     }
     return { criticas, nonCritical };
   }
@@ -274,12 +285,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
             vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
           } : {}),
+          ...(vtForaCaju ? { vtForaCaju: true } : {}),
           ...(usaVR ? {
             vrAtivo: !!vrAtivo,
             ...(vrAtivo ? { vrValorDiario: parseFloat(vrValorDiario) } : {}),
             ...((parseFloat(vrAuxilioFixoMensal) || 0) > 0 ? {
               vrAuxilioFixoMensal: parseFloat(vrAuxilioFixoMensal),
             } : {}),
+            ...(vrForaCaju ? { vrForaCaju: true } : {}),
           } : {}),
           email: pessoa?.email || null,
           telefone: pessoa?.whatsapp || null,
@@ -611,6 +624,26 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </p>
           </div>
 
+          {/* Flag "recebe por fora do Caju" — fica no lote pra você pagar
+              mas é excluído do CSV exportado pra Caju. */}
+          {(vtAtivo || (parseFloat(vtAuxilioFixoMensal) || 0) > 0) && (
+            <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
+              <input
+                type="checkbox"
+                checked={vtForaCaju}
+                onChange={(e) => setVtForaCaju(e.target.checked)}
+                className="mt-0.5"
+              />
+              <span>
+                <span className="font-medium">Recebe VT por fora do Caju</span>
+                <span className="block text-[11px] text-gray-500 dark:text-gray-400">
+                  Marque se essa pessoa recebe via PIX direto ou outro meio. Continua aparecendo
+                  no lote, mas fica de fora do CSV exportado pro Caju.
+                </span>
+              </span>
+            </label>
+          )}
+
           {/* VR — só aparece se o restaurante tem "vr" em modulosAtivos.
               Quibebe é o caso atual. Master ativa pelo painel /admin. */}
           {usaVR && (
@@ -648,6 +681,24 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                   Valor fixo mensal de VR (não proporcional). Opcional.
                 </p>
               </div>
+
+              {(vrAtivo || (parseFloat(vrAuxilioFixoMensal) || 0) > 0) && (
+                <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
+                  <input
+                    type="checkbox"
+                    checked={vrForaCaju}
+                    onChange={(e) => setVrForaCaju(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span>
+                    <span className="font-medium">Recebe VR por fora do Caju</span>
+                    <span className="block text-[11px] text-gray-500 dark:text-gray-400">
+                      PIX direto ou outro meio. Aparece no lote pra pagamento, mas
+                      fica fora do CSV pro Caju.
+                    </span>
+                  </span>
+                </label>
+              )}
             </>
           )}
         </div>

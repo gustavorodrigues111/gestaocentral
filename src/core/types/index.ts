@@ -163,6 +163,10 @@ export type Empregado = {
   // Auxílio fixo mensal (R$) — valor cheio adicionado ao VT do mês (não proporcional).
   // Independente de vtAtivo: pode haver empregado só com auxílio fixo (sem passagens).
   vtAuxilioFixoMensal?: number;
+  // Quando true, o empregado RECEBE o VT mas POR FORA do Caju (PIX direto,
+  // dinheiro, etc.). Entra no lote normal, mas é excluído do CSV exportado
+  // pra Caju (vai em "ignoradas" com motivo). Default false = recebe via Caju.
+  vtForaCaju?: boolean;
 
   // VR (Vale Refeição) — só usado quando Restaurant.usaVR = true.
   // Mesma lógica do VT mas com valor diário direto (sem "passagens por dia"),
@@ -170,6 +174,7 @@ export type Empregado = {
   vrAtivo?: boolean;
   vrValorDiario?: number;       // R$ por dia trabalhado
   vrAuxilioFixoMensal?: number; // R$ — adicional fixo mensal (independente de vrAtivo)
+  vrForaCaju?: boolean;         // mesmo conceito do vtForaCaju
 
   // Multi-unidades — só faz sentido quando restaurante.multiUnidades = true.
   // Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade

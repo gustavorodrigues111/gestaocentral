@@ -50,6 +50,19 @@ export function exportarLoteCaju(params: {
 
   for (const linha of lote.linhas) {
     const emp = empMap[linha.empregadoId];
+
+    // Filtro: empregado marcado como "recebe VT por fora do Caju" (PIX direto,
+    // dinheiro, etc.) — NÃO entra no CSV. Mas aparece no "ignoradas" pra você
+    // lembrar de pagar manualmente.
+    if (emp?.vtForaCaju) {
+      ignoradas.push({
+        nome: linha.nome,
+        motivo: `Recebe por fora do Caju — pagar manualmente (R$ ${linha.total.toFixed(2).replace(".", ",")})`,
+        total: linha.total,
+      });
+      continue;
+    }
+
     const cpfDigits = onlyDigits(emp?.cpf);
 
     // Validação: CPF precisa ter 11 dígitos
