@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build && node scripts/prerender-sites.mjs",
     "build:no-prerender": "tsc -b && vite build",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "deploy:rules": "firebase deploy --only firestore:rules,storage --project gestaocentral"
   },
@@ -37,6 +39,7 @@
     "tailwindcss": "^3.4.19",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.58.2",
-    "vite": "^8.0.10"
+    "vite": "^8.0.10",
+    "vitest": "^4.1.7"
   }
 }
