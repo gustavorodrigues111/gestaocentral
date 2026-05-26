@@ -883,15 +883,16 @@ export function sincronizarSubtarefasComTemplate(
       !!ex.pedeDadosBancarios !== !!t.pedeDadosBancarios;
     if (!atualizou) return ex;
     mudou = true;
-    return {
-      ...t,                       // campos do template (atualizados)
-      feita: ex.feita,            // preserva estado de execução
-      feitaEm: ex.feitaEm,
-      feitaPor: ex.feitaPor,
-      observacao: ex.observacao,
-      link: ex.link,
-      dataAgendada: ex.dataAgendada,
-    };
+    // Constrói o merge SEM atribuir undefined — Firestore rejeita undefined
+    // em qualquer campo, e isso fazia o save da sync falhar silenciosamente
+    // pra subtarefas não-feitas (feitaEm/feitaPor/observacao = undefined).
+    const merged: SubtarefaAdmissao = { ...t, feita: ex.feita };
+    if (ex.feitaEm)      merged.feitaEm      = ex.feitaEm;
+    if (ex.feitaPor)     merged.feitaPor     = ex.feitaPor;
+    if (ex.observacao)   merged.observacao   = ex.observacao;
+    if (ex.link)         merged.link         = ex.link;
+    if (ex.dataAgendada) merged.dataAgendada = ex.dataAgendada;
+    return merged;
   });
 
   // Subtarefas órfãs (no admin mas não no template). IDs deprecados são

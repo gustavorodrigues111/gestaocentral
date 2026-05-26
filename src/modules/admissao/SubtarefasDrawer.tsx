@@ -10,6 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Admissao, Cargo, KanbanColuna, Pessoa, Restaurant, SubtarefaAdmissao } from "../../core/types";
 import {
   atualizarSubtarefa,
@@ -103,14 +104,18 @@ export function SubtarefasDrawer({
   // ou alteradas no template global ganham efeito retroativo nas admissões
   // existentes. Idempotente — só persiste se houver diferença. Defer pra
   // depois do primeiro paint pra não bloquear a abertura visual do drawer.
+  // Sanitiza pra remover undefined (Firestore rejeita) e loga erros — antes
+  // o save falhava em silêncio pra subtarefas não-feitas (feitaEm undefined).
   useEffect(() => {
     const t = setTimeout(() => {
       const template = getSubtarefasTemplate(activeRestaurant);
       const { sincronizadas, adicionou } = sincronizarSubtarefasComTemplate(subtarefas, template);
       if (!adicionou) return;
-      void updateDoc(doc(db, "admissoes", admissao.id), {
+      updateDoc(doc(db, "admissoes", admissao.id), sanitizeForFirestore({
         subtarefas: sincronizadas,
         updatedAt: new Date().toISOString(),
+      })).catch((err) => {
+        console.error("[SubtarefasDrawer] sync falhou:", err);
       });
     }, 50);
     return () => clearTimeout(t);
