@@ -18,17 +18,24 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://firebasestorage.googleapis.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Jost:wght@300;400;500;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500;1,600&family=Jost:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <style>
+  /* ───────────────────────────────────────────────────────────────────
+     PALETA — identidade do Lobozó, com profundidade adicional pros cards
+     (bg-card mais claro que bg) inspirada no template do Puba.
+  ─────────────────────────────────────────────────────────────────── */
   :root {
-    --bg: #F4ECDC;
-    --bg-deep: #EBE0CB;
-    --ink: #1A1612;
-    --ink-soft: #5A4F44;
-    --red: #C8202F;
-    --red-deep: #A91824;
-    --rule: rgba(26, 22, 18, 0.14);
-    --rule-strong: rgba(26, 22, 18, 0.42);
+    --bg:         #F4ECDC;
+    --bg-deep:    #EBE0CB;
+    --bg-card:    #FBF4E1;   /* +luz pra cards flutuarem */
+    --ink:        #1A1612;
+    --ink-soft:   #5A4F44;
+    --red:        #C8202F;
+    --red-deep:   #A91824;
+    --rule:        rgba(26, 22, 18, 0.13);
+    --rule-strong: rgba(26, 22, 18, 0.40);
+    --shadow-sm: 0 1px 0 rgba(26, 22, 18, 0.04), 0 2px 6px rgba(26, 22, 18, 0.05);
+    --shadow-md: 0 1px 0 rgba(26, 22, 18, 0.05), 0 8px 24px rgba(26, 22, 18, 0.07);
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -42,64 +49,57 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  body {
-    min-height: 100vh;
+  body { min-height: 100vh; }
+
+  .page {
+    padding: 56px 32px 48px;
     background:
       radial-gradient(ellipse at top right, rgba(200, 32, 47, 0.04) 0%, transparent 50%),
-      radial-gradient(ellipse at bottom left, rgba(200, 32, 47, 0.03) 0%, transparent 50%),
-      var(--bg);
-    padding: 56px 32px 48px;
+      radial-gradient(ellipse at bottom left, rgba(200, 32, 47, 0.03) 0%, transparent 50%);
   }
 
   .sheet {
-    max-width: 720px;
+    max-width: 760px;
     margin: 0 auto;
     position: relative;
   }
 
-  /* Header */
+  /* ───────── HEADER ───────── */
   .header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 24px;
     padding-bottom: 28px;
     border-bottom: 1.5px solid var(--ink);
-    margin-bottom: 44px;
+    margin-bottom: 56px;
   }
 
-  /* Wordmark agora é a logo oficial do Lobozó (PNG no Firebase Storage,
-     URL pública). Mantém presença visual similar ao texto que ficava
-     aqui antes: ~210px de largura no desktop, escalando proporcional. */
-  .wordmark {
-    display: block;
-    line-height: 0;
-  }
+  .wordmark { display: block; line-height: 0; }
   .wordmark img {
     display: block;
-    width: 210px;
-    height: auto;
-    max-width: 100%;
+    height: 78px;
+    width: auto;
+    max-width: 240px;
   }
 
   .header-meta {
     text-align: right;
     font-family: 'Jost', sans-serif;
     font-weight: 500;
-    font-size: 12px;
-    letter-spacing: 0.18em;
+    font-size: 11px;
+    letter-spacing: 0.20em;
     text-transform: uppercase;
     color: var(--ink-soft);
-    line-height: 1.6;
-    padding-top: 6px;
+    line-height: 1.7;
+    padding-top: 10px;
   }
+  .header-meta span { display: block; }
 
-  .header-meta span {
-    display: block;
-  }
-
-  /* Title */
+  /* ───────── TITLE BLOCK (centralizado, inspiração Puba) ───────── */
   .title-block {
-    margin-bottom: 36px;
+    margin-bottom: 56px;
+    text-align: center;
   }
 
   .eyebrow {
@@ -109,102 +109,146 @@
     letter-spacing: 0.32em;
     text-transform: uppercase;
     color: var(--red);
-    margin-bottom: 14px;
+    margin-bottom: 18px;
   }
 
   h1 {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 500;
-    font-size: 52px;
-    line-height: 1.05;
-    letter-spacing: -0.015em;
+    font-size: 62px;
+    line-height: 1.02;
+    letter-spacing: -0.02em;
     color: var(--ink);
-    margin-bottom: 18px;
+    margin-bottom: 22px;
   }
-
-  h1 em {
-    font-style: italic;
-    color: var(--red);
-    font-weight: 500;
-  }
+  h1 em { font-style: italic; color: var(--red); font-weight: 500; }
 
   .lede {
     font-family: 'Cormorant Garamond', serif;
-    font-size: 19px;
+    font-size: 20px;
     font-style: italic;
     line-height: 1.55;
     color: var(--ink-soft);
-    max-width: 560px;
+    max-width: 580px;
+    margin: 0 auto;
   }
 
-  /* Section header */
+  /* ───────── ORNAMENT separador ───────── */
+  .ornament {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    margin: 56px auto;
+    max-width: 220px;
+  }
+  .ornament .line {
+    flex: 1;
+    height: 1px;
+    background: var(--rule-strong);
+  }
+  .ornament .mark {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 18px;
+    color: var(--red);
+    line-height: 1;
+  }
+
+  /* ───────── SECTION HEADERS (numeral romano + label) ───────── */
+  .section-header {
+    display: flex;
+    align-items: baseline;
+    gap: 18px;
+    margin-bottom: 36px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule-strong);
+  }
+  .section-numeral {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-weight: 500;
+    font-size: 38px;
+    color: var(--red);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
   .section-label {
     font-family: 'Jost', sans-serif;
     font-weight: 700;
-    font-size: 11px;
+    font-size: 12px;
     letter-spacing: 0.32em;
     text-transform: uppercase;
-    color: var(--red);
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--rule);
-    margin-bottom: 28px;
+    color: var(--ink);
+  }
+  .section-label .pill {
+    margin-left: 10px;
+    background: var(--red);
+    color: #fff;
+    padding: 3px 8px;
+    font-size: 10px;
+    letter-spacing: 0.24em;
+    border-radius: 2px;
+    vertical-align: 2px;
+  }
+  .section-note {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink-soft);
+    margin: -22px 0 28px;
+    line-height: 1.45;
   }
 
-  /* Tiers */
-  .tiers {
-    margin-bottom: 44px;
-  }
+  /* ───────── PACOTES (cards com barra lateral + sombra) ───────── */
+  .tiers { margin-bottom: 8px; }
 
   .tier {
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--red);
+    padding: 28px 30px 26px;
+    margin-bottom: 18px;
     display: grid;
     grid-template-columns: 1fr auto;
     gap: 32px;
-    padding: 32px 0;
-    border-bottom: 2px solid var(--rule-strong);
-    align-items: baseline;
+    align-items: start;
   }
-
-  .tier:first-child {
-    padding-top: 8px;
-  }
-
-  .tier:last-child {
-    border-bottom: 2px solid var(--rule-strong);
-    padding-bottom: 8px;
-  }
+  .tier:last-child { margin-bottom: 0; }
 
   .tier-name {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 500;
-    font-size: 26px;
+    font-size: 28px;
     line-height: 1.15;
     color: var(--ink);
-    margin-bottom: 6px;
+    margin-bottom: 8px;
+    letter-spacing: -0.01em;
   }
+  .tier-name em { font-style: italic; color: var(--red); }
 
   .tier-desc {
     font-family: 'Jost', sans-serif;
-    font-weight: 400;
     font-size: 14px;
     color: var(--ink-soft);
-    line-height: 1.5;
-    max-width: 420px;
+    line-height: 1.55;
+    max-width: 440px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 16px;
   }
 
-  /* Botões de cardápio (PDF) dentro de cada pacote — quais cardápios
-     fazem sentido pra cada tier muda. Ver HTML abaixo. */
+  /* Botões de cardápio (PDF) — outline elegante */
   .tier-menus {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 14px;
   }
-
   .menu-btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 7px 12px;
+    padding: 8px 13px;
     border: 1px solid var(--rule-strong);
     background: transparent;
     color: var(--ink);
@@ -216,13 +260,11 @@
     text-transform: uppercase;
     transition: all 0.2s ease;
   }
-
   .menu-btn:hover {
     background: var(--ink);
     color: var(--bg);
     border-color: var(--ink);
   }
-
   .menu-btn::before {
     content: '↗';
     font-size: 13px;
@@ -232,99 +274,91 @@
   .tier-price {
     text-align: right;
     white-space: nowrap;
+    min-width: 160px;
   }
-
   .tier-price .amount {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 600;
-    font-size: 32px;
+    font-size: 36px;
     color: var(--red);
     letter-spacing: -0.01em;
     line-height: 1;
   }
-
   .tier-price .unit {
     display: block;
     font-family: 'Jost', sans-serif;
-    font-weight: 400;
-    font-size: 11px;
-    letter-spacing: 0.16em;
+    font-weight: 500;
+    font-size: 10px;
+    letter-spacing: 0.20em;
     text-transform: uppercase;
     color: var(--ink-soft);
-    margin-top: 6px;
+    margin-top: 8px;
   }
-
   .tier-price .addon {
-    margin-top: 14px;
-    padding-top: 12px;
+    margin-top: 16px;
+    padding-top: 14px;
     border-top: 1px solid var(--rule);
     display: flex;
     flex-direction: column;
     gap: 2px;
   }
-
   .tier-price .addon-label {
     font-family: 'Jost', sans-serif;
-    font-weight: 400;
+    font-weight: 500;
     font-size: 10px;
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--ink-soft);
   }
-
   .tier-price .addon-value {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 500;
-    font-size: 17px;
+    font-size: 18px;
     color: var(--ink);
     line-height: 1.2;
   }
 
-  /* Conditions */
-  .conditions {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 24px;
-    padding: 24px 0 28px;
-    border-top: 1px solid var(--rule);
-    border-bottom: 1px solid var(--rule);
-    margin-bottom: 36px;
+  /* ───────── BAND (faixa destacada para JOGOS) ───────── */
+  .band {
+    background: var(--bg-deep);
+    padding: 60px 32px;
+    margin: 0 -32px;
+    border-top: 1px solid var(--rule-strong);
+    border-bottom: 1px solid var(--rule-strong);
   }
+  .band .sheet { max-width: 760px; }
 
-  /* Matches */
-  .matches {
-    margin-top: 56px;
-    margin-bottom: 48px;
-  }
+  /* ───────── MATCHES ───────── */
+  .matches { margin-bottom: 16px; }
+  .matches:last-child { margin-bottom: 0; }
 
-  /* auto-fit: 3 cards na fase de grupos cabem em 3 colunas; ao incluir
-     mais jogos (oitavas/quartas/etc.) quebra em linhas extras sozinho. */
   .matches-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 14px;
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 16px;
   }
 
   .match {
     display: flex;
     flex-direction: column;
     padding: 22px 20px 18px;
-    background: transparent;
-    border: 1px solid var(--rule-strong);
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    box-shadow: var(--shadow-sm);
     color: var(--ink);
     position: relative;
+    border-left: 4px solid var(--red);
   }
 
   .match-day {
     font-family: 'Jost', sans-serif;
-    font-weight: 500;
+    font-weight: 600;
     font-size: 10px;
     letter-spacing: 0.28em;
     text-transform: uppercase;
     color: var(--red);
     margin-bottom: 4px;
   }
-
   .match-date {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 500;
@@ -333,7 +367,6 @@
     margin-bottom: 2px;
     letter-spacing: -0.01em;
   }
-
   .match-time {
     font-family: 'Jost', sans-serif;
     font-weight: 400;
@@ -341,19 +374,16 @@
     color: var(--ink-soft);
     margin-bottom: 16px;
   }
-
   .match-teams {
     font-family: 'Cormorant Garamond', serif;
     font-style: italic;
-    font-size: 18px;
+    font-size: 19px;
     line-height: 1.3;
     margin-bottom: 18px;
     color: var(--ink);
   }
 
-  /* Botões de pacote dentro de cada jogo. A mensagem do WhatsApp é montada
-     em JS no fim do arquivo (data-pkg + data attributes do card pai) — não
-     precisa duplicar HTML pra 9 links. */
+  /* Pacotes dentro de cada jogo */
   .match-packages {
     display: flex;
     flex-direction: column;
@@ -362,7 +392,6 @@
     padding-top: 14px;
     border-top: 1px solid var(--rule);
   }
-
   .pkg-btn {
     display: flex;
     align-items: center;
@@ -380,18 +409,12 @@
     line-height: 1.25;
     transition: all 0.2s ease;
   }
-
   .pkg-btn:hover {
     background: var(--ink);
     color: var(--bg);
     border-color: var(--ink);
   }
-
-  .pkg-btn .pkg-label {
-    text-align: left;
-    flex: 1;
-  }
-
+  .pkg-btn .pkg-label { text-align: left; flex: 1; }
   .pkg-btn .pkg-price {
     font-family: 'Cormorant Garamond', serif;
     font-weight: 600;
@@ -400,103 +423,25 @@
     white-space: nowrap;
     transition: color 0.2s ease;
   }
-
-  .pkg-btn:hover .pkg-price {
-    color: var(--bg);
-  }
-
-  /* Estado "data reservada" — jogo inteiro indisponível.
-     Aplicado em JS quando a data do card está em RESERVADOS no script. */
-  .match--sold {
-    background: rgba(26, 22, 18, 0.04);
-    border-style: dashed;
-  }
-
-  .match--sold .match-day,
-  .match--sold .match-date,
-  .match--sold .match-time,
-  .match--sold .match-teams {
-    opacity: 0.45;
-  }
-
-  .match-sold-badge {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-top: auto;
-    padding: 14px 12px;
-    border-top: 1px solid var(--rule);
-    font-family: 'Jost', sans-serif;
-    font-weight: 700;
-    font-size: 11px;
-    letter-spacing: 0.32em;
-    text-transform: uppercase;
-    color: var(--red);
-    text-align: center;
-  }
-
-  .match-sold-badge small {
-    display: block;
-    margin-top: 6px;
-    font-family: 'Cormorant Garamond', serif;
-    font-style: italic;
-    font-weight: 500;
-    font-size: 13px;
-    letter-spacing: 0;
-    text-transform: none;
-    color: var(--ink-soft);
-  }
+  .pkg-btn:hover .pkg-price { color: var(--bg); }
 
   /* HIERARQUIA VISUAL DOS CARDS:
-     - Brasil (.match sem .match--discount) → bege escuro + sombra forte
-     - Estrela em outros jogos (.match--star) → vermelho mais marcado + sombra vermelha
-     - Outros sem estrela → fundo vermelho sutil padrão
-     Inspiração: papel impresso com peso de elevação diferente. */
-
-  /* Jogos do Brasil — destaque máximo (data principal) */
-  .match:not(.match--discount) {
-    background: var(--bg-deep);
-    border-color: var(--ink);
-    box-shadow:
-      0 4px 16px -6px rgba(26, 22, 18, 0.20),
-      0 2px 4px -1px rgba(200, 32, 47, 0.08);
-  }
-
-  /* Cards de "outros jogos" — recebem badge de 20% OFF no canto.
-     Estrela aparece nos âncora (campo star: true no array).
-     Background levemente avermelhado pra distinguir da seção do Brasil. */
+     - Brasil → barra lateral vermelha forte (4px solid)
+     - .match--star.match--discount → barra forte + sombra avermelhada
+     - Outros sem estrela → barra mais sutil
+  */
   .match--discount {
-    position: relative;
-    background: rgba(200, 32, 47, 0.04);
-    border-color: rgba(200, 32, 47, 0.25);
+    border-left: 3px solid rgba(200, 32, 47, 0.4);
   }
-
-  /* Jogos âncora (seleções tradicionais, com ★) — destaque secundário */
   .match--star.match--discount {
-    background: rgba(200, 32, 47, 0.09);
-    border-color: rgba(200, 32, 47, 0.5);
+    border-left: 4px solid var(--red);
     box-shadow:
-      0 4px 14px -6px rgba(200, 32, 47, 0.30),
-      0 1px 3px -1px rgba(26, 22, 18, 0.10);
+      0 1px 0 rgba(26, 22, 18, 0.05),
+      0 8px 24px rgba(200, 32, 47, 0.10);
   }
 
-  /* Conteúdo em duas colunas internas: data/hora à esquerda, jogo à direita.
-     Aproveita o espaço vazio que sobrava no mobile (1 col) e fica mais
-     enxuto que os cards do Brasil (que mantêm layout vertical). */
-  .match--discount .match-day,
-  .match--discount .match-date,
-  .match--discount .match-time {
-    text-align: left;
-  }
-
-  .match--discount .match-date {
-    font-size: 24px;
-  }
-
-  .match--discount .match-teams {
-    font-size: 16px;
-    margin-bottom: 14px;
-  }
+  .match--discount .match-date { font-size: 26px; }
+  .match--discount .match-teams { font-size: 17px; margin-bottom: 14px; }
 
   .match-discount-badge {
     position: absolute;
@@ -519,169 +464,130 @@
     vertical-align: 2px;
   }
 
-  /* Header da seção "Outros Jogos" — destaque em vermelho pra contrastar
-     com a seção do Brasil acima. */
-  .section-label--discount {
-    color: var(--red);
+  /* Estado "data reservada" */
+  .match--sold {
+    background: rgba(26, 22, 18, 0.04);
+    border-style: dashed;
+  }
+  .match--sold .match-day,
+  .match--sold .match-date,
+  .match--sold .match-time,
+  .match--sold .match-teams {
+    opacity: 0.45;
+  }
+  .match-sold-badge {
     display: flex;
-    align-items: baseline;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-
-  .section-label--discount .label-pill {
-    background: var(--red);
-    color: #fff;
-    padding: 3px 8px;
-    font-size: 10px;
-    letter-spacing: 0.24em;
-    border-radius: 2px;
-  }
-
-  .matches-note {
-    font-family: 'Cormorant Garamond', serif;
-    font-style: italic;
-    font-size: 16px;
-    color: var(--ink-soft);
-    margin: -16px 0 24px;
-    line-height: 1.4;
-  }
-
-  /* Divisor "Pacotes → Datas". Resolve confusão no mobile (long scroll
-     sem separação clara entre o que escolher de pacote vs. de data). */
-  .step-break {
-    text-align: center;
-    padding: 48px 0 32px;
-    margin-top: 16px;
-    border-top: 1.5px solid var(--ink);
-  }
-
-  .step-break-eyebrow {
+    align-items: center;
+    justify-content: center;
+    margin-top: auto;
+    padding: 14px 12px;
+    border-top: 1px solid var(--rule);
     font-family: 'Jost', sans-serif;
     font-weight: 700;
     font-size: 11px;
     letter-spacing: 0.32em;
     text-transform: uppercase;
     color: var(--red);
-    margin-bottom: 16px;
+    text-align: center;
+    flex-direction: column;
   }
-
-  .step-break-title {
-    font-family: 'Cormorant Garamond', serif;
-    font-weight: 500;
-    font-size: 38px;
-    line-height: 1.05;
-    letter-spacing: -0.01em;
-    color: var(--ink);
-    margin-bottom: 14px;
-  }
-
-  .step-break-title em {
-    font-style: italic;
-    color: var(--red);
-    font-weight: 500;
-  }
-
-  .step-break-lede {
+  .match-sold-badge small {
+    display: block;
+    margin-top: 6px;
     font-family: 'Cormorant Garamond', serif;
     font-style: italic;
-    font-size: 17px;
+    font-weight: 500;
+    font-size: 13px;
+    letter-spacing: 0;
+    text-transform: none;
     color: var(--ink-soft);
+  }
+
+  /* ───────── DISCLAIMER ───────── */
+  .disclaimer {
+    font-family: 'Cormorant Garamond', serif;
+    font-style: italic;
+    font-size: 16px;
+    color: var(--ink-soft);
+    text-align: center;
+    margin: 48px auto 12px;
+    max-width: 560px;
+    padding: 0 20px;
     line-height: 1.5;
-    max-width: 440px;
-    margin: 0 auto;
   }
 
-  .condition-item {
-    text-align: left;
-  }
-
-  .condition-label {
-    font-family: 'Jost', sans-serif;
-    font-weight: 500;
-    font-size: 10px;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--ink-soft);
-    margin-bottom: 8px;
-  }
-
-  .condition-value {
-    font-family: 'Cormorant Garamond', serif;
-    font-size: 19px;
-    color: var(--ink);
-    line-height: 1.3;
-  }
-
-  /* Footer */
+  /* ───────── FOOTER (2 colunas) ───────── */
   .footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 32px;
-    padding-top: 16px;
+    background: var(--bg-card);
+    border: 1px solid var(--rule);
+    box-shadow: var(--shadow-sm);
+    padding: 36px 32px 32px;
+    margin-top: 24px;
   }
-
-  .footer-note {
+  .footer-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+    margin-bottom: 28px;
+  }
+  .footer-item { display: flex; flex-direction: column; gap: 6px; }
+  .footer-item-label {
+    font-family: 'Jost', sans-serif;
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--red);
+  }
+  .footer-item-value,
+  .footer-item-value a {
     font-family: 'Cormorant Garamond', serif;
-    font-style: italic;
-    font-size: 17px;
-    color: var(--ink-soft);
-    line-height: 1.45;
-    max-width: 380px;
+    font-size: 18px;
+    color: var(--ink);
+    text-decoration: none;
+    line-height: 1.35;
+    transition: color 0.2s ease;
   }
+  .footer-item-value a:hover { color: var(--red); }
 
   .footer-mark {
+    padding-top: 22px;
+    border-top: 1px solid var(--rule);
     font-family: 'Jost', sans-serif;
     font-weight: 500;
     font-size: 10px;
     letter-spacing: 0.32em;
     text-transform: uppercase;
     color: var(--ink-soft);
-    text-align: right;
-    line-height: 1.6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
   }
+  .footer-mark .red { color: var(--red); }
 
-  .footer-mark .red-dot {
-    color: var(--red);
-  }
-
-  /* Decorative flourish */
-  .flourish {
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    width: 70px;
-    height: 70px;
-    pointer-events: none;
-    opacity: 0.85;
-  }
-
-  /* Mobile */
-  @media (max-width: 640px) {
-    body { padding: 32px 20px 32px; }
-    .wordmark img { width: 160px; }
-    h1 { font-size: 38px; }
-    .lede { font-size: 17px; }
-    .header { flex-direction: column; gap: 14px; align-items: flex-start; }
+  /* ───────── MOBILE ───────── */
+  @media (max-width: 700px) {
+    .page { padding: 36px 18px 32px; }
+    .header { flex-direction: column; gap: 14px; align-items: flex-start; padding-bottom: 18px; margin-bottom: 32px; }
     .header-meta { text-align: left; padding-top: 0; }
-    .tier { grid-template-columns: 1fr; gap: 12px; }
-    .tier-price { text-align: left; }
-    .conditions { grid-template-columns: 1fr; gap: 16px; padding: 20px 0; }
+    .wordmark img { height: 54px; }
+    .title-block { margin-bottom: 32px; }
+    h1 { font-size: 40px; margin-bottom: 16px; }
+    .lede { font-size: 17px; }
+    .ornament { margin: 36px auto; }
+    .section-numeral { font-size: 30px; }
+    .section-header { gap: 14px; margin-bottom: 28px; }
+
+    .tier { grid-template-columns: 1fr; gap: 18px; padding: 22px 20px; }
+    .tier-price { text-align: left; min-width: 0; }
+    .tier-price .amount { font-size: 30px; }
+    .tier-name { font-size: 24px; }
+    .tier-desc { padding-bottom: 12px; margin-bottom: 12px; }
+
+    .band { padding: 44px 18px; margin: 0 -18px; }
     .matches-grid { grid-template-columns: 1fr; }
-    .matches { margin-top: 40px; }
-    .footer { flex-direction: column; align-items: flex-start; }
-    .footer-mark { text-align: left; }
-    .tier-price .amount { font-size: 28px; }
 
-    /* No mobile o divisor ganha mais respiro pra separar bem pacotes de jogos. */
-    .step-break { padding: 36px 0 24px; margin-top: 24px; }
-    .step-break-title { font-size: 30px; }
-    .step-break-lede { font-size: 16px; }
-
-    /* Todos os cards (Brasil + outros) ganham layout 2-col interno no mobile:
-       data/hora à esquerda, jogo à direita, botões em full-width abaixo.
-       Aproveita o espaço vazio que sobrava com layout vertical em 1 col. */
+    /* Cards de jogo no mobile: 2-col internas (mantido do v1). */
     .match {
       display: grid;
       grid-template-columns: minmax(0, auto) minmax(0, 1fr);
@@ -693,8 +599,7 @@
     .match .match-date  { grid-column: 1; grid-row: 2; font-size: 22px; }
     .match .match-time  { grid-column: 1; grid-row: 3; margin-bottom: 0; }
     .match .match-teams {
-      grid-column: 2;
-      grid-row: 1 / 4;
+      grid-column: 2; grid-row: 1 / 4;
       align-self: center;
       text-align: right;
       font-size: 15px;
@@ -707,139 +612,189 @@
       gap: 6px;
     }
     .match .pkg-btn { padding: 8px 10px; font-size: 11px; }
+    .match-sold-badge { grid-column: 1 / -1; }
     .match--discount .match-discount-badge { font-size: 9px; padding: 3px 6px; }
+
+    .footer { padding: 28px 22px 24px; }
+    .footer-grid { grid-template-columns: 1fr; gap: 20px; }
+    .footer-mark { flex-direction: column; gap: 10px; align-items: flex-start; }
   }
 
   /* Print */
   @media print {
-    body { background: white; padding: 24px; }
-    .sheet { max-width: 100%; }
+    body { background: white; }
+    .page { background: white; padding: 24px; }
+    .tier, .match, .footer { box-shadow: none; }
+    .band { background: transparent; }
   }
 </style>
 </head>
 <body>
 
-  <div class="sheet">
+  <div class="page">
 
-    <header class="header">
-      <!-- Logo oficial do Lobozó (PNG no Firebase Storage). Se algum dia
-           trocar a logo, gera nova versão e atualiza o `logoUrl` em
-           sitesConfig — depois sincroniza essa URL aqui também (ou
-           refatora pra puxar dinamicamente do /sites/lobozo.json). -->
-      <div class="wordmark">
-        <img
-          src="https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/sites%2FSEmad7GK0ZI298S1CFzb%2Flogo.png?alt=media&token=2f1a6a90-eb38-4f69-a6dc-58365b3ef8df"
-          alt="Lobozó"
-        />
+    <div class="sheet">
+
+      <header class="header">
+        <!-- Logo oficial do Lobozó (PNG no Firebase Storage). Se algum dia
+             trocar a logo, gera nova versão e atualiza o `logoUrl` em
+             sitesConfig — depois sincroniza essa URL aqui também (ou
+             refatora pra puxar dinamicamente do /sites/lobozo.json). -->
+        <div class="wordmark">
+          <img
+            src="https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/sites%2FSEmad7GK0ZI298S1CFzb%2Flogo.png?alt=media&token=2f1a6a90-eb38-4f69-a6dc-58365b3ef8df"
+            alt="Lobozó"
+          />
+        </div>
+        <div class="header-meta">
+          <span>Rua Medeiros de Albuquerque, 436</span>
+          <span>Vila Madalena · São Paulo</span>
+        </div>
+      </header>
+
+      <div class="title-block">
+        <div class="eyebrow">Copa 2026</div>
+        <h1>Copa na <em>Laje</em><br>do Lobozó</h1>
+        <p class="lede">A laje fica reservada ao seu grupo durante o jogo, para grupos de 25 a 40 pessoas. Cardápio do evento em anexo.</p>
       </div>
-      <div class="header-meta">
-        <span>Rua Medeiros de Albuquerque, 436</span>
-        <span>Vila Madalena · São Paulo</span>
+
+      <div class="ornament">
+        <span class="line"></span>
+        <span class="mark">✦</span>
+        <span class="line"></span>
       </div>
-    </header>
 
-    <div class="title-block">
-      <div class="eyebrow">Copa 2026</div>
-      <h1>Copa na <em>Laje</em><br>do Lobozó</h1>
-      <p class="lede">A laje fica reservada ao seu grupo durante o jogo, para grupos de 25 a 40 pessoas. Cardápio do evento em anexo.</p>
-    </div>
+      <!-- I. PACOTES -->
+      <div class="section-header">
+        <span class="section-numeral">I</span>
+        <span class="section-label">Pacotes</span>
+      </div>
 
-    <div class="section-label">Pacotes</div>
+      <div class="tiers">
 
-    <div class="tiers">
-
-      <div class="tier">
-        <div>
-          <div class="tier-name">Locação da Laje</div>
-          <div class="tier-desc">Consumo de comidas e bebidas em comanda individual.</div>
-          <!-- Locação: comida e bebida à la carte → 2 cardápios com preço. -->
-          <div class="tier-menus">
-            <a class="menu-btn" href="/copa/cardapio-comidas.pdf" target="_blank" rel="noopener">Cardápio de comidas</a>
-            <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Carta de bebidas</a>
+        <div class="tier">
+          <div>
+            <div class="tier-name">Locação da <em>Laje</em></div>
+            <div class="tier-desc">Consumo de comidas e bebidas em comanda individual.</div>
+            <!-- Locação: comida e bebida à la carte → 2 cardápios com preço. -->
+            <div class="tier-menus">
+              <a class="menu-btn" href="/copa/cardapio-comidas.pdf" target="_blank" rel="noopener">Cardápio de comidas</a>
+              <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Carta de bebidas</a>
+            </div>
+          </div>
+          <div class="tier-price">
+            <div class="amount">R$ 3.500</div>
+            <div class="unit">Valor único</div>
           </div>
         </div>
-        <div class="tier-price">
-          <div class="amount">R$ 3.500</div>
-          <div class="unit">Valor único</div>
+
+        <div class="tier">
+          <div>
+            <div class="tier-name">Espaço exclusivo · <em>comidas inclusas</em></div>
+            <div class="tier-desc">Comidas inclusas conforme cardápio do evento; bebidas em comanda individual.</div>
+            <!-- Comidas inclusas: comida no pacote (cardápio do evento) +
+                 bebidas à parte com preço. -->
+            <div class="tier-menus">
+              <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Comidas do evento</a>
+              <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Bebidas (à parte)</a>
+            </div>
+          </div>
+          <div class="tier-price">
+            <div class="amount">R$ 200</div>
+            <div class="unit">Por pessoa · Até 3 horas</div>
+            <div class="addon">
+              <span class="addon-label">Hora adicional</span>
+              <span class="addon-value">R$ 70 / pessoa</span>
+            </div>
+          </div>
         </div>
+
+        <div class="tier">
+          <div>
+            <div class="tier-name">Espaço exclusivo · <em>tudo incluso</em></div>
+            <div class="tier-desc">Comidas e bebidas inclusas conforme cardápio do evento.</div>
+            <!-- Tudo incluso: 1 só cardápio (comidas + bebidas do pacote). -->
+            <div class="tier-menus">
+              <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Cardápio do evento</a>
+            </div>
+          </div>
+          <div class="tier-price">
+            <div class="amount">R$ 480</div>
+            <div class="unit">Por pessoa · Até 3 horas</div>
+            <div class="addon">
+              <span class="addon-label">Hora adicional</span>
+              <span class="addon-value">R$ 120 / pessoa</span>
+            </div>
+          </div>
+        </div>
+
       </div>
 
-      <div class="tier">
-        <div>
-          <div class="tier-name">Espaço exclusivo com comidas inclusas e bebidas à parte</div>
-          <div class="tier-desc">Comidas inclusas conforme cardápio do evento; bebidas em comanda individual.</div>
-          <!-- Comidas inclusas: comida no pacote (cardápio do evento) +
-               bebidas à parte com preço. -->
-          <div class="tier-menus">
-            <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Comidas do evento</a>
-            <a class="menu-btn" href="/copa/cardapio-bebidas.pdf" target="_blank" rel="noopener">Bebidas (à parte)</a>
-          </div>
-        </div>
-        <div class="tier-price">
-          <div class="amount">R$ 200</div>
-          <div class="unit">Por pessoa · Até 3 horas</div>
-          <div class="addon">
-            <span class="addon-label">Hora adicional</span>
-            <span class="addon-value">R$ 70 / pessoa</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="tier">
-        <div>
-          <div class="tier-name">Espaço exclusivo com comidas e bebidas inclusas</div>
-          <div class="tier-desc">Comidas e bebidas inclusas conforme cardápio do evento.</div>
-          <!-- Tudo incluso: 1 só cardápio (comidas + bebidas do pacote). -->
-          <div class="tier-menus">
-            <a class="menu-btn" href="/copa/cardapio-evento.pdf" target="_blank" rel="noopener">Cardápio do evento</a>
-          </div>
-        </div>
-        <div class="tier-price">
-          <div class="amount">R$ 480</div>
-          <div class="unit">Por pessoa · Até 3 horas</div>
-          <div class="addon">
-            <span class="addon-label">Hora adicional</span>
-            <span class="addon-value">R$ 120 / pessoa</span>
-          </div>
-        </div>
+      <div class="ornament">
+        <span class="line"></span>
+        <span class="mark">✦</span>
+        <span class="line"></span>
       </div>
 
     </div>
 
-    <!-- Divisor "Pacotes → Datas". Crítico no mobile, onde tudo vira scroll
-         único e sem isso o usuário não percebe que mudou de seção. -->
-    <div class="step-break">
-      <div class="step-break-eyebrow">Próximo passo</div>
-      <h2 class="step-break-title">Escolha sua <em>data</em></h2>
-      <p class="step-break-lede">Selecione o jogo e o pacote no botão. A gente confirma tudo no WhatsApp.</p>
-    </div>
+    <!-- II. JOGOS (banda destacada) -->
+    <section class="band">
+      <div class="sheet">
 
-    <div class="matches">
-      <div class="section-label">Jogos do Brasil · Grupo C</div>
-      <!-- Cards renderizados via JS a partir dos arrays JOGOS_BRASIL e
-           JOGOS_OUTROS no script. Pra adicionar data, edita o array
-           correspondente — não duplica HTML. -->
-      <div class="matches-grid" id="matches-grid-brasil"></div>
-    </div>
+        <div class="section-header">
+          <span class="section-numeral">II</span>
+          <span class="section-label">Jogos do Brasil <span style="font-weight:500; letter-spacing:0.12em; color:var(--ink-soft);">· Grupo C</span></span>
+        </div>
 
-    <div class="matches">
-      <div class="section-label section-label--discount">
-        Outros Jogos
-        <span class="label-pill">20% OFF</span>
+        <div class="matches">
+          <!-- Cards renderizados via JS a partir dos arrays JOGOS_BRASIL e
+               JOGOS_OUTROS no script. Pra adicionar data, edita o array
+               correspondente — não duplica HTML. -->
+          <div class="matches-grid" id="matches-grid-brasil"></div>
+        </div>
+
+        <div style="height: 48px;"></div>
+
+        <div class="section-header">
+          <span class="section-numeral">III</span>
+          <span class="section-label">
+            Outros Jogos
+            <span class="pill">20% OFF</span>
+          </span>
+        </div>
+        <p class="section-note">Mesmos pacotes com 20% de desconto pra jogos das demais seleções nas quintas, sextas e sábados.</p>
+
+        <div class="matches">
+          <div class="matches-grid" id="matches-grid-outros"></div>
+        </div>
+
       </div>
-      <p class="matches-note">Mesmos pacotes com 20% de desconto pra jogos das demais seleções nas quintas, sextas e sábados.</p>
-      <div class="matches-grid" id="matches-grid-outros"></div>
+    </section>
+
+    <div class="sheet">
+
+      <p class="disclaimer">Selecione o jogo e o pacote no botão — a gente confirma tudo no WhatsApp. Para outras datas ou ajustes no pacote, fale com a gente.</p>
+
+      <footer class="footer">
+        <div class="footer-grid">
+          <div class="footer-item">
+            <div class="footer-item-label">WhatsApp</div>
+            <div class="footer-item-value"><a href="https://wa.me/5511917560073" target="_blank" rel="noopener">(11) 91756-0073</a></div>
+          </div>
+          <div class="footer-item">
+            <div class="footer-item-label">Endereço</div>
+            <div class="footer-item-value">Medeiros de Albuquerque, 436<br><span style="font-size:14px; color:var(--ink-soft);">Vila Madalena · São Paulo</span></div>
+          </div>
+        </div>
+
+        <div class="footer-mark">
+          <span>Loboz<span class="red">ó</span> <span class="red">·</span> Vila Madalena</span>
+          <span>Copa <span class="red">·</span> 2026</span>
+        </div>
+      </footer>
+
     </div>
-
-    <footer class="footer">
-      <div class="footer-note">Para outras datas ou ajustes no pacote, fale com a gente: <a href="https://wa.me/5511917560073" target="_blank" rel="noopener" style="color: var(--red); text-decoration: none; border-bottom: 1px solid var(--rule-strong);">+55 11 91756-0073</a></div>
-      <!-- Footer-mark mantido como texto (não imagem) — em ~80px a logo
-           perde o detalhe do glifo do "Z". Texto fica mais legível. -->
-      <div class="footer-mark">
-        Loboz<span class="red-dot">ó</span> · 2026
-      </div>
-    </footer>
-
   </div>
 
   <script>
@@ -911,23 +866,13 @@
         { id: 'tudo',    label: 'Tudo incluso',     fullName: 'Tudo incluso — comidas e bebidas', valor: 480, sufixo: '/p' }
       ];
 
-      function fmtBRL(n) {
-        // 3500 -> '3.500'; 200 -> '200'
-        return n.toLocaleString('pt-BR');
-      }
-
-      function priceLabel(valor, sufixo) {
-        return 'R$ ' + fmtBRL(valor) + sufixo;
-      }
-
-      // Helper: escapa texto pra interpolação segura no HTML.
+      function fmtBRL(n) { return n.toLocaleString('pt-BR'); }
+      function priceLabel(valor, sufixo) { return 'R$ ' + fmtBRL(valor) + sufixo; }
       function esc(s) {
         return String(s).replace(/[&<>"']/g, function (c) {
           return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
         });
       }
-
-      // Confere se a data/horário do jogo está em RESERVADOS.
       function isSold(j) {
         if (RESERVADOS.indexOf(j.date) !== -1) return true;
         if (RESERVADOS.indexOf(j.date + ' ' + j.time) !== -1) return true;
