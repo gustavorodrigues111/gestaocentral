@@ -268,7 +268,10 @@ export function ImportLoteHorariosModal({ restaurantId, onClose }: Props) {
           novoSchedule = {
             validFrom: item.validFrom,
             type: "alternating",
-            totalContract: Math.round((totalA + totalB) / 2),
+            // Pior caso entre A e B (não média) — cada semana é validada
+            // separadamente contra o limite do restaurante. Média mascara
+            // semanas individualmente fora do CLT.
+            totalContract: Math.max(totalA, totalB),
             weeks: {
               A: {
                 days: item.weeks.A.days as { [k: number]: HorarioDia },

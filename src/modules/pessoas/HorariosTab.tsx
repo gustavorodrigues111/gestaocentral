@@ -193,7 +193,10 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
         novaVersao = {
           validFrom,
           type: "alternating",
-          totalContract: Math.round((validA.totalContract + validB.totalContract) / 2),
+          // Campo agregado no nivel raiz do WorkSchedule:
+          // usa MAIOR carga entre A e B (pior caso). Antes era média — não fazia
+          // sentido porque cada semana deve ser validada/exibida em separado.
+          totalContract: Math.max(validA.totalContract, validB.totalContract),
           weeks: {
             A: { days: daysA, sundayCycle: cicloA ?? null, totalContract: validA.totalContract },
             B: { days: daysB, sundayCycle: cicloB ?? null, totalContract: validB.totalContract },
@@ -233,9 +236,9 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
     }
   }
 
-  const totalSemanal = tipo === "single"
-    ? validSingle.totalContract
-    : Math.round((validA.totalContract + validB.totalContract) / 2);
+  // Pra alternating, NÃO usamos média na UI — A e B são mostradas separadas
+  // no card de resumo. O agregado no nivel do WorkSchedule usa Math.max (pior
+  // caso) quando salva — ver linha onde monta `novoSchedule`.
 
   return (
     <div className="space-y-4">
@@ -342,18 +345,37 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
         />
       )}
 
-      {/* Resumo */}
+      {/* Resumo — pra alternating, mostra carga da semana EDITADA (não média).
+          Cada semana A e B é validada em separado contra cargaMin/cargaMax. */}
       <div className="grid grid-cols-3 gap-3">
         <ResumoCard label={tipo === "alternating" ? `Dias na ${editWeek}` : "Dias ativos"}
           value={`${tipo === "single" ? validSingle.diasAtivos : (editWeek === "A" ? validA.diasAtivos : validB.diasAtivos)}`}
         />
-        <ResumoCard label={tipo === "alternating" ? "Carga média" : "Carga semanal"} value={fmtHHMM(totalSemanal)} />
+        <ResumoCard
+          label={tipo === "alternating" ? `Carga semana ${editWeek}` : "Carga semanal"}
+          value={fmtHHMM(
+            tipo === "single"
+              ? validSingle.totalContract
+              : (editWeek === "A" ? validA.totalContract : validB.totalContract)
+          )}
+        />
         <ResumoCard
           label="Status"
           value={errors.length === 0 ? "✓ OK" : `⚠ ${errors.length} erro(s)`}
           variant={errors.length === 0 ? "ok" : "warn"}
         />
       </div>
+
+      {/* Pra alternating, mostra também a OUTRA semana lado a lado pra comparar */}
+      {tipo === "alternating" && (
+        <div className="text-xs text-gray-500 dark:text-gray-400 -mt-2">
+          Semana A: <strong>{fmtHHMM(validA.totalContract)}</strong> ({validA.diasAtivos} dias)
+          {" · "}
+          Semana B: <strong>{fmtHHMM(validB.totalContract)}</strong> ({validB.diasAtivos} dias)
+          {" · "}
+          Cada semana é validada separadamente contra o limite {fmtHHMM(cargaMinMin)}–{fmtHHMM(cargaMaxMin)}.
+        </div>
+      )}
 
       {/* Erros agrupados */}
       {errors.length > 0 && (
@@ -417,7 +439,11 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                 <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1">
                   <span className="text-gray-700 dark:text-gray-300">
                     {i === 0 && <strong>Vigente · </strong>}
-                    A partir de {ws.validFrom} · {ws.type === "alternating" ? "Alternada A/B" : "Único"} · {fmtHHMM(ws.totalContract)} semanais
+                    A partir de {ws.validFrom} · {
+                      ws.type === "alternating" && ws.weeks
+                        ? `Alternada · A: ${fmtHHMM(ws.weeks.A.totalContract)} · B: ${fmtHHMM(ws.weeks.B.totalContract)}`
+                        : `Único · ${fmtHHMM(ws.totalContract)} semanais`
+                    }
                     {ws.motivo && ` · "${ws.motivo}"`}
                   </span>
                 </div>
@@ -687,7 +713,9 @@ function ImportarHorarioModal({
                   <div>
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{emp.nome}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {vigente.type === "alternating" ? "Alternada A/B" : "Horário único"} · {fmtHHMM(vigente.totalContract)} semanais
+                      {vigente.type === "alternating" && vigente.weeks
+                        ? `Alternada · A: ${fmtHHMM(vigente.weeks.A.totalContract)} · B: ${fmtHHMM(vigente.weeks.B.totalContract)}`
+                        : `Horário único · ${fmtHHMM(vigente.totalContract)} semanais`}
                     </div>
                   </div>
                   <span className="text-indigo-600 dark:text-indigo-400 text-sm">›</span>
