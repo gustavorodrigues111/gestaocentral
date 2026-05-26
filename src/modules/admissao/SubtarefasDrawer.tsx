@@ -33,7 +33,11 @@ import {
   subtarefasPendentesObrigatorias,
 } from "../../core/admissao/admissaoHelpers";
 import { ADMISSAO_STATUS_LABEL, type ContatoExterno } from "../../core/types";
-import { montarCorpoEmailContabilidade, montarGmailComposeUrl } from "../../core/admissao/exportFicha";
+import {
+  baixarFichaAdmissao,
+  montarCorpoEmailContabilidade,
+  montarGmailComposeUrl,
+} from "../../core/admissao/exportFicha";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { ModalLigarContato } from "./ModalLigarContato";
 
@@ -259,6 +263,17 @@ export function SubtarefasDrawer({
     setDocsModalOpen(true);
   }
 
+  // 📥 Baixar planilha — XLSX da ficha de admissão. NÃO marca a subtarefa
+  // como feita (é só uma utilidade — o "envio" propriamente dito é o
+  // botão de email ao lado). Avisa se faltar dado essencial pra ficha.
+  function abrirBaixarPlanilha(_s: SubtarefaAdmissao) {
+    try {
+      baixarFichaAdmissao(admissao, cargos, activeRestaurant.nome);
+    } catch (e) {
+      alert("Erro ao gerar planilha: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   // Rodapé de avanço: só aparece se intencao === "avancar"
   const proxStatus = proximoStatus(admissao.status);
   const proximaColuna = proxStatus
@@ -383,6 +398,7 @@ export function SubtarefasDrawer({
                                   onAtalhoContato={(tipo) => abrirContato(s, tipo)}
                                   onAtalhoWhatsappInstrucoes={() => abrirWhatsappInstrucoes(s)}
                                   onAtalhoChecklistDocs={() => abrirChecklistDocs(s)}
+                                  onAtalhoBaixarPlanilha={() => abrirBaixarPlanilha(s)}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -468,6 +484,7 @@ function SubtarefaRow({
   onAtalhoContato,
   onAtalhoWhatsappInstrucoes,
   onAtalhoChecklistDocs,
+  onAtalhoBaixarPlanilha,
   contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
@@ -481,6 +498,7 @@ function SubtarefaRow({
   onAtalhoContato: (tipo: "clinica" | "contabilidade" | "financeiro") => void;
   onAtalhoWhatsappInstrucoes: () => void;
   onAtalhoChecklistDocs: () => void;
+  onAtalhoBaixarPlanilha: () => void;
   contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
@@ -604,13 +622,26 @@ function SubtarefaRow({
           </button>
         )}
         {sub.atalho?.tipo === "contato_contabilidade" && (
-          <button
-            type="button"
-            onClick={() => onAtalhoContato("contabilidade")}
-            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
-          >
-            {contatoLabel("contabilidade")}
-          </button>
+          <>
+            {/* Dois botões em vez de um único — o user escolhe a ordem:
+                baixar planilha XLSX e abrir o Gmail compose. O envio em si
+                é manual (anexa XLSX no Gmail antes de mandar). O botão de
+                email é o que marca a subtarefa como feita (via abrirContato). */}
+            <button
+              type="button"
+              onClick={onAtalhoBaixarPlanilha}
+              className="text-[10px] px-2 py-0.5 rounded border border-indigo-600 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+            >
+              📥 Baixar planilha
+            </button>
+            <button
+              type="button"
+              onClick={() => onAtalhoContato("contabilidade")}
+              className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+            >
+              {contatoLabel("contabilidade")}
+            </button>
+          </>
         )}
         {sub.atalho?.tipo === "whatsapp_instrucoes_candidato" && (
           <button

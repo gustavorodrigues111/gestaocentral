@@ -291,9 +291,12 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { atalho: { tipo: "checklist_docs_whatsapp" }, autoTrigger: "checklist_docs_completo" }),
 
   // ─── Col 3: Contabilidade & contratos ───
+  // Sem autoTrigger — usuário tem 2 botões no drawer (📥 Baixar planilha
+  // + 📧 Enviar email) e marca o item manualmente. Ação na seta "Avançar"
+  // não dispara mais o XLSX+Gmail automaticamente.
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
      "col_contabilidade", CK_CONTABILIDADE.id, CK_CONTABILIDADE.nome, true,
-     { atalho: { tipo: "contato_contabilidade" }, autoTrigger: "envio_contabilidade" }),
+     { atalho: { tipo: "contato_contabilidade" } }),
   st("st_receber_contrato", "Recebimento do contrato e termos para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { pedeLink: true }),

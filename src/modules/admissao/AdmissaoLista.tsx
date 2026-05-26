@@ -47,12 +47,6 @@ import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import { VerPreenchimentoModal } from "./VerPreenchimentoModal";
-import { getEmailContabilidade } from "../../core/admissao/admissaoHelpers";
-import {
-  baixarFichaAdmissao,
-  montarCorpoEmailContabilidade,
-  montarGmailComposeUrl,
-} from "../../core/admissao/exportFicha";
 
 type Props = {
   rid: string;
@@ -278,40 +272,16 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
       );
       return;
     }
-    // documentos_recebidos → solicitacao_contabilidade: baixa ficha XLSX + abre Gmail
-    if (prox === "solicitacao_contabilidade") {
-      const emailDest = getEmailContabilidade(activeRestaurant);
-      const ok = confirm(
-        `Vamos avançar pra "Enviado pra contabilidade":\n\n` +
-        `1. O sistema baixa a ficha em XLSX agora\n` +
-        `2. Abre o Gmail compose ${emailDest ? `pra ${emailDest}` : "(sem destinatário — cadastre em ⚙️ Configurações)"}\n` +
-        `3. Você anexa o XLSX baixado e envia\n\n` +
-        `Continuar?`,
-      );
-      if (!ok) return;
-      try {
-        const cargo = cargos.find((c) => c.id === adm.cargoId);
-        baixarFichaAdmissao(adm, cargos, activeRestaurant.nome);
-        const url = montarGmailComposeUrl({
-          to: emailDest,
-          subject: `Solicitação de admissão — ${adm.candidato.nome} (${activeRestaurant.nome})`,
-          body: montarCorpoEmailContabilidade(adm, cargo, activeRestaurant.nome, activeRestaurant),
-        });
-        window.open(url, "_blank");
-        if (me) {
-          await avancarStatusComTrigger(adm, prox, "envio_contabilidade", me);
-        } else {
-          await avancarStatus(adm.id, prox);
-        }
-      } catch (e) {
-        alert("Erro: " + (e instanceof Error ? e.message : "?"));
-      }
-      return;
-    }
+    // documentos_recebidos → solicitacao_contabilidade: avança status puro.
+    // O envio em si (XLSX + Gmail) virou ação manual do checklist —
+    // dois botões na subtarefa "Envio de dados de admissão para contabilidade":
+    //   📥 Baixar planilha  →  baixa o XLSX
+    //   📧 Enviar email     →  abre Gmail compose pra contabilidade
+    // Usuário decide a ordem, anexa o XLSX no Gmail manualmente e marca o
+    // item como feito quando concluir.
+    //
     // Sem confirm genérico — o drawer já mostrou as obrigatórias e o usuário
-    // explicitamente clicou "Avançar pra X" ali. A confirmação extra do
-    // contabilidade (XLSX + Gmail) acima é mantida porque informa ações
-    // específicas que vão acontecer.
+    // explicitamente clicou "Avançar pra X" ali.
     if (prox === "admitido" && me) {
       await avancarStatusComTrigger(adm, prox, "admitido", me);
     } else {
