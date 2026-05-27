@@ -320,7 +320,10 @@ export async function iniciarAdmissao(
   }
   const novo: Omit<Admissao, "id"> = {
     restaurantId: input.restaurantId,
-    status: "formulario_enviado",
+    // Novas admissões começam em "a_admitir" (col 1 do Kanban). Quando RH
+    // envia o link via "Iniciar admissão" / marcarLinkEnviado, ele avança
+    // manualmente pro "formulario_enviado" — não tem auto-avance aqui.
+    status: "a_admitir",
     iniciadoPor: { id: pessoa.id, nome: pessoa.nome },
     iniciadoEm: now,
     candidato: input.candidato,
@@ -564,13 +567,23 @@ export async function cancelarAdmissao(
 
 // Avança o status pra a próxima etapa do fluxo. Validação básica: não permite
 // pular múltiplas etapas. Sucessor: status → próximo status.
+// "a_admitir" é o estado inicial (card criado, dados básicos sendo preenchidos)
+// antes do link ser gerado/enviado pro candidato.
 const ORDEM_FLUXO: AdmissaoStatus[] = [
+  "a_admitir",
   "formulario_enviado",
   "formulario_preenchido",
   "solicitacao_contabilidade",
   "pronto_admissao",
   "admitido",
 ];
+
+// Status anterior — usado por drag-drop voltar / botão ◀ no card.
+export function statusAnterior(s: AdmissaoStatus): AdmissaoStatus | null {
+  const i = ORDEM_FLUXO.indexOf(s);
+  if (i <= 0) return null;
+  return ORDEM_FLUXO[i - 1]!;
+}
 
 // Mapeia status legados (de admissões criadas antes da reestruturação) pros
 // status atuais. Usado no carregamento das admissões pra evitar quebrar UI

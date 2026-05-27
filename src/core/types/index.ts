@@ -1905,20 +1905,23 @@ export type FormField = {
 };
 
 // Cada status corresponde 1:1 a uma coluna do Kanban — flow linear:
-//   enviado → preenchido → contabilidade → pronto → admitido
-// formulario_enviado auto-avança pra formulario_preenchido quando o candidato
-// submete o form. Restante é manual via botão "▶ Avançar" na lista.
+//   a_admitir → enviado → preenchido → contabilidade → pronto → admitido
+// Movimentação é 100% manual (drag-drop no Kanban OU botões ◀▶ no card).
+// O candidato preencher o form NÃO move automaticamente — só marca a
+// subtarefa correspondente. Admin escolhe quando avançar.
 export type AdmissaoStatus =
-  | "formulario_enviado"          // col 1 — link enviado, esperando candidato
-  | "formulario_preenchido"       // col 2 — candidato submeteu, RH lidando com exames + conta + docs + dados internos
-  | "solicitacao_contabilidade"   // col 3 — pedido enviado pra contabilidade, assinaturas + banco + cursos
-  | "pronto_admissao"             // col 4 — tudo pronto, esperando D-day
-  | "admitido"                    // col 5 — processo finalizado + onboarding D1 + cadastros pós
+  | "a_admitir"                   // col 1 — card recém-criado, dados básicos pendentes ou em preenchimento
+  | "formulario_enviado"          // col 2 — link gerado/enviado + dados finais sendo preenchidos
+  | "formulario_preenchido"       // col 3 — exames + conta + docs + dados internos
+  | "solicitacao_contabilidade"   // col 4 — contabilidade + assinaturas + cadastros externos
+  | "pronto_admissao"             // col 5 — exames recebidos + última milha
+  | "admitido"                    // col 6 — finalizado + onboarding D1 + cadastros pós
   | "cancelada"                   // qualquer motivo de cancelamento
   | "expirada";                   // token expirou sem preenchimento
 
 export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
-  formulario_enviado:        "Aguardando preenchimento",
+  a_admitir:                 "Pessoas a admitir",
+  formulario_enviado:        "Aguardando preenchimento e Solicitação de Exames e Conta",
   formulario_preenchido:     "Exames, conta e dados internos",
   solicitacao_contabilidade: "Contabilidade & contratos",
   pronto_admissao:           "Pronto pra admitir",
