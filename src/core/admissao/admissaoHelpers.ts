@@ -768,6 +768,21 @@ export async function atualizarChecklistDocumentos(
 // Pode ser chamado em qualquer etapa pra completar/corrigir dados. Não mexe
 // no status — RH avança manualmente quando estiver tudo preenchido. Se o
 // patch deixar a admissão com dados finais completos, dispara o auto-trigger.
+// Atualiza dados básicos do candidato (nome/CPF/email/WhatsApp). Usado pelo
+// botão "✏️ Editar dados básicos" na subtarefa.
+export async function atualizarCandidato(
+  admissaoId: string,
+  patch: Partial<{ nome: string; cpf: string; email: string; whatsapp: string }>,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const updates: Record<string, unknown> = { updatedAt: now };
+  if (patch.nome      !== undefined) updates["candidato.nome"]     = patch.nome;
+  if (patch.cpf       !== undefined) updates["candidato.cpf"]      = patch.cpf;
+  if (patch.email     !== undefined) updates["candidato.email"]    = patch.email;
+  if (patch.whatsapp  !== undefined) updates["candidato.whatsapp"] = patch.whatsapp;
+  await updateDoc(doc(db, "admissoes", admissaoId), updates);
+}
+
 export async function atualizarDadosBasicos(
   admissao: Admissao,
   patch: {

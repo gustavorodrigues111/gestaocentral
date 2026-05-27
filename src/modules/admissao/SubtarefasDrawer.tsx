@@ -42,6 +42,11 @@ import {
 } from "../../core/admissao/exportFicha";
 import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { ModalLigarContato } from "./ModalLigarContato";
+import { EditarCandidatoModal } from "./EditarCandidatoModal";
+import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
+import {
+  marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
+} from "../../core/admissao/admissaoHelpers";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
   if (!col.statusAuto) return false;
@@ -285,6 +290,39 @@ export function SubtarefasDrawer({
     setDocsModalOpen(true);
   }
 
+  // 📨 Enviar link do formulário pro candidato via WhatsApp.
+  // Marca enviadoEm/expiraEm + atalho aplicarAutoTrigger("link_enviado")
+  // (que não tem efeito no template novo sem autoTrigger — mas é idempotente
+  // pra admissões legadas) + abre WhatsApp pré-preenchido. NÃO marca a
+  // subtarefa como feita — o usuário marca o checkbox quando o cliente
+  // confirmar recebimento.
+  async function abrirEnviarLinkForm(_s: SubtarefaAdmissao) {
+    try {
+      const prazoDias = getPrazoDias(activeRestaurant);
+      await marcarLinkEnviado(admissao, prazoDias, pessoa);
+      const url = urlPublicaAdmissao(admissao.token);
+      const msg = montarMensagemEnvioLink(
+        admissao.candidato.nome,
+        activeRestaurant.nome,
+        url,
+        prazoDias,
+        activeRestaurant,
+      );
+      const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
+      if (!link) {
+        alert("WhatsApp do candidato inválido — confira o cadastro.");
+        return;
+      }
+      window.open(link, "_blank");
+    } catch (e) {
+      alert("Erro ao enviar link: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  // Modais novos: edição de dados básicos do candidato e dados finais (vaga)
+  const [showEditarCandidato, setShowEditarCandidato] = useState(false);
+  const [showEditarDadosFinais, setShowEditarDadosFinais] = useState(false);
+
   // 📥 Baixar planilha — XLSX da ficha de admissão. NÃO marca a subtarefa
   // como feita (é só uma utilidade — o "envio" propriamente dito é o
   // botão de email ao lado). Avisa se faltar dado essencial pra ficha.
@@ -421,6 +459,9 @@ export function SubtarefasDrawer({
                                   onAtalhoWhatsappInstrucoes={() => abrirWhatsappInstrucoes(s)}
                                   onAtalhoChecklistDocs={() => abrirChecklistDocs(s)}
                                   onAtalhoBaixarPlanilha={() => abrirBaixarPlanilha(s)}
+                                  onAtalhoEditarCandidato={() => setShowEditarCandidato(true)}
+                                  onAtalhoEditarDadosFinais={() => setShowEditarDadosFinais(true)}
+                                  onAtalhoEnviarLinkForm={() => abrirEnviarLinkForm(s)}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -489,6 +530,23 @@ export function SubtarefasDrawer({
           onConfirmar={ligarContato.onConfirmar}
         />
       )}
+
+      {showEditarCandidato && (
+        <EditarCandidatoModal
+          admissao={admissao}
+          onClose={() => setShowEditarCandidato(false)}
+        />
+      )}
+
+      {showEditarDadosFinais && (
+        <PreencherDadosBasicosModal
+          admissao={admissao}
+          cargos={cargos}
+          activeRestaurant={activeRestaurant}
+          onClose={() => setShowEditarDadosFinais(false)}
+          onSaved={() => setShowEditarDadosFinais(false)}
+        />
+      )}
     </>,
     document.body,
   );
@@ -507,6 +565,9 @@ function SubtarefaRow({
   onAtalhoWhatsappInstrucoes,
   onAtalhoChecklistDocs,
   onAtalhoBaixarPlanilha,
+  onAtalhoEditarCandidato,
+  onAtalhoEditarDadosFinais,
+  onAtalhoEnviarLinkForm,
   contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
@@ -521,6 +582,9 @@ function SubtarefaRow({
   onAtalhoWhatsappInstrucoes: () => void;
   onAtalhoChecklistDocs: () => void;
   onAtalhoBaixarPlanilha: () => void;
+  onAtalhoEditarCandidato: () => void;
+  onAtalhoEditarDadosFinais: () => void;
+  onAtalhoEnviarLinkForm: () => void;
   contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
@@ -694,6 +758,33 @@ function SubtarefaRow({
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             📎 Abrir checklist de docs
+          </button>
+        )}
+        {sub.atalho?.tipo === "editar_dados_basicos" && (
+          <button
+            type="button"
+            onClick={onAtalhoEditarCandidato}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            ✏️ Editar dados básicos
+          </button>
+        )}
+        {sub.atalho?.tipo === "editar_dados_finais" && (
+          <button
+            type="button"
+            onClick={onAtalhoEditarDadosFinais}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            ✏️ Editar dados finais
+          </button>
+        )}
+        {sub.atalho?.tipo === "enviar_link_form" && (
+          <button
+            type="button"
+            onClick={onAtalhoEnviarLinkForm}
+            className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            📨 Enviar link do formulário (WhatsApp)
           </button>
         )}
         {(sub.pedeLink || sub.observacao || sub.link) && (
