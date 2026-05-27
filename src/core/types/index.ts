@@ -2103,6 +2103,15 @@ export type TermoAssinado = {
   link?: string;                    // URL do PDF assinado (Drive/Clicksign)
   assinadoEm?: string;              // ISO
   assinadoPor?: { id: string; nome: string };
+  // Tipos especiais que disparam fluxo próprio no ChecklistTermosModal:
+  //   "uniforme" → botão "📦 Gerar termo de uniformes" que abre
+  //     NovaEntregaModal em modo admissão (cria entrega + gera PDF +
+  //     baixa estoque). Termo entra no kit do Clicksign.
+  //   "epi"      → idem, mas pra EPIs (termo separado por exigência legal).
+  // Ausente = termo comum (só checkbox + link).
+  tipoEspecial?: "uniforme" | "epi";
+  // ID da EntregaUniforme gerada (quando tipoEspecial existe + assinado=true).
+  entregaIdGerada?: string;
 };
 
 // Eventos que o sistema detecta automaticamente — usados pra auto-checar

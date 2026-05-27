@@ -784,27 +784,60 @@ export async function atualizarChecklistDocumentos(
 // ─── Termos a assinar (sub-checklist) ─────────────────────────────────────
 // Lista default de termos pro modal de "Preenchimento dos termos para
 // assinatura". Restaurante pode customizar via Configurações (V2).
-export function getTermosAssinaturaDefault(): { id: string; nome: string; obrigatorio: boolean }[] {
+export function getTermosAssinaturaDefault(): {
+  id: string;
+  nome: string;
+  obrigatorio: boolean;
+  tipoEspecial?: "uniforme" | "epi";
+}[] {
   return [
-    { id: "tm_contrato_clt",         nome: "Contrato de Trabalho (CLT)",                obrigatorio: true },
-    { id: "tm_confidencialidade",    nome: "Termo de Confidencialidade",                obrigatorio: true },
-    { id: "tm_uniformes_epis",       nome: "Termo de Recebimento de Uniformes e EPIs",  obrigatorio: true },
-    { id: "tm_regulamento_interno",  nome: "Regulamento Interno (ciência e assinatura)", obrigatorio: true },
-    { id: "tm_lgpd",                 nome: "Política de Privacidade / LGPD",            obrigatorio: true },
-    { id: "tm_outros",               nome: "Outros termos (especificar nas notas)",     obrigatorio: false },
+    { id: "tm_contrato_clt",        nome: "Contrato de Trabalho (CLT)",                  obrigatorio: true },
+    { id: "tm_confidencialidade",   nome: "Termo de Confidencialidade",                  obrigatorio: true },
+    { id: "tm_uniforme",            nome: "Termo de entrega de Uniformes",               obrigatorio: true, tipoEspecial: "uniforme" },
+    { id: "tm_epi",                 nome: "Termo de entrega de EPIs",                    obrigatorio: true, tipoEspecial: "epi" },
+    { id: "tm_regulamento_interno", nome: "Regulamento Interno (ciência e assinatura)",  obrigatorio: true },
+    { id: "tm_lgpd",                nome: "Política de Privacidade / LGPD",              obrigatorio: true },
+    { id: "tm_outros",              nome: "Outros termos (especificar nas notas)",       obrigatorio: false },
   ];
 }
 
-// Inicializa o array `termosAssinados` da admissão (com o default). Idempotente:
-// se já existe, devolve o existente. Senão devolve o array padrão (sem persistir).
+// Inicializa o array `termosAssinados` da admissão (com o default).
+// Sync inteligente: preserva estado dos termos existentes, adiciona termos
+// novos do default que faltam, mantém termos custom que o restaurante criou.
 export function instanciarTermosAssinados(
   termosAtuais: TermoAssinado[] | undefined,
 ): TermoAssinado[] {
-  if (termosAtuais && termosAtuais.length > 0) return termosAtuais;
-  return getTermosAssinaturaDefault().map(t => ({
-    ...t,
-    assinado: false,
-  }));
+  const defaults = getTermosAssinaturaDefault();
+  if (!termosAtuais || termosAtuais.length === 0) {
+    return defaults.map(t => ({ ...t, assinado: false }));
+  }
+  // Sincroniza: para cada item do default, se já existe, usa o existente
+  // (mas atualiza nome/obrigatorio/tipoEspecial do default — fonte da verdade).
+  // Se não existe, adiciona como novo. Termos atuais que não estão no
+  // default (criados pelo restaurante) ficam preservados no final.
+  const porId = new Map(termosAtuais.map(t => [t.id, t]));
+  const merged: TermoAssinado[] = [];
+  for (const d of defaults) {
+    const existente = porId.get(d.id);
+    if (existente) {
+      merged.push({
+        ...existente,
+        // Campos do default sobrescrevem (nome/obrigatorio/tipoEspecial
+        // podem ter mudado em atualizações do template):
+        nome: d.nome,
+        obrigatorio: d.obrigatorio,
+        tipoEspecial: d.tipoEspecial,
+      });
+      porId.delete(d.id);
+    } else {
+      merged.push({ ...d, assinado: false });
+    }
+  }
+  // Termos do atual que não estão no default — preserva no final
+  for (const extra of porId.values()) {
+    merged.push(extra);
+  }
+  return merged;
 }
 
 // Atualiza UM termo dentro de admissao.termosAssinados. Substitui o array

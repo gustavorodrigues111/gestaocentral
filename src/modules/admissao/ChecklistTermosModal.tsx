@@ -12,27 +12,70 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Admissao, Pessoa, TermoAssinado } from "../../core/types";
+import type {
+  Admissao, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TermoAssinado,
+} from "../../core/types";
 import {
   atualizarTermoAssinado,
   instanciarTermosAssinados,
 } from "../../core/admissao/admissaoHelpers";
+import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 
 type Props = {
   admissao: Admissao;
   pessoa: Pessoa;
+  activeRestaurant: Restaurant;
   onClose: () => void;
 };
 
-export function ChecklistTermosModal({ admissao, pessoa, onClose }: Props) {
+export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClose }: Props) {
   // Inicializa com o existente OU com o default global
   const [termos, setTermos] = useState<TermoAssinado[]>(
     () => instanciarTermosAssinados(admissao.termosAssinados),
   );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  // Modal de entrega (uniforme/EPI) — aberto pelo botão "Gerar termo"
+  const [gerarTermoTipo, setGerarTermoTipo] = useState<"uniforme" | "epi" | null>(null);
+  // Carrega lazy itens + kits quando o NovaEntregaModal precisa
+  const [itensUniforme, setItensUniforme] = useState<ItemUniforme[]>([]);
+  const [kitsAreaUniforme, setKitsAreaUniforme] = useState<KitAreaUniforme[]>([]);
+  const [carregandoUniformes, setCarregandoUniformes] = useState(false);
+  async function abrirGerarTermo(tipo: "uniforme" | "epi") {
+    if (itensUniforme.length === 0 && !carregandoUniformes) {
+      setCarregandoUniformes(true);
+      try {
+        const [iSnap, kSnap] = await Promise.all([
+          getDocs(query(collection(db, "itensUniforme"), where("restaurantId", "==", admissao.restaurantId))),
+          getDocs(query(collection(db, "kitsAreaUniforme"), where("restaurantId", "==", admissao.restaurantId))),
+        ]);
+        setItensUniforme(iSnap.docs.map(d => ({ ...d.data(), id: d.id }) as ItemUniforme));
+        setKitsAreaUniforme(kSnap.docs.map(d => ({ ...d.data(), id: d.id }) as KitAreaUniforme));
+      } finally {
+        setCarregandoUniformes(false);
+      }
+    }
+    setGerarTermoTipo(tipo);
+  }
+  // Quando entrega é criada via NovaEntregaModal, marca o termo correspondente
+  // como assinado (com link pendente — DP pode atualizar depois com URL do PDF).
+  function marcarTermoEspecialComoAssinado(tipo: "uniforme" | "epi") {
+    const now = new Date().toISOString();
+    setTermos(prev => prev.map(t => {
+      if (t.tipoEspecial !== tipo) return t;
+      return {
+        ...t,
+        assinado: true,
+        assinadoEm: now,
+        assinadoPor: { id: pessoa.id, nome: pessoa.nome },
+      };
+    }));
+  }
 
   // Sincroniza com mudanças externas (admissão atualizada em outro lugar)
   useEffect(() => {
@@ -145,7 +188,24 @@ export function ChecklistTermosModal({ admissao, pessoa, onClose }: Props) {
                   )}
                 </div>
               </label>
-              <div className="mt-2 pl-6">
+              <div className="mt-2 pl-6 space-y-1.5">
+                {/* Botão "Gerar termo" pra termos com tipo especial (uniforme/EPI).
+                    Abre o modal de entrega — gera PDF + baixa estoque + cria
+                    registro de entrega. Termo entra no kit do Clicksign depois. */}
+                {t.tipoEspecial && !t.assinado && (
+                  <button
+                    type="button"
+                    onClick={() => abrirGerarTermo(t.tipoEspecial!)}
+                    disabled={carregandoUniformes}
+                    className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
+                  >
+                    {carregandoUniformes
+                      ? "Carregando catálogo…"
+                      : t.tipoEspecial === "uniforme"
+                        ? "📦 Gerar termo de uniformes"
+                        : "🦺 Gerar termo de EPIs"}
+                  </button>
+                )}
                 <input
                   type="url"
                   value={t.link || ""}
@@ -179,6 +239,20 @@ export function ChecklistTermosModal({ admissao, pessoa, onClose }: Props) {
           </Button>
         </div>
       </div>
+
+      {gerarTermoTipo && (
+        <NovaEntregaModal
+          tipo={gerarTermoTipo}
+          itens={itensUniforme}
+          kits={kitsAreaUniforme}
+          restaurantId={admissao.restaurantId}
+          activeRestaurant={activeRestaurant}
+          pessoa={pessoa}
+          admissaoContexto={admissao}
+          onEntregaCriada={() => marcarTermoEspecialComoAssinado(gerarTermoTipo)}
+          onClose={() => setGerarTermoTipo(null)}
+        />
+      )}
     </Modal>
   );
 }

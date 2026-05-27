@@ -585,6 +585,7 @@ export function SubtarefasDrawer({
         <ChecklistTermosModal
           admissao={admissao}
           pessoa={pessoa}
+          activeRestaurant={activeRestaurant}
           onClose={() => setShowChecklistTermos(false)}
         />
       )}

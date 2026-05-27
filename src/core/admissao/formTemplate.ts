@@ -249,6 +249,11 @@ export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
   // foi separado em 2 subtarefas (st_entrega_uniformes + st_entrega_epis)
   // pra cada uma gerar termo próprio.
   "st_uniformes_epis",
+  // 2026-05 (Uniformes Fase 4): geração de termo (uniforme + EPI) MIGROU
+  // pra dentro do ChecklistTermosModal de col_contabilidade. Na col_pronto
+  // ficou só "st_entrega_fisica_uniforme_epi" (checkbox da entrega física).
+  "st_entrega_uniformes",
+  "st_entrega_epis",
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -363,12 +368,12 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
   st("st_solicitar_pgto_vt", "Solicitar pagamento primeiro Vale Transporte para o setor financeiro",
      "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
-  st("st_entrega_uniformes", "Entrega de uniformes",
-     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
-     { atalho: { tipo: "gerar_termo_uniformes" } }),
-  st("st_entrega_epis", "Entrega de EPIs",
-     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
-     { atalho: { tipo: "gerar_termo_epis" } }),
+  // Entrega FÍSICA dos uniformes + EPIs. O termo já foi gerado/assinado em
+  // col_contabilidade (dentro do "📃 Termos a assinar" — botão "📦 Gerar
+  // termo"). Aqui é só pra marcar quando o empregado realmente recebeu os
+  // itens em mãos.
+  st("st_entrega_fisica_uniforme_epi", "Realizar a entrega de uniformes e EPIs",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
 
   // ─── Col 6: Admitido e Onboarding ───
   st("st_envio_videos_treinamento", "Envio de vídeos de treinamento inicial",
