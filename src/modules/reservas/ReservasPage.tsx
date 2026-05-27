@@ -12,12 +12,13 @@ import type { Cliente, ConfiguracaoReservas, Mesa, Reserva, ReservaPII, ReservaS
 import { ReservaModal } from "./ReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { ConfigTab } from "./ConfigTab";
+import { AgendaTab } from "./AgendaTab";
 import { TabBadge } from "../../core/ui/TabBadge";
 import { ChegouModal } from "./ChegouModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { montarLinkWhatsapp, montarMensagemConfirmacao } from "./whatsappConfirmacao";
 
-type Tab = "reservas" | "clientes" | "config";
+type Tab = "reservas" | "agenda" | "clientes" | "config";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -348,10 +349,14 @@ export function ReservasPage() {
         )}
       </div>
 
-      {/* Tabs nível superior — Clientes só aparece com verCRM; Config só com configurar */}
+      {/* Tabs nível superior — Agenda só com configurar (cria exceções);
+          Clientes só aparece com verCRM; Config só com configurar */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
           ["reservas", "📅 Reservas",     pendentesHoje] as const,
+          ...(podeConfig
+            ? [["agenda",   "🗓️ Agenda",       0] as const]
+            : []),
           ...(podeVerCRM
             ? [["clientes", `👥 Clientes (${clientes.length})`, 0] as const]
             : []),
@@ -575,6 +580,17 @@ export function ReservasPage() {
             </details>
           )}
         </div>
+      )}
+
+      {/* ───────────────── TAB AGENDA ───────────────── */}
+      {tab === "agenda" && podeConfig && me && (
+        <AgendaTab
+          restaurantId={rid}
+          podeConfig={podeConfig}
+          pessoaId={me.id}
+          pessoaNome={me.nome}
+          saloes={saloes}
+        />
       )}
 
       {/* ───────────────── TAB CLIENTES ───────────────── */}
