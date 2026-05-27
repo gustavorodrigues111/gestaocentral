@@ -298,7 +298,10 @@ function DiaColuna({
     : "";
 
   return (
-    <div className="flex flex-col gap-1.5">
+    // h-full + flex-col → coluna estica até a altura do dia mais cheio (grid
+    // items-stretch é default). Área central usa flex-1 pra preencher; assim
+    // o botão "+ nova janela" do rodapé fica alinhado entre todas as colunas.
+    <div className="h-full flex flex-col gap-1.5">
       {/* Header da coluna — clicável pra ações do dia inteiro */}
       <button
         type="button"
@@ -325,35 +328,38 @@ function DiaColuna({
         </div>
       </button>
 
-      {dia.diaBloqueado ? (
-        <button
-          type="button"
-          disabled={!podeConfig}
-          onClick={onClickHeader}
-          className="p-2 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[80px]"
-          title={podeConfig ? "Gerenciar bloqueio do dia" : ""}
-        >
-          <span className="text-lg">🚫</span>
-          <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">
-            {dia.motivoDiaBloqueado || "Bloqueado"}
-          </span>
-        </button>
-      ) : dia.slots.length === 0 ? (
-        <div className="p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center min-h-[60px]">
-          sem janelas
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1.5">
-          {dia.slots.map((slot, i) => (
-            <SlotChip
-              key={`${slot.horario}-${i}`}
-              slot={slot}
-              saloes={saloes}
-              onClick={() => onClickSlot(slot)}
-            />
-          ))}
-        </div>
-      )}
+      {/* Área central — flex-1 pra preencher espaço e alinhar todas as colunas */}
+      <div className="flex-1 flex flex-col gap-1.5 min-h-0">
+        {dia.diaBloqueado ? (
+          <button
+            type="button"
+            disabled={!podeConfig}
+            onClick={onClickHeader}
+            className="flex-1 p-2 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[86px]"
+            title={podeConfig ? "Gerenciar bloqueio do dia" : ""}
+          >
+            <span className="text-lg">🚫</span>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400 max-w-[120px] leading-tight">
+              {dia.motivoDiaBloqueado || "Bloqueado"}
+            </span>
+          </button>
+        ) : dia.slots.length === 0 ? (
+          <div className="flex-1 p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center min-h-[86px]">
+            sem janelas
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            {dia.slots.map((slot, i) => (
+              <SlotChip
+                key={`${slot.horario}-${i}`}
+                slot={slot}
+                saloes={saloes}
+                onClick={() => onClickSlot(slot)}
+              />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Botão + azul pra adicionar nova janela nesse dia */}
       {podeConfig && (
