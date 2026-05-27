@@ -49,7 +49,8 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites";
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites"
+  | "uniformes";
 
 // ─── PERMISSÕES ───
 
@@ -2685,4 +2686,132 @@ export type CandidaturaTrabalhe = {
   updatedAt: string;
   rejeitadaEm?: string;
   motivoRejeicao?: string;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+//  UNIFORMES & EPIs
+//
+//  Modelo:
+//   - `itensUniforme` — catálogo (1 doc por item, com array de variações)
+//   - `kitsAreaUniforme` — kit padrão por área (cargo.area)
+//   - `entregasUniforme` — registro de cada entrega ao empregado/pessoa
+//   - `movEstoqueUniforme` — log de entradas/saídas de estoque
+//   - `termoUniformesConfig` — override por restaurante do texto do PDF
+//
+//  Vinculo: `pessoaId` (cobre empregado CLT + freelancer fixo). `empregadoId`
+//  opcional se aplicável.
+//
+//  Validade: contada a partir da entrega (entregueEm + item.validadeDias).
+// ════════════════════════════════════════════════════════════════════════════
+
+export type TipoItemUniforme = "uniforme" | "epi";
+
+export type VariacaoItem = {
+  id: string;                          // gerado client-side (timestamp + random)
+  tamanho: string;                     // "P" | "42" | "único" — texto livre
+  estoque: number;                     // saldo atual
+  custoUnitOverride?: number;          // se variação tem preço diferente do item base
+  estoqueMinimo?: number;              // alerta quando estoque chega aqui
+};
+
+export type ItemUniforme = {
+  id: string;
+  restaurantId: string;
+  tipo: TipoItemUniforme;
+  nome: string;                        // ex: "Camiseta polo Sororoca"
+  custoUnit: number;                   // base — variação pode sobrescrever
+  validadeDias: number;                // 0 = sem validade (ex: avental que não vence)
+  caEpi?: string;                      // Certificado de Aprovação (só EPI)
+  variacoes: VariacaoItem[];
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+export type KitAreaUniforme = {
+  id: string;                          // = `${restaurantId}_${area_slug}`
+  restaurantId: string;
+  area: string;                        // bate com cargo.area
+  itens: { itemId: string; variacaoId?: string; quantidade: number }[];
+  atualizadoEm: string;
+  atualizadoPor: string;
+};
+
+export type EntregaItemUniforme = {
+  itemId: string;
+  variacaoId?: string;
+  nome: string;                        // snapshot — não muda se item mudar nome depois
+  tamanho?: string;                    // snapshot
+  qtd: number;
+  custoUnit: number;                   // snapshot
+  caEpi?: string;                      // snapshot
+  validadeAte?: string;                // YYYY-MM-DD, calc: entregueEm + validadeDias
+};
+
+export type DevolucaoStatus = "devolvido" | "descartado" | "levado_pelo_empregado";
+
+export type EntregaUniforme = {
+  id: string;
+  restaurantId: string;
+  pessoaId: string;                    // sempre obrigatório (cobre empregado + freelancer)
+  empregadoId?: string;                // se aplicável
+  admissaoId?: string;                 // se foi durante admissão
+  tipo: TipoItemUniforme;              // termo separado: 1 entrega = 1 tipo
+  motivo: "admissao" | "troca" | "reposicao" | "freelancer";
+  itens: EntregaItemUniforme[];
+  entregueEm: string;                  // ISO
+  entreguePor: { id: string; nome: string };
+  termoPdfUrl?: string;                // se subir PDF assinado depois (Drive/Clicksign)
+  observacao?: string;
+  // Devolução total ou parcial (na demissão ou em troca)
+  devolucao?: {
+    devolvidoEm: string;
+    devolvidoPor: { id: string; nome: string };
+    itens: {
+      itemId: string;
+      variacaoId?: string;
+      qtd: number;
+      status: DevolucaoStatus;
+    }[];
+    observacao?: string;
+  };
+};
+
+export type MotivoMovEstoque =
+  | "compra"            // entrada — compra de novos itens
+  | "entrega"           // saída — entrega pra empregado
+  | "troca"             // saída — troca de item velho por novo
+  | "devolucao"         // entrada — empregado devolveu
+  | "ajuste"            // ±  — ajuste manual (inventário)
+  | "descarte";         // saída — item descartado (vencido, danificado)
+
+export type MovEstoqueUniforme = {
+  id: string;
+  restaurantId: string;
+  itemId: string;
+  variacaoId: string;
+  delta: number;                       // positivo = entrada, negativo = saída
+  motivo: MotivoMovEstoque;
+  refEntregaId?: string;               // se motivo é entrega/troca/devolucao
+  observacao?: string;
+  criadoEm: string;
+  criadoPor: { id: string; nome: string };
+};
+
+// Override do template de PDF do termo (por restaurante).
+// Se não preenchido, usa o default global (template Sororoca).
+export type TermoUniformesConfig = {
+  id: string;                          // = restaurantId
+  restaurantId: string;
+  // Texto do termo de responsabilidade (rodapé do PDF). Separado uniforme/EPI
+  // porque NR1/NR6 só aplica a EPI.
+  textoLegalUniforme?: string;
+  textoLegalEpi?: string;
+  // Meta opcional do cabeçalho (ELAB / CÓD / REVISÃO no template Sororoca)
+  codDoc?: string;
+  revisao?: string;
+  elaboradoEm?: string;                // texto livre tipo "Junho/2025"
+  atualizadoEm: string;
+  atualizadoPor: string;
 };

@@ -37,6 +37,7 @@ import { RegistrosPontoPage } from "../../modules/excecoes/RegistrosPontoPage";
 import { AdmissaoPage } from "../../modules/admissao/AdmissaoPage";
 import { EventosPage } from "../../modules/eventos/EventosPage";
 import { SitesPage } from "../../modules/sites/SitesPage";
+import { UniformesPage } from "../../modules/uniformes/UniformesPage";
 import { ArquiteturaPage } from "../../modules/arquitetura/ArquiteturaPage";
 import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
 import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
@@ -75,6 +76,7 @@ function ModuleRouter() {
     case "admissao":      return <AdmissaoPage key={k} />;
     case "eventos":       return <EventosPage key={k} />;
     case "sites":         return <SitesPage key={k} />;
+    case "uniformes":     return <UniformesPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

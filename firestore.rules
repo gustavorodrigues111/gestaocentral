@@ -276,6 +276,12 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if authed();
     }
+    // Uniformes & EPIs — módulo gerencial, read/write só authed.
+    match /itensUniforme/{id}        { allow read, write: if authed(); }
+    match /kitsAreaUniforme/{id}     { allow read, write: if authed(); }
+    match /entregasUniforme/{id}     { allow read, write: if authed(); }
+    match /movEstoqueUniforme/{id}   { allow read, write: if authed(); }
+    match /termoUniformesConfig/{id} { allow read, write: if authed(); }
     // (clientes está definido acima com create público pra form de reservas)
     match /mesas/{id}               { allow read, write: if authed(); }
     match /checklistTemplates/{id}  { allow read, write: if authed(); }

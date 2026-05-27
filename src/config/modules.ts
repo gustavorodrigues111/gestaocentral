@@ -18,6 +18,7 @@ export const MODULES: ModuleDef[] = [
   // Cadastro de Cargos vive como sub-tab dentro de Pessoas
   { id: "pessoas",          area: "escritorio", label: "Pessoas",          icon: "👤", status: "ativo",     desc: "Pessoas, empregados, cargos e templates de permissão" },
   { id: "admissao",         area: "escritorio", label: "Admissão",         icon: "🪪", status: "ativo",     etapa: "beta",               desc: "Processo de admissão: formulário compartilhável + kanban", dependsOn: ["pessoas"] },
+  { id: "uniformes",        area: "escritorio", label: "Uniformes & EPIs", icon: "🦺", status: "ativo",     etapa: "em_desenvolvimento", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
   { id: "configuracoes",    area: "escritorio", label: "Configurações",    icon: "⚙️", status: "ativo",     desc: "Configurações do restaurante" },
   { id: "gorjetas",         area: "escritorio", label: "Gorjetas",         icon: "💸", status: "ativo",     etapa: "beta",               desc: "Lançamento e divisão de gorjetas",       dependsOn: ["pessoas", "escala"] },
   { id: "vt",               area: "escritorio", label: "Vale Transporte",  icon: "🚌", status: "ativo",     etapa: "beta",               desc: "VT, auxílios fixos e benefícios pontuais por empregado",              dependsOn: ["pessoas", "escala"] },
