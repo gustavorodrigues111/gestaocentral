@@ -17,7 +17,6 @@ import {
   collection, doc, onSnapshot, query, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
 import type {
   ConfiguracaoReservas, DiaResolvido, ExcecaoReserva, Salao, SiteConfig,
@@ -26,9 +25,9 @@ import type {
 import {
   COR_STATUS_SLOT, resolverDisponibilidadePeriodo,
 } from "../../core/reservas/disponibilidade";
-import { BloquearDatasModal } from "./BloquearDatasModal";
 import { JanelaExtraModal } from "./JanelaExtraModal";
 import { SlotEditarModal } from "./SlotEditarModal";
+import { DiaAcoesModal } from "./DiaAcoesModal";
 
 type Props = {
   restaurantId: string;
@@ -86,11 +85,12 @@ export function AgendaTab({
   const [domingoAtual, setDomingoAtual] = useState(() => domingoDaSemana(hojeISO));
 
   // Modais
-  const [openBloquear, setOpenBloquear] = useState(false);
   const [openExtra, setOpenExtra] = useState(false);
   const [extraDataPrefill, setExtraDataPrefill] = useState<string | undefined>(undefined);
   // Modal de slot — quando user clica num slot
   const [slotEditando, setSlotEditando] = useState<{ data: string; slot: SlotResolvido } | null>(null);
+  // Modal de ações por dia — quando user clica no header da coluna
+  const [diaAcoes, setDiaAcoes] = useState<string | null>(null);
 
   // ─── Carrega configReservas ───
   useEffect(() => {
@@ -152,26 +152,15 @@ export function AgendaTab({
 
   return (
     <div className="space-y-4">
-      {/* Header — controles */}
-      <div className="flex flex-wrap items-end gap-3 justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            🗓️ Agenda de Disponibilidade
-          </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Clica numa janela pra bloquear, personalizar ou desfazer.
-          </p>
-        </div>
-        {podeConfig && (
-          <div className="flex gap-2">
-            <Button variant="secondary" size="sm" onClick={() => setOpenBloquear(true)}>
-              🚫 Bloquear dia(s)
-            </Button>
-            <Button size="sm" onClick={() => { setExtraDataPrefill(undefined); setOpenExtra(true); }}>
-              + Janela extra
-            </Button>
-          </div>
-        )}
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          🗓️ Agenda de Disponibilidade
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+          Clica numa janela pra editar · no cabeçalho do dia pra bloquear · no
+          botão azul pra adicionar nova janela.
+        </p>
       </div>
 
       {/* Navegação de semana + legenda */}
@@ -212,35 +201,39 @@ export function AgendaTab({
         </div>
       </div>
 
-      {/* Grid semanal — 7 colunas em desktop, scroll horizontal em mobile */}
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-7 gap-2 min-w-[700px]">
-          {dias.map((dia, i) => (
-            <DiaColuna
-              key={dia.data}
-              dia={dia}
-              ehHoje={dia.data === hojeISO}
-              ehFimSemana={i === 0 || i === 6}
-              saloes={saloes}
-              podeConfig={podeConfig}
-              onClickSlot={(slot) => setSlotEditando({ data: dia.data, slot })}
-              onClickDiaBloqueado={() => {
-                // Convite pra adicionar janela extra nesse dia
-                setExtraDataPrefill(dia.data);
-                setOpenExtra(true);
-              }}
-            />
-          ))}
-        </div>
+      {/* Grid semanal — 7 colunas em desktop ≥ md (768px), stack vertical em mobile. */}
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+        {dias.map((dia, i) => (
+          <DiaColuna
+            key={dia.data}
+            dia={dia}
+            ehHoje={dia.data === hojeISO}
+            ehFimSemana={i === 0 || i === 6}
+            saloes={saloes}
+            podeConfig={podeConfig}
+            onClickSlot={(slot) => setSlotEditando({ data: dia.data, slot })}
+            onClickHeader={() => podeConfig && setDiaAcoes(dia.data)}
+            onClickAdicionarExtra={() => {
+              setExtraDataPrefill(dia.data);
+              setOpenExtra(true);
+            }}
+          />
+        ))}
       </div>
 
       {/* ─── Modais ─── */}
-      {openBloquear && (
-        <BloquearDatasModal
+      {diaAcoes && (
+        <DiaAcoesModal
+          data={diaAcoes}
           restaurantId={restaurantId}
           pessoaId={pessoaId}
           pessoaNome={pessoaNome}
-          onClose={() => setOpenBloquear(false)}
+          excecoesNaData={excecoesPorData.get(diaAcoes) || []}
+          onAdicionarJanelaExtra={() => {
+            setExtraDataPrefill(diaAcoes);
+            setOpenExtra(true);
+          }}
+          onClose={() => setDiaAcoes(null)}
         />
       )}
       {openExtra && (
@@ -272,7 +265,7 @@ export function AgendaTab({
 // ─── Coluna de um dia ─────────────────────────────────────────────────
 
 function DiaColuna({
-  dia, ehHoje, ehFimSemana, saloes, podeConfig, onClickSlot, onClickDiaBloqueado,
+  dia, ehHoje, ehFimSemana, saloes, podeConfig, onClickSlot, onClickHeader, onClickAdicionarExtra,
 }: {
   dia: DiaResolvido;
   ehHoje: boolean;
@@ -280,7 +273,10 @@ function DiaColuna({
   saloes: Salao[];
   podeConfig: boolean;
   onClickSlot: (slot: SlotResolvido) => void;
-  onClickDiaBloqueado: () => void;
+  /** Click no header → DiaAcoesModal (bloquear/desbloquear dia inteiro). */
+  onClickHeader: () => void;
+  /** Click no botão + azul no fim da coluna → JanelaExtraModal prefilled. */
+  onClickAdicionarExtra: () => void;
 }) {
   const d = new Date(dia.data + "T12:00:00");
   const dia2 = String(d.getDate()).padStart(2, "0");
@@ -297,38 +293,53 @@ function DiaColuna({
     ? "text-indigo-900 dark:text-indigo-200"
     : "text-gray-700 dark:text-gray-300";
 
+  const headerClickable = podeConfig
+    ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-all"
+    : "";
+
   return (
-    <div className="flex flex-col gap-1.5 min-h-[200px]">
-      <div className={`px-2 py-1.5 rounded-md border ${headerBg} text-center`}>
-        <div className={`text-[10px] uppercase tracking-wider font-bold ${headerText}`}>
-          {diaSemana}
+    <div className="flex flex-col gap-1.5">
+      {/* Header da coluna — clicável pra ações do dia inteiro */}
+      <button
+        type="button"
+        onClick={onClickHeader}
+        disabled={!podeConfig}
+        className={`px-2 py-1.5 rounded-md border ${headerBg} text-left md:text-center w-full ${headerClickable} disabled:cursor-default`}
+        title={podeConfig ? "Ações desse dia" : ""}
+      >
+        <div className="flex md:block items-baseline justify-between gap-2">
+          <div>
+            <span className={`text-[10px] uppercase tracking-wider font-bold ${headerText}`}>
+              {diaSemana}
+            </span>
+            <span className={`md:hidden ml-2 text-base font-bold ${headerText} tabular-nums`}>
+              {dia2} {mes}
+            </span>
+          </div>
+          <div className="hidden md:block">
+            <div className={`text-base font-bold ${headerText} tabular-nums leading-tight`}>
+              {dia2}
+            </div>
+            <div className={`text-[9px] ${headerText} opacity-70`}>{mes}</div>
+          </div>
         </div>
-        <div className={`text-base font-bold ${headerText} tabular-nums leading-tight`}>
-          {dia2}
-        </div>
-        <div className={`text-[9px] ${headerText} opacity-70`}>{mes}</div>
-      </div>
+      </button>
 
       {dia.diaBloqueado ? (
         <button
           type="button"
           disabled={!podeConfig}
-          onClick={onClickDiaBloqueado}
-          className="flex-1 p-2 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          title={podeConfig ? "Adicionar janela extra nesse dia" : ""}
+          onClick={onClickHeader}
+          className="p-2 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[80px]"
+          title={podeConfig ? "Gerenciar bloqueio do dia" : ""}
         >
           <span className="text-lg">🚫</span>
           <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">
             {dia.motivoDiaBloqueado || "Bloqueado"}
           </span>
-          {podeConfig && (
-            <span className="text-[9px] text-gray-500 dark:text-gray-400 mt-1">
-              + janela extra
-            </span>
-          )}
         </button>
       ) : dia.slots.length === 0 ? (
-        <div className="flex-1 p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center">
+        <div className="p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center min-h-[60px]">
           sem janelas
         </div>
       ) : (
@@ -342,6 +353,19 @@ function DiaColuna({
             />
           ))}
         </div>
+      )}
+
+      {/* Botão + azul pra adicionar nova janela nesse dia */}
+      {podeConfig && (
+        <button
+          type="button"
+          onClick={onClickAdicionarExtra}
+          className="w-full px-2 py-1.5 rounded-md border border-dashed border-sky-300 dark:border-sky-900 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-900/10 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors text-[11px] font-medium flex items-center justify-center gap-1"
+          title="Adicionar janela extra nesse dia"
+        >
+          <span className="text-sm leading-none">+</span>
+          <span>nova janela</span>
+        </button>
       )}
     </div>
   );
