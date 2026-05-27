@@ -10,7 +10,7 @@ import { db } from "../firebase/config";
 import type {
   Admissao, AdmissaoStatus, AutoTriggerSubtarefa, Empregado, EmpregadoPeriodo,
   FormField, MotivoCancelamento,
-  Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate,
+  Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado,
 } from "../types";
 import {
   TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT,
@@ -768,6 +768,60 @@ export async function atualizarChecklistDocumentos(
 // Pode ser chamado em qualquer etapa pra completar/corrigir dados. Não mexe
 // no status — RH avança manualmente quando estiver tudo preenchido. Se o
 // patch deixar a admissão com dados finais completos, dispara o auto-trigger.
+// ─── Termos a assinar (sub-checklist) ─────────────────────────────────────
+// Lista default de termos pro modal de "Preenchimento dos termos para
+// assinatura". Restaurante pode customizar via Configurações (V2).
+export function getTermosAssinaturaDefault(): { id: string; nome: string; obrigatorio: boolean }[] {
+  return [
+    { id: "tm_contrato_clt",         nome: "Contrato de Trabalho (CLT)",                obrigatorio: true },
+    { id: "tm_confidencialidade",    nome: "Termo de Confidencialidade",                obrigatorio: true },
+    { id: "tm_uniformes_epis",       nome: "Termo de Recebimento de Uniformes e EPIs",  obrigatorio: true },
+    { id: "tm_regulamento_interno",  nome: "Regulamento Interno (ciência e assinatura)", obrigatorio: true },
+    { id: "tm_lgpd",                 nome: "Política de Privacidade / LGPD",            obrigatorio: true },
+    { id: "tm_outros",               nome: "Outros termos (especificar nas notas)",     obrigatorio: false },
+  ];
+}
+
+// Inicializa o array `termosAssinados` da admissão (com o default). Idempotente:
+// se já existe, devolve o existente. Senão devolve o array padrão (sem persistir).
+export function instanciarTermosAssinados(
+  termosAtuais: TermoAssinado[] | undefined,
+): TermoAssinado[] {
+  if (termosAtuais && termosAtuais.length > 0) return termosAtuais;
+  return getTermosAssinaturaDefault().map(t => ({
+    ...t,
+    assinado: false,
+  }));
+}
+
+// Atualiza UM termo dentro de admissao.termosAssinados. Substitui o array
+// inteiro pra simplicidade (volume pequeno — ~6 itens).
+export async function atualizarTermoAssinado(
+  admissaoId: string,
+  termos: TermoAssinado[],
+): Promise<void> {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    termosAssinados: termos,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
+// Monta mensagem WhatsApp pra avisar candidato que mandamos o kit de
+// assinatura por email. Usado pelo atalho whatsapp_kit_assinatura.
+export function montarMensagemKitAssinatura(
+  candidatoNome: string,
+  restNome: string,
+): string {
+  const primeiro = candidatoNome.split(" ")[0] || candidatoNome;
+  return (
+    `Olá, ${primeiro}! 👋\n\n` +
+    `Aqui é do ${restNome}. Acabamos de te enviar por email o kit de ` +
+    `documentos da admissão pra você assinar pela Clicksign.\n\n` +
+    `Por favor, verifique sua caixa de entrada (e o spam) e siga as ` +
+    `instruções pra concluir as assinaturas. Qualquer dúvida, é só responder por aqui. 😊`
+  );
+}
+
 // Atualiza dados básicos do candidato (nome/CPF/email/WhatsApp). Usado pelo
 // botão "✏️ Editar dados básicos" na subtarefa.
 export async function atualizarCandidato(

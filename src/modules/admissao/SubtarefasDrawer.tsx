@@ -44,8 +44,10 @@ import { ConfirmarDocumentosModal } from "./ConfirmarDocumentosModal";
 import { ModalLigarContato } from "./ModalLigarContato";
 import { EditarCandidatoModal } from "./EditarCandidatoModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
+import { ChecklistTermosModal } from "./ChecklistTermosModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
+  montarMensagemKitAssinatura,
 } from "../../core/admissao/admissaoHelpers";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
@@ -322,6 +324,28 @@ export function SubtarefasDrawer({
   // Modais novos: edição de dados básicos do candidato e dados finais (vaga)
   const [showEditarCandidato, setShowEditarCandidato] = useState(false);
   const [showEditarDadosFinais, setShowEditarDadosFinais] = useState(false);
+  // Checklist de termos a assinar (modal aberto pelo atalho da subtarefa
+  // st_termos_assinatura)
+  const [showChecklistTermos, setShowChecklistTermos] = useState(false);
+
+  // 📋 Abre Clicksign em nova aba (atalho da subtarefa st_envio_kit_clicksign)
+  function abrirClicksign() {
+    window.open("https://app.clicksign.com/", "_blank", "noopener,noreferrer");
+  }
+
+  // 📱 Avisa candidato via WhatsApp que mandamos o kit de assinatura por email
+  function abrirAvisarKitAssinatura() {
+    const msg = montarMensagemKitAssinatura(
+      admissao.candidato.nome,
+      activeRestaurant.nome,
+    );
+    const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
+    if (!link) {
+      alert("WhatsApp do candidato inválido — confira o cadastro.");
+      return;
+    }
+    window.open(link, "_blank");
+  }
 
   // 📥 Baixar planilha — XLSX da ficha de admissão. NÃO marca a subtarefa
   // como feita (é só uma utilidade — o "envio" propriamente dito é o
@@ -462,6 +486,9 @@ export function SubtarefasDrawer({
                                   onAtalhoEditarCandidato={() => setShowEditarCandidato(true)}
                                   onAtalhoEditarDadosFinais={() => setShowEditarDadosFinais(true)}
                                   onAtalhoEnviarLinkForm={() => abrirEnviarLinkForm(s)}
+                                  onAtalhoChecklistTermos={() => setShowChecklistTermos(true)}
+                                  onAtalhoClicksign={abrirClicksign}
+                                  onAtalhoWhatsappKit={abrirAvisarKitAssinatura}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -547,6 +574,14 @@ export function SubtarefasDrawer({
           onSaved={() => setShowEditarDadosFinais(false)}
         />
       )}
+
+      {showChecklistTermos && (
+        <ChecklistTermosModal
+          admissao={admissao}
+          pessoa={pessoa}
+          onClose={() => setShowChecklistTermos(false)}
+        />
+      )}
     </>,
     document.body,
   );
@@ -568,6 +603,9 @@ function SubtarefaRow({
   onAtalhoEditarCandidato,
   onAtalhoEditarDadosFinais,
   onAtalhoEnviarLinkForm,
+  onAtalhoChecklistTermos,
+  onAtalhoClicksign,
+  onAtalhoWhatsappKit,
   contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
@@ -585,6 +623,9 @@ function SubtarefaRow({
   onAtalhoEditarCandidato: () => void;
   onAtalhoEditarDadosFinais: () => void;
   onAtalhoEnviarLinkForm: () => void;
+  onAtalhoChecklistTermos: () => void;
+  onAtalhoClicksign: () => void;
+  onAtalhoWhatsappKit: () => void;
   contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
@@ -785,6 +826,33 @@ function SubtarefaRow({
             className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             📨 Enviar link do formulário (WhatsApp)
+          </button>
+        )}
+        {sub.atalho?.tipo === "checklist_termos_assinar" && (
+          <button
+            type="button"
+            onClick={onAtalhoChecklistTermos}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            📋 Abrir checklist de termos
+          </button>
+        )}
+        {sub.atalho?.tipo === "abrir_clicksign" && (
+          <button
+            type="button"
+            onClick={onAtalhoClicksign}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            🔗 Abrir Clicksign
+          </button>
+        )}
+        {sub.atalho?.tipo === "whatsapp_kit_assinatura" && (
+          <button
+            type="button"
+            onClick={onAtalhoWhatsappKit}
+            className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
+          >
+            📱 Avisar candidato (WhatsApp)
           </button>
         )}
         {(sub.pedeLink || sub.observacao || sub.link) && (

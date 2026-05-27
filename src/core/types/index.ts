@@ -2077,8 +2077,26 @@ export type Admissao = {
   // Kanban; avanço de coluna bloqueia se obrigatórias da atual estão pendentes.
   subtarefas?: SubtarefaAdmissao[];
 
+  // ─── Termos a assinar (sub-checklist de st_termos_assinatura) ───
+  // Cada item representa um termo (Contrato CLT, Confidencialidade, etc.).
+  // Botão "Abrir checklist de termos" na subtarefa st_termos_assinatura
+  // abre modal que edita esse array. Default vem de getTermosAssinatura;
+  // restaurante pode customizar termos.assinaturaDefault (não implementado
+  // — V1 usa default hardcoded).
+  termosAssinados?: TermoAssinado[];
+
   createdAt: string;
   updatedAt: string;
+};
+
+export type TermoAssinado = {
+  id: string;
+  nome: string;
+  obrigatorio: boolean;
+  assinado: boolean;
+  link?: string;                    // URL do PDF assinado (Drive/Clicksign)
+  assinadoEm?: string;              // ISO
+  assinadoPor?: { id: string; nome: string };
 };
 
 // Eventos que o sistema detecta automaticamente — usados pra auto-checar
