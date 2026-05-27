@@ -316,6 +316,51 @@ export async function registrarDevolucao(opts: {
   }
 }
 
+/**
+ * Cancela uma entrega — quando o empregado NÃO chegou a receber (mudança
+ * de plano, desistência, etc.). Devolve TODOS os itens ao estoque na qtd
+ * cheia. Marca a entrega com `cancelamento` (mutuamente exclusivo com
+ * devolução).
+ */
+export async function cancelarEntrega(opts: {
+  entrega: EntregaUniforme;
+  motivo: string;
+  pessoa: Pessoa;
+  catalogo: ItemUniforme[];
+}): Promise<void> {
+  const { entrega, motivo, pessoa, catalogo } = opts;
+  if (entrega.cancelamento) {
+    throw new Error("Essa entrega já está cancelada.");
+  }
+  if (entrega.devolucao) {
+    throw new Error("Essa entrega já tem devolução registrada — não pode cancelar.");
+  }
+  if (!motivo.trim()) {
+    throw new Error("Motivo do cancelamento é obrigatório.");
+  }
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "entregasUniforme", entrega.id), sanitizeForFirestore({
+    cancelamento: {
+      canceladoEm: now,
+      canceladoPor: { id: pessoa.id, nome: pessoa.nome },
+      motivo: motivo.trim(),
+    },
+  }));
+
+  // Devolve TUDO ao estoque
+  for (const i of entrega.itens) {
+    if (!i.variacaoId) continue;
+    const item = catalogo.find(x => x.id === i.itemId);
+    if (!item) continue;
+    await ajustarEstoque({
+      item, variacaoId: i.variacaoId, delta: i.qtd,
+      motivo: "devolucao", refEntregaId: entrega.id,
+      observacao: `Cancelamento: ${motivo.trim()}`,
+      pessoa,
+    });
+  }
+}
+
 // ─── Vencimentos ───────────────────────────────────────────────────────
 
 /**
@@ -330,9 +375,12 @@ export function itensProximosVencimento(
   item: EntregaItemUniformeComStatus;
 }[] {
   const hojeMs = Date.now();
-  const limiteMs = hojeMs + diasAlerta * 86400_000;
+  // diasAlerta >= 9999 = "todos" (sem limite)
+  const limiteMs = diasAlerta >= 9999 ? Infinity : hojeMs + diasAlerta * 86400_000;
   const resultado: { entrega: EntregaUniforme; item: EntregaItemUniformeComStatus }[] = [];
   for (const entrega of entregas) {
+    // Entregas canceladas não contam — itens voltaram pro estoque
+    if (entrega.cancelamento) continue;
     // Itens devolvidos não contam
     const devolvidos = new Set<string>(
       (entrega.devolucao?.itens || [])

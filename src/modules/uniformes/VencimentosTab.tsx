@@ -53,6 +53,7 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
           {[15, 30, 60, 90, 180].map(d => (
             <option key={d} value={d}>{d} dias</option>
           ))}
+          <option value={9999}>Todos</option>
         </select>
         <span className="text-xs text-gray-500 ml-2">
           {proxs.length} item(ns) total · {vencidos.length} vencidos · {aVencer.length} a vencer
@@ -69,7 +70,7 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
       )}
       {aVencer.length > 0 && (
         <Section
-          titulo={`⏳ Próximos ${horizonte} dias`}
+          titulo={horizonte >= 9999 ? "⏳ A vencer (todos)" : `⏳ Próximos ${horizonte} dias`}
           itens={aVencer}
           pessoas={pessoas}
           tom="amber"
@@ -77,7 +78,9 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
       )}
       {proxs.length === 0 && (
         <div className="text-center py-10 text-sm text-gray-500 dark:text-gray-400 italic">
-          Nenhum item vencendo nos próximos {horizonte} dias.
+          {horizonte >= 9999
+            ? "Nenhum item com validade definida nas entregas ativas."
+            : `Nenhum item vencendo nos próximos ${horizonte} dias.`}
         </div>
       )}
     </div>

@@ -2787,6 +2787,14 @@ export type EntregaUniforme = {
     }[];
     observacao?: string;
   };
+  // Cancelamento — quando a entrega foi planejada/registrada mas o
+  // empregado NÃO recebeu (mudança de plano, candidato desistiu, etc.).
+  // Reverte 100% dos itens ao estoque. Mutuamente exclusivo com devolução.
+  cancelamento?: {
+    canceladoEm: string;
+    canceladoPor: { id: string; nome: string };
+    motivo: string;
+  };
 };
 
 export type MotivoMovEstoque =

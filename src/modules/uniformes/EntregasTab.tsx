@@ -9,6 +9,7 @@ import type {
 } from "../../core/types";
 import { NovaEntregaModal } from "./NovaEntregaModal";
 import { DevolucaoModal } from "./DevolucaoModal";
+import { CancelarEntregaModal } from "./CancelarEntregaModal";
 
 type Props = {
   itens: ItemUniforme[];
@@ -21,7 +22,7 @@ type Props = {
 };
 
 type FiltroTipo = "todos" | "uniforme" | "epi";
-type FiltroStatus = "todas" | "ativas" | "devolvidas";
+type FiltroStatus = "todas" | "ativas" | "devolvidas" | "canceladas";
 
 export function EntregasTab({
   itens, kits, entregas, podeConfig, pessoa, restaurantId, activeRestaurant,
@@ -48,12 +49,14 @@ export function EntregasTab({
   const [busca, setBusca] = useState("");
   const [novaTipoForm, setNovaTipoForm] = useState<TipoItemUniforme | null>(null);
   const [devolverEntrega, setDevolverEntrega] = useState<EntregaUniforme | null>(null);
+  const [cancelarEntregaState, setCancelarEntregaState] = useState<EntregaUniforme | null>(null);
 
   const filtradas = useMemo(() => {
     let r = entregas;
     if (filtroTipo !== "todos") r = r.filter(e => e.tipo === filtroTipo);
-    if (filtroStatus === "ativas") r = r.filter(e => !e.devolucao);
+    if (filtroStatus === "ativas") r = r.filter(e => !e.devolucao && !e.cancelamento);
     else if (filtroStatus === "devolvidas") r = r.filter(e => !!e.devolucao);
+    else if (filtroStatus === "canceladas") r = r.filter(e => !!e.cancelamento);
     if (busca.trim()) {
       const q = busca.toLowerCase();
       r = r.filter(e => {
@@ -96,6 +99,7 @@ export function EntregasTab({
         >
           <option value="ativas">Ativas (não devolvidas)</option>
           <option value="devolvidas">Devolvidas</option>
+          <option value="canceladas">Canceladas</option>
           <option value="todas">Todas</option>
         </select>
         <input
@@ -130,6 +134,7 @@ export function EntregasTab({
               pessoa={e.pessoaId ? pessoas.get(e.pessoaId) : undefined}
               podeConfig={podeConfig}
               onDevolver={() => setDevolverEntrega(e)}
+              onCancelar={() => setCancelarEntregaState(e)}
             />
           ))}
         </div>
@@ -155,17 +160,27 @@ export function EntregasTab({
           onClose={() => setDevolverEntrega(null)}
         />
       )}
+
+      {cancelarEntregaState && (
+        <CancelarEntregaModal
+          entrega={cancelarEntregaState}
+          itens={itens}
+          pessoa={pessoa}
+          onClose={() => setCancelarEntregaState(null)}
+        />
+      )}
     </div>
   );
 }
 
 function EntregaRow({
-  entrega, pessoa, podeConfig, onDevolver,
+  entrega, pessoa, podeConfig, onDevolver, onCancelar,
 }: {
   entrega: EntregaUniforme;
   pessoa?: { nome: string; cpf: string };
   podeConfig: boolean;
   onDevolver: () => void;
+  onCancelar: () => void;
 }) {
   const total = entrega.itens.reduce((s, i) => s + (i.custoUnit * i.qtd), 0);
   const data = new Date(entrega.entregueEm).toLocaleString("pt-BR", {
@@ -175,9 +190,11 @@ function EntregaRow({
 
   return (
     <div className={`rounded-lg border p-3 ${
-      entrega.devolucao
-        ? "border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20 opacity-80"
-        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40"
+      entrega.cancelamento
+        ? "border-rose-200 dark:border-rose-900 bg-rose-50/30 dark:bg-rose-900/10 opacity-70"
+        : entrega.devolucao
+          ? "border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20 opacity-80"
+          : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/40"
     }`}>
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 flex-1">
@@ -206,18 +223,33 @@ function EntregaRow({
             {totalQtd} peça(s) · R$ {total.toFixed(2)} · entregue por {entrega.entreguePor.nome}
           </div>
         </div>
-        {podeConfig && !entrega.devolucao && (
-          <button
-            type="button"
-            onClick={onDevolver}
-            className="text-[10px] px-2 py-1 rounded border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-700 dark:text-rose-300 whitespace-nowrap"
-          >
-            registrar devolução
-          </button>
+        {podeConfig && !entrega.devolucao && !entrega.cancelamento && (
+          <div className="flex flex-col gap-1 items-end">
+            <button
+              type="button"
+              onClick={onDevolver}
+              className="text-[10px] px-2 py-1 rounded border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-700 dark:text-rose-300 whitespace-nowrap"
+            >
+              registrar devolução
+            </button>
+            <button
+              type="button"
+              onClick={onCancelar}
+              className="text-[10px] text-gray-500 hover:text-rose-600 hover:underline whitespace-nowrap"
+              title="Empregado não chegou a receber — devolve tudo ao estoque"
+            >
+              ❌ cancelar entrega
+            </button>
+          </div>
         )}
         {entrega.devolucao && (
           <span className="text-[10px] uppercase tracking-wider font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap">
             ↶ devolvido
+          </span>
+        )}
+        {entrega.cancelamento && (
+          <span className="text-[10px] uppercase tracking-wider font-bold bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-200 px-1.5 py-0.5 rounded whitespace-nowrap">
+            ❌ cancelada
           </span>
         )}
       </div>
@@ -244,6 +276,14 @@ function EntregaRow({
           {entrega.devolucao.observacao && (
             <span className="italic"> · "{entrega.devolucao.observacao}"</span>
           )}
+        </div>
+      )}
+
+      {entrega.cancelamento && (
+        <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900 text-[10px] text-rose-700 dark:text-rose-400">
+          ❌ Cancelada em {new Date(entrega.cancelamento.canceladoEm).toLocaleDateString("pt-BR")}
+          {" "}por {entrega.cancelamento.canceladoPor.nome}
+          <div className="italic mt-0.5">"{entrega.cancelamento.motivo}"</div>
         </div>
       )}
     </div>
