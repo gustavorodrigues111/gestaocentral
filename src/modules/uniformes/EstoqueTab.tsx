@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import type { ItemUniforme, MovEstoqueUniforme, Pessoa } from "../../core/types";
 import { ajustarEstoque } from "../../core/uniformes/uniformesHelpers";
+import { IntervaloStepper } from "../freelas/IntervaloStepper";
 
 type Props = {
   itens: ItemUniforme[];
@@ -192,22 +193,24 @@ function AjusteEstoqueModal({
   pessoa: Pessoa;
   onClose: () => void;
 }) {
-  const [delta, setDelta] = useState("");
+  const [delta, setDelta] = useState(0);
   const [motivo, setMotivo] = useState<MovEstoqueUniforme["motivo"]>("ajuste");
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
+  // Limite negativo: não pode baixar pra menos que o saldo atual
+  const minDelta = -linha.estoque;
+
   async function salvar() {
     setErro("");
-    const n = parseInt(delta, 10);
-    if (!isFinite(n) || n === 0) { setErro("Use um número diferente de 0 (positivo pra entrada, negativo pra saída)."); return; }
+    if (delta === 0) { setErro("Use + ou − pra ajustar (não pode ficar em 0)."); return; }
     setSalvando(true);
     try {
       await ajustarEstoque({
         item: linha.item,
         variacaoId: linha.variacaoId,
-        delta: n,
+        delta,
         motivo,
         observacao: observacao.trim() || undefined,
         pessoa,
@@ -241,19 +244,21 @@ function AjusteEstoqueModal({
           </select>
         </div>
         <div>
-          <label className="text-[11px] uppercase font-bold text-gray-500 tracking-wider">
-            Delta (use + ou -)
+          <label className="text-[11px] uppercase font-bold text-gray-500 tracking-wider block text-center">
+            Delta
           </label>
-          <input
-            type="number"
+          <IntervaloStepper
             value={delta}
-            onChange={(e) => setDelta(e.target.value)}
-            placeholder="+10 ou -3"
-            className="mt-1 w-full px-3 py-2 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums"
+            onChange={setDelta}
+            step={1}
+            min={minDelta}
+            max={9999}
+            label="unidades"
+            showSign
           />
-          {delta && (
-            <p className="text-[10px] text-gray-500 mt-1">
-              Saldo após: <strong>{linha.estoque + (parseInt(delta, 10) || 0)}</strong>
+          {delta !== 0 && (
+            <p className="text-[10px] text-gray-500 mt-1 text-center">
+              Saldo após: <strong>{linha.estoque + delta}</strong>
             </p>
           )}
         </div>

@@ -1,16 +1,22 @@
 type Props = {
-  value: number;                 // minutos
+  value: number;                 // valor numérico
   onChange: (n: number) => void;
   disabled?: boolean;
   step?: number;                 // default 5
   min?: number;                  // default 0
   max?: number;                  // default 240 (4h)
+  /** Label embaixo do valor (default "minutos"). */
+  label?: string;
+  /** Se true, mostra sinal "+" pra valores positivos (delta de estoque). */
+  showSign?: boolean;
 };
 
-// Stepper de intervalo em minutos. Step 5 default. Botões circulares
-// destacados em indigo. Valor central grande. Sempre centralizado.
+// Stepper genérico (originalmente "intervalo em minutos" do Freelas).
+// Botões circulares destacados em indigo. Valor central grande.
+// Reutilizável pra qualquer ajuste numérico de 1 em 1 / N em N.
 export function IntervaloStepper({
   value, onChange, disabled, step = 5, min = 0, max = 240,
+  label = "minutos", showSign,
 }: Props) {
   function dec() {
     if (disabled) return;
@@ -33,24 +39,28 @@ export function IntervaloStepper({
         type="button"
         onClick={dec}
         disabled={disabled || value <= min}
-        aria-label="Diminuir intervalo"
+        aria-label={`Diminuir ${label}`}
         className={baseBtn}
       >
         −
       </button>
       <div className="min-w-[88px] text-center select-none">
-        <div className="text-3xl font-bold leading-none text-gray-900 dark:text-gray-100 tabular-nums">
-          {value}
+        <div className={`text-3xl font-bold leading-none tabular-nums ${
+          showSign && value > 0 ? "text-emerald-600 dark:text-emerald-400"
+          : showSign && value < 0 ? "text-rose-600 dark:text-rose-400"
+          : "text-gray-900 dark:text-gray-100"
+        }`}>
+          {showSign && value > 0 ? "+" : ""}{value}
         </div>
         <div className="text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mt-1">
-          minutos
+          {label}
         </div>
       </div>
       <button
         type="button"
         onClick={inc}
         disabled={disabled || value >= max}
-        aria-label="Aumentar intervalo"
+        aria-label={`Aumentar ${label}`}
         className={baseBtn}
       >
         +
