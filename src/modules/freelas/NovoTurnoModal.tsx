@@ -142,97 +142,107 @@ export function NovoTurnoModal({
           <SeletorSemana value={date} onChange={setDate} />
         </div>
 
-        {/* ─── Quem é o freela: etapa progressiva ─── */}
-        <div className="flex flex-col gap-1">
+        {/* ─── Quem é o freela: 2 abas sempre visíveis (alternáveis) ─── */}
+        <div className="flex flex-col gap-2">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
             Quem é o freela? *
           </label>
 
-          {!escolhaTipo && !selecionado && (
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setEscolhaTipo("empregado")}
-                className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-3 text-sm font-medium bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors"
-              >
-                👨‍💼 Empregado da casa
-              </button>
-              <button
-                type="button"
-                onClick={() => setEscolhaTipo("freela")}
-                className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-3 text-sm font-medium bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20 transition-colors"
-              >
-                🎒 Freela
-              </button>
-            </div>
-          )}
-
-          {/* Lista empregados */}
-          {escolhaTipo === "empregado" && !selecionado && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
-              {empregadosAtivos.length === 0 ? (
-                <div className="p-3 text-xs text-gray-500">Nenhum empregado ativo.</div>
-              ) : (
-                empregadosAtivos.map((e) => (
-                  <button
-                    key={e.id}
-                    type="button"
-                    onClick={() => setSelecionado({ tipo: "empregado", emp: e })}
-                    className="w-full text-left px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"
-                  >
-                    {e.nome}
-                  </button>
-                ))
-              )}
-              <div className="p-2 text-right">
-                <button type="button" onClick={() => setEscolhaTipo(null)} className="text-[11px] text-gray-500 hover:underline">
-                  ← voltar
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Lista freelas + cadastro */}
-          {escolhaTipo === "freela" && !selecionado && !mostrarCadastro && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
-              {freelas.map((p) => (
+          {/* Quando ainda não selecionou, as 2 abas/chips ficam sempre visíveis
+              pra permitir trocar sem precisar achar um "← voltar". */}
+          {!selecionado && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  key={p.id}
                   type="button"
-                  onClick={() => setSelecionado({ tipo: "freela", pessoa: p })}
-                  className="w-full text-left px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                  onClick={() => {
+                    if (escolhaTipo === "empregado") return;
+                    setEscolhaTipo("empregado");
+                    setMostrarCadastro(false);
+                  }}
+                  className={`rounded-lg border px-3 py-3 text-sm font-medium transition-colors ${
+                    escolhaTipo === "empregado"
+                      ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                      : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20"
+                  }`}
                 >
-                  {p.nome}
-                  {p.cpf && <span className="ml-2 text-[10px] text-gray-500">{p.cpf}</span>}
+                  👨‍💼 Empregado da casa
                 </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setMostrarCadastro(true)}
-                className="w-full text-left px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-              >
-                + Cadastrar novo freela
-              </button>
-              <div className="p-2 text-right">
-                <button type="button" onClick={() => setEscolhaTipo(null)} className="text-[11px] text-gray-500 hover:underline">
-                  ← voltar
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (escolhaTipo === "freela") return;
+                    setEscolhaTipo("freela");
+                    setMostrarCadastro(false);
+                  }}
+                  className={`rounded-lg border px-3 py-3 text-sm font-medium transition-colors ${
+                    escolhaTipo === "freela"
+                      ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                      : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20"
+                  }`}
+                >
+                  🎒 Freela
                 </button>
               </div>
-            </div>
-          )}
 
-          {/* Cadastro por CPF */}
-          {escolhaTipo === "freela" && mostrarCadastro && !selecionado && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-900">
-              <CadastroPorCpf
-                restaurantId={restaurantId}
-                onConcluido={(p) => {
-                  setMostrarCadastro(false);
-                  setSelecionado({ tipo: "freela", pessoa: p });
-                }}
-                onCancelar={() => setMostrarCadastro(false)}
-              />
-            </div>
+              {/* Lista empregados */}
+              {escolhaTipo === "empregado" && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
+                  {empregadosAtivos.length === 0 ? (
+                    <div className="p-3 text-xs text-gray-500">Nenhum empregado ativo.</div>
+                  ) : (
+                    empregadosAtivos.map((e) => (
+                      <button
+                        key={e.id}
+                        type="button"
+                        onClick={() => setSelecionado({ tipo: "empregado", emp: e })}
+                        className="w-full text-left px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                      >
+                        {e.nome}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+
+              {/* Lista freelas + cadastro */}
+              {escolhaTipo === "freela" && !mostrarCadastro && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 max-h-64 overflow-y-auto">
+                  {freelas.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelecionado({ tipo: "freela", pessoa: p })}
+                      className="w-full text-left px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"
+                    >
+                      {p.nome}
+                      {p.cpf && <span className="ml-2 text-[10px] text-gray-500">{p.cpf}</span>}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMostrarCadastro(true)}
+                    className="w-full text-left px-3 py-2 text-sm font-semibold text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                  >
+                    + Cadastrar novo freela
+                  </button>
+                </div>
+              )}
+
+              {/* Cadastro por CPF */}
+              {escolhaTipo === "freela" && mostrarCadastro && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-900">
+                  <CadastroPorCpf
+                    restaurantId={restaurantId}
+                    onConcluido={(p) => {
+                      setMostrarCadastro(false);
+                      setSelecionado({ tipo: "freela", pessoa: p });
+                    }}
+                    onCancelar={() => setMostrarCadastro(false)}
+                  />
+                </div>
+              )}
+            </>
           )}
 
           {/* Selecionado */}
