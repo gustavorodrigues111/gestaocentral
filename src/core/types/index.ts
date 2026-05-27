@@ -1194,6 +1194,70 @@ export type JanelaDiaReserva = {
   slots: SlotReserva[];               // ordenados por horário (sem slots = sem reservas)
 };
 
+// ─── EXCEÇÕES DE RESERVA POR DATA ──────────────────────────────────────
+// Sobrescrevem o padrão semanal (`JanelaDiaReserva`) pra datas específicas.
+// Cada documento representa UMA exceção e fica numa coleção `excecoesReserva`.
+// Múltiplas exceções podem existir pra mesma data (ex: 2 bloqueios de slot
+// diferentes + 1 janela extra). O helper `resolverDisponibilidadeDia` mescla
+// todas e devolve a lista efetiva de slots do dia.
+//
+// Tipos:
+//   bloqueio       — não aceita reservas (escopo=dia_inteiro ou slot)
+//   personalizacao — slot do padrão semanal, mas com salões/pax override
+//   janela_extra   — adiciona slot novo num dia que normalmente não tem
+//                    aquele horário (ou no dia inteiro, se fechado no padrão)
+export type EscopoExcecaoReserva  = "dia_inteiro" | "slot";
+export type TipoExcecaoReserva    = "bloqueio" | "personalizacao" | "janela_extra";
+
+export type ExcecaoReserva = {
+  id: string;
+  restaurantId: string;
+  data: string;                       // "YYYY-MM-DD"
+  escopo: EscopoExcecaoReserva;
+  // Só preenchido quando escopo === "slot" (e obrigatório nesses casos)
+  horario?: string;                   // "HH:MM"
+  tipo: TipoExcecaoReserva;
+  // Override de salões habilitados nesse slot. Só pra personalizacao e
+  // janela_extra. Undefined em personalizacao = herda do padrão.
+  salaoIds?: string[];
+  // Teto de pax pra esse slot específico. Útil pra reduzir capacidade num
+  // dia movimentado sem mexer no padrão. Undefined = sem limite extra.
+  paxMaxOverride?: number;
+  motivo?: string;                    // anotação interna (não mostrada ao cliente)
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome: string;
+};
+
+// Status resolvido de um slot na agenda. Usado pra UI colorida e pra o
+// form público decidir o que mostrar.
+//   normal         — slot do padrão semanal sem exceções
+//   bloqueado      — exceção de bloqueio impede reserva
+//   personalizado  — slot do padrão mas com override (salões/pax)
+//   extra          — slot fora do padrão semanal (janela extra criada manualmente)
+export type StatusSlotResolvido = "normal" | "bloqueado" | "personalizado" | "extra";
+
+export type SlotResolvido = {
+  horario: string;                    // "HH:MM"
+  salaoIds: string[];                 // efetivos (após override)
+  status: StatusSlotResolvido;
+  paxMaxOverride?: number;
+  // Ids das exceções que afetaram esse slot (auditoria / UI ações)
+  excecoesIds: string[];
+  motivos: string[];                  // motivos das exceções aplicadas (não vazio se status≠normal)
+};
+
+export type DiaResolvido = {
+  data: string;                       // "YYYY-MM-DD"
+  diaSemana: number;                  // 0-6
+  // true se o dia inteiro está bloqueado (por exceção de escopo=dia_inteiro
+  // OU por SiteConfig.excecoes com fechado=true OU sem padrão semanal +
+  // sem janelas extras).
+  diaBloqueado: boolean;
+  motivoDiaBloqueado?: string;
+  slots: SlotResolvido[];             // vazio se diaBloqueado=true
+};
+
 export type ConfiguracaoReservas = {
   id: string;                         // = restaurantId
   restaurantId: string;

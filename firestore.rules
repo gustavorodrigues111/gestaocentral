@@ -268,6 +268,14 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if authed();
     }
+    // ExcecaoReserva: overrides por data (bloqueios, personalizações, janelas
+    // extras). Read público — o form de reservas precisa respeitar bloqueios
+    // e mostrar janelas extras. Write só authed (admin master ou perfil com
+    // configurar/Reservas).
+    match /excecoesReserva/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
+    }
     // (clientes está definido acima com create público pra form de reservas)
     match /mesas/{id}               { allow read, write: if authed(); }
     match /checklistTemplates/{id}  { allow read, write: if authed(); }

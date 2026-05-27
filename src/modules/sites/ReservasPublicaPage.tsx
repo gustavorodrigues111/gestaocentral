@@ -7,9 +7,12 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Cliente, ClientePublicLookup, ConfiguracaoReservas, Reserva, ReservaPII, Salao,
+  Cliente, ClientePublicLookup, ConfiguracaoReservas, ExcecaoReserva, Reserva, ReservaPII, Salao,
 } from "../../core/types";
 import { DEFAULT_JANELA_ANTECEDENCIA_DIAS } from "../../core/types";
+import {
+  resolverDisponibilidadeDia, resolverDisponibilidadePeriodo,
+} from "../../core/reservas/disponibilidade";
 import { validarEmail } from "../eventos/validacoes";
 import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
@@ -48,6 +51,9 @@ export function ReservasPublicaPage() {
   // Salões + configuração de janelas
   const [saloes, setSaloes] = useState<Salao[]>([]);
   const [config, setConfig] = useState<ConfiguracaoReservas | null>(null);
+  // Exceções granulares (bloqueios, personalizações, janelas extras) por data.
+  // Buscadas no fetch inicial pra resolver disponibilidade.
+  const [excecoesReserva, setExcecoesReserva] = useState<ExcecaoReserva[]>([]);
   const [loadingDados, setLoadingDados] = useState(true);
 
   // Reservas do dia escolhido (pra calcular disponibilidade)
@@ -128,9 +134,13 @@ export function ReservasPublicaPage() {
     let cancelado = false;
     (async () => {
       try {
-        const [salSnap, cfgSnap] = await Promise.all([
+        const [salSnap, cfgSnap, excSnap] = await Promise.all([
           getDocs(query(collection(db, "saloes"), where("restaurantId", "==", rid))),
           getDoc(doc(db, "configReservas", rid)),
+          // Pega TODAS as exceções do restaurante (volume pequeno —
+          // tipicamente <50 por restaurante por ano). Resolver-side
+          // filtra por data quando precisa.
+          getDocs(query(collection(db, "excecoesReserva"), where("restaurantId", "==", rid))),
         ]);
         if (cancelado) return;
         const list = salSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Salao)
@@ -138,6 +148,7 @@ export function ReservasPublicaPage() {
           .sort((a, b) => (a.ordem ?? 999) - (b.ordem ?? 999));
         setSaloes(list);
         setConfig(cfgSnap.exists() ? ({ id: cfgSnap.id, ...cfgSnap.data() } as ConfiguracaoReservas) : null);
+        setExcecoesReserva(excSnap.docs.map(d => ({ id: d.id, ...d.data() }) as ExcecaoReserva));
       } catch (e) {
         console.error("[reservas] erro carregando saloes/config:", e);
       } finally {
@@ -245,47 +256,36 @@ export function ReservasPublicaPage() {
   }
 
   // ──────────────── Slots disponíveis do dia ────────────────
-  // Regra de precedência:
-  //  1. Se há exceção pra essa data no SiteConfig:
-  //     - exc.fechado === true  → sem reservas (casa fechada)
-  //     - exc.slotsReservaCustom === [] → sem reservas (sem aceitar reservas)
-  //     - exc.slotsReservaCustom = [...] → usa esses slots customizados
-  //     - exc.slotsReservaCustom undefined → herda janela semanal
-  //  2. Senão, usa janela do dia da semana padrão.
+  // Usa o resolver `resolverDisponibilidadeDia` que combina:
+  //  - padrão semanal (config.janelas)
+  //  - exceções legadas do SiteConfig (fechado / slotsReservaCustom)
+  //  - exceções granulares (excecoesReserva): bloqueios, personalizações
+  //    e janelas extras
+  //
+  // Status do slot:
+  //   "bloqueado"     → filtrado fora (cliente não vê)
+  //   "normal"        → padrão semanal
+  //   "personalizado" → padrão com override (salões/pax) — cliente vê normal
+  //   "extra"         → janela criada manualmente pra essa data específica
   const slotsDisponiveis = useMemo(() => {
     if (!data || !config) return [];
     const pax = parseInt(pessoas, 10) || 0;
 
-    // Procura exceção pra essa data específica
-    const excecao = siteConfig?.excecoes?.find(e => e.data === data);
-    let slotsBase: { horario: string; salaoIds: string[] }[];
-    if (excecao) {
-      if (excecao.fechado) return [];
-      if (excecao.slotsReservaCustom !== undefined) {
-        if (excecao.slotsReservaCustom.length === 0) return [];
-        slotsBase = excecao.slotsReservaCustom;
-      } else {
-        // Sem custom — herda janela semanal
-        const dow = new Date(data + "T12:00:00").getDay();
-        const janela = config.janelas?.find(j => j.dia === dow);
-        if (!janela || janela.slots.length === 0) return [];
-        slotsBase = janela.slots;
-      }
-    } else {
-      // Dia normal — usa janela do dia da semana
-      const dow = new Date(data + "T12:00:00").getDay();
-      const janela = config.janelas?.find(j => j.dia === dow);
-      if (!janela || janela.slots.length === 0) return [];
-      slotsBase = janela.slots;
+    const diaResolvido = resolverDisponibilidadeDia(data, {
+      config,
+      excecoesSite: siteConfig?.excecoes,
+      excecoesReserva,
+    });
+    if (diaResolvido.diaBloqueado) return [];
+
+    // Filtra slots bloqueados (não devem aparecer no público)
+    let slotsBase = diaResolvido.slots.filter(s => s.status !== "bloqueado");
+    // Se for HOJE, esconde slots já passados (buffer 30min)
+    if (data === hojeISO) {
+      slotsBase = slotsBase.filter(s => s.horario > agoraComBuffer);
     }
 
-    // Se for HOJE, esconde slots já passados (com BUFFER de 30min).
-    // Comparação lexicográfica de "HH:MM" funciona porque é zero-padded.
-    const slotsValidos = data === hojeISO
-      ? slotsBase.filter(s => s.horario > agoraComBuffer)
-      : slotsBase;
-
-    return slotsValidos.map(slot => {
+    return slotsBase.map(slot => {
       // Pra cada salão habilitado nesse slot, computa vagas
       const salaoStatus = slot.salaoIds.map(sId => {
         const sal = saloes.find(s => s.id === sId);
@@ -302,7 +302,13 @@ export function ReservasPublicaPage() {
         // (ex: "aceita mesas de 4 a 6 pax").
         if (sal.modeloCapacidade === "por_capacidade") {
           const usados = existentes.reduce((s, r) => s + (r.pessoas || 0), 0);
-          const cap = sal.capacidadeMaxPax || 0;
+          // paxMaxOverride do slot reduz a capacidade desse horário
+          // específico — útil pra noites movimentadas onde o admin
+          // não quer permitir o salão cheio.
+          const capBase = sal.capacidadeMaxPax || 0;
+          const cap = slot.paxMaxOverride
+            ? Math.min(capBase, slot.paxMaxOverride)
+            : capBase;
           const livres = Math.max(0, cap - usados);
           const minMesa = sal.paxMinPorMesaCap || 1;
           const maxMesa = sal.paxMaxPorMesaCap || cap;
@@ -340,7 +346,7 @@ export function ReservasPublicaPage() {
       const algumDisponivel = salaoStatus.some(s => s.disponivel);
       return { horario: slot.horario, salaoStatus, algumDisponivel };
     });
-  }, [data, hojeISO, agoraComBuffer, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes]);
+  }, [data, hojeISO, agoraComBuffer, config, saloes, reservasDoDia, pessoas, siteConfig?.excecoes, excecoesReserva]);
 
   // ──────────────── Próximos dias disponíveis ────────────────
   // Lista os próximos 6 dias DISPONÍVEIS (com janelas configuradas) —
@@ -351,57 +357,49 @@ export function ReservasPublicaPage() {
   const janelaDias = config?.janelaAntecedenciaDias || DEFAULT_JANELA_ANTECEDENCIA_DIAS;
   const diasDisponiveis = useMemo(() => {
     if (!config) return [];
-    const hojeBase = new Date(hojeISO + "T12:00:00");
+    const meses = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
+    const sCurto = ["dom","seg","ter","qua","qui","sex","sáb"];
+    const sLong = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
+    // Resolve disponibilidade dos próximos `janelaDias` dias via helper.
+    // Já considera padrão semanal + excecoes site + excecoes granulares
+    // (bloqueios/personalizações/extras).
+    const dias = resolverDisponibilidadePeriodo(hojeISO, janelaDias, {
+      config,
+      excecoesSite: siteConfig?.excecoes,
+      excecoesReserva,
+    });
     const result: Array<{
       data: string; diaSemanaCurto: string; diaSemanaLong: string;
       dia: number; mes: number; mesLabel: string;
       hasExcecao: boolean; motivo?: string;
     }> = [];
-    const meses = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
-    const sCurto = ["dom","seg","ter","qua","qui","sex","sáb"];
-    const sLong = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"];
-
-    for (let i = 0; i < janelaDias && result.length < MAX_DIAS; i++) {
-      const d = new Date(hojeBase);
-      d.setDate(d.getDate() + i);
-      // Igual ao hojeISO: monta em horário LOCAL, não UTC
-      const dataIso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      const dow = d.getDay();
-      const ehHoje = dataIso === hojeISO;
-      // Aplica regra de precedência (mesma do slotsDisponiveis)
-      const exc = siteConfig?.excecoes?.find(e => e.data === dataIso);
-      let slotsDoDia: { horario: string }[] = [];
-      if (exc) {
-        if (exc.fechado) continue;
-        if (exc.slotsReservaCustom !== undefined) {
-          if (exc.slotsReservaCustom.length === 0) continue;
-          slotsDoDia = exc.slotsReservaCustom.filter(s => s.salaoIds.length > 0);
-        } else {
-          const j = config.janelas?.find(jw => jw.dia === dow);
-          if (j) slotsDoDia = j.slots;
-        }
-      } else {
-        const j = config.janelas?.find(jw => jw.dia === dow);
-        if (j) slotsDoDia = j.slots;
+    for (const dia of dias) {
+      if (result.length >= MAX_DIAS) break;
+      if (dia.diaBloqueado) continue;
+      // Slots não-bloqueados (já filtrados pelo helper, mas vamos garantir)
+      let slots = dia.slots.filter(s => s.status !== "bloqueado");
+      // Hoje: filtra slots já passados (buffer 30min)
+      if (dia.data === hojeISO) {
+        slots = slots.filter(s => s.horario > agoraComBuffer);
       }
-      // Se for hoje, descarta slots já passados com buffer
-      if (ehHoje) {
-        slotsDoDia = slotsDoDia.filter(s => s.horario > agoraComBuffer);
-      }
-      if (slotsDoDia.length === 0) continue;
+      if (slots.length === 0) continue;
+      // Motivo / has exceção: pega o primeiro motivo de qualquer slot
+      // personalizado/extra desse dia (pra info contextual no chip).
+      const slotComMotivo = slots.find(s => s.status !== "normal" && s.motivos.length > 0);
+      const d = new Date(dia.data + "T12:00:00");
       result.push({
-        data: dataIso,
-        diaSemanaCurto: sCurto[dow]!,
-        diaSemanaLong: sLong[dow]!,
+        data: dia.data,
+        diaSemanaCurto: sCurto[dia.diaSemana]!,
+        diaSemanaLong: sLong[dia.diaSemana]!,
         dia: d.getDate(),
         mes: d.getMonth() + 1,
         mesLabel: meses[d.getMonth()]!,
-        hasExcecao: !!exc,
-        motivo: exc?.motivo,
+        hasExcecao: slots.some(s => s.status !== "normal"),
+        motivo: slotComMotivo?.motivos[0],
       });
     }
     return result;
-  }, [config, siteConfig?.excecoes, hojeISO, agoraComBuffer, janelaDias]);
+  }, [config, siteConfig?.excecoes, excecoesReserva, hojeISO, agoraComBuffer, janelaDias]);
 
   // ──────────────── Submit ────────────────
   async function submit() {
