@@ -66,6 +66,13 @@ function fmtRangeSemana(domingo: string): string {
   return `${a.getDate()} ${mesA} – ${b.getDate()} ${mesB}`;
 }
 
+// Capacidade-base do salão (sem considerar paxMaxOverride do slot).
+// Por capacidade: total do salão. Por mesas: nº mesas × pax máx por mesa.
+export function paxDoSalao(s: Salao): number {
+  if (s.modeloCapacidade === "por_capacidade") return s.capacidadeMaxPax || 0;
+  return (s.numMesas || 0) * (s.paxMaxPorMesa || 0);
+}
+
 export function AgendaTab({
   restaurantId, podeConfig, pessoaId, pessoaNome, saloes,
 }: Props) {
@@ -342,6 +349,11 @@ function DiaColuna({
 
 // ─── Chip de um slot ──────────────────────────────────────────────────
 
+// Altura fixa do chip — padroniza o visual da agenda independente do
+// número de salões. Comporta horário + até 2 linhas de salão + 1 de
+// override de pax (se houver).
+const CHIP_HEIGHT = "h-[86px]";
+
 function SlotChip({
   slot, saloes, onClick,
 }: {
@@ -350,29 +362,31 @@ function SlotChip({
   onClick: () => void;
 }) {
   const cor = COR_STATUS_SLOT[slot.status];
-  // Nome curto: iniciais dos salões (ex: "S + V" pra "Salão Principal + Varanda")
-  const saloesShort = slot.salaoIds
+
+  // Resolve salões com pax — base (capacidade do salão). Quando há
+  // paxMaxOverride no slot, é um teto pro slot inteiro (não distribuído
+  // por salão) — exibido em linha separada abaixo.
+  const saloesInfo = slot.salaoIds
     .map(id => {
       const s = saloes.find(sa => sa.id === id);
       if (!s) return null;
-      // Inicial da primeira palavra significativa
-      const palavras = s.nome.split(/\s+/).filter(p => !["do","da","de","das","dos"].includes(p.toLowerCase()));
-      return palavras[0]?.charAt(0).toUpperCase();
+      return { nome: s.nome, pax: paxDoSalao(s) };
     })
-    .filter((x): x is string => !!x)
-    .join("+");
+    .filter((x): x is { nome: string; pax: number } => !!x);
 
-  const saloesNomeCompleto = slot.salaoIds
-    .map(id => saloes.find(s => s.id === id)?.nome)
-    .filter((x): x is string => !!x)
-    .join(" + ") || "—";
+  const saloesNomeCompleto = saloesInfo.map(s => `${s.nome} · ${s.pax}p`).join(" + ") || "—";
+
+  // Limita a 2 salões visíveis; resto vira "+N"
+  const VISIBLE = 2;
+  const visiveis = saloesInfo.slice(0, VISIBLE);
+  const restante = saloesInfo.length - VISIBLE;
 
   return (
     <button
       type="button"
       onClick={onClick}
       title={`${slot.horario} · ${saloesNomeCompleto}${slot.motivos[0] ? " · " + slot.motivos[0] : ""}`}
-      className={`w-full text-left px-2 py-1.5 rounded-md border ${cor.border} ${cor.bg} hover:brightness-95 dark:hover:brightness-110 transition-all cursor-pointer`}
+      className={`w-full ${CHIP_HEIGHT} text-left px-2 py-1.5 rounded-md border ${cor.border} ${cor.bg} hover:brightness-95 dark:hover:brightness-110 transition-all cursor-pointer flex flex-col`}
     >
       <div className="flex items-center justify-between gap-1">
         <span className={`text-sm font-semibold tabular-nums ${cor.text}`}>
@@ -384,16 +398,26 @@ function SlotChip({
           </span>
         )}
       </div>
-      {saloesShort && (
-        <div className={`text-[9px] ${cor.text} opacity-75 truncate`} title={saloesNomeCompleto}>
-          {saloesShort}
-        </div>
-      )}
-      {slot.paxMaxOverride != null && (
-        <div className={`text-[9px] ${cor.text} opacity-75 italic`}>
-          ≤{slot.paxMaxOverride} pax
-        </div>
-      )}
+
+      {/* Lista de salões + pax — 1 linha por salão, até 2 visíveis */}
+      <div className="flex-1 mt-0.5 flex flex-col justify-start min-h-0">
+        {visiveis.map(s => (
+          <div key={s.nome} className={`text-[10px] ${cor.text} opacity-90 leading-tight truncate flex items-baseline gap-1`}>
+            <span className="truncate">{s.nome}</span>
+            <span className="tabular-nums opacity-75 ml-auto flex-shrink-0">{s.pax}p</span>
+          </div>
+        ))}
+        {restante > 0 && (
+          <div className={`text-[9px] ${cor.text} opacity-60 italic`}>
+            +{restante} salão{restante !== 1 ? "ões" : ""}
+          </div>
+        )}
+        {slot.paxMaxOverride != null && (
+          <div className={`text-[9px] ${cor.text} opacity-75 italic mt-auto`}>
+            ≤{slot.paxMaxOverride} pax total
+          </div>
+        )}
+      </div>
     </button>
   );
 }

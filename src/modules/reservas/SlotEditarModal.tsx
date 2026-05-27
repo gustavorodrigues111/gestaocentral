@@ -61,18 +61,18 @@ export function SlotEditarModal({
     setSalaoIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
-  // ─── Capacidade somada (informativa) ───
-  const capacidadeTotal = slot.salaoIds.reduce((acc, id) => {
-    const sal = saloes.find(s => s.id === id);
-    if (!sal) return acc;
-    if (sal.modeloCapacidade === "por_capacidade") return acc + (sal.capacidadeMaxPax || 0);
-    return acc + (sal.numMesas || 0) * (sal.paxMaxPorMesa || 0);
-  }, 0);
-
-  const saloesNomes = slot.salaoIds
-    .map(id => saloes.find(s => s.id === id)?.nome)
-    .filter((x): x is string => !!x)
-    .join(" + ") || "—";
+  // ─── Lista de salões com pax individual + total ───
+  const saloesInfo = slot.salaoIds
+    .map(id => {
+      const sal = saloes.find(s => s.id === id);
+      if (!sal) return null;
+      const pax = sal.modeloCapacidade === "por_capacidade"
+        ? (sal.capacidadeMaxPax || 0)
+        : (sal.numMesas || 0) * (sal.paxMaxPorMesa || 0);
+      return { nome: sal.nome, pax };
+    })
+    .filter((x): x is { nome: string; pax: number } => !!x);
+  const capacidadeTotal = saloesInfo.reduce((acc, s) => acc + s.pax, 0);
 
   // ─── Acha exceção atual (se houver) ───
   // Pra status bloqueado/personalizado/extra, há uma excecao na lista.
@@ -208,24 +208,46 @@ export function SlotEditarModal({
         </div>
 
         {/* Resumo + motivo */}
-        <div className="p-4 space-y-2 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] uppercase font-bold text-gray-500 tracking-wider">Salões</span>
-            <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{saloesNomes}</span>
-          </div>
-          {capacidadeTotal > 0 && (
-            <div className="flex items-baseline justify-between gap-2">
-              <span className="text-[11px] uppercase font-bold text-gray-500 tracking-wider">Capacidade</span>
-              <span className="text-sm text-gray-900 dark:text-gray-100">
-                até {slot.paxMaxOverride ? Math.min(capacidadeTotal, slot.paxMaxOverride) : capacidadeTotal} pax
-                {slot.paxMaxOverride && (
-                  <span className="ml-1 text-xs italic text-gray-500">(limite custom)</span>
+        <div className="p-4 space-y-3 border-b border-gray-200 dark:border-gray-800">
+          {saloesInfo.length === 0 ? (
+            <div className="text-sm text-gray-500 italic">Sem salões atribuídos</div>
+          ) : (
+            <div>
+              <div className="text-[11px] uppercase font-bold text-gray-500 tracking-wider mb-1.5">
+                Salões e capacidade
+              </div>
+              <div className="space-y-1">
+                {saloesInfo.map(s => (
+                  <div key={s.nome} className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className="text-gray-900 dark:text-gray-100">{s.nome}</span>
+                    <span className="text-gray-700 dark:text-gray-300 tabular-nums">
+                      {s.pax} pax
+                    </span>
+                  </div>
+                ))}
+                {saloesInfo.length > 1 && (
+                  <div className="flex items-baseline justify-between gap-2 text-sm pt-1.5 mt-1.5 border-t border-gray-200 dark:border-gray-800">
+                    <span className="text-[11px] uppercase font-bold text-gray-500 tracking-wider">Total</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+                      {capacidadeTotal} pax
+                    </span>
+                  </div>
                 )}
-              </span>
+                {slot.paxMaxOverride != null && (
+                  <div className="flex items-baseline justify-between gap-2 text-sm">
+                    <span className={`text-[11px] uppercase font-bold tracking-wider ${cor.text}`}>
+                      Limite custom desse slot
+                    </span>
+                    <span className={`font-semibold tabular-nums ${cor.text}`}>
+                      até {Math.min(capacidadeTotal, slot.paxMaxOverride)} pax
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           {slot.motivos.length > 0 && (
-            <div className={`mt-2 text-xs italic ${cor.text}`}>
+            <div className={`text-xs italic ${cor.text}`}>
               💬 {slot.motivos[0]}
             </div>
           )}
@@ -265,7 +287,7 @@ export function SlotEditarModal({
                     <span className="ml-auto text-[10px] text-gray-500">
                       {s.modeloCapacidade === "por_capacidade"
                         ? `${s.capacidadeMaxPax || 0} pax`
-                        : `${s.numMesas || 0} mesas`}
+                        : `${s.numMesas || 0} mesas · ${(s.numMesas || 0) * (s.paxMaxPorMesa || 0)} pax`}
                     </span>
                   </label>
                 ))}

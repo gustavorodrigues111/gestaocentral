@@ -206,7 +206,7 @@ export function JanelaExtraModal({
                   <span className="ml-auto text-[10px] text-gray-500">
                     {s.modeloCapacidade === "por_capacidade"
                       ? `${s.capacidadeMaxPax || 0} pax`
-                      : `${s.numMesas || 0} mesas`}
+                      : `${s.numMesas || 0} mesas · ${(s.numMesas || 0) * (s.paxMaxPorMesa || 0)} pax`}
                   </span>
                 </label>
               ))}
