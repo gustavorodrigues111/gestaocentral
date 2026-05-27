@@ -2051,8 +2051,16 @@ export type Admissao = {
   motivosCancelamento?: MotivoCancelamento[]; // tags cumulativas (cancelado_empresa, desistencia, etc)
 
   // ─── Kanban: override manual da coluna (default: derivado do status) ───
-  // Mantido por retrocompat. O Kanban virou view-only — não há mais drag-drop.
+  // Reativado em 2026-05: Kanban tem drag-drop + botões ◀▶. kanbanColunaId
+  // só é usado quando o usuário move pra uma coluna terminal (ou diferente
+  // do status auto) — caso raro. Movimentação normal atualiza o `status`.
   kanbanColunaId?: string;
+
+  // Etapas onde o usuário avançou MESMO com checklist obrigatório incompleto.
+  // Cada entrada é o ID de uma coluna do Kanban (ex: "col_preenchido"). Usado
+  // pra mostrar sinalizador "⚠️ etapa anterior em atraso" no card.
+  // Limpa quando o usuário completa as obrigatórias daquela coluna.
+  etapasComPendencias?: Record<string, boolean>;
 
   // ─── Dados bancários Itaú (preenchidos na col 3) ───
   // RH preenche depois que candidato envia agência + conta. Subtarefa de

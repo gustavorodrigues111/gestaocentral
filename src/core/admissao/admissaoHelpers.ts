@@ -619,6 +619,67 @@ export async function avancarStatus(
   });
 }
 
+// ─── Movimentação manual pelo Kanban (drag-drop OU botões ◀▶) ─────────────
+// Aceita pular múltiplas etapas. Quando avança com checklist obrigatório
+// incompleto na coluna atual, marca `etapasComPendencias[colunaAtualId] = true`
+// — vira sinalizador visual no card até as obrigatórias serem completadas.
+//
+// Quando volta (status anterior), limpa `etapasComPendencias[colunaDestinoId]`
+// — o usuário tá refazendo essa etapa, então o aviso de pendência some
+// dali e só vai aparecer de novo se ele avançar novamente com items
+// pendentes.
+export async function moverStatusKanban(
+  admissao: Admissao,
+  novoStatus: AdmissaoStatus,
+  /** Subtarefas obrigatórias pendentes na coluna que ele tá saindo. */
+  pendentesNaColunaAtual: number,
+  /** ID da coluna que ele tá saindo (pra registrar em etapasComPendencias). */
+  colunaAtualId: string | null,
+  /** ID da coluna de destino (pra limpar pendência se for retorno). */
+  colunaDestinoId: string | null,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const ehAvanco = ORDEM_FLUXO.indexOf(novoStatus) > ORDEM_FLUXO.indexOf(admissao.status);
+  const pendencias = { ...(admissao.etapasComPendencias || {}) };
+  if (ehAvanco && pendentesNaColunaAtual > 0 && colunaAtualId) {
+    pendencias[colunaAtualId] = true;
+  }
+  // Se tá voltando pra uma coluna que tinha pendência marcada, limpa
+  // (usuário tá refazendo a etapa).
+  if (!ehAvanco && colunaDestinoId && pendencias[colunaDestinoId]) {
+    delete pendencias[colunaDestinoId];
+  }
+  await updateDoc(doc(db, "admissoes", admissao.id), {
+    status: novoStatus,
+    etapasComPendencias: Object.keys(pendencias).length > 0 ? pendencias : deleteField(),
+    updatedAt: now,
+  });
+}
+
+// Limpa pendência de uma coluna específica — usado pelo SubtarefasDrawer
+// quando o usuário completa todas as obrigatórias daquela coluna.
+export async function limparPendenciaEtapa(
+  admissaoId: string,
+  colunaId: string,
+  pendenciasAtuais: Record<string, boolean> | undefined,
+): Promise<void> {
+  if (!pendenciasAtuais || !pendenciasAtuais[colunaId]) return;
+  const novo = { ...pendenciasAtuais };
+  delete novo[colunaId];
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    etapasComPendencias: Object.keys(novo).length > 0 ? novo : deleteField(),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+// Conta quantas colunas anteriores ao status atual têm pendência registrada
+// — vira sinalizador "⚠️ N etapa(s) em atraso" no card.
+export function etapasAnterioresEmAtraso(adm: Admissao): number {
+  const pend = adm.etapasComPendencias;
+  if (!pend) return 0;
+  return Object.values(pend).filter(Boolean).length;
+}
+
 // Avança status + aplica auto-trigger nas subtarefas em uma única gravação.
 // Usar quando a ação do RH no UI corresponde a um evento monitorado
 // (ex: clicar "Enviar pra contabilidade" → trigger envio_contabilidade).
