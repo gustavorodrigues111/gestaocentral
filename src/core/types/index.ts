@@ -2118,6 +2118,9 @@ export type SubtarefaTemplate = {
     | { tipo: "editar_dados_basicos" }           // abre modal pra editar nome/cpf/email/whatsapp do candidato
     | { tipo: "editar_dados_finais" }            // abre modal pra editar cargo/salário/horário/data
     | { tipo: "enviar_link_form" }               // gera link + abre WhatsApp pré-preenchido
+    | { tipo: "checklist_termos_assinar" }       // abre modal com checklist de termos a assinar
+    | { tipo: "abrir_clicksign" }                // abre app.clicksign.com em nova aba
+    | { tipo: "whatsapp_kit_assinatura" }        // WhatsApp pro candidato avisando que mandamos kit por email
     // Atalhos legados — mantidos por retrocompat. Resolvidos pra contato_*
     // no drawer.
     | { tipo: "gmail_clinica" }

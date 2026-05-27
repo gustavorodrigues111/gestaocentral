@@ -234,9 +234,17 @@ export const PRAZO_CONTA_ITAU_DIAS = 7;
 export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
   "st_contato_emergencia",        // virou parte da mensagem única de instruções
   "st_avisar_exame_candidato",    // 2026-05: removido na refatoração do Kanban (RH conduz instruções fora do checklist)
-  // 2026-05: consolidados no novo checklist "✍️ Termos a assinar":
-  "st_coleta_assinatura",         // → cada termo agora é uma subtarefa separada
-  "st_envio_regulamento",         // → virou st_termo_regulamento_interno
+  "st_coleta_assinatura",         // 2026-05: virou parte do novo fluxo de Assinaturas
+  "st_envio_regulamento",         // 2026-05: virou parte do novo fluxo de Assinaturas
+  // 2026-05 (segunda iteração): termos individuais consolidados num único item
+  // "st_termos_assinatura" com botão de checklist (modal). Os 6 termos
+  // anteriores agora vivem como itens DENTRO desse modal.
+  "st_termo_contrato_clt",
+  "st_termo_confidencialidade",
+  "st_termo_uniformes_epis",
+  "st_termo_regulamento_interno",
+  "st_termo_lgpd",
+  "st_assinatura_outros",
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -267,7 +275,6 @@ const CK_INSTRUCOES     = { id: "ck_instrucoes",     nome: "📣 Enviar/reforça
 const CK_DADOS_INTERNOS = { id: "ck_dados_internos", nome: "📋 Dados internos" };
 const CK_CONTABILIDADE  = { id: "ck_contabilidade",  nome: "📤 Contabilidade" };
 const CK_ASSINATURAS    = { id: "ck_assinaturas",    nome: "📃 Assinaturas" };
-const CK_TERMOS         = { id: "ck_termos_assinar", nome: "✍️ Termos a assinar" };
 const CK_CADASTROS_EXT  = { id: "ck_cadastros_ext",  nome: "🏦 Cadastros externos" };
 const CK_RESULT_EXAMES  = { id: "ck_resultados",     nome: "🏥 Resultados de exames" };
 const CK_ULTIMA_MILHA   = { id: "ck_ultima_milha",   nome: "🏁 Última milha" };
@@ -318,30 +325,19 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
      "col_contabilidade", CK_CONTABILIDADE.id, CK_CONTABILIDADE.nome, true,
      { atalho: { tipo: "contato_contabilidade" } }),
-  st("st_receber_contrato", "Recebimento do contrato e termos para assinatura",
+  // ─── 📃 Assinaturas ───
+  st("st_receber_contrato", "Recebimento do contrato para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { pedeLink: true }),
-  // ✍️ Termos a assinar — cada termo é uma subtarefa separada com pedeLink
-  // (anexar PDF assinado). Editável por restaurante via "Configurações do
-  // Kanban" — restaurante pode adicionar/remover termos conforme suas práticas.
-  st("st_termo_contrato_clt", "Contrato de Trabalho (CLT)",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
-     { pedeLink: true }),
-  st("st_termo_confidencialidade", "Termo de Confidencialidade",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
-     { pedeLink: true }),
-  st("st_termo_uniformes_epis", "Termo de Recebimento de Uniformes e EPIs",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
-     { pedeLink: true }),
-  st("st_termo_regulamento_interno", "Regulamento Interno (ciência e assinatura)",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
-     { pedeLink: true }),
-  st("st_termo_lgpd", "Política de Privacidade / LGPD",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
-     { pedeLink: true }),
-  st("st_assinatura_outros", "Outros termos (especificar nas notas)",
-     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, false,
-     { pedeLink: true }),
+  st("st_termos_assinatura", "Preenchimento dos termos para assinatura",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+     { atalho: { tipo: "checklist_termos_assinar" } }),
+  st("st_envio_kit_clicksign", "Envio do kit de documentos de admissão para assinatura",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+     { atalho: { tipo: "abrir_clicksign" } }),
+  st("st_avisar_kit_assinatura", "Avisar candidato que mandamos o kit para assinatura por email",
+     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+     { atalho: { tipo: "whatsapp_kit_assinatura" } }),
   st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true),
   st("st_cadastro_vt", "Cadastro no Caju Benefícios",
