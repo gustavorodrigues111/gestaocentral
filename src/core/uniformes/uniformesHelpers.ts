@@ -192,7 +192,10 @@ export function calcValidadeAte(entregueEm: string, validadeDias: number): strin
  */
 export async function criarEntrega(opts: {
   restaurantId: string;
-  pessoaId: string;
+  /** Vincula a uma pessoa existente. Quando criando durante admissão sem
+      pessoa criada ainda, deixa undefined e preenche `candidatoSnapshot`. */
+  pessoaId?: string;
+  candidatoSnapshot?: { nome: string; cpf: string; whatsapp?: string };
   empregadoId?: string;
   admissaoId?: string;
   tipo: TipoItemUniforme;
@@ -207,8 +210,14 @@ export async function criarEntrega(opts: {
   // Catálogo carregado pra evitar re-fetch + pra snapshot
   catalogo: ItemUniforme[];
 }): Promise<EntregaUniforme> {
-  const { restaurantId, pessoaId, empregadoId, admissaoId, tipo, motivo, itens, observacao, pessoa, catalogo } = opts;
+  const {
+    restaurantId, pessoaId, candidatoSnapshot, empregadoId, admissaoId,
+    tipo, motivo, itens, observacao, pessoa, catalogo,
+  } = opts;
   if (itens.length === 0) throw new Error("Adicione pelo menos 1 item à entrega.");
+  if (!pessoaId && !candidatoSnapshot) {
+    throw new Error("Forneça pessoaId ou candidatoSnapshot.");
+  }
 
   // Resolve cada item + valida estoque ANTES de baixar (idempotência best-effort)
   type Resolved = { item: ItemUniforme; variacao: VariacaoItem; qtd: number };
@@ -228,7 +237,10 @@ export async function criarEntrega(opts: {
   const id = novaEntregaId();
   const now = new Date().toISOString();
   const entrega: EntregaUniforme = {
-    id, restaurantId, pessoaId, empregadoId, admissaoId,
+    id, restaurantId,
+    pessoaId,
+    candidatoSnapshot,
+    empregadoId, admissaoId,
     tipo, motivo,
     itens: resolved.map(({ item, variacao, qtd }) => ({
       itemId: item.id,

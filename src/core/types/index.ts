@@ -2140,6 +2140,8 @@ export type SubtarefaTemplate = {
     | { tipo: "checklist_termos_assinar" }       // abre modal com checklist de termos a assinar
     | { tipo: "abrir_clicksign" }                // abre app.clicksign.com em nova aba
     | { tipo: "whatsapp_kit_assinatura" }        // WhatsApp pro candidato avisando que mandamos kit por email
+    | { tipo: "gerar_termo_uniformes" }          // abre modal de entrega de uniformes + gera PDF
+    | { tipo: "gerar_termo_epis" }               // abre modal de entrega de EPIs + gera PDF
     // Atalhos legados — mantidos por retrocompat. Resolvidos pra contato_*
     // no drawer.
     | { tipo: "gmail_clinica" }
@@ -2754,7 +2756,16 @@ export type DevolucaoStatus = "devolvido" | "descartado" | "levado_pelo_empregad
 export type EntregaUniforme = {
   id: string;
   restaurantId: string;
-  pessoaId: string;                    // sempre obrigatório (cobre empregado + freelancer)
+  // Vincula a uma pessoa real (empregado CLT ou freelancer fixo). Pode ficar
+  // vazio quando a entrega é feita DURANTE a admissão e o cadastro de Pessoa
+  // ainda não foi criado (criado só no fim da admissão). Nesse caso preencha
+  // `candidatoSnapshot` + `admissaoId`. Quando admissão concluir, é possível
+  // retroativo atualizar pessoaId aqui.
+  pessoaId?: string;
+  // Snapshot do candidato pra entregas feitas durante a admissão (sem pessoaId).
+  // A UI usa o snapshot pra mostrar nome/CPF na lista. Após admissão concluir,
+  // o pessoaId é preenchido e o snapshot vira histórico.
+  candidatoSnapshot?: { nome: string; cpf: string; whatsapp?: string };
   empregadoId?: string;                // se aplicável
   admissaoId?: string;                 // se foi durante admissão
   tipo: TipoItemUniforme;              // termo separado: 1 entrega = 1 tipo

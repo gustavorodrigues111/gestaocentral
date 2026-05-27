@@ -245,6 +245,10 @@ export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
   "st_termo_regulamento_interno",
   "st_termo_lgpd",
   "st_assinatura_outros",
+  // 2026-05 (Uniformes Fase 3): item único de entrega de uniformes/EPIs
+  // foi separado em 2 subtarefas (st_entrega_uniformes + st_entrega_epis)
+  // pra cada uma gerar termo próprio.
+  "st_uniformes_epis",
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -294,7 +298,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { atalho: { tipo: "editar_dados_basicos" } }),
   st("st_dados_vaga", "Preencher dados básicos da vaga (cargo, horário, empresa)",
      "col_a_admitir", CK_DADOS_BASICOS.id, CK_DADOS_BASICOS.nome, true,
-     { atalho: { tipo: "editar_dados_basicos" } }),
+     { atalho: { tipo: "editar_dados_finais" } }),
 
   // ─── Col 2: Aguardando preenchimento e Solicitação de Exames e Conta ───
   st("st_solicitar_info", "Solicitar informações de admissão (cargo, horário e empresa)",
@@ -359,8 +363,12 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
   st("st_solicitar_pgto_vt", "Solicitar pagamento primeiro Vale Transporte para o setor financeiro",
      "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
-  st("st_uniformes_epis", "Entrega de uniformes e EPIs",
-     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true),
+  st("st_entrega_uniformes", "Entrega de uniformes",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
+     { atalho: { tipo: "gerar_termo_uniformes" } }),
+  st("st_entrega_epis", "Entrega de EPIs",
+     "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
+     { atalho: { tipo: "gerar_termo_epis" } }),
 
   // ─── Col 6: Admitido e Onboarding ───
   st("st_envio_videos_treinamento", "Envio de vídeos de treinamento inicial",

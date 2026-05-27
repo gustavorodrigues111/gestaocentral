@@ -45,6 +45,7 @@ import { ModalLigarContato } from "./ModalLigarContato";
 import { EditarCandidatoModal } from "./EditarCandidatoModal";
 import { PreencherDadosBasicosModal } from "./PreencherDadosBasicosModal";
 import { ChecklistTermosModal } from "./ChecklistTermosModal";
+import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura,
@@ -333,6 +334,9 @@ export function SubtarefasDrawer({
     window.open("https://app.clicksign.com/", "_blank", "noopener,noreferrer");
   }
 
+  // Modal de gerar termo de uniformes ou EPIs — tipo decide
+  const [gerarTermoTipo, setGerarTermoTipo] = useState<"uniforme" | "epi" | null>(null);
+
   // 📱 Avisa candidato via WhatsApp que mandamos o kit de assinatura por email
   function abrirAvisarKitAssinatura() {
     const msg = montarMensagemKitAssinatura(
@@ -489,6 +493,8 @@ export function SubtarefasDrawer({
                                   onAtalhoChecklistTermos={() => setShowChecklistTermos(true)}
                                   onAtalhoClicksign={abrirClicksign}
                                   onAtalhoWhatsappKit={abrirAvisarKitAssinatura}
+                                  onAtalhoGerarTermoUniformes={() => setGerarTermoTipo("uniforme")}
+                                  onAtalhoGerarTermoEpis={() => setGerarTermoTipo("epi")}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -582,6 +588,17 @@ export function SubtarefasDrawer({
           onClose={() => setShowChecklistTermos(false)}
         />
       )}
+
+      {gerarTermoTipo && (
+        <NovaEntregaWrapper
+          tipo={gerarTermoTipo}
+          admissao={admissao}
+          restaurantId={admissao.restaurantId}
+          activeRestaurant={activeRestaurant}
+          pessoa={pessoa}
+          onClose={() => setGerarTermoTipo(null)}
+        />
+      )}
     </>,
     document.body,
   );
@@ -606,6 +623,8 @@ function SubtarefaRow({
   onAtalhoChecklistTermos,
   onAtalhoClicksign,
   onAtalhoWhatsappKit,
+  onAtalhoGerarTermoUniformes,
+  onAtalhoGerarTermoEpis,
   contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
@@ -626,6 +645,8 @@ function SubtarefaRow({
   onAtalhoChecklistTermos: () => void;
   onAtalhoClicksign: () => void;
   onAtalhoWhatsappKit: () => void;
+  onAtalhoGerarTermoUniformes: () => void;
+  onAtalhoGerarTermoEpis: () => void;
   contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
@@ -855,6 +876,24 @@ function SubtarefaRow({
             📱 Avisar candidato (WhatsApp)
           </button>
         )}
+        {sub.atalho?.tipo === "gerar_termo_uniformes" && (
+          <button
+            type="button"
+            onClick={onAtalhoGerarTermoUniformes}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            📦 Gerar termo de uniformes
+          </button>
+        )}
+        {sub.atalho?.tipo === "gerar_termo_epis" && (
+          <button
+            type="button"
+            onClick={onAtalhoGerarTermoEpis}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            🦺 Gerar termo de EPIs
+          </button>
+        )}
         {(sub.pedeLink || sub.observacao || sub.link) && (
           <button
             type="button"
@@ -917,5 +956,64 @@ function SubtarefaRow({
         </div>
       )}
     </div>
+  );
+}
+
+// Wrapper que carrega itens + kits do módulo Uniformes sob demanda
+// quando o usuário aciona "Gerar termo de uniformes/EPIs" no checklist.
+function NovaEntregaWrapper({
+  tipo, admissao, restaurantId, activeRestaurant, pessoa, onClose,
+}: {
+  tipo: "uniforme" | "epi";
+  admissao: Admissao;
+  restaurantId: string;
+  activeRestaurant: Restaurant;
+  pessoa: Pessoa;
+  onClose: () => void;
+}) {
+  const [itensUniforme, setItensUniforme] = useState<import("../../core/types").ItemUniforme[]>([]);
+  const [kitsAreaUniforme, setKitsAreaUniforme] = useState<import("../../core/types").KitAreaUniforme[]>([]);
+  const [carregando, setCarregando] = useState(true);
+
+  useEffect(() => {
+    let cancel = false;
+    (async () => {
+      try {
+        const { collection, getDocs, query, where } = await import("firebase/firestore");
+        const [iSnap, kSnap] = await Promise.all([
+          getDocs(query(collection(db, "itensUniforme"), where("restaurantId", "==", restaurantId))),
+          getDocs(query(collection(db, "kitsAreaUniforme"), where("restaurantId", "==", restaurantId))),
+        ]);
+        if (cancel) return;
+        setItensUniforme(iSnap.docs.map(d => ({ id: d.id, ...d.data() }) as import("../../core/types").ItemUniforme));
+        setKitsAreaUniforme(kSnap.docs.map(d => ({ id: d.id, ...d.data() }) as import("../../core/types").KitAreaUniforme));
+      } finally {
+        if (!cancel) setCarregando(false);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [restaurantId]);
+
+  if (carregando) {
+    return (
+      <div className="fixed inset-0 z-[200] bg-black/40 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-900 rounded-lg p-6 text-sm text-gray-600">
+          Carregando catálogo de uniformes…
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <NovaEntregaModal
+      tipo={tipo}
+      itens={itensUniforme}
+      kits={kitsAreaUniforme}
+      restaurantId={restaurantId}
+      activeRestaurant={activeRestaurant}
+      pessoa={pessoa}
+      admissaoContexto={admissao}
+      onClose={onClose}
+    />
   );
 }

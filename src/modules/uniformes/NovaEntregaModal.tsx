@@ -12,7 +12,7 @@ import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
-  Cargo, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant,
+  Admissao, Cargo, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant,
   TermoUniformesConfig, TipoItemUniforme,
 } from "../../core/types";
 import { criarEntrega } from "../../core/uniformes/uniformesHelpers";
@@ -26,6 +26,12 @@ type Props = {
   activeRestaurant: Restaurant;
   pessoa: Pessoa;
   onClose: () => void;
+  /** Quando aberto a partir do checklist de uma admissão, pré-preenche
+      tudo (motivo=admissao, candidato fixo, tipo fixo). */
+  admissaoContexto?: Admissao;
+  /** Callback chamado quando a entrega é criada com sucesso —
+      usado pra marcar a subtarefa correspondente. */
+  onEntregaCriada?: () => void;
 };
 
 type LinhaEntrega = {
@@ -36,7 +42,11 @@ type LinhaEntrega = {
 
 export function NovaEntregaModal({
   tipo, itens, kits, restaurantId, activeRestaurant, pessoa, onClose,
+  admissaoContexto, onEntregaCriada,
 }: Props) {
+  // Modo "admissão": pessoa fixa (candidato), tipo fixo, motivo=admissao.
+  // Não permite trocar a pessoa.
+  const modoAdmissao = !!admissaoContexto;
   // Catálogo de pessoas + cargos pra autocomplete e detecção de área
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -52,7 +62,9 @@ export function NovaEntregaModal({
     return () => { u1(); u2(); };
   }, [restaurantId]);
 
-  const [pessoaSelId, setPessoaSelId] = useState("");
+  const [pessoaSelId, setPessoaSelId] = useState(
+    () => admissaoContexto?.pessoaIdVinculada || "",
+  );
   const pessoaSel = pessoas.find(p => p.id === pessoaSelId);
 
   // Detecção de área via teamData[rid].cargoId
@@ -69,7 +81,9 @@ export function NovaEntregaModal({
 
   // Linhas da entrega (editáveis)
   const [linhas, setLinhas] = useState<LinhaEntrega[]>([]);
-  const [motivo, setMotivo] = useState<EntregaUniforme["motivo"]>("admissao");
+  const [motivo, setMotivo] = useState<EntregaUniforme["motivo"]>(
+    modoAdmissao ? "admissao" : "admissao",
+  );
   const [observacao, setObservacao] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -125,7 +139,7 @@ export function NovaEntregaModal({
 
   async function salvarEGerarPDF() {
     setErro("");
-    if (!pessoaSelId) { setErro("Selecione a pessoa."); return; }
+    if (!modoAdmissao && !pessoaSelId) { setErro("Selecione a pessoa."); return; }
     if (linhas.length === 0) { setErro("Adicione pelo menos 1 item."); return; }
     for (const l of linhas) {
       if (!l.itemId || !l.variacaoId || !l.qtd || l.qtd < 1) {
@@ -136,14 +150,24 @@ export function NovaEntregaModal({
 
     setSalvando(true);
     try {
+      // Em modo admissão SEM pessoa vinculada, usa o snapshot do candidato.
+      const candidatoSnapshot = (modoAdmissao && !pessoaSelId && admissaoContexto)
+        ? {
+            nome: admissaoContexto.candidato.nome,
+            cpf: admissaoContexto.candidato.cpf,
+            whatsapp: admissaoContexto.candidato.whatsapp,
+          }
+        : undefined;
       // Cria entrega
       const empregadoId = (pessoaSel as unknown as {
         teamData?: { [rid: string]: { empregadoId?: string } };
-      }).teamData?.[restaurantId]?.empregadoId;
+      })?.teamData?.[restaurantId]?.empregadoId;
       const entrega = await criarEntrega({
         restaurantId,
-        pessoaId: pessoaSelId,
+        pessoaId: pessoaSelId || undefined,
+        candidatoSnapshot,
         empregadoId,
+        admissaoId: admissaoContexto?.id,
         tipo,
         motivo,
         itens: linhas,
@@ -168,16 +192,23 @@ export function NovaEntregaModal({
       const cargoId = teamData?.[restaurantId]?.cargoId;
       const cargo = cargos.find(c => c.id === cargoId);
 
-      // Gera PDF
+      // Gera PDF — usa candidato da admissão se em modo admissão, senão usa pessoa
+      const nomePdf = modoAdmissao && admissaoContexto
+        ? admissaoContexto.candidato.nome
+        : (pessoaSel?.nome || "");
+      const cpfPdf = modoAdmissao && admissaoContexto
+        ? admissaoContexto.candidato.cpf
+        : (pessoaSel?.cpf || "");
       await baixarTermoUniformesPDF({
         entrega,
         restaurant: activeRestaurant,
-        candidatoNome: pessoaSel?.nome || "",
-        candidatoCpf: pessoaSel?.cpf || "",
+        candidatoNome: nomePdf,
+        candidatoCpf: cpfPdf,
         funcao: cargo?.nome,
         config: cfg,
       });
 
+      onEntregaCriada?.();
       onClose();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
@@ -192,8 +223,22 @@ export function NovaEntregaModal({
       maxWidth="max-w-2xl"
     >
       <div className="p-4 space-y-4">
-        {/* Selecionar pessoa */}
-        <div>
+        {/* Modo admissão: mostra candidato fixo da admissão */}
+        {modoAdmissao && admissaoContexto && (
+          <div className="rounded border border-indigo-300 bg-indigo-50/40 dark:bg-indigo-900/20 dark:border-indigo-800 p-3">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-700 dark:text-indigo-300">
+              Candidato em admissão
+            </div>
+            <div className="text-sm font-semibold mt-0.5">{admissaoContexto.candidato.nome}</div>
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              CPF {admissaoContexto.candidato.cpf}
+              {pessoaSel && <> · vinculado a pessoa <strong>{pessoaSel.nome}</strong></>}
+            </div>
+          </div>
+        )}
+
+        {/* Selecionar pessoa (só fora do modo admissão) */}
+        {!modoAdmissao && <div>
           <label className="text-[11px] uppercase font-bold text-gray-500 tracking-wider">
             Pessoa *
           </label>
@@ -243,7 +288,7 @@ export function NovaEntregaModal({
               )}
             </>
           )}
-        </div>
+        </div>}
 
         {/* Motivo */}
         <div>

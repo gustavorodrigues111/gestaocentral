@@ -57,8 +57,9 @@ export function EntregasTab({
     if (busca.trim()) {
       const q = busca.toLowerCase();
       r = r.filter(e => {
-        const p = pessoas.get(e.pessoaId);
-        return p && p.nome.toLowerCase().includes(q);
+        const p = e.pessoaId ? pessoas.get(e.pessoaId) : null;
+        const nome = p?.nome || e.candidatoSnapshot?.nome || "";
+        return nome.toLowerCase().includes(q);
       });
     }
     return [...r].sort((a, b) => b.entregueEm.localeCompare(a.entregueEm));
@@ -126,7 +127,7 @@ export function EntregasTab({
             <EntregaRow
               key={e.id}
               entrega={e}
-              pessoa={pessoas.get(e.pessoaId)}
+              pessoa={e.pessoaId ? pessoas.get(e.pessoaId) : undefined}
               podeConfig={podeConfig}
               onDevolver={() => setDevolverEntrega(e)}
             />
@@ -181,7 +182,14 @@ function EntregaRow({
       <div className="flex items-start justify-between gap-3 mb-2">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-semibold text-sm">{pessoa?.nome || entrega.pessoaId}</span>
+            <span className="font-semibold text-sm">
+              {pessoa?.nome || entrega.candidatoSnapshot?.nome || entrega.pessoaId || "?"}
+            </span>
+            {!entrega.pessoaId && entrega.admissaoId && (
+              <span className="text-[10px] uppercase tracking-wider font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded">
+                em admissão
+              </span>
+            )}
             <span className={`text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${
               entrega.tipo === "epi"
                 ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"

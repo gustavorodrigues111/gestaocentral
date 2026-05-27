@@ -116,7 +116,12 @@ function Section({
           <tbody>
             {itens.map(({ entrega, item }, idx) => (
               <tr key={`${entrega.id}__${item.itemId}__${idx}`} className="border-t border-gray-200 dark:border-gray-800">
-                <td className="px-3 py-2">{pessoas.get(entrega.pessoaId) || entrega.pessoaId}</td>
+                <td className="px-3 py-2">
+                  {(entrega.pessoaId && pessoas.get(entrega.pessoaId))
+                    || entrega.candidatoSnapshot?.nome
+                    || entrega.pessoaId
+                    || "?"}
+                </td>
                 <td className="px-3 py-2">
                   {item.nome} {item.tamanho && <span className="text-gray-500">· {item.tamanho}</span>}
                   {" "}<span className="text-gray-500">×{item.qtd}</span>
