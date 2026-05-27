@@ -2115,6 +2115,9 @@ export type SubtarefaTemplate = {
     | { tipo: "contato_financeiro" }             // contato com financeiro (cadastro banco)
     | { tipo: "whatsapp_instrucoes_candidato" }  // mensagem única pro candidato (3 blocos)
     | { tipo: "checklist_docs_whatsapp" }        // abre o modal de confirmar 12 docs
+    | { tipo: "editar_dados_basicos" }           // abre modal pra editar nome/cpf/email/whatsapp do candidato
+    | { tipo: "editar_dados_finais" }            // abre modal pra editar cargo/salário/horário/data
+    | { tipo: "enviar_link_form" }               // gera link + abre WhatsApp pré-preenchido
     // Atalhos legados — mantidos por retrocompat. Resolvidos pra contato_*
     // no drawer.
     | { tipo: "gmail_clinica" }

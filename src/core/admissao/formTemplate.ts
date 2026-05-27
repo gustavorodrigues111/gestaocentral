@@ -234,6 +234,9 @@ export const PRAZO_CONTA_ITAU_DIAS = 7;
 export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
   "st_contato_emergencia",        // virou parte da mensagem única de instruções
   "st_avisar_exame_candidato",    // 2026-05: removido na refatoração do Kanban (RH conduz instruções fora do checklist)
+  // 2026-05: consolidados no novo checklist "✍️ Termos a assinar":
+  "st_coleta_assinatura",         // → cada termo agora é uma subtarefa separada
+  "st_envio_regulamento",         // → virou st_termo_regulamento_interno
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -264,42 +267,46 @@ const CK_INSTRUCOES     = { id: "ck_instrucoes",     nome: "📣 Enviar/reforça
 const CK_DADOS_INTERNOS = { id: "ck_dados_internos", nome: "📋 Dados internos" };
 const CK_CONTABILIDADE  = { id: "ck_contabilidade",  nome: "📤 Contabilidade" };
 const CK_ASSINATURAS    = { id: "ck_assinaturas",    nome: "📃 Assinaturas" };
+const CK_TERMOS         = { id: "ck_termos_assinar", nome: "✍️ Termos a assinar" };
 const CK_CADASTROS_EXT  = { id: "ck_cadastros_ext",  nome: "🏦 Cadastros externos" };
 const CK_RESULT_EXAMES  = { id: "ck_resultados",     nome: "🏥 Resultados de exames" };
 const CK_ULTIMA_MILHA   = { id: "ck_ultima_milha",   nome: "🏁 Última milha" };
 const CK_ONBOARDING_D1  = { id: "ck_onboarding_d1",  nome: "🚀 Onboarding (D1)" };
 const CK_CADASTROS_POS  = { id: "ck_cadastros_pos",  nome: "📝 Cadastros pós-admissão" };
 
+// ════════════════════════════════════════════════════════════════════════════
+//  Nenhum item tem `autoTrigger` — TODA marcação é manual via botão de ação
+//  no drawer (atalho) + checkbox. O usuário clica no botão pra executar a
+//  ação (abrir modal, enviar email, etc), e depois marca o checkbox quando
+//  considerar concluído.
+// ════════════════════════════════════════════════════════════════════════════
 const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   // ─── Col 1: Pessoas a admitir ───
-  // Dados básicos preenchidos no modal "+ Nova admissão" (candidato + vaga).
-  // Esses 2 itens marcam quando o usuário salva o card pela primeira vez —
-  // a partir daí já é possível gerar o link e avançar pro próximo bloco.
   st("st_dados_candidato", "Preencher dados básicos do candidato (gera o link do formulário)",
      "col_a_admitir", CK_DADOS_BASICOS.id, CK_DADOS_BASICOS.nome, true,
-     { autoTrigger: "iniciar_admissao" }),
+     { atalho: { tipo: "editar_dados_basicos" } }),
   st("st_dados_vaga", "Preencher dados básicos da vaga (cargo, horário, empresa)",
      "col_a_admitir", CK_DADOS_BASICOS.id, CK_DADOS_BASICOS.nome, true,
-     { autoTrigger: "iniciar_admissao" }),
+     { atalho: { tipo: "editar_dados_basicos" } }),
 
   // ─── Col 2: Aguardando preenchimento e Solicitação de Exames e Conta ───
   st("st_solicitar_info", "Solicitar informações de admissão (cargo, horário e empresa)",
      "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
-     { autoTrigger: "iniciar_admissao" }),
+     { atalho: { tipo: "editar_dados_basicos" } }),
   st("st_solicitar_docs", "Solicitação de documentos + abertura de conta Itaú via link",
      "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
-     { autoTrigger: "link_enviado" }),
+     { atalho: { tipo: "enviar_link_form" } }),
   st("st_dados_finais", "Preencher dados finais (cargo, salário, horário, data)",
      "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
-     { autoTrigger: "dados_finais_completos" }),
+     { atalho: { tipo: "editar_dados_finais" } }),
 
   // ─── Col 3: Exames, conta e dados internos ───
   st("st_conferir_docs", "Conferir recebimento dos documentos enviados pelo candidato",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
-     { atalho: { tipo: "checklist_docs_whatsapp" }, autoTrigger: "checklist_docs_completo" }),
+     { atalho: { tipo: "checklist_docs_whatsapp" } }),
   st("st_dados_bancarios", "Conferir recebimento de dados bancários Itaú (tipo, agência e conta)",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
-     { pedeDadosBancarios: true, autoTrigger: "dados_bancarios_itau_recebidos" }),
+     { pedeDadosBancarios: true }),
   st("st_cadastro_banco", "Solicitar cadastro empregado no Banco",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
      { atalho: { tipo: "contato_financeiro" } }),
@@ -308,20 +315,32 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { atalho: { tipo: "contato_clinica" } }),
 
   // ─── Col 4: Contabilidade & contratos ───
-  // Sem autoTrigger — usuário tem 2 botões no drawer (📥 Baixar planilha
-  // + 📧 Enviar email) e marca o item manualmente.
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
      "col_contabilidade", CK_CONTABILIDADE.id, CK_CONTABILIDADE.nome, true,
      { atalho: { tipo: "contato_contabilidade" } }),
   st("st_receber_contrato", "Recebimento do contrato e termos para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { pedeLink: true }),
-  st("st_coleta_assinatura", "Coleta de assinatura do empregado no contrato",
-     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true),
-  st("st_assinatura_outros", "Assinatura de outros termos",
-     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true),
-  st("st_envio_regulamento", "Envio do Regulamento Interno em PDF",
-     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
+  // ✍️ Termos a assinar — cada termo é uma subtarefa separada com pedeLink
+  // (anexar PDF assinado). Editável por restaurante via "Configurações do
+  // Kanban" — restaurante pode adicionar/remover termos conforme suas práticas.
+  st("st_termo_contrato_clt", "Contrato de Trabalho (CLT)",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
+     { pedeLink: true }),
+  st("st_termo_confidencialidade", "Termo de Confidencialidade",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
+     { pedeLink: true }),
+  st("st_termo_uniformes_epis", "Termo de Recebimento de Uniformes e EPIs",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
+     { pedeLink: true }),
+  st("st_termo_regulamento_interno", "Regulamento Interno (ciência e assinatura)",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
+     { pedeLink: true }),
+  st("st_termo_lgpd", "Política de Privacidade / LGPD",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, true,
+     { pedeLink: true }),
+  st("st_assinatura_outros", "Outros termos (especificar nas notas)",
+     "col_contabilidade", CK_TERMOS.id, CK_TERMOS.nome, false,
      { pedeLink: true }),
   st("st_instruir_cursos", "Instruir cursos obrigatórios e definir prazo",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true),
