@@ -1,8 +1,16 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Módulo Admissão — shell com sub-tabs.
-//    📋 Lista — pessoas em admissão (form de iniciar + cards)
-//    🗂️ Kanban — visualização de fluxo
-//    ⚙️ Configurações — prazo, WhatsApp DP, editor de schema
+//    🗂️ Kanban — visualização interativa do fluxo + "+ Nova admissão"
+//    💼 Candidaturas — candidatos vindos do form público de "Trabalhe Conosco"
+//    ⚙️ Configurações — prazo, WhatsApp DP, editor de schema, layout do Kanban
+//
+//  Aba "Pessoas em admissão" foi removida — toda gestão acontece no Kanban
+//  (drag-drop, botões ◀▶ no card, click pra abrir checklist).
+//
+//  TODO: O arquivo AdmissaoLista.tsx ainda existe no repo porque tem ações
+//  que ainda não foram migradas pro Kanban (cancelar admissão, reabrir,
+//  concluir/criar empregado, estender prazo, reenviar link). Em commits
+//  futuros essas ações vêm pro card / drawer.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState } from "react";
@@ -12,7 +20,6 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
-import { AdmissaoLista } from "./AdmissaoLista";
 import { AdmissaoKanban } from "./AdmissaoKanban";
 import { AdmissaoConfig } from "./AdmissaoConfig";
 import { CandidaturasTab } from "./CandidaturasTab";
@@ -20,13 +27,12 @@ import type { Restaurant } from "../../core/types";
 import { canConfigurar } from "../../core/auth/permissions";
 import { TabBadge } from "../../core/ui/TabBadge";
 
-type TabId = "lista" | "kanban" | "candidaturas" | "config";
+type TabId = "kanban" | "candidaturas" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "lista",        label: "Pessoas em admissão", icon: "📋" },
-  { id: "kanban",       label: "Kanban",              icon: "🗂️" },
-  { id: "candidaturas", label: "Candidaturas",        icon: "💼" },
-  { id: "config",       label: "Configurações",       icon: "⚙️" },
+  { id: "kanban",       label: "Kanban",        icon: "🗂️" },
+  { id: "candidaturas", label: "Candidaturas",  icon: "💼" },
+  { id: "config",       label: "Configurações", icon: "⚙️" },
 ];
 
 export function AdmissaoPage() {
@@ -48,7 +54,7 @@ export function AdmissaoPage() {
   const podeVer = canVer(me, rid, "admissao");
   const podeConfig = canConfigurar(me, rid, "admissao");
 
-  const [tab, setTab] = useState<TabId>("lista");
+  const [tab, setTab] = useState<TabId>("kanban");
 
   // Contagens pra badges nas tabs:
   // - Lista/Kanban: admissões ainda em curso (não concluídas/canceladas)
@@ -83,7 +89,6 @@ export function AdmissaoPage() {
   }, [rid]);
 
   const badges: Record<TabId, number> = {
-    lista: countAdmissoesAtivas,
     kanban: countAdmissoesAtivas,
     candidaturas: countCandidaturasNovas,
     config: 0,
@@ -133,7 +138,6 @@ export function AdmissaoPage() {
         })}
       </div>
 
-      {tab === "lista"        && <AdmissaoLista   rid={rid} activeRestaurant={activeRestaurant} />}
       {tab === "kanban"       && <AdmissaoKanban  rid={rid} activeRestaurant={activeRestaurant} />}
       {tab === "candidaturas" && <CandidaturasTab rid={rid} podeEditar={podeConfig} />}
       {tab === "config"       && <AdmissaoConfig  rid={rid} activeRestaurant={activeRestaurant} />}

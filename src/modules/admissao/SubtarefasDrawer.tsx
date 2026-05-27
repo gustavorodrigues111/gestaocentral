@@ -15,6 +15,7 @@ import type { Admissao, Cargo, KanbanColuna, Pessoa, Restaurant, SubtarefaAdmiss
 import {
   atualizarSubtarefa,
   atualizarDadosBancariosItau,
+  limparPendenciaEtapa,
   marcarDocumentosRecebidos,
   getClinicaInfo,
   getContatoClinica,
@@ -121,6 +122,22 @@ export function SubtarefasDrawer({
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admissao.id]);
+
+  // Limpa entradas em etapasComPendencias quando todas as obrigatórias da
+  // coluna ficam completas — o sinalizador ⚠️ some do card automaticamente.
+  // Roda sempre que subtarefas mudam.
+  useEffect(() => {
+    const pend = admissao.etapasComPendencias;
+    if (!pend) return;
+    for (const colId of Object.keys(pend)) {
+      if (!pend[colId]) continue;
+      const aindaPendentes = subtarefasPendentesObrigatorias(admissao, colId).length;
+      if (aindaPendentes === 0) {
+        // Fogo-e-esqueça — múltiplas chamadas concorrentes são idempotentes
+        void limparPendenciaEtapa(admissao.id, colId, pend);
+      }
+    }
+  }, [admissao]);
 
   async function toggle(s: SubtarefaAdmissao) {
     setSalvando(s.id);
