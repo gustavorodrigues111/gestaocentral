@@ -359,23 +359,26 @@ function DiaColuna({
           </div>
         </button>
 
-      {/* Área central — flex-1 pra preencher espaço e alinhar todas as colunas */}
+      {/* Área central — flex-1 pra esticar a coluna e manter o botão
+          "+ nova janela" alinhado no rodapé. Os boxes internos têm altura
+          fixa de 1 slot (CHIP_HEIGHT) — colunas com poucos slots ganham
+          espaço vazio embaixo, mas o box vermelho/sem-janelas não estica. */}
       <div className="flex-1 flex flex-col gap-1.5 min-h-0">
         {dia.diaBloqueado ? (
           <button
             type="button"
             disabled={!podeConfig}
             onClick={onClickHeader}
-            className="flex-1 p-2 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed min-h-[86px]"
+            className={`${CHIP_HEIGHT} px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden`}
             title={podeConfig ? "Gerenciar bloqueio do dia" : ""}
           >
-            <span className="text-lg">🚫</span>
-            <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400 max-w-[120px] leading-tight">
+            <span className="text-sm leading-none">🚫</span>
+            <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400 leading-tight line-clamp-2">
               {dia.motivoDiaBloqueado || "Bloqueado"}
             </span>
           </button>
         ) : dia.slots.length === 0 ? (
-          <div className="flex-1 p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center min-h-[86px]">
+          <div className={`${CHIP_HEIGHT} p-2 text-center text-[10px] text-gray-400 dark:text-gray-600 italic flex items-center justify-center`}>
             sem janelas
           </div>
         ) : (
