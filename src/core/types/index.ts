@@ -2050,6 +2050,11 @@ export type Admissao = {
   canceladoEm?: string;
   motivoCancelamento?: string;             // texto livre (legado)
   motivosCancelamento?: MotivoCancelamento[]; // tags cumulativas (cancelado_empresa, desistencia, etc)
+  // Snapshot do status que a admissão tinha ANTES de virar cancelada/expirada.
+  // Usado pelo botão "↶ Reabrir" (master) pra restaurar a admissão pro ponto
+  // exato onde ela estava no fluxo. Se ausente (admissões antigas), reabertura
+  // cai no fallback "pronto_admissao".
+  statusAntesCancelamento?: AdmissaoStatus;
 
   // ─── Kanban: override manual da coluna (default: derivado do status) ───
   // Reativado em 2026-05: Kanban tem drag-drop + botões ◀▶. kanbanColunaId

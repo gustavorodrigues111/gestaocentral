@@ -530,10 +530,15 @@ export async function resetarLayoutKanban(restaurantId: string): Promise<void> {
   });
 }
 
-export async function reabrirAdmissao(admissaoId: string, pessoa: Pessoa): Promise<void> {
+// Reabre admissão cancelada/expirada. Usa `statusAntesCancelamento` snapshot
+// quando disponível (admissões canceladas após 2026-05) pra restaurar
+// exatamente onde estava. Senão fallback pra "pronto_admissao".
+export async function reabrirAdmissao(admissao: Admissao, pessoa: Pessoa): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, "admissoes", admissaoId), {
-    status: "pronto_admissao",
+  const statusRestaurar = admissao.statusAntesCancelamento || "pronto_admissao";
+  await updateDoc(doc(db, "admissoes", admissao.id), {
+    status: statusRestaurar,
+    statusAntesCancelamento: deleteField(),
     canceladoEm:           deleteField(),
     canceladoPor:          deleteField(),
     motivoCancelamento:    deleteField(),
@@ -548,15 +553,23 @@ export async function reabrirAdmissao(admissaoId: string, pessoa: Pessoa): Promi
   });
 }
 
+// Cancela uma admissão. Salva o status atual em `statusAntesCancelamento`
+// pra que reabrir possa restaurar o ponto exato do fluxo.
 export async function cancelarAdmissao(
-  admissaoId: string,
+  admissao: Admissao,
   motivosTags: MotivoCancelamento[],
   motivoTexto: string,
   pessoa: Pessoa,
 ): Promise<void> {
   const now = new Date().toISOString();
-  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
     status: "cancelada",
+    // Só guarda se não for já terminal (cancelada/expirada/admitido)
+    statusAntesCancelamento: (admissao.status === "cancelada"
+      || admissao.status === "expirada"
+      || admissao.status === "admitido")
+      ? undefined
+      : admissao.status,
     canceladoPor: { id: pessoa.id, nome: pessoa.nome },
     canceladoEm: now,
     motivoCancelamento: motivoTexto || undefined,

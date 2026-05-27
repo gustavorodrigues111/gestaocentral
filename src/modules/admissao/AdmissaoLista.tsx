@@ -338,7 +338,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
     );
     if (!ok) return;
     try {
-      await reabrirAdmissao(adm.id, me);
+      await reabrirAdmissao(adm, me);
     } catch (e) {
       alert("Erro ao reabrir: " + (e instanceof Error ? e.message : "?"));
     }
@@ -594,7 +594,7 @@ export function AdmissaoLista({ rid, activeRestaurant }: Props) {
           onClose={() => setAdmCancelando(null)}
           onConfirm={async (motivos, texto) => {
             if (!me) return;
-            await cancelarAdmissao(admCancelando.id, motivos, texto, me);
+            await cancelarAdmissao(admCancelando, motivos, texto, me);
             setAdmCancelando(null);
           }}
         />

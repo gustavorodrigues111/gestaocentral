@@ -28,6 +28,7 @@ import {
   type Restaurant,
 } from "../../core/types";
 import {
+  cancelarAdmissao,
   etapasAnterioresEmAtraso,
   excluirAdmissaoDefinitivamente,
   getKanbanColunas,
@@ -38,11 +39,14 @@ import {
   normalizarAdmissao,
   progressoSubtarefasColuna,
   proximoStatus,
+  reabrirAdmissao,
   statusAnterior,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
+import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
+import { ADMISSAO_STATUS_LABEL as STATUS_LABEL } from "../../core/types";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 
@@ -87,6 +91,8 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [admAbertaId, setAdmAbertaId] = useState<string | null>(null);
   const [showNovaModal, setShowNovaModal] = useState(false);
+  // Modal de cancelar — guarda admissão sendo cancelada
+  const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
   // Drag state (id do card sendo arrastado + coluna origem)
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetColId, setDropTargetColId] = useState<string | null>(null);
@@ -199,6 +205,25 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     void tentarMover(adm, colId);
   }
 
+  async function reabrirCard(adm: Admissao) {
+    if (!me?.isMaster) return;
+    const destinoStatus = adm.statusAntesCancelamento || "pronto_admissao";
+    const destinoLabel = STATUS_LABEL[destinoStatus];
+    const ok = confirm(
+      `Reabrir admissão de ${adm.candidato.nome}?\n\n` +
+      `O card volta pra "${destinoLabel}"` +
+      (adm.statusAntesCancelamento
+        ? " (ponto onde estava quando cancelou)."
+        : " (ponto padrão — não havia snapshot do status anterior).")
+    );
+    if (!ok) return;
+    try {
+      await reabrirAdmissao(adm, me);
+    } catch (e) {
+      alert("Erro ao reabrir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   async function excluirCard(adm: Admissao) {
     if (!me?.isMaster) return;
     const ok = confirm(
@@ -268,6 +293,21 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         />
       )}
 
+      {admCancelando && me && (
+        <CancelarAdmissaoModal
+          candidatoNome={admCancelando.candidato.nome}
+          onClose={() => setAdmCancelando(null)}
+          onConfirm={async (motivos, texto) => {
+            try {
+              await cancelarAdmissao(admCancelando, motivos, texto, me);
+              setAdmCancelando(null);
+            } catch (e) {
+              alert("Erro ao cancelar: " + (e instanceof Error ? e.message : "?"));
+            }
+          }}
+        />
+      )}
+
       <div className="flex gap-3 overflow-x-auto pb-2">
         {colunas.map((col) => {
           const cards = porColuna.get(col.id) || [];
@@ -326,6 +366,8 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onDragEnd={handleDragEnd}
                     onMoverPara={(destinoColId) => tentarMover(a, destinoColId)}
                     onExcluir={() => excluirCard(a)}
+                    onCancelar={() => setAdmCancelando(a)}
+                    onReabrir={() => reabrirCard(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -346,7 +388,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -359,6 +401,8 @@ function KanbanCard({
   onDragEnd: () => void;
   onMoverPara: (destinoColId: string) => void;
   onExcluir: () => void;
+  onCancelar: () => void;
+  onReabrir: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -450,6 +494,20 @@ function KanbanCard({
         </div>
       )}
 
+      {/* Cancelar admissão — qualquer status não-terminal */}
+      {!ehTerminal && (
+        <div className="mt-1.5 flex justify-end">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onCancelar(); }}
+            className="text-[10px] text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:underline"
+            title="Cancelar admissão (precisa motivo) — pode reabrir depois se master"
+          >
+            ❌ cancelar admissão
+          </button>
+        </div>
+      )}
+
       {/* Cancelada/Expirada: badges cumulativas dos motivos + data + autor */}
       {ehTerminal && (
         <div className="mt-1.5 pt-1.5 border-t border-rose-100 dark:border-rose-900/40 space-y-1">
@@ -486,14 +544,26 @@ function KanbanCard({
             </div>
           )}
           {isMaster && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onExcluir(); }}
-              className="block mt-1 text-[10px] text-rose-600 dark:text-rose-400 hover:underline"
-              title="Apaga o card pra sempre (irreversível, só master)"
-            >
-              🗑️ excluir definitivamente
-            </button>
+            <div className="flex flex-col gap-1 mt-1">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onReabrir(); }}
+                className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline text-left"
+                title={adm.statusAntesCancelamento
+                  ? `Reabrir admissão — volta pro status ${STATUS_LABEL[adm.statusAntesCancelamento]}`
+                  : "Reabrir admissão (master) — volta pro status anterior"}
+              >
+                ↶ reabrir admissão
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onExcluir(); }}
+                className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline text-left"
+                title="Apaga o card pra sempre (irreversível, só master)"
+              >
+                🗑️ excluir definitivamente
+              </button>
+            </div>
           )}
         </div>
       )}
