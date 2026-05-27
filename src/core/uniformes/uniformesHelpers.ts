@@ -13,8 +13,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import {
-  addDoc, collection, deleteDoc, doc, getDoc, getDocs,
-  query, updateDoc, where,
+  collection, deleteDoc, doc, getDoc, getDocs,
+  query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { sanitizeForFirestore } from "../firebase/sanitize";
@@ -49,7 +49,9 @@ export async function criarItem(
   const id = novoItemId();
   const now = new Date().toISOString();
   const item: ItemUniforme = { id, criadoEm: now, atualizadoEm: now, ...patch };
-  await addDoc(collection(db, "itensUniforme"), sanitizeForFirestore(item));
+  // setDoc com ID determinístico — alinha doc.id com item.id interno pra
+  // que updateDoc(doc(db, "itensUniforme", item.id)) funcione direto.
+  await setDoc(doc(db, "itensUniforme", id), sanitizeForFirestore(item));
   return item;
 }
 
@@ -73,7 +75,7 @@ export async function listarItens(restaurantId: string): Promise<ItemUniforme[]>
     collection(db, "itensUniforme"),
     where("restaurantId", "==", restaurantId),
   ));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }) as ItemUniforme);
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }) as ItemUniforme);
 }
 
 // ─── Estoque ───────────────────────────────────────────────────────────
@@ -126,7 +128,7 @@ export async function ajustarEstoque(opts: {
     criadoEm: now,
     criadoPor: { id: pessoa.id, nome: pessoa.nome },
   };
-  await addDoc(collection(db, "movEstoqueUniforme"), sanitizeForFirestore(mov));
+  await setDoc(doc(db, "movEstoqueUniforme", mov.id), sanitizeForFirestore(mov));
 
   return novoEstoque;
 }
@@ -148,7 +150,7 @@ export async function listarKitsArea(restaurantId: string): Promise<KitAreaUnifo
     collection(db, "kitsAreaUniforme"),
     where("restaurantId", "==", restaurantId),
   ));
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }) as KitAreaUniforme);
+  return snap.docs.map(d => ({ ...d.data(), id: d.id }) as KitAreaUniforme);
 }
 
 export async function salvarKitArea(opts: {
@@ -168,7 +170,6 @@ export async function salvarKitArea(opts: {
     atualizadoPor: opts.pessoa.id,
   };
   // setDoc com ID determinístico — sobrescreve se já existe
-  const { setDoc } = await import("firebase/firestore");
   await setDoc(doc(db, "kitsAreaUniforme", id), sanitizeForFirestore(kit));
 }
 
@@ -256,7 +257,7 @@ export async function criarEntrega(opts: {
     entreguePor: { id: pessoa.id, nome: pessoa.nome },
     observacao,
   };
-  await addDoc(collection(db, "entregasUniforme"), sanitizeForFirestore(entrega));
+  await setDoc(doc(db, "entregasUniforme", id), sanitizeForFirestore(entrega));
 
   // Baixa estoque + grava movimentações
   const motivoMov: MotivoMovEstoque =

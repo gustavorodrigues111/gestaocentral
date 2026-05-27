@@ -61,19 +61,19 @@ export function UniformesPage() {
     if (!rid) return;
     const u1 = onSnapshot(
       query(collection(db, "itensUniforme"), where("restaurantId", "==", rid)),
-      (snap) => setItens(snap.docs.map(d => ({ id: d.id, ...d.data() }) as ItemUniforme)),
+      (snap) => setItens(snap.docs.map(d => ({ ...d.data(), id: d.id }) as ItemUniforme)),
     );
     const u2 = onSnapshot(
       query(collection(db, "kitsAreaUniforme"), where("restaurantId", "==", rid)),
-      (snap) => setKits(snap.docs.map(d => ({ id: d.id, ...d.data() }) as KitAreaUniforme)),
+      (snap) => setKits(snap.docs.map(d => ({ ...d.data(), id: d.id }) as KitAreaUniforme)),
     );
     const u3 = onSnapshot(
       query(collection(db, "entregasUniforme"), where("restaurantId", "==", rid)),
-      (snap) => setEntregas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as EntregaUniforme)),
+      (snap) => setEntregas(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EntregaUniforme)),
     );
     const u4 = onSnapshot(
       query(collection(db, "movEstoqueUniforme"), where("restaurantId", "==", rid)),
-      (snap) => setMovs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as MovEstoqueUniforme)),
+      (snap) => setMovs(snap.docs.map(d => ({ ...d.data(), id: d.id }) as MovEstoqueUniforme)),
     );
     return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);

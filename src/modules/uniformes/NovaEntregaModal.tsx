@@ -53,11 +53,11 @@ export function NovaEntregaModal({
   useEffect(() => {
     const u1 = onSnapshot(
       query(collection(db, "pessoas"), where("restaurantIds", "array-contains", restaurantId)),
-      (snap) => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)),
+      (snap) => setPessoas(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Pessoa)),
     );
     const u2 = onSnapshot(
       query(collection(db, "cargos"), where("restaurantId", "==", restaurantId)),
-      (snap) => setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo)),
+      (snap) => setCargos(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Cargo)),
     );
     return () => { u1(); u2(); };
   }, [restaurantId]);

@@ -23,7 +23,7 @@ export function KitsAreaTab({ itens, kits, podeConfig, pessoa, restaurantId }: P
     if (!restaurantId) return;
     const unsub = onSnapshot(
       query(collection(db, "cargos"), where("restaurantId", "==", restaurantId)),
-      (snap) => setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo)),
+      (snap) => setCargos(snap.docs.map(d => ({ ...d.data(), id: d.id }) as Cargo)),
     );
     return () => unsub();
   }, [restaurantId]);

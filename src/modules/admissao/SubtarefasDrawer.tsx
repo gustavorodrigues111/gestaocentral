@@ -985,8 +985,8 @@ function NovaEntregaWrapper({
           getDocs(query(collection(db, "kitsAreaUniforme"), where("restaurantId", "==", restaurantId))),
         ]);
         if (cancel) return;
-        setItensUniforme(iSnap.docs.map(d => ({ id: d.id, ...d.data() }) as import("../../core/types").ItemUniforme));
-        setKitsAreaUniforme(kSnap.docs.map(d => ({ id: d.id, ...d.data() }) as import("../../core/types").KitAreaUniforme));
+        setItensUniforme(iSnap.docs.map(d => ({ ...d.data(), id: d.id }) as import("../../core/types").ItemUniforme));
+        setKitsAreaUniforme(kSnap.docs.map(d => ({ ...d.data(), id: d.id }) as import("../../core/types").KitAreaUniforme));
       } finally {
         if (!cancel) setCarregando(false);
       }
