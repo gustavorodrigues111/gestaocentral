@@ -40,10 +40,17 @@ type Props = {
 const NOMES_DIA_CURTO = ["dom","seg","ter","qua","qui","sex","sáb"];
 const NOMES_MES = ["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"];
 
-// Calcula o domingo da semana de uma data (início da semana)
-function domingoDaSemana(ymd: string): string {
+// Calcula a segunda-feira da semana de uma data (início da semana — padrão BR).
+// getDay() retorna 0=dom, 1=seg, ..., 6=sáb. Pra chegar na segunda da semana:
+//   - se hoje é dom (0)  → volta 6 dias
+//   - se hoje é seg (1)  → volta 0 dias
+//   - se hoje é ter (2)  → volta 1 dia
+//   - ...etc.
+function segundaDaSemana(ymd: string): string {
   const d = new Date(ymd + "T12:00:00");
-  d.setDate(d.getDate() - d.getDay());
+  const dow = d.getDay();
+  const delta = dow === 0 ? 6 : dow - 1;
+  d.setDate(d.getDate() - delta);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
@@ -53,10 +60,10 @@ function addDays(ymd: string, n: number): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-function fmtRangeSemana(domingo: string): string {
-  const sab = addDays(domingo, 6);
-  const a = new Date(domingo + "T12:00:00");
-  const b = new Date(sab + "T12:00:00");
+function fmtRangeSemana(inicio: string): string {
+  const fim = addDays(inicio, 6);
+  const a = new Date(inicio + "T12:00:00");
+  const b = new Date(fim + "T12:00:00");
   const mesA = NOMES_MES[a.getMonth()];
   const mesB = NOMES_MES[b.getMonth()];
   if (a.getMonth() === b.getMonth()) {
@@ -80,9 +87,9 @@ export function AgendaTab({
   const [siteConfig, setSiteConfig] = useState<SiteConfig | null>(null);
   const [excecoes, setExcecoes] = useState<ExcecaoReserva[]>([]);
 
-  // Navegação de semana (sempre começa em domingo)
+  // Navegação de semana (sempre começa na segunda)
   const hojeISO = todayYmd();
-  const [domingoAtual, setDomingoAtual] = useState(() => domingoDaSemana(hojeISO));
+  const [segundaAtual, setSegundaAtual] = useState(() => segundaDaSemana(hojeISO));
 
   // Modais
   const [openExtra, setOpenExtra] = useState(false);
@@ -120,12 +127,12 @@ export function AgendaTab({
   // ─── Resolve os 7 dias da semana visível ───
   const dias = useMemo(() => {
     if (!config) return [];
-    return resolverDisponibilidadePeriodo(domingoAtual, 7, {
+    return resolverDisponibilidadePeriodo(segundaAtual, 7, {
       config,
       excecoesSite: siteConfig?.excecoes,
       excecoesReserva: excecoes,
     });
-  }, [config, siteConfig?.excecoes, excecoes, domingoAtual]);
+  }, [config, siteConfig?.excecoes, excecoes, segundaAtual]);
 
   // Mapa de excecoes por data (passado pro modal)
   const excecoesPorData = useMemo(() => {
@@ -138,9 +145,9 @@ export function AgendaTab({
     return m;
   }, [excecoes]);
 
-  function semanaPassada() { setDomingoAtual(prev => addDays(prev, -7)); }
-  function semanaProxima() { setDomingoAtual(prev => addDays(prev, +7)); }
-  function irPraHoje()     { setDomingoAtual(domingoDaSemana(hojeISO)); }
+  function semanaPassada() { setSegundaAtual(prev => addDays(prev, -7)); }
+  function semanaProxima() { setSegundaAtual(prev => addDays(prev, +7)); }
+  function irPraHoje()     { setSegundaAtual(segundaDaSemana(hojeISO)); }
 
   if (!config) {
     return (
@@ -190,7 +197,7 @@ export function AgendaTab({
             ▶
           </button>
           <span className="ml-3 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            {fmtRangeSemana(domingoAtual)}
+            {fmtRangeSemana(segundaAtual)}
           </span>
         </div>
         <div className="flex items-center gap-3 text-[11px] flex-wrap ml-auto">
@@ -201,14 +208,16 @@ export function AgendaTab({
         </div>
       </div>
 
-      {/* Grid semanal — 7 colunas em desktop ≥ md (768px), stack vertical em mobile. */}
-      <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+      {/* Grid semanal — 7 colunas em desktop ≥ md (768px), stack vertical
+          em mobile com gap maior pra dar respiro entre dias. */}
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-5 md:gap-2">
         {dias.map((dia, i) => (
           <DiaColuna
             key={dia.data}
             dia={dia}
             ehHoje={dia.data === hojeISO}
-            ehFimSemana={i === 0 || i === 6}
+            // Semana começa na segunda → sáb e dom são os 2 últimos (i=5,6)
+            ehFimSemana={i === 5 || i === 6}
             saloes={saloes}
             podeConfig={podeConfig}
             onClickSlot={(slot) => setSlotEditando({ data: dia.data, slot })}
@@ -283,7 +292,8 @@ function DiaColuna({
   const mes = NOMES_MES[d.getMonth()];
   const diaSemana = NOMES_DIA_CURTO[d.getDay()];
 
-  // Header da coluna: hoje destaca em indigo; fins de semana em tom mais quente
+  // Header da coluna: hoje destaca em indigo; fins de semana em tom mais quente.
+  // Mobile usa fundo mais saturado + barra lateral pra separar dias visualmente.
   const headerBg = ehHoje
     ? "bg-indigo-100 dark:bg-indigo-900/40 border-indigo-300 dark:border-indigo-800"
     : ehFimSemana
@@ -292,6 +302,12 @@ function DiaColuna({
   const headerText = ehHoje
     ? "text-indigo-900 dark:text-indigo-200"
     : "text-gray-700 dark:text-gray-300";
+  // Cor da barra lateral mobile pra separar dias visualmente
+  const barraLateralCor = ehHoje
+    ? "bg-indigo-500 dark:bg-indigo-400"
+    : ehFimSemana
+      ? "bg-amber-500 dark:bg-amber-400"
+      : "bg-gray-400 dark:bg-gray-600";
 
   const headerClickable = podeConfig
     ? "cursor-pointer hover:brightness-95 dark:hover:brightness-110 transition-all"
@@ -301,32 +317,47 @@ function DiaColuna({
     // h-full + flex-col → coluna estica até a altura do dia mais cheio (grid
     // items-stretch é default). Área central usa flex-1 pra preencher; assim
     // o botão "+ nova janela" do rodapé fica alinhado entre todas as colunas.
-    <div className="h-full flex flex-col gap-1.5">
-      {/* Header da coluna — clicável pra ações do dia inteiro */}
-      <button
-        type="button"
-        onClick={onClickHeader}
-        disabled={!podeConfig}
-        className={`px-2 py-1.5 rounded-md border ${headerBg} text-left md:text-center w-full ${headerClickable} disabled:cursor-default`}
-        title={podeConfig ? "Ações desse dia" : ""}
-      >
-        <div className="flex md:block items-baseline justify-between gap-2">
-          <div>
-            <span className={`text-[10px] uppercase tracking-wider font-bold ${headerText}`}>
-              {diaSemana}
-            </span>
-            <span className={`md:hidden ml-2 text-base font-bold ${headerText} tabular-nums`}>
-              {dia2} {mes}
+    // Mobile: borda lateral colorida pra demarcar visualmente cada dia.
+    <div className="h-full flex md:block">
+      {/* Barra lateral só no mobile — destaque visual entre dias */}
+      <div className={`md:hidden w-1.5 ${barraLateralCor} rounded-l-md flex-shrink-0`} />
+      <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+        {/* Header da coluna — clicável pra ações do dia inteiro.
+            Mobile: padding e fonte maiores, label "HOJE" quando aplicável. */}
+        <button
+          type="button"
+          onClick={onClickHeader}
+          disabled={!podeConfig}
+          className={`px-3 py-2.5 md:px-2 md:py-1.5 rounded-md border-2 md:border ${headerBg} text-left md:text-center w-full ${headerClickable} disabled:cursor-default`}
+          title={podeConfig ? "Ações desse dia" : ""}
+        >
+          {/* Mobile: linha única alta com dia da semana + data grandes */}
+          <div className="md:hidden flex items-baseline justify-between gap-2">
+            <div className="flex items-baseline gap-2">
+              <span className={`text-base font-bold uppercase tracking-wide ${headerText}`}>
+                {diaSemana}
+              </span>
+              {ehHoje && (
+                <span className="text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-600 text-white">
+                  hoje
+                </span>
+              )}
+            </div>
+            <span className={`text-lg font-bold ${headerText} tabular-nums`}>
+              {dia2} <span className="text-sm font-normal opacity-70">{mes}</span>
             </span>
           </div>
+          {/* Desktop: dia da semana em cima, número e mês embaixo */}
           <div className="hidden md:block">
+            <div className={`text-[10px] uppercase tracking-wider font-bold ${headerText}`}>
+              {diaSemana}
+            </div>
             <div className={`text-base font-bold ${headerText} tabular-nums leading-tight`}>
               {dia2}
             </div>
             <div className={`text-[9px] ${headerText} opacity-70`}>{mes}</div>
           </div>
-        </div>
-      </button>
+        </button>
 
       {/* Área central — flex-1 pra preencher espaço e alinhar todas as colunas */}
       <div className="flex-1 flex flex-col gap-1.5 min-h-0">
@@ -361,18 +392,19 @@ function DiaColuna({
         )}
       </div>
 
-      {/* Botão + azul pra adicionar nova janela nesse dia */}
-      {podeConfig && (
-        <button
-          type="button"
-          onClick={onClickAdicionarExtra}
-          className="w-full px-2 py-1.5 rounded-md border border-dashed border-sky-300 dark:border-sky-900 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-900/10 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors text-[11px] font-medium flex items-center justify-center gap-1"
-          title="Adicionar janela extra nesse dia"
-        >
-          <span className="text-sm leading-none">+</span>
-          <span>nova janela</span>
-        </button>
-      )}
+        {/* Botão + azul pra adicionar nova janela nesse dia */}
+        {podeConfig && (
+          <button
+            type="button"
+            onClick={onClickAdicionarExtra}
+            className="w-full px-2 py-1.5 rounded-md border border-dashed border-sky-300 dark:border-sky-900 text-sky-700 dark:text-sky-300 bg-sky-50/50 dark:bg-sky-900/10 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors text-[11px] font-medium flex items-center justify-center gap-1"
+            title="Adicionar janela extra nesse dia"
+          >
+            <span className="text-sm leading-none">+</span>
+            <span>nova janela</span>
+          </button>
+        )}
+      </div>
     </div>
   );
 }
