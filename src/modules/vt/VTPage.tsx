@@ -762,6 +762,9 @@ export function VTPage() {
                           const unidadeNome = usaMultiUnidades && emp?.unidadePadraoId
                             ? unidadesById[emp.unidadePadraoId]?.nome
                             : undefined;
+                          // Forma de pagamento: ausente/true = Caju (vai no CSV);
+                          // false explícito = outro meio (PIX). Mesma regra do export.
+                          const recebePeloCaju = emp?.vtRecebePeloCaju !== false;
                           return (
                             <>
                               {/* Desktop: tabela com 8 colunas + ✏️ no canto direito */}
@@ -769,12 +772,14 @@ export function VTPage() {
                                 l={l}
                                 onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
                                 unidadeNome={unidadeNome}
+                                recebePeloCaju={recebePeloCaju}
                               />
                               {/* Mobile: card com ✏️ */}
                               <LinhaVTCard
                                 l={l}
                                 onAbrirSheet={podeConfig ? () => setEditandoMobileEmpId(l.empregadoId) : undefined}
                                 unidadeNome={unidadeNome}
+                                recebePeloCaju={recebePeloCaju}
                               />
                             </>
                           );
@@ -856,22 +861,39 @@ export function VTPage() {
 // LinhaVT — uma linha (empregado)
 // ────────────────────────────────────────────────────────────────────────────
 
+// Badge da forma de pagamento — Caju (laranja) ou PIX (azul). Some pra quem
+// não tem benefício cadastrado (nada a pagar).
+function PagamentoBadge({ caju }: { caju: boolean }) {
+  return caju ? (
+    <span className="text-[9px] bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+      Caju
+    </span>
+  ) : (
+    <span className="text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+      PIX
+    </span>
+  );
+}
+
 type LinhaVTProps = {
   l: VTLoteLinha & { semConfig?: boolean; semBeneficioCadastrado?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" };
   // ✏️ no canto direito — abre o EditLinhaSheet com tabs (valores + ajuste)
   onAbrirSheet?: () => void;
   // Nome da unidade do empregado (multi-unidades). undefined = single-unidade
   unidadeNome?: string;
+  // Forma de pagamento do VT: true = Caju, false = PIX/outro meio
+  recebePeloCaju: boolean;
 };
 
 // Desktop: grid horizontal com 8 colunas (tabela). Desc/aux são READ-ONLY —
 // toda edição acontece via ✏️ do canto direito (abre o sheet).
 function LinhaVT(props: LinhaVTProps) {
-  const { l, unidadeNome } = props;
+  const { l, unidadeNome, recebePeloCaju } = props;
 
   return (
     <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : l.semBeneficioCadastrado ? "bg-gray-50/40 dark:bg-gray-900/10" : ""}`}>
       <div className={`font-medium truncate ${l.semBeneficioCadastrado ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+        {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}{" "}
         {l.nome}
         {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
         {l.semBeneficioCadastrado && (
@@ -967,9 +989,11 @@ type LinhaVTCardProps = {
   onAbrirSheet?: () => void;
   // Nome da unidade (multi-unidades). undefined = single
   unidadeNome?: string;
+  // Forma de pagamento do VT: true = Caju, false = PIX/outro meio
+  recebePeloCaju: boolean;
 };
 
-function LinhaVTCard({ l, onAbrirSheet, unidadeNome }: LinhaVTCardProps) {
+function LinhaVTCard({ l, onAbrirSheet, unidadeNome, recebePeloCaju }: LinhaVTCardProps) {
   // Resumos compactos — só mostra o que tem valor
   const detalhes: string[] = [];
   if (l.passagensPorDia > 0) {
@@ -989,6 +1013,7 @@ function LinhaVTCard({ l, onAbrirSheet, unidadeNome }: LinhaVTCardProps) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate flex items-center gap-1.5 flex-wrap">
+            {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}
             {l.nome}
             {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
             {isParcial && (
