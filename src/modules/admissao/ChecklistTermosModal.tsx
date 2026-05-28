@@ -66,6 +66,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   const [driveErro, setDriveErro] = useState("");
   const [copiado, setCopiado] = useState(false);
   const [arquivosPasta, setArquivosPasta] = useState<DriveFile[] | null>(null);
+  // Preview do termo gerado (uniforme/EPI) antes de subir pro Drive
+  const [previewUpload, setPreviewUpload] = useState<{
+    pdfUrl: string;
+    pdf: { blob: Blob; filename: string };
+    termoId: string | null;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTermoId, setUploadTermoId] = useState<string | null>(null);
 
@@ -109,29 +115,45 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   // Chamado quando o NovaEntregaModal gera o termo (uniforme/EPI). Marca como
   // assinado e — se o Drive tá configurado — pergunta se sobe o PDF gerado
   // direto pra pasta "docs assinados" (sem precisar baixar e re-subir à mão).
-  async function aoGerarTermoEspecial(pdf?: { blob: Blob; filename: string }) {
+  function aoGerarTermoEspecial(pdf?: { blob: Blob; filename: string }) {
     const tipo = gerarTermoTipo;
     if (!tipo) return;
     marcarTermoEspecialComoAssinado(tipo);
     if (!pdf || !isDriveConfigured()) return;
     const termo = termos.find(t => t.tipoEspecial === tipo);
-    const ok = confirm(
-      `Termo gerado: ${pdf.filename}\n\n` +
-      `Subir direto pra pasta "docs assinados" no Google Drive?`,
-    );
-    if (!ok) return;
+    // Abre o preview do PDF gerado pra conferência ANTES de subir pro Drive.
     setDriveErro("");
-    setDriveBusy(termo ? `up_${termo.id}` : "criando");
+    setPreviewUpload({
+      pdfUrl: URL.createObjectURL(pdf.blob),
+      pdf,
+      termoId: termo?.id ?? null,
+    });
+  }
+
+  // Sobe o termo do preview pra "docs assinados" e grava o link no termo.
+  async function confirmarUploadPreview() {
+    if (!previewUpload) return;
+    const { pdf, termoId } = previewUpload;
+    setDriveErro("");
+    setDriveBusy(termoId ? `up_${termoId}` : "criando");
     try {
       const folderId = await ensureTree();
       const file = new File([pdf.blob], pdf.filename, { type: "application/pdf" });
       const uploaded = await uploadFileToFolder(folderId, file);
-      if (uploaded.webViewLink && termo) atualizarLink(termo.id, uploaded.webViewLink);
+      if (uploaded.webViewLink && termoId) atualizarLink(termoId, uploaded.webViewLink);
+      fecharPreview();
     } catch (e) {
       setDriveErro(e instanceof Error ? e.message : "Falha ao subir o termo gerado pro Drive.");
     } finally {
       setDriveBusy("");
     }
+  }
+
+  function fecharPreview() {
+    setPreviewUpload((prev) => {
+      if (prev) URL.revokeObjectURL(prev.pdfUrl);
+      return null;
+    });
   }
 
   // Sincroniza com mudanças externas (admissão atualizada em outro lugar)
@@ -520,6 +542,48 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           onEntregaCriada={(pdf) => aoGerarTermoEspecial(pdf)}
           onClose={() => setGerarTermoTipo(null)}
         />
+      )}
+
+      {/* Preview do termo gerado — confere antes de subir pro Drive */}
+      {previewUpload && (
+        <Modal
+          title="📄 Conferir termo antes de subir"
+          onClose={fecharPreview}
+          maxWidth="max-w-3xl"
+        >
+          <div className="p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Confira o termo gerado. Se estiver certo, suba pra pasta
+                "docs assinados" do empregado no Drive.
+              </p>
+              <a
+                href={previewUpload.pdfUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
+              >
+                ↗ abrir em nova aba
+              </a>
+            </div>
+            <iframe
+              src={previewUpload.pdfUrl}
+              title="Preview do termo"
+              className="w-full h-[60vh] rounded border border-gray-300 dark:border-gray-700 bg-white"
+            />
+            {driveErro && (
+              <div className="text-xs text-rose-600 dark:text-rose-400">{driveErro}</div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+              <Button variant="secondary" onClick={fecharPreview} disabled={driveBusy !== ""}>
+                Cancelar
+              </Button>
+              <Button onClick={confirmarUploadPreview} disabled={driveBusy !== ""}>
+                {driveBusy !== "" ? "Subindo…" : "⬆️ Subir pra docs assinados"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </Modal>
   );
