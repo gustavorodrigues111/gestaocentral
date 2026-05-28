@@ -48,7 +48,7 @@ export type ModuleId =
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
-  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "compras" | "recursos" | "faleDp"
+  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites"
   | "uniformes";
 

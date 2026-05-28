@@ -23,6 +23,7 @@ import { FreelasPage } from "../../modules/freelas/FreelasPage";
 import { GorjetasPage } from "../../modules/gorjetas/GorjetasPage";
 import { VTPage } from "../../modules/vt/VTPage";
 import { VRPage } from "../../modules/vr/VRPage";
+import { BeneficiosPage } from "../../modules/beneficios/BeneficiosPage";
 import { ComunicadosPage } from "../../modules/comunicados/ComunicadosPage";
 import { IdeiasPage } from "../../modules/ideias/IdeiasPage";
 import { ReunioesPage } from "../../modules/reunioes/ReunioesPage";
@@ -62,6 +63,7 @@ function ModuleRouter() {
     case "gorjetas":      return <GorjetasPage key={k} />;
     case "vt":            return <VTPage key={k} />;
     case "vr":            return <VRPage key={k} />;
+    case "beneficios":    return <BeneficiosPage key={k} />;
     case "comunicados":   return <ComunicadosPage key={k} />;
     case "ideias":        return <IdeiasPage key={k} />;
     case "reunioes":      return <ReunioesPage key={k} />;
