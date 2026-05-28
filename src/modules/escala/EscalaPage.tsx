@@ -19,7 +19,7 @@ import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
 import { InversaoDomingoModal } from "./InversaoDomingoModal";
-import { gerarEscalaPDF } from "./gerarEscalaPDF";
+import { ExportarEscalaModal } from "./ExportarEscalaModal";
 // SumarioMesModal removido da Escala — o conteúdo (gorjetas, VT, divergências)
 // vive nas próprias telas de Gorjetas e Vale Transporte. Mantemos o arquivo
 // no repo caso queiramos reaproveitar partes (ex: histórico de versões) no
@@ -513,44 +513,9 @@ export function EscalaPage() {
   }
 
   // ── Exportar PDF da escala ──────────────────────────────────────────
-  // Gera PDF da versão atual (prevista ou praticada). Usa o snapshot do
-  // doc — derivado das células ainda vazias é resolvido no PDF.
-  const [pdfGerando, setPdfGerando] = useState(false);
-  async function exportarPDF() {
-    if (!activeRestaurant) return;
-    setPdfGerando(true);
-    try {
-      // Pra cada empregado, materializa células vazias com o status derivado
-      // (mesma lógica do fechar prevista). Assim o PDF nunca sai com buracos.
-      const fonte = versao === "real" ? (escala?.real || {}) : (escala?.prevista || {});
-      const escalaResolved: { [empId: string]: { [date: string]: ScheduleStatus } } = {};
-      for (const e of empregadosDoMes) {
-        const cells = fonte[e.id] || {};
-        const derivado = derivedScheduleForEmpregado(e, ano, mes);
-        const final: { [d: string]: ScheduleStatus } = { ...cells };
-        for (const date of Object.keys(derivado)) {
-          if (final[date] === undefined) final[date] = derivado[date].status;
-        }
-        escalaResolved[e.id] = final;
-      }
-      const doc = await gerarEscalaPDF({
-        ano, mes,
-        restaurantNome: activeRestaurant.nome,
-        empregados: empregadosDoMes,
-        cargos,
-        prevista: escalaResolved,
-        versao,
-      });
-      const tag = versao === "real" ? "praticada" : "prevista";
-      const slug = activeRestaurant.nome.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-      doc.save(`escala-${tag}-${slug}-${ano}-${pad2(mes)}.pdf`);
-    } catch (e) {
-      console.error("[ExportarPDF] erro:", e);
-      alert(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setPdfGerando(false);
-    }
-  }
+  // Abre o modal de exportação (escolhe unidade/área + pré-visualiza antes de
+  // baixar). A geração do PDF em si fica dentro do ExportarEscalaModal.
+  const [showExportPDF, setShowExportPDF] = useState(false);
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -716,11 +681,10 @@ export function EscalaPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={exportarPDF}
-                disabled={pdfGerando}
-                title="Gerar PDF da escala atual (pra imprimir e compartilhar)"
+                onClick={() => setShowExportPDF(true)}
+                title="Exportar PDF da escala (escolhe unidade/área e pré-visualiza)"
               >
-                {pdfGerando ? "Gerando…" : "📄 Exportar PDF"}
+                📄 Exportar PDF
               </Button>
             )}
             {/* PREVISTA: Fechar / Reabrir prevista — só quando versao === "prevista" */}
@@ -924,6 +888,21 @@ export function EscalaPage() {
           meNome={me.nome}
           isMaster={!!me.isMaster}
           onClose={() => setShowInversao(false)}
+        />
+      )}
+
+      {showExportPDF && activeRestaurant && (
+        <ExportarEscalaModal
+          ano={ano}
+          mes={mes}
+          versao={versao}
+          restaurantNome={activeRestaurant.nome}
+          empregados={empregadosDoMes}
+          cargos={cargos}
+          escala={escala}
+          usaMultiUnidades={usaMultiUnidades}
+          unidades={unidadesAtivas}
+          onClose={() => setShowExportPDF(false)}
         />
       )}
     </div>

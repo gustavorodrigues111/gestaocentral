@@ -64,10 +64,11 @@ export type EscalaPDFParams = {
   cargos: Cargo[];
   prevista: { [empregadoId: string]: { [date: string]: ScheduleStatus | undefined } };
   versao?: "prevista" | "real"; // título: "Prevista" ou "Praticada"
+  subtitulo?: string; // ex: "Cidade Velha · Cozinha" — recorte exportado
 };
 
 export async function gerarEscalaPDF({
-  ano, mes, restaurantNome, empregados, cargos, prevista, versao = "prevista",
+  ano, mes, restaurantNome, empregados, cargos, prevista, versao = "prevista", subtitulo,
 }: EscalaPDFParams): Promise<JsPDFType> {
   // Lazy load — só carrega quando o user clica em exportar.
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
@@ -106,7 +107,7 @@ export async function gerarEscalaPDF({
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139);
-  doc.text(restaurantNome, MARGIN_X, 17);
+  doc.text(restaurantNome + (subtitulo ? `  ·  ${subtitulo}` : ""), MARGIN_X, 17);
 
   // Carimbo de geração no canto direito
   const agora = new Date();
