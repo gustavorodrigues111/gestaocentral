@@ -8,7 +8,6 @@ import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
 import { AlteracoesTab } from "./AlteracoesTab";
 import { ImportLoteHorariosModal } from "./ImportLoteHorariosModal";
-import { VincularAdmissaoModal } from "./VincularAdmissaoModal";
 
 // Tab "🎯 Templates" foi removida — templates de permissão eram do sistema
 // antigo (presets de ver/configurar pra clonar). Substituído pela Pagina
@@ -23,7 +22,6 @@ export function PessoasPage() {
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const [tab, setTab] = useState<Tab>("pessoas");
   const [showImportHorarios, setShowImportHorarios] = useState(false);
-  const [showVincularAdmissao, setShowVincularAdmissao] = useState(false);
   const podeVer = canVer(me, rid, "pessoas");
   const isMaster = !!me?.isMaster;
 
@@ -52,18 +50,13 @@ export function PessoasPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">👤 Pessoas</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" onClick={() => setShowVincularAdmissao(true)}>
-            📥 Vincular pessoa de admissão
+        {/* PROVISÓRIO — botão master pra importar horários em lote (migração
+            do AppTip pro Planejamento). Remover quando não precisar mais. */}
+        {isMaster && (
+          <Button variant="secondary" size="sm" onClick={() => setShowImportHorarios(true)}>
+            🧪 Importar horários (lote)
           </Button>
-          {/* PROVISÓRIO — botão master pra importar horários em lote (migração
-              do AppTip pro Planejamento). Remover quando não precisar mais. */}
-          {isMaster && (
-            <Button variant="secondary" size="sm" onClick={() => setShowImportHorarios(true)}>
-              🧪 Importar horários (lote)
-            </Button>
-          )}
-        </div>
+        )}
       </div>
 
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6">
@@ -90,13 +83,6 @@ export function PessoasPage() {
         <ImportLoteHorariosModal
           restaurantId={rid}
           onClose={() => setShowImportHorarios(false)}
-        />
-      )}
-
-      {showVincularAdmissao && (
-        <VincularAdmissaoModal
-          restaurantId={rid}
-          onClose={() => setShowVincularAdmissao(false)}
         />
       )}
     </div>

@@ -6,8 +6,10 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Modal } from "../../core/ui/Modal";
 import { PessoaModal } from "./PessoaModal";
 import { VincularPessoaModal } from "./VincularPessoaModal";
+import { VincularAdmissaoModal } from "./VincularAdmissaoModal";
 import { horarioBadgeProps, statusHorarioEmpregado } from "./horarioStatus";
 import type { Area, Cargo, Empregado, Pessoa } from "../../core/types";
 import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
@@ -31,7 +33,9 @@ export function PessoasList({ restaurantId }: Props) {
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
   const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
   const [editing, setEditing] = useState<Pessoa | "new" | null>(null);
-  const [vinculando, setVinculando] = useState(false);
+  // Fluxo de vínculo: "chooser" abre o seletor; "admissao" puxa de uma admissão
+  // pronta; "existente" vincula pessoa já cadastrada em outro restaurante.
+  const [vincularModo, setVincularModo] = useState<"chooser" | "admissao" | "existente" | null>(null);
   // Gates granulares de ações (sistema novo de perfis)
   const { can } = useCanAcao(restaurantId);
   const podeCriar = !!me?.isMaster || can("pessoas", "criar");
@@ -116,8 +120,8 @@ export function PessoasList({ restaurantId }: Props) {
         {(podeCriar || podeVincular) && (
           <div className="flex gap-2">
             {podeVincular && (
-              <Button variant="secondary" onClick={() => setVinculando(true)} title="Vincular pessoa já cadastrada em outro restaurante">
-                🔗 Vincular existente
+              <Button variant="secondary" onClick={() => setVincularModo("chooser")} title="Vincular de uma admissão ou de pessoa já cadastrada em outro restaurante">
+                🔗 Vincular
               </Button>
             )}
             {podeCriar && (
@@ -245,10 +249,52 @@ export function PessoasList({ restaurantId }: Props) {
         />
       )}
 
-      {vinculando && (
+      {vincularModo === "chooser" && (
+        <Modal title="🔗 Vincular pessoa" onClose={() => setVincularModo(null)} maxWidth="max-w-md">
+          <div className="p-4 space-y-3">
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              De onde você quer trazer a pessoa pra este restaurante?
+            </p>
+            <button
+              type="button"
+              onClick={() => setVincularModo("admissao")}
+              className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                📥 De uma admissão
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Cria a Pessoa + o Empregado a partir de uma admissão pronta (cargo,
+                horários e dados já preenchidos).
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setVincularModo("existente")}
+              className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+            >
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                🔗 Pessoa existente (outro restaurante)
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                Vincula uma pessoa já cadastrada em outro restaurante a este.
+              </div>
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {vincularModo === "admissao" && (
+        <VincularAdmissaoModal
+          restaurantId={restaurantId}
+          onClose={() => setVincularModo(null)}
+        />
+      )}
+
+      {vincularModo === "existente" && (
         <VincularPessoaModal
           restaurantId={restaurantId}
-          onClose={() => setVinculando(false)}
+          onClose={() => setVincularModo(null)}
         />
       )}
     </div>
