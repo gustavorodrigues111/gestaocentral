@@ -372,6 +372,21 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "uniformes",
+    icon: "🦺",
+    label: "Uniformes & EPIs",
+    desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs",
+    area: "gestao",
+    acoes: [
+      { id: "ver",              label: "Ver uniformes/EPIs (catálogo, estoque, entregas)" },
+      { id: "gerenciarCatalogo", label: "Gerenciar catálogo (itens e kits por área)" },
+      { id: "ajustarEstoque",   label: "Ajustar estoque (entradas/saídas)" },
+      { id: "registrarEntrega", label: "Registrar entrega de uniforme/EPI" },
+      { id: "cancelarEntrega",  label: "Cancelar / devolver entrega" },
+      { id: "configurar",       label: "Configurar (template do termo, fornecedores)" },
+    ],
+  },
+  {
     id: "configuracoes",
     icon: "⚙️",
     label: "Configurações gerais",
