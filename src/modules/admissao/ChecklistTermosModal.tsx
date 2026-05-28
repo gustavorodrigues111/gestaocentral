@@ -29,7 +29,7 @@ import {
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import { isDriveConfigured, driveFolderUrl } from "../../core/google/driveConfig";
 import {
-  createDriveFolder, uploadFileToFolder, listFolderFiles, type DriveFile,
+  createEmployeeFolderTree, uploadFileToFolder, listFolderFiles, type DriveFile,
 } from "../../core/google/driveClient";
 
 type Props = {
@@ -56,6 +56,10 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           url: admissao.driveFolderUrl || driveFolderUrl(admissao.driveFolderId),
         }
       : null,
+  );
+  // Subpasta "docs assinados" (alvo dos uploads dos termos assinados)
+  const [uploadFolderId, setUploadFolderId] = useState<string | null>(
+    admissao.driveDocsAssinadosFolderId || null,
   );
   // "" | "criando" | "conferindo" | "up_<termoId>"
   const [driveBusy, setDriveBusy] = useState("");
@@ -143,22 +147,30 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     }));
   }
 
-  // Garante que a pasta do Drive existe (cria + salva na admissão se ainda
-  // não). Retorna o id da pasta. Abre o popup do Google na 1ª vez.
-  async function ensureFolder(): Promise<string> {
-    if (folder?.id) return folder.id;
-    const nome = `Admissão - ${admissao.candidato.nome} - CPF ${admissao.candidato.cpf}`;
-    const created = await createDriveFolder(nome);
-    await salvarDriveFolder(admissao.id, created.id, created.url);
-    setFolder(created);
-    return created.id;
+  // Garante a árvore de pastas do empregado (pasta [Nome] + subpastas:
+  // 1- CONTRATOS, 2 - DOCUMENTOS, docs assinados) dentro da pasta "Empregados
+  // Ativos" da empresa. Retorna o id da "docs assinados" (alvo dos uploads).
+  // Abre o popup do Google na 1ª vez.
+  async function ensureTree(): Promise<string> {
+    if (folder?.id && uploadFolderId) return uploadFolderId;
+    const parentId = activeRestaurant.driveEmpregadosAtivosFolderId;
+    if (!parentId) {
+      throw new Error(
+        "Configure a pasta 'Empregados Ativos' desta empresa em Admissão → Configurações antes de criar a pasta do empregado.",
+      );
+    }
+    const tree = await createEmployeeFolderTree(parentId, admissao.candidato.nome);
+    await salvarDriveFolder(admissao.id, tree.folderId, tree.folderUrl, tree.docsAssinadosFolderId);
+    setFolder({ id: tree.folderId, url: tree.folderUrl });
+    setUploadFolderId(tree.docsAssinadosFolderId);
+    return tree.docsAssinadosFolderId;
   }
 
   async function criarPasta() {
     setDriveErro("");
     setDriveBusy("criando");
     try {
-      await ensureFolder();
+      await ensureTree();
     } catch (e) {
       setDriveErro(e instanceof Error ? e.message : "Falha ao criar a pasta no Drive.");
     } finally {
@@ -178,11 +190,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   async function conferirKit() {
-    if (!folder) return;
+    const alvo = uploadFolderId || folder?.id;
+    if (!alvo) return;
     setDriveErro("");
     setDriveBusy("conferindo");
     try {
-      setArquivosPasta(await listFolderFiles(folder.id));
+      setArquivosPasta(await listFolderFiles(alvo));
     } catch (e) {
       setDriveErro(e instanceof Error ? e.message : "Falha ao listar a pasta.");
     } finally {
@@ -204,7 +217,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setDriveErro("");
     setDriveBusy(`up_${termoId}`);
     try {
-      const folderId = await ensureFolder();
+      const folderId = await ensureTree();
       const uploaded = await uploadFileToFolder(folderId, file);
       if (uploaded.webViewLink) atualizarLink(termoId, uploaded.webViewLink);
     } catch (err) {
@@ -258,12 +271,24 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             </div>
             {!folder ? (
               <>
-                <p className="text-[11px] text-gray-600 dark:text-gray-400">
-                  Crie uma pasta no Drive pra subir os PDFs assinados. Na 1ª vez o
-                  Google pede pra você autorizar o acesso — escolha a conta certa.
-                </p>
-                <Button size="sm" onClick={criarPasta} disabled={driveBusy !== ""}>
-                  {driveBusy === "criando" ? "Criando…" : "📁 Criar pasta no Google Drive"}
+                {activeRestaurant.driveEmpregadosAtivosFolderId ? (
+                  <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                    Cria a pasta <strong>{admissao.candidato.nome}</strong> dentro de
+                    "Empregados Ativos" (com subpastas) pra subir os PDFs assinados.
+                    Na 1ª vez o Google pede pra autorizar o acesso.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                    ⚠ Antes, configure a pasta "Empregados Ativos" desta empresa em{" "}
+                    <strong>Admissão → Configurações</strong>.
+                  </p>
+                )}
+                <Button
+                  size="sm"
+                  onClick={criarPasta}
+                  disabled={driveBusy !== "" || !activeRestaurant.driveEmpregadosAtivosFolderId}
+                >
+                  {driveBusy === "criando" ? "Criando…" : "📁 Criar pasta do empregado no Drive"}
                 </Button>
               </>
             ) : (

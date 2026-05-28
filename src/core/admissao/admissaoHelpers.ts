@@ -858,10 +858,12 @@ export async function salvarDriveFolder(
   admissaoId: string,
   folderId: string,
   folderUrl: string,
+  docsAssinadosFolderId?: string,
 ): Promise<void> {
   await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
     driveFolderId: folderId,
     driveFolderUrl: folderUrl,
+    driveDocsAssinadosFolderId: docsAssinadosFolderId,
     updatedAt: new Date().toISOString(),
   }));
 }
@@ -954,6 +956,8 @@ export async function salvarConfigAdmissao(
     | "admissaoFormSchema"
     | "admissaoKanbanColunas"
     | "admissaoSubtarefasTemplate"
+    | "driveEmpregadosAtivosFolderId"
+    | "driveEmpregadosAtivosFolderNome"
   >>,
 ): Promise<void> {
   await setDoc(

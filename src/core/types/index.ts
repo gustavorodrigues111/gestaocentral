@@ -477,6 +477,11 @@ export type Restaurant = {
   admissaoFormSchema?: FormField[];      // default = template ficha Senador (vide formTemplate.ts)
   admissaoKanbanColunas?: KanbanColuna[]; // default = 4 colunas padrão
   admissaoSubtarefasTemplate?: SubtarefaTemplate[]; // default = SUBTAREFAS_TEMPLATE_DEFAULT (formTemplate.ts)
+  // Pasta "Empregados Ativos" desta empresa no Google Drive — apontada uma
+  // vez via Picker nas Configurações de Admissão. A cada admissão, o app cria
+  // a pasta [Nome do empregado] aqui dentro (com subpastas + "docs assinados").
+  driveEmpregadosAtivosFolderId?: string;
+  driveEmpregadosAtivosFolderNome?: string;
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)
@@ -2095,8 +2100,9 @@ export type Admissao = {
   // Criada pelo ChecklistTermosModal via integração browser (escopo
   // drive.file). Guardamos só id + URL; os PDFs assinados vivem no Drive
   // da conta conectada (DP cola a URL no Clicksign).
-  driveFolderId?: string;
+  driveFolderId?: string;       // pasta [Nome] do empregado (pra abrir/copiar link)
   driveFolderUrl?: string;
+  driveDocsAssinadosFolderId?: string; // subpasta "docs assinados" (alvo dos uploads)
 
   createdAt: string;
   updatedAt: string;

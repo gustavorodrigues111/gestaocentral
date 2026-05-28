@@ -11,7 +11,10 @@
 //  Todas as mensagens de erro são em PT-BR pra subir direto na UI.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { GOOGLE_CLIENT_ID, DRIVE_SCOPE, driveFolderUrl } from "./driveConfig";
+import {
+  GOOGLE_CLIENT_ID, DRIVE_SCOPE, driveFolderUrl,
+  SUBPASTAS_EMPREGADO, PASTA_DOCS_ASSINADOS,
+} from "./driveConfig";
 
 // ─── Tipagem mínima do Google Identity Services (sem puxar @types) ──────────
 type TokenResponse = {
@@ -212,6 +215,59 @@ export async function uploadFileToFolder(
     token,
   );
   return (await upRes.json()) as DriveFile;
+}
+
+// Acha (ou cria) uma subpasta por nome dentro de um pai. Como o pai foi
+// criado/aberto pelo app (drive.file enxerga), a busca por filhos funciona.
+// Evita duplicar a subpasta se o usuário rodar o fluxo duas vezes.
+export async function findOrCreateSubfolder(
+  parentId: string,
+  name: string,
+): Promise<string> {
+  const token = await requestAccessToken();
+  const q = encodeURIComponent(
+    `'${parentId}' in parents and name = '${name.replace(/'/g, "\\'")}' ` +
+      `and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+  );
+  const found = await driveFetch(
+    `${DRIVE_API}/files?q=${q}&fields=files(id)`,
+    { method: "GET" },
+    token,
+  );
+  const data = (await found.json()) as { files?: { id: string }[] };
+  if (data.files && data.files.length > 0) return data.files[0].id;
+  const created = await driveFetch(
+    `${DRIVE_API}/files?fields=id`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      }),
+    },
+    token,
+  );
+  return ((await created.json()) as { id: string }).id;
+}
+
+// Cria (ou reaproveita) a árvore de pastas de um empregado dentro de
+// "Empregados Ativos": pasta [Nome] + subpastas padrão (1- CONTRATOS,
+// 2 - DOCUMENTOS, docs assinados). Retorna o id/URL da pasta do empregado
+// e o id da subpasta "docs assinados" (onde sobem os termos assinados).
+export async function createEmployeeFolderTree(
+  empregadosAtivosFolderId: string,
+  nomeCompleto: string,
+): Promise<{ folderId: string; folderUrl: string; docsAssinadosFolderId: string }> {
+  const folderId = await findOrCreateSubfolder(empregadosAtivosFolderId, nomeCompleto);
+  let docsAssinadosFolderId = "";
+  // Cria as subpastas em sequência (volume pequeno — 3 itens).
+  for (const sub of SUBPASTAS_EMPREGADO) {
+    const id = await findOrCreateSubfolder(folderId, sub);
+    if (sub === PASTA_DOCS_ASSINADOS) docsAssinadosFolderId = id;
+  }
+  return { folderId, folderUrl: driveFolderUrl(folderId), docsAssinadosFolderId };
 }
 
 // Lista os arquivos (não-pasta, não-lixeira) dentro de uma pasta.

@@ -21,6 +21,8 @@ import {
   type TemplateKey,
 } from "../../core/admissao/admissaoHelpers";
 import type { CanalContato, ContatoExterno, Restaurant } from "../../core/types";
+import { isDriveConfigured } from "../../core/google/driveConfig";
+import { pickDriveFolder } from "../../core/google/drivePicker";
 
 type Props = {
   rid: string;
@@ -51,6 +53,38 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [msg, setMsg] = useState("");
   const [resetando, setResetando] = useState(false);
+  // Google Drive: pasta "Empregados Ativos" desta empresa
+  const [driveFolder, setDriveFolder] = useState<{ id: string; nome: string } | null>(
+    activeRestaurant.driveEmpregadosAtivosFolderId
+      ? {
+          id: activeRestaurant.driveEmpregadosAtivosFolderId,
+          nome: activeRestaurant.driveEmpregadosAtivosFolderNome || "(pasta selecionada)",
+        }
+      : null,
+  );
+  const [drivePicking, setDrivePicking] = useState(false);
+  const [driveMsg, setDriveMsg] = useState("");
+
+  async function selecionarPastaDrive() {
+    setDriveMsg("");
+    setDrivePicking(true);
+    try {
+      const escolha = await pickDriveFolder(
+        "Selecione a pasta 'Empregados Ativos' desta empresa",
+      );
+      if (!escolha) return; // cancelado
+      await salvarConfigAdmissao(rid, {
+        driveEmpregadosAtivosFolderId: escolha.id,
+        driveEmpregadosAtivosFolderNome: escolha.name,
+      });
+      setDriveFolder({ id: escolha.id, nome: escolha.name });
+      setDriveMsg("✓ Pasta vinculada.");
+    } catch (e) {
+      setDriveMsg("❌ " + (e instanceof Error ? e.message : "Erro ao selecionar pasta."));
+    } finally {
+      setDrivePicking(false);
+    }
+  }
 
   async function resetarLayout() {
     if (!me?.isMaster) return;
@@ -154,6 +188,45 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           </p>
         )}
       </div>
+
+      {/* Google Drive — pasta "Empregados Ativos" desta empresa (Picker) */}
+      {isDriveConfigured() && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+          <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+            📁 Pasta no Google Drive (admissão)
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Aponte a pasta <strong>"Empregados Ativos"</strong> desta empresa no
+            seu Drive. A cada admissão, o app cria a pasta do empregado aqui dentro
+            (com subpastas <em>1- CONTRATOS</em>, <em>2 - DOCUMENTOS</em> e{" "}
+            <em>docs assinados</em>) e sobe os termos assinados na "docs assinados".
+          </p>
+          {driveFolder ? (
+            <div className="text-xs text-emerald-700 dark:text-emerald-400">
+              ✓ Pasta atual: <strong>{driveFolder.nome}</strong>
+            </div>
+          ) : (
+            <div className="text-[11px] text-amber-700 dark:text-amber-400">
+              ⚠ Nenhuma pasta vinculada — sem isso, não dá pra criar a pasta do
+              empregado no Drive durante a admissão.
+            </div>
+          )}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="secondary" onClick={selecionarPastaDrive} disabled={drivePicking}>
+              {drivePicking
+                ? "Abrindo seletor…"
+                : driveFolder
+                  ? "🔄 Trocar pasta"
+                  : "📁 Selecionar pasta"}
+            </Button>
+            {driveMsg && <span className="text-xs">{driveMsg}</span>}
+          </div>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500">
+            Na 1ª vez o Google pede pra autorizar o acesso — escolha a conta do
+            Drive onde ficam as pastas das empresas.
+          </p>
+        </div>
+      )}
 
       {/* Contatos externos — 3 cards: Clínica de exames, Contabilidade,
           Financeiro. Cada um tem dados de contato (nome/email/whatsapp/telefone)
