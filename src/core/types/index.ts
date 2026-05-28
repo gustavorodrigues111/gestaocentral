@@ -844,6 +844,73 @@ export const VR_LOTE_STATUS_LABEL: Record<VRLoteStatus, string> = {
   cancelado: "Cancelado",
 };
 
+// ─── BENEFÍCIOS (lote único VT + VR + auxílio fixo) ──────────────────────────
+// A partir de junho/2026, VT e VR são lançados/pagos juntos num único lote e
+// exportados num só CSV pro Caju (Mobilidade = VT + auxílio fixo; Refeição =
+// VR). Cada linha aninha o snapshot do VT e do VR do empregado. Lotes antigos
+// de vtLotes/vrLotes seguem como histórico read-only.
+
+export type BeneficiosLoteStatus = "rascunho" | "pago" | "cancelado";
+
+export type BeneficiosLoteLinha = {
+  empregadoId: string;
+  nome: string;                  // snapshot
+  cargoNome: string;             // snapshot
+  area: Area;                    // snapshot
+  vt: VTLoteLinha;               // Mobilidade (total já inclui auxílio fixo)
+  vr: VRLoteLinha;               // Refeição
+  vtRecebePeloCaju: boolean;     // snapshot do cadastro
+  vrRecebePeloCaju: boolean;     // snapshot do cadastro
+  total: number;                 // vt.total + vr.total
+};
+
+export type BeneficiosLoteEvento = {
+  acao: "criado" | "pago" | "reaberto" | "cancelado";
+  em: string;
+  por: string;
+  porNome?: string;
+  motivo?: string;
+};
+
+export type BeneficiosLote = {
+  id: string;
+  restaurantId: string;
+  ano: number;
+  mes: number;
+  status: BeneficiosLoteStatus;
+
+  linhas: BeneficiosLoteLinha[];
+
+  totalGeral: number;
+  totalMobilidade: number;       // soma dos vt.total (Caju Mobilidade)
+  totalRefeicao: number;         // soma dos vr.total (Caju Refeição)
+  totalPorArea: { [area: string]: number };
+
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  pagoEm?: string | null;
+  pagoPor?: string | null;
+  pagoPorNome?: string | null;
+  canceladoEm?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNome?: string | null;
+  motivoCancelamento?: string;
+
+  historico: BeneficiosLoteEvento[];
+  updatedAt: string;
+};
+
+export const BENEFICIOS_LOTE_STATUS_LABEL: Record<BeneficiosLoteStatus, string> = {
+  rascunho:  "Rascunho",
+  pago:      "Pago",
+  cancelado: "Cancelado",
+};
+
+// Mês a partir do qual o lote único de Benefícios passa a valer. Antes disso,
+// VT e VR ficam só no histórico (lotes separados antigos).
+export const BENEFICIOS_INICIO = { ano: 2026, mes: 6 };
+
 // ─── COMUNICADOS ────────────────────────────────────────────────────────────
 
 export type ComunicadoPrioridade = "info" | "aviso" | "urgente";
