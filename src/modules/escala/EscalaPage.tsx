@@ -266,6 +266,13 @@ export function EscalaPage() {
         return cargo?.area === filtroArea;
       });
     }
+    // Filtro por unidade (multi-unidades): mostra só quem tem essa unidade
+    // como padrão NO CADASTRO (unidadePadraoId). "" = todas. Antes o dropdown
+    // só esmaecia células de trabalho em outra unidade, mas não removia a
+    // linha — então gente de outra unidade continuava aparecendo.
+    if (filtroUnidadeId) {
+      lista = lista.filter(e => e.unidadePadraoId === filtroUnidadeId);
+    }
     return [...lista].sort((a, b) => {
       const ca = cargoMap[a.cargoId];
       const cb = cargoMap[b.cargoId];
@@ -274,7 +281,7 @@ export function EscalaPage() {
       if (areaA !== areaB) return areaA.localeCompare(areaB);
       return a.nome.localeCompare(b.nome);
     });
-  }, [empregadosDoMes, cargos, me, rid, filtroArea]);
+  }, [empregadosDoMes, cargos, me, rid, filtroArea, filtroUnidadeId]);
 
   const dias = daysInMonth(ano, mes);
 
