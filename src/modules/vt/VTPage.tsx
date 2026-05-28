@@ -13,7 +13,8 @@ import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVTModal } from "./ExportarVTModal";
 import { AplicarAuxFixoLoteModal } from "./AplicarAuxFixoLoteModal";
 import type { VTPDFLinha } from "./gerarVTPDF";
-import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
+import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area, MudancaAgendada } from "../../core/types";
+import { projetarEmpregadosParaData } from "../../core/utils/empregado";
 import { AREAS, VT_LOTE_STATUS_LABEL } from "../../core/types";
 import {
   montarLinhasLote,
@@ -71,6 +72,7 @@ export function VTPage() {
   const [aba, setAba] = useState<AbaPrincipal>("mes");
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [mudancasAgendadas, setMudancasAgendadas] = useState<MudancaAgendada[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escalaLote, setEscalaLote] = useState<EscalaMes | null>(null);
   const [escalaRef, setEscalaRef] = useState<EscalaMes | null>(null);
@@ -113,6 +115,28 @@ export function VTPage() {
     });
     return () => unsub();
   }, [rid]);
+
+  // Mudanças agendadas de empregados (ex: "desligar VT a partir de 1/6").
+  // Usadas pra projetar o estado do empregado no mês do lote ANTES da data
+  // chegar — senão o registro ao vivo só muda na data e o lote do mês futuro
+  // ficaria com o valor antigo.
+  useEffect(() => {
+    const q = query(collection(db, "mudancasAgendadas"), where("entityType", "==", "empregado"));
+    const unsub = onSnapshot(q, (snap) => {
+      setMudancasAgendadas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as MudancaAgendada));
+    }, (err) => {
+      console.error("[VT] erro ao carregar mudanças agendadas:", err);
+      setMudancasAgendadas([]);
+    });
+    return () => unsub();
+  }, []);
+
+  // Empregados projetados pro mês do lote (aplica mudanças agendadas vigentes
+  // até o 1º dia do mês). É o que entra no cálculo do preview.
+  const empregadosProjetados = useMemo(
+    () => projetarEmpregadosParaData(empregados, mudancasAgendadas, `${fmtAnoMes(ano, mes)}-01`),
+    [empregados, mudancasAgendadas, ano, mes],
+  );
 
   // Cargos
   useEffect(() => {
@@ -202,7 +226,7 @@ export function VTPage() {
   // Linhas preview (quando não há lote ainda) — calcula do empregado + escala
   const linhasPreview = useMemo(() => {
     if (loteAtivo) return null; // já tem lote, mostra dele
-    const base = montarLinhasLote(empregados, cargos, escalaLote, escalaRef, ano, mes);
+    const base = montarLinhasLote(empregadosProjetados, cargos, escalaLote, escalaRef, ano, mes);
     // Aplica overrides do usuário (toggle, descontos, auxPontual)
     return base.map(l => {
       const ov = overrides[l.empregadoId] || {};
@@ -219,7 +243,7 @@ export function VTPage() {
       });
       return { ...l, descontoSugeridoAtivo: ativo, descontoManual, auxPontual, total };
     });
-  }, [loteAtivo, empregados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
+  }, [loteAtivo, empregadosProjetados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
 
   // Unidades ativas do restaurante (pra badge + filtro)
   const unidadesAtivas = useMemo(

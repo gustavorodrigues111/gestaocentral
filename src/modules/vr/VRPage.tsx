@@ -11,7 +11,8 @@ import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVRModal } from "./ExportarVRModal";
 import type { VRPDFLinha } from "./gerarVRPDF";
 import { calcularTotais, montarLinhasLote, recalcularTotal } from "./calc";
-import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha, MudancaAgendada } from "../../core/types";
+import { projetarEmpregadosParaData } from "../../core/utils/empregado";
 import { VR_LOTE_STATUS_LABEL } from "../../core/types";
 
 const fmtBR = (n: number) =>
@@ -46,6 +47,7 @@ export function VRPage() {
   const [mes, setMes] = useState(now.getMonth() + 1);
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [mudancasAgendadas, setMudancasAgendadas] = useState<MudancaAgendada[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [escalaRef, setEscalaRef] = useState<EscalaMes | null>(null);
@@ -55,6 +57,25 @@ export function VRPage() {
 
   // mês de referência pro desconto = lote.mes − 2
   const ref = useMemo(() => shiftMonth(ano, mes, -2), [ano, mes]);
+
+  // Mudanças agendadas (ex: "desligar VR/VT a partir de 1/6") — pra projetar o
+  // estado do empregado no mês do lote antes da data chegar.
+  useEffect(() => {
+    const q = query(collection(db, "mudancasAgendadas"), where("entityType", "==", "empregado"));
+    return onSnapshot(q, (snap) => {
+      setMudancasAgendadas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MudancaAgendada));
+    }, (err) => {
+      console.error("[VR] erro ao carregar mudanças agendadas:", err);
+      setMudancasAgendadas([]);
+    });
+  }, []);
+
+  // Empregados projetados pro mês do lote (aplica mudanças agendadas vigentes
+  // até o 1º dia do mês).
+  const empregadosProjetados = useMemo(
+    () => projetarEmpregadosParaData(empregados, mudancasAgendadas, `${ano}-${pad2(mes)}-01`),
+    [empregados, mudancasAgendadas, ano, mes],
+  );
 
   useEffect(() => {
     if (!rid) return;
@@ -125,7 +146,7 @@ export function VRPage() {
   const linhasPreview = useMemo<VRLoteLinha[]>(() => {
     if (loteAtivo) return [];
     return montarLinhasLote({
-      empregados,
+      empregados: empregadosProjetados,
       cargos,
       escala,
       escalaRefDesconto: escalaRef,
@@ -134,7 +155,7 @@ export function VRPage() {
       refAno: ref.ano,
       refMes: ref.mes,
     });
-  }, [loteAtivo, empregados, cargos, escala, escalaRef, ano, mes, ref]);
+  }, [loteAtivo, empregadosProjetados, cargos, escala, escalaRef, ano, mes, ref]);
 
   const linhasExibidas = loteAtivo?.linhas || linhasPreview;
   const totais = useMemo(() => calcularTotais(linhasExibidas), [linhasExibidas]);
