@@ -1510,10 +1510,22 @@ export async function aprovarAdmissao(
   const dados = (admissao.dadosPreenchidos as Record<string, unknown>) || {};
 
   // ── 1. Resolve Pessoa: existente ou nova ──
+  // Prioridade pra reaproveitar cadastro (e NÃO duplicar Pessoa):
+  //   1. pessoa explicitamente vinculada no início da admissão; senão
+  //   2. trava de segurança — qualquer pessoa já cadastrada com o MESMO CPF.
+  //      Cobre o caso de a admissão ter sido iniciada sem vincular (ou de a
+  //      pessoa ter sido criada depois), evitando dois cadastros pro mesmo CPF.
+  let pessoaIdExistente: string | undefined = admissao.pessoaIdVinculada;
+  if (!pessoaIdExistente) {
+    const cpfDigits = (candidato.cpf || "").replace(/\D/g, "");
+    const jaExiste = await buscarPessoaPorCpf(cpfDigits);
+    if (jaExiste) pessoaIdExistente = jaExiste.id;
+  }
+
   let pessoaId: string;
-  if (admissao.pessoaIdVinculada) {
+  if (pessoaIdExistente) {
     // Vincula a Pessoa existente. Adiciona o rid à lista se ainda não tiver.
-    pessoaId = admissao.pessoaIdVinculada;
+    pessoaId = pessoaIdExistente;
     const pessoaRef = doc(db, "pessoas", pessoaId);
     const pessoaSnap = await getDoc(pessoaRef);
     if (!pessoaSnap.exists()) {
@@ -1529,8 +1541,9 @@ export async function aprovarAdmissao(
       });
     }
   } else {
-    // Cria Pessoa nova. Email vira identidade — já bloqueamos duplicado no
-    // IniciarAdmissaoModal, então aqui é seguro.
+    // Cria Pessoa nova. Chegou aqui = não há pessoa vinculada nem ninguém com
+    // o mesmo CPF. Email vira identidade (login); duplicado de email já é
+    // bloqueado no IniciarAdmissaoModal.
     const pixCandidato = typeof dados.pix === "string" ? dados.pix.trim() : "";
     const novaPessoa: Omit<Pessoa, "id"> = {
       email: candidato.email.toLowerCase(),
