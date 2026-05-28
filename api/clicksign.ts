@@ -36,7 +36,13 @@ type VercelRes = {
   json: (body: unknown) => void;
 };
 
-type Signer = { name?: unknown; email?: unknown; phone?: unknown };
+type Signer = {
+  name?: unknown;
+  email?: unknown;
+  phone?: unknown;
+  documentation?: unknown;  // CPF
+  birthday?: unknown;        // YYYY-MM-DD
+};
 type Doc = { filename?: unknown; base64?: unknown };
 
 function host(sandbox: boolean): string {
@@ -109,7 +115,13 @@ function comoDataUri(base64: string): string {
 async function criarEnvelope(
   sandbox: boolean,
   envelopeName: string,
-  signer: { name: string; email: string; phone?: string },
+  signers: {
+    name: string;
+    email: string;
+    phone?: string;
+    documentation?: string;
+    birthday?: string;
+  }[],
   docs: { filename: string; base64: string }[],
   message?: string,
   metadata?: Record<string, unknown>,
@@ -141,26 +153,34 @@ async function criarEnvelope(
     docIds.push(dataId(dr));
   }
 
-  // 3) signatário (candidato)
-  const signerAttrs: Record<string, unknown> = { name: signer.name, email: signer.email };
-  if (signer.phone) signerAttrs.phone_number = signer.phone;
-  const sr = await cs(sandbox, "POST", `/envelopes/${envelopeId}/signers`, {
-    data: { type: "signers", attributes: signerAttrs },
-  });
-  const signerId = dataId(sr);
+  // 3) signatários (ex: empresa + empregado)
+  const signerIds: string[] = [];
+  for (const s of signers) {
+    const attrs: Record<string, unknown> = { name: s.name, email: s.email };
+    if (s.phone) attrs.phone_number = s.phone;
+    if (s.documentation) attrs.documentation = s.documentation;
+    if (s.birthday) attrs.birthday = s.birthday;
+    if (s.documentation || s.birthday) attrs.has_documentation = true;
+    const sr = await cs(sandbox, "POST", `/envelopes/${envelopeId}/signers`, {
+      data: { type: "signers", attributes: attrs },
+    });
+    signerIds.push(dataId(sr));
+  }
 
-  // 4) requisitos por documento: qualificação (assina) + autenticação (e-mail)
+  // 4) requisitos: cada documento × cada signatário (qualificação + autenticação)
   for (const docId of docIds) {
-    const rels = {
-      document: { data: { type: "documents", id: docId } },
-      signer: { data: { type: "signers", id: signerId } },
-    };
-    await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
-      data: { type: "requirements", attributes: { action: "agree", role: "sign" }, relationships: rels },
-    });
-    await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
-      data: { type: "requirements", attributes: { action: "provide_evidence", auth: "email" }, relationships: rels },
-    });
+    for (const signerId of signerIds) {
+      const rels = {
+        document: { data: { type: "documents", id: docId } },
+        signer: { data: { type: "signers", id: signerId } },
+      };
+      await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
+        data: { type: "requirements", attributes: { action: "agree", role: "sign" }, relationships: rels },
+      });
+      await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
+        data: { type: "requirements", attributes: { action: "provide_evidence", auth: "email" }, relationships: rels },
+      });
+    }
   }
 
   // 5) ativar (status running) — habilita a assinatura
@@ -248,10 +268,16 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   try {
     if (action === "criar") {
-      const s = (body.signer || {}) as Signer;
-      const name = typeof s.name === "string" ? s.name.trim() : "";
-      const email = typeof s.email === "string" ? s.email.trim() : "";
-      const phone = typeof s.phone === "string" ? s.phone.trim() : "";
+      const rawSigners = Array.isArray(body.signers) ? (body.signers as Signer[]) : [];
+      const signers = rawSigners
+        .map((s) => ({
+          name: typeof s.name === "string" ? s.name.trim() : "",
+          email: typeof s.email === "string" ? s.email.trim() : "",
+          phone: typeof s.phone === "string" ? s.phone.trim() : undefined,
+          documentation: typeof s.documentation === "string" ? s.documentation.trim() : undefined,
+          birthday: typeof s.birthday === "string" ? s.birthday.trim() : undefined,
+        }))
+        .filter((s) => s.name && s.email);
       const envelopeName = typeof body.envelopeName === "string" ? body.envelopeName.trim() : "";
       const message = typeof body.message === "string" ? body.message.trim() : undefined;
       const rawDocs = Array.isArray(body.docs) ? (body.docs as Doc[]) : [];
@@ -263,7 +289,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         .filter((d) => d.filename && d.base64);
 
       if (!envelopeName) { res.status(400).json({ error: "envelopeName obrigatório." }); return; }
-      if (!name || !email) { res.status(400).json({ error: "signer.name e signer.email obrigatórios." }); return; }
+      if (signers.length === 0) { res.status(400).json({ error: "Nenhum signatário válido (name + email)." }); return; }
       if (docs.length === 0) { res.status(400).json({ error: "Nenhum documento válido (filename + base64)." }); return; }
 
       const externalId = typeof body.externalId === "string" ? body.externalId : "";

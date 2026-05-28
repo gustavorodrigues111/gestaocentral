@@ -987,6 +987,8 @@ export async function salvarConfigAdmissao(
     | "admissaoSubtarefasTemplate"
     | "driveEmpregadosAtivosFolderId"
     | "driveEmpregadosAtivosFolderNome"
+    | "clicksignEmpresaNome"
+    | "clicksignEmpresaEmail"
   >>,
 ): Promise<void> {
   await setDoc(

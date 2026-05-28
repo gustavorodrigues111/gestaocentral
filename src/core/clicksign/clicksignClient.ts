@@ -16,7 +16,13 @@ const CLICKSIGN_ENDPOINT = "/api/clicksign";
 export const CLICKSIGN_SANDBOX: boolean =
   (import.meta.env.VITE_CLICKSIGN_SANDBOX as string | undefined) === "true";
 
-export type ClicksignSigner = { name: string; email: string; phone?: string };
+export type ClicksignSigner = {
+  name: string;
+  email: string;
+  phone?: string;
+  documentation?: string;  // CPF
+  birthday?: string;        // YYYY-MM-DD
+};
 export type ClicksignDoc = { filename: string; base64: string };
 export type ClicksignDocResumo = {
   id: string;
@@ -43,7 +49,7 @@ async function call<T>(action: string, payload: Record<string, unknown>): Promis
 // Cria o envelope, anexa os PDFs, adiciona o signatário, ativa e notifica.
 export async function criarEnvelopeClicksign(payload: {
   envelopeName: string;
-  signer: ClicksignSigner;
+  signers: ClicksignSigner[];   // ex: [empresa, empregado]
   docs: ClicksignDoc[];
   message?: string;
   externalId?: string;   // ex: admissao.id — vira metadata do documento

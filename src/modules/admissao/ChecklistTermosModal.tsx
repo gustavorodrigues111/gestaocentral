@@ -50,6 +50,13 @@ function traduzStatusClicksign(s: string): string {
   }
 }
 
+// CPF (dígitos) → formatado "000.000.000-00" (Clicksign documentation).
+function formatCpf(cpf?: string): string {
+  const d = (cpf || "").replace(/\D/g, "");
+  if (d.length !== 11) return "";
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
 // base64 → File (pra subir o PDF assinado de volta pro Drive).
 function base64ToFile(base64: string, filename: string): File {
   const bin = atob(base64);
@@ -206,6 +213,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       setClicksignErro("Candidato sem e-mail cadastrado — necessário pra assinatura.");
       return;
     }
+    const empresaNome = activeRestaurant.clicksignEmpresaNome?.trim();
+    const empresaEmail = activeRestaurant.clicksignEmpresaEmail?.trim();
+    if (!empresaNome || !empresaEmail) {
+      setClicksignErro("Configure o signatário da empresa em Admissão → Configurações antes de enviar.");
+      return;
+    }
     setClicksignBusy("enviando");
     try {
       const { aAssinar } = await ensureTree();
@@ -217,9 +230,23 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       for (const a of arquivos) {
         docs.push({ filename: a.name, base64: await downloadDriveFileBase64(a.id) });
       }
+      // Data de nascimento vem da ficha preenchida pelo candidato.
+      const dn = admissao.dadosPreenchidos?.data_nascimento;
+      const birthday = typeof dn === "string" ? dn : undefined;
       const { envelopeId, status } = await criarEnvelopeClicksign({
         envelopeName: `Admissão - ${cand.nome}`,
-        signer: { name: cand.nome, email: cand.email, phone: cand.whatsapp || undefined },
+        signers: [
+          // Empresa (fixo, configurado por restaurante)
+          { name: empresaNome, email: empresaEmail },
+          // Empregado (dados da ficha cadastral)
+          {
+            name: cand.nome,
+            email: cand.email,
+            phone: cand.whatsapp || undefined,
+            documentation: formatCpf(cand.cpf) || undefined,
+            birthday,
+          },
+        ],
         docs,
         externalId: admissao.id,
       });

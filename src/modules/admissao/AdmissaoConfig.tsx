@@ -64,6 +64,13 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   );
   const [drivePicking, setDrivePicking] = useState(false);
   const [driveMsg, setDriveMsg] = useState("");
+  // Clicksign: signatário fixo da empresa
+  const [clicksignEmpresaNome, setClicksignEmpresaNome] = useState<string>(
+    activeRestaurant.clicksignEmpresaNome || "",
+  );
+  const [clicksignEmpresaEmail, setClicksignEmpresaEmail] = useState<string>(
+    activeRestaurant.clicksignEmpresaEmail || "",
+  );
 
   async function selecionarPastaDrive() {
     setDriveMsg("");
@@ -131,6 +138,8 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           financeiroBanco: contatoFinanceiro,
         },
         templatesAdmissao: Object.keys(templatesPraSalvar).length > 0 ? templatesPraSalvar : undefined,
+        clicksignEmpresaNome: clicksignEmpresaNome.trim() || undefined,
+        clicksignEmpresaEmail: clicksignEmpresaEmail.trim() || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -228,6 +237,33 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           </p>
         </div>
       )}
+
+      {/* Clicksign — signatário fixo da empresa (assina junto com o empregado) */}
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
+          ✍️ Signatário da empresa (Clicksign)
+        </h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Quem assina os contratos de admissão <strong>pela empresa</strong> (sempre o mesmo).
+          O empregado é adicionado automaticamente com os dados da ficha. Sem isso,
+          o envio pro Clicksign fica bloqueado.
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <Input
+            label="Nome do representante"
+            value={clicksignEmpresaNome}
+            onChange={(e) => setClicksignEmpresaNome(e.target.value)}
+            placeholder="Ex: Gustavo Rodrigues"
+          />
+          <Input
+            label="E-mail do representante"
+            type="email"
+            value={clicksignEmpresaEmail}
+            onChange={(e) => setClicksignEmpresaEmail(e.target.value)}
+            placeholder="contratos@empresa.com"
+          />
+        </div>
+      </div>
 
       {/* Contatos externos — 3 cards: Clínica de exames, Contabilidade,
           Financeiro. Cada um tem dados de contato (nome/email/whatsapp/telefone)

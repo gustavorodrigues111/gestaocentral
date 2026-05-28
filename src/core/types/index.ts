@@ -482,6 +482,10 @@ export type Restaurant = {
   // a pasta [Nome do empregado] aqui dentro (com subpastas + "docs assinados").
   driveEmpregadosAtivosFolderId?: string;
   driveEmpregadosAtivosFolderNome?: string;
+  // Signatário fixo da empresa no Clicksign (representante que assina os
+  // contratos de admissão junto com o empregado). Configurado 1x por empresa.
+  clicksignEmpresaNome?: string;
+  clicksignEmpresaEmail?: string;
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)
