@@ -2192,6 +2192,7 @@ export type SubtarefaTemplate = {
     | { tipo: "whatsapp_kit_assinatura" }        // WhatsApp pro candidato avisando que mandamos kit por email
     | { tipo: "gerar_termo_uniformes" }          // abre modal de entrega de uniformes + gera PDF
     | { tipo: "gerar_termo_epis" }               // abre modal de entrega de EPIs + gera PDF
+    | { tipo: "criar_pasta_drive" }              // cria a pasta do empregado no Google Drive
     // Atalhos legados — mantidos por retrocompat. Resolvidos pra contato_*
     // no drawer.
     | { tipo: "gmail_clinica" }

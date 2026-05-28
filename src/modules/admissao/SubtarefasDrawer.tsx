@@ -50,6 +50,8 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura,
 } from "../../core/admissao/admissaoHelpers";
+import { isDriveConfigured } from "../../core/google/driveConfig";
+import { ensureEmployeeDriveTree } from "../../core/google/driveAdmissao";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
   if (!col.statusAuto) return false;
@@ -153,6 +155,20 @@ export function SubtarefasDrawer({
       await atualizarSubtarefa(admissao, s.id, { feita: !s.feita }, pessoa);
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  // Cria a pasta do empregado no Drive (subtarefa de DADOS BÁSICOS). Marca a
+  // subtarefa como feita e guarda a URL da pasta como link dela.
+  async function criarPastaDrive(s: SubtarefaAdmissao) {
+    setSalvando(s.id);
+    try {
+      const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
+      await atualizarSubtarefa(admissao, s.id, { feita: true, link: tree.folderUrl }, pessoa);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Falha ao criar a pasta no Drive.");
     } finally {
       setSalvando(null);
     }
@@ -495,6 +511,7 @@ export function SubtarefasDrawer({
                                   onAtalhoWhatsappKit={abrirAvisarKitAssinatura}
                                   onAtalhoGerarTermoUniformes={() => setGerarTermoTipo("uniforme")}
                                   onAtalhoGerarTermoEpis={() => setGerarTermoTipo("epi")}
+                                  onAtalhoCriarPastaDrive={() => criarPastaDrive(s)}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -626,6 +643,7 @@ function SubtarefaRow({
   onAtalhoWhatsappKit,
   onAtalhoGerarTermoUniformes,
   onAtalhoGerarTermoEpis,
+  onAtalhoCriarPastaDrive,
   contatoLabel,
 }: {
   sub: SubtarefaAdmissao;
@@ -648,6 +666,7 @@ function SubtarefaRow({
   onAtalhoWhatsappKit: () => void;
   onAtalhoGerarTermoUniformes: () => void;
   onAtalhoGerarTermoEpis: () => void;
+  onAtalhoCriarPastaDrive: () => void;
   contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
@@ -870,6 +889,16 @@ function SubtarefaRow({
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
             🔗 Abrir Clicksign
+          </button>
+        )}
+        {sub.atalho?.tipo === "criar_pasta_drive" && isDriveConfigured() && (
+          <button
+            type="button"
+            onClick={onAtalhoCriarPastaDrive}
+            disabled={salvando}
+            className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white"
+          >
+            {salvando ? "Criando…" : "📁 Criar pasta do empregado"}
           </button>
         )}
         {sub.atalho?.tipo === "whatsapp_kit_assinatura" && (

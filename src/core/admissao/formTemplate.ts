@@ -304,6 +304,9 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_dados_vaga", "Preencher dados básicos da vaga (cargo, horário, empresa)",
      "col_a_admitir", CK_DADOS_BASICOS.id, CK_DADOS_BASICOS.nome, true,
      { atalho: { tipo: "editar_dados_finais" } }),
+  st("st_criar_pasta_drive", "Criar pasta do empregado no Drive",
+     "col_a_admitir", CK_DADOS_BASICOS.id, CK_DADOS_BASICOS.nome, false,
+     { atalho: { tipo: "criar_pasta_drive" } }),
 
   // ─── Col 2: Aguardando preenchimento e Solicitação de Exames e Conta ───
   st("st_solicitar_info", "Solicitar informações de admissão (cargo, horário e empresa)",
