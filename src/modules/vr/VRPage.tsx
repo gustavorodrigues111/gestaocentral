@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -73,7 +73,10 @@ export function VRPage() {
 
   useEffect(() => {
     if (!rid) return;
-    const escalaId = `${rid}_${ano}_${pad2(mes)}`;
+    // ID canônico da escala: `${rid}_${ano}-${mes}` (igual Escala/VT). Antes
+    // usava "_" no lugar do "-", lendo um doc que não existe → escala sempre
+    // null → dias trabalhados zerados no VR.
+    const escalaId = `${rid}_${ano}-${pad2(mes)}`;
     return onSnapshot(doc(db, "escalas", escalaId), (snap) => {
       setEscala(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null);
     });
@@ -81,7 +84,7 @@ export function VRPage() {
 
   useEffect(() => {
     if (!rid) return;
-    const refId = `${rid}_${ref.ano}_${pad2(ref.mes)}`;
+    const refId = `${rid}_${ref.ano}-${pad2(ref.mes)}`;
     return onSnapshot(doc(db, "escalas", refId), (snap) => {
       setEscalaRef(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null);
     });
@@ -90,15 +93,23 @@ export function VRPage() {
   useEffect(() => {
     if (!rid) return;
     setLoading(true);
+    // Sem orderBy: a combinação where×3 + orderBy exige índice composto no
+    // Firestore. Se faltar o índice, o onSnapshot dá erro e o loading nunca
+    // sai (tela travada em "Carregando…"). Ordenamos por criadoEm no cliente.
     const q = query(
       collection(db, "vrLotes"),
       where("restaurantId", "==", rid),
       where("ano", "==", ano),
       where("mes", "==", mes),
-      orderBy("criadoEm", "desc"),
     );
     return onSnapshot(q, (snap) => {
-      setLotes(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VRLote));
+      const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as VRLote);
+      lista.sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+      setLotes(lista);
+      setLoading(false);
+    }, (err) => {
+      console.error("[VR] erro ao carregar lotes:", err);
+      setLotes([]);
       setLoading(false);
     });
   }, [rid, ano, mes]);

@@ -108,8 +108,13 @@ export function PessoasList({ restaurantId }: Props) {
 
       if (!search.trim()) return true;
       const s = search.toLowerCase();
+      // CPF: compara só os dígitos (aceita digitar com ou sem pontos/traço).
+      // Só busca por CPF quando o termo tem ao menos 1 dígito, senão "includes"
+      // de string vazia casaria com todo mundo e quebraria a busca por nome.
+      const sDigits = s.replace(/\D/g, "");
       return (p.nome || "").toLowerCase().includes(s)
-          || (p.email || "").toLowerCase().includes(s);
+          || (p.email || "").toLowerCase().includes(s)
+          || (sDigits.length > 0 && (p.cpf || "").replace(/\D/g, "").includes(sDigits));
     }).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
   }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, search]);
 
@@ -132,7 +137,7 @@ export function PessoasList({ restaurantId }: Props) {
       </div>
 
       <Input
-        placeholder="🔍 Buscar por nome ou email..."
+        placeholder="🔍 Buscar por nome, email ou CPF..."
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="mb-3"
