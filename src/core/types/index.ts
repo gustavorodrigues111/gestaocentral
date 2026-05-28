@@ -2105,6 +2105,15 @@ export type Admissao = {
   driveDocsAAssinarFolderId?: string;  // subpasta "docs a assinar" (termos gerados → Clicksign)
   driveDocsAssinadosFolderId?: string; // subpasta "docs assinados" (PDFs que voltam assinados)
 
+  // ─── Clicksign (envelope de assinatura) ───
+  // Envelope criado via API v3. status: draft|running|closed|canceled.
+  // O fluxo é por polling (cliente consulta o status); quando "closed", baixa
+  // os PDFs assinados e sobe pra "docs assinados".
+  clicksignEnvelopeId?: string;
+  clicksignStatus?: string;
+  clicksignEnviadoEm?: string;   // ISO
+  clicksignSandbox?: boolean;    // se foi criado no ambiente sandbox (teste)
+
   createdAt: string;
   updatedAt: string;
 };

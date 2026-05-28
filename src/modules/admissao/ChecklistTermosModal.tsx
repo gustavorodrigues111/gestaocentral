@@ -25,12 +25,38 @@ import {
   atualizarTermoAssinado,
   instanciarTermosAssinados,
   salvarDriveFolder,
+  salvarClicksignEnvelope,
+  salvarClicksignStatus,
 } from "../../core/admissao/admissaoHelpers";
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import { isDriveConfigured, driveFolderUrl } from "../../core/google/driveConfig";
 import {
-  createEmployeeFolderTree, uploadFileToFolder, listFolderFiles, type DriveFile,
+  createEmployeeFolderTree, uploadFileToFolder, listFolderFiles,
+  downloadDriveFileBase64, type DriveFile,
 } from "../../core/google/driveClient";
+import {
+  criarEnvelopeClicksign, statusEnvelopeClicksign, baixarAssinadoClicksign,
+  CLICKSIGN_SANDBOX,
+} from "../../core/clicksign/clicksignClient";
+
+// Traduz o status do envelope Clicksign pra PT-BR amigável.
+function traduzStatusClicksign(s: string): string {
+  switch (s) {
+    case "draft": return "rascunho";
+    case "running": return "aguardando assinatura";
+    case "closed": return "assinado ✓";
+    case "canceled": return "cancelado";
+    default: return s || "—";
+  }
+}
+
+// base64 → File (pra subir o PDF assinado de volta pro Drive).
+function base64ToFile(base64: string, filename: string): File {
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new File([bytes], filename, { type: "application/pdf" });
+}
 
 type Props = {
   admissao: Admissao;
@@ -76,6 +102,15 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     pdf: { blob: Blob; filename: string };
     termoId: string | null;
   } | null>(null);
+
+  // ─── Clicksign (envelope de assinatura) ───
+  const [clicksignEnvelopeId, setClicksignEnvelopeId] = useState<string | null>(
+    admissao.clicksignEnvelopeId || null,
+  );
+  const [clicksignStatus, setClicksignStatus] = useState<string>(admissao.clicksignStatus || "");
+  const [clicksignBusy, setClicksignBusy] = useState("");   // "enviando" | "verificando"
+  const [clicksignErro, setClicksignErro] = useState("");
+  const [clicksignMsg, setClicksignMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTermoId, setUploadTermoId] = useState<string | null>(null);
 
@@ -158,6 +193,83 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       if (prev) URL.revokeObjectURL(prev.pdfUrl);
       return null;
     });
+  }
+
+  // ─── Clicksign ───
+  // Junta os PDFs de "docs a assinar" (Drive) e cria o envelope no Clicksign,
+  // disparando a solicitação de assinatura por e-mail pro candidato.
+  async function enviarClicksign() {
+    setClicksignErro("");
+    setClicksignMsg("");
+    const cand = admissao.candidato;
+    if (!cand.email) {
+      setClicksignErro("Candidato sem e-mail cadastrado — necessário pra assinatura.");
+      return;
+    }
+    setClicksignBusy("enviando");
+    try {
+      const { aAssinar } = await ensureTree();
+      const arquivos = await listFolderFiles(aAssinar);
+      if (arquivos.length === 0) {
+        throw new Error("Nenhum documento em 'docs a assinar'. Gere/suba os termos primeiro.");
+      }
+      const docs: { filename: string; base64: string }[] = [];
+      for (const a of arquivos) {
+        docs.push({ filename: a.name, base64: await downloadDriveFileBase64(a.id) });
+      }
+      const { envelopeId, status } = await criarEnvelopeClicksign({
+        envelopeName: `Admissão - ${cand.nome}`,
+        signer: { name: cand.nome, email: cand.email, phone: cand.whatsapp || undefined },
+        docs,
+      });
+      await salvarClicksignEnvelope(admissao.id, envelopeId, status, CLICKSIGN_SANDBOX);
+      setClicksignEnvelopeId(envelopeId);
+      setClicksignStatus(status);
+      setClicksignMsg(`✓ Enviado pro Clicksign (${docs.length} doc). O candidato recebe por e-mail.`);
+    } catch (e) {
+      setClicksignErro(e instanceof Error ? e.message : "Falha ao enviar pro Clicksign.");
+    } finally {
+      setClicksignBusy("");
+    }
+  }
+
+  // Consulta o status do envelope. Se finalizado ("closed"), baixa os PDFs
+  // assinados e sobe pra "docs assinados" no Drive.
+  async function verificarAssinatura() {
+    if (!clicksignEnvelopeId) return;
+    setClicksignErro("");
+    setClicksignMsg("");
+    setClicksignBusy("verificando");
+    try {
+      const { status, documents } = await statusEnvelopeClicksign(clicksignEnvelopeId);
+      setClicksignStatus(status);
+      await salvarClicksignStatus(admissao.id, status);
+      if (status === "closed") {
+        const { assinados } = await ensureTree();
+        let n = 0;
+        for (const d of documents) {
+          try {
+            const { filename, base64 } = await baixarAssinadoClicksign(clicksignEnvelopeId, d.id);
+            const nome = filename.replace(/\.pdf$/i, "") + " (assinado).pdf";
+            await uploadFileToFolder(assinados, base64ToFile(base64, nome));
+            n++;
+          } catch {
+            /* documento sem assinado disponível ainda — ignora */
+          }
+        }
+        setClicksignMsg(
+          n > 0
+            ? `✓ Assinado! ${n} PDF(s) salvos em "docs assinados".`
+            : "✓ Envelope finalizado (sem PDFs pra baixar).",
+        );
+      } else {
+        setClicksignMsg(`Status atual: ${traduzStatusClicksign(status)}.`);
+      }
+    } catch (e) {
+      setClicksignErro(e instanceof Error ? e.message : "Falha ao verificar a assinatura.");
+    } finally {
+      setClicksignBusy("");
+    }
   }
 
   // Sincroniza com mudanças externas (admissão atualizada em outro lugar)
@@ -424,6 +536,46 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             )}
             {driveErro && (
               <div className="text-[11px] text-rose-600 dark:text-rose-400">{driveErro}</div>
+            )}
+          </div>
+        )}
+
+        {/* ─── Painel Clicksign ─── (usa os PDFs de "docs a assinar" do Drive) */}
+        {isDriveConfigured() && (
+          <div className="rounded-lg border border-orange-200 dark:border-orange-900/60 bg-orange-50/50 dark:bg-orange-900/10 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-orange-900 dark:text-orange-200">
+                ✍️ Clicksign{CLICKSIGN_SANDBOX ? " (sandbox)" : ""}
+              </span>
+              {clicksignEnvelopeId && (
+                <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400">
+                  {traduzStatusClicksign(clicksignStatus)}
+                </span>
+              )}
+            </div>
+            {!clicksignEnvelopeId ? (
+              <>
+                <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                  Envia os PDFs de "docs a assinar" pro Clicksign e dispara a
+                  assinatura por e-mail pro candidato.
+                  {CLICKSIGN_SANDBOX && " ⚠ Ambiente SANDBOX — sem validade jurídica."}
+                </p>
+                <Button size="sm" onClick={enviarClicksign} disabled={clicksignBusy !== ""}>
+                  {clicksignBusy === "enviando" ? "Enviando…" : "✍️ Enviar pro Clicksign"}
+                </Button>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={verificarAssinatura} disabled={clicksignBusy !== ""}>
+                  {clicksignBusy === "verificando" ? "Verificando…" : "🔄 Verificar assinatura"}
+                </Button>
+              </div>
+            )}
+            {clicksignMsg && (
+              <div className="text-[11px] text-emerald-700 dark:text-emerald-400">{clicksignMsg}</div>
+            )}
+            {clicksignErro && (
+              <div className="text-[11px] text-rose-600 dark:text-rose-400">{clicksignErro}</div>
             )}
           </div>
         )}

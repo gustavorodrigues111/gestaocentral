@@ -870,6 +870,33 @@ export async function salvarDriveFolder(
   }));
 }
 
+// Grava o envelope do Clicksign criado pra esta admissão.
+export async function salvarClicksignEnvelope(
+  admissaoId: string,
+  envelopeId: string,
+  status: string,
+  sandbox: boolean,
+): Promise<void> {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    clicksignEnvelopeId: envelopeId,
+    clicksignStatus: status,
+    clicksignEnviadoEm: new Date().toISOString(),
+    clicksignSandbox: sandbox,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
+// Atualiza só o status do envelope (após uma consulta de status).
+export async function salvarClicksignStatus(
+  admissaoId: string,
+  status: string,
+): Promise<void> {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    clicksignStatus: status,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
 // Monta mensagem WhatsApp pra avisar candidato que mandamos o kit de
 // assinatura por email. Usado pelo atalho whatsapp_kit_assinatura.
 export function montarMensagemKitAssinatura(

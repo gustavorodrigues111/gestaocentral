@@ -283,6 +283,23 @@ export async function createEmployeeFolderTree(
   };
 }
 
+// Converte ArrayBuffer → base64 (sem prefixo data URI). Loop simples; ok pro
+// tamanho de PDFs de termos (centenas de KB).
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let binary = "";
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+// Baixa o conteúdo de um arquivo do Drive como base64 (pra reenviar a outro
+// serviço, ex: Clicksign). Funciona pra arquivos que o app criou (drive.file).
+export async function downloadDriveFileBase64(fileId: string): Promise<string> {
+  const token = await requestAccessToken();
+  const res = await driveFetch(`${DRIVE_API}/files/${fileId}?alt=media`, { method: "GET" }, token);
+  return arrayBufferToBase64(await res.arrayBuffer());
+}
+
 // Lista os arquivos (não-pasta, não-lixeira) dentro de uma pasta.
 export async function listFolderFiles(folderId: string): Promise<DriveFile[]> {
   const token = await requestAccessToken();
