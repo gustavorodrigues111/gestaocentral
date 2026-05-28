@@ -829,7 +829,9 @@ function SubtarefaRow({
             onClick={onAtalhoEditarCandidato}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            ✏️ Editar dados básicos
+            {sub.id === "st_dados_candidato"
+              ? "✏️ Preencher dados básicos do candidato"
+              : "✏️ Editar dados básicos"}
           </button>
         )}
         {sub.atalho?.tipo === "editar_dados_finais" && (
@@ -838,7 +840,9 @@ function SubtarefaRow({
             onClick={onAtalhoEditarDadosFinais}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            ✏️ Editar dados finais
+            {sub.id === "st_dados_vaga"
+              ? "✏️ Preencher dados da vaga"
+              : "✏️ Editar dados finais"}
           </button>
         )}
         {sub.atalho?.tipo === "enviar_link_form" && (
