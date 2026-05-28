@@ -110,6 +110,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   const obrigatorios = useMemo(() => termos.filter(t => t.obrigatorio), [termos]);
   const obrigPendentes = obrigatorios.filter(t => !t.assinado).length;
   const totalAssinados = termos.filter(t => t.assinado).length;
+  // Conferência: quantos obrigatórios já têm um PDF/link anexado.
+  const obrigComAnexo = obrigatorios.filter(t => !!t.link).length;
 
   function togglarAssinatura(id: string) {
     const now = new Date().toISOString();
@@ -280,6 +282,25 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 <Button size="sm" variant="secondary" onClick={conferirKit} disabled={driveBusy !== ""}>
                   {driveBusy === "conferindo" ? "Conferindo…" : "🔄 Conferir kit"}
                 </Button>
+              </div>
+            )}
+            {obrigatorios.length > 0 && (
+              <div className="text-[11px] border-t border-indigo-200/60 dark:border-indigo-900/40 pt-1.5">
+                Anexos:{" "}
+                <span
+                  className={
+                    obrigComAnexo >= obrigatorios.length
+                      ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                      : "text-gray-600 dark:text-gray-400"
+                  }
+                >
+                  {obrigComAnexo} de {obrigatorios.length} termos obrigatórios com PDF/link
+                </span>
+                {obrigComAnexo < obrigatorios.length && (
+                  <span className="text-amber-700 dark:text-amber-400">
+                    {" "}· faltam {obrigatorios.length - obrigComAnexo}
+                  </span>
+                )}
               </div>
             )}
             {arquivosPasta && (
