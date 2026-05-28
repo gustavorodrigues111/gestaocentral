@@ -1,10 +1,11 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Modal master — aplicar auxílio fixo de VR em lote
+//  Modal master — aplicar "Auxílio fixo mensal" em lote
 //
-//  Define o mesmo `vrAuxilioFixoMensal` em TODOS os empregados do restaurante
-//  de uma vez (ex: Puba paga R$ 250 fixo de VR pra todo mundo). Evita editar
-//  pessoa a pessoa. O auxílio fixo é um valor mensal liso (sem vigência por
-//  data) — entra no cálculo do VR de qualquer mês que for gerado.
+//  Define o mesmo `vtAuxilioFixoMensal` (o campo "Auxílio fixo mensal" do
+//  cadastro do empregado, na aba Vínculo) em TODOS os empregados do restaurante
+//  de uma vez (ex: Puba paga R$ 250 fixo pra todo mundo). Esse auxílio entra no
+//  lote de Vale Transporte (vai cheio, não proporcional). Evita editar pessoa a
+//  pessoa. É um valor mensal liso — sem vigência por data.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useState } from "react";
@@ -26,7 +27,7 @@ function parseValor(s: string): number | null {
   return Number.isFinite(n) && n >= 0 ? n : null;
 }
 
-export function AplicarVRAuxFixoLoteModal({ restaurantNome, empregados, onClose }: Props) {
+export function AplicarAuxFixoLoteModal({ restaurantNome, empregados, onClose }: Props) {
   const [valor, setValor] = useState("250");
   const [soAtivos, setSoAtivos] = useState(true);
   const [aplicando, setAplicando] = useState(false);
@@ -41,9 +42,9 @@ export function AplicarVRAuxFixoLoteModal({ restaurantNome, empregados, onClose 
     if (v == null) { setErro("Valor inválido."); return; }
     if (alvo.length === 0) { setErro("Nenhum empregado pra aplicar."); return; }
     const ok = confirm(
-      `Definir auxílio fixo de VR = R$ ${v.toFixed(2).replace(".", ",")} ` +
+      `Definir auxílio fixo mensal = R$ ${v.toFixed(2).replace(".", ",")} ` +
       `em ${alvo.length} empregado(s) de ${restaurantNome}?\n\n` +
-      `Isso sobrescreve o auxílio fixo de VR atual de cada um.`,
+      `Isso sobrescreve o auxílio fixo mensal atual de cada um.`,
     );
     if (!ok) return;
     setAplicando(true);
@@ -51,10 +52,10 @@ export function AplicarVRAuxFixoLoteModal({ restaurantNome, empregados, onClose 
       // writeBatch aguenta 500 ops; lotes de restaurante ficam bem abaixo disso.
       const batch = writeBatch(db);
       for (const e of alvo) {
-        batch.update(doc(db, "empregados", e.id), { vrAuxilioFixoMensal: v });
+        batch.update(doc(db, "empregados", e.id), { vtAuxilioFixoMensal: v });
       }
       await batch.commit();
-      setMsg(`✓ Auxílio fixo de VR aplicado em ${alvo.length} empregado(s).`);
+      setMsg(`✓ Auxílio fixo mensal aplicado em ${alvo.length} empregado(s).`);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao aplicar.");
     } finally {
@@ -63,13 +64,13 @@ export function AplicarVRAuxFixoLoteModal({ restaurantNome, empregados, onClose 
   }
 
   return (
-    <Modal title="🧪 Auxílio fixo de VR em lote" onClose={onClose} maxWidth="max-w-md">
+    <Modal title="🧪 Auxílio fixo mensal em lote" onClose={onClose} maxWidth="max-w-md">
       <div className="p-4 space-y-4">
         <p className="text-xs text-gray-600 dark:text-gray-400">
-          Define o mesmo auxílio fixo mensal de Vale Refeição em todos os
-          empregados de <strong>{restaurantNome}</strong> de uma vez. O auxílio
-          fixo é um valor mensal liso (não tem vigência por data) — entra no
-          cálculo do VR de qualquer mês que você gerar.
+          Define o mesmo <strong>auxílio fixo mensal</strong> (o campo do cadastro
+          do empregado, na aba Vínculo) em todos os empregados de{" "}
+          <strong>{restaurantNome}</strong> de uma vez. Esse auxílio entra no lote
+          de Vale Transporte. É um valor mensal liso — não tem vigência por data.
         </p>
 
         <Input
@@ -91,7 +92,7 @@ export function AplicarVRAuxFixoLoteModal({ restaurantNome, empregados, onClose 
         </label>
 
         <p className="text-[11px] text-amber-700 dark:text-amber-400">
-          ⚠ Sobrescreve o auxílio fixo de VR atual de cada empregado selecionado.
+          ⚠ Sobrescreve o auxílio fixo mensal atual de cada empregado selecionado.
           Pra zerar pra alguém depois, edite o cadastro dele.
         </p>
 

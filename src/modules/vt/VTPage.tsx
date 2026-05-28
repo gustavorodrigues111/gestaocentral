@@ -11,6 +11,7 @@ import { Button } from "../../core/ui/Button";
 import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVTModal } from "./ExportarVTModal";
+import { AplicarAuxFixoLoteModal } from "./AplicarAuxFixoLoteModal";
 import type { VTPDFLinha } from "./gerarVTPDF";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
 import { AREAS, VT_LOTE_STATUS_LABEL } from "../../core/types";
@@ -86,6 +87,8 @@ export function VTPage() {
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
   // Modal de exportar PDF
   const [showExportPDF, setShowExportPDF] = useState(false);
+  // Modal master: aplicar auxílio fixo mensal em lote
+  const [showAuxFixoLote, setShowAuxFixoLote] = useState(false);
 
   // Override local de toggle desc.sugerido / valores manuais (antes de criar lote)
   // Key: empregadoId → { ativo, descontoManual, auxPontual }
@@ -607,6 +610,11 @@ export function VTPage() {
               {VT_LOTE_STATUS_LABEL[statusLote]}
             </div>
           )}
+          {isMaster && (
+            <Button variant="secondary" size="sm" onClick={() => setShowAuxFixoLote(true)} title="Definir o mesmo auxílio fixo mensal em todos os empregados">
+              🧪 Auxílio fixo em lote
+            </Button>
+          )}
         </div>
       </div>
 
@@ -888,6 +896,14 @@ export function VTPage() {
           statusLabel={loteAtivo ? VT_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização"}
           linhas={linhasPdf}
           onClose={() => setShowExportPDF(false)}
+        />
+      )}
+
+      {showAuxFixoLote && (
+        <AplicarAuxFixoLoteModal
+          restaurantNome={activeRestaurant?.nome || "Restaurante"}
+          empregados={empregados}
+          onClose={() => setShowAuxFixoLote(false)}
         />
       )}
     </div>
