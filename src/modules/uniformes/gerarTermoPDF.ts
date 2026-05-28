@@ -193,11 +193,23 @@ export async function gerarTermoUniformesPDF(params: TermoPDFParams): Promise<Js
   return doc;
 }
 
+/** Nome de arquivo padrão do termo (ex: termo-uniforme-caua-ramses.pdf). */
+export function termoUniformesFilename(params: TermoPDFParams): string {
+  const safeName = params.candidatoNome
+    .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+  return `termo-${params.entrega.tipo}-${safeName}.pdf`;
+}
+
 /** Baixa o PDF no navegador. */
 export async function baixarTermoUniformesPDF(params: TermoPDFParams): Promise<void> {
   const doc = await gerarTermoUniformesPDF(params);
-  const safeName = params.candidatoNome
-    .replace(/[^a-zA-Z0-9]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
-  const tipo = params.entrega.tipo;
-  doc.save(`termo-${tipo}-${safeName}.pdf`);
+  doc.save(termoUniformesFilename(params));
+}
+
+/** Gera o PDF e retorna como Blob + nome de arquivo (pra upload, ex: Drive). */
+export async function gerarTermoUniformesBlob(
+  params: TermoPDFParams,
+): Promise<{ blob: Blob; filename: string }> {
+  const doc = await gerarTermoUniformesPDF(params);
+  return { blob: doc.output("blob"), filename: termoUniformesFilename(params) };
 }

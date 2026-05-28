@@ -16,7 +16,7 @@ import type {
   TermoUniformesConfig, TipoItemUniforme,
 } from "../../core/types";
 import { criarEntrega } from "../../core/uniformes/uniformesHelpers";
-import { baixarTermoUniformesPDF } from "./gerarTermoPDF";
+import { gerarTermoUniformesPDF, termoUniformesFilename } from "./gerarTermoPDF";
 
 type Props = {
   tipo: TipoItemUniforme;
@@ -31,7 +31,7 @@ type Props = {
   admissaoContexto?: Admissao;
   /** Callback chamado quando a entrega é criada com sucesso —
       usado pra marcar a subtarefa correspondente. */
-  onEntregaCriada?: () => void;
+  onEntregaCriada?: (pdf?: { blob: Blob; filename: string }) => void;
 };
 
 type LinhaEntrega = {
@@ -199,16 +199,18 @@ export function NovaEntregaModal({
       const cpfPdf = modoAdmissao && admissaoContexto
         ? admissaoContexto.candidato.cpf
         : (pessoaSel?.cpf || "");
-      await baixarTermoUniformesPDF({
+      const pdfParams = {
         entrega,
         restaurant: activeRestaurant,
         candidatoNome: nomePdf,
         candidatoCpf: cpfPdf,
         funcao: cargo?.nome,
         config: cfg,
-      });
-
-      onEntregaCriada?.();
+      };
+      const doc = await gerarTermoUniformesPDF(pdfParams);
+      const filename = termoUniformesFilename(pdfParams);
+      doc.save(filename); // baixa cópia local (comportamento de antes)
+      onEntregaCriada?.({ blob: doc.output("blob"), filename });
       onClose();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");

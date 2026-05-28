@@ -106,6 +106,34 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     }));
   }
 
+  // Chamado quando o NovaEntregaModal gera o termo (uniforme/EPI). Marca como
+  // assinado e — se o Drive tá configurado — pergunta se sobe o PDF gerado
+  // direto pra pasta "docs assinados" (sem precisar baixar e re-subir à mão).
+  async function aoGerarTermoEspecial(pdf?: { blob: Blob; filename: string }) {
+    const tipo = gerarTermoTipo;
+    if (!tipo) return;
+    marcarTermoEspecialComoAssinado(tipo);
+    if (!pdf || !isDriveConfigured()) return;
+    const termo = termos.find(t => t.tipoEspecial === tipo);
+    const ok = confirm(
+      `Termo gerado: ${pdf.filename}\n\n` +
+      `Subir direto pra pasta "docs assinados" no Google Drive?`,
+    );
+    if (!ok) return;
+    setDriveErro("");
+    setDriveBusy(termo ? `up_${termo.id}` : "criando");
+    try {
+      const folderId = await ensureTree();
+      const file = new File([pdf.blob], pdf.filename, { type: "application/pdf" });
+      const uploaded = await uploadFileToFolder(folderId, file);
+      if (uploaded.webViewLink && termo) atualizarLink(termo.id, uploaded.webViewLink);
+    } catch (e) {
+      setDriveErro(e instanceof Error ? e.message : "Falha ao subir o termo gerado pro Drive.");
+    } finally {
+      setDriveBusy("");
+    }
+  }
+
   // Sincroniza com mudanças externas (admissão atualizada em outro lugar)
   useEffect(() => {
     setTermos(instanciarTermosAssinados(admissao.termosAssinados));
@@ -489,7 +517,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           activeRestaurant={activeRestaurant}
           pessoa={pessoa}
           admissaoContexto={admissao}
-          onEntregaCriada={() => marcarTermoEspecialComoAssinado(gerarTermoTipo)}
+          onEntregaCriada={(pdf) => aoGerarTermoEspecial(pdf)}
           onClose={() => setGerarTermoTipo(null)}
         />
       )}
