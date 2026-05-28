@@ -2091,6 +2091,13 @@ export type Admissao = {
   // — V1 usa default hardcoded).
   termosAssinados?: TermoAssinado[];
 
+  // ─── Pasta no Google Drive (kit de documentos para assinatura) ───
+  // Criada pelo ChecklistTermosModal via integração browser (escopo
+  // drive.file). Guardamos só id + URL; os PDFs assinados vivem no Drive
+  // da conta conectada (DP cola a URL no Clicksign).
+  driveFolderId?: string;
+  driveFolderUrl?: string;
+
   createdAt: string;
   updatedAt: string;
 };

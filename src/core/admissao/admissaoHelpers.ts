@@ -852,6 +852,20 @@ export async function atualizarTermoAssinado(
   }));
 }
 
+// Grava a pasta do Google Drive (kit de documentos) na admissão. Chamado
+// quando o ChecklistTermosModal cria a pasta via integração browser.
+export async function salvarDriveFolder(
+  admissaoId: string,
+  folderId: string,
+  folderUrl: string,
+): Promise<void> {
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    driveFolderId: folderId,
+    driveFolderUrl: folderUrl,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
 // Monta mensagem WhatsApp pra avisar candidato que mandamos o kit de
 // assinatura por email. Usado pelo atalho whatsapp_kit_assinatura.
 export function montarMensagemKitAssinatura(

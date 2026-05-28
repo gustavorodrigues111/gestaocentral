@@ -12,7 +12,8 @@
 //  global de `getTermosAssinaturaDefault()`.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
@@ -23,8 +24,13 @@ import type {
 import {
   atualizarTermoAssinado,
   instanciarTermosAssinados,
+  salvarDriveFolder,
 } from "../../core/admissao/admissaoHelpers";
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
+import { isDriveConfigured, driveFolderUrl } from "../../core/google/driveConfig";
+import {
+  createDriveFolder, uploadFileToFolder, listFolderFiles, type DriveFile,
+} from "../../core/google/driveClient";
 
 type Props = {
   admissao: Admissao;
@@ -40,6 +46,24 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  // ─── Google Drive (kit de documentos para assinatura) ───
+  // Pasta no Drive da conta conectada. Seed do que já tá salvo na admissão.
+  const [folder, setFolder] = useState<{ id: string; url: string } | null>(
+    admissao.driveFolderId
+      ? {
+          id: admissao.driveFolderId,
+          url: admissao.driveFolderUrl || driveFolderUrl(admissao.driveFolderId),
+        }
+      : null,
+  );
+  // "" | "criando" | "conferindo" | "up_<termoId>"
+  const [driveBusy, setDriveBusy] = useState("");
+  const [driveErro, setDriveErro] = useState("");
+  const [copiado, setCopiado] = useState(false);
+  const [arquivosPasta, setArquivosPasta] = useState<DriveFile[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTermoId, setUploadTermoId] = useState<string | null>(null);
 
   // Modal de entrega (uniforme/EPI) — aberto pelo botão "Gerar termo"
   const [gerarTermoTipo, setGerarTermoTipo] = useState<"uniforme" | "epi" | null>(null);
@@ -117,6 +141,77 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     }));
   }
 
+  // Garante que a pasta do Drive existe (cria + salva na admissão se ainda
+  // não). Retorna o id da pasta. Abre o popup do Google na 1ª vez.
+  async function ensureFolder(): Promise<string> {
+    if (folder?.id) return folder.id;
+    const nome = `Admissão - ${admissao.candidato.nome} - CPF ${admissao.candidato.cpf}`;
+    const created = await createDriveFolder(nome);
+    await salvarDriveFolder(admissao.id, created.id, created.url);
+    setFolder(created);
+    return created.id;
+  }
+
+  async function criarPasta() {
+    setDriveErro("");
+    setDriveBusy("criando");
+    try {
+      await ensureFolder();
+    } catch (e) {
+      setDriveErro(e instanceof Error ? e.message : "Falha ao criar a pasta no Drive.");
+    } finally {
+      setDriveBusy("");
+    }
+  }
+
+  async function copiarLink() {
+    if (!folder) return;
+    try {
+      await navigator.clipboard.writeText(folder.url);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setDriveErro("Não consegui copiar — abra a pasta e copie o link manualmente.");
+    }
+  }
+
+  async function conferirKit() {
+    if (!folder) return;
+    setDriveErro("");
+    setDriveBusy("conferindo");
+    try {
+      setArquivosPasta(await listFolderFiles(folder.id));
+    } catch (e) {
+      setDriveErro(e instanceof Error ? e.message : "Falha ao listar a pasta.");
+    } finally {
+      setDriveBusy("");
+    }
+  }
+
+  function pedirArquivo(termoId: string) {
+    setUploadTermoId(termoId);
+    fileInputRef.current?.click();
+  }
+
+  async function onArquivoEscolhido(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";   // permite re-subir o mesmo arquivo
+    const termoId = uploadTermoId;
+    setUploadTermoId(null);
+    if (!file || !termoId) return;
+    setDriveErro("");
+    setDriveBusy(`up_${termoId}`);
+    try {
+      const folderId = await ensureFolder();
+      const uploaded = await uploadFileToFolder(folderId, file);
+      if (uploaded.webViewLink) atualizarLink(termoId, uploaded.webViewLink);
+    } catch (err) {
+      setDriveErro(err instanceof Error ? err.message : "Falha no upload do arquivo.");
+    } finally {
+      setDriveBusy("");
+    }
+  }
+
   async function salvar() {
     setErro("");
     setSalvando(true);
@@ -136,6 +231,94 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           Marca cada termo conforme o candidato vai assinando. Cole o link do
           PDF assinado (Drive, Clicksign) pra deixar registrado.
         </div>
+
+        {/* Input de arquivo escondido — acionado pelo "⬆️ Subir PDF" de cada termo */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          onChange={onArquivoEscolhido}
+        />
+
+        {/* ─── Painel Google Drive ─── (só aparece se a integração tá configurada) */}
+        {isDriveConfigured() && (
+          <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-900/10 p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
+                📁 Google Drive
+              </span>
+              {folder && (
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
+                  pasta criada ✓
+                </span>
+              )}
+            </div>
+            {!folder ? (
+              <>
+                <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                  Crie uma pasta no Drive pra subir os PDFs assinados. Na 1ª vez o
+                  Google pede pra você autorizar o acesso — escolha a conta certa.
+                </p>
+                <Button size="sm" onClick={criarPasta} disabled={driveBusy !== ""}>
+                  {driveBusy === "criando" ? "Criando…" : "📁 Criar pasta no Google Drive"}
+                </Button>
+              </>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={copiarLink}>
+                  {copiado ? "✓ link copiado" : "📋 Copiar link da pasta"}
+                </Button>
+                <a
+                  href={folder.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  ↗ abrir pasta
+                </a>
+                <Button size="sm" variant="secondary" onClick={conferirKit} disabled={driveBusy !== ""}>
+                  {driveBusy === "conferindo" ? "Conferindo…" : "🔄 Conferir kit"}
+                </Button>
+              </div>
+            )}
+            {arquivosPasta && (
+              <div className="text-[11px] text-gray-600 dark:text-gray-400 border-t border-indigo-200/60 dark:border-indigo-900/40 pt-1.5">
+                {arquivosPasta.length === 0 ? (
+                  <span className="text-amber-700 dark:text-amber-400">
+                    Nenhum arquivo na pasta ainda.
+                  </span>
+                ) : (
+                  <>
+                    <div className="mb-1">{arquivosPasta.length} arquivo(s) na pasta:</div>
+                    <ul className="space-y-0.5">
+                      {arquivosPasta.map((a) => (
+                        <li key={a.id} className="truncate">
+                          📄{" "}
+                          {a.webViewLink ? (
+                            <a
+                              href={a.webViewLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                            >
+                              {a.name}
+                            </a>
+                          ) : (
+                            a.name
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
+              </div>
+            )}
+            {driveErro && (
+              <div className="text-[11px] text-rose-600 dark:text-rose-400">{driveErro}</div>
+            )}
+          </div>
+        )}
 
         <div className="flex items-center justify-between text-xs">
           <span className="text-gray-500 dark:text-gray-400">
@@ -205,6 +388,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                       : t.tipoEspecial === "uniforme"
                         ? "📦 Gerar termo de uniformes"
                         : "🦺 Gerar termo de EPIs"}
+                  </button>
+                )}
+                {isDriveConfigured() && (
+                  <button
+                    type="button"
+                    onClick={() => pedirArquivo(t.id)}
+                    disabled={driveBusy !== ""}
+                    className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium"
+                  >
+                    {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir PDF pro Drive"}
                   </button>
                 )}
                 <input
