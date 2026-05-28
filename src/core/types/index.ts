@@ -486,6 +486,12 @@ export type Restaurant = {
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
   clicksignEmpresaEmail?: string;
+  // Assinatura Automática: a empresa assina sozinha ao gerar o envelope
+  // (requer Termo de Assinatura Automática configurado no Clicksign).
+  // Exige CPF + nascimento do representante batendo com o termo.
+  clicksignEmpresaAssinaturaAuto?: boolean;
+  clicksignEmpresaCpf?: string;
+  clicksignEmpresaNascimento?: string;   // YYYY-MM-DD
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)

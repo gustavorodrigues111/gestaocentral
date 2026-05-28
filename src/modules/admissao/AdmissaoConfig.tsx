@@ -71,6 +71,15 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [clicksignEmpresaEmail, setClicksignEmpresaEmail] = useState<string>(
     activeRestaurant.clicksignEmpresaEmail || "",
   );
+  const [clicksignEmpresaAuto, setClicksignEmpresaAuto] = useState<boolean>(
+    !!activeRestaurant.clicksignEmpresaAssinaturaAuto,
+  );
+  const [clicksignEmpresaCpf, setClicksignEmpresaCpf] = useState<string>(
+    activeRestaurant.clicksignEmpresaCpf || "",
+  );
+  const [clicksignEmpresaNascimento, setClicksignEmpresaNascimento] = useState<string>(
+    activeRestaurant.clicksignEmpresaNascimento || "",
+  );
 
   async function selecionarPastaDrive() {
     setDriveMsg("");
@@ -140,6 +149,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         templatesAdmissao: Object.keys(templatesPraSalvar).length > 0 ? templatesPraSalvar : undefined,
         clicksignEmpresaNome: clicksignEmpresaNome.trim() || undefined,
         clicksignEmpresaEmail: clicksignEmpresaEmail.trim() || undefined,
+        clicksignEmpresaAssinaturaAuto: clicksignEmpresaAuto || undefined,
+        clicksignEmpresaCpf: clicksignEmpresaCpf.trim() || undefined,
+        clicksignEmpresaNascimento: clicksignEmpresaNascimento.trim() || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -263,6 +275,42 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             placeholder="contratos@empresa.com"
           />
         </div>
+
+        {/* Assinatura automática da empresa */}
+        <label className="flex items-start gap-2 cursor-pointer pt-1">
+          <input
+            type="checkbox"
+            checked={clicksignEmpresaAuto}
+            onChange={(e) => setClicksignEmpresaAuto(e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-indigo-600 flex-shrink-0"
+          />
+          <span className="text-xs text-gray-700 dark:text-gray-300">
+            <strong>Assinatura automática</strong> — a empresa assina sozinha ao enviar
+            (só o empregado assina manual). Exige um <em>Termo de Assinatura Automática</em>
+            {" "}configurado no Clicksign pra esse representante.
+          </span>
+        </label>
+        {clicksignEmpresaAuto && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-6">
+            <Input
+              label="CPF do representante"
+              value={clicksignEmpresaCpf}
+              onChange={(e) => setClicksignEmpresaCpf(e.target.value)}
+              placeholder="000.000.000-00"
+              inputMode="numeric"
+            />
+            <Input
+              label="Data de nascimento"
+              type="date"
+              value={clicksignEmpresaNascimento}
+              onChange={(e) => setClicksignEmpresaNascimento(e.target.value)}
+            />
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 md:col-span-2">
+              ⚠ Nome, e-mail, CPF e nascimento precisam ser <strong>idênticos</strong> aos do
+              Termo de Assinatura Automática assinado no Clicksign — senão o envio falha.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Contatos externos — 3 cards: Clínica de exames, Contabilidade,

@@ -42,6 +42,7 @@ type Signer = {
   phone?: unknown;
   documentation?: unknown;  // CPF
   birthday?: unknown;        // YYYY-MM-DD
+  autoSignature?: unknown;   // assinatura automática (empresa)
 };
 type Doc = { filename?: unknown; base64?: unknown };
 
@@ -121,6 +122,7 @@ async function criarEnvelope(
     phone?: string;
     documentation?: string;
     birthday?: string;
+    autoSignature?: boolean;   // assinatura automática (empresa)
   }[],
   docs: { filename: string; base64: string }[],
   message?: string,
@@ -153,8 +155,9 @@ async function criarEnvelope(
     docIds.push(dataId(dr));
   }
 
-  // 3) signatários (ex: empresa + empregado)
-  const signerIds: string[] = [];
+  // 3) signatários (ex: empresa + empregado). Guarda id + método de auth de
+  //    cada um (auto_signature pra empresa quando habilitado).
+  const signerEntries: { id: string; auth: string }[] = [];
   for (const s of signers) {
     const attrs: Record<string, unknown> = { name: s.name, email: s.email };
     if (s.phone) attrs.phone_number = s.phone;
@@ -164,21 +167,24 @@ async function criarEnvelope(
     const sr = await cs(sandbox, "POST", `/envelopes/${envelopeId}/signers`, {
       data: { type: "signers", attributes: attrs },
     });
-    signerIds.push(dataId(sr));
+    signerEntries.push({
+      id: dataId(sr),
+      auth: s.autoSignature ? "auto_signature" : "email",
+    });
   }
 
   // 4) requisitos: cada documento × cada signatário (qualificação + autenticação)
   for (const docId of docIds) {
-    for (const signerId of signerIds) {
+    for (const se of signerEntries) {
       const rels = {
         document: { data: { type: "documents", id: docId } },
-        signer: { data: { type: "signers", id: signerId } },
+        signer: { data: { type: "signers", id: se.id } },
       };
       await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
         data: { type: "requirements", attributes: { action: "agree", role: "sign" }, relationships: rels },
       });
       await cs(sandbox, "POST", `/envelopes/${envelopeId}/requirements`, {
-        data: { type: "requirements", attributes: { action: "provide_evidence", auth: "email" }, relationships: rels },
+        data: { type: "requirements", attributes: { action: "provide_evidence", auth: se.auth }, relationships: rels },
       });
     }
   }
@@ -276,6 +282,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
           phone: typeof s.phone === "string" ? s.phone.trim() : undefined,
           documentation: typeof s.documentation === "string" ? s.documentation.trim() : undefined,
           birthday: typeof s.birthday === "string" ? s.birthday.trim() : undefined,
+          autoSignature: s.autoSignature === true,
         }))
         .filter((s) => s.name && s.email);
       const envelopeName = typeof body.envelopeName === "string" ? body.envelopeName.trim() : "";

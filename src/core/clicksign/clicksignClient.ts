@@ -22,6 +22,7 @@ export type ClicksignSigner = {
   phone?: string;
   documentation?: string;  // CPF
   birthday?: string;        // YYYY-MM-DD
+  autoSignature?: boolean;  // assinatura automática (empresa)
 };
 export type ClicksignDoc = { filename: string; base64: string };
 export type ClicksignDocResumo = {

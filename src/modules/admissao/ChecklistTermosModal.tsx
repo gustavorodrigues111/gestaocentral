@@ -236,8 +236,19 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       const { envelopeId, status } = await criarEnvelopeClicksign({
         envelopeName: `Admissão - ${cand.nome}`,
         signers: [
-          // Empresa (fixo, configurado por restaurante)
-          { name: empresaNome, email: empresaEmail },
+          // Empresa (fixo, configurado por restaurante). Se assinatura
+          // automática estiver ligada, vai com CPF + nascimento + auto.
+          {
+            name: empresaNome,
+            email: empresaEmail,
+            autoSignature: activeRestaurant.clicksignEmpresaAssinaturaAuto || undefined,
+            documentation: activeRestaurant.clicksignEmpresaAssinaturaAuto
+              ? formatCpf(activeRestaurant.clicksignEmpresaCpf) || undefined
+              : undefined,
+            birthday: activeRestaurant.clicksignEmpresaAssinaturaAuto
+              ? activeRestaurant.clicksignEmpresaNascimento || undefined
+              : undefined,
+          },
           // Empregado (dados da ficha cadastral)
           {
             name: cand.nome,
