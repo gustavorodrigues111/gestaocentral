@@ -1432,6 +1432,67 @@ function construirWorkScheduleDaAdmissao(
   }];
 }
 
+// Parser de valor digitado no formulário público (campo livre). Aceita
+// "4,40", "4.40", "R$ 4,40" e "1.234,56". Retorna 0 se não der pra ler.
+function parseValorBR(v: unknown): number {
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (typeof v !== "string") return 0;
+  let s = v.trim().replace(/[^\d.,-]/g, "");
+  if (s.includes(",") && s.includes(".")) {
+    s = s.replace(/\./g, "").replace(",", ".");   // 1.234,56 → 1234.56
+  } else {
+    s = s.replace(",", ".");                        // 4,40 → 4.40
+  }
+  const n = parseFloat(s);
+  return Number.isFinite(n) ? n : 0;
+}
+
+type VTFromAdmissao = {
+  vtAtivo?: boolean;
+  vtPassagensPorDia?: number;
+  vtValorPassagem?: number;
+  vtRecebePeloCaju?: boolean;
+};
+
+// Converte os dados de vale-transporte preenchidos na admissão pro modelo do
+// Empregado. O cálculo de VT é `dias × passagens/dia × valor` — então o que
+// importa pro dinheiro é o valor diário. Mapeamento:
+//   • "não utilizo transporte público" → VT desligado.
+//   • 1 trecho (ou todos com a MESMA tarifa) → preserva (qtde, tarifa) legível.
+//   • trechos com tarifas diferentes → colapsa em 1 passagem/dia com o valor
+//     diário total (mantém o cálculo exato; a quebra por trecho fica na ficha).
+function construirVTDaAdmissao(dados: Record<string, unknown>): VTFromAdmissao {
+  if (dados.vt_nao_utiliza === true) return { vtAtivo: false };
+
+  const lista = Array.isArray(dados.transporte)
+    ? (dados.transporte as Array<{ tarifa?: unknown; qtde?: unknown }>)
+    : [];
+  const trechos = lista
+    .map((t) => ({ tarifa: parseValorBR(t?.tarifa), qtde: parseValorBR(t?.qtde) }))
+    .filter((t) => t.tarifa > 0 && t.qtde > 0);
+
+  if (trechos.length === 0) return {}; // nada válido → deixa VT ausente (off)
+
+  const tarifasIguais = trechos.every((t) => t.tarifa === trechos[0].tarifa);
+  if (tarifasIguais) {
+    const qtdeTotal = trechos.reduce((s, t) => s + t.qtde, 0);
+    return {
+      vtAtivo: true,
+      vtPassagensPorDia: qtdeTotal,
+      vtValorPassagem: trechos[0].tarifa,
+      vtRecebePeloCaju: true,
+    };
+  }
+
+  const totalDiario = trechos.reduce((s, t) => s + t.tarifa * t.qtde, 0);
+  return {
+    vtAtivo: true,
+    vtPassagensPorDia: 1,
+    vtValorPassagem: Math.round(totalDiario * 100) / 100,
+    vtRecebePeloCaju: true,
+  };
+}
+
 export async function aprovarAdmissao(
   admissao: Admissao,
   aprovadoPor: Pessoa,
@@ -1512,6 +1573,12 @@ export async function aprovarAdmissao(
     aprovadoPor.id,
   );
 
+  // Vale-transporte: o candidato declarou no formulário público se usa (e os
+  // trechos com tarifa + qtde/dia) ou se abre mão. Converte pro modelo do
+  // Empregado (vtAtivo + passagens/dia × valor) pra o VT já calcular em cima
+  // da escala sem recadastro.
+  const vt = construirVTDaAdmissao(dados);
+
   const novoEmpregado: Omit<Empregado, "id"> = {
     restaurantId: admissao.restaurantId,
     pessoaId,
@@ -1521,6 +1588,7 @@ export async function aprovarAdmissao(
     driveFolderUrl: admissao.driveFolderUrl || null,
     periodos: [periodo],
     workSchedules,
+    ...vt,
     estaAtivo: true,
     admissaoAtual: dataAdmissaoStr,
     email: candidato.email,
