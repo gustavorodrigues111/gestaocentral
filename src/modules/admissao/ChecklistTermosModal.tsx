@@ -339,10 +339,21 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   // Conferência: quantos obrigatórios já têm um PDF/link anexado.
   const obrigComAnexo = obrigatorios.filter(t => !!t.link).length;
 
+  // Aplica os termos no estado E grava no Firestore na hora — assim fechar e
+  // reabrir o checklist NÃO perde o que foi feito (upload, tick, N/A).
+  async function persistirTermos(novos: TermoAssinado[]) {
+    setTermos(novos);
+    try {
+      await atualizarTermoAssinado(admissao.id, novos);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar.");
+    }
+  }
+
   // Marca/desmarca "não se aplica" — desobriga o termo. Ao marcar, limpa o
   // estado de assinado (não faz sentido um termo N/A estar "assinado").
   function togglarNaoSeAplica(id: string) {
-    setTermos(prev => prev.map(t => {
+    const novos = termos.map(t => {
       if (t.id !== id) return t;
       const merged: TermoAssinado = { ...t };
       if (t.naoSeAplica) {
@@ -355,18 +366,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         delete merged.link;
       }
       return merged;
-    }));
+    });
+    void persistirTermos(novos);
   }
 
   function togglarAssinatura(id: string) {
     const now = new Date().toISOString();
-    setTermos(prev => prev.map(t => {
+    const novos = termos.map(t => {
       if (t.id !== id) return t;
       const assinado = !t.assinado;
-      const merged: TermoAssinado = {
-        ...t,
-        assinado,
-      };
+      const merged: TermoAssinado = { ...t, assinado };
       if (assinado) {
         merged.assinadoEm = now;
         merged.assinadoPor = { id: pessoa.id, nome: pessoa.nome };
@@ -375,9 +384,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         delete merged.assinadoPor;
       }
       return merged;
-    }));
+    });
+    void persistirTermos(novos);
   }
 
+  // Edição manual do link (digitação) — só atualiza o estado; a persistência
+  // acontece no onBlur do campo (pra não gravar a cada tecla).
   function atualizarLink(id: string, link: string) {
     setTermos(prev => prev.map(t => {
       if (t.id !== id) return t;
@@ -472,7 +484,21 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       // voltou assinado (upload manual de garantia).
       const alvo = target === "assinados" ? assinados : aAssinar;
       const uploaded = await uploadFileToFolder(alvo, file);
-      if (uploaded.webViewLink) atualizarLink(termoId, uploaded.webViewLink);
+      // Subiu com sucesso → fixa o link, marca o termo (tica) e PERSISTE na
+      // hora. Assim, fechar e reabrir o checklist mantém tudo.
+      const now = new Date().toISOString();
+      const novos = termos.map(t => {
+        if (t.id !== termoId) return t;
+        const merged: TermoAssinado = {
+          ...t,
+          assinado: true,
+          assinadoEm: now,
+          assinadoPor: { id: pessoa.id, nome: pessoa.nome },
+        };
+        if (uploaded.webViewLink) merged.link = uploaded.webViewLink;
+        return merged;
+      });
+      await persistirTermos(novos);
     } catch (err) {
       setDriveErro(err instanceof Error ? err.message : "Falha no upload do arquivo.");
     } finally {
@@ -783,6 +809,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   type="url"
                   value={t.link || ""}
                   onChange={(e) => atualizarLink(t.id, e.target.value)}
+                  onBlur={() => persistirTermos(termos)}
                   placeholder="https://… (link do PDF — manual)"
                   className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
                 />

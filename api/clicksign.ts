@@ -304,7 +304,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         ? { admissao_id: externalId, origem: "planejamento.app" }
         : undefined;
       const out = await criarEnvelope(
-        sandbox, envelopeName, { name, email, phone: phone || undefined }, docs, message, metadata,
+        sandbox, envelopeName, signers, docs, message, metadata,
       );
       res.status(200).json(out);
       return;
