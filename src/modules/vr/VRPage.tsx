@@ -8,6 +8,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
+import { AplicarVRAuxFixoLoteModal } from "./AplicarVRAuxFixoLoteModal";
 import { calcularTotais, montarLinhasLote, recalcularTotal } from "./calc";
 import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha } from "../../core/types";
 import { VR_LOTE_STATUS_LABEL } from "../../core/types";
@@ -49,6 +50,7 @@ export function VRPage() {
   const [escalaRef, setEscalaRef] = useState<EscalaMes | null>(null);
   const [lotes, setLotes] = useState<VRLote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAuxLote, setShowAuxLote] = useState(false);
 
   // mês de referência pro desconto = lote.mes − 2
   const ref = useMemo(() => shiftMonth(ano, mes, -2), [ano, mes]);
@@ -268,6 +270,11 @@ export function VRPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🍱 Vale Refeição</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
         </div>
+        {isMaster && (
+          <Button variant="secondary" size="sm" onClick={() => setShowAuxLote(true)} title="Definir o mesmo auxílio fixo mensal de VR em todos os empregados">
+            🧪 Auxílio fixo em lote
+          </Button>
+        )}
       </div>
 
       {/* Navegação de mês */}
@@ -475,6 +482,14 @@ export function VRPage() {
             ))}
           </ul>
         </div>
+      )}
+
+      {showAuxLote && (
+        <AplicarVRAuxFixoLoteModal
+          restaurantNome={activeRestaurant.nome}
+          empregados={empregados}
+          onClose={() => setShowAuxLote(false)}
+        />
       )}
     </div>
   );
