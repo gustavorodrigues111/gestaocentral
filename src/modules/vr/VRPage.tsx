@@ -8,6 +8,8 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
+import { ExportarVRModal } from "./ExportarVRModal";
+import type { VRPDFLinha } from "./gerarVRPDF";
 import { calcularTotais, montarLinhasLote, recalcularTotal } from "./calc";
 import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha } from "../../core/types";
 import { VR_LOTE_STATUS_LABEL } from "../../core/types";
@@ -49,6 +51,7 @@ export function VRPage() {
   const [escalaRef, setEscalaRef] = useState<EscalaMes | null>(null);
   const [lotes, setLotes] = useState<VRLote[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showExportPDF, setShowExportPDF] = useState(false);
 
   // mês de referência pro desconto = lote.mes − 2
   const ref = useMemo(() => shiftMonth(ano, mes, -2), [ano, mes]);
@@ -135,6 +138,19 @@ export function VRPage() {
 
   const linhasExibidas = loteAtivo?.linhas || linhasPreview;
   const totais = useMemo(() => calcularTotais(linhasExibidas), [linhasExibidas]);
+
+  // Linhas pro PDF — enriquece com a forma de pagamento (Caju/PIX) do cadastro.
+  const empregadosById = useMemo(
+    () => Object.fromEntries(empregados.map(e => [e.id, e])),
+    [empregados],
+  );
+  const linhasPdf = useMemo<VRPDFLinha[]>(
+    () => linhasExibidas.map(l => ({
+      ...l,
+      recebePeloCaju: empregadosById[l.empregadoId]?.vrRecebePeloCaju !== false,
+    })),
+    [linhasExibidas, empregadosById],
+  );
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
@@ -301,6 +317,12 @@ export function VRPage() {
         </div>
 
         <div className="flex gap-2 flex-wrap">
+          {/* Exportar PDF — sempre disponível (preview ou lote), igual ao VT. */}
+          {linhasExibidas.length > 0 && podeConfig && (
+            <Button variant="secondary" size="sm" onClick={() => setShowExportPDF(true)} title="Exportar PDF do VR (por área, com forma de pagamento) e pré-visualizar">
+              📄 Exportar PDF
+            </Button>
+          )}
           {!loteAtivo && podeConfig && linhasPreview.length > 0 && (
             <Button onClick={lancarLote}>💸 Lançar pra pagamento</Button>
           )}
@@ -488,6 +510,16 @@ export function VRPage() {
         </div>
       )}
 
+      {showExportPDF && (
+        <ExportarVRModal
+          ano={ano}
+          mes={mes}
+          restaurantNome={activeRestaurant.nome}
+          statusLabel={loteAtivo ? VR_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização"}
+          linhas={linhasPdf}
+          onClose={() => setShowExportPDF(false)}
+        />
+      )}
     </div>
   );
 }
