@@ -316,11 +316,34 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setTermos(instanciarTermosAssinados(admissao.termosAssinados));
   }, [admissao.termosAssinados]);
 
-  const obrigatorios = useMemo(() => termos.filter(t => t.obrigatorio), [termos]);
+  // Obrigatórios = obrigatório E não marcado como "não se aplica".
+  const obrigatorios = useMemo(
+    () => termos.filter(t => t.obrigatorio && !t.naoSeAplica),
+    [termos],
+  );
   const obrigPendentes = obrigatorios.filter(t => !t.assinado).length;
   const totalAssinados = termos.filter(t => t.assinado).length;
   // Conferência: quantos obrigatórios já têm um PDF/link anexado.
   const obrigComAnexo = obrigatorios.filter(t => !!t.link).length;
+
+  // Marca/desmarca "não se aplica" — desobriga o termo. Ao marcar, limpa o
+  // estado de assinado (não faz sentido um termo N/A estar "assinado").
+  function togglarNaoSeAplica(id: string) {
+    setTermos(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const merged: TermoAssinado = { ...t };
+      if (t.naoSeAplica) {
+        delete merged.naoSeAplica;
+      } else {
+        merged.naoSeAplica = true;
+        merged.assinado = false;
+        delete merged.assinadoEm;
+        delete merged.assinadoPor;
+        delete merged.link;
+      }
+      return merged;
+    }));
+  }
 
   function togglarAssinatura(id: string) {
     const now = new Date().toISOString();
@@ -640,37 +663,62 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             <div
               key={t.id}
               className={`rounded-lg border p-3 ${
-                t.assinado
-                  ? "bg-emerald-50/40 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/60"
-                  : t.obrigatorio
-                    ? "bg-white dark:bg-gray-900/40 border-gray-200 dark:border-gray-800"
-                    : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800"
+                t.naoSeAplica
+                  ? "bg-gray-50 dark:bg-gray-900/30 border-gray-200 dark:border-gray-800 opacity-60"
+                  : t.assinado
+                    ? "bg-emerald-50/40 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-900/60"
+                    : t.obrigatorio
+                      ? "bg-white dark:bg-gray-900/40 border-gray-200 dark:border-gray-800"
+                      : "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800"
               }`}
             >
-              <label className="flex items-start gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={t.assinado}
-                  onChange={() => togglarAssinatura(t.id)}
-                  className="mt-0.5 w-4 h-4 accent-emerald-600 flex-shrink-0"
-                />
-                <div className="min-w-0 flex-1">
-                  <div className={`text-sm ${t.assinado ? "line-through text-gray-600 dark:text-gray-400" : "text-gray-900 dark:text-gray-100 font-medium"}`}>
-                    {t.nome}
-                    {!t.obrigatorio && (
-                      <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">opcional</span>
+              <div className="flex items-start gap-2">
+                <label className="flex items-start gap-2 cursor-pointer min-w-0 flex-1">
+                  <input
+                    type="checkbox"
+                    checked={t.assinado}
+                    disabled={t.naoSeAplica}
+                    onChange={() => togglarAssinatura(t.id)}
+                    className="mt-0.5 w-4 h-4 accent-emerald-600 flex-shrink-0 disabled:opacity-40"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm ${
+                      t.naoSeAplica
+                        ? "line-through text-gray-500 dark:text-gray-500"
+                        : t.assinado
+                          ? "line-through text-gray-600 dark:text-gray-400"
+                          : "text-gray-900 dark:text-gray-100 font-medium"
+                    }`}>
+                      {t.nome}
+                      {!t.obrigatorio && !t.naoSeAplica && (
+                        <span className="ml-2 text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500">opcional</span>
+                      )}
+                    </div>
+                    {t.assinado && t.assinadoEm && !t.naoSeAplica && (
+                      <div className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-0.5">
+                        ✓ {new Date(t.assinadoEm).toLocaleString("pt-BR", {
+                          day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+                        })}
+                        {t.assinadoPor?.nome ? ` · por ${t.assinadoPor.nome}` : ""}
+                      </div>
                     )}
                   </div>
-                  {t.assinado && t.assinadoEm && (
-                    <div className="text-[10px] text-emerald-700 dark:text-emerald-400 mt-0.5">
-                      ✓ {new Date(t.assinadoEm).toLocaleString("pt-BR", {
-                        day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
-                      })}
-                      {t.assinadoPor?.nome ? ` · por ${t.assinadoPor.nome}` : ""}
-                    </div>
-                  )}
-                </div>
-              </label>
+                </label>
+                {/* Toggle "não se aplica" — desobriga o termo */}
+                <button
+                  type="button"
+                  onClick={() => togglarNaoSeAplica(t.id)}
+                  title="Marcar/desmarcar que este termo não se aplica a esta admissão"
+                  className={`text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border flex-shrink-0 self-start ${
+                    t.naoSeAplica
+                      ? "border-gray-400 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 font-semibold"
+                      : "border-gray-200 text-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  {t.naoSeAplica ? "✓ N/A" : "N/A"}
+                </button>
+              </div>
+              {!t.naoSeAplica && (
               <div className="mt-2 pl-6 space-y-1.5">
                 {/* Botão "Gerar termo" pra termos com tipo especial (uniforme/EPI).
                     Abre o modal de entrega — gera PDF + baixa estoque + cria
@@ -717,6 +765,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   </a>
                 )}
               </div>
+              )}
             </div>
           ))}
         </div>

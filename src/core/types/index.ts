@@ -2145,6 +2145,9 @@ export type TermoAssinado = {
   tipoEspecial?: "uniforme" | "epi";
   // ID da EntregaUniforme gerada (quando tipoEspecial existe + assinado=true).
   entregaIdGerada?: string;
+  // Marcado pelo DP = este termo "não se aplica" a esta admissão → deixa de
+  // ser obrigatório (não conta como pendente, não vai pro Clicksign).
+  naoSeAplica?: boolean;
 };
 
 // Eventos que o sistema detecta automaticamente — usados pra auto-checar
