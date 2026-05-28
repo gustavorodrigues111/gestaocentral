@@ -57,8 +57,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         }
       : null,
   );
-  // Subpasta "docs assinados" (alvo dos uploads dos termos assinados)
-  const [uploadFolderId, setUploadFolderId] = useState<string | null>(
+  // Subpastas: "docs a assinar" (termos gerados → Clicksign) e "docs
+  // assinados" (PDFs que voltam assinados do Clicksign).
+  const [docsAAssinarId, setDocsAAssinarId] = useState<string | null>(
+    admissao.driveDocsAAssinarFolderId || null,
+  );
+  const [docsAssinadosId, setDocsAssinadosId] = useState<string | null>(
     admissao.driveDocsAssinadosFolderId || null,
   );
   // "" | "criando" | "conferindo" | "up_<termoId>"
@@ -113,8 +117,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // Chamado quando o NovaEntregaModal gera o termo (uniforme/EPI). Marca como
-  // assinado e — se o Drive tá configurado — pergunta se sobe o PDF gerado
-  // direto pra pasta "docs assinados" (sem precisar baixar e re-subir à mão).
+  // assinado e — se o Drive tá configurado — abre preview pra subir o PDF
+  // gerado pra "docs a assinar" (o termo ainda vai pro Clicksign assinar).
   function aoGerarTermoEspecial(pdf?: { blob: Blob; filename: string }) {
     const tipo = gerarTermoTipo;
     if (!tipo) return;
@@ -130,16 +134,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     });
   }
 
-  // Sobe o termo do preview pra "docs assinados" e grava o link no termo.
+  // Sobe o termo gerado do preview pra "docs a assinar" (vai pro Clicksign).
   async function confirmarUploadPreview() {
     if (!previewUpload) return;
     const { pdf, termoId } = previewUpload;
     setDriveErro("");
     setDriveBusy(termoId ? `up_${termoId}` : "criando");
     try {
-      const folderId = await ensureTree();
+      const { aAssinar } = await ensureTree();
       const file = new File([pdf.blob], pdf.filename, { type: "application/pdf" });
-      const uploaded = await uploadFileToFolder(folderId, file);
+      const uploaded = await uploadFileToFolder(aAssinar, file);
       if (uploaded.webViewLink && termoId) atualizarLink(termoId, uploaded.webViewLink);
       fecharPreview();
     } catch (e) {
@@ -198,11 +202,13 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // Garante a árvore de pastas do empregado (pasta [Nome] + subpastas:
-  // 1- CONTRATOS, 2 - DOCUMENTOS, docs assinados) dentro da pasta "Empregados
-  // Ativos" da empresa. Retorna o id da "docs assinados" (alvo dos uploads).
-  // Abre o popup do Google na 1ª vez.
-  async function ensureTree(): Promise<string> {
-    if (folder?.id && uploadFolderId) return uploadFolderId;
+  // 1- CONTRATOS, 2 - DOCUMENTOS, docs a assinar, docs assinados) dentro da
+  // pasta "Empregados Ativos" da empresa. Retorna os ids de "a assinar" e
+  // "assinados". Abre o popup do Google na 1ª vez.
+  async function ensureTree(): Promise<{ aAssinar: string; assinados: string }> {
+    if (folder?.id && docsAAssinarId && docsAssinadosId) {
+      return { aAssinar: docsAAssinarId, assinados: docsAssinadosId };
+    }
     const parentId = activeRestaurant.driveEmpregadosAtivosFolderId;
     if (!parentId) {
       throw new Error(
@@ -210,10 +216,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       );
     }
     const tree = await createEmployeeFolderTree(parentId, admissao.candidato.nome);
-    await salvarDriveFolder(admissao.id, tree.folderId, tree.folderUrl, tree.docsAssinadosFolderId);
+    await salvarDriveFolder(
+      admissao.id, tree.folderId, tree.folderUrl,
+      tree.docsAAssinarFolderId, tree.docsAssinadosFolderId,
+    );
     setFolder({ id: tree.folderId, url: tree.folderUrl });
-    setUploadFolderId(tree.docsAssinadosFolderId);
-    return tree.docsAssinadosFolderId;
+    setDocsAAssinarId(tree.docsAAssinarFolderId);
+    setDocsAssinadosId(tree.docsAssinadosFolderId);
+    return { aAssinar: tree.docsAAssinarFolderId, assinados: tree.docsAssinadosFolderId };
   }
 
   async function criarPasta() {
@@ -240,7 +250,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   async function conferirKit() {
-    const alvo = uploadFolderId || folder?.id;
+    // Confere o que está pronto pra mandar pro Clicksign → "docs a assinar".
+    const alvo = docsAAssinarId || folder?.id;
     if (!alvo) return;
     setDriveErro("");
     setDriveBusy("conferindo");
@@ -267,8 +278,9 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setDriveErro("");
     setDriveBusy(`up_${termoId}`);
     try {
-      const folderId = await ensureTree();
-      const uploaded = await uploadFileToFolder(folderId, file);
+      // Upload manual = PDF que voltou assinado → "docs assinados".
+      const { assinados } = await ensureTree();
+      const uploaded = await uploadFileToFolder(assinados, file);
       if (uploaded.webViewLink) atualizarLink(termoId, uploaded.webViewLink);
     } catch (err) {
       setDriveErro(err instanceof Error ? err.message : "Falha no upload do arquivo.");
@@ -493,7 +505,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     disabled={driveBusy !== ""}
                     className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium"
                   >
-                    {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir PDF pro Drive"}
+                    {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir assinado (docs assinados)"}
                   </button>
                 )}
                 <input
@@ -555,7 +567,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <p className="text-xs text-gray-600 dark:text-gray-400">
                 Confira o termo gerado. Se estiver certo, suba pra pasta
-                "docs assinados" do empregado no Drive.
+                "docs a assinar" (é o que vai pro Clicksign assinar).
               </p>
               <a
                 href={previewUpload.pdfUrl}
@@ -579,7 +591,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 Cancelar
               </Button>
               <Button onClick={confirmarUploadPreview} disabled={driveBusy !== ""}>
-                {driveBusy !== "" ? "Subindo…" : "⬆️ Subir pra docs assinados"}
+                {driveBusy !== "" ? "Subindo…" : "⬆️ Subir pra docs a assinar"}
               </Button>
             </div>
           </div>

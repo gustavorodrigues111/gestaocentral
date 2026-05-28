@@ -41,10 +41,17 @@ export const GOOGLE_APP_ID = "777358299957";
 
 // ─── Estrutura de pastas por empregado ──────────────────────────────────────
 // A cada admissão, o app cria a pasta [Nome Completo] dentro de "Empregados
-// Ativos" (apontada por empresa) com estas subpastas. Os PDFs assinados dos
-// termos vão pra PASTA_DOCS_ASSINADOS.
-export const SUBPASTAS_EMPREGADO = ["1- CONTRATOS", "2 - DOCUMENTOS", "docs assinados"];
+// Ativos" (apontada por empresa) com estas subpastas.
+//   • docs a assinar  → termos gerados que vão PRA o Clicksign (ainda sem assinatura)
+//   • docs assinados  → os PDFs que voltam DO Clicksign já assinados
+export const PASTA_DOCS_A_ASSINAR = "docs a assinar";
 export const PASTA_DOCS_ASSINADOS = "docs assinados";
+export const SUBPASTAS_EMPREGADO = [
+  "1- CONTRATOS",
+  "2 - DOCUMENTOS",
+  PASTA_DOCS_A_ASSINAR,
+  PASTA_DOCS_ASSINADOS,
+];
 
 export function isPickerConfigured(): boolean {
   return !!GOOGLE_PICKER_API_KEY && !!GOOGLE_APP_ID;

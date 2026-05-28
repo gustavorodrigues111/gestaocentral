@@ -2102,7 +2102,8 @@ export type Admissao = {
   // da conta conectada (DP cola a URL no Clicksign).
   driveFolderId?: string;       // pasta [Nome] do empregado (pra abrir/copiar link)
   driveFolderUrl?: string;
-  driveDocsAssinadosFolderId?: string; // subpasta "docs assinados" (alvo dos uploads)
+  driveDocsAAssinarFolderId?: string;  // subpasta "docs a assinar" (termos gerados → Clicksign)
+  driveDocsAssinadosFolderId?: string; // subpasta "docs assinados" (PDFs que voltam assinados)
 
   createdAt: string;
   updatedAt: string;

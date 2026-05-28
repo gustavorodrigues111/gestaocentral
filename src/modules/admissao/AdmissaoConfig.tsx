@@ -198,8 +198,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Aponte a pasta <strong>"Empregados Ativos"</strong> desta empresa no
             seu Drive. A cada admissão, o app cria a pasta do empregado aqui dentro
-            (com subpastas <em>1- CONTRATOS</em>, <em>2 - DOCUMENTOS</em> e{" "}
-            <em>docs assinados</em>) e sobe os termos assinados na "docs assinados".
+            com as subpastas <em>1- CONTRATOS</em>, <em>2 - DOCUMENTOS</em>,{" "}
+            <em>docs a assinar</em> (termos gerados que vão pro Clicksign) e{" "}
+            <em>docs assinados</em> (PDFs que voltam assinados).
           </p>
           {driveFolder ? (
             <div className="text-xs text-emerald-700 dark:text-emerald-400">

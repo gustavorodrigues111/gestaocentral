@@ -858,11 +858,13 @@ export async function salvarDriveFolder(
   admissaoId: string,
   folderId: string,
   folderUrl: string,
+  docsAAssinarFolderId?: string,
   docsAssinadosFolderId?: string,
 ): Promise<void> {
   await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
     driveFolderId: folderId,
     driveFolderUrl: folderUrl,
+    driveDocsAAssinarFolderId: docsAAssinarFolderId,
     driveDocsAssinadosFolderId: docsAssinadosFolderId,
     updatedAt: new Date().toISOString(),
   }));

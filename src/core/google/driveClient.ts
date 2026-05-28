@@ -13,7 +13,7 @@
 
 import {
   GOOGLE_CLIENT_ID, DRIVE_SCOPE, driveFolderUrl,
-  SUBPASTAS_EMPREGADO, PASTA_DOCS_ASSINADOS,
+  SUBPASTAS_EMPREGADO, PASTA_DOCS_A_ASSINAR, PASTA_DOCS_ASSINADOS,
 } from "./driveConfig";
 
 // ─── Tipagem mínima do Google Identity Services (sem puxar @types) ──────────
@@ -254,20 +254,33 @@ export async function findOrCreateSubfolder(
 
 // Cria (ou reaproveita) a árvore de pastas de um empregado dentro de
 // "Empregados Ativos": pasta [Nome] + subpastas padrão (1- CONTRATOS,
-// 2 - DOCUMENTOS, docs assinados). Retorna o id/URL da pasta do empregado
-// e o id da subpasta "docs assinados" (onde sobem os termos assinados).
+// 2 - DOCUMENTOS, docs a assinar, docs assinados). Retorna o id/URL da pasta
+// do empregado + os ids das subpastas "docs a assinar" (termos que vão pro
+// Clicksign) e "docs assinados" (PDFs que voltam assinados).
 export async function createEmployeeFolderTree(
   empregadosAtivosFolderId: string,
   nomeCompleto: string,
-): Promise<{ folderId: string; folderUrl: string; docsAssinadosFolderId: string }> {
+): Promise<{
+  folderId: string;
+  folderUrl: string;
+  docsAAssinarFolderId: string;
+  docsAssinadosFolderId: string;
+}> {
   const folderId = await findOrCreateSubfolder(empregadosAtivosFolderId, nomeCompleto);
+  let docsAAssinarFolderId = "";
   let docsAssinadosFolderId = "";
-  // Cria as subpastas em sequência (volume pequeno — 3 itens).
+  // Cria as subpastas em sequência (volume pequeno).
   for (const sub of SUBPASTAS_EMPREGADO) {
     const id = await findOrCreateSubfolder(folderId, sub);
+    if (sub === PASTA_DOCS_A_ASSINAR) docsAAssinarFolderId = id;
     if (sub === PASTA_DOCS_ASSINADOS) docsAssinadosFolderId = id;
   }
-  return { folderId, folderUrl: driveFolderUrl(folderId), docsAssinadosFolderId };
+  return {
+    folderId,
+    folderUrl: driveFolderUrl(folderId),
+    docsAAssinarFolderId,
+    docsAssinadosFolderId,
+  };
 }
 
 // Lista os arquivos (não-pasta, não-lixeira) dentro de uma pasta.
