@@ -188,7 +188,7 @@ export function NovaEntregaModal({
       // Função do empregado (cargo) — pra cabeçalho do PDF
       const teamData = (pessoaSel as unknown as {
         teamData?: { [rid: string]: { cargoId?: string } };
-      }).teamData;
+      } | undefined)?.teamData;
       const cargoId = teamData?.[restaurantId]?.cargoId;
       const cargo = cargos.find(c => c.id === cargoId);
 
