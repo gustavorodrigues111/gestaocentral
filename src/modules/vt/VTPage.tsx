@@ -10,6 +10,8 @@ import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
 import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
+import { ExportarVTModal } from "./ExportarVTModal";
+import type { VTPDFLinha } from "./gerarVTPDF";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area } from "../../core/types";
 import { AREAS, VT_LOTE_STATUS_LABEL } from "../../core/types";
 import {
@@ -82,6 +84,8 @@ export function VTPage() {
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
   // Filtro de unidade (multi-unidades) — "" = todas
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
+  // Modal de exportar PDF
+  const [showExportPDF, setShowExportPDF] = useState(false);
 
   // Override local de toggle desc.sugerido / valores manuais (antes de criar lote)
   // Key: empregadoId → { ativo, descontoManual, auxPontual }
@@ -239,6 +243,16 @@ export function VTPage() {
       return emp?.unidadePadraoId === filtroUnidadeId;
     });
   }, [loteAtivo, linhasPreview, filtroUnidadeId, empregadosById]);
+
+  // Linhas pro PDF — enriquece cada linha com a forma de pagamento (Caju/PIX)
+  // do cadastro do empregado. Usa as mesmas linhas já filtradas da tela.
+  const linhasPdf = useMemo<VTPDFLinha[]>(
+    () => linhas.map(l => ({
+      ...l,
+      recebePeloCaju: empregadosById[l.empregadoId]?.vtRecebePeloCaju !== false,
+    })),
+    [linhas, empregadosById],
+  );
 
   // Agrupa por área
   const porArea = useMemo(() => {
@@ -683,6 +697,18 @@ export function VTPage() {
                 )}
               </div>
             )}
+            {/* Exportar PDF — funciona no preview ou em qualquer lote. Gera
+                relatório por área com a forma de pagamento (Caju/PIX). */}
+            {linhas.length > 0 && podeConfig && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => setShowExportPDF(true)}
+                title="Exportar PDF do VT (por área, com forma de pagamento) e pré-visualizar"
+              >
+                📄 Exportar PDF
+              </Button>
+            )}
             {/* Exportar CSV pra Caju — disponível em qualquer lote (rascunho
                 ou pago). Pago: pra re-baixar caso precise reenviar. Rascunho:
                 pra validar números antes de marcar como pago. */}
@@ -851,6 +877,17 @@ export function VTPage() {
             setMes(am.mes);
             setAba("mes");
           }}
+        />
+      )}
+
+      {showExportPDF && (
+        <ExportarVTModal
+          ano={ano}
+          mes={mes}
+          restaurantNome={activeRestaurant?.nome || "Restaurante"}
+          statusLabel={loteAtivo ? VT_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização"}
+          linhas={linhasPdf}
+          onClose={() => setShowExportPDF(false)}
         />
       )}
     </div>
