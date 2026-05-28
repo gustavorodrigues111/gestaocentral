@@ -46,6 +46,7 @@ export async function criarEnvelopeClicksign(payload: {
   signer: ClicksignSigner;
   docs: ClicksignDoc[];
   message?: string;
+  externalId?: string;   // ex: admissao.id — vira metadata do documento
 }): Promise<{ envelopeId: string; status: string }> {
   return call("criar", payload);
 }

@@ -112,6 +112,7 @@ async function criarEnvelope(
   signer: { name: string; email: string; phone?: string },
   docs: { filename: string; base64: string }[],
   message?: string,
+  metadata?: Record<string, unknown>,
 ): Promise<{ envelopeId: string; status: string }> {
   // 1) envelope
   const envAttrs: Record<string, unknown> = {
@@ -129,11 +130,13 @@ async function criarEnvelope(
   // 2) documentos (base64)
   const docIds: string[] = [];
   for (const d of docs) {
+    const docAttrs: Record<string, unknown> = {
+      filename: d.filename,
+      content_base64: comoDataUri(d.base64),
+    };
+    if (metadata) docAttrs.metadata = metadata;
     const dr = await cs(sandbox, "POST", `/envelopes/${envelopeId}/documents`, {
-      data: {
-        type: "documents",
-        attributes: { filename: d.filename, content_base64: comoDataUri(d.base64) },
-      },
+      data: { type: "documents", attributes: docAttrs },
     });
     docIds.push(dataId(dr));
   }
@@ -205,9 +208,19 @@ async function baixarAssinado(
 ): Promise<{ filename: string; base64: string }> {
   const doc = await cs(sandbox, "GET", `/envelopes/${envelopeId}/documents/${documentId}`);
   const attrs = (doc.data as { attributes?: Record<string, unknown> })?.attributes;
-  const url = extrairSignedUrl(attrs);
-  if (!url) throw new Error("Documento ainda não tem arquivo assinado disponível.");
-  const fileRes = await fetch(url);
+  const rawUrl = extrairSignedUrl(attrs);
+  if (!rawUrl) throw new Error("Documento ainda não tem arquivo assinado disponível.");
+  // As URLs de download do Clicksign vêm RELATIVAS (ex:
+  // "/2023/03/13/..._Clicksign.pdf") — precisam do host + token. Se já vier
+  // absoluta (URL assinada de CDN), baixa direto sem header extra.
+  const isRelative = !/^https?:\/\//i.test(rawUrl);
+  const fetchUrl = isRelative ? host(sandbox) + rawUrl : rawUrl;
+  const headers: Record<string, string> = {};
+  if (isRelative) {
+    const t = tokenFor(sandbox);
+    if (t) headers.Authorization = t;
+  }
+  const fileRes = await fetch(fetchUrl, { headers });
   if (!fileRes.ok) throw new Error(`Falha ao baixar o assinado (HTTP ${fileRes.status}).`);
   const buf = Buffer.from(await fileRes.arrayBuffer());
   const filename = (attrs?.filename as string | undefined) || "documento-assinado.pdf";
@@ -253,7 +266,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (!name || !email) { res.status(400).json({ error: "signer.name e signer.email obrigatórios." }); return; }
       if (docs.length === 0) { res.status(400).json({ error: "Nenhum documento válido (filename + base64)." }); return; }
 
-      const out = await criarEnvelope(sandbox, envelopeName, { name, email, phone: phone || undefined }, docs, message);
+      const externalId = typeof body.externalId === "string" ? body.externalId : "";
+      const metadata = externalId
+        ? { admissao_id: externalId, origem: "planejamento.app" }
+        : undefined;
+      const out = await criarEnvelope(
+        sandbox, envelopeName, { name, email, phone: phone || undefined }, docs, message, metadata,
+      );
       res.status(200).json(out);
       return;
     }

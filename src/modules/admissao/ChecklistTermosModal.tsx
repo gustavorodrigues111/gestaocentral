@@ -221,6 +221,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         envelopeName: `Admissão - ${cand.nome}`,
         signer: { name: cand.nome, email: cand.email, phone: cand.whatsapp || undefined },
         docs,
+        externalId: admissao.id,
       });
       await salvarClicksignEnvelope(admissao.id, envelopeId, status, CLICKSIGN_SANDBOX);
       setClicksignEnvelopeId(envelopeId);
