@@ -253,6 +253,20 @@ export function refMesDoLote(loteAno: number, loteMes: number): { ano: number; m
   return shiftMonth(loteAno, loteMes, -2);
 }
 
+// Desconto sugerido de VT só passa a valer a partir deste mês de LOTE.
+// Motivo: o desconto olha o refMes = lote − 2. Pra meses anteriores a julho/2026
+// o refMes cairia em abril/2026 ou antes — período em que a escala ainda não
+// estava correta no sistema, então o desconto sairia errado. Julho/2026
+// referencia maio/2026, que já tem dados reais. Antes do corte, descontoSugerido
+// fica zerado (some da coluna DESC. SUG.). Vale pra TODOS os restaurantes.
+export const VT_DESCONTO_SUGERIDO_INICIO = { ano: 2026, mes: 7 };
+
+export function descontoSugeridoHabilitado(loteAno: number, loteMes: number): boolean {
+  const alvo = loteAno * 12 + loteMes;
+  const inicio = VT_DESCONTO_SUGERIDO_INICIO.ano * 12 + VT_DESCONTO_SUGERIDO_INICIO.mes;
+  return alvo >= inicio;
+}
+
 // Conta dias de trabalho num RANGE específico (pra pagamento parcial).
 // Mesma regra: só lê da escala, sem fallback derivado.
 export function contarDiasTrabalhadosNoRange(
@@ -402,11 +416,13 @@ export function montarLinhasLote(
     }
     const vtBase = Math.round(diasTrabalhados * passagensPorDia * valorPassagem * 100) / 100;
 
-    // Desconto sugerido — só se tem VT diário
+    // Desconto sugerido — só se tem VT diário E o mês do lote já entrou no
+    // período em que a lógica vale (>= julho/2026). Antes disso fica zerado
+    // porque o refMes (lote − 2) cairia num mês sem escala real cadastrada.
     let descontoSugerido = 0;
     let descontoSugeridoJustificativa = "";
     let descontoSugeridoRefMes = `${ref.ano}-${String(ref.mes).padStart(2, "0")}`;
-    if (temVt && passagensPorDia > 0 && valorPassagem > 0) {
+    if (temVt && passagensPorDia > 0 && valorPassagem > 0 && descontoSugeridoHabilitado(loteAno, loteMes)) {
       const ds = calcularDescontoSugerido(e, passagensPorDia, valorPassagem, escalaRef, ref.ano, ref.mes);
       descontoSugerido = ds.valor;
       descontoSugeridoJustificativa = ds.justificativa;
