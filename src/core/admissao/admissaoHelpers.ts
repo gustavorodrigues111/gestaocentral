@@ -9,9 +9,10 @@ import {
 import { db } from "../firebase/config";
 import type {
   Admissao, AdmissaoStatus, AutoTriggerSubtarefa, Empregado, EmpregadoPeriodo,
-  FormField, MotivoCancelamento,
-  Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado,
+  FormField, HorarioDia, MotivoCancelamento,
+  Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado, WorkSchedule,
 } from "../types";
+import { validateWorkScheduleDays } from "../escala/horarios";
 import {
   TEMPLATE_ADMISSAO_DEFAULT, KANBAN_COLUNAS_DEFAULT,
   SUBTAREFAS_TEMPLATE_DEFAULT, EMAIL_CLINICA_EXAMES_DEFAULT,
@@ -1388,6 +1389,49 @@ export async function atualizarDadosBancariosItau(
 // fecha o ciclo. Reusa Pessoa pré-existente se a admissão foi vinculada
 // via pessoaIdVinculada. Operação idempotente — se já tem pessoaIdCriada
 // e empregadoIdCriado no doc, retorna esses IDs sem recriar.
+// Converte `horariosCadastrados` (Record<"0".."6", HorarioDia>) num
+// WorkSchedule "single" vigente a partir de `validFrom` (a data de admissão).
+// Retorna undefined se não houver nenhum dia ativo — aí o empregado entra sem
+// escala (RH cadastra depois). totalContract calculado pelo mesmo motor da
+// tela de Horários (sem limites, só queremos o agregado).
+function construirWorkScheduleDaAdmissao(
+  horariosCadastrados: Admissao["horariosCadastrados"] | undefined,
+  validFrom: string,
+  now: string,
+  registradoPor: string,
+): WorkSchedule[] | undefined {
+  const hc = horariosCadastrados as Record<string, HorarioDia> | undefined;
+  if (!hc || Object.keys(hc).length === 0) return undefined;
+
+  const days: { [key: number]: HorarioDia } = {};
+  for (let i = 0; i < 7; i++) {
+    const d = (hc[String(i)] || hc[i]) as HorarioDia | undefined;
+    days[i] = {
+      active: !!d?.active,
+      in: d?.in || "",
+      out: d?.out || "",
+      break: typeof d?.break === "number" ? d.break : 0,
+    };
+  }
+  const algumAtivo = Object.values(days).some((d) => d.active);
+  if (!algumAtivo) return undefined;
+
+  // Limites frouxos: só queremos o totalContract agregado, não validar CLT
+  // de novo (já foi validado ao salvar os dados básicos).
+  const { totalContract } = validateWorkScheduleDays(days, 0, Number.MAX_SAFE_INTEGER);
+
+  return [{
+    validFrom,
+    type: "single",
+    totalContract,
+    days,
+    sundayCycle: null,
+    registradoEm: now,
+    registradoPor,
+    motivo: "Importado da admissão",
+  }];
+}
+
 export async function aprovarAdmissao(
   admissao: Admissao,
   aprovadoPor: Pessoa,
@@ -1456,6 +1500,18 @@ export async function aprovarAdmissao(
     registradoEm: now,
     registradoPor: aprovadoPor.id,
   };
+
+  // Converte os horários cadastrados na admissão (formato HorarioDia chaveado
+  // por 0..6, idêntico a WorkSchedule.days) num WorkSchedule vigente A PARTIR
+  // da data de admissão — assim a pessoa já entra na escala com a jornada que
+  // foi definida em "Dados básicos da vaga", sem precisar recadastrar.
+  const workSchedules = construirWorkScheduleDaAdmissao(
+    admissao.horariosCadastrados,
+    dataAdmissaoStr,
+    now,
+    aprovadoPor.id,
+  );
+
   const novoEmpregado: Omit<Empregado, "id"> = {
     restaurantId: admissao.restaurantId,
     pessoaId,
@@ -1464,6 +1520,7 @@ export async function aprovarAdmissao(
     cargoId: admissao.cargoId,
     driveFolderUrl: admissao.driveFolderUrl || null,
     periodos: [periodo],
+    workSchedules,
     estaAtivo: true,
     admissaoAtual: dataAdmissaoStr,
     email: candidato.email,
