@@ -10,7 +10,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { Admissao, Restaurant } from "../types";
-import { createEmployeeFolderTree } from "./driveClient";
+import { createEmployeeFolderTree, ensureSubfoldersIn } from "./driveClient";
 import { driveFolderUrl } from "./driveConfig";
 import { salvarDriveFolder } from "../admissao/admissaoHelpers";
 
@@ -54,5 +54,26 @@ export async function ensureEmployeeDriveTree(
     folderUrl: tree.folderUrl,
     aAssinar: tree.docsAAssinarFolderId,
     assinados: tree.docsAssinadosFolderId,
+  };
+}
+
+// Vincula uma pasta JÁ EXISTENTE (selecionada pelo DP no Picker) como a pasta
+// do empregado: garante as subpastas dentro dela e grava na admissão. Evita
+// criar duplicata quando a pessoa já tinha pasta no Drive.
+export async function vincularPastaExistente(
+  admissao: Admissao,
+  folderId: string,
+): Promise<EmpregadoDriveTree> {
+  const subs = await ensureSubfoldersIn(folderId);
+  const url = driveFolderUrl(folderId);
+  await salvarDriveFolder(
+    admissao.id, folderId, url,
+    subs.docsAAssinarFolderId, subs.docsAssinadosFolderId,
+  );
+  return {
+    folderId,
+    folderUrl: url,
+    aAssinar: subs.docsAAssinarFolderId,
+    assinados: subs.docsAssinadosFolderId,
   };
 }

@@ -23,6 +23,7 @@ interface DocsView {
   setIncludeFolders(b: boolean): DocsView;
   setSelectFolderEnabled(b: boolean): DocsView;
   setMimeTypes(m: string): DocsView;
+  setParent(folderId: string): DocsView;
 }
 interface PickerInstance {
   setVisible(visible: boolean): void;
@@ -87,8 +88,11 @@ function loadPickerLib(): Promise<void> {
 }
 
 // Abre o seletor de pasta. Resolve com a pasta escolhida, ou null se cancelado.
+// parentId (opcional) abre o Picker já DENTRO daquela pasta (ex: "Empregados
+// Ativos") — aí o usuário vê as pastas existentes + busca, e escolhe a certa.
 export async function pickDriveFolder(
   title = "Selecione a pasta",
+  parentId?: string,
 ): Promise<{ id: string; name: string } | null> {
   const token = await requestAccessToken();
   await loadPickerLib();
@@ -100,6 +104,7 @@ export async function pickDriveFolder(
         .setIncludeFolders(true)
         .setSelectFolderEnabled(true)
         .setMimeTypes("application/vnd.google-apps.folder");
+      if (parentId) view.setParent(parentId);
       const built = new picker.PickerBuilder()
         .setAppId(GOOGLE_APP_ID)
         .setOAuthToken(token)

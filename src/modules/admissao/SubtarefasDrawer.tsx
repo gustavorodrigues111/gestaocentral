@@ -51,7 +51,8 @@ import {
   montarMensagemKitAssinatura,
 } from "../../core/admissao/admissaoHelpers";
 import { isDriveConfigured } from "../../core/google/driveConfig";
-import { ensureEmployeeDriveTree } from "../../core/google/driveAdmissao";
+import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
+import { pickDriveFolder } from "../../core/google/drivePicker";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
   if (!col.statusAuto) return false;
@@ -160,15 +161,38 @@ export function SubtarefasDrawer({
     }
   }
 
-  // Cria a pasta do empregado no Drive (subtarefa de DADOS BÁSICOS). Marca a
-  // subtarefa como feita e guarda a URL da pasta como link dela.
+  // Cria/vincula a pasta do empregado no Drive (subtarefa de DADOS BÁSICOS).
+  // Abre o Picker já dentro de "Empregados Ativos": o DP vê as pastas
+  // existentes (+ busca) e SELECIONA a da pessoa se já existir (evita
+  // duplicata); se cancelar, oferece criar uma nova. Marca a subtarefa como
+  // feita e guarda a URL da pasta como link dela.
   async function criarPastaDrive(s: SubtarefaAdmissao) {
+    const parentId = activeRestaurant.driveEmpregadosAtivosFolderId;
+    if (!parentId) {
+      alert("Configure a pasta 'Empregados Ativos' desta empresa em Admissão → Configurações antes.");
+      return;
+    }
     setSalvando(s.id);
     try {
-      const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
-      await atualizarSubtarefa(admissao, s.id, { feita: true, link: tree.folderUrl }, pessoa);
+      const picked = await pickDriveFolder(
+        `Pasta de ${admissao.candidato.nome} — selecione a existente (ou feche pra criar nova)`,
+        parentId,
+      );
+      let folderUrl: string;
+      if (picked) {
+        const tree = await vincularPastaExistente(admissao, picked.id);
+        folderUrl = tree.folderUrl;
+      } else {
+        const ok = confirm(
+          `Nenhuma pasta selecionada.\n\nCriar uma NOVA pasta "${admissao.candidato.nome}" em "Empregados Ativos"?`,
+        );
+        if (!ok) { setSalvando(null); return; }
+        const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
+        folderUrl = tree.folderUrl;
+      }
+      await atualizarSubtarefa(admissao, s.id, { feita: true, link: folderUrl }, pessoa);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Falha ao criar a pasta no Drive.");
+      alert(e instanceof Error ? e.message : "Falha ao criar/vincular a pasta no Drive.");
     } finally {
       setSalvando(null);
     }
@@ -898,7 +922,7 @@ function SubtarefaRow({
             disabled={salvando}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white"
           >
-            {salvando ? "Criando…" : "📁 Criar pasta do empregado"}
+            {salvando ? "Abrindo…" : "📁 Criar/selecionar pasta do empregado"}
           </button>
         )}
         {sub.atalho?.tipo === "whatsapp_kit_assinatura" && (

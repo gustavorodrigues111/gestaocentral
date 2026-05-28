@@ -257,6 +257,23 @@ export async function findOrCreateSubfolder(
 // 2 - DOCUMENTOS, docs a assinar, docs assinados). Retorna o id/URL da pasta
 // do empregado + os ids das subpastas "docs a assinar" (termos que vão pro
 // Clicksign) e "docs assinados" (PDFs que voltam assinados).
+// Garante as subpastas padrão (1- CONTRATOS, 2 - DOCUMENTOS, docs a assinar,
+// docs assinados) DENTRO de uma pasta de empregado já existente. Retorna os
+// ids das subpastas "a assinar" e "assinados". Usado quando o DP seleciona
+// uma pasta existente pelo Picker.
+export async function ensureSubfoldersIn(
+  folderId: string,
+): Promise<{ docsAAssinarFolderId: string; docsAssinadosFolderId: string }> {
+  let docsAAssinarFolderId = "";
+  let docsAssinadosFolderId = "";
+  for (const sub of SUBPASTAS_EMPREGADO) {
+    const id = await findOrCreateSubfolder(folderId, sub);
+    if (sub === PASTA_DOCS_A_ASSINAR) docsAAssinarFolderId = id;
+    if (sub === PASTA_DOCS_ASSINADOS) docsAssinadosFolderId = id;
+  }
+  return { docsAAssinarFolderId, docsAssinadosFolderId };
+}
+
 export async function createEmployeeFolderTree(
   empregadosAtivosFolderId: string,
   nomeCompleto: string,
@@ -267,14 +284,7 @@ export async function createEmployeeFolderTree(
   docsAssinadosFolderId: string;
 }> {
   const folderId = await findOrCreateSubfolder(empregadosAtivosFolderId, nomeCompleto);
-  let docsAAssinarFolderId = "";
-  let docsAssinadosFolderId = "";
-  // Cria as subpastas em sequência (volume pequeno).
-  for (const sub of SUBPASTAS_EMPREGADO) {
-    const id = await findOrCreateSubfolder(folderId, sub);
-    if (sub === PASTA_DOCS_A_ASSINAR) docsAAssinarFolderId = id;
-    if (sub === PASTA_DOCS_ASSINADOS) docsAssinadosFolderId = id;
-  }
+  const { docsAAssinarFolderId, docsAssinadosFolderId } = await ensureSubfoldersIn(folderId);
   return {
     folderId,
     folderUrl: driveFolderUrl(folderId),
