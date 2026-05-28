@@ -338,7 +338,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_receber_contrato", "Recebimento do contrato para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { pedeLink: true }),
-  st("st_termos_assinatura", "Preenchimento dos termos para assinatura",
+  st("st_termos_assinatura", "Kit de documentos para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { atalho: { tipo: "checklist_termos_assinar" } }),
   st("st_envio_kit_clicksign", "Envio do kit de documentos de admissão para assinatura",

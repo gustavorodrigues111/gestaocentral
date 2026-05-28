@@ -856,7 +856,7 @@ function SubtarefaRow({
             onClick={onAtalhoChecklistTermos}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            📋 Abrir checklist de termos
+            📋 Abrir checklist de kit de documentos para assinatura
           </button>
         )}
         {sub.atalho?.tipo === "abrir_clicksign" && (

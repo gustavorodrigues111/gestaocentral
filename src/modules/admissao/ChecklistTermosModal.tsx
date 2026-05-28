@@ -1,8 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Modal — Checklist de termos a assinar
 //
-//  Aberto pelo botão "📋 Abrir checklist de termos" da subtarefa
-//  st_termos_assinatura ("Preenchimento dos termos para assinatura").
+//  Aberto pelo botão "📋 Abrir checklist de kit de documentos para
+//  assinatura" da subtarefa st_termos_assinatura
+//  ("Kit de documentos para assinatura").
 //  Mostra cada termo com checkbox + campo de link opcional (URL do PDF
 //  assinado, Drive ou Clicksign).
 //

@@ -782,7 +782,7 @@ export async function atualizarChecklistDocumentos(
 // no status — RH avança manualmente quando estiver tudo preenchido. Se o
 // patch deixar a admissão com dados finais completos, dispara o auto-trigger.
 // ─── Termos a assinar (sub-checklist) ─────────────────────────────────────
-// Lista default de termos pro modal de "Preenchimento dos termos para
+// Lista default de termos pro modal de "Kit de documentos para
 // assinatura". Restaurante pode customizar via Configurações (V2).
 export function getTermosAssinaturaDefault(): {
   id: string;
