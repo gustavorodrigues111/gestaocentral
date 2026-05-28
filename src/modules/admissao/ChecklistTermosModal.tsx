@@ -120,6 +120,9 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   const [clicksignMsg, setClicksignMsg] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTermoId, setUploadTermoId] = useState<string | null>(null);
+  // Alvo do upload: "a_assinar" (doc que VAI pro Clicksign) ou "assinados"
+  // (PDF que já voltou assinado — upload manual de garantia).
+  const [uploadTarget, setUploadTarget] = useState<"a_assinar" | "assinados">("a_assinar");
 
   // Modal de entrega (uniforme/EPI) — aberto pelo botão "Gerar termo"
   const [gerarTermoTipo, setGerarTermoTipo] = useState<"uniforme" | "epi" | null>(null);
@@ -316,6 +319,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setTermos(instanciarTermosAssinados(admissao.termosAssinados));
   }, [admissao.termosAssinados]);
 
+  // Ao abrir o kit, se há um envelope Clicksign em andamento, checa o status
+  // automaticamente (atalho do "Verificar assinatura"). Se fechou, baixa os
+  // assinados pra "docs assinados". Roda 1x na montagem.
+  useEffect(() => {
+    if (clicksignEnvelopeId && clicksignStatus !== "closed") {
+      void verificarAssinatura();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Obrigatórios = obrigatório E não marcado como "não se aplica".
   const obrigatorios = useMemo(
     () => termos.filter(t => t.obrigatorio && !t.naoSeAplica),
@@ -438,8 +451,9 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     }
   }
 
-  function pedirArquivo(termoId: string) {
+  function pedirArquivo(termoId: string, target: "a_assinar" | "assinados") {
     setUploadTermoId(termoId);
+    setUploadTarget(target);
     fileInputRef.current?.click();
   }
 
@@ -447,14 +461,17 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     const file = e.target.files?.[0];
     e.target.value = "";   // permite re-subir o mesmo arquivo
     const termoId = uploadTermoId;
+    const target = uploadTarget;
     setUploadTermoId(null);
     if (!file || !termoId) return;
     setDriveErro("");
     setDriveBusy(`up_${termoId}`);
     try {
-      // Upload manual = PDF que voltou assinado → "docs assinados".
-      const { assinados } = await ensureTree();
-      const uploaded = await uploadFileToFolder(assinados, file);
+      const { aAssinar, assinados } = await ensureTree();
+      // "a_assinar" = doc que vai pro Clicksign · "assinados" = PDF que já
+      // voltou assinado (upload manual de garantia).
+      const alvo = target === "assinados" ? assinados : aAssinar;
+      const uploaded = await uploadFileToFolder(alvo, file);
       if (uploaded.webViewLink) atualizarLink(termoId, uploaded.webViewLink);
     } catch (err) {
       setDriveErro(err instanceof Error ? err.message : "Falha no upload do arquivo.");
@@ -479,8 +496,10 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     <Modal title="📋 Termos a assinar" onClose={onClose} maxWidth="max-w-xl">
       <div className="p-4 space-y-3">
         <div className="text-xs text-gray-600 dark:text-gray-400">
-          Marca cada termo conforme o candidato vai assinando. Cole o link do
-          PDF assinado (Drive, Clicksign) pra deixar registrado.
+          Monte o kit: gere ou suba cada documento <strong>pra assinatura</strong>,
+          marque "não se aplica" no que não usar, e envie tudo pro Clicksign. Os
+          assinados voltam sozinhos pra "docs assinados". O upload manual de
+          assinado é só garantia (fora do Clicksign).
         </div>
 
         {/* Input de arquivo escondido — acionado pelo "⬆️ Subir PDF" de cada termo */}
@@ -738,20 +757,33 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   </button>
                 )}
                 {isDriveConfigured() && (
-                  <button
-                    type="button"
-                    onClick={() => pedirArquivo(t.id)}
-                    disabled={driveBusy !== ""}
-                    className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-300 text-white font-medium"
-                  >
-                    {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir assinado (docs assinados)"}
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Primário: sobe o doc que VAI pro Clicksign (docs a assinar) */}
+                    <button
+                      type="button"
+                      onClick={() => pedirArquivo(t.id, "a_assinar")}
+                      disabled={driveBusy !== ""}
+                      className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
+                    >
+                      {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir pra assinatura"}
+                    </button>
+                    {/* Garantia: upload manual de um PDF JÁ assinado (fora do Clicksign) */}
+                    <button
+                      type="button"
+                      onClick={() => pedirArquivo(t.id, "assinados")}
+                      disabled={driveBusy !== ""}
+                      title="Função de garantia: subir manualmente um PDF que já voltou assinado (fora do Clicksign)"
+                      className="text-[10px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    >
+                      subir assinado (manual)
+                    </button>
+                  </div>
                 )}
                 <input
                   type="url"
                   value={t.link || ""}
                   onChange={(e) => atualizarLink(t.id, e.target.value)}
-                  placeholder="https://… (link do PDF assinado)"
+                  placeholder="https://… (link do PDF — manual)"
                   className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
                 />
                 {t.link && (
