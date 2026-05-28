@@ -254,6 +254,10 @@ export const DEPRECATED_SUBTAREFAS_IDS = new Set<string>([
   // ficou só "st_entrega_fisica_uniforme_epi" (checkbox da entrega física).
   "st_entrega_uniformes",
   "st_entrega_epis",
+  // 2026-05 (Clicksign API): o envio pro Clicksign agora é feito DENTRO do kit
+  // de documentos (botão "Enviar pro Clicksign"). A subtarefa de "Abrir
+  // Clicksign" virou redundante.
+  "st_envio_kit_clicksign",
 ]);
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -344,9 +348,6 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_termos_assinatura", "Kit de documentos para assinatura",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { atalho: { tipo: "checklist_termos_assinar" } }),
-  st("st_envio_kit_clicksign", "Envio do kit de documentos de admissão para assinatura",
-     "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
-     { atalho: { tipo: "abrir_clicksign" } }),
   st("st_avisar_kit_assinatura", "Avisar candidato que mandamos o kit para assinatura por email",
      "col_contabilidade", CK_ASSINATURAS.id, CK_ASSINATURAS.nome, true,
      { atalho: { tipo: "whatsapp_kit_assinatura" } }),
