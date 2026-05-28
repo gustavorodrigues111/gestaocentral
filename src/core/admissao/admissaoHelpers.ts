@@ -1462,6 +1462,7 @@ export async function aprovarAdmissao(
     nome: candidato.nome,
     cpf: candidato.cpf,
     cargoId: admissao.cargoId,
+    driveFolderUrl: admissao.driveFolderUrl || null,
     periodos: [periodo],
     estaAtivo: true,
     admissaoAtual: dataAdmissaoStr,

@@ -149,6 +149,9 @@ export type Empregado = {
   cargoId: string;               // cargo VIGENTE HOJE (snapshot do histórico)
   empCode?: string | null;       // código interno
   codigoContabil?: string | null;
+  // Link da pasta do empregado no Google Drive (criada na admissão). Pro DP
+  // consultar contratos/documentos assinados depois.
+  driveFolderUrl?: string | null;
 
   // Trilha de admissões/demissões
   periodos: EmpregadoPeriodo[];
