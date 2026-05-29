@@ -94,7 +94,7 @@ export function ConfiguracoesPage() {
     }
   }
 
-  const areas: ModuleArea[] = ["operacao", "time", "escritorio"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "inst"];
 
   return (
     <div className="max-w-3xl space-y-6">

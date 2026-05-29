@@ -50,7 +50,7 @@ export function HomePage() {
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["operacao", "time", "escritorio"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "inst"];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -64,7 +64,7 @@ export function HomePage() {
 
       <div className="space-y-8">
         {areas.map(area => {
-          const mods = modulesByArea(area).filter(m => visibleModule(m.id));
+          const mods = modulesByArea(area).filter(m => !m.oculto && visibleModule(m.id));
           if (mods.length === 0) return null;
           const info = AREA_INFO[area];
           return (

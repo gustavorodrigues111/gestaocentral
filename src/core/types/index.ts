@@ -39,7 +39,7 @@ export type AccessProfile = {
 
 // ─── TIPOS BASE ───
 
-export type ModuleArea = "operacao" | "time" | "escritorio";
+export type ModuleArea = "ops" | "dp" | "fin" | "inst";
 
 export type ModuleId =
   // Operação
@@ -93,6 +93,7 @@ export type ModuleDef = {
   status: "ativo" | "em-breve" | "planejado";
   etapa?: ModuleEtapa;
   dependsOn?: ModuleId[];
+  oculto?: boolean;   // não aparece no menu/início (não pronto ou em transição)
 };
 
 // ─── ESCALA / EQUIPE ───

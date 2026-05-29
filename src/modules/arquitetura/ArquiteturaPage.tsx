@@ -57,7 +57,7 @@ export function ArquiteturaPage() {
 // ════════════════════════════════════════════════════════════════
 
 function MapaModulos() {
-  const areas: ModuleArea[] = ["escritorio", "time", "operacao"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "inst"];
 
   // Index reverso: pra cada módulo, descobre quem depende dele
   const dependentes = useMemo(() => {
