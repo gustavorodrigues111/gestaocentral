@@ -48,6 +48,7 @@ import {
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ADMISSAO_STATUS_LABEL as STATUS_LABEL } from "../../core/types";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
+import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 
 function fmtDataHora(iso: string): string {
@@ -93,6 +94,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const [showNovaModal, setShowNovaModal] = useState(false);
   // Modal de cancelar — guarda admissão sendo cancelada
   const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
+  const [formAdm, setFormAdm] = useState<Admissao | null>(null);
   // Drag state (id do card sendo arrastado + coluna origem)
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetColId, setDropTargetColId] = useState<string | null>(null);
@@ -283,6 +285,17 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         />
       )}
 
+      {/* Formulário do candidato — visualizar/editar (botão 👁 Formulário do card).
+          Se já preencheu → modo "revisão" (corrigir); senão → "manual" (RH preenche). */}
+      {formAdm && (
+        <PreencherFormManualModal
+          admissao={formAdm}
+          modo={formAdm.dadosPreenchidos && Object.keys(formAdm.dadosPreenchidos).length > 0 ? "revisao" : "manual"}
+          onClose={() => setFormAdm(null)}
+          onSaved={() => setFormAdm(null)}
+        />
+      )}
+
       {showNovaModal && (
         <IniciarAdmissaoModal
           rid={rid}
@@ -368,6 +381,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onExcluir={() => excluirCard(a)}
                     onCancelar={() => setAdmCancelando(a)}
                     onReabrir={() => reabrirCard(a)}
+                    onAbrirFormulario={() => setFormAdm(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -388,7 +402,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -403,6 +417,7 @@ function KanbanCard({
   onExcluir: () => void;
   onCancelar: () => void;
   onReabrir: () => void;
+  onAbrirFormulario: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -494,9 +509,17 @@ function KanbanCard({
         </div>
       )}
 
-      {/* Cancelar admissão — qualquer status não-terminal */}
+      {/* Formulário (visualizar/editar) + Cancelar admissão — status não-terminal */}
       {!ehTerminal && (
-        <div className="mt-1.5 flex justify-end">
+        <div className="mt-1.5 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onAbrirFormulario(); }}
+            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+            title="Abrir o formulário do candidato pra visualizar e editar"
+          >
+            👁 Formulário
+          </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onCancelar(); }}
