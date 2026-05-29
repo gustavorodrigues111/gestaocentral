@@ -7,10 +7,11 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { MesContextoBanner } from "../../core/ui/MesContextoBanner";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
-  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
+  daysInMonth, dowShort, fmtAnoMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { getActiveSplitVersion } from "./splitRules";
@@ -289,11 +290,6 @@ export function GorjetasPage() {
               📢 Selecionar gorjetas a publicar ({qtdPublicaveis})
             </Button>
           )}
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
-          <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
-            {nomeMes(mes)} {ano}
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
           <ModuleConfigButton title="⚙️ Regras de divisão de gorjeta" disabled={!podeConfig}>
             <RegrasDivisaoConfig
               rid={rid}
@@ -302,6 +298,8 @@ export function GorjetasPage() {
           </ModuleConfigButton>
         </div>
       </div>
+
+      <MesContextoBanner ano={ano} mes={mes} onPrev={() => navegarMes(-1)} onNext={() => navegarMes(1)} />
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4">

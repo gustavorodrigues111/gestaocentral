@@ -8,6 +8,7 @@ import { canConfig, canReabrirEscala, canUse, unidadesAcessiveis } from "../../c
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
+import { MesContextoBanner, tintaVersao } from "../../core/ui/MesContextoBanner";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import {
@@ -578,14 +579,15 @@ export function EscalaPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">📅 Escala</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
         </div>
+      </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
-          <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
-            {nomeMes(mes)} {ano}
-          </div>
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-          {/* Status do mês — fase do lifecycle */}
+      <MesContextoBanner
+        ano={ano}
+        mes={mes}
+        onPrev={() => navegarMes(-1)}
+        onNext={() => navegarMes(1)}
+        versao={versao}
+        extra={
           <div className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded ${
             fase === "em_planejamento"   ? "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" :
             fase === "prevista_fechada"  ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300" :
@@ -594,8 +596,8 @@ export function EscalaPage() {
           }`}>
             {ESCALA_FASE_ICON[fase]} {ESCALA_FASE_LABEL[fase]}
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Toggle Prevista / Real + status */}
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
@@ -1191,7 +1193,7 @@ function Grade({
   return (
     <div
       ref={wrapRef}
-      className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-auto max-h-[calc(100vh-260px)] min-h-[400px]"
+      className={`border border-gray-200 dark:border-gray-800 rounded-xl overflow-auto max-h-[calc(100vh-260px)] min-h-[400px] ${tintaVersao(versao) || "bg-white dark:bg-gray-900"}`}
     >
       <table className="w-full text-xs border-collapse">
         {/* sticky top-0 funciona porque o wrapper agora tem overflow-y (max-h + overflow-auto) */}

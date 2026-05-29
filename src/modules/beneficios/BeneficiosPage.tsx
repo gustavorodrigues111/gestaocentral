@@ -12,6 +12,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { MesContextoBanner } from "../../core/ui/MesContextoBanner";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
 import { refMesDoLote } from "../vt/calc";
@@ -254,21 +255,27 @@ export function BeneficiosPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
-          <span className="font-semibold text-lg">{nomeMes(mes)}/{ano}</span>
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${loteAtivo?.status === "pago" ? "bg-emerald-100 text-emerald-700" : loteAtivo ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
-            {statusLabel}
-          </span>
-          {usaMultiUnidades && (
-            <select value={filtroUnidadeId} onChange={(e) => setFiltroUnidadeId(e.target.value)} className="ml-2 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              <option value="">🏢 Todas as unidades</option>
-              {unidadesAtivas.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
-            </select>
-          )}
-        </div>
+      <MesContextoBanner
+        ano={ano}
+        mes={mes}
+        onPrev={() => navegarMes(-1)}
+        onNext={() => navegarMes(1)}
+        extra={
+          <>
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${loteAtivo?.status === "pago" ? "bg-emerald-100 text-emerald-700" : loteAtivo ? "bg-amber-100 text-amber-700" : "bg-gray-100 text-gray-500"}`}>
+              {statusLabel}
+            </span>
+            {usaMultiUnidades && (
+              <select value={filtroUnidadeId} onChange={(e) => setFiltroUnidadeId(e.target.value)} className="px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <option value="">🏢 Todas as unidades</option>
+                {unidadesAtivas.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+              </select>
+            )}
+          </>
+        }
+      />
+
+      <div className="flex gap-2 flex-wrap justify-end mb-4">
         <div className="flex gap-2 flex-wrap">
           {linhas.length > 0 && podeConfig && (
             <Button variant="secondary" size="sm" onClick={() => setShowPDF(true)} title="Exportar PDF (preview)">📄 Exportar PDF</Button>
