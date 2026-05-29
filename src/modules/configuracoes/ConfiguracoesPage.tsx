@@ -7,7 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import { AREA_INFO, modulesByArea } from "../../config/modules";
+import { AREA_INFO, modulesByArea, getModule } from "../../config/modules";
 import { UNIDADE_TIPO_LABEL } from "../../core/types";
 import type { ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
@@ -45,13 +45,10 @@ export function ConfiguracoesPage() {
     );
   }
 
-  // Filtra IDs de módulos que NÃO existem mais no registry (ex: "equipe" antigo)
-  const modulosAtivos = (activeRestaurant.modulosAtivos || []).filter(id => {
-    // import dinâmico evitado — usa lookup direto via modulesByArea
-    return ["operacao", "time", "escritorio"].some(area =>
-      modulesByArea(area as ModuleArea).some(m => m.id === id)
-    );
-  });
+  // Filtra IDs de módulos que NÃO existem mais no registry (ex: "equipe" antigo).
+  // Checa existência direto no registry — independente de área (a reorg por
+  // persona mudou as áreas; filtrar por área hardcoded zerava todos os checks).
+  const modulosAtivos = (activeRestaurant.modulosAtivos || []).filter(id => !!getModule(id));
 
   async function toggleModulo(moduleId: ModuleId) {
     if (!rid) return;

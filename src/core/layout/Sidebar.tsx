@@ -15,6 +15,20 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const rid = activeRestaurant?.id;
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
 
+  // Seções (grupos) colapsáveis — accordion. Persiste no localStorage.
+  const [colapsadas, setColapsadas] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("sidebar_colapsadas") || "[]") as string[]); }
+    catch { return new Set(); }
+  });
+  function toggleArea(area: string) {
+    setColapsadas(prev => {
+      const next = new Set(prev);
+      if (next.has(area)) next.delete(area); else next.add(area);
+      localStorage.setItem("sidebar_colapsadas", JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   // Pessoa logada é equipe deste restaurante? (tem empregado com pessoaId == ela)
   const [souEquipe, setSouEquipe] = useState(false);
   useEffect(() => {
@@ -119,11 +133,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             const mods = modulesByArea(area).filter(m => !m.oculto && visibleModule(m.id));
             if (mods.length === 0) return null;
             const info = AREA_INFO[area];
+            const fechada = colapsadas.has(area);
             return (
               <div key={area}>
-                <div className="px-3 mb-1 text-[10px] font-bold uppercase tracking-wider" style={{ color: info.color }}>
-                  {info.label}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleArea(area)}
+                  className="w-full flex items-center gap-1 px-3 mb-1 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
+                  style={{ color: info.color }}
+                  title={fechada ? "Expandir" : "Recolher"}
+                >
+                  <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`}>▾</span>
+                  <span className="flex-1 text-left">{info.label}</span>
+                  <span className="opacity-60 font-semibold">{mods.length}</span>
+                </button>
+                {!fechada && (
                 <div className="space-y-0.5">
                   {mods.map(m => (
                     <NavLink
@@ -146,6 +170,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     </NavLink>
                   ))}
                 </div>
+                )}
               </div>
             );
           })}
