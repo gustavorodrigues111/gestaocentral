@@ -565,6 +565,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
   }
+  // Mantida na codebase pra possível re-uso futuro (era ciência individual,
+  // virou ação em lote via `darCienciaPendentesDoEmpregado`).
+  void darCienciaExcecao;
 
   // Reabre apontamento finalizado (enviado ou ciência) → vira pendente.
   // Remove o apontamento — próxima ação do líder cria de novo se quiser.
@@ -669,6 +672,55 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
     return m;
   }, [statusSemana?.apontamentos]);
+
+  // Marca em lote como "ciência" todos os apontamentos `pendente` do empregado.
+  // Útil pra inconformidades que não precisam ser comunicadas — só registradas
+  // (ex: atrasos antigos, intervalo a menos que já passou). Pode ser 1 só ou
+  // vários. Cria nota interna automática registrando a ciência em lote.
+  async function darCienciaPendentesDoEmpregado(empregadoId: string, empregadoNome: string) {
+    if (!me || !semanaAtiva || !statusSemana) return;
+    if (semanaConferida) {
+      alert("Semana já conferida — não dá pra mexer em apontamento.");
+      return;
+    }
+    const pendentes = (statusSemana.apontamentos || []).filter(
+      (a) => a.empregadoId === empregadoId && a.status === "pendente",
+    );
+    if (pendentes.length === 0) {
+      alert("Marque pelo menos 1 inconformidade pra dar ciência.");
+      return;
+    }
+    try {
+      let updated = statusSemana;
+      const idsCienciados: string[] = [];
+      for (const ap of pendentes) {
+        updated = await marcarApontamentoCiencia(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, ap.id, me);
+        idsCienciados.push(ap.id);
+      }
+      // Nota interna registrando a ciência em lote
+      try {
+        const linhas = pendentes.map(a => `• ${a.texto}${a.data ? ` (${a.data})` : ""}`).join("\n");
+        updated = await adicionarNotaInterna(
+          rid,
+          semanaAtiva.weekStart,
+          semanaAtiva.weekEnd,
+          {
+            empregadoId,
+            empregadoNome,
+            texto: `👁 Ciência tomada em ${pendentes.length} item(ns):\n${linhas}`,
+            origem: "ciencia",
+            apontamentoIds: idsCienciados,
+          },
+          me,
+        );
+      } catch (e) {
+        console.warn("Erro criando nota auto de ciência em lote:", e);
+      }
+      setStatusSemana(updated);
+    } catch (e) {
+      alert("Erro: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
 
   // Envia em UMA mensagem todos os apontamentos `pendente` do empregado e:
   // 1. Marca eles como `enviado` (com enviadoEm)
@@ -1422,10 +1474,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   apontamentosPorChave={apontamentosPorChave}
                   notas={notasPorEmpregado.get(grupo.empregadoId) || []}
                   onToggleEnviar={toggleEnviarExcecao}
-                  onCiencia={darCienciaExcecao}
                   onReabrir={reabrirExcecao}
                   onAnotacaoLivre={() => criarNotaInterna(grupo.empregadoId, grupo.nome, grupo.cpf)}
                   onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
+                  onDarCiencia={() => darCienciaPendentesDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onApagarNota={apagarNotaInterna}
                   statusDiaMap={statusDiaMap}
                   onMarcarDiaTratado={async (date) => {
@@ -1556,10 +1608,10 @@ function ColaboradorBlock({
   apontamentosPorChave,
   notas,
   onToggleEnviar,
-  onCiencia,
   onReabrir,
   onAnotacaoLivre,
   onEnviarWhats,
+  onDarCiencia,
   onApagarNota,
   statusDiaMap,
   onMarcarDiaTratado,
@@ -1572,10 +1624,10 @@ function ColaboradorBlock({
   apontamentosPorChave: Map<string, ApontamentoFuncionario>;
   notas: NotaInterna[];
   onToggleEnviar: (exc: ExceptionRecord) => void;
-  onCiencia: (exc: ExceptionRecord) => void;
   onReabrir: (exc: ExceptionRecord) => void;
   onAnotacaoLivre: () => void;
   onEnviarWhats: () => void;
+  onDarCiencia: () => void;
   onApagarNota: (notaId: string) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
   onMarcarDiaTratado?: (date: string) => Promise<void>;
@@ -1616,6 +1668,25 @@ function ColaboradorBlock({
               title="Adicionar nota INTERNA pra este empregado (não vai pro WhatsApp)"
             >
               + nota interna
+            </button>
+          )}
+          {podeAnotar && (
+            <button
+              type="button"
+              onClick={onDarCiencia}
+              disabled={pendentesCount === 0}
+              className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
+                pendentesCount > 0
+                  ? "bg-sky-600 text-white hover:bg-sky-700"
+                  : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+              }`}
+              title={
+                pendentesCount === 0
+                  ? "Marque ao menos 1 inconformidade pra dar ciência"
+                  : `Tomar ciência de ${pendentesCount} item(ns) — não envia pro empregado, só registra`
+              }
+            >
+              👁 Dar ciência {pendentesCount > 0 && `(${pendentesCount})`}
             </button>
           )}
           {podeAnotar && (
@@ -1846,17 +1917,9 @@ function ColaboradorBlock({
                         </span>
                       )}
                     </span>
-                    {/* Ações por linha */}
-                    {podeAnotar && !enviado && !ciencia && (
-                      <button
-                        type="button"
-                        onClick={() => onCiencia(e)}
-                        className="text-[10px] text-sky-600 dark:text-sky-400 hover:underline whitespace-nowrap mt-0.5"
-                        title="Tomar ciência (sem enviar pro empregado — caso clássico: intervalo a menos passado, não dá pra ajustar)"
-                      >
-                        👁 ciência
-                      </button>
-                    )}
+                    {/* Ações por linha — só "reabrir" agora.
+                        "Ciência" virou ação em lote no header do empregado
+                        (marca checkbox + botão "👁 Dar ciência" no topo). */}
                     {podeAnotar && (enviado || ciencia) && (
                       <button
                         type="button"
