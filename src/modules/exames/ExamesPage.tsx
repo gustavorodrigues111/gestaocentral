@@ -303,22 +303,13 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
   const [migrando, setMigrando] = useState(false);
 
   async function semearDefaults() {
-    if (!confirm("Criar tipos default (Clínico anual, Complementar semestral, Coprocultura semestral)? Vai pular tipos que já existem.")) return;
+    if (!confirm("Criar tipos default (Clínico anual + Coprocultura semestral pra manipuladores)? Vai pular tipos que já existem.")) return;
     setSemeando(true);
     try {
       const defaults: Array<Omit<ExameTipoConfig, "id" | "criadoEm" | "criadoPor" | "atualizadoEm" | "restaurantId">> = [
         {
           nome: "Exame Clínico",
           periodicidadeDias: 365,
-          diasAntecedencia: 14,
-          aplicabilidade: "todos",
-          responsavelPadraoId: pessoaId,
-          subtarefasTemplate: gerarSubtarefasTemplateDefault(),
-          ativo: true,
-        },
-        {
-          nome: "Exame Complementar",
-          periodicidadeDias: 180,
           diasAntecedencia: 14,
           aplicabilidade: "todos",
           responsavelPadraoId: pessoaId,
@@ -409,7 +400,7 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
         </p>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="ghost" onClick={semearDefaults} disabled={semeando}>
-            {semeando ? "Criando…" : "🌱 Criar 3 tipos default"}
+            {semeando ? "Criando…" : "🌱 Criar 2 tipos default"}
           </Button>
           <Button size="sm" variant="ghost" onClick={migrarEmpregados} disabled={migrando} title="Roda pra cada empregado ativo do rest, cria ExameEmpregado nos tipos aplicáveis">
             {migrando ? "Migrando…" : "👥 Migrar empregados existentes"}

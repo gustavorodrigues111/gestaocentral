@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, doc, getDoc } from "firebase/firesto
 import { db } from "../../core/firebase/config";
 import { criarTarefa } from "./repository";
 import type {
-  ContaFixa, Manutencao, Tarefa, Empregado, Cargo, TarefaSubprojeto, Subtarefa,
+  ContaFixa, Manutencao, Tarefa, TarefaSubprojeto, Subtarefa,
 } from "../../core/types";
 
 const ANTECEDENCIA_DEFAULT_DIAS = 3;
@@ -260,45 +260,29 @@ function nomeProximoCiclo(tituloOriginal: string, tipo: string, prazo: string): 
 
 // ── Cascata de Admissão ──────────────────────────────────────────────────
 // Chamado quando uma admissão é concluída (kanban move pra coluna final).
-// Cria 4-5 tarefas-prazo trabalhistas baseado na data de admissão.
+// Cria as tarefas-prazo trabalhistas (Experiência 1ª/2ª) baseado na data
+// de admissão.
 //
 // 1ª Experiência:    admissão + 40 dias  (avaliação)
 // 2ª Experiência:    admissão + 85 dias  (avaliação final)
-// Exame Clínico:     admissão + 335 dias (1 ano − 30 dias antecedência)
-// Exame Complementar:admissão + 180 dias (6 meses)
-// Coprocultura:      admissão + 180 dias (semestral — só pra cargos manipuladores)
+//
+// EXAMES MÉDICOS: a partir da Fase 7, exames (Clínico, Coprocultura) NÃO são
+// criados como tarefa one-shot aqui. São cadastros mestres em /examesEmpregado
+// criados pela cascata `gerarExamesParaAdmissao` em modules/exames/gerador.ts.
 
 export type AdmissaoFinalizadaInput = {
   pessoaNome: string;
   empregadoId: string;
   restaurantId: string;
   admissaoData: string;          // YYYY-MM-DD
-  // Se não fornecido, sistema busca o cargo do empregado e deriva
-  // de cargo.area ∈ {"Bar","Cozinha"}.
+  // Mantido por retrocompat. O módulo Exames também deriva do cargo
+  // independentemente (e considera só pra Coprocultura).
   manipulaAlimentos?: boolean;
   responsavelPadraoId: string;
   responsavelPadraoNome?: string;
   autorId: string;
   autorNome: string;
 };
-
-// Heurística pra derivar "manipula alimentos" do cargo do empregado.
-// Áreas Bar e Cozinha → manipulador → exige Coprocultura semestral.
-async function deriveManipulaAlimentos(empregadoId: string): Promise<boolean> {
-  try {
-    const empSnap = await getDoc(doc(db, "empregados", empregadoId));
-    if (!empSnap.exists()) return false;
-    const emp = empSnap.data() as Empregado;
-    if (!emp.cargoId) return false;
-    const cargoSnap = await getDoc(doc(db, "cargos", emp.cargoId));
-    if (!cargoSnap.exists()) return false;
-    const cargo = cargoSnap.data() as Cargo;
-    return cargo.area === "Cozinha" || cargo.area === "Bar";
-  } catch (e) {
-    console.warn("[gerador] falha ao derivar manipula alimentos:", e);
-    return false;
-  }
-}
 
 export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Promise<number> {
   const {
@@ -307,10 +291,6 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     autorId, autorNome,
   } = input;
 
-  // Se não vier definido, deriva do cargo
-  const manipulaAlimentos = input.manipulaAlimentos
-    ?? await deriveManipulaAlimentos(empregadoId);
-
   // Idempotência: usa origemRefId+tipo na chave pra evitar duplicar
   // mesmo se chamar 2× pra mesma admissão.
   const existSnap = await getDocs(query(
@@ -318,7 +298,7 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     where("origemRefId", "==", empregadoId),
     where("origem", "==", "admissao"),
   ));
-  if (existSnap.size >= 4) return 0; // já gerou tudo
+  if (existSnap.size >= 2) return 0; // já gerou tudo (Experiência 1ª + 2ª)
 
   const tarefas = [
     {
@@ -331,21 +311,6 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
       prazo: addDias(admissaoData, 85),
       origemKey: "exp2",
     },
-    {
-      titulo: `Exame Clínico (anual) | ${pessoaNome}`,
-      prazo: addDias(admissaoData, 335),
-      origemKey: "examec",
-    },
-    {
-      titulo: `Exame Complementar (semestral) | ${pessoaNome}`,
-      prazo: addDias(admissaoData, 180),
-      origemKey: "examex",
-    },
-    ...(manipulaAlimentos ? [{
-      titulo: `Coprocultura | ${pessoaNome}`,
-      prazo: addDias(admissaoData, 180),
-      origemKey: "copro",
-    }] : []),
   ];
 
   // Filtra os que já existem
@@ -356,7 +321,7 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     if (chavesExistentes.has(chave)) continue;
     await criarTarefa({
       projetoId: "proj-pessoas-rot",
-      subprojetoId: t.origemKey.startsWith("exp") ? "sub-pessoas-experiencia" : "sub-pessoas-prazos",
+      subprojetoId: "sub-pessoas-experiencia",
       titulo: t.titulo,
       responsavelId: responsavelPadraoId,
       responsavelNome: responsavelPadraoNome,
