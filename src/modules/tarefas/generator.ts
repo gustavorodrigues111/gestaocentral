@@ -5,11 +5,11 @@
 // Fase 0 (atual): chamado lazy on-app-load + manual por botão master.
 // Fase 1+: chamado por cron (Vercel Cron Jobs ou Cloud Scheduler).
 
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { criarTarefa } from "./repository";
 import type {
-  ContaFixa, Manutencao, Tarefa,
+  ContaFixa, Manutencao, Tarefa, Empregado, Cargo,
 } from "../../core/types";
 
 const ANTECEDENCIA_DEFAULT_DIAS = 3;
@@ -172,19 +172,43 @@ export type AdmissaoFinalizadaInput = {
   empregadoId: string;
   restaurantId: string;
   admissaoData: string;          // YYYY-MM-DD
-  manipulaAlimentos?: boolean;   // gera coprocultura se true
+  // Se não fornecido, sistema busca o cargo do empregado e deriva
+  // de cargo.area ∈ {"Bar","Cozinha"}.
+  manipulaAlimentos?: boolean;
   responsavelPadraoId: string;
   responsavelPadraoNome?: string;
   autorId: string;
   autorNome: string;
 };
 
+// Heurística pra derivar "manipula alimentos" do cargo do empregado.
+// Áreas Bar e Cozinha → manipulador → exige Coprocultura semestral.
+async function deriveManipulaAlimentos(empregadoId: string): Promise<boolean> {
+  try {
+    const empSnap = await getDoc(doc(db, "empregados", empregadoId));
+    if (!empSnap.exists()) return false;
+    const emp = empSnap.data() as Empregado;
+    if (!emp.cargoId) return false;
+    const cargoSnap = await getDoc(doc(db, "cargos", emp.cargoId));
+    if (!cargoSnap.exists()) return false;
+    const cargo = cargoSnap.data() as Cargo;
+    return cargo.area === "Cozinha" || cargo.area === "Bar";
+  } catch (e) {
+    console.warn("[gerador] falha ao derivar manipula alimentos:", e);
+    return false;
+  }
+}
+
 export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Promise<number> {
   const {
     pessoaNome, empregadoId, restaurantId, admissaoData,
-    manipulaAlimentos, responsavelPadraoId, responsavelPadraoNome,
+    responsavelPadraoId, responsavelPadraoNome,
     autorId, autorNome,
   } = input;
+
+  // Se não vier definido, deriva do cargo
+  const manipulaAlimentos = input.manipulaAlimentos
+    ?? await deriveManipulaAlimentos(empregadoId);
 
   // Idempotência: usa origemRefId+tipo na chave pra evitar duplicar
   // mesmo se chamar 2× pra mesma admissão.

@@ -4,6 +4,7 @@ import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import { applyPendingChanges } from "../audit/pendingChangesJob";
 import { ImpersonationBanner } from "../auth/ImpersonationBanner";
+import { ToastListener } from "../../modules/tarefas/ToastListener";
 
 export function AppShell({ children }: { children?: ReactNode }) {
   // Sidebar aberta por default no desktop, recolhida no mobile.
@@ -40,6 +41,8 @@ export function AppShell({ children }: { children?: ReactNode }) {
           </main>
         </div>
       </div>
+      {/* Toast listener global pra novas tarefas + auto-geração lazy 1×/dia */}
+      <ToastListener />
     </div>
   );
 }

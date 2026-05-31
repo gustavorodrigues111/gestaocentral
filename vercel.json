@@ -12,5 +12,11 @@
     },
     { "source": "/copa", "destination": "/copa.html" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }
+  ],
+  "crons": [
+    {
+      "path": "/api/tarefas-gerar",
+      "schedule": "0 9 * * *"
+    }
   ]
 }

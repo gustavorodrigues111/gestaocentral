@@ -12,17 +12,22 @@ import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
   ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
+  salvarProjeto, salvarSubprojeto,
 } from "./repository";
 import { seedProjetosIniciais } from "./seed";
 import { gerarTarefasDoDia } from "./generator";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
+  TarefaVisibilidade,
 } from "../../core/types";
 import {
   TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL,
+  TAREFA_VISIBILIDADE_LABEL,
 } from "../../core/types";
+import type { TarefaAnexo } from "../../core/types";
+import { pickDriveFolder } from "../../core/google/drivePicker";
 
-type Tab = "minhas" | "projeto" | "admin" | "lixeira";
+type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
 
 export function TarefasPage() {
   const { pessoa } = useAuth();
@@ -129,7 +134,7 @@ export function TarefasPage() {
         </div>
       )}
 
-      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
+      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         <TabButton ativo={tab === "minhas"} onClick={() => setTab("minhas")}>
           Minhas Tarefas
           {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length > 0 && (
@@ -139,6 +144,8 @@ export function TarefasPage() {
           )}
         </TabButton>
         <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
+        <TabButton ativo={tab === "kanban"} onClick={() => setTab("kanban")}>Kanban</TabButton>
+        <TabButton ativo={tab === "calendario"} onClick={() => setTab("calendario")}>Calendário</TabButton>
         {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Admin Projetos</TabButton>}
         {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
       </nav>
@@ -165,10 +172,28 @@ export function TarefasPage() {
         />
       )}
 
+      {tab === "kanban" && (
+        <KanbanView
+          tarefas={minhas}
+          projetos={projetos}
+          autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+          onAbrir={setDetalheId}
+        />
+      )}
+
+      {tab === "calendario" && (
+        <CalendarioView
+          tarefas={minhas}
+          projetos={projetos}
+          onAbrir={setDetalheId}
+        />
+      )}
+
       {tab === "admin" && isMaster && (
         <AdminView
           projetos={projetos}
           subprojetos={subprojetos}
+          pessoaId={pessoa?.id || ""}
         />
       )}
 
@@ -445,39 +470,449 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, t
   );
 }
 
-// ─── VIEW: Admin de Projetos (master) ─────────────────────────────────────
+// ─── VIEW: Admin de Projetos (master) — CRUD inline ───────────────────────
 
-function AdminView({ projetos, subprojetos }: { projetos: TarefaProjeto[]; subprojetos: TarefaSubprojeto[] }) {
+function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjeto[]; subprojetos: TarefaSubprojeto[]; pessoaId: string }) {
+  const [criandoProjeto, setCriandoProjeto] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editandoSubId, setEditandoSubId] = useState<string | null>(null);
+  const [criandoSubIn, setCriandoSubIn] = useState<string | null>(null);
+
+  async function deletarProjeto(p: TarefaProjeto) {
+    if (!confirm(`Excluir "${p.nome}"? Todos os subprojetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
+    await salvarProjeto({
+      ...p,
+      deletadoEm: new Date().toISOString(),
+      deletadoPor: pessoaId,
+      atualizadoEm: new Date().toISOString(),
+    });
+  }
+  async function deletarSub(s: TarefaSubprojeto) {
+    if (!confirm(`Excluir subprojeto "${s.nome}"?`)) return;
+    await salvarSubprojeto({
+      ...s,
+      deletadoEm: new Date().toISOString(),
+      deletadoPor: pessoaId,
+      atualizadoEm: new Date().toISOString(),
+    });
+  }
+
   return (
     <div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Configuração de projetos e subprojetos. Edição inline em breve — por ora, esta view é só leitura.
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
+        </p>
+        <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
+      </div>
+
       {projetos.map(p => {
         const subs = subprojetos.filter(s => s.projetoId === p.id);
         return (
-          <details key={p.id} className="mb-2 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" style={{ borderLeftWidth: 4, borderLeftColor: p.cor }}>
-            <summary className="cursor-pointer font-semibold text-gray-900 dark:text-gray-100">
-              {p.emoji} {p.nome}
-              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
-                {p.tipo} · {p.visibilidade} · {subs.length} subprojeto(s)
-              </span>
-            </summary>
-            <ul className="mt-2 pl-4 space-y-1 text-sm">
+          <div key={p.id} className="mb-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: p.cor }}>
+            <div className="p-3 flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-gray-900 dark:text-gray-100">
+                  {p.emoji} {p.nome}
+                </div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {p.tipo} · {TAREFA_VISIBILIDADE_LABEL[p.visibilidade]} · {subs.length} subprojeto(s)
+                </div>
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setEditandoId(editandoId === p.id ? null : p.id)}>
+                {editandoId === p.id ? "Fechar" : "Editar"}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => deletarProjeto(p)}>🗑️</Button>
+            </div>
+
+            {editandoId === p.id && (
+              <ProjetoForm
+                projeto={p}
+                pessoaId={pessoaId}
+                onClose={() => setEditandoId(null)}
+              />
+            )}
+
+            <div className="px-3 pb-3 space-y-1">
               {subs.map(s => (
-                <li key={s.id} className="text-gray-700 dark:text-gray-300">
-                  ▸ {s.nome}
-                  {s.auto && <span className="ml-2 text-[10px] text-green-700 dark:text-green-300 px-1 py-0.5 rounded bg-green-50 dark:bg-green-900/30">auto</span>}
-                  {s.gatilho && <span className="block ml-3 text-[11px] italic text-gray-500 dark:text-gray-500">{s.gatilho}</span>}
-                </li>
+                <div key={s.id} className="text-sm border-t border-gray-100 dark:border-gray-800 pt-2 mt-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-gray-800 dark:text-gray-200">
+                        ▸ {s.nome}
+                        {s.auto && <span className="ml-2 text-[10px] text-green-700 dark:text-green-300 px-1 py-0.5 rounded bg-green-50 dark:bg-green-900/30">auto</span>}
+                      </div>
+                      {s.gatilho && <div className="text-[11px] italic text-gray-500 dark:text-gray-500 mt-0.5 ml-3">{s.gatilho}</div>}
+                    </div>
+                    <button onClick={() => setEditandoSubId(editandoSubId === s.id ? null : s.id)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">
+                      {editandoSubId === s.id ? "fechar" : "editar"}
+                    </button>
+                    <button onClick={() => deletarSub(s)} className="text-[11px] text-red-500 hover:underline">excluir</button>
+                  </div>
+                  {editandoSubId === s.id && (
+                    <SubprojetoForm
+                      sub={s}
+                      pessoaId={pessoaId}
+                      onClose={() => setEditandoSubId(null)}
+                    />
+                  )}
+                </div>
               ))}
-            </ul>
-          </details>
+
+              {criandoSubIn === p.id ? (
+                <SubprojetoForm
+                  sub={null}
+                  projetoId={p.id}
+                  pessoaId={pessoaId}
+                  onClose={() => setCriandoSubIn(null)}
+                />
+              ) : (
+                <button onClick={() => setCriandoSubIn(p.id)} className="mt-2 text-xs text-emerald-700 dark:text-emerald-300 hover:underline">
+                  + adicionar subprojeto
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      {criandoProjeto && (
+        <ProjetoForm
+          projeto={null}
+          pessoaId={pessoaId}
+          onClose={() => setCriandoProjeto(false)}
+          isModal
+        />
+      )}
+    </div>
+  );
+}
+
+function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
+  projeto: TarefaProjeto | null;
+  pessoaId: string;
+  onClose: () => void;
+  isModal?: boolean;
+}) {
+  const [f, setF] = useState<Partial<TarefaProjeto>>(projeto ? { ...projeto } : {
+    nome: "",
+    emoji: "📁",
+    cor: "#6366f1",
+    dono: pessoaId,
+    visibilidade: "escritorio",
+    tipo: "demanda",
+    ordem: 99,
+    ativo: true,
+  });
+
+  async function salvar() {
+    if (!f.nome) { alert("Nome obrigatório"); return; }
+    const now = new Date().toISOString();
+    const id = projeto?.id || `proj-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const data: TarefaProjeto = {
+      id,
+      nome: f.nome,
+      emoji: f.emoji,
+      cor: f.cor || "#6366f1",
+      dono: f.dono || pessoaId,
+      donoNome: f.donoNome,
+      visibilidade: f.visibilidade || "escritorio",
+      tipo: f.tipo || "demanda",
+      ordem: f.ordem ?? 99,
+      ativo: f.ativo ?? true,
+      deletadoEm: f.deletadoEm,
+      deletadoPor: f.deletadoPor,
+      criadoEm: projeto?.criadoEm || now,
+      criadoPor: projeto?.criadoPor || pessoaId,
+      atualizadoEm: now,
+    };
+    await salvarProjeto(data);
+    onClose();
+  }
+
+  const body = (
+    <div className={`${isModal ? "p-5" : "p-3 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-100 dark:border-gray-800"} space-y-2`}>
+      {isModal && <h3 className="font-bold mb-2 text-gray-900 dark:text-gray-100">Novo Projeto</h3>}
+      <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
+        <input value={f.emoji || ""} onChange={(e) => setF({ ...f, emoji: e.target.value })} placeholder="📁" className="adm-input text-center" maxLength={3} />
+        <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do projeto" className="adm-input" />
+      </div>
+      <div className="grid grid-cols-[100px_1fr_1fr_1fr] gap-2 text-xs">
+        <input type="color" value={f.cor || "#6366f1"} onChange={(e) => setF({ ...f, cor: e.target.value })} className="adm-input p-0.5 h-7" />
+        <select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value as "rotina" | "demanda" | "misto" })} className="adm-input">
+          <option value="rotina">Rotina</option><option value="demanda">Demanda</option><option value="misto">Misto</option>
+        </select>
+        <select value={f.visibilidade} onChange={(e) => setF({ ...f, visibilidade: e.target.value as TarefaVisibilidade })} className="adm-input">
+          {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v => (
+            <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
+          ))}
+        </select>
+        <input type="number" value={f.ordem ?? 99} onChange={(e) => setF({ ...f, ordem: parseInt(e.target.value) || 99 })} placeholder="ordem" className="adm-input" />
+      </div>
+      <div className="flex justify-end gap-2 pt-1">
+        <Button size="sm" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button size="sm" onClick={salvar}>{projeto ? "Salvar" : "Criar"}</Button>
+      </div>
+      <style>{`.adm-input { width: 100%; padding: 4px 8px; border: 1px solid rgb(209 213 219); border-radius: 6px; background: white; font-size: 12px; } .dark .adm-input { background: rgb(31 41 55); border-color: rgb(55 65 81); color: white; }`}</style>
+    </div>
+  );
+
+  if (isModal) {
+    return (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>{body}</div>
+      </div>
+    );
+  }
+  return body;
+}
+
+function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
+  sub: TarefaSubprojeto | null;
+  projetoId?: string;
+  pessoaId: string;
+  onClose: () => void;
+}) {
+  const [f, setF] = useState<Partial<TarefaSubprojeto>>(sub ? { ...sub } : {
+    projetoId: projetoId || "",
+    nome: "",
+    auto: false,
+    ordem: 99,
+    ativo: true,
+  });
+
+  async function salvar() {
+    if (!f.nome) { alert("Nome obrigatório"); return; }
+    const now = new Date().toISOString();
+    const id = sub?.id || `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const data: TarefaSubprojeto = {
+      id,
+      projetoId: f.projetoId || projetoId || "",
+      nome: f.nome,
+      descricao: f.descricao,
+      auto: f.auto ?? false,
+      gatilho: f.gatilho,
+      campos: f.campos,
+      pastaDriveTemplate: f.pastaDriveTemplate,
+      tarefasTemplate: f.tarefasTemplate,
+      ordem: f.ordem ?? 99,
+      ativo: f.ativo ?? true,
+      deletadoEm: f.deletadoEm,
+      deletadoPor: f.deletadoPor,
+      criadoEm: sub?.criadoEm || now,
+      criadoPor: sub?.criadoPor || pessoaId,
+      atualizadoEm: now,
+    };
+    await salvarSubprojeto(data);
+    onClose();
+  }
+
+  return (
+    <div className="p-2 mt-1 bg-gray-50 dark:bg-gray-800/40 rounded-md space-y-1.5">
+      <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do subprojeto" className="adm-input" />
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex items-center gap-1 text-xs">
+          <input type="checkbox" checked={f.auto || false} onChange={(e) => setF({ ...f, auto: e.target.checked })} />
+          Automático (sistema gera)
+        </label>
+        <input type="number" value={f.ordem ?? 99} onChange={(e) => setF({ ...f, ordem: parseInt(e.target.value) || 99 })} placeholder="ordem" className="adm-input text-xs" />
+      </div>
+      {f.auto && (
+        <input value={f.gatilho || ""} onChange={(e) => setF({ ...f, gatilho: e.target.value })} placeholder="Gatilho (ex: 'Nova admissão concluída')" className="adm-input text-xs" />
+      )}
+      <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom separados por · (opcional)" className="adm-input text-xs" />
+      <div className="flex justify-end gap-1">
+        <Button size="sm" variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button size="sm" onClick={salvar}>{sub ? "Salvar" : "Criar"}</Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── VIEW: Kanban ──────────────────────────────────────────────────────────
+
+function KanbanView({ tarefas, projetos, autor, onAbrir }: {
+  tarefas: Tarefa[];
+  projetos: TarefaProjeto[];
+  autor: { id: string; nome: string };
+  onAbrir: (id: string) => void;
+}) {
+  const [dragId, setDragId] = useState<string | null>(null);
+  const cols: TarefaStatus[] = ["a_fazer", "em_andamento", "concluida", "cancelada"];
+
+  function onDragStart(e: React.DragEvent, id: string) {
+    setDragId(id);
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function onDragOver(e: React.DragEvent) { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }
+  async function onDrop(e: React.DragEvent, col: TarefaStatus) {
+    e.preventDefault();
+    const id = e.dataTransfer.getData("text/plain") || dragId;
+    setDragId(null);
+    if (!id) return;
+    await mudarStatus(id, col, autor);
+  }
+
+  if (tarefas.length === 0) {
+    return <div className="text-center py-12 text-gray-500 dark:text-gray-400">Nenhuma tarefa pra você ainda.</div>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+      {cols.map(col => {
+        const items = tarefas.filter(t => t.status === col);
+        return (
+          <div
+            key={col}
+            className="rounded-xl bg-gray-50 dark:bg-gray-800/40 p-2 min-h-[200px]"
+            onDragOver={onDragOver}
+            onDrop={(e) => onDrop(e, col)}
+          >
+            <div className="flex items-center justify-between mb-2 px-1">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
+                {TAREFA_STATUS_LABEL[col]}
+              </h3>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">{items.length}</span>
+            </div>
+            <div className="space-y-1.5">
+              {items.map(t => {
+                const proj = projetos.find(p => p.id === t.projetoId);
+                const cor = t.corHerdada || proj?.cor || "#6b7280";
+                return (
+                  <div
+                    key={t.id}
+                    draggable
+                    onDragStart={(e) => onDragStart(e, t.id)}
+                    onClick={() => onAbrir(t.id)}
+                    className="p-2 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md transition-shadow"
+                    style={{ borderLeftWidth: 3, borderLeftColor: cor }}
+                  >
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{t.titulo}</div>
+                    <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                      {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
+                      {t.prazo && <span>📅 {t.prazo}</span>}
+                      {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         );
       })}
     </div>
   );
 }
+
+// ─── VIEW: Calendário (mês) ────────────────────────────────────────────────
+
+function CalendarioView({ tarefas, projetos, onAbrir }: {
+  tarefas: Tarefa[];
+  projetos: TarefaProjeto[];
+  onAbrir: (id: string) => void;
+}) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [mes, setMes] = useState(hoje.slice(0, 7)); // YYYY-MM
+
+  const [ano, m] = mes.split("-").map(Number);
+  const primeiroDia = new Date(ano, m - 1, 1);
+  const ultimoDia = new Date(ano, m, 0);
+  const diasNoMes = ultimoDia.getDate();
+  const offset = primeiroDia.getDay(); // 0=Dom
+
+  const tarefasPorDia = new Map<string, Tarefa[]>();
+  tarefas.forEach(t => {
+    if (!t.prazo) return;
+    if (!t.prazo.startsWith(mes)) return;
+    const arr = tarefasPorDia.get(t.prazo) || [];
+    arr.push(t);
+    tarefasPorDia.set(t.prazo, arr);
+  });
+
+  const semProprio = tarefas.filter(t => !t.prazo);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={() => {
+            const d = new Date(ano, m - 2, 1);
+            setMes(d.toISOString().slice(0, 7));
+          }}>‹</Button>
+          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+          <Button size="sm" variant="ghost" onClick={() => {
+            const d = new Date(ano, m, 1);
+            setMes(d.toISOString().slice(0, 7));
+          }}>›</Button>
+          <Button size="sm" variant="ghost" onClick={() => setMes(hoje.slice(0, 7))}>Hoje</Button>
+        </div>
+        <div className="text-xs text-gray-500 dark:text-gray-400">
+          {tarefas.filter(t => t.prazo && t.prazo.startsWith(mes)).length} tarefa(s) no mês
+        </div>
+      </div>
+
+      <div className="grid grid-cols-7 gap-1 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">
+        <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {Array.from({ length: offset }).map((_, i) => <div key={"v" + i} />)}
+        {Array.from({ length: diasNoMes }).map((_, i) => {
+          const dia = i + 1;
+          const data = `${mes}-${String(dia).padStart(2, "0")}`;
+          const ehHoje = data === hoje;
+          const lista = tarefasPorDia.get(data) || [];
+          return (
+            <div
+              key={dia}
+              className={`min-h-[80px] p-1 rounded-md border ${ehHoje ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}
+            >
+              <div className={`text-[10px] font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400"} mb-1`}>{dia}</div>
+              <div className="space-y-0.5">
+                {lista.slice(0, 3).map(t => {
+                  const proj = projetos.find(p => p.id === t.projetoId);
+                  const cor = t.corHerdada || proj?.cor || "#6b7280";
+                  return (
+                    <div
+                      key={t.id}
+                      onClick={() => onAbrir(t.id)}
+                      className="text-[10px] px-1 py-0.5 rounded cursor-pointer truncate hover:opacity-80"
+                      style={{ background: cor + "30", color: cor }}
+                      title={t.titulo}
+                    >
+                      {t.titulo}
+                    </div>
+                  );
+                })}
+                {lista.length > 3 && <div className="text-[9px] text-gray-500">+{lista.length - 3}</div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {semProprio.length > 0 && (
+        <details className="mt-4">
+          <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
+            {semProprio.length} tarefa(s) sem prazo
+          </summary>
+          <div className="mt-2 space-y-1 text-sm">
+            {semProprio.map(t => {
+              const proj = projetos.find(p => p.id === t.projetoId);
+              const cor = t.corHerdada || proj?.cor || "#6b7280";
+              return (
+                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-sm" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                  <span style={{ color: cor }}>{proj?.emoji}</span> {t.titulo}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
 
 // ─── VIEW: Lixeira (master) ───────────────────────────────────────────────
 
@@ -671,6 +1106,48 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
     setNovoComentario("");
   }
 
+  async function addAnexoManual() {
+    const url = prompt("Cole o link (Drive, Docs, ou qualquer URL):");
+    if (!url) return;
+    const nome = prompt("Nome / label do anexo:", url.split("/").pop() || "Anexo") || "Anexo";
+    const anexo: TarefaAnexo = {
+      id: Math.random().toString(36).slice(2, 11),
+      nome, url,
+      adicionadoEm: new Date().toISOString(),
+      adicionadoPor: autor.id,
+    };
+    await atualizarTarefa(tarefa.id, {
+      anexos: [...(tarefa.anexos || []), anexo],
+    }, autor, { acao: "anexo_adicionado", detalhe: nome });
+  }
+
+  async function addAnexoDrive() {
+    try {
+      const folder = await pickDriveFolder("Selecione a pasta do Drive");
+      if (!folder) return;
+      const anexo: TarefaAnexo = {
+        id: Math.random().toString(36).slice(2, 11),
+        nome: folder.name,
+        url: `https://drive.google.com/drive/folders/${folder.id}`,
+        tipo: "drive-folder",
+        adicionadoEm: new Date().toISOString(),
+        adicionadoPor: autor.id,
+      };
+      await atualizarTarefa(tarefa.id, {
+        anexos: [...(tarefa.anexos || []), anexo],
+      }, autor, { acao: "anexo_adicionado", detalhe: folder.name });
+    } catch (e) {
+      alert("Não foi possível abrir o Drive Picker: " + String(e));
+    }
+  }
+
+  async function removerAnexo(anexoId: string) {
+    if (!confirm("Remover este anexo?")) return;
+    await atualizarTarefa(tarefa.id, {
+      anexos: (tarefa.anexos || []).filter(a => a.id !== anexoId),
+    }, autor, { acao: "editada", campo: "anexos", detalhe: "Anexo removido" });
+  }
+
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()} style={{ borderTopWidth: 6, borderTopColor: cor }}>
@@ -782,6 +1259,26 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
               />
               <Button size="sm" onClick={addComentario}>Enviar</Button>
+            </div>
+          </div>
+
+          {/* Anexos */}
+          <div>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              Anexos {tarefa.anexos && tarefa.anexos.length > 0 && `(${tarefa.anexos.length})`}
+            </h3>
+            <div className="space-y-1">
+              {(tarefa.anexos || []).map(a => (
+                <div key={a.id} className="flex items-center gap-2 text-sm">
+                  <span>{a.tipo === "drive-folder" ? "📁" : "🔗"}</span>
+                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-indigo-600 dark:text-indigo-400 hover:underline truncate">{a.nome}</a>
+                  <button onClick={() => removerAnexo(a.id)} className="text-[11px] text-red-500 hover:underline">×</button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-2">
+              <Button size="sm" variant="ghost" onClick={addAnexoManual}>+ Link</Button>
+              <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Drive</Button>
             </div>
           </div>
 

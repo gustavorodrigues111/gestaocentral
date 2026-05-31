@@ -44,6 +44,37 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return () => unsub();
   }, [rid, pessoa?.id]);
 
+  // Contador GLOBAL de tarefas pendentes do usuário (responsável OU co-resp).
+  // Independente do restaurante selecionado — é caixa por usuário.
+  const [tarefasPendentes, setTarefasPendentes] = useState(0);
+  useEffect(() => {
+    if (!pessoa?.id) { setTarefasPendentes(0); return; }
+    const qResp = query(collection(db, "tarefas"), where("responsavelId", "==", pessoa.id));
+    const qCo = query(collection(db, "tarefas"), where("coResponsaveis", "array-contains", pessoa.id));
+    let lastResp: Array<{ status: string; deletadoEm?: string | null }> = [];
+    let lastCo: Array<{ status: string; deletadoEm?: string | null }> = [];
+    function recompute() {
+      // Dedup por id seria mais correto, mas array-contains query não retorna
+      // os mesmos docs do responsavelId — só intersecção é se a pessoa é AS
+      // duas coisas na mesma tarefa, o que é raro. Sum-then-dedupe via Map.
+      const map = new Map<string, { status: string; deletadoEm?: string | null }>();
+      [...lastResp, ...lastCo].forEach((t, i) => map.set(String(i), t));
+      const pend = Array.from(map.values()).filter(t =>
+        !t.deletadoEm && t.status !== "concluida" && t.status !== "cancelada"
+      ).length;
+      setTarefasPendentes(pend);
+    }
+    const u1 = onSnapshot(qResp, snap => {
+      lastResp = snap.docs.map(d => ({ status: (d.data() as { status?: string }).status || "a_fazer", deletadoEm: (d.data() as { deletadoEm?: string | null }).deletadoEm }));
+      recompute();
+    });
+    const u2 = onSnapshot(qCo, snap => {
+      lastCo = snap.docs.map(d => ({ status: (d.data() as { status?: string }).status || "a_fazer", deletadoEm: (d.data() as { deletadoEm?: string | null }).deletadoEm }));
+      recompute();
+    });
+    return () => { u1(); u2(); };
+  }, [pessoa?.id]);
+
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
     if (!pessoa) return false;
@@ -135,6 +166,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     >
                       <span>{m.icon}</span>
                       <span className="flex-1 truncate">{m.label}</span>
+                      {m.id === "tarefas" && tarefasPendentes > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                          {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
+                        </span>
+                      )}
                       {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
                       {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
                       {m.status === "planejado" && <span className="text-[9px] text-gray-400">próx.</span>}
