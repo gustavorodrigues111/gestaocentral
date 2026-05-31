@@ -1669,7 +1669,6 @@ function ColaboradorBlock({
             status === "tratado"            ? "✓ Tratado" :
             status === "corrigido_solides"  ? "✅ Corrigido no Sólides" :
             status === "reaberto"           ? "↻ Reaberto" : status;
-          const ambasComConteudo = excAlinhamento.length > 0 && excAjuste.length > 0;
           // Cor da borda esquerda do dia inteiro — destaca status à esquerda
           const corBordaLateral =
             status === "tratado"            ? "border-l-emerald-500" :
