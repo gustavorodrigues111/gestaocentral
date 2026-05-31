@@ -6,8 +6,9 @@ import { Button } from "../../core/ui/Button";
 import type {
   EspacoEvento, LeadEvento, PacoteEvento, ParcelaProposta, PropostaEvento,
 } from "../../core/types";
+import { pacotePrecoLabel, pacoteValorTotal } from "../../core/types";
 import {
-  calcularTotalProposta, criarProposta, montarMensagemProposta,
+  criarProposta, montarMensagemProposta,
 } from "./propostaHelpers";
 
 type Props = {
@@ -155,13 +156,16 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     }));
   }
 
-  // Preview do total que a proposta nova vai ter (antes de gerar)
+  // Preview do total que a proposta nova vai ter (antes de gerar).
+  // Se vendedor digitou override de R$/pax, ele manda; senão usa o modo
+  // do pacote (por_pessoa, total_fixo ou personalizado=0).
   const totalPreview = useMemo(() => {
     const pax = parseInt(paxOverride, 10) || lead.numConvidados;
-    const precoPax = precoPaxOverride
-      ? parseFloat(precoPaxOverride.replace(",", "."))
-      : (pacoteAtual?.precoPorPessoa || 0);
-    return calcularTotalProposta(precoPax, pax, []);
+    if (precoPaxOverride) {
+      const v = parseFloat(precoPaxOverride.replace(",", ".")) || 0;
+      return Math.round(v * pax * 100) / 100;
+    }
+    return pacoteAtual ? pacoteValorTotal(pacoteAtual, pax) : 0;
   }, [paxOverride, precoPaxOverride, pacoteAtual, lead.numConvidados]);
 
   return (
@@ -186,7 +190,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               >
                 <option value="">— sem pacote (proposta livre) —</option>
                 {pacotesAtivos.map(p => (
-                  <option key={p.id} value={p.id}>{p.nome} · R$ {p.precoPorPessoa.toFixed(2)}/pax</option>
+                  <option key={p.id} value={p.id}>{p.nome} · {pacotePrecoLabel(p)}</option>
                 ))}
               </select>
             </div>
@@ -349,7 +353,9 @@ function PropostaCard({
             R$ {proposta.precoTotal.toFixed(2)}
           </div>
           <div className="text-[11px] text-gray-500">
-            R$ {proposta.precoPorPessoa.toFixed(2)} × {proposta.numConvidados} pax
+            {proposta.precoPorPessoa > 0
+              ? `R$ ${proposta.precoPorPessoa.toFixed(2)} × ${proposta.numConvidados} pax`
+              : `${proposta.numConvidados} pax · valor fechado`}
           </div>
         </div>
       </div>

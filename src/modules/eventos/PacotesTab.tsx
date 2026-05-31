@@ -4,7 +4,8 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { EspacoEvento, ItemCardapioEvento, PacoteEvento } from "../../core/types";
+import type { EspacoEvento, ItemCardapioEvento, PacoteEvento, PacotePrecoModo } from "../../core/types";
+import { pacotePrecoLabel } from "../../core/types";
 
 const TIPO_ITEM_LABEL: Record<ItemCardapioEvento["tipo"], string> = {
   couvert: "Couvert",
@@ -87,6 +88,7 @@ export function PacotesTab({ rid, podeEditar }: Props) {
       descricao: "",
       tipo: "fixo",
       duracaoHoras: 4,
+      precoModo: "por_pessoa",
       precoPorPessoa: 0,
       capacidadeMin: espaco.capacidadeMin,
       capacidadeMax: espaco.capacidadeMax,
@@ -222,7 +224,7 @@ function PacoteCard({
                 Duração: {pacote.duracaoHoras}h ·{" "}
                 Capacidade: {pacote.capacidadeMin}–{pacote.capacidadeMax} pax ·{" "}
                 <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-                  R$ {pacote.precoPorPessoa.toFixed(2)}/pax
+                  {pacotePrecoLabel(pacote)}
                 </span>
               </div>
               <div>{pacote.cardapio.length} item(ns) no cardápio</div>
@@ -314,13 +316,19 @@ function PacoteEditor({
     }
     setSaving(true);
     try {
+      // Garante que campo de preço não-usado vai zerado pra Firestore,
+      // evita confusão na consulta (ex: pacote total_fixo com precoPorPessoa
+      // residual de quando era "por pessoa").
+      const modo = form.precoModo || "por_pessoa";
       const payload: PacoteEvento = {
         ...form,
         nome: form.nome.trim(),
         descricao: form.descricao.trim(),
         capacidadeMin: Math.max(1, form.capacidadeMin),
         capacidadeMax: Math.max(form.capacidadeMin, form.capacidadeMax),
-        precoPorPessoa: Math.max(0, form.precoPorPessoa),
+        precoModo: modo,
+        precoPorPessoa: modo === "por_pessoa" ? Math.max(0, form.precoPorPessoa) : 0,
+        precoTotal: modo === "total_fixo" ? Math.max(0, form.precoTotal || 0) : undefined,
         duracaoHoras: Math.max(0.5, form.duracaoHoras),
         updatedAt: new Date().toISOString(),
       };
@@ -406,14 +414,7 @@ function PacoteEditor({
           value={String(form.duracaoHoras)}
           onChange={(e) => setForm({ ...form, duracaoHoras: parseFloat(e.target.value) || 0 })}
         />
-        <Input
-          label="Preço / pax R$"
-          type="number"
-          step="0.01"
-          value={String(form.precoPorPessoa)}
-          onChange={(e) => setForm({ ...form, precoPorPessoa: parseFloat(e.target.value) || 0 })}
-        />
-        <div>
+        <div className="sm:col-span-2">
           <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
             Status
           </label>
@@ -428,6 +429,64 @@ function PacoteEditor({
           >
             {form.ativo ? "Ativo" : "Inativo"}
           </button>
+        </div>
+      </div>
+
+      {/* Modelo de cobrança — separado em bloco próprio porque é decisão estrutural */}
+      <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900/40">
+        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block">
+          Modelo de cobrança
+        </label>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
+          {([
+            { v: "por_pessoa", titulo: "Por pessoa", desc: "Multiplica pelo nº de convidados" },
+            { v: "total_fixo", titulo: "Total fixo", desc: "Valor fechado (ex: locação cheia)" },
+            { v: "personalizado", titulo: "Personalizado", desc: "Sem preço de tabela — vendedor monta" },
+          ] as { v: PacotePrecoModo; titulo: string; desc: string }[]).map(opt => {
+            const ativo = (form.precoModo || "por_pessoa") === opt.v;
+            return (
+              <button
+                key={opt.v}
+                type="button"
+                onClick={() => setForm(f => ({ ...f, precoModo: opt.v }))}
+                className={`text-left px-3 py-2 rounded-lg border transition-colors ${
+                  ativo
+                    ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700"
+                    : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 hover:border-indigo-200"
+                }`}
+              >
+                <div className={`font-semibold text-sm ${ativo ? "text-indigo-800 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
+                  {opt.titulo}
+                </div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{opt.desc}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-3">
+          {(form.precoModo || "por_pessoa") === "por_pessoa" && (
+            <Input
+              label="Preço / pax R$"
+              type="number"
+              step="0.01"
+              value={String(form.precoPorPessoa)}
+              onChange={(e) => setForm({ ...form, precoPorPessoa: parseFloat(e.target.value) || 0 })}
+            />
+          )}
+          {form.precoModo === "total_fixo" && (
+            <Input
+              label="Valor total R$"
+              type="number"
+              step="0.01"
+              value={String(form.precoTotal || 0)}
+              onChange={(e) => setForm({ ...form, precoTotal: parseFloat(e.target.value) || 0 })}
+            />
+          )}
+          {form.precoModo === "personalizado" && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+              Sem valor de tabela. Em cada proposta o vendedor define o preço a partir das características do evento.
+            </p>
+          )}
         </div>
       </div>
 

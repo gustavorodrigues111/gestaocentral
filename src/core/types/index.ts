@@ -2571,6 +2571,13 @@ export type ItemCardapioEvento = {
   ordem: number;
 };
 
+// Modelo de cobrança do pacote.
+//   "por_pessoa" → multiplica pelo número de convidados (ex: R$ 200/p × 30)
+//   "total_fixo" → valor fechado independente do número (locação cheia,
+//                  comprou-tudo-incluso fixo)
+//   "personalizado" → não tem preço de tabela; vendedor monta proposta
+export type PacotePrecoModo = "por_pessoa" | "total_fixo" | "personalizado";
+
 export type PacoteEvento = {
   id: string;
   restaurantId: string;
@@ -2581,7 +2588,11 @@ export type PacoteEvento = {
   // "personalizavel" = base vazia que o vendedor monta do zero
   tipo: "fixo" | "personalizavel";
   duracaoHoras: number;              // 4
-  precoPorPessoa: number;            // R$
+  // Modelo de cobrança — default "por_pessoa" pra retrocompat.
+  // Pacotes legacy só têm precoPorPessoa; novos podem ter total_fixo.
+  precoModo?: PacotePrecoModo;
+  precoPorPessoa: number;            // R$ (0 se modo "total_fixo")
+  precoTotal?: number;               // R$ — só quando precoModo="total_fixo"
   capacidadeMin: number;
   capacidadeMax: number;
   cardapio: ItemCardapioEvento[];
@@ -2593,6 +2604,27 @@ export type PacoteEvento = {
   createdAt: string;
   updatedAt: string;
 };
+
+// Helper: retorna valor total do pacote pra um dado nº de convidados.
+// Cobre os 3 modos. Default seguro: 0 (vendedor preenche manual).
+export function pacoteValorTotal(p: Pick<PacoteEvento, "precoModo" | "precoPorPessoa" | "precoTotal">, numConvidados: number): number {
+  const modo = p.precoModo || "por_pessoa";
+  if (modo === "total_fixo") return p.precoTotal || 0;
+  if (modo === "personalizado") return 0;
+  return (p.precoPorPessoa || 0) * numConvidados;
+}
+
+// Helper: label curto pra mostrar no card/vitrine ("R$ 200/p", "R$ 3.500 fixo").
+export function pacotePrecoLabel(p: Pick<PacoteEvento, "precoModo" | "precoPorPessoa" | "precoTotal">): string {
+  const modo = p.precoModo || "por_pessoa";
+  if (modo === "total_fixo") {
+    const v = (p.precoTotal || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return `R$ ${v} (locação)`;
+  }
+  if (modo === "personalizado") return "Sob consulta";
+  const v = (p.precoPorPessoa || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  return `R$ ${v}/p`;
+}
 
 export type LeadEventoStatus =
   | "novo"

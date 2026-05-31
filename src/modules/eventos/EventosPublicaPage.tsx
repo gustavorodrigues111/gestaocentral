@@ -8,6 +8,7 @@ import type {
   EscopoPacote, EspacoEvento, LeadEvento, ModeloEvento,
   OcasiaoEvento, PacoteEvento,
 } from "../../core/types";
+import { pacotePrecoLabel } from "../../core/types";
 import {
   buscarCNPJ, duracaoHoras, ESCOPO_PACOTE_LABEL, limparCNPJ,
   OCASIAO_LABEL, slotDoHorario, validarCNPJ, validarEmail,
@@ -576,9 +577,9 @@ export function EventosPublicaPage() {
                   {p.descricao && (
                     <span className="block text-xs opacity-70 mt-0.5">{p.descricao}</span>
                   )}
-                  {p.precoPorPessoa > 0 && (
+                  {((p.precoModo || "por_pessoa") !== "personalizado") && (
                     <span className="block text-xs mt-0.5" style={{ color: corPrimaria, opacity: 0.85 }}>
-                      R$ {p.precoPorPessoa.toFixed(2)} / pessoa · {p.duracaoHoras}h
+                      {pacotePrecoLabel(p)} · {p.duracaoHoras}h
                     </span>
                   )}
                 </button>

@@ -11,6 +11,7 @@ import type {
   AjusteProposta, EspacoEvento, LeadEvento, PacoteEvento,
   ParcelaProposta, PropostaEvento,
 } from "../../core/types";
+import { pacoteValorTotal } from "../../core/types";
 
 export type CriarPropostaParams = {
   lead: LeadEvento;
@@ -97,9 +98,20 @@ export function politicaCancelamentoTexto(espaco: EspacoEvento | null): string {
 export async function criarProposta(params: CriarPropostaParams): Promise<PropostaEvento> {
   const { lead, pacote, espaco } = params;
   const pax = params.numConvidados ?? lead.numConvidados;
-  const precoPorPessoa = params.precoPorPessoaOverride ?? (pacote?.precoPorPessoa || 0);
+  // Override sempre ganha. Sem override:
+  //  - pacote por pessoa → precoPorPessoa do pacote
+  //  - pacote total_fixo → precoPorPessoa = 0 (valor inteiro vai no total via pacoteValorTotal)
+  //  - pacote personalizado → 0 (vendedor preenche depois)
+  const precoPorPessoa = params.precoPorPessoaOverride
+    ?? (pacote && (pacote.precoModo || "por_pessoa") === "por_pessoa" ? pacote.precoPorPessoa : 0);
   const ajustes = params.ajustes || [];
-  const total = calcularTotalProposta(precoPorPessoa, pax, ajustes);
+  // Base = override*pax OU valor cheio do pacote (total_fixo) OU pacote por pessoa
+  const baseDoPacote = pacote ? pacoteValorTotal(pacote, pax) : 0;
+  const baseEfetiva = params.precoPorPessoaOverride != null
+    ? params.precoPorPessoaOverride * pax
+    : baseDoPacote;
+  const totalAjustes = ajustes.reduce((s, a) => s + a.valor, 0);
+  const total = Math.round((baseEfetiva + totalAjustes) * 100) / 100;
   const versao = await proximaVersaoProposta(lead.id);
   const id = `prop_${lead.id}_v${versao}`;
   const now = new Date().toISOString();
@@ -176,7 +188,11 @@ export function montarMensagemProposta(proposta: PropostaEvento, leadNome: strin
     linhas.push("");
   }
   linhas.push(`*Total: R$ ${proposta.precoTotal.toFixed(2)}*`);
-  linhas.push(`(R$ ${proposta.precoPorPessoa.toFixed(2)} por pessoa)`);
+  // Só mostra o "por pessoa" se tiver preço unitário definido — pacotes
+  // de locação cheia gravam precoPorPessoa=0 e não fazem sentido linhar.
+  if (proposta.precoPorPessoa > 0) {
+    linhas.push(`(R$ ${proposta.precoPorPessoa.toFixed(2)} por pessoa)`);
+  }
   linhas.push("");
   linhas.push("*Pagamento*");
   for (const p of proposta.parcelas) {
