@@ -10,7 +10,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaLogEntry,
-  Subtarefa, TarefaComentario,
+  Subtarefa, TarefaComentario, TarefaVisibilidade,
 } from "../../core/types";
 
 const COL_PROJETOS = "tarefaProjetos";
@@ -120,8 +120,12 @@ export async function getTarefa(id: string): Promise<Tarefa | null> {
 
 export async function criarTarefa(t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm">): Promise<string> {
   const now = new Date().toISOString();
+  // Denormaliza visibilidadeEfetiva pra rules: se há override, usa ele;
+  // senão, busca a do projeto.
+  const visEfetiva = t.visibilidadeOverride || await resolverVisibilidadeProjeto(t.projetoId);
   const ref = await addDoc(collection(db, COL_TAREFAS), sanitizeForFirestore({
     ...t,
+    visibilidadeEfetiva: visEfetiva,
     criadoEm: now,
     atualizadoEm: now,
     log: [
@@ -137,12 +141,26 @@ export async function criarTarefa(t: Omit<Tarefa, "id" | "criadoEm" | "atualizad
   return ref.id;
 }
 
+async function resolverVisibilidadeProjeto(projetoId: string): Promise<TarefaVisibilidade> {
+  try {
+    const s = await getDoc(doc(db, COL_PROJETOS, projetoId));
+    if (s.exists()) return ((s.data() as { visibilidade?: TarefaVisibilidade }).visibilidade || "escritorio");
+  } catch {}
+  return "escritorio";
+}
+
 export async function atualizarTarefa(id: string, patch: Partial<Tarefa>, autor: { id: string; nome: string }, logEntry?: Partial<TarefaLogEntry>): Promise<void> {
   const now = new Date().toISOString();
   const ref = doc(db, COL_TAREFAS, id);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const atual = snap.data() as Tarefa;
+  // Se mudou projetoId ou visibilidadeOverride, recalcula visibilidadeEfetiva
+  if ("projetoId" in patch || "visibilidadeOverride" in patch) {
+    const projetoIdFinal = patch.projetoId || atual.projetoId;
+    const overrideFinal = patch.visibilidadeOverride ?? atual.visibilidadeOverride;
+    patch.visibilidadeEfetiva = overrideFinal || await resolverVisibilidadeProjeto(projetoIdFinal);
+  }
   const newLog: TarefaLogEntry[] = [
     ...(atual.log || []),
     ...(logEntry

@@ -134,13 +134,42 @@ service cloud.firestore {
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
     match /trilhaEventos/{id}       { allow read, write: if authed(); }
-    // ── Gestor de Tarefas ─────────────────────────────────────────────────
-    // Projetos / Subprojetos / Tarefas: read auth-only (visibilidade filtra
-    // client-side). Write auth-only — UI valida permissões via canAcao().
-    // Soft delete: app marca deletadoEm; só master deleta de verdade.
+    // ── Gestor de Tarefas — confidencialidade real (Fase 5) ──────────────
+    //
+    // tarefas: read CONDICIONAL — só vê quem é master, criador, responsável,
+    // co-responsável, está na lista usuariosAutorizados, OU a visibilidade
+    // efetiva é "publico"/"escritorio". Grupos (grupo_dp, etc.) ainda passam
+    // com auth-only nesta fase — fase 6 vai amarrar ao accessProfile.
+    //
+    // tarefaProjetos / tarefaSubprojetos: read auth-only por enquanto (lista
+    // de projetos não é considerada sensível; o que importa são as tarefas).
+    //
+    // Write: auth-only com UI validando. Delete só master (soft delete via
+    // app).
+    function tarefaPodeLer() {
+      let d = resource.data;
+      return isMaster()
+        || request.auth.uid == d.criadoPor
+        || request.auth.uid == d.responsavelId
+        || (d.coResponsaveis is list && request.auth.uid in d.coResponsaveis)
+        || (d.usuariosAutorizados is list && request.auth.uid in d.usuariosAutorizados)
+        || d.visibilidadeEfetiva == "publico"
+        || d.visibilidadeEfetiva == "escritorio"
+        || d.visibilidadeEfetiva == "grupo_dp"     // grupos liberados a authed nessa fase
+        || d.visibilidadeEfetiva == "grupo_fin"    // (apertar quando virar canAcao server-side)
+        || d.visibilidadeEfetiva == "grupo_dir"
+        || d.visibilidadeEfetiva == "grupo_ops"
+        // Retrocompat: docs antigos sem visibilidadeEfetiva
+        || !("visibilidadeEfetiva" in d);
+    }
     match /tarefaProjetos/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /tarefaSubprojetos/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
-    match /tarefas/{id}             { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /tarefas/{id} {
+      allow read: if authed() && tarefaPodeLer();
+      allow create: if authed();
+      allow update: if authed() && tarefaPodeLer();
+      allow delete: if isMaster();
+    }
     // ── Cadastros mestres (geram tarefas) ────────────────────────────────
     match /contasFixas/{id}         { allow read, write: if authed(); allow delete: if isMaster(); }
     match /manutencoes/{id}         { allow read, write: if authed(); allow delete: if isMaster(); }

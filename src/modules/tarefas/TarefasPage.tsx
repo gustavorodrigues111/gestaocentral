@@ -29,6 +29,7 @@ import {
 } from "../../core/types";
 import type { TarefaAnexo } from "../../core/types";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
+import { podeVerTarefa, isConfidencial } from "./visibilidade";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 
 type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
@@ -171,7 +172,7 @@ export function TarefasPage() {
           subprojetos={subprojetos}
           projetoFiltro={projetoFiltro}
           setProjetoFiltro={setProjetoFiltro}
-          tarefas={tarefasProjeto}
+          tarefas={tarefasProjeto.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
           onAbrir={setDetalheId}
         />
       )}
@@ -203,7 +204,7 @@ export function TarefasPage() {
 
       {tab === "lixeira" && isMaster && (
         <LixeiraView
-          tarefas={lixeira}
+          tarefas={lixeira.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
           projetos={projetos}
           autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
         />
@@ -221,13 +222,17 @@ export function TarefasPage() {
       )}
 
       {tarefaSelecionada && (
-        <DetalheModal
-          tarefa={tarefaSelecionada}
-          projetos={projetos}
-          subprojetos={subprojetos}
-          autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
-          onClose={() => setDetalheId(null)}
-        />
+        podeVerTarefa(tarefaSelecionada, projetos.find(p => p.id === tarefaSelecionada.projetoId), pessoa) ? (
+          <DetalheModal
+            tarefa={tarefaSelecionada}
+            projetos={projetos}
+            subprojetos={subprojetos}
+            autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+            onClose={() => setDetalheId(null)}
+          />
+        ) : (
+          <SemPermissaoModal onClose={() => setDetalheId(null)} />
+        )
       )}
     </div>
   );
@@ -547,6 +552,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
   const atrasada = tarefa.prazo && tarefa.prazo < new Date().toISOString().slice(0, 10) && !concluida;
   const subtarefasFeitas = (tarefa.subtarefas || []).filter(s => s.feito).length;
   const subtarefasTotal = (tarefa.subtarefas || []).length;
+  const confidencial = isConfidencial(tarefa, projeto);
 
   return (
     <div
@@ -572,8 +578,9 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
           {concluida && "✓"}
         </button>
         <div className="flex-1 min-w-0">
-          <div className={`font-medium text-gray-900 dark:text-gray-100 ${concluida ? "line-through" : ""}`}>
-            {tarefa.titulo}
+          <div className={`font-medium text-gray-900 dark:text-gray-100 ${concluida ? "line-through" : ""} flex items-center gap-1.5`}>
+            {confidencial && <span title="Confidencial — só pessoas autorizadas" className="text-amber-600 dark:text-amber-400 text-xs">🔒</span>}
+            <span className="truncate">{tarefa.titulo}</span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
             {projeto && <span style={{ color: cor }}>{projeto.emoji} {projeto.nome}</span>}
@@ -816,6 +823,18 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
     ordem: 99,
     ativo: true,
   });
+  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoasLista(list);
+    });
+    return () => u();
+  }, []);
 
   async function salvar() {
     if (!f.nome) { alert("Nome obrigatório"); return; }
@@ -829,6 +848,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
       dono: f.dono || pessoaId,
       donoNome: f.donoNome,
       visibilidade: f.visibilidade || "escritorio",
+      usuariosAutorizados: f.usuariosAutorizados,
       tipo: f.tipo || "demanda",
       ordem: f.ordem ?? 99,
       ativo: f.ativo ?? true,
@@ -861,6 +881,12 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
         </select>
         <input type="number" value={f.ordem ?? 99} onChange={(e) => setF({ ...f, ordem: parseInt(e.target.value) || 99 })} placeholder="ordem" className="adm-input" />
       </div>
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Pessoas autorizadas no projeto inteiro (acesso explícito):</div>
+      <UsuariosAutorizadosPicker
+        ids={f.usuariosAutorizados || []}
+        pessoas={pessoasLista}
+        onChange={(ids) => setF({ ...f, usuariosAutorizados: ids.length ? ids : undefined })}
+      />
       <div className="flex justify-end gap-2 pt-1">
         <Button size="sm" variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button size="sm" onClick={salvar}>{projeto ? "Salvar" : "Criar"}</Button>
@@ -1822,7 +1848,14 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
               </div>
             </div>
             <div className="col-span-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Visibilidade</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2">
+                Visibilidade
+                {isConfidencial(tarefa, projeto) && (
+                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    🔒 confidencial
+                  </span>
+                )}
+              </div>
               <select
                 value={tarefa.visibilidadeOverride || ""}
                 onChange={(e) => {
@@ -1836,6 +1869,15 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                   <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
                 )}
               </select>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 mb-1">
+                Pessoas autorizadas (acesso explícito além da visibilidade):
+              </div>
+              <UsuariosAutorizadosPicker
+                ids={tarefa.usuariosAutorizados || []}
+                pessoas={pessoasLista}
+                excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
+                onChange={(ids) => salvarCampo("usuariosAutorizados", ids.length ? ids : undefined, "autorizados")}
+              />
             </div>
             <div className="col-span-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
               <div>Origem: <span className="text-gray-700 dark:text-gray-300">{TAREFA_ORIGEM_LABEL[tarefa.origem]}</span></div>
@@ -2058,6 +2100,69 @@ function CustomFieldsSection({ tarefa, subprojetos, autor }: {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+// ─── Modal "sem permissão" ─────────────────────────────────────────────
+
+function SemPermissaoModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
+        <div className="text-4xl mb-2">🔒</div>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Tarefa confidencial</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+          Você não tem permissão pra ver essa tarefa. Peça pro responsável te adicionar como autorizado.
+        </p>
+        <Button onClick={onClose}>Fechar</Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Picker de pessoas autorizadas (confidencialidade) ──────────────────
+
+function UsuariosAutorizadosPicker({ ids, pessoas, excluir, onChange }: {
+  ids: string[];
+  pessoas: Array<{ id: string; nome: string }>;
+  excluir?: string[];          // pessoas que já têm acesso por outras vias
+  onChange: (ids: string[]) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const excluirSet = new Set([...(excluir || []), ...ids]);
+  const disponiveis = pessoas.filter(p => !excluirSet.has(p.id));
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center">
+      {ids.map(id => {
+        const nome = pessoas.find(p => p.id === id)?.nome || "—";
+        return (
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs">
+            🔒 {nome}
+            <button onClick={() => onChange(ids.filter(x => x !== id))} className="text-amber-400 hover:text-red-500 ml-1">×</button>
+          </span>
+        );
+      })}
+      {!aberto ? (
+        <button
+          onClick={() => setAberto(true)}
+          className="text-xs px-2 py-0.5 rounded-full border border-dashed border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30"
+        >
+          + autorizar pessoa
+        </button>
+      ) : (
+        <select
+          autoFocus
+          onChange={(e) => { if (e.target.value) onChange([...ids, e.target.value]); setAberto(false); }}
+          onBlur={() => setAberto(false)}
+          className="text-xs px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+          defaultValue=""
+        >
+          <option value="" disabled>— escolha —</option>
+          {disponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+      )}
     </div>
   );
 }

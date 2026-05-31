@@ -3015,6 +3015,11 @@ export type TarefaProjeto = {
   dono: string;                 // pessoaId
   donoNome?: string;            // snapshot
   visibilidade: TarefaVisibilidade;
+  // Lista explícita de pessoaIds com acesso, ADICIONAL às regras de
+  // visibilidade. Útil pra projeto confidencial onde só X pessoas veem.
+  // Combina por OR com visibilidade: o usuário vê se PODE pela visibilidade
+  // OU se está nesta lista.
+  usuariosAutorizados?: string[];
   tipo: "rotina" | "demanda" | "misto";
   ordem: number;
   ativo: boolean;
@@ -3182,6 +3187,15 @@ export type Tarefa = {
   // Override de visibilidade — quando setado, ignora a visibilidade do
   // projeto. Útil pra restringir/abrir uma tarefa específica.
   visibilidadeOverride?: TarefaVisibilidade;
+  // Lista explícita de pessoaIds com acesso a esta tarefa específica.
+  // ADICIONAL às regras de visibilidade. Master/criador/responsável/co-resp
+  // sempre vêem. Pessoas listadas aqui também.
+  usuariosAutorizados?: string[];
+  // DENORMALIZAÇÃO pras Firestore rules: a visibilidade efetiva já
+  // calculada (override || visibilidade do projeto). Repository atualiza
+  // este campo sempre que mexer em visibilidadeOverride ou projetoId.
+  // Rules consultam só este campo (sem precisar de get() do projeto).
+  visibilidadeEfetiva?: TarefaVisibilidade;
   corHerdada?: string;
   deletadoEm?: string | null;
   deletadoPor?: string | null;
