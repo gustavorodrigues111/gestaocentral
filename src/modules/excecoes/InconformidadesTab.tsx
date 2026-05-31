@@ -1866,7 +1866,13 @@ function ColaboradorBlock({
                 return (
                   <li
                     key={`${e.ruleId}_${i}`}
-                    className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300"
+                    className={`flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 rounded-md px-1.5 py-1 ${
+                      ciencia
+                        ? "bg-emerald-50 dark:bg-emerald-900/20 border-l-2 border-emerald-400 dark:border-emerald-600"
+                        : enviado
+                          ? "bg-sky-50 dark:bg-sky-900/20 border-l-2 border-sky-400 dark:border-sky-600"
+                          : ""
+                    }`}
                   >
                     {podeAnotar && !enviado && !ciencia ? (
                       <input
@@ -1894,9 +1900,7 @@ function ColaboradorBlock({
                     </span>
                     <span
                       className={`flex-1 min-w-0 ${
-                        pendente ? "font-medium text-gray-900 dark:text-gray-100"
-                        : enviado || ciencia ? "opacity-60"
-                        : ""
+                        pendente ? "font-medium text-gray-900 dark:text-gray-100" : ""
                       }`}
                     >
                       {e.description}
