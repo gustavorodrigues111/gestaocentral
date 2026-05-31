@@ -184,12 +184,43 @@ export async function atualizarTarefa(id: string, patch: Partial<Tarefa>, autor:
   } as Partial<Tarefa>));
 }
 
+export class CamposObrigatoriosFaltantesError extends Error {
+  faltantes: string[];
+  constructor(faltantes: string[]) {
+    super(`Campos obrigatórios não preenchidos: ${faltantes.join(", ")}`);
+    this.faltantes = faltantes;
+    this.name = "CamposObrigatoriosFaltantesError";
+  }
+}
+
 export async function mudarStatus(id: string, status: TarefaStatus, autor: { id: string; nome: string }): Promise<void> {
   const ref = doc(db, COL_TAREFAS, id);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const atual = { id: snap.id, ...snap.data() } as Tarefa;
   if (atual.status === status) return;
+
+  // Validação: ao concluir, exigir custom fields marcados como obrigatórios.
+  if (status === "concluida") {
+    const subSnap = await getDoc(doc(db, COL_SUBPROJETOS, atual.subprojetoId));
+    if (subSnap.exists()) {
+      const sub = subSnap.data() as TarefaSubprojeto;
+      const defs = sub.customFieldsDef || [];
+      const valores = atual.customFields || {};
+      const faltantes = defs
+        .filter(d => d.obrigatorio)
+        .filter(d => {
+          const v = valores[d.id];
+          if (d.tipo === "checkbox") return v !== true; // exige check
+          return v === undefined || v === null || v === "";
+        })
+        .map(d => d.nome);
+      if (faltantes.length > 0) {
+        throw new CamposObrigatoriosFaltantesError(faltantes);
+      }
+    }
+  }
+
   await atualizarTarefa(id, { status }, autor, {
     acao: "status_mudou",
     campo: "status",

@@ -14,8 +14,20 @@ import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
   ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
-  salvarProjeto, salvarSubprojeto,
+  salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
 } from "./repository";
+
+async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
+  try {
+    await mudarStatus(id, status, autor);
+  } catch (e) {
+    if (e instanceof CamposObrigatoriosFaltantesError) {
+      alert(`Não dá pra concluir — campos obrigatórios faltando:\n\n• ${e.faltantes.join("\n• ")}`);
+      return;
+    }
+    throw e;
+  }
+}
 import { seedProjetosIniciais } from "./seed";
 import { gerarTarefasDoDia } from "./generator";
 import type {
@@ -30,6 +42,9 @@ import {
 import type { TarefaAnexo } from "../../core/types";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { podeVerTarefa, isConfidencial } from "./visibilidade";
+import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
+import type { LinhaImportada } from "./importador";
+import type { Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 
 type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
@@ -289,13 +304,16 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
     } else if (filtroStatus !== "todos") {
       l = l.filter(t => t.status === filtroStatus);
     }
-    // Busca textual no título + descrição
+    // Busca textual no título + descrição + valores dos custom fields
     if (busca.trim()) {
       const b = busca.toLowerCase();
-      l = l.filter(t =>
-        t.titulo.toLowerCase().includes(b)
-        || (t.descricao || "").toLowerCase().includes(b)
-      );
+      l = l.filter(t => {
+        if (t.titulo.toLowerCase().includes(b)) return true;
+        if ((t.descricao || "").toLowerCase().includes(b)) return true;
+        // Custom fields: stringifica valores e procura
+        const cf = t.customFields || {};
+        return Object.values(cf).some(v => String(v ?? "").toLowerCase().includes(b));
+      });
     }
     // Filtro projeto
     if (filtroProjeto) l = l.filter(t => t.projetoId === filtroProjeto);
@@ -339,7 +357,7 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
         <input
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          placeholder="🔍 Buscar no título ou descrição…"
+          placeholder="🔍 Buscar título, descrição ou campos custom…"
           className="flex-1 px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
         />
         <Button size="sm" variant="ghost" onClick={() => setMostrarFiltros(s => !s)}>
@@ -452,8 +470,9 @@ function BulkActionsBar({ ids, autor, onDone }: {
 }) {
   const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
   const [trocandoResp, setTrocandoResp] = useState(false);
+  const [autorizando, setAutorizando] = useState(false);
   useEffect(() => {
-    if (!trocandoResp) return;
+    if (!trocandoResp && !autorizando) return;
     const u = onSnapshot(collection(db, "pessoas"), snap => {
       const list = snap.docs
         .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
@@ -463,11 +482,11 @@ function BulkActionsBar({ ids, autor, onDone }: {
       setPessoas(list);
     });
     return () => u();
-  }, [trocandoResp]);
+  }, [trocandoResp, autorizando]);
 
   async function mudarStatusBulk(status: TarefaStatus) {
     if (!confirm(`Mudar status de ${ids.length} tarefa(s) pra "${TAREFA_STATUS_LABEL[status]}"?`)) return;
-    for (const id of ids) await mudarStatus(id, status, autor);
+    for (const id of ids) await mudarStatusComErro(id, status, autor);
     onDone();
   }
   async function excluirBulk() {
@@ -484,6 +503,25 @@ function BulkActionsBar({ ids, autor, onDone }: {
       }, autor, {
         acao: "responsavel_mudou",
         campo: "responsável (bulk)",
+        valorDepois: pessoaNome,
+      });
+    }
+    onDone();
+  }
+  async function autorizarPessoa(pessoaId: string, pessoaNome: string) {
+    if (!confirm(`Adicionar ${pessoaNome} como autorizada em ${ids.length} tarefa(s)?`)) return;
+    // Faz por tarefa pra preservar lista existente
+    const { getTarefa } = await import("./repository");
+    for (const id of ids) {
+      const t = await getTarefa(id);
+      if (!t) continue;
+      const cur = t.usuariosAutorizados || [];
+      if (cur.includes(pessoaId)) continue;
+      await atualizarTarefa(id, {
+        usuariosAutorizados: [...cur, pessoaId],
+      }, autor, {
+        acao: "editada",
+        campo: "autorizados (bulk)",
         valorDepois: pessoaNome,
       });
     }
@@ -509,8 +547,26 @@ function BulkActionsBar({ ids, autor, onDone }: {
             <option value="" disabled>— escolha pessoa —</option>
             {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
+        ) : autorizando ? (
+          <select
+            autoFocus
+            onChange={(e) => {
+              const p = pessoas.find(x => x.id === e.target.value);
+              if (p) autorizarPessoa(p.id, p.nome);
+              setAutorizando(false);
+            }}
+            onBlur={() => setAutorizando(false)}
+            className="px-2 py-1 text-sm rounded-md border border-amber-400 bg-amber-50 dark:bg-amber-950/30"
+            defaultValue=""
+          >
+            <option value="" disabled>— autorizar pessoa —</option>
+            {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => setTrocandoResp(true)}>Atribuir a…</Button>
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setTrocandoResp(true)}>Atribuir a…</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAutorizando(true)}>🔒 Autorizar…</Button>
+          </>
         )}
         <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("em_andamento")}>Em andamento</Button>
         <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("concluida")}>✓ Concluir</Button>
@@ -567,7 +623,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
     >
       <div className="flex items-start gap-2">
         <button
-          onClick={(e) => { e.stopPropagation(); mudarStatus(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
+          onClick={(e) => { e.stopPropagation(); mudarStatusComErro(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
           className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
             concluida
               ? "bg-emerald-500 border-emerald-500 text-white"
@@ -696,6 +752,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editandoSubId, setEditandoSubId] = useState<string | null>(null);
   const [criandoSubIn, setCriandoSubIn] = useState<string | null>(null);
+  const [importando, setImportando] = useState(false);
 
   async function deletarProjeto(p: TarefaProjeto) {
     if (!confirm(`Excluir "${p.nome}"? Todos os subprojetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
@@ -722,8 +779,19 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
         </p>
-        <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setImportando(true)}>📥 Importar CSV</Button>
+          <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
+        </div>
       </div>
+      {importando && (
+        <ImportadorModal
+          projetos={projetos}
+          subprojetos={subprojetos}
+          pessoaId={pessoaId}
+          onClose={() => setImportando(false)}
+        />
+      )}
 
       {projetos.map(p => {
         const subs = subprojetos.filter(s => s.projetoId === p.id);
@@ -1175,7 +1243,7 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
     const id = e.dataTransfer.getData("text/plain") || dragId;
     setDragId(null);
     if (!id) return;
-    await mudarStatus(id, col, autor);
+    await mudarStatusComErro(id, col, autor);
   }
 
   if (tarefas.length === 0) {
@@ -1358,26 +1426,75 @@ function LixeiraView({ tarefas, projetos, autor }: {
   projetos: TarefaProjeto[];
   autor: { id: string; nome: string };
 }) {
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
+  const todasMarcadas = selecionadas.size > 0 && selecionadas.size === tarefas.length;
+
+  function toggleTodas() {
+    if (todasMarcadas) setSelecionadas(new Set());
+    else setSelecionadas(new Set(tarefas.map(t => t.id)));
+  }
+  async function restaurarSelecionadas() {
+    if (!confirm(`Restaurar ${selecionadas.size} tarefa(s)?`)) return;
+    for (const id of selecionadas) await restaurarTarefa(id, autor);
+    setSelecionadas(new Set());
+  }
+  async function excluirDefinitivo() {
+    if (!confirm(`Excluir DEFINITIVAMENTE ${selecionadas.size} tarefa(s)? Não dá pra desfazer.`)) return;
+    const { hardDeleteTarefa } = await import("./repository");
+    for (const id of selecionadas) await hardDeleteTarefa(id);
+    setSelecionadas(new Set());
+  }
+
   if (tarefas.length === 0) {
     return <div className="text-center py-12 text-gray-500 dark:text-gray-400">🗑️ Lixeira vazia.</div>;
   }
   return (
-    <div className="space-y-2">
+    <div className="space-y-2 pb-20">
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
+        <label className="flex items-center gap-1 cursor-pointer">
+          <input type="checkbox" checked={todasMarcadas} onChange={toggleTodas} />
+          {selecionadas.size > 0 ? `${selecionadas.size} de ${tarefas.length} selecionada(s)` : `${tarefas.length} na lixeira`}
+        </label>
+      </div>
       {tarefas.map(t => {
         const proj = projetos.find(p => p.id === t.projetoId);
+        const marcada = selecionadas.has(t.id);
         return (
-          <div key={t.id} className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40">
-            <div className="font-medium text-gray-900 dark:text-gray-100 line-through">{t.titulo}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              {proj?.emoji} {proj?.nome} · deletada em {t.deletadoEm?.slice(0, 10)}
-              {t.motivoDelete && ` · motivo: ${t.motivoDelete}`}
-            </div>
-            <div className="mt-2">
-              <Button size="sm" onClick={() => restaurarTarefa(t.id, autor)}>Restaurar</Button>
+          <div key={t.id} className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 flex items-start gap-2">
+            <input
+              type="checkbox"
+              checked={marcada}
+              onChange={(e) => {
+                const novo = new Set(selecionadas);
+                if (e.target.checked) novo.add(t.id); else novo.delete(t.id);
+                setSelecionadas(novo);
+              }}
+              className="mt-1"
+            />
+            <div className="flex-1 min-w-0">
+              <div className="font-medium text-gray-900 dark:text-gray-100 line-through">{t.titulo}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {proj?.emoji} {proj?.nome} · deletada em {t.deletadoEm?.slice(0, 10)}
+                {t.motivoDelete && ` · motivo: ${t.motivoDelete}`}
+              </div>
+              <div className="mt-2">
+                <Button size="sm" onClick={() => restaurarTarefa(t.id, autor)}>Restaurar</Button>
+              </div>
             </div>
           </div>
         );
       })}
+      {selecionadas.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 md:left-60 z-30 p-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg">
+          <div className="flex items-center gap-2 max-w-7xl mx-auto flex-wrap">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{selecionadas.size} selecionada(s)</span>
+            <Button size="sm" onClick={restaurarSelecionadas}>↶ Restaurar todas</Button>
+            <Button size="sm" variant="danger" onClick={excluirDefinitivo}>🗑️ Excluir definitivo</Button>
+            <div className="flex-1" />
+            <Button size="sm" variant="ghost" onClick={() => setSelecionadas(new Set())}>Limpar</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1762,7 +1879,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
               <div className="text-xs text-gray-500 dark:text-gray-400">Status</div>
               <select
                 value={tarefa.status}
-                onChange={(e) => mudarStatus(tarefa.id, e.target.value as TarefaStatus, autor)}
+                onChange={(e) => mudarStatusComErro(tarefa.id, e.target.value as TarefaStatus, autor)}
                 className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
               >
                 {(Object.keys(TAREFA_STATUS_LABEL) as TarefaStatus[]).map(s =>
@@ -2099,6 +2216,225 @@ function CustomFieldsSection({ tarefa, subprojetos, autor }: {
             </label>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal de importação CSV (Asana → Tarefas) ────────────────────────
+
+function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
+  projetos: TarefaProjeto[];
+  subprojetos: TarefaSubprojeto[];
+  pessoaId: string;
+  onClose: () => void;
+}) {
+  const { restaurants } = useRestaurant();
+  const [texto, setTexto] = useState("");
+  const [linhas, setLinhas] = useState<LinhaImportada[]>([]);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [projetoDestino, setProjetoDestino] = useState(projetos[0]?.id || "");
+  const [subprojetoDestino, setSubprojetoDestino] = useState("");
+  const [importando, setImportando] = useState(false);
+  const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
+  const [resultado, setResultado] = useState<{ criadas: number; vinculadas: number; erros: string[] } | null>(null);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Pessoa)).filter(p => p.ativa !== false);
+      setPessoas(lista);
+    });
+    return () => u();
+  }, []);
+
+  const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoDestino);
+  useEffect(() => {
+    if (subsDoProjeto.length > 0 && !subsDoProjeto.find(s => s.id === subprojetoDestino)) {
+      setSubprojetoDestino(subsDoProjeto[0].id);
+    }
+  }, [projetoDestino, subprojetoDestino, subsDoProjeto]);
+
+  function parsear() {
+    const rows = parseCSV(texto);
+    const { linhas: ls, warnings: ws } = mapearLinhas(rows, pessoas, restaurants as Restaurant[]);
+    setLinhas(ls);
+    setWarnings(ws);
+  }
+
+  function handleArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const conteudo = String(reader.result || "");
+      setTexto(conteudo);
+      const rows = parseCSV(conteudo);
+      const { linhas: ls, warnings: ws } = mapearLinhas(rows, pessoas, restaurants as Restaurant[]);
+      setLinhas(ls);
+      setWarnings(ws);
+    };
+    reader.readAsText(f, "UTF-8");
+  }
+
+  async function importar() {
+    if (linhas.length === 0 || !projetoDestino || !subprojetoDestino) {
+      alert("Carregue um CSV e escolha projeto/subprojeto");
+      return;
+    }
+    setImportando(true);
+    setProgresso({ atual: 0, total: linhas.filter(l => !l.parentTaskId).length });
+    try {
+      const proj = projetos.find(p => p.id === projetoDestino);
+      const r = await executarImport(
+        linhas,
+        { projetoId: projetoDestino, subprojetoId: subprojetoDestino, corProjeto: proj?.cor },
+        { id: pessoaId, nome: "Importador" },
+        (atual, total) => setProgresso({ atual: atual + 1, total }),
+      );
+      setResultado(r);
+    } catch (e) {
+      alert("Erro: " + String(e));
+    } finally {
+      setImportando(false);
+    }
+  }
+
+  const pais = linhas.filter(l => !l.parentTaskId);
+  const filhas = linhas.filter(l => l.parentTaskId);
+  const orfas = detectarOrfas(linhas);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <header className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📥 Importar CSV (Asana)</h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Suporta export padrão do Asana: Name, Notes, Due Date, Assignee, Empresas(s), Parent task, etc.</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">×</button>
+        </header>
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {resultado ? (
+            <div className="text-center py-6">
+              <div className="text-4xl mb-2">✅</div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Importação concluída</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                <b>{resultado.criadas}</b> tarefa(s) criada(s), <b>{resultado.vinculadas}</b> subtarefa(s) vinculada(s).
+              </p>
+              {resultado.erros.length > 0 && (
+                <div className="mt-3 text-xs text-red-600 dark:text-red-400 text-left">
+                  <div className="font-bold mb-1">Erros ({resultado.erros.length}):</div>
+                  {resultado.erros.slice(0, 10).map((e, i) => <div key={i}>· {e}</div>)}
+                </div>
+              )}
+              <Button onClick={onClose} className="mt-4">Fechar</Button>
+            </div>
+          ) : (
+            <>
+              {/* Step 1: upload */}
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                  1. Carregue o CSV
+                </div>
+                <input type="file" accept=".csv,text/csv" onChange={handleArquivo} className="text-sm" />
+                <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                  Ou cole o conteúdo CSV diretamente:
+                </div>
+                <textarea
+                  value={texto}
+                  onChange={(e) => setTexto(e.target.value)}
+                  rows={3}
+                  placeholder="Task ID,Created At,...,Name,..."
+                  className="w-full mt-1 px-2 py-1 text-xs font-mono rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                />
+                {!linhas.length && texto && <Button size="sm" onClick={parsear}>Processar</Button>}
+              </div>
+
+              {/* Step 2: preview */}
+              {linhas.length > 0 && (
+                <>
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                      2. Preview ({pais.length} tarefa(s) pai · {filhas.length - orfas.length} subtarefa(s) · {orfas.length} órfã(s) viram pai)
+                    </div>
+                    <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded-md p-2 bg-gray-50 dark:bg-gray-800/30 space-y-0.5 text-xs">
+                      {pais.slice(0, 50).map((p, i) => {
+                        const fs = linhas.filter(l => l.parentTaskId === p.taskId);
+                        return (
+                          <div key={i}>
+                            <div className="font-medium text-gray-800 dark:text-gray-200">
+                              {p.status === "concluida" && "✓ "}{p.titulo}
+                              {p.prazo && <span className="ml-2 text-gray-500">📅 {p.prazo}</span>}
+                              {p.responsavelNome && <span className="ml-2 text-indigo-600 dark:text-indigo-400">{p.responsavelNome}</span>}
+                              {(p.restaurantIds?.length ?? 0) > 0 && <span className="ml-2 text-emerald-600">🏢 {p.restaurantIds?.length}</span>}
+                              {!p.responsavelId && p.assigneeNome && <span className="ml-2 text-amber-500" title="Não bateu com nenhuma pessoa">⚠ {p.assigneeNome}</span>}
+                            </div>
+                            {fs.slice(0, 3).map((f, j) => (
+                              <div key={j} className="pl-4 text-gray-600 dark:text-gray-400">↳ {f.titulo}</div>
+                            ))}
+                            {fs.length > 3 && <div className="pl-4 text-gray-500">+{fs.length - 3} subtarefa(s)</div>}
+                          </div>
+                        );
+                      })}
+                      {pais.length > 50 && <div className="text-gray-500">+{pais.length - 50} tarefas pai (não mostradas no preview)</div>}
+                    </div>
+                  </div>
+
+                  {warnings.length > 0 && (
+                    <details className="text-xs">
+                      <summary className="cursor-pointer text-amber-700 dark:text-amber-300">
+                        ⚠ {warnings.length} aviso(s) — clique pra ver
+                      </summary>
+                      <div className="mt-1 pl-2 max-h-32 overflow-y-auto text-gray-600 dark:text-gray-400">
+                        {warnings.slice(0, 30).map((w, i) => <div key={i}>· {w}</div>)}
+                        {warnings.length > 30 && <div>+{warnings.length - 30} avisos</div>}
+                      </div>
+                    </details>
+                  )}
+
+                  {/* Step 3: destino */}
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                      3. Destino
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="text-xs">
+                        <div className="text-gray-500 mb-1">Projeto</div>
+                        <select value={projetoDestino} onChange={(e) => setProjetoDestino(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+                          {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
+                        </select>
+                      </label>
+                      <label className="text-xs">
+                        <div className="text-gray-500 mb-1">Subprojeto</div>
+                        <select value={subprojetoDestino} onChange={(e) => setSubprojetoDestino(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
+                          {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                        </select>
+                      </label>
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+
+        {!resultado && (
+          <footer className="p-3 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
+            {progresso ? (
+              <div className="flex-1 text-xs text-gray-600 dark:text-gray-400">
+                Importando {progresso.atual}/{progresso.total}…
+                <div className="mt-1 h-1 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
+                  <div className="h-full bg-indigo-500 transition-all" style={{ width: `${(progresso.atual / progresso.total) * 100}%` }} />
+                </div>
+              </div>
+            ) : <div className="flex-1" />}
+            <Button onClick={onClose} variant="ghost">Cancelar</Button>
+            <Button onClick={importar} disabled={importando || pais.length === 0}>
+              {importando ? "Importando…" : `Importar ${pais.length} tarefa(s)`}
+            </Button>
+          </footer>
+        )}
       </div>
     </div>
   );
