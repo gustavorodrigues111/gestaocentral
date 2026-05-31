@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { parseYmd, pad2 } from "../../core/utils/date";
 import type { LeadEvento, LeadEventoStatus, PacoteEvento } from "../../core/types";
 import { LeadDrawer } from "./LeadDrawer";
+import { NovoLeadManualModal } from "./NovoLeadManualModal";
 
 const STATUS_LABEL: Record<LeadEventoStatus, string> = {
   novo: "Novo",
@@ -41,6 +42,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   const [erro, setErro] = useState<string>("");
   const [leadAbertoId, setLeadAbertoId] = useState<string | null>(null);
   const [mostrarPerdidos, setMostrarPerdidos] = useState(false);
+  const [criandoManual, setCriandoManual] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -153,52 +155,63 @@ export function KanbanTab({ rid, podeEditar }: Props) {
         </div>
       </div>
 
-      {leads.length === 0 ? (
-        <div className="rounded-xl bg-gray-50 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700 p-6 text-center">
-          <div className="text-3xl mb-2">🎉</div>
-          <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
-            Nenhum lead ainda
-          </p>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-            Compartilhe a URL pública pra começar a receber interesses:
+      {leads.length === 0 && (
+        <div className="rounded-xl bg-gray-50 dark:bg-gray-800/30 border border-gray-200 dark:border-gray-700 p-4 text-center">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Nenhum lead ainda. Compartilhe a URL pública pra captar online,
+            ou cadastre manualmente um lead vindo por outro canal.
           </p>
           <code className="block mt-2 text-xs bg-white dark:bg-gray-900 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 text-indigo-700 dark:text-indigo-400">
             {window.location.origin}/eventos/{rid}
           </code>
         </div>
-      ) : (
-        <div className="overflow-x-auto -mx-4 px-4 pb-2">
-          <div className="flex gap-3 min-w-fit">
-            {COLUNAS.map(status => {
-              const itens = leadsPorStatus[status];
-              const cor = STATUS_COR[status];
-              return (
-                <div key={status} className="w-64 shrink-0">
-                  <div className={`px-3 py-2 rounded-t-lg ${cor.bg} ${cor.border} border-b-2 flex items-center justify-between`}>
-                    <span className={`text-[11px] font-bold uppercase tracking-wider ${cor.text}`}>
-                      {STATUS_LABEL[status]}
-                    </span>
-                    <span className={`text-xs ${cor.text} font-semibold tabular-nums`}>
-                      {itens.length}
-                    </span>
-                  </div>
-                  <div className="space-y-2 pt-2 min-h-[100px]">
-                    {itens.map(l => (
-                      <LeadCardMini
-                        key={l.id}
-                        lead={l}
-                        pacotes={pacotes}
-                        datasConfirmadas={datasConfirmadas}
-                        onClick={() => setLeadAbertoId(l.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       )}
+
+      <div className="overflow-x-auto -mx-4 px-4 pb-2">
+        <div className="flex gap-3 min-w-fit">
+          {COLUNAS.map(status => {
+            const itens = leadsPorStatus[status];
+            const cor = STATUS_COR[status];
+            return (
+              <div key={status} className="w-64 shrink-0">
+                <div className={`px-3 py-2 rounded-t-lg ${cor.bg} ${cor.border} border-b-2 flex items-center justify-between`}>
+                  <span className={`text-[11px] font-bold uppercase tracking-wider ${cor.text}`}>
+                    {STATUS_LABEL[status]}
+                  </span>
+                  <span className={`text-xs ${cor.text} font-semibold tabular-nums`}>
+                    {itens.length}
+                  </span>
+                </div>
+                <div className="space-y-2 pt-2 min-h-[100px]">
+                  {itens.map(l => (
+                    <LeadCardMini
+                      key={l.id}
+                      lead={l}
+                      pacotes={pacotes}
+                      datasConfirmadas={datasConfirmadas}
+                      onClick={() => setLeadAbertoId(l.id)}
+                    />
+                  ))}
+                  {/* Botão tracejado pra criar lead manual — só na 1ª coluna ("novo") */}
+                  {status === "novo" && podeEditar && (
+                    <button
+                      type="button"
+                      onClick={() => setCriandoManual(true)}
+                      className="w-full text-left text-[11px] px-2 py-2 rounded-md border border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-500 transition-colors"
+                      title="Lançar lead que veio por outro canal"
+                    >
+                      + Novo lead manual
+                    </button>
+                  )}
+                  {itens.length === 0 && status !== "novo" && (
+                    <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-3">—</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Lista de perdidos */}
       {mostrarPerdidos && leadsPorStatus.perdido.length > 0 && (
@@ -227,6 +240,15 @@ export function KanbanTab({ rid, podeEditar }: Props) {
           pacotes={pacotes}
           podeEditar={podeEditar}
           onClose={() => setLeadAbertoId(null)}
+        />
+      )}
+
+      {/* Modal de criação manual */}
+      {criandoManual && (
+        <NovoLeadManualModal
+          rid={rid}
+          onClose={() => setCriandoManual(false)}
+          onCreated={(id) => setLeadAbertoId(id)}
         />
       )}
     </div>

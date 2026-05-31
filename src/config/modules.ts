@@ -20,8 +20,8 @@ export const MODULES: ModuleDef[] = [
 
   // ── Atendimento ao cliente ───────────────────────────────────────
   { id: "reservas",    area: "ops", subarea: "Atendimento ao Cliente", label: "Reservas + CRM",  icon: "🎫", status: "ativo", etapa: "beta",               desc: "Reservas de mesa e base de clientes", dependsOn: ["pessoas"] },
-  { id: "horarios",    area: "ops", subarea: "Atendimento ao Cliente", label: "Horários",        icon: "🕒", status: "ativo", etapa: "beta",               desc: "Horário semanal + datas especiais + janelas de reserva" },
-  { id: "eventos",     area: "ops", subarea: "Atendimento ao Cliente", label: "Eventos",         icon: "🎉", status: "ativo", etapa: "em_desenvolvimento", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
+  { id: "horarios",    area: "ops", subarea: "Atendimento ao Cliente", label: "Funcionamento da casa", icon: "🏠", status: "ativo", etapa: "beta",        desc: "Horário de funcionamento + datas especiais + janelas de reserva" },
+  { id: "eventos",     area: "ops", subarea: "Atendimento ao Cliente", label: "Eventos",         icon: "🎉", status: "ativo", etapa: "beta",               desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
 
   // ── Produção & Estoque ───────────────────────────────────────────
   { id: "checklists",  area: "ops", subarea: "Produção & Estoque",     label: "Checklists",      icon: "✅", status: "ativo", etapa: "em_desenvolvimento", desc: "Checklists operacionais", dependsOn: ["pessoas"] },
@@ -29,9 +29,9 @@ export const MODULES: ModuleDef[] = [
   { id: "compras",     area: "ops", subarea: "Produção & Estoque",     label: "Compras",         icon: "🛒", status: "ativo", etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
 
   // ── Gestão da Operação ───────────────────────────────────────────
-  { id: "ocorrencias", area: "ops", subarea: "Gestão da Operação",     label: "Ocorrências",     icon: "🚨", status: "ativo", etapa: "em_desenvolvimento", desc: "Log de ocorrências do dia-a-dia", dependsOn: ["pessoas"] },
-  { id: "reunioes",    area: "ops", subarea: "Gestão da Operação",     label: "Reuniões",        icon: "🗣️", status: "ativo", etapa: "em_desenvolvimento", desc: "Reuniões de líderes e equipe", dependsOn: ["pessoas"] },
-  { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "em_desenvolvimento", desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
+  { id: "ocorrencias", area: "ops", subarea: "Gestão da Operação",     label: "Ocorrências",     icon: "🚨", status: "ativo", etapa: "beta",               desc: "Log de ocorrências do dia-a-dia", dependsOn: ["pessoas"] },
+  { id: "reunioes",    area: "ops", subarea: "Gestão da Operação",     label: "Reuniões",        icon: "🗣️", status: "ativo", etapa: "beta",               desc: "Reuniões de líderes e equipe", dependsOn: ["pessoas"] },
+  { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "beta",               desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "ops", subarea: "Tarefas",                label: "Tarefas",         icon: "📋", status: "ativo", etapa: "beta",               desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
@@ -61,7 +61,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Saúde & Equipamentos ─────────────────────────────────────────
   { id: "exames",      area: "dp", subarea: "Saúde & Equipamentos",    label: "Exames Médicos",  icon: "🩺", status: "ativo", etapa: "beta",               desc: "Exames periódicos dos empregados (Clínico, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
-  { id: "uniformes",   area: "dp", subarea: "Saúde & Equipamentos",    label: "Uniformes & EPIs", icon: "🦺", status: "ativo", etapa: "em_desenvolvimento", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
+  { id: "uniformes",   area: "dp", subarea: "Saúde & Equipamentos",    label: "Uniformes & EPIs", icon: "🦺", status: "ativo", etapa: "beta",               desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
 
   // ── ocultos (dp) ─────────────────────────────────────────────────
   { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala", dependsOn: ["escala", "gorjetas"], oculto: true },

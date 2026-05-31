@@ -145,10 +145,6 @@ function KanbanView({ processos, onAbrir }: {
     return processos.filter(p => (p.kanbanColunaId || "col_iniciado") === colId);
   }
 
-  if (processos.length === 0) {
-    return <div className="text-center py-12 text-gray-500 dark:text-gray-400">Nenhum processo de demissão em andamento.</div>;
-  }
-
   return (
     <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4">
       {colunas.map(col => {
@@ -171,6 +167,9 @@ function KanbanView({ processos, onAbrir }: {
               <span className="text-[10px] text-gray-500 dark:text-gray-400">{items.length}</span>
             </div>
             <div className="space-y-1.5">
+              {items.length === 0 && (
+                <div className="text-[10px] text-gray-400 dark:text-gray-600 text-center py-3 italic">— vazio —</div>
+              )}
               {items.map(p => (
                 <div
                   key={p.id}
