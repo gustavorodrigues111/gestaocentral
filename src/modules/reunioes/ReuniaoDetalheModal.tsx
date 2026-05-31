@@ -40,6 +40,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const [geradosIdeias, setGeradosIdeias] = useState<Ideia[]>([]);
   const [geradosOcorrencias, setGeradosOcorrencias] = useState<Ocorrencia[]>([]);
   const [virarTarefaAcao, setVirarTarefaAcao] = useState<AcaoReuniao | null>(null);
+  const [virarTarefaPauta, setVirarTarefaPauta] = useState<PautaItem | null>(null);
 
   // Ideias e ocorrências geradas NESTA reunião (lookup pra exibir na ata)
   useEffect(() => {
@@ -348,7 +349,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
       iniciadaEm: new Date().toISOString(),
       iniciadaPor: me.id,
     });
-    setTab("ata"); // pula direto pra ata quando inicia
+    setTab("pauta"); // reunião ao vivo gira em torno da pauta
   }
 
   return (
@@ -408,13 +409,15 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           )}
         </div>
 
-        {/* Tabs */}
+        {/* Tabs — Ata e Ações só aparecem se há conteúdo legado.
+            Modelo novo: tudo gira em torno da pauta. Notas de cada item =
+            ata implícita. Tarefas saem direto do item virando "📋 Virar tarefa". */}
         <div className="flex border-b border-gray-200 dark:border-gray-800">
           {([
-            ["pauta", `📋 Pauta (${reuniao.pauta?.length || 0})`],
-            ["ata",   "📝 Ata"],
-            ["acoes", `📌 Ações (${(reuniao.acoes || []).filter(a => a.status === "pendente").length} pend.)`],
-          ] as const).map(([id, label]) => (
+            ["pauta", `📋 Pauta (${reuniao.pauta?.length || 0})`, true],
+            ["ata",   "📝 Ata",                                    !!reuniao.ata],
+            ["acoes", `📌 Ações (${(reuniao.acoes || []).filter(a => a.status === "pendente").length} pend.)`, (reuniao.acoes || []).length > 0],
+          ] as const).filter(([_, __, mostrar]) => mostrar).map(([id, label]) => (
             <button
               key={id}
               onClick={() => setTab(id)}
@@ -459,11 +462,20 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                         {t.titulo}
                       </div>
                       {t.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{t.descricao}</div>}
-                      {t.ideiaId && <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-0.5">💡 Veio do Banco de Ideias</div>}
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        {t.ideiaId && <span className="text-[10px] text-indigo-600 dark:text-indigo-400">💡 Veio do Banco de Ideias</span>}
+                        {t.ocorrenciaId && <span className="text-[10px] text-rose-600 dark:text-rose-400">🚨 Veio das Ocorrências</span>}
+                        {t.tarefaIdGerada && <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded">✓ Virou tarefa</span>}
+                      </div>
                     </div>
                   </div>
                   {podeConfig && (
-                    <Button variant="danger" size="sm" onClick={() => removerTopico(t.id)}>×</Button>
+                    <div className="flex gap-1 flex-wrap">
+                      {!t.tarefaIdGerada && (
+                        <Button variant="secondary" size="sm" onClick={() => setVirarTarefaPauta(t)}>📋 Virar tarefa</Button>
+                      )}
+                      <Button variant="danger" size="sm" onClick={() => removerTopico(t.id)}>×</Button>
+                    </div>
                   )}
                 </div>
                 {podeConfig && (
@@ -471,7 +483,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                     value={t.notas || ""}
                     onChange={(e) => setNotaTopico(t.id, e.target.value)}
                     rows={2}
-                    placeholder="Notas / decisões desse tópico..."
+                    placeholder="Notas / decisões desse tópico (vira a ata)..."
                     className="w-full mt-1 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y"
                   />
                 )}
@@ -679,8 +691,11 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
         />
       )}
       {virarTarefaAcao && me && (
-        <VirarAcaoTarefaModal
-          acao={virarTarefaAcao}
+        <VirarTarefaModal
+          tituloInicial={virarTarefaAcao.descricao}
+          descricaoInicial={`Ação registrada na reunião "${reuniao.titulo}" em ${new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}.${virarTarefaAcao.observacao ? `\n\n${virarTarefaAcao.observacao}` : ""}`}
+          prazoInicial={virarTarefaAcao.prazo || ""}
+          responsavelEmpregadoId={virarTarefaAcao.responsavelEmpregadoId || null}
           reuniao={reuniao}
           restaurantId={restaurantId}
           empregados={empregados}
@@ -692,6 +707,30 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
             );
             await patchReuniao({ acoes: novasAcoes });
             setVirarTarefaAcao(null);
+          }}
+        />
+      )}
+      {virarTarefaPauta && me && (
+        <VirarTarefaModal
+          tituloInicial={virarTarefaPauta.titulo}
+          descricaoInicial={
+            `Tópico da reunião "${reuniao.titulo}" em ${new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}.` +
+            (virarTarefaPauta.descricao ? `\n\n${virarTarefaPauta.descricao}` : "") +
+            (virarTarefaPauta.notas ? `\n\nNotas/decisões:\n${virarTarefaPauta.notas}` : "")
+          }
+          prazoInicial=""
+          responsavelEmpregadoId={null}
+          reuniao={reuniao}
+          restaurantId={restaurantId}
+          empregados={empregados}
+          autor={{ id: me.id, nome: me.nome }}
+          onClose={() => setVirarTarefaPauta(null)}
+          onCriada={async (tarefaId) => {
+            const novaPauta = (reuniao.pauta || []).map(p =>
+              p.id === virarTarefaPauta.id ? { ...p, tarefaIdGerada: tarefaId, discutido: true } : p
+            );
+            await patchReuniao({ pauta: novaPauta });
+            setVirarTarefaPauta(null);
           }}
         />
       )}
@@ -759,9 +798,12 @@ function GerarRegistroModal({ tipo, onClose, onCriar }: {
   );
 }
 
-// Mini-modal pra virar uma Ação da reunião em Tarefa formal
-function VirarAcaoTarefaModal({ acao, reuniao, restaurantId, empregados, autor, onClose, onCriada }: {
-  acao: AcaoReuniao;
+// Mini-modal genérico pra virar um item de pauta OU ação em Tarefa formal
+function VirarTarefaModal({ tituloInicial, descricaoInicial, prazoInicial, responsavelEmpregadoId, reuniao, restaurantId, empregados, autor, onClose, onCriada }: {
+  tituloInicial: string;
+  descricaoInicial: string;
+  prazoInicial: string;
+  responsavelEmpregadoId: string | null;
   reuniao: Reuniao;
   restaurantId: string;
   empregados: Empregado[];
@@ -769,9 +811,9 @@ function VirarAcaoTarefaModal({ acao, reuniao, restaurantId, empregados, autor, 
   onClose: () => void;
   onCriada: (tarefaId: string) => Promise<void>;
 }) {
-  const [titulo, setTitulo] = useState(acao.descricao);
-  const [descricao, setDescricao] = useState(`Ação registrada na reunião "${reuniao.titulo}" em ${new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}.${acao.observacao ? `\n\n${acao.observacao}` : ""}`);
-  const [prazo, setPrazo] = useState(acao.prazo || "");
+  const [titulo, setTitulo] = useState(tituloInicial);
+  const [descricao, setDescricao] = useState(descricaoInicial);
+  const [prazo, setPrazo] = useState(prazoInicial);
   const [projetos, setProjetos] = useState<Array<{ id: string; nome: string; emoji?: string; cor?: string }>>([]);
   const [subprojetos, setSubprojetos] = useState<Array<{ id: string; nome: string; projetoId: string }>>([]);
   const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
@@ -803,15 +845,15 @@ function VirarAcaoTarefaModal({ acao, reuniao, restaurantId, empregados, autor, 
     return () => { u1(); u2(); u3(); };
   }, []);
 
-  // Pré-seleciona responsável pela pessoa vinculada ao empregado da ação
+  // Pré-seleciona responsável pela pessoa vinculada ao empregado da ação (se houver)
   useEffect(() => {
-    if (responsavelId || !acao.responsavelEmpregadoId) return;
-    const emp = empregados.find(e => e.id === acao.responsavelEmpregadoId);
+    if (responsavelId || !responsavelEmpregadoId) return;
+    const emp = empregados.find(e => e.id === responsavelEmpregadoId);
     if (emp && emp.pessoaId) {
       const p = pessoas.find(x => x.id === emp.pessoaId);
       if (p) setResponsavelId(p.id);
     }
-  }, [pessoas, empregados, responsavelId, acao.responsavelEmpregadoId]);
+  }, [pessoas, empregados, responsavelId, responsavelEmpregadoId]);
 
   // Pré-seleciona "Projetos Temporários" se existir, senão o 1º projeto
   useEffect(() => {

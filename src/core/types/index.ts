@@ -1015,7 +1015,9 @@ export type PautaItem = {
   ocorrenciaId?: string | null;  // se importado do módulo Ocorrências
   ordem: number;
   discutido: boolean;
-  notas?: string;                // notas específicas do tópico
+  notas?: string;                // notas específicas do tópico — vira "ata" implícita
+  // Se o tópico foi convertido em tarefa formal no Gestor de Tarefas
+  tarefaIdGerada?: string | null;
 };
 
 export type AcaoStatus = "pendente" | "feito" | "cancelado";
