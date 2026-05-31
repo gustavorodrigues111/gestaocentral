@@ -2121,6 +2121,34 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             </div>
           </details>
         </div>
+        {/* Ação especial: tarefa de decisão de Experiência */}
+        {tarefa.ehDecisaoExperiencia && tarefa.origemRefId && (
+          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border-t border-amber-200 dark:border-amber-800 text-sm">
+            <div className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+              Decisão de Experiência ({tarefa.ehDecisaoExperiencia === "1a" ? "1ª etapa" : "2ª etapa"})
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">
+              Caso a decisão seja <b>não renovar o contrato</b>, use o botão abaixo pra abrir o processo de demissão pré-preenchido com motivo de não-renovação.
+            </p>
+            <Button
+              size="sm"
+              variant="danger"
+              onClick={() => {
+                const aviso = `Iniciar processo de demissão por NÃO RENOVAÇÃO do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)?\n\n` +
+                  `Isso vai abrir o módulo Pessoas pra você concluir o desligamento. Quando finalizar lá, esta tarefa pode ser marcada como concluída.`;
+                if (!confirm(aviso)) return;
+                // Redireciona pro módulo Pessoas — empregado específico
+                if (tarefa.restaurantIds && tarefa.restaurantIds[0]) {
+                  window.location.href = `/r/${tarefa.restaurantIds[0]}/pessoas?empregadoId=${tarefa.origemRefId}&acao=demitir&motivo=Não%20renovação%20do%20contrato%20de%20experiência`;
+                } else {
+                  alert("Vá em Pessoas → empregado → botão 'Inativar / Demitir' e use o motivo 'Não renovação do contrato de experiência'.");
+                }
+              }}
+            >
+              ✗ Não renovar — iniciar demissão
+            </Button>
+          </div>
+        )}
         <footer className="p-3 border-t border-gray-200 dark:border-gray-800 flex justify-between">
           <Button
             variant="ghost"

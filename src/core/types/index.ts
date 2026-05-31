@@ -3203,6 +3203,9 @@ export type Tarefa = {
   // este campo sempre que mexer em visibilidadeOverride ou projetoId.
   // Rules consultam só este campo (sem precisar de get() do projeto).
   visibilidadeEfetiva?: TarefaVisibilidade;
+  // Marcador opcional: tarefa é uma decisão de Experiência. Ativa o
+  // botão "Não renovar — iniciar demissão" no DetalheModal.
+  ehDecisaoExperiencia?: "1a" | "2a";
   corHerdada?: string;
   deletadoEm?: string | null;
   deletadoPor?: string | null;

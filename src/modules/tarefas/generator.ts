@@ -300,18 +300,47 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
   ));
   if (existSnap.size >= 2) return 0; // já gerou tudo (Experiência 1ª + 2ª)
 
-  const tarefas = [
+  const tarefas: Array<{ titulo: string; prazo: string; origemKey: string; ehDecisaoExperiencia: "1a" | "2a" }> = [
     {
       titulo: `Avaliação 1ª etapa Experiência | ${pessoaNome}`,
       prazo: addDias(admissaoData, 40),
       origemKey: "exp1",
+      ehDecisaoExperiencia: "1a",
     },
     {
       titulo: `Avaliação 2ª etapa Experiência | ${pessoaNome}`,
       prazo: addDias(admissaoData, 85),
       origemKey: "exp2",
+      ehDecisaoExperiencia: "2a",
     },
   ];
+
+  // Checklist padrão para Experiência. Cada etapa cria a tarefa-pai com
+  // estas subtarefas, com prazos relativos ao prazo da pai.
+  // Se o subprojeto tiver tarefasTemplate definido no Admin, ele sobrescreve.
+  const checklistDefault = [
+    { texto: "Conversar com líder sobre desempenho do colaborador", offset: "D-5" },
+    { texto: "Avaliar comportamento, pontualidade e adaptação", offset: "D-3" },
+    { texto: "Decisão: renovar OU não renovar", offset: "D-2" },
+    { texto: "Comunicar empregado da decisão", offset: "D-1" },
+    { texto: "Se não renovar: usar botão 'Iniciar demissão' no detalhe da tarefa", offset: "D+0" },
+  ];
+
+  // Carrega responsável padrão do subprojeto (sobrescreve quem moveu o card)
+  let respIdFinal = responsavelPadraoId;
+  let respNomeFinal = responsavelPadraoNome;
+  try {
+    const subSnap = await getDoc(doc(db, "tarefaSubprojetos", "sub-pessoas-experiencia"));
+    if (subSnap.exists()) {
+      const sub = subSnap.data() as { responsavelPadraoId?: string; responsavelPadraoNome?: string };
+      if (sub.responsavelPadraoId) {
+        respIdFinal = sub.responsavelPadraoId;
+        respNomeFinal = sub.responsavelPadraoNome;
+      }
+    }
+  } catch (e) {
+    console.warn("[cascata] falha ao carregar resp padrão do subprojeto:", e);
+  }
 
   // Filtra os que já existem
   const chavesExistentes = new Set(existSnap.docs.map(d => (d.data() as Tarefa).recorrenciaKey));
@@ -319,20 +348,31 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
   for (const t of tarefas) {
     const chave = `adm-${empregadoId}-${t.origemKey}`;
     if (chavesExistentes.has(chave)) continue;
+    // Resolve subtarefas a partir do template default (com prazos relativos)
+    const { resolverPrazoOffset } = await import("./prazoOffset");
+    const subtarefas: Subtarefa[] = checklistDefault.map((c, i) => ({
+      id: Math.random().toString(36).slice(2, 11),
+      texto: c.texto,
+      feito: false,
+      prazo: resolverPrazoOffset(c.offset, t.prazo),
+      ordem: i + 1,
+    }));
     await criarTarefa({
       projetoId: "proj-pessoas-rot",
       subprojetoId: "sub-pessoas-experiencia",
       titulo: t.titulo,
-      responsavelId: responsavelPadraoId,
-      responsavelNome: responsavelPadraoNome,
+      responsavelId: respIdFinal,
+      responsavelNome: respNomeFinal,
       restaurantIds: [restaurantId],
       prazo: t.prazo,
       status: "a_fazer",
       prioridade: "normal",
+      subtarefas,
       origem: "admissao",
       origemRefId: empregadoId,
       origemRefLabel: `Admissão: ${pessoaNome}`,
       recorrenciaKey: chave,
+      ehDecisaoExperiencia: t.ehDecisaoExperiencia,
       criadoPor: autorId,
       criadoPorNome: autorNome,
     });
