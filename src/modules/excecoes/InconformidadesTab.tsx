@@ -663,31 +663,48 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [statusSemana?.notasInternas]);
 
-  // Conta os apontamentos `pendente` por empregado — alimenta o badge "(N)" do
-  // botão "Enviar via WhatsApp".
+  // Conta os apontamentos `pendente` por empregado, SEPARADOS por categoria:
+  //   alinhamento → vai pra "Dar ciência" (alinhamento é presencial, não vai
+  //                 por WhatsApp — é registro trabalhista)
+  //   ajuste      → vai pra "Enviar via WhatsApp" (pedido de regularização
+  //                 de batida no Sólides)
   const pendentesPorEmpregado = useMemo(() => {
-    const m = new Map<string, number>();
+    const m = new Map<string, { alinhamento: number; ajuste: number; total: number }>();
     for (const a of statusSemana?.apontamentos || []) {
-      if (a.status === "pendente") m.set(a.empregadoId, (m.get(a.empregadoId) || 0) + 1);
+      if (a.status !== "pendente") continue;
+      const cat = a.ruleId
+        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
+        : "ajuste";
+      const cur = m.get(a.empregadoId) || { alinhamento: 0, ajuste: 0, total: 0 };
+      if (cat === "alinhamento") cur.alinhamento++;
+      else cur.ajuste++;
+      cur.total++;
+      m.set(a.empregadoId, cur);
     }
     return m;
   }, [statusSemana?.apontamentos]);
 
-  // Marca em lote como "ciência" todos os apontamentos `pendente` do empregado.
-  // Útil pra inconformidades que não precisam ser comunicadas — só registradas
-  // (ex: atrasos antigos, intervalo a menos que já passou). Pode ser 1 só ou
-  // vários. Cria nota interna automática registrando a ciência em lote.
+  // Marca em lote como "ciência" os apontamentos `pendente` de ALINHAMENTO do
+  // empregado. Alinhamento é registro trabalhista — feito PRESENCIALMENTE com
+  // o empregado, NÃO vai por WhatsApp. Aqui só registramos a ciência.
+  // Itens de "ajuste" marcados como pendentes ficam intactos (vão pelo botão
+  // do WhatsApp de regularização).
   async function darCienciaPendentesDoEmpregado(empregadoId: string, empregadoNome: string) {
     if (!me || !semanaAtiva || !statusSemana) return;
     if (semanaConferida) {
       alert("Semana já conferida — não dá pra mexer em apontamento.");
       return;
     }
-    const pendentes = (statusSemana.apontamentos || []).filter(
-      (a) => a.empregadoId === empregadoId && a.status === "pendente",
-    );
+    const pendentes = (statusSemana.apontamentos || []).filter((a) => {
+      if (a.empregadoId !== empregadoId) return false;
+      if (a.status !== "pendente") return false;
+      const cat = a.ruleId
+        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
+        : "ajuste";
+      return cat === "alinhamento";
+    });
     if (pendentes.length === 0) {
-      alert("Marque pelo menos 1 inconformidade pra dar ciência.");
+      alert("Marque pelo menos 1 ALINHAMENTO pra dar ciência. Itens de ajuste vão pelo WhatsApp.");
       return;
     }
     try {
@@ -722,18 +739,22 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
-  // Envia em UMA mensagem todos os apontamentos `pendente` do empregado e:
-  // 1. Marca eles como `enviado` (com enviadoEm)
-  // 2. Cria uma NOTA INTERNA automática registrando o envio (data + itens) —
-  //    isso fica no histórico interno pra "empregado avisado no dia X com
-  //    apontamentos Y, Z..."
+  // Envia via WhatsApp pedido de regularização — APENAS itens de "ajuste de
+  // batida". Alinhamentos são tratados PRESENCIALMENTE (botão "Dar ciência").
+  // 1. Marca os itens de ajuste como `enviado` (com enviadoEm)
+  // 2. Cria NOTA INTERNA automática registrando o envio (data + itens)
   async function enviarWhatsDoEmpregado(empregadoId: string, empregadoNome: string) {
     if (!me || !semanaAtiva || !statusSemana) return;
-    const pendentes = (statusSemana.apontamentos || []).filter(
-      (a) => a.empregadoId === empregadoId && a.status === "pendente",
-    );
+    const pendentes = (statusSemana.apontamentos || []).filter((a) => {
+      if (a.empregadoId !== empregadoId) return false;
+      if (a.status !== "pendente") return false;
+      const cat = a.ruleId
+        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
+        : "ajuste";
+      return cat === "ajuste";
+    });
     if (pendentes.length === 0) {
-      alert("Marque pelo menos 1 inconformidade pra enviar.");
+      alert("Marque pelo menos 1 AJUSTE DE BATIDA pra enviar. Itens de alinhamento são tratados presencialmente (botão 'Dar ciência').");
       return;
     }
     const whatsapp = whatsByEmpId.get(empregadoId);
@@ -1469,7 +1490,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   key={grupo.key}
                   grupo={grupo}
                   podeAnotar={!semanaConferida}
-                  pendentesCount={pendentesPorEmpregado.get(grupo.empregadoId) || 0}
+                  pendentesAlinhamento={pendentesPorEmpregado.get(grupo.empregadoId)?.alinhamento || 0}
+                  pendentesAjuste={pendentesPorEmpregado.get(grupo.empregadoId)?.ajuste || 0}
                   temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
                   apontamentosPorChave={apontamentosPorChave}
                   notas={notasPorEmpregado.get(grupo.empregadoId) || []}
@@ -1603,7 +1625,8 @@ function diaDaSemana(ymd: string): string {
 function ColaboradorBlock({
   grupo,
   podeAnotar,
-  pendentesCount,
+  pendentesAlinhamento,
+  pendentesAjuste,
   temWhatsapp,
   apontamentosPorChave,
   notas,
@@ -1619,7 +1642,8 @@ function ColaboradorBlock({
 }: {
   grupo: GrupoColab;
   podeAnotar: boolean;
-  pendentesCount: number;
+  pendentesAlinhamento: number;
+  pendentesAjuste: number;
   temWhatsapp: boolean;
   apontamentosPorChave: Map<string, ApontamentoFuncionario>;
   notas: NotaInterna[];
@@ -1674,40 +1698,40 @@ function ColaboradorBlock({
             <button
               type="button"
               onClick={onDarCiencia}
-              disabled={pendentesCount === 0}
+              disabled={pendentesAlinhamento === 0}
               className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                pendentesCount > 0
+                pendentesAlinhamento > 0
                   ? "bg-sky-600 text-white hover:bg-sky-700"
                   : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
               }`}
               title={
-                pendentesCount === 0
-                  ? "Marque ao menos 1 inconformidade pra dar ciência"
-                  : `Tomar ciência de ${pendentesCount} item(ns) — não envia pro empregado, só registra`
+                pendentesAlinhamento === 0
+                  ? "Marque ao menos 1 ALINHAMENTO pra dar ciência (alinhamento é presencial — registro trabalhista)"
+                  : `Tomar ciência de ${pendentesAlinhamento} alinhamento(s) — alinhar pessoalmente. Só registra, NÃO envia WhatsApp`
               }
             >
-              👁 Dar ciência {pendentesCount > 0 && `(${pendentesCount})`}
+              👁 Dar ciência {pendentesAlinhamento > 0 && `(${pendentesAlinhamento})`}
             </button>
           )}
           {podeAnotar && (
             <button
               type="button"
               onClick={onEnviarWhats}
-              disabled={pendentesCount === 0 || !temWhatsapp}
+              disabled={pendentesAjuste === 0 || !temWhatsapp}
               className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                pendentesCount > 0 && temWhatsapp
+                pendentesAjuste > 0 && temWhatsapp
                   ? "bg-emerald-600 text-white hover:bg-emerald-700"
                   : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
               }`}
               title={
                 !temWhatsapp
                   ? "Sem WhatsApp cadastrado em Pessoas pra este empregado"
-                  : pendentesCount === 0
-                  ? "Marque ao menos 1 inconformidade pra enviar"
-                  : `Enviar ${pendentesCount} item(ns) num resumo único via WhatsApp`
+                  : pendentesAjuste === 0
+                  ? "Marque ao menos 1 AJUSTE DE BATIDA pra enviar (alinhamento é presencial, não vai por WhatsApp)"
+                  : `Enviar ${pendentesAjuste} pedido(s) de ajuste de batida via WhatsApp`
               }
             >
-              💬 Enviar via WhatsApp {pendentesCount > 0 && `(${pendentesCount})`}
+              💬 Pedir ajuste no WhatsApp {pendentesAjuste > 0 && `(${pendentesAjuste})`}
             </button>
           )}
         </div>
