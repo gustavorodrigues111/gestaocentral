@@ -1,25 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where, deleteDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { EspacoEvento, ItemCardapioEvento, PacoteEvento, PacotePrecoModo } from "../../core/types";
+import type { CardapioPdf, EspacoEvento, PacoteEvento, PacotePrecoModo } from "../../core/types";
 import { pacotePrecoLabel } from "../../core/types";
 
-const TIPO_ITEM_LABEL: Record<ItemCardapioEvento["tipo"], string> = {
-  couvert: "Couvert",
-  entrada: "Entrada",
-  principal: "Principal",
-  acompanhamento: "Acompanhamento",
-  sobremesa: "Sobremesa",
-  bebida: "Bebida",
-  extra: "Extra",
-};
-
-const TIPOS_ITEM: ItemCardapioEvento["tipo"][] = [
-  "couvert", "entrada", "principal", "acompanhamento", "sobremesa", "bebida", "extra",
-];
+const MAX_CARDAPIOS = 3;
+const MAX_PDF_MB = 20;
 
 type Props = {
   rid: string;
@@ -92,7 +83,7 @@ export function PacotesTab({ rid, podeEditar }: Props) {
       precoPorPessoa: 0,
       capacidadeMin: espaco.capacidadeMin,
       capacidadeMax: espaco.capacidadeMax,
-      cardapio: [],
+      cardapios: [],
       inclusos: [],
       naoInclusos: [],
       ativo: true,
@@ -227,7 +218,7 @@ function PacoteCard({
                   {pacotePrecoLabel(pacote)}
                 </span>
               </div>
-              <div>{pacote.cardapio.length} item(ns) no cardápio</div>
+              <div>{pacote.cardapios?.length || 0} PDF(s) de cardápio</div>
             </div>
           </div>
           {podeEditar && (
@@ -253,13 +244,15 @@ function PacoteEditor({
   onClose: () => void;
   onDelete: () => void;
 }) {
-  const [form, setForm] = useState<PacoteEvento>(pacote);
+  // Backfill defensivo: pacotes antigos no Firestore podem não ter o campo
+  // `cardapios` (substituiu o `cardapio` legado). Garante array sempre.
+  const [form, setForm] = useState<PacoteEvento>(() => ({
+    ...pacote,
+    cardapios: pacote.cardapios || [],
+  }));
   const [saving, setSaving] = useState(false);
   const [novoIncluso, setNovoIncluso] = useState("");
   const [novoNaoIncluso, setNovoNaoIncluso] = useState("");
-  const [novoItem, setNovoItem] = useState<{ tipo: ItemCardapioEvento["tipo"]; nome: string; descricao: string }>({
-    tipo: "principal", nome: "", descricao: "",
-  });
 
   function addIncluso() {
     const v = novoIncluso.trim();
@@ -279,34 +272,26 @@ function PacoteEditor({
   function delNaoIncluso(i: number) {
     setForm(f => ({ ...f, naoInclusos: f.naoInclusos.filter((_, idx) => idx !== i) }));
   }
-  function addItem() {
-    const nome = novoItem.nome.trim();
-    if (!nome) return;
-    const item: ItemCardapioEvento = {
-      id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      tipo: novoItem.tipo,
-      nome,
-      descricao: novoItem.descricao.trim() || undefined,
-      ordem: form.cardapio.length,
-    };
-    setForm(f => ({ ...f, cardapio: [...f.cardapio, item] }));
-    setNovoItem({ tipo: novoItem.tipo, nome: "", descricao: "" });
+  function addCardapio(novo: CardapioPdf) {
+    setForm(f => ({ ...f, cardapios: [...(f.cardapios || []), novo] }));
   }
-  function delItem(id: string) {
-    setForm(f => ({ ...f, cardapio: f.cardapio.filter(i => i.id !== id) }));
+  function updateCardapioNome(id: string, nome: string) {
+    setForm(f => ({
+      ...f,
+      cardapios: (f.cardapios || []).map(c => c.id === id ? { ...c, nome } : c),
+    }));
   }
-  function moveItem(id: string, delta: -1 | 1) {
-    setForm(f => {
-      const idx = f.cardapio.findIndex(i => i.id === id);
-      if (idx < 0) return f;
-      const novo = [...f.cardapio];
-      const target = idx + delta;
-      if (target < 0 || target >= novo.length) return f;
-      [novo[idx], novo[target]] = [novo[target], novo[idx]];
-      // Reordena
-      novo.forEach((it, i) => { it.ordem = i; });
-      return { ...f, cardapio: novo };
-    });
+  async function delCardapio(id: string) {
+    const alvo = (form.cardapios || []).find(c => c.id === id);
+    if (!alvo) return;
+    if (!confirm("Apagar esse PDF? Propostas já enviadas continuam apontando pro arquivo original — esse apaga só do template.")) return;
+    // Tenta apagar do Storage também (best effort). Se falhar, segue —
+    // o arquivo vira órfão mas não bloqueia o user.
+    try {
+      const path = `pacotes-cardapios/${form.restaurantId}/${form.id}/${id}.pdf`;
+      await deleteObject(storageRef(storage, path));
+    } catch { /* arquivo já não existe ou path mudou — silent */ }
+    setForm(f => ({ ...f, cardapios: (f.cardapios || []).filter(c => c.id !== id) }));
   }
 
   async function salvar() {
@@ -340,14 +325,6 @@ function PacoteEditor({
       setSaving(false);
     }
   }
-
-  // Agrupa cardápio por tipo pra exibição
-  const cardapioPorTipo = useMemo(() => {
-    const acc: Record<string, ItemCardapioEvento[]> = {};
-    for (const t of TIPOS_ITEM) acc[t] = [];
-    for (const it of form.cardapio) acc[it.tipo].push(it);
-    return acc;
-  }, [form.cardapio]);
 
   return (
     <div className="rounded-xl border-2 border-indigo-300 dark:border-indigo-700 p-4 bg-indigo-50/30 dark:bg-indigo-900/10 space-y-4">
@@ -506,68 +483,32 @@ function PacoteEditor({
       </div>
 
       {/* Cardápio */}
+      {/* Cardápios PDF — até 3 anexos. Cada um com nome editável.
+          Cliente recebe esses links direto no WhatsApp na hora da proposta. */}
       <div>
         <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-          Cardápio
+          Cardápios (PDF) · até {MAX_CARDAPIOS}
         </label>
-        <div className="mt-2 space-y-3">
-          {TIPOS_ITEM.map(tipo => {
-            const itens = cardapioPorTipo[tipo];
-            if (itens.length === 0) return null;
-            return (
-              <div key={tipo}>
-                <div className="text-[10px] uppercase font-bold tracking-wider text-gray-500 dark:text-gray-400 mb-1">
-                  {TIPO_ITEM_LABEL[tipo]}
-                </div>
-                <div className="space-y-1">
-                  {itens.map(it => (
-                    <div key={it.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900 dark:text-gray-100">{it.nome}</div>
-                        {it.descricao && (
-                          <div className="text-[11px] text-gray-500 dark:text-gray-400">{it.descricao}</div>
-                        )}
-                      </div>
-                      <div className="flex gap-0.5 shrink-0">
-                        <button onClick={() => moveItem(it.id, -1)} className="text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 px-1">▲</button>
-                        <button onClick={() => moveItem(it.id, 1)} className="text-xs text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 px-1">▼</button>
-                        <button onClick={() => delItem(it.id)} className="text-xs text-rose-600 hover:underline ml-1">apagar</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Form pra novo item */}
-        <div className="mt-3 grid grid-cols-[110px_1fr_auto] gap-1.5 items-start">
-          <select
-            value={novoItem.tipo}
-            onChange={(e) => setNovoItem(n => ({ ...n, tipo: e.target.value as ItemCardapioEvento["tipo"] }))}
-            className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-          >
-            {TIPOS_ITEM.map(t => (
-              <option key={t} value={t}>{TIPO_ITEM_LABEL[t]}</option>
-            ))}
-          </select>
-          <div className="space-y-1">
-            <input
-              value={novoItem.nome}
-              onChange={(e) => setNovoItem(n => ({ ...n, nome: e.target.value }))}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addItem(); } }}
-              placeholder="Nome do item (ex: Bruschetta caprese)"
-              className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+          Suba os PDFs montados/diagramados. O cliente vai receber os links na hora da proposta. Máx {MAX_PDF_MB}MB cada.
+        </p>
+        <div className="mt-2 space-y-2">
+          {(form.cardapios || []).map(c => (
+            <CardapioPdfRow
+              key={c.id}
+              cardapio={c}
+              onNomeChange={(nome) => updateCardapioNome(c.id, nome)}
+              onDelete={() => delCardapio(c.id)}
             />
-            <input
-              value={novoItem.descricao}
-              onChange={(e) => setNovoItem(n => ({ ...n, descricao: e.target.value }))}
-              placeholder="Descrição (opcional)"
-              className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          ))}
+          {(form.cardapios || []).length < MAX_CARDAPIOS && (
+            <CardapioPdfUploader
+              restaurantId={form.restaurantId}
+              pacoteId={form.id}
+              proximaOrdem={(form.cardapios || []).length}
+              onUploaded={addCardapio}
             />
-          </div>
-          <Button size="sm" variant="secondary" onClick={addItem}>+ adicionar</Button>
+          )}
         </div>
       </div>
 
@@ -625,6 +566,149 @@ function PacoteEditor({
         <Button variant="secondary" onClick={onClose}>Cancelar</Button>
         <Button onClick={salvar} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
       </div>
+    </div>
+  );
+}
+
+// Linha pra um PDF já enviado: nome editável inline + link "ver" + apagar.
+function CardapioPdfRow({
+  cardapio, onNomeChange, onDelete,
+}: {
+  cardapio: CardapioPdf;
+  onNomeChange: (nome: string) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
+      <span className="text-base">📄</span>
+      <input
+        value={cardapio.nome}
+        onChange={(e) => onNomeChange(e.target.value)}
+        placeholder="Ex: Comidas e bebidas"
+        className="flex-1 min-w-0 px-2 py-1 rounded border border-transparent hover:border-gray-200 dark:hover:border-gray-700 focus:border-indigo-300 focus:outline-none text-sm bg-transparent"
+      />
+      <a
+        href={cardapio.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-xs text-indigo-600 hover:underline shrink-0"
+      >
+        ver PDF
+      </a>
+      <button onClick={onDelete} className="text-xs text-rose-600 hover:underline shrink-0 ml-1">
+        apagar
+      </button>
+    </div>
+  );
+}
+
+// Card de upload — input file + progress bar. Quando termina, chama onUploaded
+// com o CardapioPdf pronto pra adicionar ao state do pacote.
+function CardapioPdfUploader({
+  restaurantId, pacoteId, proximaOrdem, onUploaded,
+}: {
+  restaurantId: string;
+  pacoteId: string;
+  proximaOrdem: number;
+  onUploaded: (c: CardapioPdf) => void;
+}) {
+  const { pessoa: me } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [erro, setErro] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function escolher() {
+    inputRef.current?.click();
+  }
+
+  function upload(file: File) {
+    setErro("");
+    if (file.type !== "application/pdf") {
+      setErro("Só PDF.");
+      return;
+    }
+    const mb = file.size / (1024 * 1024);
+    if (mb > MAX_PDF_MB) {
+      setErro(`Arquivo muito grande (${mb.toFixed(1)} MB). Máximo: ${MAX_PDF_MB} MB.`);
+      return;
+    }
+    setUploading(true);
+    setProgresso(0);
+
+    const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    // Path determinístico por restaurante + pacote + id. Permite apagar
+    // depois sem precisar guardar storagePath separado.
+    const path = `pacotes-cardapios/${restaurantId}/${pacoteId}/${id}.pdf`;
+    const ref = storageRef(storage, path);
+    const task = uploadBytesResumable(ref, file, {
+      contentType: "application/pdf",
+      customMetadata: { restaurantId, pacoteId, uploadedBy: me?.id || "" },
+    });
+
+    task.on(
+      "state_changed",
+      (snap) => {
+        setProgresso(Math.max(5, Math.round((snap.bytesTransferred / snap.totalBytes) * 100)));
+      },
+      (err) => {
+        console.error("Storage upload error:", err);
+        const cod = (err as { code?: string }).code || "";
+        if (cod.includes("unauthorized") || cod.includes("permission")) {
+          setErro(
+            "Sem permissão pra subir. Regras do Storage podem não estar publicadas: " +
+            "firebase deploy --only storage --project gestaocentral",
+          );
+        } else {
+          setErro(err.message || "Erro ao enviar");
+        }
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = "";
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const nomeBase = file.name.replace(/\.pdf$/i, "").slice(0, 60);
+          onUploaded({
+            id,
+            nome: nomeBase || "Cardápio",
+            url,
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: me?.id,
+            ordem: proximaOrdem,
+          });
+          setProgresso(100);
+        } catch (e) {
+          console.error(e);
+          setErro(e instanceof Error ? e.message : "Erro ao salvar");
+        } finally {
+          setUploading(false);
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      },
+    );
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }}
+      />
+      <button
+        type="button"
+        onClick={escolher}
+        disabled={uploading}
+        className="w-full px-3 py-2 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-sm text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-500 transition-colors disabled:opacity-60"
+      >
+        {uploading ? `Enviando... ${progresso}%` : "+ Adicionar PDF de cardápio"}
+      </button>
+      {erro && (
+        <div className="mt-1 text-xs text-rose-600 dark:text-rose-400">{erro}</div>
+      )}
     </div>
   );
 }

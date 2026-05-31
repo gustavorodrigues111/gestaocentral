@@ -361,8 +361,24 @@ function PropostaCard({
       </div>
       <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
         {dataBR} · {proposta.slot === "almoco" ? "almoço" : "jantar"} · {proposta.duracaoHoras}h
-        {proposta.cardapio.length > 0 && ` · ${proposta.cardapio.length} item(ns) de cardápio`}
       </div>
+
+      {/* Cardápios PDF — links pra equipe conferir antes de mandar */}
+      {(proposta.cardapios?.length || 0) > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {proposta.cardapios.map(c => (
+            <a
+              key={c.id}
+              href={c.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+            >
+              📄 {c.nome}
+            </a>
+          ))}
+        </div>
+      )}
 
       {/* Parcelas */}
       <div className="mt-3 space-y-1.5">

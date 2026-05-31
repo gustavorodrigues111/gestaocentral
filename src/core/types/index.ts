@@ -2561,13 +2561,15 @@ export type EspacoEvento = {
   updatedAt: string;
 };
 
-export type ItemCardapioEvento = {
-  id: string;
-  tipo: "couvert" | "entrada" | "principal" | "acompanhamento"
-      | "sobremesa" | "bebida" | "extra";
-  nome: string;
-  descricao?: string;
-  fichaTecnicaId?: string;           // link opcional pra Ficha Técnica do mise
+// PDF de cardápio anexado a um pacote (ex: "Comidas e bebidas", "Drinks especiais").
+// Substituiu o modelo de itens estruturados — pra evento, cliente quer ver o cardápio
+// montado/diagramado, não uma lista item-por-item.
+export type CardapioPdf = {
+  id: string;                        // único dentro do pacote
+  nome: string;                      // "Comidas e bebidas", "Cardápio principal"
+  url: string;                       // downloadURL do Firebase Storage
+  uploadedAt: string;                // ISO timestamp
+  uploadedBy?: string;               // pessoaId
   ordem: number;
 };
 
@@ -2595,7 +2597,9 @@ export type PacoteEvento = {
   precoTotal?: number;               // R$ — só quando precoModo="total_fixo"
   capacidadeMin: number;
   capacidadeMax: number;
-  cardapio: ItemCardapioEvento[];
+  // Até 3 PDFs de cardápio. Cliente recebe os links no WhatsApp e baixa cada
+  // um — não geramos mais texto inline item-por-item.
+  cardapios: CardapioPdf[];
   inclusos: string[];                // ["som ambiente", "decoração básica"]
   naoInclusos: string[];             // ["bolo", "DJ"]
   observacoes?: string;
@@ -2735,7 +2739,9 @@ export type PropostaEvento = {
   horaInicio: string;
   duracaoHoras: number;
   numConvidados: number;
-  cardapio: ItemCardapioEvento[];
+  // Snapshot dos PDFs do pacote no momento da proposta — congelado pra evitar
+  // que cliente abra link que mudou depois.
+  cardapios: CardapioPdf[];
   inclusos: string[];
   naoInclusos: string[];
   ajustes: AjusteProposta[];
@@ -2770,7 +2776,7 @@ export type BEOEvento = {
   numConvidados: number;
   contatoNoDia: { nome: string; whatsapp: string };
   // Operação
-  cardapio: ItemCardapioEvento[];
+  cardapios: CardapioPdf[];
   restricoesAlimentares: string[];
   setup: string;                     // texto livre (mesas, decoração, AV)
   observacoes?: string;

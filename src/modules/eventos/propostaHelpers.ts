@@ -131,7 +131,9 @@ export async function criarProposta(params: CriarPropostaParams): Promise<Propos
     horaInicio: lead.horaInicio || (lead.slot === "almoco" ? "12:00" : "19:00"),
     duracaoHoras: pacote?.duracaoHoras || 4,
     numConvidados: pax,
-    cardapio: pacote?.cardapio || [],
+    // Snapshot dos PDFs no momento da proposta — se o admin trocar o
+    // cardápio depois, o cliente ainda vê o que recebeu na mensagem.
+    cardapios: pacote?.cardapios || [],
     inclusos: pacote?.inclusos || [],
     naoInclusos: pacote?.naoInclusos || [],
     ajustes,
@@ -159,16 +161,11 @@ export function montarMensagemProposta(proposta: PropostaEvento, leadNome: strin
   linhas.push(`📅 ${dataBR} · ${slot}`);
   linhas.push(`👥 ${proposta.numConvidados} pessoas · ⏱ ${proposta.duracaoHoras}h`);
   linhas.push("");
-  // Cardápio agrupado por tipo
-  const tipos: { [k: string]: string[] } = {};
-  for (const it of proposta.cardapio) {
-    if (!tipos[it.tipo]) tipos[it.tipo] = [];
-    tipos[it.tipo].push(it.nome);
-  }
-  if (Object.keys(tipos).length > 0) {
-    linhas.push("*Cardápio*");
-    for (const [tipo, nomes] of Object.entries(tipos)) {
-      linhas.push(`${tipoLabel(tipo)}: ${nomes.join(", ")}`);
+  // Cardápios em PDF — manda os links direto no WhatsApp.
+  if (proposta.cardapios && proposta.cardapios.length > 0) {
+    linhas.push("*Cardápios*");
+    for (const c of proposta.cardapios) {
+      linhas.push(`📄 ${c.nome}: ${c.url}`);
     }
     linhas.push("");
   }
@@ -203,14 +200,3 @@ export function montarMensagemProposta(proposta: PropostaEvento, leadNome: strin
   return linhas.join("\n");
 }
 
-function tipoLabel(tipo: string): string {
-  return {
-    couvert: "Couvert",
-    entrada: "Entrada",
-    principal: "Principal",
-    acompanhamento: "Acompanhamento",
-    sobremesa: "Sobremesa",
-    bebida: "Bebida",
-    extra: "Extra",
-  }[tipo] || tipo;
-}

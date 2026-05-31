@@ -4,7 +4,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { BEOEvento, ItemCardapioEvento, LeadEvento, PropostaEvento } from "../../core/types";
+import type { BEOEvento, LeadEvento, PropostaEvento } from "../../core/types";
 
 type Props = {
   lead: LeadEvento;
@@ -94,7 +94,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
           nome: contatoNomeDia.trim() || lead.cliente.nome,
           whatsapp: contatoWaDia.trim() || lead.cliente.whatsapp,
         },
-        cardapio: propostaVigente.cardapio,
+        cardapios: propostaVigente.cardapios || [],
         restricoesAlimentares: restricoesArr,
         setup: setup.trim() || "Padrão da Laje",
         observacoes: observacoes.trim() || undefined,
@@ -254,17 +254,10 @@ function formatarBEOTexto(b: BEOEvento): string {
   linhas.push(`👥 ${b.numConvidados} convidados`);
   linhas.push(`📞 Contato no dia: ${b.contatoNoDia.nome} — ${b.contatoNoDia.whatsapp}`);
   linhas.push("");
-  if (b.cardapio.length > 0) {
-    linhas.push("*CARDÁPIO (na ordem)*");
-    const tipos: Record<string, ItemCardapioEvento[]> = {};
-    for (const it of b.cardapio) {
-      if (!tipos[it.tipo]) tipos[it.tipo] = [];
-      tipos[it.tipo].push(it);
-    }
-    for (const tipo of ["couvert", "entrada", "principal", "acompanhamento", "sobremesa", "bebida", "extra"]) {
-      const items = tipos[tipo] || [];
-      if (items.length === 0) continue;
-      linhas.push(`${tipoLabel(tipo)}: ${items.map(it => it.nome).join(", ")}`);
+  if (b.cardapios && b.cardapios.length > 0) {
+    linhas.push("*CARDÁPIOS*");
+    for (const c of b.cardapios) {
+      linhas.push(`📄 ${c.nome}: ${c.url}`);
     }
     linhas.push("");
   }
@@ -283,18 +276,6 @@ function formatarBEOTexto(b: BEOEvento): string {
     linhas.push(b.observacoes);
   }
   return linhas.join("\n");
-}
-
-function tipoLabel(tipo: string): string {
-  return {
-    couvert: "Couvert",
-    entrada: "Entrada",
-    principal: "Principal",
-    acompanhamento: "Acompanhamento",
-    sobremesa: "Sobremesa",
-    bebida: "Bebida",
-    extra: "Extra",
-  }[tipo] || tipo;
 }
 
 function pad(n: number): string {
