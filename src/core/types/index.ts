@@ -134,10 +134,32 @@ export type Cargo = {
   semGorjeta: boolean;     // true → não recebe gorjeta (cobre sócio também)
   recebeProducao: boolean; // recebe gorjeta TODO dia (independente da escala) — ex: cozinha
 
+  // Bate ponto na Sólides? Default por TipoVinculo (CLT=true, freela=false).
+  // Override aqui se um cargo específico foge da regra (ex: gerente CLT que é
+  // cargo de confiança → não bate). undefined = usa default por TipoVinculo.
+  batePonto?: boolean;
+
   ativo: boolean;
   ordem: number;
   createdAt: string;
 };
+
+// Default por TipoVinculo — base da cascata empregado→cargo→default.
+export function defaultBatePontoPorVinculo(v: TipoVinculo): boolean {
+  return v === "registrado" || v === "estagiario";
+}
+
+// Resolve se empregado bate ponto. Cascata: Empregado.batePonto > Cargo.batePonto > default por TipoVinculo.
+// Empregados que NÃO batem ponto são suprimidos do relatório de inconformidades.
+export function empregadoBatePonto(
+  emp: { batePonto?: boolean } | null | undefined,
+  cargo: { batePonto?: boolean; tipoVinculo: TipoVinculo } | null | undefined,
+): boolean {
+  if (!cargo) return true; // fallback seguro
+  if (emp && typeof emp.batePonto === "boolean") return emp.batePonto;
+  if (typeof cargo.batePonto === "boolean") return cargo.batePonto;
+  return defaultBatePontoPorVinculo(cargo.tipoVinculo);
+}
 
 // Período de admissão / demissão. Empregado tem vários (trilha completa).
 export type EmpregadoPeriodo = {
@@ -160,6 +182,10 @@ export type Empregado = {
   cargoId: string;               // cargo VIGENTE HOJE (snapshot do histórico)
   empCode?: string | null;       // código interno
   codigoContabil?: string | null;
+  // Override do "bate ponto" — quando definido, sobrescreve o default do
+  // cargo. Use só pra casos atípicos (ex: estagiário sênior que não bate).
+  // undefined = herda do cargo.
+  batePonto?: boolean;
   // Link da pasta do empregado no Google Drive (criada na admissão). Pro DP
   // consultar contratos/documentos assinados depois.
   driveFolderUrl?: string | null;

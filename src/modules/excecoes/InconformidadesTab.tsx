@@ -227,11 +227,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     () => semanasDoMes(anoMes.ano, anoMes.mes),
     [anoMes.ano, anoMes.mes],
   );
-  // Default: semana que contém hoje (se mês corrente) ou 1ª semana (se outro mês)
-  const [semanaIdx, setSemanaIdx] = useState<number>(() => {
-    const s = semanasMes.find((w) => w.containsToday);
-    return s ? s.index : 1;
-  });
+  // Default: "Mês todo" (-1). Agrega caches das semanas que já têm relatório.
+  // Pra atualizar/regerar via Sólides, escolhe uma semana específica.
+  const [semanaIdx, setSemanaIdx] = useState<number>(-1);
   const semanaAtiva = semanasMes.find((w) => w.index === semanaIdx) || semanasMes[0];
 
   // Status do DIA (empregado × data) — listener real-time pro mês inteiro.
@@ -1127,6 +1125,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       const report = generateExceptionsReport({
         punches,
         empregados,
+        cargos,
         escalaPorEmpregado,
         horariosPrevistos,
         startDate,

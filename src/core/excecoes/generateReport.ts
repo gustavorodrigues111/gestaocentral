@@ -6,7 +6,8 @@
 //  Casamento Sólides ↔ Planejamento: chave = CPF (só dígitos).
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { Empregado, ScheduleStatus } from "../types";
+import type { Cargo, Empregado, ScheduleStatus } from "../types";
+import { empregadoBatePonto } from "../types";
 import type { DayContext, DayMetrics, ExceptionRecord, SolidesPunch } from "./types";
 import { computeDayMetrics, emptyDayMetrics, groupByEmployeeDay, onlyDigits } from "./dayMetrics";
 import { runAllRules } from "./rules";
@@ -14,6 +15,7 @@ import { runAllRules } from "./rules";
 export type GenerateReportInput = {
   punches: SolidesPunch[];
   empregados: Empregado[]; // empregados do restaurante
+  cargos?: Cargo[];        // cargos do restaurante — usado pra filtrar quem não bate ponto
   // empregadoId → (date → status planejado). Vem da escala prevista do Planejamento.
   escalaPorEmpregado: Record<string, Record<string, ScheduleStatus>>;
   // empregadoId → (date → horário previsto NA SÓLIDES — opcional). Quando
@@ -46,7 +48,11 @@ function addDays(ymd: string, n: number): string {
 }
 
 export function generateExceptionsReport(input: GenerateReportInput): GenerateReportResult {
-  const { punches, empregados, escalaPorEmpregado, horariosPrevistos, startDate, endDate } = input;
+  const { punches, empregados, cargos, escalaPorEmpregado, horariosPrevistos, startDate, endDate } = input;
+  // Mapa pra resolver cargo do empregado em O(1) — usado na filtragem
+  // "bate ponto" abaixo.
+  const cargoById = new Map<string, Cargo>();
+  for (const c of (cargos || [])) cargoById.set(c.id, c);
 
   // ── Agrupa marcações por (employeeId da Sólides, date) e consolida métricas ──
   const grouped = groupByEmployeeDay(punches);
@@ -79,6 +85,12 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
 
   // ── 1) Processa cada empregado do Planejamento ──
   for (const emp of empregados) {
+    // Filtro "bate ponto": empregados que não batem (cargo de confiança,
+    // freela, terceirizado, ou override individual) são puramente ignorados
+    // pelo motor de regras — nem geram inconformidade, nem matched.
+    const cargo = cargoById.get(emp.cargoId);
+    if (cargos && cargo && !empregadoBatePonto(emp, cargo)) continue;
+
     const cpf = onlyDigits(emp.cpf);
     const escalaEmp = escalaPorEmpregado[emp.id] || {};
 

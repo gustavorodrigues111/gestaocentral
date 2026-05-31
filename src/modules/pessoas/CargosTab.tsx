@@ -12,6 +12,7 @@ import {
   AREAS, TIPOS_VINCULO, TIPO_VINCULO_LABEL, TIPOS_VINCULO_COM_PESSOA,
 } from "../../core/types";
 import type { Area, Cargo, Empregado, TipoVinculo } from "../../core/types";
+import { defaultBatePontoPorVinculo } from "../../core/types";
 import { ImportCargosModal } from "./ImportCargosModal";
 
 type Props = { restaurantId: string };
@@ -241,6 +242,10 @@ function CargoModal({
   const [pontos, setPontos] = useState<number>(cargo?.pontos ?? 1);
   const [semGorjeta, setSemGorjeta] = useState(cargo?.semGorjeta ?? false);
   const [recebeProducao, setRecebeProducao] = useState(cargo?.recebeProducao ?? false);
+  // batePonto opcional — default = true pra registrado/estagiario, false pra
+  // freela/terceirizado. Quando o user marca/desmarca, vira valor explícito.
+  // null = "herda do TipoVinculo" (não persiste).
+  const [batePonto, setBatePonto] = useState<boolean | null>(cargo?.batePonto ?? null);
   const [ativo, setAtivo] = useState(cargo?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -270,6 +275,11 @@ function CargoModal({
     if (cargo.nome !== nome.trim()) naoCriticas.nome = nome.trim();
     if (cargo.area !== area) naoCriticas.area = area;
     if (cargo.ativo !== ativo) naoCriticas.ativo = ativo;
+    // batePonto: muda imediatamente — afeta só filtragem do relatório de ponto
+    const batePontoAtualCargo = cargo.batePonto ?? null;
+    if (batePontoAtualCargo !== batePonto) {
+      naoCriticas.batePonto = batePonto === null ? null : batePonto;
+    }
 
     // Versionados (críticos — afetam gorjeta/escala/empregados)
     const novoPontos = semGorjeta ? 0 : pontos;
@@ -339,6 +349,7 @@ function CargoModal({
           pontos: semGorjeta ? 0 : pontos,
           semGorjeta,
           recebeProducao: semGorjeta ? false : recebeProducao,
+          ...(batePonto !== null ? { batePonto } : {}),
           ativo,
         };
         const ref = await addDoc(collection(db, "cargos"), {
@@ -506,6 +517,29 @@ function CargoModal({
               </>
             )}
           </div>
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-2">
+            Registro de ponto
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={batePonto ?? defaultBatePontoPorVinculo(tipoVinculo)}
+              onChange={(e) => setBatePonto(e.target.checked)}
+            />
+            <span>Bate ponto na Sólides</span>
+            <span className="text-xs text-gray-400">
+              {batePonto === null
+                ? `(default: ${defaultBatePontoPorVinculo(tipoVinculo) ? "bate" : "não bate"} — TipoVinculo: ${tipoVinculo})`
+                : "(override do cargo)"}
+            </span>
+          </label>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
+            Desmarque pra cargos de confiança (gerentes, diretores) que não batem ponto.
+            Quem não bate ponto não gera inconformidades no módulo de Registros de Ponto.
+          </p>
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
