@@ -27,6 +27,9 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const [pacoteSelecionado, setPacoteSelecionado] = useState<string>(lead.pacoteSugeridoId || "");
   const [paxOverride, setPaxOverride] = useState<string>("");
   const [precoPaxOverride, setPrecoPaxOverride] = useState<string>("");
+  // Set de ids de adicionais marcados — set vazio reseta a cada troca de pacote
+  // via useEffect lá embaixo (caso o user troque depois de marcar).
+  const [adicionaisMarcados, setAdicionaisMarcados] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -59,6 +62,25 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   );
   const pacotesAtivos = useMemo(() => pacotes.filter(p => p.ativo), [pacotes]);
 
+  // Limpa seleção de adicionais quando troca de pacote — adicionais são
+  // do pacote, não fazem sentido carregar pra outro.
+  useEffect(() => {
+    setAdicionaisMarcados(new Set());
+  }, [pacoteSelecionado]);
+
+  // Converte set de IDs marcados em lista de AjusteProposta. O cálculo do
+  // valor depende do pax atual quando o adicional é por_pessoa.
+  function ajustesDeAdicionais(): { descricao: string; valor: number }[] {
+    if (!pacoteAtual?.adicionais) return [];
+    const pax = parseInt(paxOverride, 10) || lead.numConvidados;
+    return pacoteAtual.adicionais
+      .filter(a => adicionaisMarcados.has(a.id))
+      .map(a => ({
+        descricao: a.precoModo === "por_pessoa" ? `${a.nome} (R$ ${a.preco.toFixed(2)}/p × ${pax})` : a.nome,
+        valor: a.precoModo === "por_pessoa" ? a.preco * pax : a.preco,
+      }));
+  }
+
   async function gerarProposta() {
     if (!podeEditar) return;
     const pacote = pacoteSelecionado ? pacotes.find(p => p.id === pacoteSelecionado) : null;
@@ -77,11 +99,12 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
         espaco,
         numConvidados: pax,
         precoPorPessoaOverride: precoPax,
-        ajustes: [],
+        ajustes: ajustesDeAdicionais(),
         criadoPorId: meId,
       });
       setPaxOverride("");
       setPrecoPaxOverride("");
+      setAdicionaisMarcados(new Set());
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao gerar proposta");
     } finally {
@@ -167,15 +190,21 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const totalPreview = useMemo(() => {
     const pax = parseInt(paxOverride, 10) || lead.numConvidados;
     const modo = pacoteAtual?.precoModo || "por_pessoa";
+    let base = 0;
     if (modo === "total_fixo") {
-      return pacoteAtual ? (pacoteAtual.precoTotal || 0) : 0;
-    }
-    if (precoPaxOverride) {
+      base = pacoteAtual ? (pacoteAtual.precoTotal || 0) : 0;
+    } else if (precoPaxOverride) {
       const v = parseFloat(precoPaxOverride.replace(",", ".")) || 0;
-      return Math.round(v * pax * 100) / 100;
+      base = Math.round(v * pax * 100) / 100;
+    } else {
+      base = pacoteAtual ? pacoteValorTotal(pacoteAtual, pax) : 0;
     }
-    return pacoteAtual ? pacoteValorTotal(pacoteAtual, pax) : 0;
-  }, [paxOverride, precoPaxOverride, pacoteAtual, lead.numConvidados]);
+    // Soma adicionais marcados (preview reativo aos checkboxes)
+    const adicionais = (pacoteAtual?.adicionais || [])
+      .filter(a => adicionaisMarcados.has(a.id))
+      .reduce((s, a) => s + (a.precoModo === "por_pessoa" ? a.preco * pax : a.preco), 0);
+    return Math.round((base + adicionais) * 100) / 100;
+  }, [paxOverride, precoPaxOverride, pacoteAtual, lead.numConvidados, adicionaisMarcados]);
 
   return (
     <div>
@@ -245,6 +274,37 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               </div>
             </div>
           </div>
+
+          {/* Adicionais ofertados pelo pacote — checkboxes; marcados viram
+              linhas em proposta.ajustes na hora de gerar. */}
+          {pacoteAtual?.adicionais && pacoteAtual.adicionais.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              <div className="text-[11px] uppercase font-bold text-gray-500 mb-2">Adicionais</div>
+              <div className="space-y-1">
+                {pacoteAtual.adicionais.map(a => (
+                  <label key={a.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={adicionaisMarcados.has(a.id)}
+                      onChange={(e) => {
+                        setAdicionaisMarcados(prev => {
+                          const next = new Set(prev);
+                          if (e.target.checked) next.add(a.id);
+                          else next.delete(a.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <span className="flex-1">{a.nome}</span>
+                    <span className="text-emerald-700 dark:text-emerald-400 text-xs tabular-nums">
+                      +R$ {a.preco.toFixed(2)}{a.precoModo === "por_pessoa" ? "/p" : ""}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
           {podeEditar && (
             <Button onClick={gerarProposta} disabled={criando}>
               {criando ? "Gerando..." : "💼 Gerar proposta v1"}

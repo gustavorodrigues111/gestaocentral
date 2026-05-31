@@ -6,7 +6,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { CardapioPdf, EspacoEvento, PacoteEvento, PacotePrecoModo } from "../../core/types";
+import type { AdicionalPacote, CardapioPdf, EspacoEvento, PacoteEvento, PacotePrecoModo } from "../../core/types";
 import { pacotePrecoLabel } from "../../core/types";
 
 const MAX_CARDAPIOS = 3;
@@ -84,6 +84,7 @@ export function PacotesTab({ rid, podeEditar }: Props) {
       capacidadeMin: espaco.capacidadeMin,
       capacidadeMax: espaco.capacidadeMax,
       cardapios: [],
+      adicionais: [],
       inclusos: [],
       naoInclusos: [],
       ativo: true,
@@ -218,7 +219,10 @@ function PacoteCard({
                   {pacotePrecoLabel(pacote)}
                 </span>
               </div>
-              <div>{pacote.cardapios?.length || 0} PDF(s) de cardápio</div>
+              <div>
+                {pacote.cardapios?.length || 0} PDF(s) de cardápio
+                {(pacote.adicionais?.length || 0) > 0 && ` · ${pacote.adicionais!.length} adicional(is)`}
+              </div>
             </div>
           </div>
           {podeEditar && (
@@ -249,10 +253,16 @@ function PacoteEditor({
   const [form, setForm] = useState<PacoteEvento>(() => ({
     ...pacote,
     cardapios: pacote.cardapios || [],
+    adicionais: pacote.adicionais || [],
   }));
   const [saving, setSaving] = useState(false);
   const [novoIncluso, setNovoIncluso] = useState("");
   const [novoNaoIncluso, setNovoNaoIncluso] = useState("");
+  // Form inline pra novo adicional. precoModo default = por_pessoa, mais comum
+  // pra extras de catering (bolo, drink etc.). User pode trocar pra total_fixo.
+  const [novoAdicional, setNovoAdicional] = useState<{ nome: string; preco: string; precoModo: "por_pessoa" | "total_fixo" }>({
+    nome: "", preco: "", precoModo: "por_pessoa",
+  });
 
   function addIncluso() {
     const v = novoIncluso.trim();
@@ -281,6 +291,24 @@ function PacoteEditor({
       cardapios: (f.cardapios || []).map(c => c.id === id ? { ...c, nome } : c),
     }));
   }
+  function addAdicional() {
+    const nome = novoAdicional.nome.trim();
+    const preco = parseFloat(novoAdicional.preco.replace(",", ".")) || 0;
+    if (!nome) return;
+    const item: AdicionalPacote = {
+      id: `ad_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      nome,
+      precoModo: novoAdicional.precoModo,
+      preco,
+      ordem: (form.adicionais || []).length,
+    };
+    setForm(f => ({ ...f, adicionais: [...(f.adicionais || []), item] }));
+    setNovoAdicional({ nome: "", preco: "", precoModo: novoAdicional.precoModo });
+  }
+  function delAdicional(id: string) {
+    setForm(f => ({ ...f, adicionais: (f.adicionais || []).filter(a => a.id !== id) }));
+  }
+
   async function delCardapio(id: string) {
     const alvo = (form.cardapios || []).find(c => c.id === id);
     if (!alvo) return;
@@ -509,6 +537,58 @@ function PacoteEditor({
               onUploaded={addCardapio}
             />
           )}
+        </div>
+      </div>
+
+      {/* Adicionais — extras opcionais que o vendedor marca por proposta */}
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          Adicionais opcionais
+        </label>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+          Extras que o vendedor pode marcar na hora da proposta. Ex: "Hora extra", "DJ", "Bolo".
+        </p>
+        <div className="mt-2 space-y-1.5">
+          {(form.adicionais || []).map(a => (
+            <div key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
+              <span className="text-base">➕</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 dark:text-gray-100">{a.nome}</div>
+                <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  R$ {a.preco.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  {a.precoModo === "por_pessoa" ? " /pessoa" : " (total)"}
+                </div>
+              </div>
+              <button onClick={() => delAdicional(a.id)} className="text-xs text-rose-600 hover:underline shrink-0">apagar</button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-[1fr_110px_140px_auto] gap-1.5 items-center">
+          <input
+            value={novoAdicional.nome}
+            onChange={(e) => setNovoAdicional(n => ({ ...n, nome: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAdicional(); } }}
+            placeholder="Nome (ex: Hora extra)"
+            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          />
+          <input
+            value={novoAdicional.preco}
+            onChange={(e) => setNovoAdicional(n => ({ ...n, preco: e.target.value }))}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addAdicional(); } }}
+            placeholder="R$"
+            type="number"
+            step="0.01"
+            className="w-full px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          />
+          <select
+            value={novoAdicional.precoModo}
+            onChange={(e) => setNovoAdicional(n => ({ ...n, precoModo: e.target.value as "por_pessoa" | "total_fixo" }))}
+            className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          >
+            <option value="por_pessoa">por pessoa</option>
+            <option value="total_fixo">total fixo</option>
+          </select>
+          <Button size="sm" variant="secondary" onClick={addAdicional}>+ adicionar</Button>
         </div>
       </div>
 

@@ -2561,6 +2561,18 @@ export type EspacoEvento = {
   updatedAt: string;
 };
 
+// Extra opcional dentro de um pacote — vendedor marca na hora de gerar
+// a proposta. Cada marcado vira uma linha de AjusteProposta.
+// Ex: "Hora extra" R$ 800 total, "Bolo personalizado" R$ 35/p, "DJ" R$ 1500.
+export type AdicionalPacote = {
+  id: string;
+  nome: string;
+  descricao?: string;
+  precoModo: "por_pessoa" | "total_fixo";
+  preco: number;
+  ordem: number;
+};
+
 // PDF de cardápio anexado a um pacote (ex: "Comidas e bebidas", "Drinks especiais").
 // Substituiu o modelo de itens estruturados — pra evento, cliente quer ver o cardápio
 // montado/diagramado, não uma lista item-por-item.
@@ -2600,6 +2612,9 @@ export type PacoteEvento = {
   // Até 3 PDFs de cardápio. Cliente recebe os links no WhatsApp e baixa cada
   // um — não geramos mais texto inline item-por-item.
   cardapios: CardapioPdf[];
+  // Extras opcionais ofertados a partir desse pacote. Vendedor escolhe na
+  // hora da proposta. Cada marcado vira linha em PropostaEvento.ajustes.
+  adicionais?: AdicionalPacote[];
   inclusos: string[];                // ["som ambiente", "decoração básica"]
   naoInclusos: string[];             // ["bolo", "DJ"]
   observacoes?: string;
