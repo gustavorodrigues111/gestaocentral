@@ -3035,7 +3035,19 @@ export type TarefaSubprojeto = {
   gatilho?: string;
   campos?: string;              // texto livre — campos custom separados por ·
   pastaDriveTemplate?: string;
+  // Templates de tarefa-filha (checklist) usados quando criar uma tarefa-pai
+  // a partir deste subprojeto. Ex.: Fechamento Financeiro Mensal vira tarefa
+  // com 15 subtarefas pré-definidas.
   tarefasTemplate?: TarefaTemplate[];
+  // Responsável padrão pras tarefas criadas neste subprojeto. Se undefined,
+  // cai pro criador da tarefa.
+  responsavelPadraoId?: string;
+  responsavelPadraoNome?: string;
+  // Recorrência da tarefa-pai (rotinas). Quando setado + auto:true, sistema
+  // pode gerar próxima ocorrência automaticamente ao concluir.
+  recorrenciaTipo?: "nenhuma" | "mensal" | "semanal" | "anual" | "trimestral" | "semestral";
+  recorrenciaDia?: number;      // 1-31 (mensal/anual/...) ou 0-6 (semanal)
+  recorrenciaMes?: number;      // 1-12 (anual/trimestral/semestral)
   ordem: number;
   ativo: boolean;
   deletadoEm?: string | null;
@@ -3043,6 +3055,15 @@ export type TarefaSubprojeto = {
   criadoEm: string;
   criadoPor: string;
   atualizadoEm: string;
+};
+
+export const RECORRENCIA_TIPO_LABEL: Record<NonNullable<TarefaSubprojeto["recorrenciaTipo"]>, string> = {
+  nenhuma:    "Sem recorrência",
+  semanal:    "Semanal",
+  mensal:     "Mensal",
+  trimestral: "Trimestral (3 meses)",
+  semestral:  "Semestral (6 meses)",
+  anual:      "Anual",
 };
 
 // Template de tarefa (linha do esqueleto). Usado pelo gerador de recorrências.

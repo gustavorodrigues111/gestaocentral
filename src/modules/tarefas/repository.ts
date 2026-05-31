@@ -170,7 +170,7 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
   const ref = doc(db, COL_TAREFAS, id);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
-  const atual = snap.data() as Tarefa;
+  const atual = { id: snap.id, ...snap.data() } as Tarefa;
   if (atual.status === status) return;
   await atualizarTarefa(id, { status }, autor, {
     acao: "status_mudou",
@@ -178,6 +178,16 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
     valorAntes: atual.status,
     valorDepois: status,
   });
+  // Auto-clone: se concluiu uma rotina recorrente, agenda próxima ocorrência.
+  // Import dinâmico pra evitar ciclo de imports (generator depende de repository).
+  if (status === "concluida") {
+    try {
+      const { tentarAgendarProximaRecorrencia } = await import("./generator");
+      await tentarAgendarProximaRecorrencia(atual, autor);
+    } catch (e) {
+      console.warn("[repository] auto-clone falhou:", e);
+    }
+  }
 }
 
 export async function marcarSubtarefa(tarefaId: string, subId: string, feito: boolean, autor: { id: string; nome: string }): Promise<void> {

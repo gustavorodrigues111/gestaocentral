@@ -20,11 +20,11 @@ import { seedProjetosIniciais } from "./seed";
 import { gerarTarefasDoDia } from "./generator";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
-  TarefaVisibilidade,
+  TarefaVisibilidade, TarefaTemplate,
 } from "../../core/types";
 import {
   TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL,
-  TAREFA_VISIBILIDADE_LABEL,
+  TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
 } from "../../core/types";
 import type { TarefaAnexo } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
@@ -262,6 +262,8 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
   const [filtroProjeto, setFiltroProjeto] = useState<string>("");
   const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
   const [mostrarFiltros, setMostrarFiltros] = useState(false);
+  const [modoSelecao, setModoSelecao] = useState(false);
+  const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
 
   const hoje = new Date().toISOString().slice(0, 10);
   const daquiSeteDias = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })();
@@ -375,8 +377,14 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
         </div>
       )}
 
-      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-        {filtradas.length} de {tarefas.length} tarefa(s)
+      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-2">
+        <span>{filtradas.length} de {tarefas.length} tarefa(s)</span>
+        <button
+          onClick={() => { setModoSelecao(!modoSelecao); setSelecionadas(new Set()); }}
+          className="text-indigo-600 dark:text-indigo-400 hover:underline"
+        >
+          {modoSelecao ? "Cancelar seleção" : "Selecionar várias"}
+        </button>
       </div>
 
       {filtradas.length === 0 ? (
@@ -384,19 +392,126 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
           Nenhuma tarefa com esses filtros.
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-2 pb-20">
           {filtradas.map(t => (
-            <TarefaCard
-              key={t.id}
-              tarefa={t}
-              projetos={projetos}
-              subprojetos={subprojetos}
-              onAbrir={() => onAbrir(t.id)}
-              autor={{ id: pessoaId, nome: pessoaNome }}
-            />
+            <div key={t.id} className="flex items-start gap-2">
+              {modoSelecao && (
+                <input
+                  type="checkbox"
+                  checked={selecionadas.has(t.id)}
+                  onChange={(e) => {
+                    const novo = new Set(selecionadas);
+                    if (e.target.checked) novo.add(t.id); else novo.delete(t.id);
+                    setSelecionadas(novo);
+                  }}
+                  className="mt-3"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <TarefaCard
+                  tarefa={t}
+                  projetos={projetos}
+                  subprojetos={subprojetos}
+                  onAbrir={() => {
+                    if (modoSelecao) {
+                      const novo = new Set(selecionadas);
+                      if (novo.has(t.id)) novo.delete(t.id); else novo.add(t.id);
+                      setSelecionadas(novo);
+                    } else onAbrir(t.id);
+                  }}
+                  autor={{ id: pessoaId, nome: pessoaNome }}
+                />
+              </div>
+            </div>
           ))}
         </div>
       )}
+
+      {modoSelecao && selecionadas.size > 0 && (
+        <BulkActionsBar
+          ids={Array.from(selecionadas)}
+          autor={{ id: pessoaId, nome: pessoaNome }}
+          onDone={() => { setModoSelecao(false); setSelecionadas(new Set()); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function BulkActionsBar({ ids, autor, onDone }: {
+  ids: string[];
+  autor: { id: string; nome: string };
+  onDone: () => void;
+}) {
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const [trocandoResp, setTrocandoResp] = useState(false);
+  useEffect(() => {
+    if (!trocandoResp) return;
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoas(list);
+    });
+    return () => u();
+  }, [trocandoResp]);
+
+  async function mudarStatusBulk(status: TarefaStatus) {
+    if (!confirm(`Mudar status de ${ids.length} tarefa(s) pra "${TAREFA_STATUS_LABEL[status]}"?`)) return;
+    for (const id of ids) await mudarStatus(id, status, autor);
+    onDone();
+  }
+  async function excluirBulk() {
+    if (!confirm(`Excluir ${ids.length} tarefa(s)? Vão pra lixeira (master pode restaurar).`)) return;
+    for (const id of ids) await softDeleteTarefa(id, autor, "Bulk delete");
+    onDone();
+  }
+  async function trocarResponsavel(pessoaId: string, pessoaNome: string) {
+    if (!confirm(`Atribuir ${ids.length} tarefa(s) pra ${pessoaNome}?`)) return;
+    for (const id of ids) {
+      await atualizarTarefa(id, {
+        responsavelId: pessoaId,
+        responsavelNome: pessoaNome,
+      }, autor, {
+        acao: "responsavel_mudou",
+        campo: "responsável (bulk)",
+        valorDepois: pessoaNome,
+      });
+    }
+    onDone();
+  }
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 md:left-60 z-30 p-3 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 shadow-lg">
+      <div className="flex items-center gap-2 max-w-7xl mx-auto flex-wrap">
+        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{ids.length} selecionada(s)</span>
+        {trocandoResp ? (
+          <select
+            autoFocus
+            onChange={(e) => {
+              const p = pessoas.find(x => x.id === e.target.value);
+              if (p) trocarResponsavel(p.id, p.nome);
+              setTrocandoResp(false);
+            }}
+            onBlur={() => setTrocandoResp(false)}
+            className="px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+            defaultValue=""
+          >
+            <option value="" disabled>— escolha pessoa —</option>
+            {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => setTrocandoResp(true)}>Atribuir a…</Button>
+        )}
+        <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("em_andamento")}>Em andamento</Button>
+        <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("concluida")}>✓ Concluir</Button>
+        <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("cancelada")}>Cancelar</Button>
+        <Button size="sm" variant="ghost" onClick={excluirBulk}>🗑️ Excluir</Button>
+        <div className="flex-1" />
+        <Button size="sm" variant="ghost" onClick={onDone}>Fechar</Button>
+      </div>
     </div>
   );
 }
@@ -774,12 +889,49 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
     auto: false,
     ordem: 99,
     ativo: true,
+    recorrenciaTipo: "nenhuma",
   });
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoas(list);
+    });
+    return () => u();
+  }, []);
+
+  function addTemplate() {
+    setF({ ...f, tarefasTemplate: [...(f.tarefasTemplate || []), { titulo: "", prazoOffset: "D+0" }] });
+  }
+  function editTemplate(i: number, patch: Partial<TarefaTemplate>) {
+    const arr = [...(f.tarefasTemplate || [])];
+    arr[i] = { ...arr[i], ...patch };
+    setF({ ...f, tarefasTemplate: arr });
+  }
+  function removeTemplate(i: number) {
+    const arr = [...(f.tarefasTemplate || [])];
+    arr.splice(i, 1);
+    setF({ ...f, tarefasTemplate: arr });
+  }
+  function moveTemplate(i: number, delta: -1 | 1) {
+    const arr = [...(f.tarefasTemplate || [])];
+    const j = i + delta;
+    if (j < 0 || j >= arr.length) return;
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+    setF({ ...f, tarefasTemplate: arr });
+  }
 
   async function salvar() {
     if (!f.nome) { alert("Nome obrigatório"); return; }
     const now = new Date().toISOString();
     const id = sub?.id || `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const respNome = f.responsavelPadraoId
+      ? pessoas.find(p => p.id === f.responsavelPadraoId)?.nome
+      : undefined;
     const data: TarefaSubprojeto = {
       id,
       projetoId: f.projetoId || projetoId || "",
@@ -789,7 +941,12 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
       gatilho: f.gatilho,
       campos: f.campos,
       pastaDriveTemplate: f.pastaDriveTemplate,
-      tarefasTemplate: f.tarefasTemplate,
+      tarefasTemplate: (f.tarefasTemplate || []).filter(t => t.titulo.trim()),
+      responsavelPadraoId: f.responsavelPadraoId,
+      responsavelPadraoNome: respNome || f.responsavelPadraoNome,
+      recorrenciaTipo: f.recorrenciaTipo,
+      recorrenciaDia: f.recorrenciaDia,
+      recorrenciaMes: f.recorrenciaMes,
       ordem: f.ordem ?? 99,
       ativo: f.ativo ?? true,
       deletadoEm: f.deletadoEm,
@@ -801,6 +958,8 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
     await salvarSubprojeto(data);
     onClose();
   }
+
+  const rec = f.recorrenciaTipo || "nenhuma";
 
   return (
     <div className="p-2 mt-1 bg-gray-50 dark:bg-gray-800/40 rounded-md space-y-1.5">
@@ -816,7 +975,89 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
         <input value={f.gatilho || ""} onChange={(e) => setF({ ...f, gatilho: e.target.value })} placeholder="Gatilho (ex: 'Nova admissão concluída')" className="adm-input text-xs" />
       )}
       <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom separados por · (opcional)" className="adm-input text-xs" />
-      <div className="flex justify-end gap-1">
+
+      {/* Responsável padrão */}
+      <label className="block text-xs">
+        <div className="text-gray-600 dark:text-gray-400 mb-1">Responsável padrão (pra novas tarefas deste subprojeto)</div>
+        <select
+          value={f.responsavelPadraoId || ""}
+          onChange={(e) => setF({ ...f, responsavelPadraoId: e.target.value || undefined })}
+          className="adm-input"
+        >
+          <option value="">— criador da tarefa (default) —</option>
+          {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+      </label>
+
+      {/* Recorrência */}
+      <label className="block text-xs">
+        <div className="text-gray-600 dark:text-gray-400 mb-1">Recorrência (rotinas — ao concluir, gera próxima)</div>
+        <select
+          value={rec}
+          onChange={(e) => setF({ ...f, recorrenciaTipo: e.target.value as TarefaSubprojeto["recorrenciaTipo"] })}
+          className="adm-input"
+        >
+          {(Object.keys(RECORRENCIA_TIPO_LABEL) as Array<NonNullable<TarefaSubprojeto["recorrenciaTipo"]>>).map(t =>
+            <option key={t} value={t}>{RECORRENCIA_TIPO_LABEL[t]}</option>
+          )}
+        </select>
+      </label>
+      {(rec === "mensal" || rec === "anual" || rec === "trimestral" || rec === "semestral") && (
+        <div className="grid grid-cols-2 gap-2 text-xs">
+          <label>
+            <div className="text-gray-600 dark:text-gray-400 mb-1">Dia do mês</div>
+            <input type="number" min="1" max="31" value={f.recorrenciaDia ?? ""} onChange={(e) => setF({ ...f, recorrenciaDia: parseInt(e.target.value) || undefined })} className="adm-input" />
+          </label>
+          {rec !== "mensal" && (
+            <label>
+              <div className="text-gray-600 dark:text-gray-400 mb-1">Mês (1-12)</div>
+              <input type="number" min="1" max="12" value={f.recorrenciaMes ?? ""} onChange={(e) => setF({ ...f, recorrenciaMes: parseInt(e.target.value) || undefined })} className="adm-input" />
+            </label>
+          )}
+        </div>
+      )}
+      {rec === "semanal" && (
+        <label className="block text-xs">
+          <div className="text-gray-600 dark:text-gray-400 mb-1">Dia da semana</div>
+          <select value={f.recorrenciaDia ?? 1} onChange={(e) => setF({ ...f, recorrenciaDia: parseInt(e.target.value) })} className="adm-input">
+            <option value="0">Domingo</option><option value="1">Segunda</option><option value="2">Terça</option>
+            <option value="3">Quarta</option><option value="4">Quinta</option><option value="5">Sexta</option><option value="6">Sábado</option>
+          </select>
+        </label>
+      )}
+
+      {/* Templates de tarefas-filha (checklist) */}
+      <div className="text-xs">
+        <div className="text-gray-600 dark:text-gray-400 mb-1 flex items-center justify-between">
+          <span>Templates de subtarefas (checklist da tarefa-pai)</span>
+          <button onClick={addTemplate} className="text-emerald-700 dark:text-emerald-300 hover:underline">+ adicionar</button>
+        </div>
+        {(f.tarefasTemplate || []).map((t, i) => (
+          <div key={i} className="flex items-center gap-1 mb-1 group">
+            <input
+              value={t.titulo}
+              onChange={(e) => editTemplate(i, { titulo: e.target.value })}
+              placeholder="Título da subtarefa"
+              className="adm-input flex-1"
+            />
+            <input
+              value={t.prazoOffset || ""}
+              onChange={(e) => editTemplate(i, { prazoOffset: e.target.value })}
+              placeholder="D+5 / dia 20"
+              className="adm-input w-20"
+              title="Offset de prazo relativo (texto livre)"
+            />
+            <button onClick={() => moveTemplate(i, -1)} disabled={i === 0} className="px-1 text-xs disabled:opacity-30 hover:text-indigo-600">▲</button>
+            <button onClick={() => moveTemplate(i, 1)} disabled={i === (f.tarefasTemplate?.length ?? 0) - 1} className="px-1 text-xs disabled:opacity-30 hover:text-indigo-600">▼</button>
+            <button onClick={() => removeTemplate(i)} className="px-1 text-xs text-red-500 hover:text-red-700">×</button>
+          </div>
+        ))}
+        {(!f.tarefasTemplate || f.tarefasTemplate.length === 0) && (
+          <div className="text-[11px] text-gray-400 italic">Sem templates. Adicione pra criar tarefas-pai com checklist pré-definido.</div>
+        )}
+      </div>
+
+      <div className="flex justify-end gap-1 pt-1">
         <Button size="sm" variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button size="sm" onClick={salvar}>{sub ? "Salvar" : "Criar"}</Button>
       </div>
@@ -854,13 +1095,13 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="md:grid md:grid-cols-2 lg:grid-cols-4 md:gap-3 flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 md:overflow-visible">
       {cols.map(col => {
         const items = tarefas.filter(t => t.status === col);
         return (
           <div
             key={col}
-            className="rounded-xl bg-gray-50 dark:bg-gray-800/40 p-2 min-h-[200px]"
+            className="rounded-xl bg-gray-50 dark:bg-gray-800/40 p-2 min-h-[200px] flex-shrink-0 w-72 md:w-auto"
             onDragOver={onDragOver}
             onDrop={(e) => onDrop(e, col)}
           >
@@ -960,17 +1201,30 @@ function CalendarioView({ tarefas, projetos, onAbrir }: {
           return (
             <div
               key={dia}
-              className={`min-h-[80px] p-1 rounded-md border ${ehHoje ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}
+              className={`min-h-[40px] md:min-h-[80px] p-1 rounded-md border ${ehHoje ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"} ${lista.length > 0 ? "cursor-pointer md:cursor-default" : ""}`}
+              onClick={() => {
+                // Mobile: tap no dia abre 1ª tarefa do dia (com aria pra leitor de tela)
+                if (window.matchMedia("(max-width: 767px)").matches && lista[0]) {
+                  onAbrir(lista[0].id);
+                }
+              }}
             >
-              <div className={`text-[10px] font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400"} mb-1`}>{dia}</div>
-              <div className="space-y-0.5">
+              <div className={`flex items-center justify-between gap-1 text-[10px] font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400"} mb-1`}>
+                <span>{dia}</span>
+                {lista.length > 0 && (
+                  <span className="md:hidden inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-indigo-500 text-white text-[9px]">
+                    {lista.length}
+                  </span>
+                )}
+              </div>
+              <div className="hidden md:block space-y-0.5">
                 {lista.slice(0, 3).map(t => {
                   const proj = projetos.find(p => p.id === t.projetoId);
                   const cor = t.corHerdada || proj?.cor || "#6b7280";
                   return (
                     <div
                       key={t.id}
-                      onClick={() => onAbrir(t.id)}
+                      onClick={(e) => { e.stopPropagation(); onAbrir(t.id); }}
                       className="text-[10px] px-1 py-0.5 rounded cursor-pointer truncate hover:opacity-80"
                       style={{ background: cor + "30", color: cor }}
                       title={t.titulo}
@@ -1053,12 +1307,10 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   const [titulo, setTitulo] = useState("");
   const [projetoId, setProjetoId] = useState(projetos[0]?.id || "");
   const [subprojetoId, setSubprojetoId] = useState("");
-  // MVP: responsável fixo no criador. Trocar responsável é via Detalhe da Tarefa.
-  const responsavelId = pessoaId;
-  const responsavelNome = pessoaNome;
   const [prazo, setPrazo] = useState("");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
+  const [usarTemplate, setUsarTemplate] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
   const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
@@ -1068,12 +1320,27 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
     }
   }, [projetoId, subprojetoId, subsDoProjeto]);
 
+  const subAtual = subprojetos.find(s => s.id === subprojetoId);
+  const temTemplate = (subAtual?.tarefasTemplate?.length ?? 0) > 0;
   const cor = projetos.find(p => p.id === projetoId)?.cor;
+
+  // Responsável: usa do subprojeto se definido, senão criador
+  const responsavelId = subAtual?.responsavelPadraoId || pessoaId;
+  const responsavelNome = subAtual?.responsavelPadraoNome || pessoaNome;
 
   async function salvar() {
     if (!titulo || !projetoId || !subprojetoId) { alert("Preencha título, projeto e subprojeto."); return; }
     setSalvando(true);
     try {
+      // Se tem template e usuário escolheu usar, popula subtarefas
+      const subtarefasFromTemplate = (usarTemplate && temTemplate && subAtual)
+        ? (subAtual.tarefasTemplate || []).map((t, i) => ({
+            id: Math.random().toString(36).slice(2, 11),
+            texto: t.titulo + (t.prazoOffset ? ` (${t.prazoOffset})` : ""),
+            feito: false,
+            ordem: i + 1,
+          }))
+        : undefined;
       await criarTarefa({
         projetoId, subprojetoId, titulo,
         responsavelId, responsavelNome,
@@ -1084,6 +1351,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
         prioridade,
         origem: "manual",
         corHerdada: cor,
+        subtarefas: subtarefasFromTemplate,
         criadoPor: pessoaId,
         criadoPorNome: pessoaNome,
       });
@@ -1113,6 +1381,22 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
               {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
           </Field>
+          {subAtual?.responsavelPadraoNome && (
+            <div className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
+              Responsável: <span className="font-medium text-gray-700 dark:text-gray-300">{subAtual.responsavelPadraoNome}</span> (padrão do subprojeto)
+            </div>
+          )}
+          {temTemplate && (
+            <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
+              <input type="checkbox" checked={usarTemplate} onChange={(e) => setUsarTemplate(e.target.checked)} />
+              <span className="flex-1">
+                Usar checklist do template
+                <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-300">
+                  ({subAtual?.tarefasTemplate?.length} subtarefa{(subAtual?.tarefasTemplate?.length ?? 0) > 1 ? "s" : ""})
+                </span>
+              </span>
+            </label>
+          )}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Prazo">
               <input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="input" />

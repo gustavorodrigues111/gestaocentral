@@ -9,7 +9,7 @@ import { collection, getDocs, query, where, doc, getDoc } from "firebase/firesto
 import { db } from "../../core/firebase/config";
 import { criarTarefa } from "./repository";
 import type {
-  ContaFixa, Manutencao, Tarefa, Empregado, Cargo,
+  ContaFixa, Manutencao, Tarefa, Empregado, Cargo, TarefaSubprojeto, Subtarefa,
 } from "../../core/types";
 
 const ANTECEDENCIA_DEFAULT_DIAS = 3;
@@ -155,6 +155,105 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
 
 function nomeTipo(tipo: string): string {
   return tipo.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ── Auto-clone de rotinas ────────────────────────────────────────────────
+// Chamado quando uma tarefa é concluída. Se o subprojeto dela é auto:true
+// + recorrenciaTipo definida, agenda próxima ocorrência com prazo recalculado.
+// Idempotente: usa recorrenciaKey pra não duplicar próxima ocorrência.
+
+export async function tentarAgendarProximaRecorrencia(
+  tarefaConcluida: Tarefa,
+  autor: { id: string; nome: string },
+): Promise<boolean> {
+  // Carrega subprojeto e checa se tem recorrência
+  const subSnap = await getDoc(doc(db, "tarefaSubprojetos", tarefaConcluida.subprojetoId));
+  if (!subSnap.exists()) return false;
+  const sub = { id: subSnap.id, ...subSnap.data() } as TarefaSubprojeto;
+  const tipo = sub.recorrenciaTipo;
+  if (!tipo || tipo === "nenhuma" || !sub.auto) return false;
+
+  // Calcula próximo prazo
+  const proxPrazo = calcularProximoPrazo(tipo, sub.recorrenciaDia, sub.recorrenciaMes);
+  if (!proxPrazo) return false;
+
+  // Idempotência: chave baseada em subprojeto + prazo da próxima
+  const chave = `rec-${sub.id}-${proxPrazo}`;
+  const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
+  if (!existSnap.empty) return false; // já agendada
+
+  // Subtarefas a partir do template (se houver)
+  const subtarefas: Subtarefa[] | undefined = (sub.tarefasTemplate || []).length > 0
+    ? (sub.tarefasTemplate || []).map((t, i) => ({
+        id: Math.random().toString(36).slice(2, 11),
+        texto: t.titulo + (t.prazoOffset ? ` (${t.prazoOffset})` : ""),
+        feito: false,
+        ordem: i + 1,
+      }))
+    : undefined;
+
+  await criarTarefa({
+    projetoId: tarefaConcluida.projetoId,
+    subprojetoId: tarefaConcluida.subprojetoId,
+    titulo: nomeProximoCiclo(tarefaConcluida.titulo, tipo, proxPrazo),
+    descricao: tarefaConcluida.descricao,
+    responsavelId: sub.responsavelPadraoId || tarefaConcluida.responsavelId,
+    responsavelNome: sub.responsavelPadraoNome || tarefaConcluida.responsavelNome,
+    restaurantIds: tarefaConcluida.restaurantIds,
+    prazo: proxPrazo,
+    status: "a_fazer",
+    prioridade: "normal",
+    subtarefas,
+    origem: "recorrencia",
+    origemRefId: sub.id,
+    origemRefLabel: `Rotina: ${sub.nome}`,
+    recorrenciaKey: chave,
+    corHerdada: tarefaConcluida.corHerdada,
+    criadoPor: autor.id,
+    criadoPorNome: autor.nome,
+  });
+  return true;
+}
+
+function calcularProximoPrazo(
+  tipo: NonNullable<TarefaSubprojeto["recorrenciaTipo"]>,
+  dia?: number,
+  mes?: number,
+): string | null {
+  const hoje = new Date();
+  if (tipo === "semanal" && dia !== undefined) {
+    const diff = ((dia - hoje.getDay() + 7) % 7) || 7;
+    const d = new Date(hoje.getTime() + diff * 86400000);
+    return d.toISOString().slice(0, 10);
+  }
+  if (tipo === "mensal" && dia) {
+    let d = new Date(hoje.getFullYear(), hoje.getMonth() + 1, dia);
+    return d.toISOString().slice(0, 10);
+  }
+  if ((tipo === "trimestral" || tipo === "semestral" || tipo === "anual") && dia) {
+    const meses = tipo === "anual" ? 12 : tipo === "semestral" ? 6 : 3;
+    const baseMes = mes ? mes - 1 : hoje.getMonth();
+    let d = new Date(hoje.getFullYear(), baseMes + meses, dia);
+    if (d <= hoje) d = new Date(d.getFullYear() + (mes ? 1 : 0), d.getMonth(), dia);
+    return d.toISOString().slice(0, 10);
+  }
+  return null;
+}
+
+function nomeProximoCiclo(tituloOriginal: string, tipo: string, prazo: string): string {
+  // Se o título já tem padrão "| Mês Ano" tipo "Fechamento Financeiro Mensal | Maio 26",
+  // substitui pelo mês/ano novo. Senão, mantém + sufixo do prazo.
+  const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const d = new Date(prazo + "T00:00:00");
+  const mesNome = meses[d.getMonth()];
+  const anoCurto = String(d.getFullYear()).slice(-2);
+  const sufixo = `${mesNome} ${anoCurto}`;
+  // Se já tem " | " separador, troca o último segmento
+  const idx = tituloOriginal.lastIndexOf(" | ");
+  if (idx > 0 && tipo === "mensal") {
+    return tituloOriginal.slice(0, idx) + ` | ${sufixo}`;
+  }
+  return `${tituloOriginal} (${sufixo})`;
 }
 
 // ── Cascata de Admissão ──────────────────────────────────────────────────
