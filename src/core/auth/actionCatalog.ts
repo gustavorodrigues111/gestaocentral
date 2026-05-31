@@ -449,6 +449,20 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "exames",
+    icon: "🩺",
+    label: "Exames Médicos",
+    desc: "Gestão de exames periódicos dos empregados",
+    area: "gestao",
+    acoes: [
+      { id: "ver",          label: "Ver exames dos empregados", sensivel: true },
+      { id: "lancar",       label: "Lançar exame realizado / dar baixa", sensivel: true },
+      { id: "anexarResult", label: "Anexar resultado (PDF da clínica)", sensivel: true },
+      { id: "desativar",    label: "Desativar exame", sensivel: true },
+      { id: "configurar",   label: "Configurar tipos de exame (master)" },
+    ],
+  },
+  {
     id: "perfisAcesso",
     icon: "🛡️",
     label: "Perfis de Acesso",

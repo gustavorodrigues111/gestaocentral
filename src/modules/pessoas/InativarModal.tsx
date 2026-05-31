@@ -8,6 +8,7 @@ import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { logAudit } from "../../core/audit/versionedChange";
 import { registrarDemissao } from "../trilha/autoEventos";
+import { desativarExamesPorDemissao } from "../exames/gerador";
 import { todayYmd } from "../../core/utils/date";
 import type { Empregado, Pessoa } from "../../core/types";
 
@@ -119,6 +120,16 @@ export function InativarModal({ pessoa, onClose }: Props) {
           motivo: motivoLabel,
           registradoPor: me.id,
         });
+        // Fase 7: desativa todos os exames médicos do empregado
+        try {
+          await desativarExamesPorDemissao(
+            emp.id,
+            { id: me.id, nome: me.nome || "" },
+            motivoLabel,
+          );
+        } catch (e) {
+          console.warn("[demissao] falha ao desativar exames:", e);
+        }
       }
 
       onClose();

@@ -19,6 +19,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { gerarCascataAdmissao } from "../tarefas/generator";
+import { gerarExamesParaAdmissao, carregarCargo } from "../exames/gerador";
 import {
   ADMISSAO_STATUS_LABEL,
   MOTIVO_CANCELAMENTO_LABEL,
@@ -183,20 +184,38 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         && adm.dataAdmissao
         && me?.id
       ) {
+        // Cascata 1: tarefas trabalhistas legadas (Experiência 1ª/2ª).
+        // Exames eram criados aqui, mas agora vão via Fase 7 (módulo Exames).
         try {
+          // Carrega cargo pra derivar "manipulador" + passar dados ao Exames
+          const cargo = adm.cargoId ? await carregarCargo(adm.cargoId) : null;
           await gerarCascataAdmissao({
             pessoaNome: adm.candidato.nome,
             empregadoId: adm.empregadoIdCriado,
             restaurantId: adm.restaurantId,
             admissaoData: adm.dataAdmissao,
-            manipulaAlimentos: false, // TODO: derivar do cargo (cozinha, etc)
+            manipulaAlimentos: cargo?.area === "Cozinha" || cargo?.area === "Bar",
             responsavelPadraoId: me.id,
             responsavelPadraoNome: me.nome,
             autorId: me.id,
             autorNome: me.nome,
           });
+
+          // Cascata 2 (Fase 7): cria ExameEmpregado pra cada tipo aplicável.
+          // Estes não viram tarefas imediatamente — vão pelo generator diário
+          // quando chegar a janela de antecedência.
+          await gerarExamesParaAdmissao({
+            empregadoId: adm.empregadoIdCriado,
+            empregadoNome: adm.candidato.nome,
+            cargoId: adm.cargoId,
+            cargoNome: cargo?.nome,
+            cargoArea: cargo?.area,
+            restaurantId: adm.restaurantId,
+            dataAdmissao: adm.dataAdmissao,
+            autor: { id: me.id, nome: me.nome },
+          });
         } catch (err) {
-          console.warn("[admissao] falha ao gerar cascata de tarefas:", err);
+          console.warn("[admissao] falha ao gerar cascata de tarefas/exames:", err);
         }
       }
     } catch (e) {

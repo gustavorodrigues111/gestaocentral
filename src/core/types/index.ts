@@ -52,7 +52,9 @@ export type ModuleId =
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
-  | "tarefas" | "contasFixas" | "manutencoes";
+  | "tarefas" | "contasFixas" | "manutencoes"
+  // Exames médicos do empregado (Fase 7)
+  | "exames";
 
 // ─── PERMISSÕES ───
 
@@ -3348,6 +3350,118 @@ export type Manutencao = {
   ativo: boolean;
   deletadoEm?: string | null;
   deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+//  EXAMES MÉDICOS — Fase 7
+//
+//  Modelo: 2 entidades.
+//    ExameTipoConfig — catálogo de tipos por restaurante (Clínico, Complementar,
+//                      Coprocultura, custom). Define periodicidade, antecedência
+//                      de lembrete, responsável padrão, template do fluxo.
+//    ExameEmpregado — instância: 1 por empregado × tipo. Guarda último ciclo
+//                      + histórico de execuções.
+//
+//  Fluxo:
+//    1. Admissão concluída → cria ExameEmpregado pra cada ExameTipoConfig
+//       aplicável (Coprocultura só se cargo Cozinha/Bar).
+//    2. Generator diário varre ExameEmpregado.proximoVencimento. Quando
+//       hoje >= venc - antecedência, cria tarefa-pai com subtarefas template.
+//    3. DP processa: agenda → informa empregado → confirma realização →
+//       recebe resultado → anexa Drive → dá baixa.
+//    4. Baixa: atualiza ultimaRealizacao = hoje, proximoVencimento = hoje +
+//       periodicidade, append historico, fecha tarefa-pai. Próximo ciclo
+//       fica agendado automaticamente.
+//    5. Demissão concluída → marca exames como ativo:false, cancela tarefas vivas.
+// ────────────────────────────────────────────────────────────────────────────
+
+// Template de subtarefa do fluxo de exame. Cada item vira uma Subtarefa
+// da tarefa-pai gerada. prazoOffset é resolvido pelo prazoOffset.ts.
+export type ExameSubtarefaTemplate = {
+  id: string;
+  texto: string;
+  prazoOffset?: string;             // ex: "D-14", "D-9", "D-7", "D+0"
+  ehBaixa?: boolean;                // se true, ao marcar dispara trigger de baixa
+  ehAnexoResultado?: boolean;       // se true, abre Drive Picker pra anexar arquivo
+  ordem: number;
+};
+
+// Default usado quando admin cria um tipo novo sem customizar fluxo.
+export const EXAME_SUBTAREFAS_TEMPLATE_DEFAULT: Omit<ExameSubtarefaTemplate, "id">[] = [
+  { texto: "Agendar na clínica", prazoOffset: "D-14", ordem: 1 },
+  { texto: "Informar empregado da data marcada", prazoOffset: "D-14", ordem: 2 },
+  { texto: "Confirmar realização do exame", prazoOffset: "D-9", ordem: 3 },
+  { texto: "Remarcar se não realizou (prazo extra)", prazoOffset: "D-7", ordem: 4 },
+  { texto: "Receber resultado da clínica", prazoOffset: "D+0", ordem: 5 },
+  { texto: "Anexar resultado na pasta do empregado", ehAnexoResultado: true, ordem: 6 },
+  { texto: "Dar baixa (criar próximo ciclo)", ehBaixa: true, ordem: 7 },
+];
+
+// Aplicabilidade: pra quais cargos o tipo se aplica.
+//   "todos"        — qualquer empregado registrado/estagiário
+//   "manipulador"  — só cargos com area "Cozinha" ou "Bar" (Coprocultura)
+//   "custom"       — lista explícita de cargoIds (pra casos específicos)
+export type ExameAplicabilidade = "todos" | "manipulador" | "custom";
+
+// Catálogo de tipo de exame — POR RESTAURANTE. Permite customizar
+// periodicidade, antecedência, e até criar tipos novos (Audiometria, etc).
+export type ExameTipoConfig = {
+  id: string;
+  restaurantId: string;
+  nome: string;                      // ex: "Exame Clínico", "Coprocultura"
+  descricao?: string;
+  periodicidadeDias: number;         // ex: 365 (anual), 180 (semestral)
+  diasAntecedencia: number;          // dias antes do vencimento pra criar tarefa (default 14)
+  fornecedorPadrao?: string;         // ex: "Triagem", "Almed"
+  aplicabilidade: ExameAplicabilidade;
+  cargoIdsCustom?: string[];         // só se aplicabilidade === "custom"
+  responsavelPadraoId: string;       // pessoaId — default DP do rest
+  responsavelPadraoNome?: string;    // snapshot
+  subtarefasTemplate: ExameSubtarefaTemplate[];
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// Item do histórico de execuções do exame.
+export type ExameHistoricoItem = {
+  id: string;
+  realizadoEm: string;               // YYYY-MM-DD
+  fornecedor?: string;
+  anexoUrl?: string;                 // link Drive do PDF do resultado
+  anexoNome?: string;
+  observacao?: string;
+  registradoEm: string;              // ISO timestamp
+  registradoPor: string;             // pessoaId
+  registradoPorNome?: string;
+};
+
+// Instância — 1 por empregado × tipo. Vive em /examesEmpregado/{id}.
+export type ExameEmpregado = {
+  id: string;
+  restaurantId: string;
+  empregadoId: string;
+  empregadoNomeSnapshot: string;     // pra UI mesmo se empregado for renomeado
+  cargoSnapshot?: string;            // snapshot do cargo na criação
+  tipoId: string;                    // ref a ExameTipoConfig
+  tipoNomeSnapshot: string;          // snapshot
+  periodicidadeDias: number;         // snapshot (não muda mesmo se tipo mudar)
+  diasAntecedencia: number;          // snapshot
+  fornecedor?: string;
+  ultimaRealizacao?: string | null;  // YYYY-MM-DD
+  proximoVencimento: string;         // YYYY-MM-DD — calculado: ultima + periodicidade
+  historico: ExameHistoricoItem[];
+  // Chave do último ciclo gerado como tarefa, pra idempotência.
+  // Formato: "exm-{exameId}-{proximoVencimento}".
+  ultimoCicloGerado?: string;
+  ativo: boolean;                    // false = empregado demitido ou exame descontinuado
+  desativadoEm?: string | null;
+  desativadoPor?: string | null;
+  desativadoMotivo?: string;
   criadoEm: string;
   criadoPor: string;
   atualizadoEm: string;

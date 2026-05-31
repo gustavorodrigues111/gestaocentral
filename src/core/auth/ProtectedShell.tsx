@@ -45,6 +45,7 @@ import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
 import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { ContasFixasPage } from "../../modules/contasFixas/ContasFixasPage";
 import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
+import { ExamesPage } from "../../modules/exames/ExamesPage";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -85,6 +86,7 @@ function ModuleRouter() {
     case "tarefas":       return <TarefasPage key={k} />;
     case "contasFixas":   return <ContasFixasPage key={k} />;
     case "manutencoes":   return <ManutencoesPage key={k} />;
+    case "exames":        return <ExamesPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
