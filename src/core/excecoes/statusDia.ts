@@ -180,3 +180,63 @@ export async function marcarAjusteSolicitado(input: {
 export function statusEfetivo(doc: PontoDiaStatusDoc | null | undefined): PontoDiaStatus {
   return doc?.status || "pendente";
 }
+
+// ─── Detecção de "corrigido no Sólides" ──────────────────────────────────
+//
+// Recebe lista de inconformidades ANTES (último relatório) e DEPOIS (atual)
+// e marca como "corrigido_solides" todo (empregadoId, data) que tinha
+// inconformidade antes e não tem mais.
+//
+// Idempotente — não regride "tratado" (decisão deliberada do líder não é
+// sobrescrita pela detecção automática). Também não regride o próprio
+// "corrigido_solides" (não duplica histórico se rodar 2x).
+
+type Inconformidade = { cpf: string; date: string };
+
+export async function marcarCorrigidosNoSolides(input: {
+  restaurantId: string;
+  excecoesAntes: Inconformidade[];
+  excecoesDepois: Inconformidade[];
+  empIdByCpf: Map<string, string>;
+  por: { id: string; nome?: string };
+}): Promise<{ marcados: number; ignorados: number }> {
+  const { restaurantId, excecoesAntes, excecoesDepois, empIdByCpf, por } = input;
+
+  // Sets de chaves "cpf|date" presentes nos dois lados
+  const antes = new Set(excecoesAntes.map(e => `${e.cpf}|${e.date}`));
+  const depois = new Set(excecoesDepois.map(e => `${e.cpf}|${e.date}`));
+
+  // Sumidos = estava antes e não está depois
+  const sumidos: Array<{ cpf: string; date: string }> = [];
+  antes.forEach(k => {
+    if (!depois.has(k)) {
+      const [cpf, date] = k.split("|");
+      sumidos.push({ cpf, date });
+    }
+  });
+
+  let marcados = 0;
+  let ignorados = 0;
+
+  for (const { cpf, date } of sumidos) {
+    const empregadoId = empIdByCpf.get(cpf);
+    if (!empregadoId) { ignorados++; continue; }
+
+    const atual = await carregarStatusDia(restaurantId, empregadoId, date);
+    // Não regride status decisivos:
+    if (atual?.status === "tratado") { ignorados++; continue; }
+    if (atual?.status === "corrigido_solides") { ignorados++; continue; }
+
+    await setStatusDia({
+      restaurantId,
+      empregadoId,
+      data: date,
+      novoStatus: "corrigido_solides",
+      por,
+      motivo: "Inconformidade sumiu na atualização do Sólides — corrigido pelo empregado",
+    });
+    marcados++;
+  }
+
+  return { marcados, ignorados };
+}

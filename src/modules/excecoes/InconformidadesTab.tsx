@@ -255,7 +255,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
   // Status DE TODAS as semanas do mês — alimenta a cor dos chips. Recarregado
   // quando muda o mês ou quando o status da semana ativa muda.
+  // Também guarda o array completo (com relatorioCache) pra o modo "Mês todo".
   const [statusPorWeekStart, setStatusPorWeekStart] = useState<Map<string, ExcecaoStatusValor>>(new Map());
+  const [todosStatusDoRest, setTodosStatusDoRest] = useState<ExcecaoStatusSemana[]>([]);
   useEffect(() => {
     if (!rid) return;
     let cancelled = false;
@@ -265,10 +267,16 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         const m = new Map<string, ExcecaoStatusValor>();
         for (const r of rows) m.set(r.weekStart, r.status);
         setStatusPorWeekStart(m);
+        setTodosStatusDoRest(rows);
       })
-      .catch(() => { if (!cancelled) setStatusPorWeekStart(new Map()); });
+      .catch(() => {
+        if (!cancelled) {
+          setStatusPorWeekStart(new Map());
+          setTodosStatusDoRest([]);
+        }
+      });
     return () => { cancelled = true; };
-  }, [rid, anoMes.ano, anoMes.mes, statusSemana?.status]);
+  }, [rid, anoMes.ano, anoMes.mes, statusSemana?.status, statusSemana?.relatorioCache?.geradoEm]);
 
   // Carrega status da semana selecionada. Quando muda de semana, ZERA o
   // relatório atualmente exibido — depois, se a semana já tem cache salvo
@@ -728,6 +736,54 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [result, setResult] = useState<GenerateReportResult | null>(null);
+
+  // Modo "Mês todo": agrega caches de TODAS as semanas do mês ativo.
+  // Modo leitura — não permite "Atualizar" (precisa ir semana a semana).
+  // Quando semanaIdx === -1, displayedResult ignora `result` (semana) e
+  // monta um snapshot agregado pra renderização.
+  const mesTodo = semanaIdx === -1;
+  const displayedResult: GenerateReportResult | null = useMemo(() => {
+    if (!mesTodo) return result;
+    // Agrega caches do mês ativo. Filtra docs cuja weekStart pertence
+    // ao mês (ou cujo weekEnd cai no mês, pra semanas truncadas).
+    const mesPrefix = `${anoMes.ano}-${pad2(anoMes.mes)}-`;
+    const cachesDoMes = todosStatusDoRest.filter(s =>
+      s.relatorioCache && (
+        (s.weekStart || "").startsWith(mesPrefix) ||
+        (s.weekEnd || "").startsWith(mesPrefix)
+      )
+    );
+    if (cachesDoMes.length === 0) return null;
+    // Concatena exceptions de todos os caches, filtrando pelo mês.
+    // (semanas truncadas podem ter dias do mês anterior/seguinte.)
+    const exceptions: ExceptionRecord[] = [];
+    const unmatchedMap = new Map<string, { cpf: string; nome: string; dias: number }>();
+    let diasAnalisados = 0;
+    cachesDoMes.forEach(c => {
+      const cache = c.relatorioCache;
+      if (!cache) return;
+      const excs = (cache.exceptions || []) as ExceptionRecord[];
+      excs.forEach((e) => {
+        if ((e.date || "").startsWith(mesPrefix)) exceptions.push(e);
+      });
+      const unmatched = (cache.unmatched || []) as Array<{ cpf?: string; nome: string; dias: number }>;
+      unmatched.forEach((u) => {
+        const k = u.cpf || u.nome;
+        const prev = unmatchedMap.get(k);
+        if (prev) {
+          prev.dias += u.dias;
+        } else {
+          unmatchedMap.set(k, { cpf: u.cpf || "", nome: u.nome, dias: u.dias });
+        }
+      });
+      diasAnalisados += (cache.diasAnalisados as number | undefined) || 0;
+    });
+    return {
+      exceptions,
+      unmatched: Array.from(unmatchedMap.values()),
+      diasAnalisados,
+    };
+  }, [mesTodo, result, todosStatusDoRest, anoMes.ano, anoMes.mes]);
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
   type EscalaDebugInfo = {
     allanId?: string;
@@ -847,9 +903,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // selecionado.
   const empregadosFiltraveis = useMemo(() => {
     if (filtroAreas.size === 0) return [];
-    if (!result) return [];
+    if (!displayedResult) return [];
     const comExcecao = new Set<string>();
-    for (const exc of result.exceptions) {
+    for (const exc of displayedResult.exceptions) {
       const cpfD = (exc.cpf || "").replace(/\D/g, "");
       const empId = empIdByCpf.get(cpfD);
       if (empId) comExcecao.add(empId);
@@ -861,7 +917,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         return area != null && filtroAreas.has(area);
       })
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [empregados, areaByEmpId, filtroAreas, result, empIdByCpf]);
+  }, [empregados, areaByEmpId, filtroAreas, displayedResult, empIdByCpf]);
 
   async function gerar() {
     if (!rid) return;
@@ -1000,6 +1056,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // sair, e voltar depois sem perder o que já tinha visto. Ao mudar pra
       // "em_tratamento", o cache vira o ponto de partida do tratamento.
       if (semanaAtiva) {
+        // Antes de sobrescrever o cache, captura o snapshot anterior pra
+        // diff "corrigido no Sólides" (#194).
+        const antesSnap = statusSemana?.relatorioCache?.exceptions || [];
         try {
           const updated = await salvarRelatorioCache(
             rid,
@@ -1014,6 +1073,22 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             me || undefined, // registra evento no histórico se semana já estiver em tratamento
           );
           setStatusSemana(updated);
+
+          // Diff "corrigido no Sólides": tudo que estava no antesSnap e
+          // não está no novo report vira "corrigido_solides".
+          if (antesSnap.length > 0 && me) {
+            const { marcarCorrigidosNoSolides } = await import("../../core/excecoes/statusDia");
+            const r = await marcarCorrigidosNoSolides({
+              restaurantId: rid,
+              excecoesAntes: (antesSnap as Array<{ cpf: string; date: string }>).map(e => ({ cpf: e.cpf, date: e.date })),
+              excecoesDepois: report.exceptions.map(e => ({ cpf: e.cpf, date: e.date })),
+              empIdByCpf,
+              por: { id: me.id, nome: me.nome },
+            });
+            if (r.marcados > 0) {
+              console.log(`[ponto] ${r.marcados} dia(s) marcado(s) como corrigido_solides`);
+            }
+          }
         } catch (e) {
           console.error("Erro salvando cache do relatório:", e);
           alert("Relatório gerado mas o cache não foi salvo: " + (e instanceof Error ? e.message : "?"));
@@ -1030,9 +1105,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // vazios = "todos". Filtro de empregado só age quando ao menos 1 está
   // selecionado.
   const excecoesFiltradas = useMemo(() => {
-    if (!result) return [];
-    if (filtroAreas.size === 0 && filtroEmpregados.size === 0) return result.exceptions;
-    return result.exceptions.filter((e) => {
+    if (!displayedResult) return [];
+    if (filtroAreas.size === 0 && filtroEmpregados.size === 0) return displayedResult.exceptions;
+    return displayedResult.exceptions.filter((e) => {
       // Resolve área pelo CPF → empregadoId Planejamento → área do cargo.
       const cpfD = (e.cpf || "").replace(/\D/g, "");
       const empId = empIdByCpf.get(cpfD);
@@ -1045,7 +1120,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       }
       return true;
     });
-  }, [result, filtroAreas, filtroEmpregados, areaByEmpId, empIdByCpf]);
+  }, [displayedResult, filtroAreas, filtroEmpregados, areaByEmpId, empIdByCpf]);
 
   return (
     <div>
@@ -1087,6 +1162,22 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             O último chip é "🔄 Atualizar" — força regerar via Sólides
             (auto-gera é por semana na 1ª visita; depois é manual). */}
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Chip "Mês todo" — index = -1. Agrega caches de todas as semanas
+              do mês que já têm relatório gerado. Modo leitura apenas:
+              gerar/atualizar precisa ser feito semana por semana. */}
+          <button
+            key="mes-todo"
+            type="button"
+            onClick={() => setSemanaIdx(-1)}
+            className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
+              semanaIdx === -1
+                ? "bg-indigo-600 text-white shadow-sm"
+                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
+            }`}
+            title="Ver todas as inconformidades do mês inteiro (consolidado)"
+          >
+            📅 Mês todo
+          </button>
           {semanasMes.map((w) => {
             const ativo = w.index === semanaIdx;
             const status = statusPorWeekStart.get(w.weekStart) || "aberto";
@@ -1129,7 +1220,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         statusSemana={statusSemana}
         carregando={carregandoStatus}
         semanaAtiva={semanaAtiva}
-        temRelatorio={!!result}
+        temRelatorio={!!displayedResult && !mesTodo}
         podeMarcar={(s) => podeMarcarStatus(me, rid, s, statusSemana?.status || "aberto")}
         onMarcar={aplicarStatus}
         showHistorico={showHistoricoStatus}
@@ -1209,23 +1300,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         </details>
       )}
 
-      {result && !loading && (
+      {displayedResult && !loading && (
         <>
           {/* ── Aviso de não-casados ── */}
-          {result.unmatched.length > 0 && (
+          {displayedResult.unmatched.length > 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
               <strong>
-                ⚠ {result.unmatched.length} colaborador(es) da Sólides sem empregado correspondente
+                ⚠ {displayedResult.unmatched.length} colaborador(es) da Sólides sem empregado correspondente
                 no Planejamento
               </strong>{" "}
               (CPF não bateu). As marcações deles foram ignoradas:
               <ul className="mt-1 ml-4 list-disc text-xs">
-                {result.unmatched.slice(0, 10).map((u) => (
+                {displayedResult.unmatched.slice(0, 10).map((u) => (
                   <li key={u.cpf || u.nome}>
                     {u.nome} {u.cpf ? `(CPF ${u.cpf})` : "(sem CPF na Sólides)"} — {u.dias} dia(s)
                   </li>
                 ))}
-                {result.unmatched.length > 10 && <li>… e mais {result.unmatched.length - 10}</li>}
+                {displayedResult.unmatched.length > 10 && <li>… e mais {displayedResult.unmatched.length - 10}</li>}
               </ul>
             </div>
           )}
@@ -1309,7 +1400,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           )}
 
           {/* ── Lista agrupada por colaborador → data ── */}
-          {result.exceptions.length === 0 ? (
+          {displayedResult.exceptions.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="text-4xl mb-3">✅</div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">
@@ -1370,7 +1461,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         </>
       )}
 
-      {!result && !loading && (
+      {!displayedResult && !loading && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">📋</div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
