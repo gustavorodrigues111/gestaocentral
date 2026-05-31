@@ -2137,11 +2137,13 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 const aviso = `Iniciar processo de demissão por NÃO RENOVAÇÃO do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)?\n\n` +
                   `Isso vai abrir o módulo Pessoas pra você concluir o desligamento. Quando finalizar lá, esta tarefa pode ser marcada como concluída.`;
                 if (!confirm(aviso)) return;
-                // Redireciona pro módulo Pessoas — empregado específico
+                // Redireciona pro módulo Demissão pré-preenchido. O
+                // IniciarDemissaoModal lê query string (empregadoId + motivo).
+                const motivoStr = `Não renovação do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)`;
                 if (tarefa.restaurantIds && tarefa.restaurantIds[0]) {
-                  window.location.href = `/r/${tarefa.restaurantIds[0]}/pessoas?empregadoId=${tarefa.origemRefId}&acao=demitir&motivo=Não%20renovação%20do%20contrato%20de%20experiência`;
+                  window.location.href = `/r/${tarefa.restaurantIds[0]}/demissao?empregadoId=${tarefa.origemRefId}&motivo=${encodeURIComponent(motivoStr)}`;
                 } else {
-                  alert("Vá em Pessoas → empregado → botão 'Inativar / Demitir' e use o motivo 'Não renovação do contrato de experiência'.");
+                  alert(`Vá em Demissão → '+ Iniciar Demissão' → escolha o empregado → iniciativa: Empresa → motivo: "${motivoStr}".`);
                 }
               }}
             >

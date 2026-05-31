@@ -151,31 +151,42 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 </button>
                 {!fechada && (
                 <div className="space-y-0.5">
-                  {mods.map(m => (
-                    <NavLink
-                      key={m.id}
-                      to={rid ? `/r/${rid}/${m.id}` : "#"}
-                      onClick={onClose}
-                      className={({ isActive }) => `
-                        flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
-                        ${isActive
-                          ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}
-                        ${m.status !== "ativo" ? "opacity-50" : ""}
-                      `}
-                    >
-                      <span>{m.icon}</span>
-                      <span className="flex-1 truncate">{m.label}</span>
-                      {m.id === "tarefas" && tarefasPendentes > 0 && (
-                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-                          {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
-                        </span>
-                      )}
-                      {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
-                      {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
-                      {m.status === "planejado" && <span className="text-[9px] text-gray-400">próx.</span>}
-                    </NavLink>
-                  ))}
+                  {mods.map((m, idx) => {
+                    // Header de subárea quando mudar de subarea (Opção A dividers)
+                    const subareaAnterior = idx > 0 ? mods[idx - 1].subarea : undefined;
+                    const mostrarHeader = m.subarea && m.subarea !== subareaAnterior;
+                    return (
+                      <div key={m.id}>
+                        {mostrarHeader && (
+                          <div className="px-3 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            {m.subarea}
+                          </div>
+                        )}
+                        <NavLink
+                          to={rid ? `/r/${rid}/${m.id}` : "#"}
+                          onClick={onClose}
+                          className={({ isActive }) => `
+                            flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                            ${isActive
+                              ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                              : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}
+                            ${m.status !== "ativo" ? "opacity-50" : ""}
+                          `}
+                        >
+                          <span>{m.icon}</span>
+                          <span className="flex-1 truncate">{m.label}</span>
+                          {m.id === "tarefas" && tarefasPendentes > 0 && (
+                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                              {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
+                            </span>
+                          )}
+                          {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
+                          {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
+                          {m.status === "planejado" && <span className="text-[9px] text-gray-400">próx.</span>}
+                        </NavLink>
+                      </div>
+                    );
+                  })}
                   {area === "inst" && pessoa?.isMaster && (
                     <>
                       <NavLink to="/arquitetura" onClick={onClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>

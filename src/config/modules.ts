@@ -10,63 +10,78 @@ import type { ModuleDef, ModuleArea } from "../core/types";
 //   "beta"           → funcional, ainda recebendo ajustes
 //   "em_desenvolvimento" → pode mudar bastante / bugs esperados
 //
-// Pra "promover" um módulo a estável, apague a `etapa` dele. Pra rebaixar,
-// adicione. Esse campo NÃO controla acesso — só visual.
-// Organização por PERSONA (quem usa): Operação · Pessoas & DP · Financeiro ·
-// Institucional. A ordem do array define a ordem no menu dentro de cada grupo.
-// `oculto: true` = fora do menu (não pronto ou em transição pro Benefícios).
+// `subarea` agrupa módulos relacionados dentro da área (dividers no Sidebar).
+// A ordem das subáreas no menu segue a ordem do primeiro módulo de cada uma
+// no array MODULES.
+//
+// `oculto: true` = fora do menu (não pronto ou em transição).
 export const MODULES: ModuleDef[] = [
   // ═══ 🍽️ OPERAÇÃO ═══
-  { id: "reservas",    area: "ops", label: "Reservas + CRM",     icon: "🎫", status: "ativo", etapa: "beta",               desc: "Reservas de mesa e base de clientes", dependsOn: ["pessoas"] },
-  { id: "eventos",     area: "ops", label: "Eventos",            icon: "🎉", status: "ativo", etapa: "em_desenvolvimento", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
-  { id: "checklists",  area: "ops", label: "Checklists",         icon: "✅", status: "ativo", etapa: "em_desenvolvimento", desc: "Checklists operacionais", dependsOn: ["pessoas"] },
-  { id: "contagens",   area: "ops", label: "Contagens",          icon: "📦", status: "ativo", etapa: "em_desenvolvimento", desc: "Contagens de estoque", dependsOn: ["pessoas"] },
-  { id: "compras",     area: "ops", label: "Compras",            icon: "🛒", status: "ativo", etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
-  { id: "ocorrencias", area: "ops", label: "Ocorrências",        icon: "🚨", status: "ativo", etapa: "em_desenvolvimento", desc: "Log de ocorrências do dia-a-dia", dependsOn: ["pessoas"] },
-  { id: "horarios",    area: "ops", label: "Horários",           icon: "🕒", status: "ativo", etapa: "beta",               desc: "Horário semanal + datas especiais + janelas de reserva" },
-  { id: "reunioes",    area: "ops", label: "Reuniões",           icon: "🗣️", status: "ativo", etapa: "em_desenvolvimento", desc: "Reuniões de líderes e equipe", dependsOn: ["pessoas"] },
-  { id: "ideias",      area: "ops", label: "Banco de Ideias",    icon: "💡", status: "ativo", etapa: "em_desenvolvimento", desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
-  { id: "freelas",     area: "ops", label: "Freelas",            icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
-  // não prontos (operação) — fora do menu
+
+  // ── Atendimento ao cliente ───────────────────────────────────────
+  { id: "reservas",    area: "ops", subarea: "Atendimento ao Cliente", label: "Reservas + CRM",  icon: "🎫", status: "ativo", etapa: "beta",               desc: "Reservas de mesa e base de clientes", dependsOn: ["pessoas"] },
+  { id: "horarios",    area: "ops", subarea: "Atendimento ao Cliente", label: "Horários",        icon: "🕒", status: "ativo", etapa: "beta",               desc: "Horário semanal + datas especiais + janelas de reserva" },
+  { id: "eventos",     area: "ops", subarea: "Atendimento ao Cliente", label: "Eventos",         icon: "🎉", status: "ativo", etapa: "em_desenvolvimento", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
+
+  // ── Produção & Estoque ───────────────────────────────────────────
+  { id: "checklists",  area: "ops", subarea: "Produção & Estoque",     label: "Checklists",      icon: "✅", status: "ativo", etapa: "em_desenvolvimento", desc: "Checklists operacionais", dependsOn: ["pessoas"] },
+  { id: "contagens",   area: "ops", subarea: "Produção & Estoque",     label: "Contagens",       icon: "📦", status: "ativo", etapa: "em_desenvolvimento", desc: "Contagens de estoque", dependsOn: ["pessoas"] },
+  { id: "compras",     area: "ops", subarea: "Produção & Estoque",     label: "Compras",         icon: "🛒", status: "ativo", etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
+
+  // ── Gestão da Operação ───────────────────────────────────────────
+  { id: "ocorrencias", area: "ops", subarea: "Gestão da Operação",     label: "Ocorrências",     icon: "🚨", status: "ativo", etapa: "em_desenvolvimento", desc: "Log de ocorrências do dia-a-dia", dependsOn: ["pessoas"] },
+  { id: "reunioes",    area: "ops", subarea: "Gestão da Operação",     label: "Reuniões",        icon: "🗣️", status: "ativo", etapa: "em_desenvolvimento", desc: "Reuniões de líderes e equipe", dependsOn: ["pessoas"] },
+  { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "em_desenvolvimento", desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
+
+  // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
+  { id: "tarefas",     area: "ops", subarea: "Tarefas",                label: "Tarefas",         icon: "📋", status: "ativo", etapa: "beta",               desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+
+  // ── Pessoas Externas & Infra ─────────────────────────────────────
+  { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
+  { id: "manutencoes", area: "ops", subarea: "Pessoas Externas & Infra", label: "Manutenções & Licenças", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Cadastro mestre de manutenções e licenças (potabilidade, dedetização, CLCB, alvarás). Gera lembretes no Gestor de Tarefas." },
+
+  // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
   { id: "fichas",       area: "ops", label: "Fichas Técnicas",   icon: "📋", status: "planejado", etapa: "em_desenvolvimento", desc: "Receitas e custo de pratos", dependsOn: ["compras"], oculto: true },
 
   // ═══ 👥 PESSOAS & DP ═══
-  { id: "pessoas",     area: "dp", label: "Pessoas",             icon: "👤", status: "ativo", desc: "Pessoas, empregados, cargos e templates de permissão" },
-  { id: "admissao",    area: "dp", label: "Admissão",            icon: "🪪", status: "ativo", etapa: "beta",               desc: "Processo de admissão: formulário compartilhável + kanban", dependsOn: ["pessoas"] },
-  { id: "escala",      area: "dp", label: "Escala",              icon: "📅", status: "ativo", etapa: "beta",               desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
-  { id: "uniformes",   area: "dp", label: "Uniformes & EPIs",    icon: "🦺", status: "ativo", etapa: "em_desenvolvimento", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
-  { id: "exames",      area: "dp", label: "Exames Médicos",      icon: "🩺", status: "ativo", etapa: "beta",               desc: "Exames periódicos dos empregados (Clínico, Complementar, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
-  { id: "demissao",    area: "dp", label: "Demissão",            icon: "👋", status: "ativo", etapa: "beta",               desc: "Processo de demissão com kanban, fluxo de subtarefas e cascata de inativação (acesso, exames, tarefas)", dependsOn: ["pessoas"] },
-  { id: "comunicados", area: "dp", label: "Comunicados",         icon: "📣", status: "ativo", etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
-  { id: "trilha",      area: "dp", label: "Trilha do Empregado", icon: "🎯", status: "ativo", etapa: "em_desenvolvimento", desc: "Desenvolvimento e histórico", dependsOn: ["pessoas"] },
-  { id: "excecoes",    area: "dp", label: "Registros de Ponto",  icon: "🕐", status: "ativo", etapa: "beta",               desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"] },
-  // não prontos / não-módulo (dp) — fora do menu
-  { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala (fechar prevista/praticada)", dependsOn: ["escala", "gorjetas"], oculto: true },
+
+  // ── Cadastros ────────────────────────────────────────────────────
+  { id: "pessoas",     area: "dp", subarea: "Cadastros",               label: "Pessoas",         icon: "👤", status: "ativo", desc: "Pessoas, empregados, cargos e templates de permissão" },
+
+  // ── Ciclo de Vida do Empregado ───────────────────────────────────
+  { id: "admissao",    area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Admissão",    icon: "🪪", status: "ativo", etapa: "beta",               desc: "Processo de admissão: formulário compartilhável + kanban", dependsOn: ["pessoas"] },
+  { id: "demissao",    area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Demissão",    icon: "👋", status: "ativo", etapa: "beta",               desc: "Processo de demissão com kanban, fluxo de subtarefas e cascata de inativação (acesso, exames, tarefas)", dependsOn: ["pessoas"] },
+  { id: "trilha",      area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Trilha do Empregado", icon: "🎯", status: "ativo", etapa: "em_desenvolvimento", desc: "Histórico cronológico completo do empregado (admissão, demissão, férias, exames, advertências, ponto, promoções). Sensível — só perfis autorizados acessam.", dependsOn: ["pessoas"] },
+
+  // ── Operação Diária ──────────────────────────────────────────────
+  { id: "escala",      area: "dp", subarea: "Operação Diária",         label: "Escala",          icon: "📅", status: "ativo", etapa: "beta",               desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
+  { id: "excecoes",    area: "dp", subarea: "Operação Diária",         label: "Registros de Ponto", icon: "🕐", status: "ativo", etapa: "beta",            desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"] },
+  { id: "comunicados", area: "dp", subarea: "Operação Diária",         label: "Comunicados",     icon: "📣", status: "ativo", etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
+
+  // ── Saúde & Equipamentos ─────────────────────────────────────────
+  { id: "exames",      area: "dp", subarea: "Saúde & Equipamentos",    label: "Exames Médicos",  icon: "🩺", status: "ativo", etapa: "beta",               desc: "Exames periódicos dos empregados (Clínico, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
+  { id: "uniformes",   area: "dp", subarea: "Saúde & Equipamentos",    label: "Uniformes & EPIs", icon: "🦺", status: "ativo", etapa: "em_desenvolvimento", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
+
+  // ── ocultos (dp) ─────────────────────────────────────────────────
+  { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala", dependsOn: ["escala", "gorjetas"], oculto: true },
   { id: "faleDp",      area: "dp", label: "Fale com DP",         icon: "💬", status: "planejado", etapa: "em_desenvolvimento", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"], oculto: true },
 
   // ═══ 💰 FINANCEIRO ═══
-  { id: "beneficios",  area: "fin", label: "Benefícios",         icon: "🎁", status: "ativo", etapa: "beta", desc: "Lote único de VT (Mobilidade) + VR (Refeição) + auxílio fixo, com 1 CSV pro Caju. Vigente de junho/2026.", dependsOn: ["pessoas", "escala"] },
-  { id: "gorjetas",    area: "fin", label: "Gorjetas",           icon: "💸", status: "ativo", etapa: "beta", desc: "Lançamento e divisão de gorjetas", dependsOn: ["pessoas", "escala"] },
-  // VT e VR: visíveis até o cutover de Benefícios (Fase 4 — permissões + parida-
-  // de + histórico). Não escondi ainda pra não cortar acesso de não-master nem
-  // ao histórico pré-junho. Vão virar `oculto: true` no cutover.
-  { id: "vt",          area: "fin", label: "Vale Transporte",    icon: "🚌", status: "ativo", etapa: "beta", desc: "VT por empregado (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
-  { id: "vr",          area: "fin", label: "Vale Refeição",      icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
 
-  // ═══ 📋 GESTOR DE TAREFAS + CADASTROS MESTRES ═══
-  // Tarefas é cross-area (operação + DP + financeiro + diretoria todos usam).
-  // Pertence visualmente a "ops" pra ficar no topo da sidebar como item-pivô.
-  // Contas Fixas e Manutenções moram em "fin" — são módulos financeiros que
-  // GERAM tarefas. A tarefa só visualiza/executa.
-  { id: "tarefas",     area: "ops", label: "Tarefas",            icon: "📋", status: "ativo", etapa: "beta", desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
-  { id: "contasFixas", area: "fin", label: "Contas Fixas",       icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
-  { id: "manutencoes", area: "ops", label: "Manutenções & Licenças", icon: "🛠️", status: "ativo", etapa: "beta", desc: "Cadastro mestre de manutenções e licenças (potabilidade, dedetização, CLCB, alvarás). Gera lembretes no Gestor de Tarefas." },
+  // ── Equipe (benefícios + variáveis) ──────────────────────────────
+  { id: "beneficios",  area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Benefícios", icon: "🎁", status: "ativo", etapa: "beta", desc: "Lote único de VT (Mobilidade) + VR (Refeição) + auxílio fixo, com 1 CSV pro Caju. Vigente de junho/2026.", dependsOn: ["pessoas", "escala"] },
+  { id: "gorjetas",    area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Gorjetas",  icon: "💸", status: "ativo", etapa: "beta", desc: "Lançamento e divisão de gorjetas", dependsOn: ["pessoas", "escala"] },
+  { id: "vt",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Transporte", icon: "🚌", status: "ativo", etapa: "beta", desc: "VT por empregado (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
+  { id: "vr",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Refeição", icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
+
+  // ── Despesas ─────────────────────────────────────────────────────
+  { id: "contasFixas", area: "fin", subarea: "Despesas",               label: "Contas Fixas",    icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
 
   // ═══ 🌐 INSTITUCIONAL / CONFIG ═══
-  { id: "sites",          area: "inst", label: "Sites",          icon: "🌐", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },
-  { id: "configuracoes",  area: "inst", label: "Configurações",  icon: "⚙️", status: "ativo", desc: "Configurações do restaurante" },
-  // não pronto (institucional) — fora do menu
+  { id: "sites",          area: "inst", subarea: "Configuração", label: "Sites",          icon: "🌐", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },
+  { id: "configuracoes",  area: "inst", subarea: "Configuração", label: "Configurações",  icon: "⚙️", status: "ativo", desc: "Configurações do restaurante" },
+  // ocultos (institucional)
   { id: "recursos",       area: "inst", label: "Biblioteca",     icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna", oculto: true },
 ];
 

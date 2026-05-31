@@ -15,9 +15,11 @@ import {
 import { COLUNAS_DEMISSAO_DEFAULT } from "./template";
 import type {
   ProcessoDemissao, DemissaoIniciativa, Empregado,
-  SubtarefaDemissaoInstance,
+  SubtarefaDemissaoInstance, ContatoExterno,
 } from "../../core/types";
 import { DEMISSAO_INICIATIVA_LABEL, DEMISSAO_STATUS_LABEL } from "../../core/types";
+import { getContatoClinica, getContatoContabilidade } from "../../core/admissao/admissaoHelpers";
+import { montarGmailComposeUrl } from "../../core/admissao/exportFicha";
 
 type Tab = "kanban" | "lista" | "concluidos";
 
@@ -30,6 +32,13 @@ export function DemissaoPage() {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [iniciando, setIniciando] = useState(false);
   const [processoSelecionado, setProcessoSelecionado] = useState<ProcessoDemissao | null>(null);
+
+  // Abre IniciarDemissaoModal automaticamente quando a URL tem empregadoId
+  // (vindo do botão "Não renovar" da Experiência)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("empregadoId")) setIniciando(true);
+  }, []);
 
   useEffect(() => {
     if (!rid) return;
@@ -370,6 +379,63 @@ function DetalheDrawer({ proc, autor, onClose }: {
   autor: { id: string; nome: string };
   onClose: () => void;
 }) {
+  const { activeRestaurant } = useRestaurant();
+  const [empregado, setEmpregado] = useState<Empregado | null>(null);
+
+  // Carrega empregado pra usar telefone do whatsapp_empregado
+  useEffect(() => {
+    (async () => {
+      const { getDoc, doc: docFn } = await import("firebase/firestore");
+      try {
+        const s = await getDoc(docFn(db, "empregados", proc.empregadoId));
+        if (s.exists()) setEmpregado({ id: s.id, ...s.data() } as Empregado);
+      } catch (e) { console.warn(e); }
+    })();
+  }, [proc.empregadoId]);
+
+  // Executa atalho de canal preferido (email/whatsapp/telefone)
+  function abrirAtalho(s: SubtarefaDemissaoInstance) {
+    if (!s.atalho || !activeRestaurant) return;
+    let contato: ContatoExterno | null = null;
+    let assunto = "";
+    let corpo = "";
+    const empNome = proc.empregadoNomeSnapshot;
+    if (s.atalho.tipo === "contato_contabilidade") {
+      contato = getContatoContabilidade(activeRestaurant);
+      assunto = `Demissão — ${empNome} (${activeRestaurant.nome})`;
+      corpo = `Olá, ${contato.nome}.\n\nEstamos iniciando o processo de demissão de ${empNome}.\nIniciativa: ${DEMISSAO_INICIATIVA_LABEL[proc.iniciativa]}\n${proc.dataAlvo ? `Data alvo: ${proc.dataAlvo}\n` : ""}${proc.avisoPrevio ? `Aviso prévio: ${proc.avisoPrevio}\n` : ""}\nAguardo retorno.\n\nObrigado.`;
+    } else if (s.atalho.tipo === "contato_clinica") {
+      contato = getContatoClinica(activeRestaurant);
+      assunto = `Agendamento exame demissional — ${empNome}`;
+      corpo = `Olá, ${contato.nome}.\n\nGostaríamos de agendar exame demissional para ${empNome} (${activeRestaurant.nome}).\n\nAguardo retorno com horário disponível.`;
+    } else if (s.atalho.tipo === "whatsapp_empregado") {
+      // Usa telefone do empregado direto (não passa pelo contatosAdmissao)
+      const num = (empregado?.telefone || "").replace(/\D/g, "");
+      if (!num) {
+        alert(`Empregado ${empNome} não tem telefone cadastrado.`);
+        return;
+      }
+      const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
+      const msg = `Olá ${empNome}, vamos conversar sobre o desligamento. Pode me ligar ou marcar um horário?`;
+      window.open(`https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(msg)}`, "_blank");
+      return;
+    }
+    if (!contato) return;
+    if (contato.canalPreferido === "email") {
+      if (!contato.email?.trim()) { alert(`${contato.nome} sem email cadastrado.`); return; }
+      window.open(montarGmailComposeUrl({ to: contato.email, subject: assunto, body: corpo }), "_blank");
+    } else if (contato.canalPreferido === "whatsapp") {
+      const num = (contato.whatsapp || "").replace(/\D/g, "");
+      if (!num) { alert(`${contato.nome} sem WhatsApp cadastrado.`); return; }
+      const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
+      window.open(`https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(corpo)}`, "_blank");
+    } else {
+      // telefone: copia número + script
+      const num = contato.telefone || "—";
+      alert(`Telefone: ${num}\n\nScript sugerido:\n\n${corpo}`);
+    }
+  }
+
   async function marcarSub(s: SubtarefaDemissaoInstance, marcar: boolean) {
     if (!marcar) {
       await atualizarSubtarefa(proc.id, s.id, { feita: false, feitaEm: undefined, feitaPor: undefined }, autor);
@@ -509,6 +575,16 @@ function DetalheDrawer({ proc, autor, onClose }: {
                             </span>
                             {s.link && <a href={s.link} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5">📎 anexo</a>}
                             {s.dataInformada && <span className="block text-[11px] text-gray-500">📅 {s.dataInformada}</span>}
+                            {s.atalho && !s.feita && (
+                              <button
+                                onClick={(e) => { e.preventDefault(); abrirAtalho(s); }}
+                                className="mt-1 text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100"
+                              >
+                                {s.atalho.tipo === "contato_contabilidade" && "📧 Abrir contato Contabilidade"}
+                                {s.atalho.tipo === "contato_clinica" && "🩺 Abrir contato Clínica"}
+                                {s.atalho.tipo === "whatsapp_empregado" && "💬 WhatsApp pro empregado"}
+                              </button>
+                            )}
                           </span>
                         </label>
                       ))}

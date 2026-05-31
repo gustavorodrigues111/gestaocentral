@@ -93,6 +93,10 @@ export type ModuleEtapa = "beta" | "em_desenvolvimento";
 export type ModuleDef = {
   id: ModuleId;
   area: ModuleArea;
+  // Subárea opcional pra agrupar módulos relacionados dentro da área no
+  // Sidebar. Vira um divider visual (Opção A). Vazio = sem agrupamento.
+  // Ordem dos grupos = ordem do primeiro módulo de cada subárea no array.
+  subarea?: string;
   label: string;
   icon: string;
   desc?: string;
