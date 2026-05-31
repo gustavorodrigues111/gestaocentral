@@ -188,7 +188,7 @@ export function TarefasPage() {
         <div>
           <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
           {viewMinhas === "calendario" && (
-            <CalendarioView tarefas={minhas} projetos={projetos} onAbrir={setDetalheId} />
+            <CalendarioView tarefas={minhas} projetos={projetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} />
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView
@@ -842,7 +842,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, t
               />
             )}
             {view === "calendario" && (
-              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} onAbrir={onAbrir} />
+              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} onAbrir={onAbrir} autor={autor} />
             )}
             {view === "kanban" && (
               <KanbanView tarefas={tarefasFiltradas} projetos={projetos} autor={autor} onAbrir={onAbrir} />
@@ -1467,16 +1467,36 @@ function inicioSemanaSeg(yyyymmdd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function CalendarioView({ tarefas, projetos, onAbrir }: {
+function CalendarioView({ tarefas, projetos, onAbrir, autor }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   onAbrir: (id: string) => void;
+  autor?: { id: string; nome: string };
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
   const [expandirFds, setExpandirFds] = useState<boolean>(() => {
     try { return localStorage.getItem("tarefas_calendario_fds") === "1"; } catch { return false; }
   });
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+
+  const podeArrastar = !!autor?.id;
+
+  async function moverParaData(id: string, novaData: string) {
+    if (!autor) return;
+    // Otimista: snapshot atualiza. Não mostro spinner — só falha avisa.
+    try {
+      await atualizarTarefa(id, { prazo: novaData }, autor, {
+        acao: "editada",
+        campo: "prazo",
+        valorDepois: novaData,
+      });
+    } catch (e) {
+      console.error("[tarefas] falha ao mover:", e);
+      alert("Falha ao mover tarefa: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
   useEffect(() => {
     try { localStorage.setItem("tarefas_calendario_fds", expandirFds ? "1" : "0"); } catch {}
   }, [expandirFds]);
@@ -1526,15 +1546,33 @@ function CalendarioView({ tarefas, projetos, onAbrir }: {
     const ehHoje = data === hoje;
     const ehFds = dia >= 5;
     const lista = tarefasPorDia.get(data) || [];
+    const ehAlvo = dropTarget === data;
     return (
       <div
         key={data}
-        className={`flex flex-col min-h-[200px] rounded-lg border p-2 ${
-          ehHoje
-            ? "border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10"
-            : ehFds
-              ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40"
-              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+        onDragOver={podeArrastar ? (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+          if (dropTarget !== data) setDropTarget(data);
+        } : undefined}
+        onDragLeave={podeArrastar ? () => {
+          if (dropTarget === data) setDropTarget(null);
+        } : undefined}
+        onDrop={podeArrastar ? (e) => {
+          e.preventDefault();
+          const id = e.dataTransfer.getData("text/plain");
+          setDropTarget(null);
+          setDraggingId(null);
+          if (id) moverParaData(id, data);
+        } : undefined}
+        className={`flex flex-col min-h-[200px] rounded-lg border p-2 transition-colors ${
+          ehAlvo
+            ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
+            : ehHoje
+              ? "border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10"
+              : ehFds
+                ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40"
+                : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
         }`}
       >
         <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : "border-gray-200 dark:border-gray-800"}`}>
@@ -1557,13 +1595,24 @@ function CalendarioView({ tarefas, projetos, onAbrir }: {
               const proj = projetos.find(p => p.id === t.projetoId);
               const cor = t.corHerdada || proj?.cor || "#6b7280";
               const concluida = t.status === "concluida";
+              const arrastando = draggingId === t.id;
               return (
                 <button
                   key={t.id}
+                  draggable={podeArrastar}
+                  onDragStart={podeArrastar ? (e) => {
+                    e.dataTransfer.setData("text/plain", t.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    setDraggingId(t.id);
+                  } : undefined}
+                  onDragEnd={podeArrastar ? () => {
+                    setDraggingId(null);
+                    setDropTarget(null);
+                  } : undefined}
                   onClick={() => onAbrir(t.id)}
-                  className={`w-full text-left text-[11px] px-1.5 py-1 rounded cursor-pointer truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""}`}
+                  className={`w-full text-left text-[11px] px-1.5 py-1 rounded truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                   style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
-                  title={t.titulo}
+                  title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
                 >
                   {t.titulo}
                 </button>
@@ -1608,7 +1657,29 @@ function CalendarioView({ tarefas, projetos, onAbrir }: {
         ) : (
           <button
             onClick={() => setExpandirFds(true)}
-            className="flex flex-col min-h-[200px] rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2 text-left hover:border-gray-400 dark:hover:border-gray-600 transition-colors"
+            onDragOver={podeArrastar ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget !== "fds") setDropTarget("fds");
+            } : undefined}
+            onDragLeave={podeArrastar ? () => {
+              if (dropTarget === "fds") setDropTarget(null);
+            } : undefined}
+            onDrop={podeArrastar ? (e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData("text/plain");
+              setDropTarget(null);
+              setDraggingId(null);
+              if (id) {
+                moverParaData(id, dias[5]); // sábado
+                setExpandirFds(true);
+              }
+            } : undefined}
+            className={`flex flex-col min-h-[200px] rounded-lg border border-dashed p-2 text-left transition-colors ${
+              dropTarget === "fds"
+                ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
+                : "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 hover:border-gray-400 dark:hover:border-gray-600"
+            }`}
             title="Clique pra expandir sábado e domingo"
           >
             <div className="flex items-baseline justify-between mb-1.5 pb-1.5 border-b border-gray-200 dark:border-gray-800">
