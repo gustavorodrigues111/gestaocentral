@@ -47,12 +47,28 @@ import type { LinhaImportada } from "./importador";
 import type { Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 
-type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
+type Tab = "minhas" | "projeto" | "admin" | "lixeira";
+type ViewMode = "calendario" | "lista" | "kanban";
+
+function readLS<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
+  try {
+    const v = localStorage.getItem(key);
+    if (v && (allowed as readonly string[]).includes(v)) return v as T;
+  } catch {}
+  return fallback;
+}
 
 export function TarefasPage() {
   const { pessoa } = useAuth();
   const { restaurants } = useRestaurant();
-  const [tab, setTab] = useState<Tab>("minhas");
+  const [tab, setTab] = useState<Tab>(() => readLS<Tab>("tarefas_tab", "minhas", ["minhas", "projeto", "admin", "lixeira"]));
+  const [viewMinhas, setViewMinhas] = useState<ViewMode>(() => readLS<ViewMode>("tarefas_view_minhas", "calendario", ["calendario", "lista", "kanban"]));
+  const [viewProjeto, setViewProjeto] = useState<ViewMode>(() => readLS<ViewMode>("tarefas_view_projeto", "lista", ["calendario", "lista", "kanban"]));
+
+  useEffect(() => { try { localStorage.setItem("tarefas_tab", tab); } catch {} }, [tab]);
+  useEffect(() => { try { localStorage.setItem("tarefas_view_minhas", viewMinhas); } catch {} }, [viewMinhas]);
+  useEffect(() => { try { localStorage.setItem("tarefas_view_projeto", viewProjeto); } catch {} }, [viewProjeto]);
+
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
@@ -164,21 +180,35 @@ export function TarefasPage() {
           )}
         </TabButton>
         <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
-        <TabButton ativo={tab === "kanban"} onClick={() => setTab("kanban")}>Kanban</TabButton>
-        <TabButton ativo={tab === "calendario"} onClick={() => setTab("calendario")}>Calendário</TabButton>
         {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Admin Projetos</TabButton>}
         {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
       </nav>
 
       {tab === "minhas" && (
-        <MinhasTarefasView
-          tarefas={minhas}
-          projetos={projetos}
-          subprojetos={subprojetos}
-          onAbrir={setDetalheId}
-          pessoaId={pessoa?.id || ""}
-          pessoaNome={pessoa?.nome || ""}
-        />
+        <div>
+          <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
+          {viewMinhas === "calendario" && (
+            <CalendarioView tarefas={minhas} projetos={projetos} onAbrir={setDetalheId} />
+          )}
+          {viewMinhas === "lista" && (
+            <MinhasTarefasView
+              tarefas={minhas}
+              projetos={projetos}
+              subprojetos={subprojetos}
+              onAbrir={setDetalheId}
+              pessoaId={pessoa?.id || ""}
+              pessoaNome={pessoa?.nome || ""}
+            />
+          )}
+          {viewMinhas === "kanban" && (
+            <KanbanView
+              tarefas={minhas}
+              projetos={projetos}
+              autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+              onAbrir={setDetalheId}
+            />
+          )}
+        </div>
       )}
 
       {tab === "projeto" && (
@@ -189,23 +219,9 @@ export function TarefasPage() {
           setProjetoFiltro={setProjetoFiltro}
           tarefas={tarefasProjeto.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
           onAbrir={setDetalheId}
-        />
-      )}
-
-      {tab === "kanban" && (
-        <KanbanView
-          tarefas={minhas}
-          projetos={projetos}
+          view={viewProjeto}
+          onChangeView={setViewProjeto}
           autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
-          onAbrir={setDetalheId}
-        />
-      )}
-
-      {tab === "calendario" && (
-        <CalendarioView
-          tarefas={minhas}
-          projetos={projetos}
-          onAbrir={setDetalheId}
         />
       )}
 
@@ -265,6 +281,31 @@ function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () =
     >
       {children}
     </button>
+  );
+}
+
+function ViewSwitcher({ value, onChange }: { value: ViewMode; onChange: (v: ViewMode) => void }) {
+  const opts: { id: ViewMode; icon: string; label: string }[] = [
+    { id: "calendario", icon: "📅", label: "Calendário" },
+    { id: "lista", icon: "📋", label: "Lista" },
+    { id: "kanban", icon: "📊", label: "Kanban" },
+  ];
+  return (
+    <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-4">
+      {opts.map(o => (
+        <button
+          key={o.id}
+          onClick={() => onChange(o.id)}
+          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+            value === o.id
+              ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+          }`}
+        >
+          <span className="mr-1.5">{o.icon}</span>{o.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -675,72 +716,191 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, tarefas, onAbrir }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, tarefas, onAbrir, view, onChangeView, autor }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
   setProjetoFiltro: (id: string) => void;
   tarefas: Tarefa[];
   onAbrir: (id: string) => void;
+  view: ViewMode;
+  onChangeView: (v: ViewMode) => void;
+  autor: { id: string; nome: string };
 }) {
+  const [subFiltro, setSubFiltro] = useState<string>("");
+  const [mobileOpen, setMobileOpen] = useState(false);
   const proj = projetos.find(p => p.id === projetoFiltro);
+  const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
+  const tarefasFiltradas = subFiltro
+    ? tarefas.filter(t => t.subprojetoId === subFiltro)
+    : tarefas;
+  const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
+
+  const subAtual = subFiltro ? subsDoProj.find(s => s.id === subFiltro) : null;
+
   return (
-    <div>
-      <div className="mb-4">
-        <select
-          value={projetoFiltro}
-          onChange={(e) => setProjetoFiltro(e.target.value)}
-          className="w-full max-w-md px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-        >
-          <option value="">— escolha um projeto —</option>
-          {projetos.map(p => (
-            <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
-          ))}
-        </select>
-      </div>
-      {!proj ? (
-        <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-          Escolha um projeto pra ver suas tarefas.
+    <div className="flex gap-4">
+      {/* Sidebar de projetos (estilo Asana) */}
+      <aside className={`
+        ${mobileOpen ? "block" : "hidden"} md:block
+        w-64 shrink-0 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800
+        rounded-xl p-2 self-start sticky top-2 max-h-[calc(100vh-120px)] overflow-y-auto
+      `}>
+        <div className="px-2 py-1 mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+          Projetos
         </div>
-      ) : (
-        <div>
-          <div className="mb-3 text-sm text-gray-500 dark:text-gray-400">
-            {tarefas.length} tarefa(s) em {proj.nome}
-          </div>
-          {subprojetos.filter(s => s.projetoId === proj.id).map(sub => {
-            const tarefasSub = tarefas.filter(t => t.subprojetoId === sub.id);
+        <div className="space-y-0.5">
+          {projetos.map(p => {
+            const ativo = p.id === projetoFiltro;
+            const subs = subprojetos.filter(s => s.projetoId === p.id);
             return (
-              <div key={sub.id} className="mb-4">
-                <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
-                  {sub.nome}
-                  <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
-                    {tarefasSub.length} tarefa(s) {sub.auto && "· auto"}
-                  </span>
-                </h3>
-                {sub.gatilho && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 italic">{sub.gatilho}</p>
+              <div key={p.id}>
+                <button
+                  onClick={() => { setProjetoFiltro(p.id); setSubFiltro(""); setMobileOpen(false); }}
+                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                    ativo
+                      ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-medium"
+                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  <span>{p.emoji}</span>
+                  <span className="flex-1 truncate">{p.nome}</span>
+                </button>
+                {ativo && subs.length > 0 && (
+                  <div className="pl-3 mt-0.5 space-y-0.5">
+                    <button
+                      onClick={() => { setSubFiltro(""); setMobileOpen(false); }}
+                      className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                        subFiltro === ""
+                          ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                      }`}
+                    >
+                      <span className="flex-1">Todos</span>
+                      <span className="text-[10px] text-gray-500">{ativas(tarefas)}</span>
+                    </button>
+                    {subs.map(s => {
+                      const ts = tarefas.filter(t => t.subprojetoId === s.id);
+                      const ativ = ativas(ts);
+                      const sel = subFiltro === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => { setSubFiltro(s.id); setMobileOpen(false); }}
+                          className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                            sel
+                              ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                          }`}
+                        >
+                          <span className="flex-1 truncate">{s.nome}</span>
+                          {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-                <div className="space-y-2">
-                  {tarefasSub.length === 0 ? (
-                    <div className="text-xs text-gray-400 dark:text-gray-600 pl-2">Nenhuma tarefa.</div>
-                  ) : (
-                    tarefasSub.map(t => (
-                      <TarefaCard
-                        key={t.id}
-                        tarefa={t}
-                        projetos={projetos}
-                        subprojetos={subprojetos}
-                        onAbrir={() => onAbrir(t.id)}
-                        autor={{ id: "", nome: "" }}
-                      />
-                    ))
-                  )}
-                </div>
               </div>
             );
           })}
         </div>
-      )}
+      </aside>
+
+      {/* Área principal */}
+      <main className="flex-1 min-w-0">
+        <button
+          className="md:hidden mb-2 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700"
+          onClick={() => setMobileOpen(o => !o)}
+        >
+          {mobileOpen ? "✕ Fechar projetos" : "📁 Escolher projeto"}
+        </button>
+
+        {!proj ? (
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+            Escolha um projeto na lateral pra ver suas tarefas.
+          </div>
+        ) : (
+          <>
+            <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                {proj.emoji} {proj.nome}{subAtual && <span className="text-gray-400 dark:text-gray-500 font-normal"> · {subAtual.nome}</span>}
+              </h2>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {tarefasFiltradas.length} tarefa(s) · {ativas(tarefasFiltradas)} ativas
+              </span>
+            </div>
+            <ViewSwitcher value={view} onChange={onChangeView} />
+            {view === "lista" && (
+              <ProjetoListaView
+                projeto={proj}
+                subprojetos={subprojetos}
+                subFiltro={subFiltro}
+                tarefas={tarefasFiltradas}
+                projetos={projetos}
+                onAbrir={onAbrir}
+                autor={autor}
+              />
+            )}
+            {view === "calendario" && (
+              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} onAbrir={onAbrir} />
+            )}
+            {view === "kanban" && (
+              <KanbanView tarefas={tarefasFiltradas} projetos={projetos} autor={autor} onAbrir={onAbrir} />
+            )}
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function ProjetoListaView({ projeto, subprojetos, subFiltro, tarefas, projetos, onAbrir, autor }: {
+  projeto: TarefaProjeto;
+  subprojetos: TarefaSubprojeto[];
+  subFiltro: string;
+  tarefas: Tarefa[];
+  projetos: TarefaProjeto[];
+  onAbrir: (id: string) => void;
+  autor: { id: string; nome: string };
+}) {
+  const subs = subFiltro
+    ? subprojetos.filter(s => s.id === subFiltro)
+    : subprojetos.filter(s => s.projetoId === projeto.id);
+
+  return (
+    <div>
+      {subs.map(sub => {
+        const tarefasSub = tarefas.filter(t => t.subprojetoId === sub.id);
+        return (
+          <div key={sub.id} className="mb-4">
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              {sub.nome}
+              <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">
+                {tarefasSub.length} tarefa(s) {sub.auto && "· auto"}
+              </span>
+            </h3>
+            {sub.gatilho && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 italic">{sub.gatilho}</p>
+            )}
+            <div className="space-y-2">
+              {tarefasSub.length === 0 ? (
+                <div className="text-xs text-gray-400 dark:text-gray-600 pl-2">Nenhuma tarefa.</div>
+              ) : (
+                tarefasSub.map(t => (
+                  <TarefaCard
+                    key={t.id}
+                    tarefa={t}
+                    projetos={projetos}
+                    subprojetos={subprojetos}
+                    onAbrir={() => onAbrir(t.id)}
+                    autor={autor}
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -1516,7 +1676,6 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
   const [usarTemplate, setUsarTemplate] = useState(true);
-  const [salvando, setSalvando] = useState(false);
 
   const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
   useEffect(() => {
@@ -1533,42 +1692,41 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   const responsavelId = subAtual?.responsavelPadraoId || pessoaId;
   const responsavelNome = subAtual?.responsavelPadraoNome || pessoaNome;
 
-  async function salvar() {
+  function salvar() {
     if (!titulo || !projetoId || !subprojetoId) { alert("Preencha título, projeto e subprojeto."); return; }
-    setSalvando(true);
-    try {
-      // Se tem template e usuário escolheu usar, popula subtarefas com
-      // prazo resolvido a partir do offset (D+5 / dia 20 / fim do mês).
-      const prazoBase = prazo || null;
-      const subtarefasFromTemplate = (usarTemplate && temTemplate && subAtual)
-        ? (subAtual.tarefasTemplate || []).map((t, i) => ({
-            id: Math.random().toString(36).slice(2, 11),
-            texto: t.titulo,
-            feito: false,
-            prazo: resolverPrazoOffset(t.prazoOffset, prazoBase),
-            ordem: i + 1,
-          }))
-        : undefined;
-      await criarTarefa({
-        projetoId, subprojetoId, titulo,
-        responsavelId, responsavelNome,
-        coResponsaveis: [],
-        restaurantIds: restaurantIds.length ? restaurantIds : undefined,
-        prazo: prazo || null,
-        status: "a_fazer",
-        prioridade,
-        origem: "manual",
-        corHerdada: cor,
-        subtarefas: subtarefasFromTemplate,
-        criadoPor: pessoaId,
-        criadoPorNome: pessoaNome,
-      });
-      onClose();
-    } catch (e) {
-      alert("Erro: " + String(e));
-    } finally {
-      setSalvando(false);
-    }
+    // Se tem template e usuário escolheu usar, popula subtarefas com
+    // prazo resolvido a partir do offset (D+5 / dia 20 / fim do mês).
+    const prazoBase = prazo || null;
+    const subtarefasFromTemplate = (usarTemplate && temTemplate && subAtual)
+      ? (subAtual.tarefasTemplate || []).map((t, i) => ({
+          id: Math.random().toString(36).slice(2, 11),
+          texto: t.titulo,
+          feito: false,
+          prazo: resolverPrazoOffset(t.prazoOffset, prazoBase),
+          ordem: i + 1,
+        }))
+      : undefined;
+    const payload = {
+      projetoId, subprojetoId, titulo,
+      responsavelId, responsavelNome,
+      coResponsaveis: [],
+      restaurantIds: restaurantIds.length ? restaurantIds : undefined,
+      prazo: prazo || null,
+      status: "a_fazer" as const,
+      prioridade,
+      origem: "manual" as const,
+      corHerdada: cor,
+      subtarefas: subtarefasFromTemplate,
+      criadoPor: pessoaId,
+      criadoPorNome: pessoaNome,
+    };
+    // Fecha o modal imediatamente (otimista). A tarefa aparece via snapshot
+    // quando o Firestore confirma; se der erro, avisamos por toast/alert.
+    onClose();
+    criarTarefa(payload).catch(e => {
+      console.error("[tarefas] falha ao criar:", e);
+      alert(`Falha ao criar tarefa "${titulo}": ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
 
   return (
@@ -1641,7 +1799,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
         <style>{`.input { width: 100%; padding: 6px 10px; border: 1px solid rgb(209 213 219); border-radius: 8px; background: white; font-size: 14px; } .dark .input { background: rgb(17 24 39); border-color: rgb(55 65 81); color: white; }`}</style>
         <div className="flex gap-2 justify-end mt-5">
           <Button onClick={onClose} variant="ghost">Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Criar Tarefa"}</Button>
+          <Button onClick={salvar}>Criar Tarefa</Button>
         </div>
       </div>
     </div>
