@@ -47,6 +47,7 @@ import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importa
 import type { LinhaImportada } from "./importador";
 import type { Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
+import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
 type Tab = "minhas" | "projeto" | "admin" | "lixeira";
 type ViewMode = "calendario" | "lista" | "kanban";
@@ -1672,51 +1673,46 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
             </div>
           </div>
-          <div className="flex items-center gap-1">
-            {lista.length > 0 && (
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
-            )}
-            {onNovaTarefaNoDia && (
-              <button
-                onClick={() => onNovaTarefaNoDia(data)}
-                className="inline-flex items-center justify-center w-5 h-5 rounded text-[12px] leading-none text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
-                title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
-                aria-label="Nova tarefa neste dia"
-              >+</button>
-            )}
-          </div>
+          {lista.length > 0 && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
+          )}
         </div>
         <div className="space-y-1 flex-1 overflow-y-auto">
-          {lista.length === 0 ? (
-            <div className="text-[10px] text-gray-400 dark:text-gray-600 italic">—</div>
-          ) : (
-            lista.map(t => {
-              const proj = projetos.find(p => p.id === t.projetoId);
-              const cor = t.corHerdada || proj?.cor || "#6b7280";
-              const concluida = t.status === "concluida";
-              const arrastando = draggingId === t.id;
-              return (
-                <button
-                  key={t.id}
-                  draggable={podeArrastar}
-                  onDragStart={podeArrastar ? (e) => {
-                    e.dataTransfer.setData("text/plain", t.id);
-                    e.dataTransfer.effectAllowed = "move";
-                    setDraggingId(t.id);
-                  } : undefined}
-                  onDragEnd={podeArrastar ? () => {
-                    setDraggingId(null);
-                    setDropTarget(null);
-                  } : undefined}
-                  onClick={() => onAbrir(t.id)}
-                  className={`w-full text-left text-[11px] px-1.5 py-1 rounded truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-                  style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
-                  title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
-                >
-                  {t.titulo}
-                </button>
-              );
-            })
+          {lista.map(t => {
+            const proj = projetos.find(p => p.id === t.projetoId);
+            const cor = t.corHerdada || proj?.cor || "#6b7280";
+            const concluida = t.status === "concluida";
+            const arrastando = draggingId === t.id;
+            return (
+              <button
+                key={t.id}
+                draggable={podeArrastar}
+                onDragStart={podeArrastar ? (e) => {
+                  e.dataTransfer.setData("text/plain", t.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  setDraggingId(t.id);
+                } : undefined}
+                onDragEnd={podeArrastar ? () => {
+                  setDraggingId(null);
+                  setDropTarget(null);
+                } : undefined}
+                onClick={() => onAbrir(t.id)}
+                className={`w-full text-left text-[11px] px-1.5 py-1 rounded truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
+                title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
+              >
+                {t.titulo}
+              </button>
+            );
+          })}
+          {onNovaTarefaNoDia && (
+            <button
+              onClick={() => onNovaTarefaNoDia(data)}
+              className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+              title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
+            >
+              + Nova tarefa
+            </button>
           )}
         </div>
       </div>
@@ -1788,48 +1784,41 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                   {Number(dias[5].slice(8, 10))}–{Number(dias[6].slice(8, 10))}
                 </div>
               </div>
-              <div className="flex items-center gap-1">
-                {tarefasFds.length > 0 && (
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
-                )}
-                {onNovaTarefaNoDia && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
-                    className="inline-flex items-center justify-center w-5 h-5 rounded text-[12px] leading-none text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
-                    title="+ nova tarefa no sábado"
-                  >+</span>
-                )}
-              </div>
+              {tarefasFds.length > 0 && (
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
+              )}
             </div>
-            {tarefasFdsAtivas.length === 0 ? (
-              <div className="text-[11px] text-gray-400 dark:text-gray-600 italic flex-1 flex items-center justify-center">
-                Fim de semana livre
-              </div>
-            ) : (
-              <div className="space-y-1 flex-1 overflow-y-auto">
-                {tarefasFdsAtivas.slice(0, 3).map(t => {
-                  const proj = projetos.find(p => p.id === t.projetoId);
-                  const cor = t.corHerdada || proj?.cor || "#6b7280";
-                  return (
-                    <div
-                      key={t.id}
-                      className="text-[11px] px-1.5 py-1 rounded truncate"
-                      style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
-                      title={t.titulo}
-                    >
-                      {t.titulo}
-                    </div>
-                  );
-                })}
-                {tarefasFdsAtivas.length > 3 && (
-                  <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
-                )}
-                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
-              </div>
-            )}
+            <div className="space-y-1 flex-1 overflow-y-auto">
+              {tarefasFdsAtivas.slice(0, 3).map(t => {
+                const proj = projetos.find(p => p.id === t.projetoId);
+                const cor = t.corHerdada || proj?.cor || "#6b7280";
+                return (
+                  <div
+                    key={t.id}
+                    className="text-[11px] px-1.5 py-1 rounded truncate"
+                    style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
+                    title={t.titulo}
+                  >
+                    {t.titulo}
+                  </div>
+                );
+              })}
+              {tarefasFdsAtivas.length > 3 && (
+                <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
+              )}
+              {onNovaTarefaNoDia && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
+                  className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
+                >
+                  + Nova tarefa
+                </span>
+              )}
+              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
+            </div>
           </button>
         )}
       </div>
@@ -2177,97 +2166,6 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             }}
           />
         )}
-      </div>
-    </div>
-  );
-}
-
-// Modal seletor: lista ideias e ocorrências NÃO ainda puxadas/descartadas/arquivadas
-function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher }: {
-  onClose: () => void;
-  onEscolher: (item: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string; descricao?: string }) => void;
-}) {
-  const [ideias, setIdeias] = useState<Array<{ id: string; titulo: string; descricao?: string; categoria?: string; restaurantId: string; status: string }>>([]);
-  const [ocorrencias, setOcorrencias] = useState<Array<{ id: string; titulo: string; descricao?: string; gravidade?: string; data?: string; restaurantId: string; status: string }>>([]);
-  const [search, setSearch] = useState("");
-  const [filtroTipo, setFiltroTipo] = useState<"todos" | "ideia" | "ocorrencia">("todos");
-
-  useEffect(() => {
-    const u1 = onSnapshot(collection(db, "ideias"), snap => {
-      setIdeias(snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; titulo: string; descricao?: string; categoria?: string; restaurantId: string; status: string }));
-    });
-    const u2 = onSnapshot(collection(db, "ocorrencias"), snap => {
-      setOcorrencias(snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; titulo: string; descricao?: string; gravidade?: string; data?: string; restaurantId: string; status: string }));
-    });
-    return () => { u1(); u2(); };
-  }, []);
-
-  const ideiasAtivas = ideias.filter(i =>
-    i.status !== "puxada_tarefa" && i.status !== "descartada"
-  );
-  const ocorrenciasAtivas = ocorrencias.filter(o =>
-    o.status !== "puxada_tarefa" && o.status !== "arquivada" && o.status !== "resolvida"
-  );
-
-  const filtroBusca = (txt: string) => {
-    if (!search.trim()) return true;
-    return txt.toLowerCase().includes(search.toLowerCase());
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">Puxar de Banco de Ideias / Ocorrências</h3>
-        <div className="flex gap-2 mb-3">
-          <input
-            type="text"
-            placeholder="🔍 Buscar..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input flex-1"
-          />
-          <select
-            value={filtroTipo}
-            onChange={(e) => setFiltroTipo(e.target.value as "todos" | "ideia" | "ocorrencia")}
-            className="input w-32"
-          >
-            <option value="todos">Todos</option>
-            <option value="ideia">💡 Ideias</option>
-            <option value="ocorrencia">🚨 Ocorrências</option>
-          </select>
-        </div>
-        <div className="flex-1 overflow-y-auto space-y-2">
-          {(filtroTipo === "todos" || filtroTipo === "ideia") && ideiasAtivas.filter(i => filtroBusca(i.titulo + " " + (i.descricao || ""))).map(i => (
-            <button
-              key={"i-" + i.id}
-              onClick={() => onEscolher({ tipo: "ideia", id: i.id, titulo: i.titulo, descricao: i.descricao })}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-            >
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">💡 {i.titulo}</div>
-              {i.categoria && <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{i.categoria}</div>}
-              {i.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{i.descricao}</div>}
-            </button>
-          ))}
-          {(filtroTipo === "todos" || filtroTipo === "ocorrencia") && ocorrenciasAtivas.filter(o => filtroBusca(o.titulo + " " + (o.descricao || ""))).map(o => (
-            <button
-              key={"o-" + o.id}
-              onClick={() => onEscolher({ tipo: "ocorrencia", id: o.id, titulo: o.titulo, descricao: o.descricao })}
-              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
-            >
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">🚨 {o.titulo}</div>
-              {o.gravidade && <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 mt-0.5">{o.gravidade}{o.data && ` · ${o.data}`}</div>}
-              {o.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{o.descricao}</div>}
-            </button>
-          ))}
-          {ideiasAtivas.length === 0 && ocorrenciasAtivas.length === 0 && (
-            <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
-              Nenhuma ideia ou ocorrência aberta pra puxar.
-            </div>
-          )}
-        </div>
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 mt-3">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-        </div>
       </div>
     </div>
   );

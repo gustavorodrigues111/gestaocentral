@@ -9,7 +9,8 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { todayYmd } from "../../core/utils/date";
 import { REUNIAO_TIPO_LABEL } from "../../core/types";
-import type { AcaoReuniao, AcaoStatus, Cargo, Empregado, EventoTrilha, PautaItem, Reuniao } from "../../core/types";
+import type { AcaoReuniao, AcaoStatus, Cargo, Empregado, EventoTrilha, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
+import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
 type Props = {
   reuniao: Reuniao;
@@ -34,6 +35,23 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const [novaAcaoDesc, setNovaAcaoDesc] = useState("");
   const [novaAcaoResp, setNovaAcaoResp] = useState<string>("");
   const [novaAcaoPrazo, setNovaAcaoPrazo] = useState<string>("");
+  const [puxarAberto, setPuxarAberto] = useState(false);
+  const [gerarTipo, setGerarTipo] = useState<"ideia" | "ocorrencia" | null>(null);
+  const [geradosIdeias, setGeradosIdeias] = useState<Ideia[]>([]);
+  const [geradosOcorrencias, setGeradosOcorrencias] = useState<Ocorrencia[]>([]);
+
+  // Ideias e ocorrências geradas NESTA reunião (lookup pra exibir na ata)
+  useEffect(() => {
+    const qi = query(collection(db, "ideias"), where("reuniaoIdOrigem", "==", reuniao.id));
+    const u1 = onSnapshot(qi, snap => {
+      setGeradosIdeias(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Ideia));
+    });
+    const qo = query(collection(db, "ocorrencias"), where("reuniaoIdOrigem", "==", reuniao.id));
+    const u2 = onSnapshot(qo, snap => {
+      setGeradosOcorrencias(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Ocorrencia));
+    });
+    return () => { u1(); u2(); };
+  }, [reuniao.id]);
 
   useEffect(() => {
     setAtaDraft(reuniao.ata || "");
@@ -109,6 +127,68 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   async function setNotaTopico(id: string, notas: string) {
     const novaPauta = (reuniao.pauta || []).map(p => p.id === id ? { ...p, notas } : p);
     await patchReuniao({ pauta: novaPauta });
+  }
+
+  // Puxa uma ideia ou ocorrência ABERTA pra dentro da pauta dessa reunião.
+  async function puxarParaPauta(item: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string; descricao?: string }) {
+    const novo: PautaItem = {
+      id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      titulo: item.titulo,
+      descricao: item.descricao,
+      ordem: (reuniao.pauta?.length || 0) + 1,
+      discutido: false,
+      ideiaId: item.tipo === "ideia" ? item.id : null,
+      ocorrenciaId: item.tipo === "ocorrencia" ? item.id : null,
+    };
+    await patchReuniao({ pauta: [...(reuniao.pauta || []), novo] });
+
+    // Atualiza o status do item de origem pra "em discussão" / "em apuração"
+    try {
+      const col = item.tipo === "ideia" ? "ideias" : "ocorrencias";
+      const novoStatus = item.tipo === "ideia" ? "em_discussao" : "em_apuracao";
+      await updateDoc(doc(db, col, item.id), {
+        status: novoStatus,
+        reuniaoId: reuniao.id,
+        atualizadoEm: new Date().toISOString(),
+        atualizadaEm: new Date().toISOString(),
+      });
+    } catch (e) { console.error("[reuniao] não consegui marcar item como em discussão:", e); }
+    setPuxarAberto(false);
+  }
+
+  // ── Gerar ideia/ocorrência durante a reunião ──────────────────────────────
+  async function criarGerado(titulo: string, descricao: string, tipo: "ideia" | "ocorrencia", grav?: "elogio" | "leve" | "media" | "grave") {
+    if (!titulo.trim() || !me) return;
+    const now = new Date().toISOString();
+    if (tipo === "ideia") {
+      await addDoc(collection(db, "ideias"), sanitizeForFirestore({
+        restaurantId,
+        titulo: titulo.trim(),
+        descricao: descricao.trim() || undefined,
+        status: "gerada_reuniao",
+        reuniaoIdOrigem: reuniao.id,
+        criadoEm: now,
+        criadoPor: me.id,
+        criadoPorNome: me.nome,
+        atualizadoEm: now,
+      }));
+    } else {
+      await addDoc(collection(db, "ocorrencias"), sanitizeForFirestore({
+        restaurantId,
+        data: reuniao.data || todayYmd(),
+        titulo: titulo.trim(),
+        descricao: descricao.trim() || "(gerada em reunião)",
+        gravidade: grav || "leve",
+        status: "gerada_reuniao",
+        empregadosEnvolvidos: [],
+        reuniaoIdOrigem: reuniao.id,
+        criadaEm: now,
+        criadaPor: me.id,
+        criadaPorNome: me.nome,
+        atualizadaEm: now,
+      }));
+    }
+    setGerarTipo(null);
   }
 
   // ── Ata ──────────────────────────────────────────────────────────────────
@@ -369,15 +449,24 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
             ))}
 
             {podeConfig && (
-              <div className="flex gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-                <Input
-                  value={novoTopico}
-                  onChange={(e) => setNovoTopico(e.target.value)}
-                  placeholder="+ Novo tópico de pauta"
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarTopico(); } }}
-                  className="flex-1"
-                />
-                <Button onClick={adicionarTopico} disabled={!novoTopico.trim()}>Adicionar</Button>
+              <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                <div className="flex gap-2">
+                  <Input
+                    value={novoTopico}
+                    onChange={(e) => setNovoTopico(e.target.value)}
+                    placeholder="+ Novo tópico de pauta"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarTopico(); } }}
+                    className="flex-1"
+                  />
+                  <Button onClick={adicionarTopico} disabled={!novoTopico.trim()}>Adicionar</Button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPuxarAberto(true)}
+                  className="w-full text-xs px-3 py-2 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                >
+                  📋 Puxar de Banco de Ideias / Ocorrências
+                </button>
               </div>
             )}
           </div>
@@ -385,12 +474,12 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
 
         {/* Tab: Ata */}
         {tab === "ata" && (
-          <div className="space-y-2">
+          <div className="space-y-3">
             <textarea
               value={ataDraft}
               onChange={(e) => setAtaDraft(e.target.value)}
               disabled={!podeConfig}
-              rows={12}
+              rows={10}
               placeholder="Resumo do que foi tratado, decisões importantes, contextos..."
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-y"
             />
@@ -399,6 +488,54 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                 <Button onClick={salvarAta} disabled={saving}>{saving ? "Salvando..." : "Salvar ata"}</Button>
               </div>
             )}
+
+            {/* Ideias e Ocorrências geradas NESTA reunião */}
+            <div className="pt-3 border-t border-gray-200 dark:border-gray-800">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
+                Gerado nesta reunião
+              </h4>
+              {geradosIdeias.length === 0 && geradosOcorrencias.length === 0 ? (
+                <p className="text-xs text-gray-500 dark:text-gray-400 italic">
+                  Use os botões abaixo pra registrar ideias e ocorrências que surgiram durante a reunião.
+                  Elas viram cards no Kanban dos respectivos módulos com a marca "🗣️ De reunião".
+                </p>
+              ) : (
+                <div className="space-y-1 mb-3">
+                  {geradosIdeias.map(i => (
+                    <div key={i.id} className="text-xs flex items-center gap-2 px-2 py-1.5 rounded bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800">
+                      <span>💡</span>
+                      <span className="flex-1 font-medium">{i.titulo}</span>
+                      <span className="text-[10px] uppercase tracking-wider text-purple-600 dark:text-purple-400">{i.status === "puxada_tarefa" ? "virou tarefa" : "ideia"}</span>
+                    </div>
+                  ))}
+                  {geradosOcorrencias.map(o => (
+                    <div key={o.id} className="text-xs flex items-center gap-2 px-2 py-1.5 rounded bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800">
+                      <span>🚨</span>
+                      <span className="flex-1 font-medium">{o.titulo}</span>
+                      <span className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400">{o.gravidade}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {podeConfig && (
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setGerarTipo("ideia")}
+                    className="text-xs px-3 py-1.5 rounded-md bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50 transition-colors"
+                  >
+                    💡 + Ideia gerada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGerarTipo("ocorrencia")}
+                    className="text-xs px-3 py-1.5 rounded-md bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+                  >
+                    🚨 + Ocorrência gerada
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -484,6 +621,81 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
         </div>
       </div>
+      {puxarAberto && (
+        <PuxarIdeiaOcorrenciaModal
+          restaurantId={restaurantId}
+          titulo="Puxar pra pauta desta reunião"
+          onClose={() => setPuxarAberto(false)}
+          onEscolher={puxarParaPauta}
+        />
+      )}
+      {gerarTipo && (
+        <GerarRegistroModal
+          tipo={gerarTipo}
+          onClose={() => setGerarTipo(null)}
+          onCriar={criarGerado}
+        />
+      )}
     </Modal>
+  );
+}
+
+// Mini-modal pra gerar Ideia/Ocorrência dentro de uma reunião
+function GerarRegistroModal({ tipo, onClose, onCriar }: {
+  tipo: "ideia" | "ocorrencia";
+  onClose: () => void;
+  onCriar: (titulo: string, descricao: string, tipo: "ideia" | "ocorrencia", grav?: "elogio" | "leve" | "media" | "grave") => void;
+}) {
+  const [titulo, setTitulo] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [grav, setGrav] = useState<"elogio" | "leve" | "media" | "grave">("leve");
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">
+          {tipo === "ideia" ? "💡 Ideia gerada na reunião" : "🚨 Ocorrência gerada na reunião"}
+        </h3>
+        <div className="space-y-3">
+          <Input
+            value={titulo}
+            onChange={(e) => setTitulo(e.target.value)}
+            placeholder="Título"
+            autoFocus
+          />
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            rows={3}
+            placeholder="Descrição (opcional)"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y"
+          />
+          {tipo === "ocorrencia" && (
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Gravidade</label>
+              <select
+                value={grav}
+                onChange={(e) => setGrav(e.target.value as "elogio" | "leve" | "media" | "grave")}
+                className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                <option value="elogio">🌟 Elogio</option>
+                <option value="leve">ℹ️ Leve</option>
+                <option value="media">⚠️ Média</option>
+                <option value="grave">🚨 Grave</option>
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button
+            onClick={() => onCriar(titulo, descricao, tipo, grav)}
+            disabled={!titulo.trim()}
+          >
+            Registrar
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }

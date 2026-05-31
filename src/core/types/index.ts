@@ -1012,6 +1012,7 @@ export type PautaItem = {
   titulo: string;
   descricao?: string;
   ideiaId?: string | null;       // se importado do Banco de Ideias
+  ocorrenciaId?: string | null;  // se importado do módulo Ocorrências
   ordem: number;
   discutido: boolean;
   notas?: string;                // notas específicas do tópico
