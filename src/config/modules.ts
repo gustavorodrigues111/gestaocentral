@@ -52,6 +52,15 @@ export const MODULES: ModuleDef[] = [
   { id: "vt",          area: "fin", label: "Vale Transporte",    icon: "🚌", status: "ativo", etapa: "beta", desc: "VT por empregado (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
   { id: "vr",          area: "fin", label: "Vale Refeição",      icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
 
+  // ═══ 📋 GESTOR DE TAREFAS + CADASTROS MESTRES ═══
+  // Tarefas é cross-area (operação + DP + financeiro + diretoria todos usam).
+  // Pertence visualmente a "ops" pra ficar no topo da sidebar como item-pivô.
+  // Contas Fixas e Manutenções moram em "fin" — são módulos financeiros que
+  // GERAM tarefas. A tarefa só visualiza/executa.
+  { id: "tarefas",     area: "ops", label: "Tarefas",            icon: "📋", status: "ativo", etapa: "beta", desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+  { id: "contasFixas", area: "fin", label: "Contas Fixas",       icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
+  { id: "manutencoes", area: "ops", label: "Manutenções & Licenças", icon: "🛠️", status: "ativo", etapa: "beta", desc: "Cadastro mestre de manutenções e licenças (potabilidade, dedetização, CLCB, alvarás). Gera lembretes no Gestor de Tarefas." },
+
   // ═══ 🌐 INSTITUCIONAL / CONFIG ═══
   { id: "sites",          area: "inst", label: "Sites",          icon: "🌐", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },
   { id: "configuracoes",  area: "inst", label: "Configurações",  icon: "⚙️", status: "ativo", desc: "Configurações do restaurante" },

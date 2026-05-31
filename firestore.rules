@@ -134,6 +134,16 @@ service cloud.firestore {
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
     match /trilhaEventos/{id}       { allow read, write: if authed(); }
+    // ── Gestor de Tarefas ─────────────────────────────────────────────────
+    // Projetos / Subprojetos / Tarefas: read auth-only (visibilidade filtra
+    // client-side). Write auth-only — UI valida permissões via canAcao().
+    // Soft delete: app marca deletadoEm; só master deleta de verdade.
+    match /tarefaProjetos/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /tarefaSubprojetos/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /tarefas/{id}             { allow read, write: if authed(); allow delete: if isMaster(); }
+    // ── Cadastros mestres (geram tarefas) ────────────────────────────────
+    match /contasFixas/{id}         { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /manutencoes/{id}         { allow read, write: if authed(); allow delete: if isMaster(); }
     // Reservas: doc PRINCIPAL contém só metadados sem PII (data, horario,
     // pessoas, salaoId, status, clienteId). PII (nome/telefone/email/
     // observações/ocasião) vive em /reservasPII com read auth-only.

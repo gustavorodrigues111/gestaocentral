@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { gerarCascataAdmissao } from "../tarefas/generator";
 import {
   ADMISSAO_STATUS_LABEL,
   MOTIVO_CANCELAMENTO_LABEL,
@@ -173,6 +174,31 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
     try {
       await moverStatusKanban(adm, novoStatus, pendentes, colAtualId, destinoColunaId);
+      // Cascata: ao alcançar "admitido" (final do fluxo), gera as 4-5 tarefas
+      // trabalhistas (Experiência 1ª/2ª, Exame Clínico, Exame Complementar,
+      // Coprocultura). Idempotente — se já rodou, não duplica.
+      if (
+        novoStatus === "admitido"
+        && adm.empregadoIdCriado
+        && adm.dataAdmissao
+        && me?.id
+      ) {
+        try {
+          await gerarCascataAdmissao({
+            pessoaNome: adm.candidato.nome,
+            empregadoId: adm.empregadoIdCriado,
+            restaurantId: adm.restaurantId,
+            admissaoData: adm.dataAdmissao,
+            manipulaAlimentos: false, // TODO: derivar do cargo (cozinha, etc)
+            responsavelPadraoId: me.id,
+            responsavelPadraoNome: me.nome,
+            autorId: me.id,
+            autorNome: me.nome,
+          });
+        } catch (err) {
+          console.warn("[admissao] falha ao gerar cascata de tarefas:", err);
+        }
+      }
     } catch (e) {
       alert("Erro ao mover: " + (e instanceof Error ? e.message : "?"));
     }
