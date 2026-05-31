@@ -102,18 +102,25 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
         <nav className="flex-1 p-3 space-y-4">
+          {/* Tarefas é a tela inicial — link de topo, fora dos agrupamentos */}
           <NavLink
-            to="/"
+            to={rid ? `/r/${rid}/tarefas` : "/"}
             end
             onClick={onClose}
             className={({ isActive }) => `
-              block px-3 py-2 rounded-lg text-sm font-medium
+              flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
               ${isActive
                 ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
                 : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
             `}
           >
-            🏠 Início
+            <span>📋</span>
+            <span className="flex-1">Tarefas</span>
+            {tarefasPendentes > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
+              </span>
+            )}
           </NavLink>
 
           {souEquipe && rid && (
@@ -132,7 +139,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )}
 
           {areas.map(area => {
-            const mods = modulesByArea(area).filter(m => !m.oculto && visibleModule(m.id));
+            // Tarefas é renderizada como item de topo (fora dos grupos),
+            // então removemos do agrupamento Operação aqui.
+            const mods = modulesByArea(area).filter(m => !m.oculto && m.id !== "tarefas" && visibleModule(m.id));
             if (mods.length === 0) return null;
             const info = AREA_INFO[area];
             const fechada = colapsadas.has(area);
@@ -175,11 +184,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         >
                           <span>{m.icon}</span>
                           <span className="flex-1 truncate">{m.label}</span>
-                          {m.id === "tarefas" && tarefasPendentes > 0 && (
-                            <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-                              {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
-                            </span>
-                          )}
                           {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
                           {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
                           {m.status === "planejado" && <span className="text-[9px] text-gray-400">próx.</span>}
@@ -204,6 +208,19 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               </div>
             );
           })}
+
+          {/* Link discreto pro catálogo (grid) — Tarefas é a default mas
+              quem quiser ver o panorama de módulos abre por aqui */}
+          <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800">
+            <NavLink
+              to="/?catalogo=1"
+              onClick={onClose}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] text-gray-500 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <span>🧭</span>
+              <span className="flex-1 truncate">Catálogo de módulos</span>
+            </NavLink>
+          </div>
         </nav>
       </aside>
     </>

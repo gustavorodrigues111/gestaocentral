@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, Navigate, useSearchParams } from "react-router-dom";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
@@ -13,7 +13,17 @@ export function HomePage() {
   const { pessoa } = useAuth();
   const { activeRestaurant, setActiveId } = useRestaurant();
   const [showNewRest, setShowNewRest] = useState(false);
+  const [params] = useSearchParams();
+  const forcarCatalogo = params.get("catalogo") === "1";
   const isMaster = !!pessoa?.isMaster;
+
+  // Default: tela inicial é Tarefas. Pra ver o catálogo de módulos use ?catalogo=1.
+  if (activeRestaurant && pessoa && !forcarCatalogo) {
+    const podeTarefas = isMaster || canUse(pessoa, activeRestaurant.id, "tarefas");
+    if (podeTarefas) {
+      return <Navigate to={`/r/${activeRestaurant.id}/tarefas`} replace />;
+    }
+  }
 
   if (!activeRestaurant) {
     return (

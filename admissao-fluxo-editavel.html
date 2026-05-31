@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Processo de Admissão — revisão editável</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#1f2937; --mut:#6b7280; --accent:#6366f1; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  header { position:sticky; top:0; z-index:10; background:#111827; color:#fff; padding:12px 18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:700; }
+  header .sub { font-size:12px; color:#9ca3af; }
+  header .spacer { flex:1; }
+  button.tb { background:#374151; color:#fff; border:0; border-radius:8px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+  button.tb:hover { background:#4b5563; }
+  button.tb.primary { background:var(--accent); }
+  button.tb.primary:hover { background:#4f46e5; }
+  .wrap { padding:18px; }
+  .hint { font-size:13px; color:var(--mut); background:#eef2ff; border:1px solid #c7d2fe; border-radius:10px; padding:10px 14px; margin-bottom:16px; }
+  /* Kanban: colunas lado a lado, rolagem horizontal do board + vertical por coluna */
+  #board { display:flex; gap:14px; overflow-x:auto; padding-bottom:14px; align-items:flex-start; }
+  #board::-webkit-scrollbar { height:10px; }
+  .col { background:var(--card); border:1px solid var(--line); border-left-width:6px; border-radius:12px; flex:0 0 340px; width:340px; max-height:calc(100vh - 210px); overflow-y:auto; }
+  .col-head { padding:10px 14px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; position:sticky; top:0; background:var(--card); z-index:2; border-bottom:1px solid var(--line); }
+  .col-head input.colname { font-size:16px; font-weight:700; border:0; background:transparent; color:var(--ink); flex:1; min-width:180px; padding:4px; border-radius:6px; }
+  .col-head input.colname:focus { outline:2px solid var(--accent); background:#fff; }
+  .badge { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; padding:2px 7px; border-radius:999px; background:#eef2f7; color:#475569; }
+  .ck { border-top:1px solid var(--line); padding:8px 14px 12px; }
+  .ck-head { display:flex; align-items:center; gap:8px; margin:6px 0; }
+  .ck-head input { font-size:13px; font-weight:700; border:0; background:transparent; color:#374151; flex:1; padding:3px; border-radius:6px; }
+  .ck-head input:focus { outline:2px solid var(--accent); background:#fff; }
+  .item { border:1px solid var(--line); border-radius:10px; padding:10px; margin:8px 0; background:#fcfcfd; }
+  .item-top { display:flex; gap:8px; align-items:flex-start; }
+  .item-top textarea { flex:1; border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:13px; font-family:inherit; resize:vertical; min-height:34px; }
+  .item-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--mut); }
+  .item-row label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  select, .fn-label { font-size:12px; border:1px solid var(--line); border-radius:7px; padding:5px 7px; font-family:inherit; background:#fff; }
+  .fn-desc { width:100%; margin-top:6px; border:1px dashed #cbd5e1; border-radius:7px; padding:6px 8px; font-size:12px; color:#475569; background:#f8fafc; font-family:inherit; }
+  .btn-pill { display:inline-flex; align-items:center; gap:5px; background:#eef2ff; color:#4338ca; border:1px solid #c7d2fe; border-radius:999px; padding:3px 9px; font-size:11px; font-weight:700; }
+  .x { background:#fee2e2; color:#b91c1c; border:0; border-radius:7px; padding:5px 8px; font-size:12px; cursor:pointer; font-weight:700; }
+  .add { background:#ecfdf5; color:#047857; border:1px dashed #6ee7b7; border-radius:8px; padding:6px 10px; font-size:12px; cursor:pointer; font-weight:700; margin-top:6px; }
+  .legend { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:8px; }
+  .legend h3 { margin:0 0 8px; font-size:14px; }
+  .legend table { width:100%; border-collapse:collapse; font-size:12px; }
+  .legend td { padding:5px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  .legend td:first-child { white-space:nowrap; font-weight:700; color:#4338ca; }
+  dialog { border:0; border-radius:14px; padding:0; max-width:680px; width:92%; }
+  dialog .dlg { padding:18px; }
+  dialog textarea { width:100%; min-height:320px; font-family: ui-monospace, Menlo, monospace; font-size:12px; border:1px solid var(--line); border-radius:8px; padding:10px; }
+  .muted { color:var(--mut); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🪪 Processo de Admissão</h1>
+  <span class="sub">revisão editável · arraste a ideia, edite textos e botões</span>
+  <span class="spacer"></span>
+  <button class="tb" onclick="addColuna()">+ Coluna</button>
+  <button class="tb" onclick="resumo()">📋 Resumo</button>
+  <button class="tb primary" onclick="exportar()">⬇️ Exportar mudanças</button>
+  <button class="tb" onclick="resetar()">↺ Restaurar original</button>
+</header>
+
+<div class="wrap">
+  <div class="hint">
+    Tudo aqui é editável: clique pra mudar nomes de colunas, checklists e tarefas; marque/desmarque <b>obrigatória</b>;
+    troque o <b>botão (função)</b> de cada tarefa pelo seletor; escolha <b>✏️ Função personalizada</b> pra propor um botão novo
+    e descrever o que ele faz. As mudanças salvam sozinhas no navegador. Quando terminar, clique em
+    <b>Exportar mudanças</b> e me mande o arquivo/JSON — eu implemento.
+  </div>
+  <div id="board"></div>
+
+  <div class="legend">
+    <h3>🔘 Catálogo de botões (funções) que já existem</h3>
+    <table id="legendTable"></table>
+    <p class="muted" style="margin-top:10px">Quer um botão que não está aqui? Em qualquer tarefa escolha <b>✏️ Função personalizada</b>, dê um nome ao botão e descreva o que ele deve fazer.</p>
+  </div>
+</div>
+
+<dialog id="dlg"><div class="dlg">
+  <h3 id="dlgTitle" style="margin-top:0"></h3>
+  <textarea id="dlgText" readonly></textarea>
+  <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+    <button class="tb" onclick="copyDlg()">Copiar</button>
+    <button class="tb" onclick="downloadDlg()">Baixar arquivo</button>
+    <button class="tb primary" onclick="document.getElementById('dlg').close()">Fechar</button>
+  </div>
+</div></dialog>
+
+<script>
+// ── Catálogo de funções de botão existentes (atalhos reais do sistema) ──
+const FUNCOES = {
+  "":                       { label: "— sem botão (só checkbox) —", desc: "Tarefa marcada manualmente, sem ação automática." },
+  "editar_dados_basicos":   { label: "Preencher dados do candidato", desc: "Abre modal pra preencher nome, CPF, e-mail e WhatsApp do candidato — e gera o link do formulário público." },
+  "editar_dados_finais":    { label: "Preencher dados da vaga", desc: "Abre modal pra preencher cargo, salário, horário, data de admissão e empresa." },
+  "criar_pasta_drive":      { label: "Criar pasta no Drive", desc: "Cria (ou vincula) a pasta do empregado no Google Drive e guarda o link no cadastro." },
+  "enviar_link_form":       { label: "Enviar link do formulário", desc: "Envia/reenvia o link do formulário público pro candidato (abre WhatsApp já com a mensagem)." },
+  "checklist_docs_whatsapp":{ label: "Conferir documentos", desc: "Abre o checklist de documentos recebidos + atalho de WhatsApp pra cobrar o que falta." },
+  "contato_financeiro":     { label: "Avisar financeiro", desc: "Abre WhatsApp pro financeiro do escritório solicitar o cadastro do empregado no banco." },
+  "contato_clinica":        { label: "Agendar exames (clínica)", desc: "Abre o contato da clínica (telefone/WhatsApp) pra agendar exame clínico + manipulador." },
+  "contato_contabilidade":  { label: "Enviar à contabilidade", desc: "Abre e-mail pra contabilidade com os dados de admissão." },
+  "checklist_termos_assinar":{ label: "Kit de documentos p/ assinatura", desc: "Abre o kit: montar documentos, subir pro Clicksign, acompanhar assinaturas e receber os assinados." },
+  "whatsapp_kit_assinatura":{ label: "Avisar candidato (kit)", desc: "Abre WhatsApp pra avisar o candidato que o kit foi enviado pra assinatura por e-mail." },
+  "__custom__":             { label: "✏️ Função personalizada…", desc: "Você define um botão novo e descreve o que ele faz." },
+};
+
+// ── Estado inicial = processo REAL de hoje ──
+const ORIGINAL = {
+  colunas: [
+    { id:"col_a_admitir", nome:"Pessoas a admitir", cor:"#64748b", status:"a_admitir", checklists:[
+      { nome:"📝 Dados básicos", itens:[
+        { nome:"Preencher dados básicos do candidato (gera o link do formulário)", obrig:true, fn:"editar_dados_basicos" },
+        { nome:"Preencher dados básicos da vaga (cargo, horário, empresa)", obrig:true, fn:"editar_dados_finais" },
+        { nome:"Criar pasta do empregado no Drive", obrig:false, fn:"criar_pasta_drive" },
+      ]},
+    ]},
+    { id:"col_enviado", nome:"Aguardando preenchimento e Solicitação de Exames e Conta", cor:"#94a3b8", status:"formulario_enviado", checklists:[
+      { nome:"📨 Envio do link", itens:[
+        { nome:"Solicitar informações de admissão (cargo, horário e empresa)", obrig:true, fn:"editar_dados_basicos" },
+        { nome:"Solicitação de documentos + abertura de conta Itaú via link", obrig:true, fn:"enviar_link_form" },
+        { nome:"Preencher dados finais (cargo, salário, horário, data)", obrig:true, fn:"editar_dados_finais" },
+      ]},
+    ]},
+    { id:"col_preenchido", nome:"Exames, conta e dados internos", cor:"#f59e0b", status:"formulario_preenchido", checklists:[
+      { nome:"📋 Dados internos", itens:[
+        { nome:"Conferir recebimento dos documentos enviados pelo candidato", obrig:true, fn:"checklist_docs_whatsapp" },
+        { nome:"Conferir recebimento de dados bancários Itaú (tipo, agência e conta)", obrig:true, fn:"", pedeDadosBancarios:true },
+        { nome:"Solicitar cadastro empregado no Banco", obrig:true, fn:"contato_financeiro" },
+      ]},
+      { nome:"📣 Enviar/reforçar instruções para o candidato", itens:[
+        { nome:"Agendar exames médicos (clínico + manipulador de alimentos) com a clínica", obrig:true, fn:"contato_clinica" },
+      ]},
+    ]},
+    { id:"col_contabilidade", nome:"Contabilidade & contratos", cor:"#8b5cf6", status:"solicitacao_contabilidade", checklists:[
+      { nome:"📤 Contabilidade", itens:[
+        { nome:"Envio de dados de admissão para contabilidade", obrig:true, fn:"contato_contabilidade" },
+      ]},
+      { nome:"📃 Assinaturas", itens:[
+        { nome:"Recebimento do contrato para assinatura", obrig:true, fn:"", pedeLink:true },
+        { nome:"Kit de documentos para assinatura", obrig:true, fn:"checklist_termos_assinar" },
+        { nome:"Avisar candidato que mandamos o kit para assinatura por email", obrig:true, fn:"whatsapp_kit_assinatura" },
+      ]},
+      { nome:"🏦 Cadastros externos", itens:[
+        { nome:"Instruir cursos obrigatórios e definir prazo", obrig:true, fn:"" },
+        { nome:"Cadastro no Caju Benefícios", obrig:true, fn:"" },
+        { nome:"Cadastro no Sólides Controle de Ponto", obrig:true, fn:"" },
+      ]},
+    ]},
+    { id:"col_pronto", nome:"Pronto pra admitir", cor:"#6366f1", status:"pronto_admissao", checklists:[
+      { nome:"🏥 Resultados de exames", itens:[
+        { nome:"Recebimento do ASO", obrig:true, fn:"", pedeLink:true },
+        { nome:"Recebimento do Exame Parasitológico", obrig:true, fn:"", pedeLink:true },
+      ]},
+      { nome:"🏁 Última milha", itens:[
+        { nome:"Receber certificados dos cursos obrigatórios", obrig:true, fn:"", pedeLink:true },
+        { nome:"Realizar cálculo do primeiro Vale Transporte", obrig:true, fn:"" },
+        { nome:"Solicitar pagamento primeiro Vale Transporte para o setor financeiro", obrig:true, fn:"" },
+        { nome:"Realizar a entrega de uniformes e EPIs", obrig:true, fn:"" },
+      ]},
+    ]},
+    { id:"col_admitido", nome:"Admitido e Onboarding", cor:"#0ea5e9", status:"admitido", checklists:[
+      { nome:"🚀 Onboarding (D1)", itens:[
+        { nome:"Envio de vídeos de treinamento inicial", obrig:true, fn:"" },
+        { nome:"Onboarding e treinamento inicial", obrig:true, fn:"" },
+        { nome:"Inclusão no grupo de Avisos Gerais", obrig:true, fn:"" },
+      ]},
+      { nome:"📝 Cadastros pós-admissão", itens:[
+        { nome:"Informe matrícula e-social junto a Triagem", obrig:true, fn:"" },
+        { nome:"Abrir pasta do empregado no Drive e subir todos os documentos", obrig:true, fn:"", pedeLink:true },
+        { nome:"Adicionar fim dos períodos de experiência (45 e 90 dias) no Asana", obrig:true, fn:"" },
+      ]},
+    ]},
+    { id:"col_terminados", nome:"Cancelados e Expirados", cor:"#ef4444", status:"cancelada/expirada", checklists:[] },
+  ],
+};
+
+const KEY = "admissao_fluxo_v1";
+let data = load();
+
+function load() {
+  try { const s = localStorage.getItem(KEY); if (s) return JSON.parse(s); } catch(e){}
+  return structuredClone(ORIGINAL);
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(data)); }
+
+function render() {
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  data.colunas.forEach((col, ci) => {
+    const c = document.createElement("div");
+    c.className = "col";
+    c.style.borderLeftColor = col.cor || "#64748b";
+    const nObrig = col.checklists.flatMap(k=>k.itens).filter(i=>i.obrig).length;
+    const nTot = col.checklists.flatMap(k=>k.itens).length;
+    c.innerHTML = `
+      <div class="col-head">
+        <span class="badge" style="background:${col.cor}22;color:${col.cor}">${ci+1}</span>
+        <input class="colname" value="${esc(col.nome)}" oninput="upd(['colunas',${ci},'nome'], this.value)" />
+        <span class="badge">${nTot} tarefa(s) · ${nObrig} obrig.</span>
+        <button class="x" onclick="delColuna(${ci})">remover coluna</button>
+      </div>`;
+    col.checklists.forEach((ck, ki) => {
+      const k = document.createElement("div");
+      k.className = "ck";
+      k.innerHTML = `<div class="ck-head">
+        <input value="${esc(ck.nome)}" oninput="upd(['colunas',${ci},'checklists',${ki},'nome'], this.value)" />
+        <button class="x" onclick="delCk(${ci},${ki})">×</button>
+      </div>`;
+      ck.itens.forEach((it, ii) => k.appendChild(itemEl(ci, ki, ii, it)));
+      const add = document.createElement("button");
+      add.className = "add"; add.textContent = "+ tarefa";
+      add.onclick = () => { ck.itens.push({ nome:"Nova tarefa", obrig:true, fn:"" }); save(); render(); };
+      k.appendChild(add);
+      c.appendChild(k);
+    });
+    const addCk = document.createElement("button");
+    addCk.className = "add"; addCk.style.margin = "0 14px 14px"; addCk.textContent = "+ checklist (grupo)";
+    addCk.onclick = () => { col.checklists.push({ nome:"📌 Novo grupo", itens:[] }); save(); render(); };
+    c.appendChild(addCk);
+    board.appendChild(c);
+  });
+  renderLegend();
+}
+
+function itemEl(ci, ki, ii, it) {
+  const d = document.createElement("div");
+  d.className = "item";
+  const opts = Object.entries(FUNCOES).map(([k,v]) =>
+    `<option value="${k}" ${it.fn===k?"selected":""}>${esc(v.label)}</option>`).join("");
+  const fnDesc = it.fn === "__custom__"
+    ? `<input class="fn-label" placeholder="Nome do botão novo" value="${esc(it.customLabel||"")}" oninput="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'customLabel'], this.value)" />
+       <textarea class="fn-desc" placeholder="O que esse botão deve fazer?" oninput="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'customDesc'], this.value)">${esc(it.customDesc||"")}</textarea>`
+    : (it.fn ? `<div class="fn-desc">${esc(FUNCOES[it.fn]?.desc||"")}</div>` : "");
+  d.innerHTML = `
+    <div class="item-top">
+      <textarea oninput="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'nome'], this.value)">${esc(it.nome)}</textarea>
+      <button class="x" onclick="delItem(${ci},${ki},${ii})">×</button>
+    </div>
+    <div class="item-row">
+      <label><input type="checkbox" ${it.obrig?"checked":""} onchange="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'obrig'], this.checked)"> obrigatória</label>
+      <span>Botão:</span>
+      <select onchange="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'fn'], this.value)">${opts}</select>
+      <label title="Pede um link/URL ao concluir"><input type="checkbox" ${it.pedeLink?"checked":""} onchange="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'pedeLink'], this.checked)"> pede link</label>
+      <label title="Pede dados bancários ao concluir"><input type="checkbox" ${it.pedeDadosBancarios?"checked":""} onchange="upd(['colunas',${ci},'checklists',${ki},'itens',${ii},'pedeDadosBancarios'], this.checked)"> pede dados bancários</label>
+    </div>
+    <div>${fnDesc}</div>`;
+  return d;
+}
+
+function renderLegend() {
+  const t = document.getElementById("legendTable");
+  t.innerHTML = Object.entries(FUNCOES).filter(([k])=>k && k!=="__custom__")
+    .map(([,v]) => `<tr><td>${esc(v.label)}</td><td>${esc(v.desc)}</td></tr>`).join("");
+}
+
+// ── helpers de edição ──
+function upd(path, value) {
+  let o = data;
+  for (let i=0;i<path.length-1;i++) o = o[path[i]];
+  o[path[path.length-1]] = value;
+  save();
+  // re-render só quando muda a função (pra mostrar/esconder a descrição) ou checkbox de coluna
+  if (path[path.length-1] === "fn") render();
+}
+function delItem(ci,ki,ii){ data.colunas[ci].checklists[ki].itens.splice(ii,1); save(); render(); }
+function delCk(ci,ki){ if(confirm("Remover esse grupo e suas tarefas?")){ data.colunas[ci].checklists.splice(ki,1); save(); render(); } }
+function delColuna(ci){ if(confirm("Remover essa coluna inteira?")){ data.colunas.splice(ci,1); save(); render(); } }
+function addColuna(){ data.colunas.push({ id:"col_"+Date.now(), nome:"Nova coluna", cor:"#10b981", status:"", checklists:[] }); save(); render(); }
+function resetar(){ if(confirm("Descartar suas edições e voltar ao processo original?")){ data = structuredClone(ORIGINAL); save(); render(); } }
+
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ── export / resumo ──
+function exportar() {
+  openDlg("JSON das suas mudanças (me mande este conteúdo)", JSON.stringify(data, null, 2), "admissao-fluxo.json");
+}
+function resumo() {
+  let out = "PROCESSO DE ADMISSÃO\n====================\n\n";
+  data.colunas.forEach((col,i)=>{
+    out += `${i+1}. ${col.nome}\n`;
+    col.checklists.forEach(ck=>{
+      out += `   ${ck.nome}\n`;
+      ck.itens.forEach(it=>{
+        const fn = it.fn==="__custom__" ? `[BOTÃO NOVO: ${it.customLabel||"?"} — ${it.customDesc||""}]`
+                 : it.fn ? `[botão: ${FUNCOES[it.fn]?.label||it.fn}]` : "";
+        const flags = [it.obrig?"obrigatória":"opcional", it.pedeLink?"pede link":"", it.pedeDadosBancarios?"pede banco":""].filter(Boolean).join(", ");
+        out += `      • ${it.nome} ${fn} (${flags})\n`;
+      });
+    });
+    out += "\n";
+  });
+  openDlg("Resumo legível", out, "admissao-fluxo.txt");
+}
+let dlgFile = "export.txt";
+function openDlg(title, text, file){ document.getElementById("dlgTitle").textContent=title; document.getElementById("dlgText").value=text; dlgFile=file; document.getElementById("dlg").showModal(); }
+function copyDlg(){ const t=document.getElementById("dlgText"); t.select(); document.execCommand("copy"); }
+function downloadDlg(){ const b=new Blob([document.getElementById("dlgText").value],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=dlgFile; a.click(); }
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Organização dos módulos — revisão</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#1f2937; --mut:#6b7280; --accent:#6366f1; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); }
+  header { position:sticky; top:0; z-index:10; background:#111827; color:#fff; padding:12px 18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:700; }
+  header .sub { font-size:12px; color:#9ca3af; }
+  header .spacer { flex:1; }
+  button.tb { background:#374151; color:#fff; border:0; border-radius:8px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+  button.tb:hover { background:#4b5563; }
+  button.tb.primary { background:var(--accent); } button.tb.primary:hover { background:#4f46e5; }
+  .wrap { padding:18px; max-width:1000px; margin:0 auto; }
+  .rec { background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:12px 16px; margin-bottom:18px; font-size:13px; }
+  .rec h3 { margin:0 0 6px; font-size:14px; }
+  .rec ul { margin:6px 0 0; padding-left:18px; } .rec li { margin:3px 0; }
+  .grp { background:var(--card); border:1px solid var(--line); border-left-width:6px; border-radius:12px; margin-bottom:14px; overflow:hidden; }
+  .grp-head { padding:10px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; }
+  .grp-head input { font-size:15px; font-weight:700; border:0; background:transparent; flex:1; padding:4px; border-radius:6px; }
+  .grp-head input:focus { outline:2px solid var(--accent); background:#fff; }
+  .grp-body { padding:4px 12px 12px; }
+  .grp.collapsed .grp-body { display:none; }
+  .caret { transition:transform .15s; font-size:12px; color:var(--mut); }
+  .grp.collapsed .caret { transform:rotate(-90deg); }
+  .mod { border:1px solid var(--line); border-radius:10px; padding:9px 10px; margin:8px 0; background:#fcfcfd; }
+  .mod.off { opacity:.55; background:#f3f4f6; }
+  .mod-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .mod-name { font-weight:700; font-size:14px; }
+  .badge { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 7px; border-radius:999px; }
+  .b-ativo { background:#dcfce7; color:#166534; } .b-plan { background:#fee2e2; color:#b91c1c; }
+  .b-beta { background:#e0e7ff; color:#3730a3; } .b-dev { background:#fef3c7; color:#92400e; }
+  .nota-min { font-size:12px; color:#9a3412; background:#fff7ed; border:1px solid #fed7aa; border-radius:7px; padding:5px 8px; margin-top:6px; }
+  .mod-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:12px; color:var(--mut); }
+  .mod-row label { display:flex; align-items:center; gap:4px; cursor:pointer; }
+  select, input.unota { font-size:12px; border:1px solid var(--line); border-radius:7px; padding:5px 7px; font-family:inherit; background:#fff; }
+  input.unota { flex:1; min-width:160px; }
+  .updown button { border:1px solid var(--line); background:#fff; border-radius:6px; cursor:pointer; font-size:11px; padding:2px 6px; }
+  dialog { border:0; border-radius:14px; padding:0; max-width:680px; width:92%; }
+  dialog .dlg { padding:18px; }
+  dialog textarea { width:100%; min-height:340px; font-family:ui-monospace,Menlo,monospace; font-size:12px; border:1px solid var(--line); border-radius:8px; padding:10px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🧭 Organização dos módulos</h1>
+  <span class="sub">revisão · mova entre grupos, ligue/desligue do menu, reordene</span>
+  <span class="spacer"></span>
+  <button class="tb" onclick="addGrupo()">+ Grupo</button>
+  <button class="tb" onclick="resumo()">📋 Resumo</button>
+  <button class="tb primary" onclick="exportar()">⬇️ Exportar</button>
+  <button class="tb" onclick="resetar()">↺ Restaurar</button>
+</header>
+
+<div class="wrap">
+  <div class="rec">
+    <h3>💡 Meus apontamentos (já aplicados — você ajusta)</h3>
+    <ul>
+      <li><b>Esconder do menu</b> os não-prontos: Temperaturas, Fichas Técnicas, Biblioteca, Fale com DP (movidos pro grupo "Fora do menu").</li>
+      <li><b>Fechamento de Escala</b> não é módulo — já é função dentro da Escala (fechar prevista/praticada). Tirado do menu.</li>
+      <li><b>VT e VR</b> estão fundindo em <b>Benefícios</b> — marcados pra sair do menu no cutover.</li>
+      <li>Agrupei por <b>persona</b>: Operação · Pessoas & DP · Financeiro · Institucional. As <b>sobreposições</b> (Escala, Gorjetas, Registros de Ponto, Comunicados) estão marcadas em laranja — decida o dono.</li>
+    </ul>
+  </div>
+  <div id="board"></div>
+</div>
+
+<dialog id="dlg"><div class="dlg">
+  <h3 id="dlgTitle" style="margin-top:0"></h3>
+  <textarea id="dlgText" readonly></textarea>
+  <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+    <button class="tb" onclick="copyDlg()">Copiar</button>
+    <button class="tb" onclick="downloadDlg()">Baixar</button>
+    <button class="tb primary" onclick="document.getElementById('dlg').close()">Fechar</button>
+  </div>
+</div></dialog>
+
+<script>
+const ORIGINAL = {
+  grupos: [
+    { id:"ops",  nome:"🍽️ Operação", cor:"#d4a017", modulos:[
+      { id:"reservas", label:"Reservas + CRM", icon:"🎫", status:"ativo", etapa:"beta", visivel:true },
+      { id:"eventos", label:"Eventos", icon:"🎉", status:"ativo", etapa:"dev", visivel:true },
+      { id:"checklists", label:"Checklists", icon:"✅", status:"ativo", etapa:"dev", visivel:true },
+      { id:"contagens", label:"Contagens", icon:"📦", status:"ativo", etapa:"dev", visivel:true },
+      { id:"compras", label:"Compras", icon:"🛒", status:"ativo", etapa:"dev", visivel:true },
+      { id:"ocorrencias", label:"Ocorrências", icon:"🚨", status:"ativo", etapa:"dev", visivel:true },
+      { id:"horarios", label:"Horários", icon:"🕒", status:"ativo", etapa:"beta", visivel:true },
+      { id:"reunioes", label:"Reuniões", icon:"🗣️", status:"ativo", etapa:"dev", visivel:true },
+      { id:"ideias", label:"Banco de Ideias", icon:"💡", status:"ativo", etapa:"dev", visivel:true },
+    ]},
+    { id:"dp", nome:"👥 Pessoas & DP", cor:"#3b82f6", modulos:[
+      { id:"pessoas", label:"Pessoas", icon:"👤", status:"ativo", etapa:"", visivel:true },
+      { id:"admissao", label:"Admissão", icon:"🪪", status:"ativo", etapa:"beta", visivel:true },
+      { id:"escala", label:"Escala", icon:"📅", status:"ativo", etapa:"beta", visivel:true, nota:"Sobreposição: Operação monta, DP acompanha. Sugeri DP — decidir." },
+      { id:"freelas", label:"Freelas", icon:"🎒", status:"ativo", etapa:"beta", visivel:true },
+      { id:"uniformes", label:"Uniformes & EPIs", icon:"🦺", status:"ativo", etapa:"dev", visivel:true },
+      { id:"comunicados", label:"Comunicados", icon:"📣", status:"ativo", etapa:"dev", visivel:true, nota:"Sobreposição: DP ou Operação? — decidir." },
+      { id:"trilha", label:"Trilha do Empregado", icon:"🎯", status:"ativo", etapa:"dev", visivel:true },
+      { id:"excecoes", label:"Registros de Ponto", icon:"🕐", status:"ativo", etapa:"beta", visivel:true },
+    ]},
+    { id:"fin", nome:"💰 Financeiro", cor:"#10b981", modulos:[
+      { id:"beneficios", label:"Benefícios (VT+VR)", icon:"🎁", status:"ativo", etapa:"beta", visivel:true },
+      { id:"gorjetas", label:"Gorjetas", icon:"💸", status:"ativo", etapa:"beta", visivel:true, nota:"Sobreposição: DP calcula, Financeiro paga. Sugeri Financeiro — decidir." },
+    ]},
+    { id:"inst", nome:"🌐 Institucional / Config", cor:"#8b5cf6", modulos:[
+      { id:"sites", label:"Sites", icon:"🌐", status:"ativo", etapa:"beta", visivel:true },
+      { id:"configuracoes", label:"Configurações", icon:"⚙️", status:"ativo", etapa:"", visivel:true },
+    ]},
+    { id:"ocultos", nome:"🚫 Fora do menu (não prontos / fundidos)", cor:"#94a3b8", modulos:[
+      { id:"temperaturas", label:"Temperaturas", icon:"🌡️", status:"planejado", etapa:"dev", visivel:false, nota:"Não pronto — esconder." },
+      { id:"fichas", label:"Fichas Técnicas", icon:"📋", status:"planejado", etapa:"dev", visivel:false, nota:"Não pronto — esconder." },
+      { id:"recursos", label:"Biblioteca", icon:"📚", status:"planejado", etapa:"dev", visivel:false, nota:"Não pronto — esconder." },
+      { id:"faleDp", label:"Fale com DP", icon:"💬", status:"planejado", etapa:"dev", visivel:false, nota:"Não pronto — esconder." },
+      { id:"fechamentoEscala", label:"Fechamento de Escala", icon:"🔒", status:"planejado", etapa:"dev", visivel:false, nota:"Não é módulo — já é função da Escala. Remover." },
+      { id:"vt", label:"Vale Transporte", icon:"🚌", status:"ativo", etapa:"beta", visivel:false, nota:"🔁 Fundir em Benefícios — sai no cutover." },
+      { id:"vr", label:"Vale Refeição", icon:"🍱", status:"ativo", etapa:"beta", visivel:false, nota:"🔁 Fundir em Benefícios — sai no cutover." },
+    ]},
+  ],
+};
+
+const KEY = "modulos_org_v1";
+let data = load();
+function load(){ try{ const s=localStorage.getItem(KEY); if(s) return JSON.parse(s); }catch(e){} return structuredClone(ORIGINAL); }
+function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function render(){
+  const board=document.getElementById("board"); board.innerHTML="";
+  data.grupos.forEach((g,gi)=>{
+    const vis=g.modulos.filter(m=>m.visivel).length;
+    const el=document.createElement("div");
+    el.className="grp"+(g.collapsed?" collapsed":"");
+    el.style.borderLeftColor=g.cor;
+    el.innerHTML=`<div class="grp-head" onclick="if(event.target.tagName!=='INPUT')toggleGrp(${gi})">
+      <span class="caret">▼</span>
+      <input value="${esc(g.nome)}" oninput="upd(['grupos',${gi},'nome'],this.value)" onclick="event.stopPropagation()" />
+      <span class="badge" style="background:${g.cor}22;color:${g.cor}">${g.modulos.length} mód · ${vis} no menu</span>
+    </div>`;
+    const body=document.createElement("div"); body.className="grp-body";
+    g.modulos.forEach((m,mi)=>body.appendChild(modEl(g,gi,m,mi)));
+    el.appendChild(body); board.appendChild(el);
+  });
+}
+
+function modEl(g,gi,m,mi){
+  const d=document.createElement("div"); d.className="mod"+(m.visivel?"":" off");
+  const grpOpts=data.grupos.map(x=>`<option value="${x.id}" ${x.id===g.id?"selected":""}>${esc(x.nome)}</option>`).join("");
+  const statusBadge = m.status==="ativo" ? `<span class="badge b-ativo">ativo</span>` : `<span class="badge b-plan">não pronto</span>`;
+  const etapaBadge = m.etapa==="beta" ? `<span class="badge b-beta">beta</span>` : m.etapa==="dev" ? `<span class="badge b-dev">em dev</span>` : "";
+  d.innerHTML=`
+    <div class="mod-top">
+      <span class="mod-name">${m.icon||""} ${esc(m.label)}</span>
+      ${statusBadge}${etapaBadge}
+      <span class="updown" style="margin-left:auto; display:flex; gap:4px">
+        <button onclick="mover(${gi},${mi},-1)" title="Subir">↑</button>
+        <button onclick="mover(${gi},${mi},1)" title="Descer">↓</button>
+      </span>
+    </div>
+    ${m.nota?`<div class="nota-min">⚠ ${esc(m.nota)}</div>`:""}
+    <div class="mod-row">
+      <label><input type="checkbox" ${m.visivel?"checked":""} onchange="setVis(${gi},${mi},this.checked)"> aparece no menu</label>
+      <span>Grupo:</span>
+      <select onchange="moverGrupo(${gi},${mi},this.value)">${grpOpts}</select>
+      <input class="unota" placeholder="sua observação…" value="${esc(m.obs||"")}" oninput="upd(['grupos',${gi},'modulos',${mi},'obs'],this.value)" />
+    </div>`;
+  return d;
+}
+
+function upd(path,v){ let o=data; for(let i=0;i<path.length-1;i++)o=o[path[i]]; o[path[path.length-1]]=v; save(); }
+function toggleGrp(gi){ data.grupos[gi].collapsed=!data.grupos[gi].collapsed; save(); render(); }
+function setVis(gi,mi,v){ data.grupos[gi].modulos[mi].visivel=v; save(); render(); }
+function mover(gi,mi,dir){ const arr=data.grupos[gi].modulos; const ni=mi+dir; if(ni<0||ni>=arr.length)return; [arr[mi],arr[ni]]=[arr[ni],arr[mi]]; save(); render(); }
+function moverGrupo(gi,mi,destId){ if(data.grupos[gi].id===destId)return; const m=data.grupos[gi].modulos.splice(mi,1)[0]; const dg=data.grupos.find(x=>x.id===destId); dg.modulos.push(m); save(); render(); }
+function addGrupo(){ data.grupos.push({id:"g"+Date.now(),nome:"🆕 Novo grupo",cor:"#0ea5e9",modulos:[]}); save(); render(); }
+function resetar(){ if(confirm("Descartar edições e voltar à proposta original?")){ data=structuredClone(ORIGINAL); save(); render(); } }
+
+function exportar(){ openDlg("JSON da organização (me mande isto)", JSON.stringify(data,null,2), "modulos-organizacao.json"); }
+function resumo(){
+  let o="ORGANIZAÇÃO DOS MÓDULOS\n=======================\n\n";
+  data.grupos.forEach(g=>{
+    o+=`${g.nome}\n`;
+    g.modulos.forEach(m=>{
+      o+=`   ${m.visivel?"✓":"✗(oculto)"} ${m.label}${m.obs?"  — "+m.obs:""}${m.nota?"  ["+m.nota+"]":""}\n`;
+    });
+    o+="\n";
+  });
+  openDlg("Resumo legível", o, "modulos-organizacao.txt");
+}
+let dlgFile="export.txt";
+function openDlg(t,x,f){ document.getElementById("dlgTitle").textContent=t; document.getElementById("dlgText").value=x; dlgFile=f; document.getElementById("dlg").showModal(); }
+function copyDlg(){ const t=document.getElementById("dlgText"); t.select(); document.execCommand("copy"); }
+function downloadDlg(){ const b=new Blob([document.getElementById("dlgText").value],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=dlgFile; a.click(); }
+
+render();
+</script>
+</body>
+</html>
