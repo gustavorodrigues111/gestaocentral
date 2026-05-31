@@ -328,6 +328,24 @@ export type EscalaMes = {
   unidadesPrevistas?: { [empregadoId: string]: { [date: string]: string } };
   unidadesReais?:     { [empregadoId: string]: { [date: string]: string } };
 
+  // ── Integração com Registros de Ponto ───────────────────────────────────
+  // Metadata dos ajustes na PRATICADA — quem ajustou e por quê, pra fechar
+  // o ciclo Ponto→Escala (origem do status, link com o apontamento que
+  // gerou). Mapas paralelos a `real`. Só presente em células ajustadas.
+  realAjustes?: {
+    [empregadoId: string]: {
+      [date: string]: AjusteEscalaMeta;
+    };
+  };
+  // Marcadores de ATRASO (não mudam status — célula continua "trabalho",
+  // mas ganha ícone 🕐). Detectados automaticamente pela regra
+  // `atrasoEntrada` do módulo de Ponto (> 10min após previsto).
+  atrasos?: {
+    [empregadoId: string]: {
+      [date: string]: AtrasoEscalaMeta;
+    };
+  };
+
   // ── Fase 2: PREVISTA FECHADA (snapshot) ──────────────────────────────────
   // Ao fechar a prevista, todas as células ainda vazias são materializadas com
   // o status derivado do horário cadastrado. Depois disso, edição da prevista
@@ -357,6 +375,70 @@ export type EscalaMes = {
   versoesAnteriores?: EscalaSnapshot[];
 
   updatedAt: string;
+};
+
+// ─── Integração Ponto × Escala ─────────────────────────────────────────────
+
+// Motivos do ajuste manual da praticada (gerado pelo MotivoAjusteModal).
+// Mapeia 1-pra-1 com ScheduleStatus.
+export type AjusteEscalaMotivo =
+  | "falta_i"      // 🚫 Falta injustificada
+  | "falta_j"      // 📋 Falta justificada
+  | "atestado"     // 🏥 Atestado médico (= falta_j + obs)
+  | "ferias"       // 🏖️ Férias
+  | "folga"        // 🌴 Folga (troca informal)
+  | "comp"         // 🔄 Compensação (folgou pra compensar trabalho extra)
+  | "comp_trab"    // ⚒️ Comp. trabalhado (trabalhou pra compensar folga futura)
+  | "freela"       // 🎒 Freela (apareceu sem ser da casa)
+  | "trabalho";    // ✓ Trabalho normal (pra marcacaoForaDaEscala)
+
+export const AJUSTE_MOTIVO_LABEL: Record<AjusteEscalaMotivo, string> = {
+  falta_i:   "🚫 Falta injustificada",
+  falta_j:   "📋 Falta justificada",
+  atestado:  "🏥 Atestado médico",
+  ferias:    "🏖️ Férias",
+  folga:     "🌴 Folga",
+  comp:      "🔄 Compensação",
+  comp_trab: "⚒️ Comp. trabalhado",
+  freela:    "🎒 Freela",
+  trabalho:  "✓ Trabalho",
+};
+
+// Cada motivo aponta pro ScheduleStatus correspondente. "atestado" e
+// "falta_j" ambos viram falta_j (observação carrega o sub-motivo).
+export const AJUSTE_MOTIVO_PARA_STATUS: Record<AjusteEscalaMotivo, ScheduleStatus> = {
+  falta_i:   "falta_i",
+  falta_j:   "falta_j",
+  atestado:  "falta_j",
+  ferias:    "ferias",
+  folga:     "folga",
+  comp:      "comp",
+  comp_trab: "comp_trab",
+  freela:    "freela",
+  trabalho:  "trabalho",
+};
+
+export type AjusteEscalaOrigem = "manual" | "ponto_auto" | "solides_sync";
+
+export type AjusteEscalaMeta = {
+  origem: AjusteEscalaOrigem;        // como chegou na praticada
+  motivo?: AjusteEscalaMotivo;       // setado quando origem = "ponto_auto"
+  observacao?: string;               // texto livre opcional (ex: nº do atestado)
+  apontamentoId?: string;            // link com o apontamento de origem
+  apontamentoRuleId?: string;        // ruleId pra exibir contexto
+  ajustadoEm: string;                // ISO
+  ajustadoPor: string;               // pessoaId
+  ajustadoPorNome?: string;
+  // Status anterior ao ajuste — pra undo/auditoria
+  statusAnterior?: ScheduleStatus;
+};
+
+export type AtrasoEscalaMeta = {
+  minutos: number;                   // qtd de minutos de atraso
+  previsto?: string;                 // HH:MM previsto
+  realizado?: string;                // HH:MM efetivo
+  detectadoEm: string;               // ISO — quando o relatório detectou
+  eventoTrilhaId?: string;           // link com EventoTrilha criado
 };
 
 // Status derivado do lifecycle pra UI

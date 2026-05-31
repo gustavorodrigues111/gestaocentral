@@ -67,6 +67,7 @@ import {
   ouvirStatusDoMes,
   type PontoDiaStatusDoc,
 } from "../../core/excecoes/statusDia";
+import { MotivoAjusteModal } from "./MotivoAjusteModal";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
 
@@ -236,6 +237,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Status do DIA (empregado × data) — listener real-time pro mês inteiro.
   // Não bloqueia exibição: começa vazio e popula assim que Firestore responde.
   const [statusDiaMap, setStatusDiaMap] = useState<Map<string, PontoDiaStatusDoc>>(new Map());
+  // Modal "Resolver na escala" aberto (apontamento clicado)
+  const [resolverNaEscala, setResolverNaEscala] = useState<{
+    empregadoId: string;
+    empregadoNome: string;
+    data: string;
+    apontamentoId?: string;
+    apontamentoRuleId?: string;
+    contexto: "ausencia" | "presenca";
+  } | null>(null);
   useEffect(() => {
     if (!rid) { setStatusDiaMap(new Map()); return; }
     const u = ouvirStatusDoMes(rid, anoMes.ano, anoMes.mes, (docs) => {
@@ -1501,6 +1511,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onDarCiencia={() => darCienciaPendentesDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onApagarNota={apagarNotaInterna}
+                  onResolverNaEscala={(exc) => {
+                    const ehAusencia = exc.ruleId === "faltaSemAjuste";
+                    setResolverNaEscala({
+                      empregadoId: grupo.empregadoId,
+                      empregadoNome: grupo.nome,
+                      data: exc.date,
+                      apontamentoId: apontamentosPorChave.get(`${grupo.empregadoId}_${exc.date}_${exc.ruleId}`)?.id,
+                      apontamentoRuleId: exc.ruleId,
+                      contexto: ehAusencia ? "ausencia" : "presenca",
+                    });
+                  }}
                   statusDiaMap={statusDiaMap}
                   onMarcarDiaTratado={async (date) => {
                     if (!rid || !me) return;
@@ -1546,6 +1567,50 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             não-conformidades.
           </p>
         </div>
+      )}
+      {resolverNaEscala && me && (
+        <MotivoAjusteModal
+          rid={rid}
+          empregadoId={resolverNaEscala.empregadoId}
+          empregadoNome={resolverNaEscala.empregadoNome}
+          data={resolverNaEscala.data}
+          apontamentoId={resolverNaEscala.apontamentoId}
+          apontamentoRuleId={resolverNaEscala.apontamentoRuleId}
+          contexto={resolverNaEscala.contexto}
+          me={me}
+          onClose={() => setResolverNaEscala(null)}
+          onSalvo={async () => {
+            // Após o modal aplicar na escala, marca o apontamento como ciência
+            // e cria nota interna documentando a resolução.
+            if (!resolverNaEscala.apontamentoId || !semanaAtiva) return;
+            try {
+              const updated = await marcarApontamentoCiencia(
+                rid,
+                semanaAtiva.weekStart,
+                semanaAtiva.weekEnd,
+                resolverNaEscala.apontamentoId,
+                me,
+              );
+              setStatusSemana(updated);
+              const updated2 = await adicionarNotaInterna(
+                rid,
+                semanaAtiva.weekStart,
+                semanaAtiva.weekEnd,
+                {
+                  empregadoId: resolverNaEscala.empregadoId,
+                  empregadoNome: resolverNaEscala.empregadoNome,
+                  texto: `✓ Resolvido via ajuste de escala em ${new Date(resolverNaEscala.data + "T12:00:00").toLocaleDateString("pt-BR")}`,
+                  origem: "ciencia",
+                  apontamentoIds: [resolverNaEscala.apontamentoId],
+                },
+                me,
+              );
+              setStatusSemana(updated2);
+            } catch (e) {
+              console.warn("Erro pós resolver na escala:", e);
+            }
+          }}
+        />
       )}
     </div>
   );
@@ -1640,6 +1705,7 @@ function ColaboradorBlock({
   onEnviarWhats,
   onDarCiencia,
   onApagarNota,
+  onResolverNaEscala,
   statusDiaMap,
   onMarcarDiaTratado,
   onReabrirDia,
@@ -1657,6 +1723,7 @@ function ColaboradorBlock({
   onEnviarWhats: () => void;
   onDarCiencia: () => void;
   onApagarNota: (notaId: string) => void;
+  onResolverNaEscala?: (exc: ExceptionRecord) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
   onMarcarDiaTratado?: (date: string) => Promise<void>;
   onReabrirDia?: (date: string) => Promise<void>;
@@ -1953,9 +2020,21 @@ function ColaboradorBlock({
                         </span>
                       )}
                     </span>
-                    {/* Ações por linha — só "reabrir" agora.
-                        "Ciência" virou ação em lote no header do empregado
-                        (marca checkbox + botão "👁 Dar ciência" no topo). */}
+                    {/* Ações por linha */}
+                    {/* "📋 Resolver na escala" só pra ausência/presença divergente
+                        (faltaSemAjuste, marcacaoForaDaEscala). Abre MotivoAjusteModal
+                        que pergunta motivo e aplica na escala praticada. */}
+                    {podeAnotar && !ciencia && onResolverNaEscala
+                      && (e.ruleId === "faltaSemAjuste" || e.ruleId === "marcacaoForaDaEscala") && (
+                      <button
+                        type="button"
+                        onClick={() => onResolverNaEscala(e)}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap mt-0.5 font-medium"
+                        title="Resolver na escala — abre seletor de motivo (falta, férias, atestado, etc) e aplica na escala praticada"
+                      >
+                        📋 Resolver na escala
+                      </button>
+                    )}
                     {podeAnotar && (enviado || ciencia) && (
                       <button
                         type="button"
