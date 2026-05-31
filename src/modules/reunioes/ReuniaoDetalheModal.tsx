@@ -39,6 +39,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const [gerarTipo, setGerarTipo] = useState<"ideia" | "ocorrencia" | null>(null);
   const [geradosIdeias, setGeradosIdeias] = useState<Ideia[]>([]);
   const [geradosOcorrencias, setGeradosOcorrencias] = useState<Ocorrencia[]>([]);
+  const [virarTarefaAcao, setVirarTarefaAcao] = useState<AcaoReuniao | null>(null);
 
   // Ideias e ocorrências geradas NESTA reunião (lookup pra exibir na ata)
   useEffect(() => {
@@ -339,6 +340,16 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const isPlanejada = reuniao.status === "planejada";
   const isRealizada = reuniao.status === "realizada";
   const isCancelada = reuniao.status === "cancelada";
+  const aoVivo = !!reuniao.iniciadaEm && isPlanejada;
+
+  async function iniciarReuniao() {
+    if (!me) return;
+    await patchReuniao({
+      iniciadaEm: new Date().toISOString(),
+      iniciadaPor: me.id,
+    });
+    setTab("ata"); // pula direto pra ata quando inicia
+  }
 
   return (
     <Modal
@@ -360,11 +371,33 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
             Status: <span className="font-medium">{reuniao.status}</span>
           </div>
 
+          {aoVivo && (
+            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+              </span>
+              <span className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">
+                Reunião em andamento
+              </span>
+              {reuniao.iniciadaEm && (
+                <span className="text-[11px] text-emerald-700 dark:text-emerald-400">
+                  desde {new Date(reuniao.iniciadaEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
+            </div>
+          )}
+
           {podeConfig && (
             <div className="flex gap-2 mt-2 flex-wrap">
+              {isPlanejada && !aoVivo && (
+                <Button size="sm" onClick={iniciarReuniao} disabled={saving}>▶️ Iniciar reunião</Button>
+              )}
               {isPlanejada && (
                 <>
-                  <Button size="sm" onClick={marcarRealizada} disabled={saving}>✓ Marcar como realizada</Button>
+                  <Button size="sm" onClick={marcarRealizada} disabled={saving}>
+                    {aoVivo ? "🛑 Finalizar reunião" : "✓ Marcar como realizada"}
+                  </Button>
                   <Button variant="secondary" size="sm" onClick={cancelarReuniao} disabled={saving}>✕ Cancelar reunião</Button>
                 </>
               )}
@@ -571,11 +604,19 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                         {a.status !== "feito" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "feito")}>✓ Feito</Button>}
                         {a.status !== "pendente" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "pendente")}>↻ Reabrir</Button>}
                         {a.status !== "cancelado" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "cancelado")}>✕</Button>}
+                        {!a.tarefaIdGerada && (
+                          <Button variant="secondary" size="sm" onClick={() => setVirarTarefaAcao(a)}>📋 Virar tarefa</Button>
+                        )}
                         {a.responsavelEmpregadoId && <Button variant="secondary" size="sm" onClick={() => virarEventoTrilha(a)}>🎯 Trilha</Button>}
                         <Button variant="danger" size="sm" onClick={() => removerAcao(a.id)}>×</Button>
                       </div>
                     )}
                   </div>
+                  {a.tarefaIdGerada && (
+                    <div className="mt-2 inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded">
+                      ✓ Virou tarefa no Gestor de Tarefas
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -637,6 +678,23 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           onCriar={criarGerado}
         />
       )}
+      {virarTarefaAcao && me && (
+        <VirarAcaoTarefaModal
+          acao={virarTarefaAcao}
+          reuniao={reuniao}
+          restaurantId={restaurantId}
+          empregados={empregados}
+          autor={{ id: me.id, nome: me.nome }}
+          onClose={() => setVirarTarefaAcao(null)}
+          onCriada={async (tarefaId) => {
+            const novasAcoes = (reuniao.acoes || []).map(a =>
+              a.id === virarTarefaAcao.id ? { ...a, tarefaIdGerada: tarefaId } : a
+            );
+            await patchReuniao({ acoes: novasAcoes });
+            setVirarTarefaAcao(null);
+          }}
+        />
+      )}
     </Modal>
   );
 }
@@ -694,6 +752,192 @@ function GerarRegistroModal({ tipo, onClose, onCriar }: {
             disabled={!titulo.trim()}
           >
             Registrar
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Mini-modal pra virar uma Ação da reunião em Tarefa formal
+function VirarAcaoTarefaModal({ acao, reuniao, restaurantId, empregados, autor, onClose, onCriada }: {
+  acao: AcaoReuniao;
+  reuniao: Reuniao;
+  restaurantId: string;
+  empregados: Empregado[];
+  autor: { id: string; nome: string };
+  onClose: () => void;
+  onCriada: (tarefaId: string) => Promise<void>;
+}) {
+  const [titulo, setTitulo] = useState(acao.descricao);
+  const [descricao, setDescricao] = useState(`Ação registrada na reunião "${reuniao.titulo}" em ${new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}.${acao.observacao ? `\n\n${acao.observacao}` : ""}`);
+  const [prazo, setPrazo] = useState(acao.prazo || "");
+  const [projetos, setProjetos] = useState<Array<{ id: string; nome: string; emoji?: string; cor?: string }>>([]);
+  const [subprojetos, setSubprojetos] = useState<Array<{ id: string; nome: string; projetoId: string }>>([]);
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const [projetoId, setProjetoId] = useState("");
+  const [subprojetoId, setSubprojetoId] = useState("");
+  const [responsavelId, setResponsavelId] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [err, setErr] = useState("");
+
+  useEffect(() => {
+    const u1 = onSnapshot(collection(db, "tarefaProjetos"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome: string; emoji?: string; cor?: string; deletadoEm?: string });
+      setProjetos(list.filter(p => !p.deletadoEm));
+    });
+    const u2 = onSnapshot(collection(db, "tarefaSubprojetos"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome: string; projetoId: string; deletadoEm?: string });
+      setSubprojetos(list.filter(s => !s.deletadoEm));
+    });
+    const u3 = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoas(list);
+    });
+    return () => { u1(); u2(); u3(); };
+  }, []);
+
+  // Pré-seleciona responsável pela pessoa vinculada ao empregado da ação
+  useEffect(() => {
+    if (responsavelId || !acao.responsavelEmpregadoId) return;
+    const emp = empregados.find(e => e.id === acao.responsavelEmpregadoId);
+    if (emp && emp.pessoaId) {
+      const p = pessoas.find(x => x.id === emp.pessoaId);
+      if (p) setResponsavelId(p.id);
+    }
+  }, [pessoas, empregados, responsavelId, acao.responsavelEmpregadoId]);
+
+  // Pré-seleciona "Projetos Temporários" se existir, senão o 1º projeto
+  useEffect(() => {
+    if (projetoId || projetos.length === 0) return;
+    const temp = projetos.find(p => p.id === "proj-temporarios") || projetos[0];
+    setProjetoId(temp.id);
+  }, [projetos, projetoId]);
+
+  // Atualiza subprojeto quando muda o projeto
+  const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
+  useEffect(() => {
+    if (subsDoProjeto.length > 0 && !subsDoProjeto.find(s => s.id === subprojetoId)) {
+      setSubprojetoId(subsDoProjeto[0].id);
+    }
+  }, [projetoId, subprojetoId, subsDoProjeto]);
+
+  async function salvar() {
+    if (!titulo.trim()) { setErr("Título obrigatório"); return; }
+    if (!projetoId || !subprojetoId) { setErr("Escolha projeto e subprojeto"); return; }
+    if (!responsavelId) { setErr("Escolha o responsável"); return; }
+    setSalvando(true);
+    setErr("");
+    try {
+      const { criarTarefa } = await import("../tarefas/repository");
+      const respNome = pessoas.find(p => p.id === responsavelId)?.nome || "";
+      const proj = projetos.find(p => p.id === projetoId);
+      const tarefaId = await criarTarefa({
+        projetoId, subprojetoId,
+        titulo: titulo.trim(),
+        descricao: descricao.trim() || undefined,
+        responsavelId,
+        responsavelNome: respNome,
+        coResponsaveis: [],
+        restaurantIds: [restaurantId],
+        prazo: prazo || null,
+        status: "a_fazer",
+        prioridade: "normal",
+        origem: "reuniao",
+        origemRefId: reuniao.id,
+        origemRefLabel: `Reunião: ${reuniao.titulo}`,
+        corHerdada: proj?.cor,
+        criadoPor: autor.id,
+        criadoPorNome: autor.nome,
+      });
+      await onCriada(tarefaId);
+    } catch (e) {
+      console.error(e);
+      setErr(e instanceof Error ? e.message : "Erro");
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">📋 Virar em Tarefa</h3>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Título *</label>
+            <Input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="mt-1" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Descrição</label>
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={3}
+              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Projeto *</label>
+              <select
+                value={projetoId}
+                onChange={(e) => setProjetoId(e.target.value)}
+                className="w-full mt-1 px-2 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                {projetos.map(p => (
+                  <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Subprojeto *</label>
+              <select
+                value={subprojetoId}
+                onChange={(e) => setSubprojetoId(e.target.value)}
+                className="w-full mt-1 px-2 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                {subsDoProjeto.map(s => (
+                  <option key={s.id} value={s.id}>{s.nome}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Responsável *</label>
+              <select
+                value={responsavelId}
+                onChange={(e) => setResponsavelId(e.target.value)}
+                className="w-full mt-1 px-2 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                <option value="">— escolha —</option>
+                {pessoas.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 dark:text-gray-300">Prazo</label>
+              <Input
+                type="date"
+                value={prazo}
+                onChange={(e) => setPrazo(e.target.value)}
+                className="mt-1"
+              />
+            </div>
+          </div>
+          {err && <div className="text-sm text-rose-600">{err}</div>}
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="ghost" onClick={onClose} disabled={salvando}>Cancelar</Button>
+          <Button onClick={salvar} disabled={salvando}>
+            {salvando ? "Criando..." : "Criar tarefa"}
           </Button>
         </div>
       </div>

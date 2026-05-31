@@ -1029,6 +1029,9 @@ export type AcaoReuniao = {
   status: AcaoStatus;
   concluidoEm?: string | null;
   observacao?: string;
+  // Se a ação foi "virada em tarefa formal" no Gestor de Tarefas,
+  // guarda o ID da tarefa criada (linka pra Tarefas, evita duplicação).
+  tarefaIdGerada?: string | null;
 };
 
 export type ParticipanteReuniao = {
@@ -1049,6 +1052,11 @@ export type Reuniao = {
   ata?: string;                  // texto livre
   acoes: AcaoReuniao[];
   status: ReuniaoStatus;
+  // Modo "reunião ao vivo": marca quando o líder clicou "▶️ Iniciar".
+  // Mostra cronômetro até virar realizada/cancelada. Status continua
+  // "planejada" durante a execução; vira "realizada" quando finalizada.
+  iniciadaEm?: string | null;    // ISO
+  iniciadaPor?: string | null;   // pessoaId
   criadoEm: string;
   criadoPor: string;
   atualizadoEm: string;
