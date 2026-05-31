@@ -1719,34 +1719,62 @@ function ColaboradorBlock({
                 </div>
               )}
             </div>
-            {/* Conteúdo: 2 colunas se AMBAS têm itens, senão 1 col */}
-            <div className={ambasComConteudo ? "grid grid-cols-1 md:grid-cols-2 gap-2.5" : "space-y-2.5"}>
-              {excAlinhamento.length > 0 && (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/40 p-2.5">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400">
-                      🗣️ Alinhamento
-                    </span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
-                      ({excAlinhamento.length})
-                    </span>
-                  </div>
+            {/* Conteúdo: SEMPRE 2 colunas (Alinhamento × Ajuste) lado a lado.
+                Coluna sem itens fica discreta com placeholder, mas mantém
+                a comparação visual consistente. */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+              {/* Coluna Alinhamento */}
+              <div className={`rounded-lg border p-2.5 ${
+                excAlinhamento.length > 0
+                  ? "border-amber-200 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-900/10"
+                  : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
+              }`}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                    excAlinhamento.length > 0
+                      ? "text-amber-700 dark:text-amber-400"
+                      : "text-gray-400 dark:text-gray-600"
+                  }`}>
+                    🗣️ Alinhamento
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                    ({excAlinhamento.length})
+                  </span>
+                </div>
+                {excAlinhamento.length > 0 ? (
                   <ol className="space-y-1.5">{renderExcList(excAlinhamento)}</ol>
-                </div>
-              )}
-              {excAjuste.length > 0 && (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/40 p-2.5">
-                  <div className="flex items-center gap-1.5 mb-1.5">
-                    <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">
-                      ✏️ Ajuste de batida
-                    </span>
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
-                      ({excAjuste.length})
-                    </span>
+                ) : (
+                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
+                    Nada pra alinhar
                   </div>
-                  <ol className="space-y-1.5">{renderExcList(excAjuste)}</ol>
+                )}
+              </div>
+              {/* Coluna Ajuste de batida */}
+              <div className={`rounded-lg border p-2.5 ${
+                excAjuste.length > 0
+                  ? "border-rose-200 dark:border-rose-800/40 bg-rose-50/30 dark:bg-rose-900/10"
+                  : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
+              }`}>
+                <div className="flex items-center gap-1.5 mb-1.5">
+                  <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                    excAjuste.length > 0
+                      ? "text-rose-700 dark:text-rose-400"
+                      : "text-gray-400 dark:text-gray-600"
+                  }`}>
+                    ✏️ Ajuste de batida
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                    ({excAjuste.length})
+                  </span>
                 </div>
-              )}
+                {excAjuste.length > 0 ? (
+                  <ol className="space-y-1.5">{renderExcList(excAjuste)}</ol>
+                ) : (
+                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
+                    Nada pra ajustar
+                  </div>
+                )}
+              </div>
             </div>
           </div>
           );
