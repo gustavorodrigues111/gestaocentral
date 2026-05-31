@@ -17,6 +17,8 @@ type IdeiaLite = {
   categoria?: string;
   restaurantId: string;
   status: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
 };
 
 type OcorrenciaLite = {
@@ -27,6 +29,8 @@ type OcorrenciaLite = {
   data?: string;
   restaurantId: string;
   status: string;
+  criadaPor?: string;
+  criadaPorNome?: string;
 };
 
 export type PuxarEscolha =
@@ -40,13 +44,16 @@ type Props = {
   restaurantId?: string;
   // Título do modal. Default: "Puxar de Banco de Ideias / Ocorrências"
   titulo?: string;
+  // Se setado, habilita toggle "Minhas / Todas" filtrando por criadoPor.
+  pessoaIdAtual?: string;
 };
 
-export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, titulo }: Props) {
+export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, titulo, pessoaIdAtual }: Props) {
   const [ideias, setIdeias] = useState<IdeiaLite[]>([]);
   const [ocorrencias, setOcorrencias] = useState<OcorrenciaLite[]>([]);
   const [search, setSearch] = useState("");
   const [filtroTipo, setFiltroTipo] = useState<"todos" | "ideia" | "ocorrencia">("todos");
+  const [escopo, setEscopo] = useState<"todas" | "minhas">("todas");
 
   useEffect(() => {
     const u1 = onSnapshot(collection(db, "ideias"), snap => {
@@ -60,17 +67,20 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
 
   const filtroRest = (rid: string) => !restaurantId || rid === restaurantId;
   const filtroBusca = (txt: string) => !search.trim() || txt.toLowerCase().includes(search.toLowerCase());
+  const ehMinha = (criadoPor?: string) => escopo === "todas" || (!!pessoaIdAtual && criadoPor === pessoaIdAtual);
 
   const ideiasAtivas = ideias.filter(i =>
     filtroRest(i.restaurantId) &&
     i.status !== "puxada_tarefa" &&
-    i.status !== "descartada"
+    i.status !== "descartada" &&
+    ehMinha(i.criadoPor)
   );
   const ocorrenciasAtivas = ocorrencias.filter(o =>
     filtroRest(o.restaurantId) &&
     o.status !== "puxada_tarefa" &&
     o.status !== "arquivada" &&
-    o.status !== "resolvida"
+    o.status !== "resolvida" &&
+    ehMinha(o.criadaPor)
   );
 
   return (
@@ -79,7 +89,7 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
         <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">
           {titulo || "Puxar de Banco de Ideias / Ocorrências"}
         </h3>
-        <div className="flex gap-2 mb-3">
+        <div className="flex gap-2 mb-2">
           <input
             type="text"
             placeholder="🔍 Buscar..."
@@ -97,6 +107,24 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
             <option value="ocorrencia">🚨 Ocorrências</option>
           </select>
         </div>
+        {pessoaIdAtual && (
+          <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-3">
+            {(["todas", "minhas"] as const).map(e => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setEscopo(e)}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                  escopo === e
+                    ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+                    : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                }`}
+              >
+                {e === "todas" ? "Todas" : "Só minhas"}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto space-y-2">
           {(filtroTipo === "todos" || filtroTipo === "ideia") && ideiasAtivas
             .filter(i => filtroBusca(i.titulo + " " + (i.descricao || "")))

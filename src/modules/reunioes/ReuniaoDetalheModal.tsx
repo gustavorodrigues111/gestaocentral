@@ -624,6 +624,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
       {puxarAberto && (
         <PuxarIdeiaOcorrenciaModal
           restaurantId={restaurantId}
+          pessoaIdAtual={me?.id}
           titulo="Puxar pra pauta desta reunião"
           onClose={() => setPuxarAberto(false)}
           onEscolher={puxarParaPauta}
