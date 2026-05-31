@@ -1761,9 +1761,13 @@ function ColaboradorBlock({
               <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">
                 {exc.length} {exc.length === 1 ? "ocorrência" : "ocorrências"}
               </span>
-              <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls} ml-1`}>
-                {statusLabel}
-              </span>
+              {/* Badge só pra status com ação tomada — "pendente" é o default
+                  e não precisa de selo (basta a presença do dia na lista). */}
+              {status !== "pendente" && (
+                <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls} ml-1`}>
+                  {statusLabel}
+                </span>
+              )}
               {podeAnotar && (
                 <div className="ml-auto flex gap-1">
                   {status !== "tratado" && status !== "corrigido_solides" && onMarcarDiaTratado && (
