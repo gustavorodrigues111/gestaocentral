@@ -1578,7 +1578,11 @@ function agruparPorColabDate(
   for (const e of rows) {
     const cpfD = (e.cpf || "").replace(/\D/g, "");
     const empId = empIdByCpf.get(cpfD) ?? "";
-    const k = `${e.employeeId}_${e.cpf}`;
+    // Chave normalizada: prefere CPF puro (estável entre semanas),
+    // fallback pra empregadoId Sólides + nome. Antes era
+    // `${employeeId}_${cpf}` que duplicava quando CPF vinha formatado
+    // diferente ou employeeId era 0 em uma das semanas (modo "Mês todo").
+    const k = cpfD || `s_${e.employeeId}_${e.employeeName}`;
     let g = map.get(k);
     if (!g) {
       g = { empregadoId: empId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
