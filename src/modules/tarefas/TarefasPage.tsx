@@ -1457,7 +1457,15 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
   );
 }
 
-// ─── VIEW: Calendário (mês) ────────────────────────────────────────────────
+// ─── VIEW: Calendário (semana) ─────────────────────────────────────────────
+
+function inicioSemanaSeg(yyyymmdd: string): string {
+  const d = new Date(yyyymmdd + "T12:00:00");
+  const dow = d.getDay(); // 0=Dom..6=Sab
+  const offset = dow === 0 ? -6 : 1 - dow; // shift pra segunda
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().slice(0, 10);
+}
 
 function CalendarioView({ tarefas, projetos, onAbrir }: {
   tarefas: Tarefa[];
@@ -1465,99 +1473,212 @@ function CalendarioView({ tarefas, projetos, onAbrir }: {
   onAbrir: (id: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
-  const [mes, setMes] = useState(hoje.slice(0, 7)); // YYYY-MM
+  const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
+  const [expandirFds, setExpandirFds] = useState<boolean>(() => {
+    try { return localStorage.getItem("tarefas_calendario_fds") === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { localStorage.setItem("tarefas_calendario_fds", expandirFds ? "1" : "0"); } catch {}
+  }, [expandirFds]);
 
-  const [ano, m] = mes.split("-").map(Number);
-  const primeiroDia = new Date(ano, m - 1, 1);
-  const ultimoDia = new Date(ano, m, 0);
-  const diasNoMes = ultimoDia.getDate();
-  const offset = primeiroDia.getDay(); // 0=Dom
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(semanaInicio + "T12:00:00");
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
+  });
+  const labelsDoW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 
   const tarefasPorDia = new Map<string, Tarefa[]>();
   tarefas.forEach(t => {
-    if (!t.prazo) return;
-    if (!t.prazo.startsWith(mes)) return;
+    if (!t.prazo || !dias.includes(t.prazo)) return;
     const arr = tarefasPorDia.get(t.prazo) || [];
     arr.push(t);
     tarefasPorDia.set(t.prazo, arr);
   });
 
   const semProprio = tarefas.filter(t => !t.prazo);
+  const atrasadas = tarefas.filter(t =>
+    t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada"
+  );
+  const totalSemana = dias.reduce((acc, d) => acc + (tarefasPorDia.get(d)?.length || 0), 0);
+
+  function navegarSemanas(delta: number) {
+    const d = new Date(semanaInicio + "T12:00:00");
+    d.setDate(d.getDate() + delta * 7);
+    setSemanaInicio(d.toISOString().slice(0, 10));
+  }
+
+  function fmtDia(yyyymmdd: string, comAno = false): string {
+    const d = new Date(yyyymmdd + "T12:00:00");
+    return d.toLocaleDateString("pt-BR", comAno
+      ? { day: "2-digit", month: "short", year: "numeric" }
+      : { day: "2-digit", month: "short" });
+  }
+
+  const titulo = `${fmtDia(dias[0])} — ${fmtDia(dias[6], true)}`;
+
+  // Conta tarefas ATIVAS do fim de semana, pra decidir se colapsado vale a pena
+  const fdsAtivos = ["sab", "dom"]; void fdsAtivos;
+  const tarefasFds = [...(tarefasPorDia.get(dias[5]) || []), ...(tarefasPorDia.get(dias[6]) || [])];
+  const tarefasFdsAtivas = tarefasFds.filter(t => t.status !== "concluida" && t.status !== "cancelada");
+
+  function renderDia(data: string, label: string, dia: number) {
+    const ehHoje = data === hoje;
+    const ehFds = dia >= 5;
+    const lista = tarefasPorDia.get(data) || [];
+    return (
+      <div
+        key={data}
+        className={`flex flex-col min-h-[200px] rounded-lg border p-2 ${
+          ehHoje
+            ? "border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10"
+            : ehFds
+              ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40"
+              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+        }`}
+      >
+        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : "border-gray-200 dark:border-gray-800"}`}>
+          <div>
+            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 dark:text-gray-400"}`}>{label}</div>
+            <div className={`text-base font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
+              {Number(data.slice(8, 10))}
+              <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
+            </div>
+          </div>
+          {lista.length > 0 && (
+            <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
+          )}
+        </div>
+        <div className="space-y-1 flex-1 overflow-y-auto">
+          {lista.length === 0 ? (
+            <div className="text-[10px] text-gray-400 dark:text-gray-600 italic">—</div>
+          ) : (
+            lista.map(t => {
+              const proj = projetos.find(p => p.id === t.projetoId);
+              const cor = t.corHerdada || proj?.cor || "#6b7280";
+              const concluida = t.status === "concluida";
+              return (
+                <button
+                  key={t.id}
+                  onClick={() => onAbrir(t.id)}
+                  className={`w-full text-left text-[11px] px-1.5 py-1 rounded cursor-pointer truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""}`}
+                  style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
+                  title={t.titulo}
+                >
+                  {t.titulo}
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => {
-            const d = new Date(ano, m - 2, 1);
-            setMes(d.toISOString().slice(0, 7));
-          }}>‹</Button>
-          <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
-          <Button size="sm" variant="ghost" onClick={() => {
-            const d = new Date(ano, m, 1);
-            setMes(d.toISOString().slice(0, 7));
-          }}>›</Button>
-          <Button size="sm" variant="ghost" onClick={() => setMes(hoje.slice(0, 7))}>Hoje</Button>
+          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[180px] text-center">
+            {titulo}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
         </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400">
-          {tarefas.filter(t => t.prazo && t.prazo.startsWith(mes)).length} tarefa(s) no mês
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={expandirFds}
+              onChange={(e) => setExpandirFds(e.target.checked)}
+              className="accent-indigo-600"
+            />
+            Expandir fim de semana
+          </label>
+          <span className="text-xs text-gray-500 dark:text-gray-400">{totalSemana} tarefa(s)</span>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 mb-2 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 text-center">
-        <div>D</div><div>S</div><div>T</div><div>Q</div><div>Q</div><div>S</div><div>S</div>
-      </div>
-      <div className="grid grid-cols-7 gap-1">
-        {Array.from({ length: offset }).map((_, i) => <div key={"v" + i} />)}
-        {Array.from({ length: diasNoMes }).map((_, i) => {
-          const dia = i + 1;
-          const data = `${mes}-${String(dia).padStart(2, "0")}`;
-          const ehHoje = data === hoje;
-          const lista = tarefasPorDia.get(data) || [];
-          return (
-            <div
-              key={dia}
-              className={`min-h-[40px] md:min-h-[80px] p-1 rounded-md border ${ehHoje ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"} ${lista.length > 0 ? "cursor-pointer md:cursor-default" : ""}`}
-              onClick={() => {
-                // Mobile: tap no dia abre 1ª tarefa do dia (com aria pra leitor de tela)
-                if (window.matchMedia("(max-width: 767px)").matches && lista[0]) {
-                  onAbrir(lista[0].id);
-                }
-              }}
-            >
-              <div className={`flex items-center justify-between gap-1 text-[10px] font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-400"} mb-1`}>
-                <span>{dia}</span>
-                {lista.length > 0 && (
-                  <span className="md:hidden inline-flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full bg-indigo-500 text-white text-[9px]">
-                    {lista.length}
-                  </span>
-                )}
+      {/* Grid de dias — 5 (úteis) + 2 ou +1 (fds colapsado) */}
+      <div className={`grid gap-2 ${expandirFds ? "grid-cols-2 sm:grid-cols-4 md:grid-cols-7" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"}`}>
+        {dias.slice(0, 5).map((d, i) => renderDia(d, labelsDoW[i], i))}
+        {expandirFds ? (
+          dias.slice(5, 7).map((d, i) => renderDia(d, labelsDoW[5 + i], 5 + i))
+        ) : (
+          <button
+            onClick={() => setExpandirFds(true)}
+            className="flex flex-col min-h-[200px] rounded-lg border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 p-2 text-left hover:border-gray-400 dark:hover:border-gray-600 transition-colors"
+            title="Clique pra expandir sábado e domingo"
+          >
+            <div className="flex items-baseline justify-between mb-1.5 pb-1.5 border-b border-gray-200 dark:border-gray-800">
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Sáb · Dom</div>
+                <div className="text-base font-bold text-gray-700 dark:text-gray-300">
+                  {Number(dias[5].slice(8, 10))}–{Number(dias[6].slice(8, 10))}
+                </div>
               </div>
-              <div className="hidden md:block space-y-0.5">
-                {lista.slice(0, 3).map(t => {
+              {tarefasFds.length > 0 && (
+                <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
+              )}
+            </div>
+            {tarefasFdsAtivas.length === 0 ? (
+              <div className="text-[11px] text-gray-400 dark:text-gray-600 italic flex-1 flex items-center justify-center">
+                Fim de semana livre
+              </div>
+            ) : (
+              <div className="space-y-1 flex-1 overflow-y-auto">
+                {tarefasFdsAtivas.slice(0, 3).map(t => {
                   const proj = projetos.find(p => p.id === t.projetoId);
                   const cor = t.corHerdada || proj?.cor || "#6b7280";
                   return (
                     <div
                       key={t.id}
-                      onClick={(e) => { e.stopPropagation(); onAbrir(t.id); }}
-                      className="text-[10px] px-1 py-0.5 rounded cursor-pointer truncate hover:opacity-80"
-                      style={{ background: cor + "30", color: cor }}
+                      className="text-[11px] px-1.5 py-1 rounded truncate"
+                      style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
                       title={t.titulo}
                     >
                       {t.titulo}
                     </div>
                   );
                 })}
-                {lista.length > 3 && <div className="text-[9px] text-gray-500">+{lista.length - 3}</div>}
+                {tarefasFdsAtivas.length > 3 && (
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
+                )}
+                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
               </div>
-            </div>
-          );
-        })}
+            )}
+          </button>
+        )}
       </div>
 
+      {/* Atrasadas */}
+      {atrasadas.length > 0 && (
+        <details className="mt-4" open>
+          <summary className="text-xs font-semibold text-rose-600 dark:text-rose-400 cursor-pointer">
+            🔥 {atrasadas.length} atrasada(s)
+          </summary>
+          <div className="mt-2 space-y-1 text-sm">
+            {atrasadas.slice(0, 20).map(t => {
+              const proj = projetos.find(p => p.id === t.projetoId);
+              const cor = t.corHerdada || proj?.cor || "#6b7280";
+              return (
+                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-rose-200 dark:border-rose-900/40 cursor-pointer hover:shadow-sm flex items-center gap-2" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                  <span style={{ color: cor }}>{proj?.emoji}</span>
+                  <span className="flex-1">{t.titulo}</span>
+                  <span className="text-[10px] text-rose-600 dark:text-rose-400">{t.prazo}</span>
+                </div>
+              );
+            })}
+            {atrasadas.length > 20 && (
+              <div className="text-[10px] text-gray-500">+{atrasadas.length - 20} mais (use a lista)</div>
+            )}
+          </div>
+        </details>
+      )}
+
       {semProprio.length > 0 && (
-        <details className="mt-4">
+        <details className="mt-3">
           <summary className="text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
             {semProprio.length} tarefa(s) sem prazo
           </summary>
