@@ -405,6 +405,20 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           motivo,
           registradoPor: me.id,
         });
+        // Fase 7: reavalia exames do empregado pela nova área. Desativa
+        // os que não se aplicam mais e cria os novos exames aplicáveis.
+        try {
+          const { reavaliarExamesDoEmpregado } = await import("../exames/gerador");
+          const r = await reavaliarExamesDoEmpregado(
+            empregado.id,
+            { id: me.id, nome: me.nome || "" },
+          );
+          if (r.desativados > 0 || r.criados > 0) {
+            console.info(`[exames] mudança de cargo: ${r.desativados} desativado(s), ${r.criados} criado(s)`);
+          }
+        } catch (e) {
+          console.warn("[exames] falha ao reavaliar:", e);
+        }
       }
     }
   }

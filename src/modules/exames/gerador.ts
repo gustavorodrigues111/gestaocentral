@@ -138,7 +138,7 @@ function diasEntre(a: string, b: string): number {
 
 // ─── Cascata Admissão → cria ExameEmpregado pra cada tipo aplicável ────
 
-import type { Cargo, Empregado } from "../../core/types";
+import type { Cargo, Empregado, Area } from "../../core/types";
 import { criarExame } from "./repository";
 
 export async function gerarExamesParaAdmissao(input: {
@@ -161,12 +161,10 @@ export async function gerarExamesParaAdmissao(input: {
 
   let criados = 0;
   for (const tipo of tipos) {
-    // Filtra aplicabilidade
-    if (tipo.aplicabilidade === "manipulador") {
-      if (input.cargoArea !== "Cozinha" && input.cargoArea !== "Bar") continue;
-    }
-    if (tipo.aplicabilidade === "custom") {
-      if (!input.cargoId || !(tipo.cargoIdsCustom || []).includes(input.cargoId)) continue;
+    // Filtra áreas aplicáveis: vazio = todas; senão, só as listadas
+    const areas = tipo.areasAplicaveis || [];
+    if (areas.length > 0) {
+      if (!input.cargoArea || !areas.includes(input.cargoArea as Area)) continue;
     }
     // Verifica se já existe (idempotência por empregado × tipo)
     const existSnap = await getDocs(query(
@@ -197,9 +195,67 @@ export async function gerarExamesParaAdmissao(input: {
   return criados;
 }
 
-// ─── Cascata Demissão → desativa todos os exames do empregado ──────────
+// ─── Reavaliação por mudança de cargo/área ─────────────────────────────
+// Chamada quando o cargo do empregado muda. Pra cada exame ativo,
+// verifica se a nova área ainda exige aquele exame. Se não, desativa.
+// Pra cada tipo aplicável que o empregado ainda não tem, cria novo
+// ExameEmpregado.
 
 import { desativarExame, listarExamesDeEmpregado } from "./repository";
+
+export async function reavaliarExamesDoEmpregado(
+  empregadoId: string,
+  autor: { id: string; nome: string },
+): Promise<{ desativados: number; criados: number }> {
+  const emp = await carregarEmpregado(empregadoId);
+  if (!emp || emp.estaAtivo === false) return { desativados: 0, criados: 0 };
+  const cargo = emp.cargoId ? await carregarCargo(emp.cargoId) : null;
+
+  // Tipos ativos do restaurante
+  const tiposSnap = await getDocs(query(
+    collection(db, COL_TIPOS),
+    where("restaurantId", "==", emp.restaurantId),
+    where("ativo", "==", true),
+  ));
+  const tipos = tiposSnap.docs.map(d => ({ id: d.id, ...d.data() }) as ExameTipoConfig);
+  const exames = await listarExamesDeEmpregado(empregadoId);
+
+  let desativados = 0;
+  let criados = 0;
+
+  // 1. Desativa exames cuja área não se aplica mais
+  for (const exame of exames) {
+    if (!exame.ativo) continue;
+    const tipo = tipos.find(t => t.id === exame.tipoId);
+    if (!tipo) continue;
+    const areas = tipo.areasAplicaveis || [];
+    if (areas.length === 0) continue; // tipo vale pra todas áreas, mantém
+    if (!cargo?.area || !areas.includes(cargo.area)) {
+      await desativarExame(exame.id, autor, `Mudança de área — agora ${cargo?.area || "—"}, exame não se aplica`);
+      desativados++;
+    }
+  }
+
+  // 2. Cria exames pra tipos que agora se aplicam (e o empregado ainda não tem)
+  const adm = emp.admissaoAtual || emp.periodos?.[emp.periodos.length - 1]?.admissao;
+  if (adm) {
+    const r = await gerarExamesParaAdmissao({
+      empregadoId: emp.id,
+      empregadoNome: emp.nome,
+      cargoId: emp.cargoId,
+      cargoNome: cargo?.nome,
+      cargoArea: cargo?.area,
+      restaurantId: emp.restaurantId,
+      dataAdmissao: adm,
+      autor,
+    });
+    criados = r;
+  }
+
+  return { desativados, criados };
+}
+
+// ─── Cascata Demissão → desativa todos os exames do empregado ──────────
 
 export async function desativarExamesPorDemissao(
   empregadoId: string,

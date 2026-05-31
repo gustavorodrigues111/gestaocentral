@@ -24,8 +24,9 @@ import {
 } from "./repository";
 import { gerarTarefasDeExames } from "./gerador";
 import type {
-  ExameTipoConfig, ExameEmpregado, Empregado, ExameAplicabilidade,
+  ExameTipoConfig, ExameEmpregado, Empregado,
 } from "../../core/types";
+import { AREAS } from "../../core/types";
 
 type Tab = "vencimentos" | "porEmpregado" | "porTipo" | "config";
 type JanelaVenc = "atrasados" | "15" | "30" | "60" | "90" | "180" | "todos";
@@ -379,17 +380,17 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
           nome: "Exame Clínico",
           periodicidadeDias: 365,
           diasAntecedencia: 14,
-          aplicabilidade: "todos",
+          areasAplicaveis: [],   // vazio = todas as áreas
           responsavelPadraoId: pessoaId,
           subtarefasTemplate: gerarSubtarefasTemplateDefault(),
           ativo: true,
         },
         {
           nome: "Coprocultura",
-          descricao: "Exigido pra manipuladores de alimentos (Cozinha/Bar)",
+          descricao: "Exigido pra manipuladores de alimentos",
           periodicidadeDias: 180,
           diasAntecedencia: 14,
-          aplicabilidade: "manipulador",
+          areasAplicaveis: ["Cozinha", "Bar"],
           responsavelPadraoId: pessoaId,
           subtarefasTemplate: gerarSubtarefasTemplateDefault(),
           ativo: true,
@@ -485,7 +486,7 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Periodicidade: {t.periodicidadeDias} dias · Antecedência: {t.diasAntecedencia} dias
                   {t.fornecedorPadrao && ` · Fornecedor: ${t.fornecedorPadrao}`}
-                  {" · "}Aplicabilidade: {t.aplicabilidade === "todos" ? "Todos" : t.aplicabilidade === "manipulador" ? "Manipulador (Cozinha/Bar)" : "Custom"}
+                  {" · "}Áreas: {!t.areasAplicaveis?.length ? "Todas" : t.areasAplicaveis.join(", ")}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   Responsável padrão: {t.responsavelPadraoNome || "—"} · Subtarefas template: {t.subtarefasTemplate?.length || 0}
@@ -524,7 +525,7 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
     nome: "",
     periodicidadeDias: 365,
     diasAntecedencia: 14,
-    aplicabilidade: "todos",
+    areasAplicaveis: [],
     responsavelPadraoId: pessoaId,
     subtarefasTemplate: gerarSubtarefasTemplateDefault(),
     ativo: true,
@@ -542,8 +543,7 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
       periodicidadeDias: f.periodicidadeDias ?? 365,
       diasAntecedencia: f.diasAntecedencia ?? 14,
       fornecedorPadrao: f.fornecedorPadrao,
-      aplicabilidade: f.aplicabilidade || "todos",
-      cargoIdsCustom: f.cargoIdsCustom,
+      areasAplicaveis: f.areasAplicaveis || [],
       responsavelPadraoId: f.responsavelPadraoId || pessoaId,
       responsavelPadraoNome: respNome,
       subtarefasTemplate: f.subtarefasTemplate || gerarSubtarefasTemplateDefault(),
@@ -581,14 +581,31 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
             <div className="text-xs text-gray-600 mb-1">Fornecedor padrão</div>
             <input value={f.fornecedorPadrao || ""} onChange={(e) => setF({ ...f, fornecedorPadrao: e.target.value })} className="exm-input" placeholder="Ex: Triagem, Almed" />
           </label>
-          <label>
-            <div className="text-xs text-gray-600 mb-1">Aplicabilidade</div>
-            <select value={f.aplicabilidade} onChange={(e) => setF({ ...f, aplicabilidade: e.target.value as ExameAplicabilidade })} className="exm-input">
-              <option value="todos">Todos os empregados registrados</option>
-              <option value="manipulador">Só manipuladores de alimento (Cozinha/Bar)</option>
-              <option value="custom">Cargos específicos</option>
-            </select>
-          </label>
+          <div>
+            <div className="text-xs text-gray-600 mb-1">Áreas aplicáveis</div>
+            <div className="flex flex-wrap gap-2 p-2 border border-gray-300 dark:border-gray-700 rounded-md">
+              {AREAS.map(a => {
+                const sel = (f.areasAplicaveis || []).includes(a);
+                return (
+                  <label key={a} className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={sel}
+                      onChange={(e) => {
+                        const cur = f.areasAplicaveis || [];
+                        const novo = e.target.checked ? [...cur, a] : cur.filter(x => x !== a);
+                        setF({ ...f, areasAplicaveis: novo });
+                      }}
+                    />
+                    {a}
+                  </label>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              Vazio = aplica a TODAS as áreas (ex: Clínico). Marcado = só essas áreas (ex: Coprocultura = Cozinha + Bar).
+            </div>
+          </div>
           <label>
             <div className="text-xs text-gray-600 mb-1">Responsável padrão (recebe as tarefas-pai)</div>
             <select value={f.responsavelPadraoId || ""} onChange={(e) => setF({ ...f, responsavelPadraoId: e.target.value })} className="exm-input">
@@ -774,10 +791,10 @@ function ExameDetalheModal({ exame, onClose, autor }: {
   const [dandoBaixa, setDandoBaixa] = useState(false);
 
   async function desativar() {
-    const motivo = prompt("Motivo da desativação (opcional):");
+    if (!confirm("Desativar este exame manualmente? Use só pra correções (cadastro errado, exame fora da rotina). Pra demissão/mudança de área, o sistema desativa automaticamente.")) return;
+    const motivo = prompt("Motivo (opcional):");
     if (motivo === null) return;
-    if (!confirm("Desativar este exame? Não vai mais gerar tarefas-lembrete.")) return;
-    await desativarExame(exame.id, autor, motivo || undefined);
+    await desativarExame(exame.id, autor, motivo || "Desativação manual");
     onClose();
   }
   async function reativar() {
@@ -838,16 +855,26 @@ function ExameDetalheModal({ exame, onClose, autor }: {
             )}
           </div>
         </div>
-        <div className="flex justify-between gap-2 mt-5">
+        <div className="mt-5 pt-3 border-t border-gray-200 dark:border-gray-800">
           {exame.ativo ? (
-            <Button variant="ghost" onClick={desativar} title="Empregado não precisa mais fazer esse exame (mudou de área, etc)">Não se aplica mais</Button>
+            <>
+              <div className="flex justify-end gap-2">
+                <Button variant="ghost" onClick={onClose}>Fechar</Button>
+                <Button onClick={() => setDandoBaixa(true)}>✓ Resultado de exame recebido</Button>
+              </div>
+              <div className="mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-800">
+                <Button variant="ghost" onClick={desativar} title="Use só pra casos manuais (cadastro errado, etc)">🗑️ Desativar exame manualmente</Button>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Em caso de <b>demissão</b> ou <b>mudança de área</b>, o sistema desativa exames automaticamente quando não se aplicam mais. Use o botão acima só pra correções manuais (cadastro errado, exame fora da rotina, etc).
+                </p>
+              </div>
+            </>
           ) : (
-            <Button variant="ghost" onClick={reativar}>Reativar</Button>
+            <div className="flex justify-between gap-2">
+              <Button variant="ghost" onClick={reativar}>Reativar</Button>
+              <Button onClick={onClose}>Fechar</Button>
+            </div>
           )}
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose}>Fechar</Button>
-            {exame.ativo && <Button onClick={() => setDandoBaixa(true)}>✓ Exame realizado (dar baixa)</Button>}
-          </div>
         </div>
 
         {dandoBaixa && (
@@ -909,7 +936,7 @@ function BaixaInlineForm({ exame, autor, onDone, onCancel }: {
 
   return (
     <div className="mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md space-y-2 text-sm">
-      <div className="font-medium text-emerald-900 dark:text-emerald-200">Dar baixa neste exame</div>
+      <div className="font-medium text-emerald-900 dark:text-emerald-200">Registrar resultado recebido</div>
       <div className="grid grid-cols-2 gap-2">
         <label>
           <div className="text-xs text-gray-600 mb-0.5">Realizado em *</div>
@@ -927,7 +954,7 @@ function BaixaInlineForm({ exame, autor, onDone, onCancel }: {
       <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Observação (opcional)" rows={2} className="exm-input" />
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancelar</Button>
-        <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Confirmar baixa"}</Button>
+        <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Confirmar"}</Button>
       </div>
     </div>
   );

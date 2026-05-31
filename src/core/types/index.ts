@@ -3405,14 +3405,9 @@ export const EXAME_SUBTAREFAS_TEMPLATE_DEFAULT: Omit<ExameSubtarefaTemplate, "id
   { texto: "Dar baixa (criar próximo ciclo)", ehBaixa: true, ordem: 7 },
 ];
 
-// Aplicabilidade: pra quais cargos o tipo se aplica.
-//   "todos"        — qualquer empregado registrado/estagiário
-//   "manipulador"  — só cargos com area "Cozinha" ou "Bar" (Coprocultura)
-//   "custom"       — lista explícita de cargoIds (pra casos específicos)
-export type ExameAplicabilidade = "todos" | "manipulador" | "custom";
-
 // Catálogo de tipo de exame — POR RESTAURANTE. Permite customizar
-// periodicidade, antecedência, e até criar tipos novos (Audiometria, etc).
+// periodicidade, antecedência, áreas aplicáveis, e até criar tipos
+// novos (Audiometria, etc).
 export type ExameTipoConfig = {
   id: string;
   restaurantId: string;
@@ -3421,8 +3416,12 @@ export type ExameTipoConfig = {
   periodicidadeDias: number;         // ex: 365 (anual), 180 (semestral)
   diasAntecedencia: number;          // dias antes do vencimento pra criar tarefa (default 14)
   fornecedorPadrao?: string;         // ex: "Triagem", "Almed"
-  aplicabilidade: ExameAplicabilidade;
-  cargoIdsCustom?: string[];         // só se aplicabilidade === "custom"
+  // Áreas pra quais o tipo se aplica. Vazio = todas (ex: Clínico vale pra
+  // qualquer empregado). Preenchido = só empregados em cargos com essa
+  // área. Ex: Coprocultura = ["Cozinha", "Bar"]. Audiometria = ["Cozinha"].
+  // Ao mudar o cargo do empregado, sistema reavalia e desativa exames
+  // cuja área não se aplica mais.
+  areasAplicaveis: Area[];
   responsavelPadraoId: string;       // pessoaId — default DP do rest
   responsavelPadraoNome?: string;    // snapshot
   subtarefasTemplate: ExameSubtarefaTemplate[];
