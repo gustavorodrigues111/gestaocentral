@@ -523,23 +523,34 @@ function CargoModal({
           <label className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-2">
             Registro de ponto
           </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={batePonto ?? defaultBatePontoPorVinculo(tipoVinculo)}
-              onChange={(e) => setBatePonto(e.target.checked)}
-            />
-            <span>Bate ponto na Sólides</span>
-            <span className="text-xs text-gray-400">
-              {batePonto === null
-                ? `(default: ${defaultBatePontoPorVinculo(tipoVinculo) ? "bate" : "não bate"} — TipoVinculo: ${tipoVinculo})`
-                : "(override do cargo)"}
-            </span>
-          </label>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
-            Desmarque pra cargos de confiança (gerentes, diretores) que não batem ponto.
-            Quem não bate ponto não gera inconformidades no módulo de Registros de Ponto.
-          </p>
+          {(() => {
+            // Cargo de confiança = NÃO bate ponto (CLT Art. 62 II).
+            // Checkbox marcado = é cargo de confiança = batePonto false.
+            const defaultBate = defaultBatePontoPorVinculo(tipoVinculo);
+            const efetivoBate = batePonto ?? defaultBate;
+            const efetivoConfianca = !efetivoBate;
+            return (
+              <>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={efetivoConfianca}
+                    onChange={(e) => setBatePonto(!e.target.checked)}
+                  />
+                  <span>🎩 Cargo de confiança <span className="text-xs text-gray-500">(não bate ponto)</span></span>
+                  <span className="text-xs text-gray-400">
+                    {batePonto === null
+                      ? `(default por vínculo "${tipoVinculo}": ${defaultBate ? "bate" : "não bate"})`
+                      : "(override do cargo)"}
+                  </span>
+                </label>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                  CLT Art. 62 II: gerentes, diretores e cargos de confiança não submetidos a controle de jornada.
+                  Quem não bate ponto não gera inconformidades no módulo de Registros de Ponto.
+                </p>
+              </>
+            );
+          })()}
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">

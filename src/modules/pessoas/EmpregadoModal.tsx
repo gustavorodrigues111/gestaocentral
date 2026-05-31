@@ -42,6 +42,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const temVariasUnidades = unidadesAtivas.length > 1;
 
   const [cargoId, setCargoId] = useState<string>(empregado?.cargoId || cargosAtivos[0]?.id || "");
+  // batePonto: override individual sobre o cargo. undefined = herda do cargo.
+  // false = é cargo de confiança (não bate ponto).
+  const [batePonto, setBatePonto] = useState<boolean | null>(
+    typeof empregado?.batePonto === "boolean" ? empregado.batePonto : null,
+  );
   // Auto-sugere unidade padrão: se cargo é produção, pega primeira de produção;
   // senão pega primeira de atendimento. Se rest tem só 1, usa essa.
   function sugestaoUnidade(novoCargoId: string): string {
@@ -181,6 +186,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     if ((empregado.unidadePadraoId || null) !== novoUnidadePadrao) {
       nonCritical.unidadePadraoId = novoUnidadePadrao;
     }
+    // batePonto: override individual sobre o cargo. null = herdar (grava null
+    // no Firestore — empregadoBatePonto() só consulta se for boolean).
+    const batePontoAtualEmp = typeof empregado.batePonto === "boolean" ? empregado.batePonto : null;
+    if (batePontoAtualEmp !== batePonto) {
+      nonCritical.batePonto = batePonto;
+    }
     // VR (sem versionamento por enquanto — atualiza imediato).
     if (usaVR) {
       const novoVrAtivo = !!vrAtivo;
@@ -269,6 +280,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
           cargoId,
+          ...(batePonto !== null ? { batePonto } : {}),
           unidadePadraoId: unidadePadraoId || null,
           empCode: empCode.trim() || null,
           codigoContabil: codigoContabil.trim() || null,
@@ -565,6 +577,40 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </p>
           )}
         </div>
+
+        {/* Cargo de confiança — override individual.
+            Default herda do cargo (se cargo marcado como confiança, todos
+            empregados nele já não batem ponto). Aqui é só pra exceções
+            individuais raras (ex: gerente em treinamento que ainda bate). */}
+        {cargo && (() => {
+          const herdadoDoCargo = cargo.batePonto === false
+            || (cargo.batePonto === undefined && (cargo.tipoVinculo === "provisorio" || cargo.tipoVinculo === "terceirizado"));
+          const efetivoConfianca = batePonto === null ? herdadoDoCargo : batePonto === false;
+          return (
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-3 bg-gray-50 dark:bg-gray-800/30">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={efetivoConfianca}
+                  onChange={(e) => {
+                    // Marcar = não bate (confiança). Desmarcar = bate.
+                    // Se virar igual ao default do cargo, limpa pra null (herdar).
+                    const novoBate = !e.target.checked;
+                    const cargoDefault = !herdadoDoCargo;
+                    setBatePonto(novoBate === cargoDefault ? null : novoBate);
+                  }}
+                />
+                <span className="font-medium">🎩 Cargo de confiança</span>
+                <span className="text-xs text-gray-500">(não bate ponto)</span>
+              </label>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
+                {batePonto === null
+                  ? `Herda do cargo "${cargo.nome}": ${herdadoDoCargo ? "✓ é cargo de confiança" : "✗ bate ponto normalmente"}`
+                  : `⚠ Override individual ativo (diferente do default do cargo)`}
+              </p>
+            </div>
+          );
+        })()}
 
         {/* Unidade padrão: só aparece se há mais de 1 unidade. Se há 1 só,
             já vem auto-preenchida e não precisa mostrar dropdown. */}
