@@ -39,7 +39,7 @@ import {
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
   TAREFA_CUSTOM_FIELD_TIPO_LABEL,
 } from "../../core/types";
-import type { TarefaAnexo } from "../../core/types";
+import type { TarefaAnexo, Subtarefa } from "../../core/types";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { podeVerTarefa, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
@@ -2676,6 +2676,71 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
     });
   }
 
+  // Handler especial pra subtarefas com flag ehAnexoResultado/ehBaixa.
+  // Quando o usuário marca, abrimos UI específica em vez de só toggle.
+  async function handleMarcar(st: Subtarefa, marcar: boolean) {
+    // Desmarcar é sempre simples
+    if (!marcar) {
+      await marcarSubtarefa(tarefa.id, st.id, false, autor);
+      return;
+    }
+    // ehAnexoResultado: abre Drive Picker e adiciona anexo
+    if (st.ehAnexoResultado) {
+      try {
+        const { pickDriveFile } = await import("../../core/google/drivePicker");
+        const f = await pickDriveFile("Selecione o resultado do exame");
+        if (!f) return; // cancelou, não marca
+        const anexo: TarefaAnexo = {
+          id: Math.random().toString(36).slice(2, 11),
+          nome: f.name,
+          url: `https://drive.google.com/open?id=${f.id}`,
+          tipo: "drive-file",
+          adicionadoEm: new Date().toISOString(),
+          adicionadoPor: autor.id,
+        };
+        await atualizarTarefa(tarefa.id, {
+          anexos: [...(tarefa.anexos || []), anexo],
+        }, autor, { acao: "anexo_adicionado", detalhe: f.name });
+        await marcarSubtarefa(tarefa.id, st.id, true, autor);
+      } catch (e) {
+        alert("Erro ao anexar: " + String(e));
+      }
+      return;
+    }
+    // ehBaixa: dispara baixa no ExameEmpregado
+    if (st.ehBaixa && tarefa.origemRefId) {
+      try {
+        const { darBaixa, getExame } = await import("../exames/repository");
+        const exame = await getExame(tarefa.origemRefId);
+        if (!exame) {
+          alert("Não consegui localizar o exame de origem. Marcando subtarefa sem baixa.");
+          await marcarSubtarefa(tarefa.id, st.id, true, autor);
+          return;
+        }
+        const realizadoEm = prompt(`Data em que o exame foi REALIZADO (YYYY-MM-DD):`, new Date().toISOString().slice(0, 10));
+        if (!realizadoEm) return;
+        const fornecedor = prompt("Fornecedor / clínica (opcional):", exame.fornecedor || "");
+        // Tenta achar o anexo mais recente do tipo drive-file como resultado
+        const ultimoAnexo = (tarefa.anexos || []).slice().reverse().find(a => a.tipo === "drive-file");
+        const proximo = await darBaixa({
+          exameId: exame.id,
+          realizadoEm,
+          fornecedor: fornecedor || undefined,
+          anexoUrl: ultimoAnexo?.url,
+          anexoNome: ultimoAnexo?.nome,
+          autor,
+        });
+        await marcarSubtarefa(tarefa.id, st.id, true, autor);
+        alert(`✓ Baixa registrada. Próximo vencimento: ${proximo}`);
+      } catch (e) {
+        alert("Erro ao dar baixa: " + String(e));
+      }
+      return;
+    }
+    // Subtarefa comum
+    await marcarSubtarefa(tarefa.id, st.id, true, autor);
+  }
+
   return (
     <div>
       <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
@@ -2687,7 +2752,7 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
             <input
               type="checkbox"
               checked={st.feito}
-              onChange={(e) => marcarSubtarefa(tarefa.id, st.id, e.target.checked, autor)}
+              onChange={(e) => handleMarcar(st, e.target.checked)}
             />
             {editandoId === st.id ? (
               <input

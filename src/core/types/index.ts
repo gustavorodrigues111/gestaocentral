@@ -3118,6 +3118,11 @@ export type Subtarefa = {
   // Prazo individual da subtarefa (opcional). Calculado a partir de
   // prazoOffset do template quando a tarefa-pai foi criada com checklist.
   prazo?: string | null;
+  // Flags especiais propagados do ExameSubtarefaTemplate:
+  // - ehBaixa: ao marcar, abre modal de baixa que atualiza ExameEmpregado
+  // - ehAnexoResultado: ao marcar, abre Drive Picker e anexa
+  ehBaixa?: boolean;
+  ehAnexoResultado?: boolean;
   ordem: number;
 };
 

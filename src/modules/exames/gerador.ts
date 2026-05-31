@@ -71,6 +71,8 @@ export async function gerarTarefasDeExames(autor: { id: string; nome: string }):
           texto: st.texto,
           feito: false,
           prazo: resolverPrazoOffset(st.prazoOffset, exame.proximoVencimento),
+          ehBaixa: st.ehBaixa,
+          ehAnexoResultado: st.ehAnexoResultado,
           ordem: i + 1,
         }));
 

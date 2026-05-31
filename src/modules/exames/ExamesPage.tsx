@@ -27,13 +27,15 @@ import type {
   ExameTipoConfig, ExameEmpregado, Empregado, ExameAplicabilidade,
 } from "../../core/types";
 
-type Tab = "proximos" | "atrasados" | "porEmpregado" | "porTipo" | "config";
+type Tab = "vencimentos" | "porEmpregado" | "porTipo" | "config";
+type JanelaVenc = "atrasados" | "15" | "30" | "60" | "90" | "180" | "todos";
 
 export function ExamesPage() {
   const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
-  const [tab, setTab] = useState<Tab>("proximos");
+  const [tab, setTab] = useState<Tab>("vencimentos");
+  const [janela, setJanela] = useState<JanelaVenc>("30");
   const [tipos, setTipos] = useState<ExameTipoConfig[]>([]);
   const [exames, setExames] = useState<ExameEmpregado[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -59,19 +61,39 @@ export function ExamesPage() {
   const hoje = new Date().toISOString().slice(0, 10);
   const ativos = useMemo(() => exames.filter(e => e.ativo), [exames]);
 
-  const proximos30 = useMemo(() => {
-    const limite = addDias(hoje, 30);
-    return ativos
-      .filter(e => e.proximoVencimento >= hoje && e.proximoVencimento <= limite)
-      .sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento));
-  }, [ativos, hoje]);
-
   const atrasados = useMemo(
     () => ativos
       .filter(e => e.proximoVencimento < hoje)
       .sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento)),
     [ativos, hoje],
   );
+
+  // Contagens pra mostrar nos chips
+  const contagens = useMemo(() => {
+    const r = { atrasados: atrasados.length, "15": 0, "30": 0, "60": 0, "90": 0, "180": 0, todos: ativos.length };
+    const dentro = (dias: number) => ativos.filter(e => {
+      if (e.proximoVencimento < hoje) return false;
+      const limite = addDias(hoje, dias);
+      return e.proximoVencimento <= limite;
+    }).length;
+    r["15"] = dentro(15);
+    r["30"] = dentro(30);
+    r["60"] = dentro(60);
+    r["90"] = dentro(90);
+    r["180"] = dentro(180);
+    return r;
+  }, [ativos, atrasados, hoje]);
+
+  // Filtra pelo chip ativo
+  const exibidos = useMemo(() => {
+    if (janela === "atrasados") return atrasados;
+    if (janela === "todos") return ativos.slice().sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento));
+    const dias = parseInt(janela);
+    const limite = addDias(hoje, dias);
+    return ativos
+      .filter(e => e.proximoVencimento >= hoje && e.proximoVencimento <= limite)
+      .sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento));
+  }, [janela, ativos, atrasados, hoje]);
 
   async function rodarGerador() {
     if (!pessoa) return;
@@ -96,7 +118,7 @@ export function ExamesPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🩺 Exames Médicos</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            Gestão de exames periódicos dos empregados — {atrasados.length > 0 && <span className="text-red-600 font-medium">{atrasados.length} atrasado(s) · </span>}{proximos30.length} próximos 30 dias
+            Gestão de exames periódicos dos empregados — {atrasados.length > 0 && <span className="text-red-600 font-medium">{atrasados.length} atrasado(s) · </span>}{contagens["30"]} próximos 30 dias
           </p>
         </div>
         <div className="flex gap-2">
@@ -120,19 +142,46 @@ export function ExamesPage() {
       )}
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        <TabButton ativo={tab === "proximos"} onClick={() => setTab("proximos")}>
-          Próximos 30d {proximos30.length > 0 && <span className="ml-1 text-[10px] px-1.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{proximos30.length}</span>}
-        </TabButton>
-        <TabButton ativo={tab === "atrasados"} onClick={() => setTab("atrasados")}>
-          Atrasados {atrasados.length > 0 && <span className="ml-1 text-[10px] px-1.5 rounded-full bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{atrasados.length}</span>}
-        </TabButton>
+        <TabButton ativo={tab === "vencimentos"} onClick={() => setTab("vencimentos")}>Vencimentos</TabButton>
         <TabButton ativo={tab === "porEmpregado"} onClick={() => setTab("porEmpregado")}>Por empregado</TabButton>
         <TabButton ativo={tab === "porTipo"} onClick={() => setTab("porTipo")}>Por tipo</TabButton>
         {pessoa?.isMaster && <TabButton ativo={tab === "config"} onClick={() => setTab("config")}>Configuração</TabButton>}
       </nav>
 
-      {tab === "proximos" && <ListaExames exames={proximos30} onAbrir={setExameSelecionado} vazio="Nenhum exame nos próximos 30 dias." />}
-      {tab === "atrasados" && <ListaExames exames={atrasados} onAbrir={setExameSelecionado} vazio="✅ Nenhum exame atrasado." atrasado />}
+      {tab === "vencimentos" && (
+        <div>
+          {/* Chips de janela */}
+          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
+            <Chip ativo={janela === "atrasados"} onClick={() => setJanela("atrasados")} cor="red">
+              🔥 Atrasados {contagens.atrasados > 0 && `(${contagens.atrasados})`}
+            </Chip>
+            <Chip ativo={janela === "15"} onClick={() => setJanela("15")}>
+              Próximos 15d {contagens["15"] > 0 && `(${contagens["15"]})`}
+            </Chip>
+            <Chip ativo={janela === "30"} onClick={() => setJanela("30")}>
+              30d {contagens["30"] > 0 && `(${contagens["30"]})`}
+            </Chip>
+            <Chip ativo={janela === "60"} onClick={() => setJanela("60")}>
+              60d {contagens["60"] > 0 && `(${contagens["60"]})`}
+            </Chip>
+            <Chip ativo={janela === "90"} onClick={() => setJanela("90")}>
+              90d {contagens["90"] > 0 && `(${contagens["90"]})`}
+            </Chip>
+            <Chip ativo={janela === "180"} onClick={() => setJanela("180")}>
+              180d {contagens["180"] > 0 && `(${contagens["180"]})`}
+            </Chip>
+            <Chip ativo={janela === "todos"} onClick={() => setJanela("todos")}>
+              Todos ({contagens.todos})
+            </Chip>
+          </div>
+          <ListaExames
+            exames={exibidos}
+            onAbrir={setExameSelecionado}
+            vazio={janela === "atrasados" ? "✅ Nenhum exame atrasado." : `Nenhum exame na janela selecionada.`}
+            atrasado={janela === "atrasados"}
+          />
+        </div>
+      )}
       {tab === "porEmpregado" && <ListaPorEmpregado exames={ativos} onAbrir={setExameSelecionado} />}
       {tab === "porTipo" && <ListaPorTipo exames={ativos} tipos={tipos} onAbrir={setExameSelecionado} />}
       {tab === "config" && pessoa?.isMaster && <ConfigTab tipos={tipos} rid={rid} pessoaId={pessoa.id} />}
@@ -167,6 +216,25 @@ function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () =
           ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
           : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900"
       }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function Chip({ ativo, onClick, cor, children }: {
+  ativo: boolean;
+  onClick: () => void;
+  cor?: "red" | "default";
+  children: React.ReactNode;
+}) {
+  const corClass = cor === "red"
+    ? (ativo ? "bg-red-600 text-white" : "bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-300 hover:bg-red-100")
+    : (ativo ? "bg-indigo-600 text-white" : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200");
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${corClass}`}
     >
       {children}
     </button>
@@ -772,13 +840,13 @@ function ExameDetalheModal({ exame, onClose, autor }: {
         </div>
         <div className="flex justify-between gap-2 mt-5">
           {exame.ativo ? (
-            <Button variant="ghost" onClick={desativar}>Desativar</Button>
+            <Button variant="ghost" onClick={desativar} title="Empregado não precisa mais fazer esse exame (mudou de área, etc)">Não se aplica mais</Button>
           ) : (
             <Button variant="ghost" onClick={reativar}>Reativar</Button>
           )}
           <div className="flex gap-2">
             <Button variant="ghost" onClick={onClose}>Fechar</Button>
-            {exame.ativo && <Button onClick={() => setDandoBaixa(true)}>✓ Dar baixa</Button>}
+            {exame.ativo && <Button onClick={() => setDandoBaixa(true)}>✓ Exame realizado (dar baixa)</Button>}
           </div>
         </div>
 
