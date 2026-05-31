@@ -178,6 +178,7 @@ export function ReunioesPage() {
         loading={loading}
         podeConfig={podeConfig}
         onAbrir={(r) => setDetalhe(r)}
+        onNova={podeConfig ? () => setEditing("new") : undefined}
         draggingId={draggingId}
         dropTarget={dropTarget}
         setDraggingId={setDraggingId}
@@ -278,11 +279,12 @@ const KANBAN_COLS_R: Array<{ id: ReuniaoStatus; titulo: string; descricao: strin
   { id: "cancelada", titulo: "✕ Canceladas", descricao: "Não vão acontecer",                       bordaCls: "border-t-gray-400" },
 ];
 
-function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggingId, dropTarget, setDraggingId, setDropTarget }: {
   reunioes: Reuniao[];
   loading: boolean;
   podeConfig: boolean;
   onAbrir: (r: Reuniao) => void;
+  onNova?: () => void;
   draggingId: string | null;
   dropTarget: string | null;
   setDraggingId: (id: string | null) => void;
@@ -388,7 +390,17 @@ function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, draggingId, dr
                   </button>
                 );
               })}
-              {lista.length === 0 && (
+              {col.id === "planejada" && onNova && (
+                <button
+                  type="button"
+                  onClick={onNova}
+                  className="w-full text-left text-[11px] px-2 py-2 rounded-md border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+                  title="Agendar nova reunião"
+                >
+                  + Nova reunião
+                </button>
+              )}
+              {lista.length === 0 && col.id !== "planejada" && (
                 <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-4">—</div>
               )}
             </div>

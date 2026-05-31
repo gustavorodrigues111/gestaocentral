@@ -187,6 +187,7 @@ export function IdeiasPage() {
         loading={loading}
         podeModerar={podeModerar}
         onAbrir={(i) => setEditing(i)}
+        onNova={podeSubmeter ? () => setEditing("new") : undefined}
         draggingId={draggingId}
         dropTarget={dropTarget}
         setDraggingId={setDraggingId}
@@ -297,11 +298,12 @@ function colunaIdeia(i: Ideia): IdeiaStatus {
   return i.status;
 }
 
-function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingId, dropTarget, setDraggingId, setDropTarget }: {
   ideias: Ideia[];
   loading: boolean;
   podeModerar: boolean;
   onAbrir: (i: Ideia) => void;
+  onNova?: () => void;
   draggingId: string | null;
   dropTarget: string | null;
   setDraggingId: (id: string | null) => void;
@@ -389,7 +391,17 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, draggingId, dropT
                   </button>
                 );
               })}
-              {lista.length === 0 && (
+              {col.id === "aberta" && onNova && (
+                <button
+                  type="button"
+                  onClick={onNova}
+                  className="w-full text-left text-[11px] px-2 py-2 rounded-md border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+                  title="Registrar nova ideia"
+                >
+                  + Nova ideia
+                </button>
+              )}
+              {lista.length === 0 && col.id !== "aberta" && (
                 <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-4">—</div>
               )}
             </div>

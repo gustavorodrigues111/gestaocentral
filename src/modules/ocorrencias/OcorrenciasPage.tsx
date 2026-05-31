@@ -240,6 +240,7 @@ export function OcorrenciasPage() {
         loading={loading}
         podeEditar={podeEditar}
         onAbrir={(o) => setEditing(o)}
+        onNova={podeCriar ? () => setEditing("new") : undefined}
         draggingId={draggingId}
         dropTarget={dropTarget}
         setDraggingId={setDraggingId}
@@ -390,11 +391,12 @@ const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: string; descricao: s
   { id: "arquivada",      titulo: "📦 Arquivadas",       descricao: "Arquivadas",                               bordaCls: "border-t-gray-400" },
 ];
 
-function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, draggingId, dropTarget, setDraggingId, setDropTarget }: {
   ocorrencias: Ocorrencia[];
   loading: boolean;
   podeEditar: boolean;
   onAbrir: (o: Ocorrencia) => void;
+  onNova?: () => void;
   draggingId: string | null;
   dropTarget: string | null;
   setDraggingId: (id: string | null) => void;
@@ -486,7 +488,17 @@ function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, dragging
                   </button>
                 );
               })}
-              {lista.length === 0 && (
+              {col.id === "aberta" && onNova && (
+                <button
+                  type="button"
+                  onClick={onNova}
+                  className="w-full text-left text-[11px] px-2 py-2 rounded-md border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+                  title="Registrar nova ocorrência"
+                >
+                  + Nova ocorrência
+                </button>
+              )}
+              {lista.length === 0 && col.id !== "aberta" && (
                 <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-4">—</div>
               )}
             </div>
