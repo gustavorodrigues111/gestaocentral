@@ -333,6 +333,36 @@ export async function migrarGruposParaPrivadoLegado(): Promise<{ projetos: numbe
   return { projetos: projetosFix, tarefas: tarefasFix };
 }
 
+// Migração: soft-deleta o projeto "Caixa Pessoal" (proj-pessoal) — removido
+// em favor da integração Banco de Ideias → Tarefas.
+// Idempotente. Retorna info pro master saber se tinha conteúdo.
+export async function aposentarCaixaPessoal(): Promise<{
+  removido: boolean;
+  tarefasMexidas: number;
+}> {
+  const refProj = doc(db, COL_PROJETOS, "proj-pessoal");
+  const snap = await getDoc(refProj);
+  if (!snap.exists()) return { removido: false, tarefasMexidas: 0 };
+  const data = snap.data() as TarefaProjeto;
+  if (data.deletadoEm) return { removido: false, tarefasMexidas: 0 };
+
+  // Conta tarefas vivas que apontavam pra esse projeto
+  const tSnap = await getDocs(query(collection(db, COL_TAREFAS), where("projetoId", "==", "proj-pessoal")));
+  const vivas = tSnap.docs.filter(d => {
+    const t = d.data() as Tarefa;
+    return !t.deletadoEm;
+  });
+
+  const now = new Date().toISOString();
+  await updateDoc(refProj, sanitizeForFirestore({
+    deletadoEm: now,
+    deletadoPor: "system",
+    atualizadoEm: now,
+  }));
+
+  return { removido: true, tarefasMexidas: vivas.length };
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function cryptoId(): string {

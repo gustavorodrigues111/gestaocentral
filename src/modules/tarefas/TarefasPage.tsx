@@ -15,7 +15,7 @@ import {
   ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
-  migrarGruposParaPrivadoLegado,
+  migrarGruposParaPrivadoLegado, aposentarCaixaPessoal,
 } from "./repository";
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
@@ -78,7 +78,7 @@ export function TarefasPage() {
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
-  const [novaAberta, setNovaAberta] = useState(false);
+  const [novaAberta, setNovaAberta] = useState<{ prazo?: string } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos
@@ -103,6 +103,25 @@ export function TarefasPage() {
         }
       })
       .catch(e => console.warn("[tarefas] migração falhou:", e));
+  }, [pessoa?.isMaster]);
+
+  // Migração 1x: remove projeto "Caixa Pessoal" (substituído por Banco de Ideias).
+  useEffect(() => {
+    if (!pessoa?.isMaster) return;
+    const FLAG = "tarefas_aposentou_caixa_pessoal";
+    try { if (localStorage.getItem(FLAG) === "1") return; } catch {}
+    aposentarCaixaPessoal()
+      .then(r => {
+        try { localStorage.setItem(FLAG, "1"); } catch {}
+        if (r.removido) {
+          if (r.tarefasMexidas > 0) {
+            alert(`Caixa Pessoal aposentado. ${r.tarefasMexidas} tarefa(s) ficaram órfãs no projeto removido. Você pode editá-las e movê-las pra outro projeto, ou usar o Banco de Ideias dali pra frente.`);
+          } else {
+            console.log("[tarefas] Caixa Pessoal removido (estava vazio)");
+          }
+        }
+      })
+      .catch(e => console.warn("[tarefas] aposentar caixa pessoal falhou:", e));
   }, [pessoa?.isMaster]);
 
   // Minhas tarefas
@@ -173,7 +192,7 @@ export function TarefasPage() {
             {gerando ? "Gerando…" : "🔁 Gerar pendentes"}
           </Button>
         )}
-        <Button onClick={() => setNovaAberta(true)} disabled={semEstrutura}>+ Nova Tarefa</Button>
+        <Button onClick={() => setNovaAberta({})} disabled={semEstrutura}>+ Nova Tarefa</Button>
       </header>
 
       {semEstrutura && (
@@ -206,7 +225,13 @@ export function TarefasPage() {
         <div>
           <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
           {viewMinhas === "calendario" && (
-            <CalendarioView tarefas={minhas} projetos={projetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} />
+            <CalendarioView
+              tarefas={minhas}
+              projetos={projetos}
+              onAbrir={setDetalheId}
+              autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+              onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
+            />
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView
@@ -261,12 +286,13 @@ export function TarefasPage() {
 
       {novaAberta && (
         <NovaTarefaModal
-          onClose={() => setNovaAberta(false)}
+          onClose={() => setNovaAberta(null)}
           projetos={projetos}
           subprojetos={subprojetos}
           restaurantes={restaurants}
           pessoaId={pessoa?.id || ""}
           pessoaNome={pessoa?.nome || ""}
+          prazoInicial={novaAberta.prazo}
         />
       )}
 
@@ -861,6 +887,8 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, t
             )}
             {view === "calendario" && (
               <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} onAbrir={onAbrir} autor={autor} />
+              /* Em Por Projeto não passamos onNovaTarefaNoDia — a criação rápida
+                 fica reservada pra Minhas Tarefas (caixa pessoal de pra-fazer). */
             )}
             {view === "kanban" && (
               <KanbanView tarefas={tarefasFiltradas} projetos={projetos} autor={autor} onAbrir={onAbrir} />
@@ -1527,11 +1555,12 @@ function inicioSemanaSeg(yyyymmdd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function CalendarioView({ tarefas, projetos, onAbrir, autor }: {
+function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   onAbrir: (id: string) => void;
   autor?: { id: string; nome: string };
+  onNovaTarefaNoDia?: (prazo: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -1643,9 +1672,19 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor }: {
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
             </div>
           </div>
-          {lista.length > 0 && (
-            <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
-          )}
+          <div className="flex items-center gap-1">
+            {lista.length > 0 && (
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
+            )}
+            {onNovaTarefaNoDia && (
+              <button
+                onClick={() => onNovaTarefaNoDia(data)}
+                className="inline-flex items-center justify-center w-5 h-5 rounded text-[12px] leading-none text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
+                aria-label="Nova tarefa neste dia"
+              >+</button>
+            )}
+          </div>
         </div>
         <div className="space-y-1 flex-1 overflow-y-auto">
           {lista.length === 0 ? (
@@ -1749,9 +1788,21 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor }: {
                   {Number(dias[5].slice(8, 10))}–{Number(dias[6].slice(8, 10))}
                 </div>
               </div>
-              {tarefasFds.length > 0 && (
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
-              )}
+              <div className="flex items-center gap-1">
+                {tarefasFds.length > 0 && (
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
+                )}
+                {onNovaTarefaNoDia && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
+                    className="inline-flex items-center justify-center w-5 h-5 rounded text-[12px] leading-none text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors"
+                    title="+ nova tarefa no sábado"
+                  >+</span>
+                )}
+              </div>
             </div>
             {tarefasFdsAtivas.length === 0 ? (
               <div className="text-[11px] text-gray-400 dark:text-gray-600 italic flex-1 flex items-center justify-center">
@@ -1913,21 +1964,25 @@ function LixeiraView({ tarefas, projetos, autor }: {
 
 // ─── MODAL: Nova Tarefa ───────────────────────────────────────────────────
 
-function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome }: {
+function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   restaurantes: { id: string; nome: string }[];
   pessoaId: string;
   pessoaNome: string;
+  prazoInicial?: string;
 }) {
   const [titulo, setTitulo] = useState("");
+  const [descricao, setDescricao] = useState("");
   const [projetoId, setProjetoId] = useState(projetos[0]?.id || "");
   const [subprojetoId, setSubprojetoId] = useState("");
-  const [prazo, setPrazo] = useState("");
+  const [prazo, setPrazo] = useState(prazoInicial || "");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
   const [usarTemplate, setUsarTemplate] = useState(true);
+  const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(null);
+  const [puxarAberto, setPuxarAberto] = useState(false);
 
   const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
   useEffect(() => {
@@ -1960,34 +2015,92 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
       : undefined;
     const payload = {
       projetoId, subprojetoId, titulo,
+      descricao: descricao || undefined,
       responsavelId, responsavelNome,
       coResponsaveis: [],
       restaurantIds: restaurantIds.length ? restaurantIds : undefined,
       prazo: prazo || null,
       status: "a_fazer" as const,
       prioridade,
-      origem: "manual" as const,
+      origem: puxando ? ("manual" as const) : ("manual" as const),
       corHerdada: cor,
       subtarefas: subtarefasFromTemplate,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
     };
+    const puxandoSnap = puxando;
     // Fecha o modal imediatamente (otimista). A tarefa aparece via snapshot
     // quando o Firestore confirma; se der erro, avisamos por toast/alert.
     onClose();
-    criarTarefa(payload).catch(e => {
-      console.error("[tarefas] falha ao criar:", e);
-      alert(`Falha ao criar tarefa "${titulo}": ${e instanceof Error ? e.message : String(e)}`);
-    });
+    criarTarefa(payload)
+      .then(async (tarefaId) => {
+        // Se essa tarefa foi puxada de uma ideia/ocorrência, marca a origem
+        if (puxandoSnap) {
+          const now = new Date().toISOString();
+          const col = puxandoSnap.tipo === "ideia" ? "ideias" : "ocorrencias";
+          try {
+            const { doc, updateDoc } = await import("firebase/firestore");
+            await updateDoc(doc(db, col, puxandoSnap.id), {
+              status: "puxada_tarefa",
+              tarefaIdGerada: tarefaId,
+              puxadaEm: now,
+              puxadaPor: pessoaId,
+              puxadaPorNome: pessoaNome,
+              atualizadoEm: now,
+              atualizadaEm: now,
+            });
+          } catch (e) {
+            console.warn("[tarefas] não consegui marcar puxada:", e);
+          }
+        }
+      })
+      .catch(e => {
+        console.error("[tarefas] falha ao criar:", e);
+        alert(`Falha ao criar tarefa "${titulo}": ${e instanceof Error ? e.message : String(e)}`);
+      });
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4 text-gray-900 dark:text-gray-100">Nova Tarefa</h2>
+        <div className="flex items-center justify-between mb-4 gap-2">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Nova Tarefa</h2>
+          {!puxando && (
+            <button
+              type="button"
+              onClick={() => setPuxarAberto(true)}
+              className="text-xs px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+            >
+              📋 Puxar de Ideia/Ocorrência
+            </button>
+          )}
+        </div>
+        {puxando && (
+          <div className="mb-3 flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
+            <span className="text-xs">
+              {puxando.tipo === "ideia" ? "💡" : "🚨"} Puxado de: <strong>{puxando.titulo}</strong>
+            </span>
+            <button
+              type="button"
+              onClick={() => setPuxando(null)}
+              className="ml-auto text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline"
+            >
+              desfazer
+            </button>
+          </div>
+        )}
         <div className="space-y-3">
           <Field label="Título *">
             <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" autoFocus />
+          </Field>
+          <Field label="Descrição">
+            <textarea
+              value={descricao}
+              onChange={(e) => setDescricao(e.target.value)}
+              rows={2}
+              className="input resize-y"
+              placeholder="Detalhes, contexto, links..."
+            />
           </Field>
           <Field label="Projeto *">
             <select value={projetoId} onChange={(e) => setProjetoId(e.target.value)} className="input">
@@ -2052,6 +2165,108 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
         <div className="flex gap-2 justify-end mt-5">
           <Button onClick={onClose} variant="ghost">Cancelar</Button>
           <Button onClick={salvar}>Criar Tarefa</Button>
+        </div>
+        {puxarAberto && (
+          <PuxarIdeiaOcorrenciaModal
+            onClose={() => setPuxarAberto(false)}
+            onEscolher={(item) => {
+              setPuxando({ tipo: item.tipo, id: item.id, titulo: item.titulo });
+              setTitulo(item.titulo);
+              if (item.descricao) setDescricao(item.descricao);
+              setPuxarAberto(false);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Modal seletor: lista ideias e ocorrências NÃO ainda puxadas/descartadas/arquivadas
+function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher }: {
+  onClose: () => void;
+  onEscolher: (item: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string; descricao?: string }) => void;
+}) {
+  const [ideias, setIdeias] = useState<Array<{ id: string; titulo: string; descricao?: string; categoria?: string; restaurantId: string; status: string }>>([]);
+  const [ocorrencias, setOcorrencias] = useState<Array<{ id: string; titulo: string; descricao?: string; gravidade?: string; data?: string; restaurantId: string; status: string }>>([]);
+  const [search, setSearch] = useState("");
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | "ideia" | "ocorrencia">("todos");
+
+  useEffect(() => {
+    const u1 = onSnapshot(collection(db, "ideias"), snap => {
+      setIdeias(snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; titulo: string; descricao?: string; categoria?: string; restaurantId: string; status: string }));
+    });
+    const u2 = onSnapshot(collection(db, "ocorrencias"), snap => {
+      setOcorrencias(snap.docs.map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; titulo: string; descricao?: string; gravidade?: string; data?: string; restaurantId: string; status: string }));
+    });
+    return () => { u1(); u2(); };
+  }, []);
+
+  const ideiasAtivas = ideias.filter(i =>
+    i.status !== "puxada_tarefa" && i.status !== "descartada"
+  );
+  const ocorrenciasAtivas = ocorrencias.filter(o =>
+    o.status !== "puxada_tarefa" && o.status !== "arquivada" && o.status !== "resolvida"
+  );
+
+  const filtroBusca = (txt: string) => {
+    if (!search.trim()) return true;
+    return txt.toLowerCase().includes(search.toLowerCase());
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">Puxar de Banco de Ideias / Ocorrências</h3>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="text"
+            placeholder="🔍 Buscar..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input flex-1"
+          />
+          <select
+            value={filtroTipo}
+            onChange={(e) => setFiltroTipo(e.target.value as "todos" | "ideia" | "ocorrencia")}
+            className="input w-32"
+          >
+            <option value="todos">Todos</option>
+            <option value="ideia">💡 Ideias</option>
+            <option value="ocorrencia">🚨 Ocorrências</option>
+          </select>
+        </div>
+        <div className="flex-1 overflow-y-auto space-y-2">
+          {(filtroTipo === "todos" || filtroTipo === "ideia") && ideiasAtivas.filter(i => filtroBusca(i.titulo + " " + (i.descricao || ""))).map(i => (
+            <button
+              key={"i-" + i.id}
+              onClick={() => onEscolher({ tipo: "ideia", id: i.id, titulo: i.titulo, descricao: i.descricao })}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            >
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">💡 {i.titulo}</div>
+              {i.categoria && <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{i.categoria}</div>}
+              {i.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{i.descricao}</div>}
+            </button>
+          ))}
+          {(filtroTipo === "todos" || filtroTipo === "ocorrencia") && ocorrenciasAtivas.filter(o => filtroBusca(o.titulo + " " + (o.descricao || ""))).map(o => (
+            <button
+              key={"o-" + o.id}
+              onClick={() => onEscolher({ tipo: "ocorrencia", id: o.id, titulo: o.titulo, descricao: o.descricao })}
+              className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
+            >
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">🚨 {o.titulo}</div>
+              {o.gravidade && <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 mt-0.5">{o.gravidade}{o.data && ` · ${o.data}`}</div>}
+              {o.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{o.descricao}</div>}
+            </button>
+          ))}
+          {ideiasAtivas.length === 0 && ocorrenciasAtivas.length === 0 && (
+            <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
+              Nenhuma ideia ou ocorrência aberta pra puxar.
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 mt-3">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
         </div>
       </div>
     </div>

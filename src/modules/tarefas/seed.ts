@@ -23,7 +23,8 @@ const PROJETOS: Array<Omit<TarefaProjeto, "criadoEm" | "atualizadoEm" | "criadoP
   { id: "proj-operacao-dem",  nome: "Operação — Demandas", emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 9,  ativo: true },
   { id: "proj-prazos",        nome: "Prazos de Licenças, Certificados e Manutenções", emoji: "📅", cor: "#f97316", dono: "system", visibilidade: "escritorio", tipo: "rotina", ordem: 10, ativo: true },
   { id: "proj-temporarios",   nome: "Projetos Temporários",emoji: "🛠️", cor: "#3b82f6", dono: "system", visibilidade: "escritorio",tipo: "misto",   ordem: 11, ativo: true },
-  { id: "proj-pessoal",       nome: "Caixa Pessoal",       emoji: "📥", cor: "#6b7280", dono: "system", visibilidade: "privado",   tipo: "misto",   ordem: 12, ativo: true },
+  // "proj-pessoal" (Caixa Pessoal) foi removido — sua função é coberta pelo
+  // Banco de Ideias (qualquer um registra) + integração com Tarefas (puxar pra virar tarefa).
 ];
 
 const SUBPROJETOS: Array<Omit<TarefaSubprojeto, "criadoEm" | "atualizadoEm" | "criadoPor">> = [

@@ -23,10 +23,12 @@ const GRAVIDADE_CLS: Record<OcorrenciaGravidade, string> = {
 };
 
 const STATUS_CLS: Record<OcorrenciaStatus, string> = {
-  aberta:       "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-  em_apuracao:  "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
-  resolvida:    "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
-  arquivada:    "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
+  aberta:         "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  em_apuracao:    "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  gerada_reuniao: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  puxada_tarefa:  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  resolvida:      "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  arquivada:      "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
 export function OcorrenciasPage() {
@@ -58,6 +60,13 @@ export function OcorrenciasPage() {
   const [filtroGrav, setFiltroGrav] = useState<"todas" | OcorrenciaGravidade>("todas");
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "todas" | OcorrenciaStatus>("abertas");
   const [editing, setEditing] = useState<Ocorrencia | "new" | null>(null);
+  const [view, setView] = useState<"lista" | "kanban">(() => {
+    try { return (localStorage.getItem("ocorrencias_view") as "lista" | "kanban") || "kanban"; }
+    catch { return "kanban"; }
+  });
+  useEffect(() => { try { localStorage.setItem("ocorrencias_view", view); } catch {} }, [view]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -201,13 +210,43 @@ export function OcorrenciasPage() {
       {/* Busca + filtros + lista — visíveis só pra quem pode ver */}
       {podeVer && (
       <>
-      <Input
-        placeholder="🔍 Buscar por título, descrição, empregado, cliente..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-3"
-      />
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <Input
+          placeholder="🔍 Buscar por título, descrição, empregado, cliente..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-[200px]"
+        />
+        <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+          {(["kanban", "lista"] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                view === v
+                  ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              }`}
+            >
+              {v === "kanban" ? "📊 Kanban" : "📋 Lista"}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      {view === "kanban" && <KanbanOcorrencias
+        ocorrencias={ocorrencias.filter(o => !search.trim() || o.titulo.toLowerCase().includes(search.toLowerCase()) || o.descricao.toLowerCase().includes(search.toLowerCase()))}
+        loading={loading}
+        podeEditar={podeEditar}
+        onAbrir={(o) => setEditing(o)}
+        draggingId={draggingId}
+        dropTarget={dropTarget}
+        setDraggingId={setDraggingId}
+        setDropTarget={setDropTarget}
+      />}
+
+      {view === "lista" && (<>
       {/* Filtros */}
       <div className="space-y-2 mb-4">
         <div className="flex items-center gap-2 flex-wrap">
@@ -323,6 +362,7 @@ export function OcorrenciasPage() {
           })}
         </div>
       )}
+      </>)}
       </>
       )}
 
@@ -335,6 +375,124 @@ export function OcorrenciasPage() {
           onClose={() => setEditing(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── KANBAN ───────────────────────────────────────────────────────────────
+
+const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: string; descricao: string; bordaCls: string }> = [
+  { id: "aberta",         titulo: "🚨 Abertas",          descricao: "Recém-registradas",                       bordaCls: "border-t-blue-500" },
+  { id: "em_apuracao",    titulo: "🔍 Em apuração",      descricao: "Alguém apurando",                          bordaCls: "border-t-amber-500" },
+  { id: "gerada_reuniao", titulo: "🗣️ De reunião",        descricao: "Geradas dentro de uma reunião",           bordaCls: "border-t-purple-500" },
+  { id: "puxada_tarefa",  titulo: "✓ Viraram tarefa",   descricao: "Encerradas aqui, agora estão em Tarefas",  bordaCls: "border-t-emerald-500" },
+  { id: "resolvida",      titulo: "✅ Resolvidas",        descricao: "Resolvidas sem virar tarefa",              bordaCls: "border-t-emerald-500" },
+  { id: "arquivada",      titulo: "📦 Arquivadas",       descricao: "Arquivadas",                               bordaCls: "border-t-gray-400" },
+];
+
+function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+  ocorrencias: Ocorrencia[];
+  loading: boolean;
+  podeEditar: boolean;
+  onAbrir: (o: Ocorrencia) => void;
+  draggingId: string | null;
+  dropTarget: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDropTarget: (id: string | null) => void;
+}) {
+  async function moverPara(id: string, status: OcorrenciaStatus) {
+    try {
+      await updateDoc(doc(db, "ocorrencias", id), { status, atualizadaEm: new Date().toISOString() });
+    } catch (e) {
+      console.error("[ocorrencias] falha ao mover:", e);
+      alert("Falha ao mover ocorrência: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  const porCol: Record<OcorrenciaStatus, Ocorrencia[]> = {
+    aberta: [], em_apuracao: [], gerada_reuniao: [], puxada_tarefa: [], resolvida: [], arquivada: [],
+  };
+  ocorrencias.forEach(o => { porCol[o.status]?.push(o); });
+
+  if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
+
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 overflow-x-auto">
+      {KANBAN_COLS_OC.map(col => {
+        const lista = porCol[col.id];
+        const ehAlvo = dropTarget === col.id;
+        return (
+          <div
+            key={col.id}
+            onDragOver={podeEditar ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget !== col.id) setDropTarget(col.id);
+            } : undefined}
+            onDragLeave={podeEditar ? () => {
+              if (dropTarget === col.id) setDropTarget(null);
+            } : undefined}
+            onDrop={podeEditar ? (e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData("text/plain");
+              setDropTarget(null);
+              setDraggingId(null);
+              if (id) moverPara(id, col.id);
+            } : undefined}
+            className={`bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2 min-h-[300px] border-t-4 ${col.bordaCls} transition-colors ${ehAlvo ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : ""}`}
+          >
+            <div className="mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-800">
+              <div className="font-bold text-xs text-gray-900 dark:text-gray-100 flex items-center justify-between">
+                <span>{col.titulo}</span>
+                <span className="text-[10px] font-normal text-gray-500">{lista.length}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{col.descricao}</div>
+            </div>
+            <div className="space-y-1.5">
+              {lista.map(o => {
+                const arrastando = draggingId === o.id;
+                return (
+                  <button
+                    key={o.id}
+                    draggable={podeEditar}
+                    onDragStart={podeEditar ? (e) => {
+                      e.dataTransfer.setData("text/plain", o.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggingId(o.id);
+                    } : undefined}
+                    onDragEnd={podeEditar ? () => {
+                      setDraggingId(null);
+                      setDropTarget(null);
+                    } : undefined}
+                    onClick={() => onAbrir(o)}
+                    className={`w-full text-left bg-white dark:bg-gray-900 border-l-4 ${
+                      o.gravidade === "grave" ? "border-rose-500" :
+                      o.gravidade === "media" ? "border-amber-500" :
+                      o.gravidade === "leve" ? "border-blue-500" :
+                      "border-emerald-500"
+                    } border-y border-r border-gray-200 dark:border-gray-800 rounded-md p-2 text-xs ${podeEditar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${arrastando ? "opacity-40" : ""} hover:border-indigo-400 transition-colors`}
+                    title={podeEditar ? `${o.titulo} (arrastar pra mover)` : o.titulo}
+                  >
+                    <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1">
+                      <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+                      <span className="flex-1 truncate">{o.titulo}</span>
+                    </div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}
+                    </div>
+                    {o.descricao && (
+                      <div className="text-[10px] text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{o.descricao}</div>
+                    )}
+                  </button>
+                );
+              })}
+              {lista.length === 0 && (
+                <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-4">—</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

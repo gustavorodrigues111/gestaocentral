@@ -955,7 +955,26 @@ export type ComunicadoLeitura = {
 
 // ─── BANCO DE IDEIAS ────────────────────────────────────────────────────────
 
-export type IdeiaStatus = "aberta" | "em_pauta" | "discutida" | "descartada";
+// Status no Kanban:
+//   aberta          → recém-registrada
+//   em_discussao    → alguém está tratando dela (entre 2 reuniões, sem decisão final)
+//   gerada_reuniao  → foi gerada DENTRO de uma reunião (precisa de ação)
+//   puxada_tarefa   → virou tarefa, encerra aqui no banco
+//   descartada      → não vai virar nada
+// Legados "em_pauta" e "discutida" são tratados como "em_discussao" pelo Kanban.
+export type IdeiaStatus =
+  | "aberta" | "em_discussao" | "gerada_reuniao" | "puxada_tarefa" | "descartada"
+  | "em_pauta" | "discutida"; // legados — aceitos no read, não usados em writes novos
+
+export const IDEIA_STATUS_LABEL: Record<IdeiaStatus, string> = {
+  aberta:         "Nova",
+  em_discussao:   "Em discussão",
+  gerada_reuniao: "Gerada em reunião",
+  puxada_tarefa:  "Puxada pra tarefa",
+  descartada:     "Descartada",
+  em_pauta:       "Em discussão",  // legado
+  discutida:      "Em discussão",  // legado
+};
 
 export type Ideia = {
   id: string;
@@ -964,9 +983,15 @@ export type Ideia = {
   descricao?: string;
   categoria?: string;            // ex: "Operação", "Cardápio", "Cultura"
   status: IdeiaStatus;
-  reuniaoId?: string | null;     // se em_pauta ou discutida → linkada a uma reunião
+  reuniaoId?: string | null;     // legado — se em_pauta/discutida → linkada a uma reunião
+  reuniaoIdOrigem?: string | null;   // reunião onde ela foi GERADA
+  tarefaIdGerada?: string | null;    // tarefa pra onde ela foi puxada
+  puxadaEm?: string | null;
+  puxadaPor?: string | null;
+  puxadaPorNome?: string;
   criadoEm: string;
   criadoPor: string;             // pessoaId
+  criadoPorNome?: string;
   atualizadoEm: string;
 };
 
@@ -1150,13 +1175,24 @@ export const OCORRENCIA_GRAVIDADE_ICON: Record<OcorrenciaGravidade, string> = {
   grave:  "🚨",
 };
 
-export type OcorrenciaStatus = "aberta" | "em_apuracao" | "resolvida" | "arquivada";
+// Status no Kanban:
+//   aberta          → recém-registrada
+//   em_apuracao     → alguém está investigando
+//   gerada_reuniao  → foi gerada DENTRO de uma reunião (precisa ação)
+//   puxada_tarefa   → virou tarefa, encerra aqui no banco
+//   resolvida       → resolvida sem virar tarefa
+//   arquivada       → arquivada sem ação
+export type OcorrenciaStatus =
+  | "aberta" | "em_apuracao" | "gerada_reuniao" | "puxada_tarefa"
+  | "resolvida" | "arquivada";
 
 export const OCORRENCIA_STATUS_LABEL: Record<OcorrenciaStatus, string> = {
-  aberta:       "Aberta",
-  em_apuracao:  "Em apuração",
-  resolvida:    "Resolvida",
-  arquivada:    "Arquivada",
+  aberta:         "Aberta",
+  em_apuracao:    "Em apuração",
+  gerada_reuniao: "Gerada em reunião",
+  puxada_tarefa:  "Puxada pra tarefa",
+  resolvida:      "Resolvida",
+  arquivada:      "Arquivada",
 };
 
 export type Ocorrencia = {
@@ -1176,9 +1212,16 @@ export type Ocorrencia = {
   resolucao?: string;                    // texto da resolução
   resolvidaEm?: string | null;           // ISO
   resolvidaPor?: string | null;          // pessoaId
+  // Refs cruzadas (fluxo Ideias/Reuniões/Tarefas)
+  reuniaoIdOrigem?: string | null;       // reunião onde foi gerada
+  tarefaIdGerada?: string | null;        // tarefa pra onde foi puxada
+  puxadaEm?: string | null;
+  puxadaPor?: string | null;
+  puxadaPorNome?: string;
   // Auditoria
   criadaEm: string;                      // ISO
   criadaPor: string;                     // pessoaId
+  criadaPorNome?: string;
   atualizadaEm: string;
 };
 
