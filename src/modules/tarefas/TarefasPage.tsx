@@ -2239,6 +2239,10 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
   const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [resultado, setResultado] = useState<{ criadas: number; vinculadas: number; erros: string[] } | null>(null);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  // Filtros pra escolher quais linhas importar
+  const [excluirConcluidas, setExcluirConcluidas] = useState(true);
+  const [excluirPassadas, setExcluirPassadas] = useState(false);
+  const [excluirSemPrazo, setExcluirSemPrazo] = useState(false);
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "pessoas"), snap => {
@@ -2278,16 +2282,16 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
   }
 
   async function importar() {
-    if (linhas.length === 0 || !projetoDestino || !subprojetoDestino) {
+    if (linhasFinal.length === 0 || !projetoDestino || !subprojetoDestino) {
       alert("Carregue um CSV e escolha projeto/subprojeto");
       return;
     }
     setImportando(true);
-    setProgresso({ atual: 0, total: linhas.filter(l => !l.parentTaskId).length });
+    setProgresso({ atual: 0, total: linhasFinal.filter(l => !l.parentTaskId).length });
     try {
       const proj = projetos.find(p => p.id === projetoDestino);
       const r = await executarImport(
-        linhas,
+        linhasFinal,
         { projetoId: projetoDestino, subprojetoId: subprojetoDestino, corProjeto: proj?.cor },
         { id: pessoaId, nome: "Importador" },
         (atual, total) => setProgresso({ atual: atual + 1, total }),
@@ -2300,9 +2304,31 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
     }
   }
 
-  const pais = linhas.filter(l => !l.parentTaskId);
-  const filhas = linhas.filter(l => l.parentTaskId);
-  const orfas = detectarOrfas(linhas);
+  const hoje = new Date().toISOString().slice(0, 10);
+
+  // Aplica filtros (memoizado pra evitar recálculo a cada render)
+  const linhasFiltradas = useMemo(() => {
+    return linhas.filter(l => {
+      // Pais e filhas mantidas em sincronia: se filtrar um pai, suas filhas
+      // também são filtradas (vão como órfãs depois). Pra simplificar, aplico
+      // o filtro só em pais e mantenho filhas associadas.
+      if (l.parentTaskId) return true; // filhas seguem o destino dos pais
+      if (excluirConcluidas && l.status === "concluida") return false;
+      if (excluirPassadas && l.prazo && l.prazo < hoje) return false;
+      if (excluirSemPrazo && !l.prazo) return false;
+      return true;
+    });
+  }, [linhas, excluirConcluidas, excluirPassadas, excluirSemPrazo, hoje]);
+
+  // Quais filhas vão pra dentro? Só as cujo pai sobreviveu
+  const paisIdsFiltrados = new Set(linhasFiltradas.filter(l => !l.parentTaskId).map(l => l.taskId));
+  const linhasFinal = linhasFiltradas.filter(l => !l.parentTaskId || paisIdsFiltrados.has(l.parentTaskId));
+
+  const pais = linhasFinal.filter(l => !l.parentTaskId);
+  const filhas = linhasFinal.filter(l => l.parentTaskId);
+  const orfas = detectarOrfas(linhasFinal);
+  const totalOriginal = linhas.filter(l => !l.parentTaskId).length;
+  const filtradosCount = totalOriginal - pais.length;
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -2351,12 +2377,37 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                 {!linhas.length && texto && <Button size="sm" onClick={parsear}>Processar</Button>}
               </div>
 
-              {/* Step 2: preview */}
+              {/* Step 2: preview + filtros */}
               {linhas.length > 0 && (
                 <>
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                      2. Preview ({pais.length} tarefa(s) pai · {filhas.length - orfas.length} subtarefa(s) · {orfas.length} órfã(s) viram pai)
+                      2. Filtrar (opcional)
+                    </div>
+                    <div className="flex flex-wrap gap-3 text-xs p-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={excluirConcluidas} onChange={(e) => setExcluirConcluidas(e.target.checked)} />
+                        Excluir já concluídas
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={excluirPassadas} onChange={(e) => setExcluirPassadas(e.target.checked)} />
+                        Excluir com prazo no passado
+                      </label>
+                      <label className="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" checked={excluirSemPrazo} onChange={(e) => setExcluirSemPrazo(e.target.checked)} />
+                        Excluir sem prazo
+                      </label>
+                      {filtradosCount > 0 && (
+                        <span className="text-amber-700 dark:text-amber-300 ml-auto">
+                          {filtradosCount} pulada(s) · {pais.length} pra importar
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                      3. Preview ({pais.length} tarefa(s) pai · {filhas.length - orfas.length} subtarefa(s) · {orfas.length} órfã(s) viram pai)
                     </div>
                     <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-800 rounded-md p-2 bg-gray-50 dark:bg-gray-800/30 space-y-0.5 text-xs">
                       {pais.slice(0, 50).map((p, i) => {
@@ -2393,10 +2444,10 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                     </details>
                   )}
 
-                  {/* Step 3: destino */}
+                  {/* Step 4: destino */}
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-                      3. Destino
+                      4. Destino
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="text-xs">
