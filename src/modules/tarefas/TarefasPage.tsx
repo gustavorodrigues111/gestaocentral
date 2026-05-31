@@ -8,6 +8,8 @@ import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
   ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
@@ -25,7 +27,7 @@ import {
   TAREFA_VISIBILIDADE_LABEL,
 } from "../../core/types";
 import type { TarefaAnexo } from "../../core/types";
-import { pickDriveFolder } from "../../core/google/drivePicker";
+import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 
 type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
 
@@ -254,23 +256,63 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
   pessoaId: string;
   pessoaNome: string;
 }) {
-  const [filtroStatus, setFiltroStatus] = useState<TarefaStatus | "todos" | "ativas">("ativas");
+  const { restaurants } = useRestaurant();
+  const [filtroStatus, setFiltroStatus] = useState<TarefaStatus | "todos" | "ativas" | "atrasadas" | "hoje" | "semana">("ativas");
+  const [busca, setBusca] = useState("");
+  const [filtroProjeto, setFiltroProjeto] = useState<string>("");
+  const [filtroEmpresa, setFiltroEmpresa] = useState<string>("");
+  const [mostrarFiltros, setMostrarFiltros] = useState(false);
+
+  const hoje = new Date().toISOString().slice(0, 10);
+  const daquiSeteDias = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })();
 
   const filtradas = useMemo(() => {
     let l = tarefas;
+    // Filtro principal por status / prazo (chip)
     if (filtroStatus === "ativas") {
       l = l.filter(t => t.status === "a_fazer" || t.status === "em_andamento");
+    } else if (filtroStatus === "atrasadas") {
+      l = l.filter(t => t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada");
+    } else if (filtroStatus === "hoje") {
+      l = l.filter(t => t.prazo === hoje && t.status !== "concluida" && t.status !== "cancelada");
+    } else if (filtroStatus === "semana") {
+      l = l.filter(t => t.prazo && t.prazo >= hoje && t.prazo <= daquiSeteDias && t.status !== "concluida" && t.status !== "cancelada");
     } else if (filtroStatus !== "todos") {
       l = l.filter(t => t.status === filtroStatus);
     }
+    // Busca textual no título + descrição
+    if (busca.trim()) {
+      const b = busca.toLowerCase();
+      l = l.filter(t =>
+        t.titulo.toLowerCase().includes(b)
+        || (t.descricao || "").toLowerCase().includes(b)
+      );
+    }
+    // Filtro projeto
+    if (filtroProjeto) l = l.filter(t => t.projetoId === filtroProjeto);
+    // Filtro empresa
+    if (filtroEmpresa) l = l.filter(t => (t.restaurantIds || []).includes(filtroEmpresa));
+    // Ordena por prazo asc, sem prazo no fim
     return l.sort((a, b) => {
-      // Prazo asc; sem prazo no final
       if (!a.prazo && !b.prazo) return 0;
       if (!a.prazo) return 1;
       if (!b.prazo) return -1;
       return a.prazo.localeCompare(b.prazo);
     });
-  }, [tarefas, filtroStatus]);
+  }, [tarefas, filtroStatus, busca, filtroProjeto, filtroEmpresa, hoje, daquiSeteDias]);
+
+  const atrasadasCount = useMemo(
+    () => tarefas.filter(t => t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada").length,
+    [tarefas, hoje]
+  );
+
+  function limparFiltros() {
+    setBusca("");
+    setFiltroProjeto("");
+    setFiltroEmpresa("");
+    setFiltroStatus("ativas");
+  }
+  const algumFiltroAtivo = busca || filtroProjeto || filtroEmpresa || filtroStatus !== "ativas";
 
   if (tarefas.length === 0) {
     return (
@@ -283,25 +325,78 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
 
   return (
     <div>
-      <div className="flex gap-2 mb-3 text-sm">
+      {/* Linha 1: busca + toggle de filtros avançados */}
+      <div className="flex gap-2 mb-2">
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="🔍 Buscar no título ou descrição…"
+          className="flex-1 px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+        />
+        <Button size="sm" variant="ghost" onClick={() => setMostrarFiltros(s => !s)}>
+          {mostrarFiltros ? "Ocultar filtros" : "Filtros"}
+        </Button>
+        {algumFiltroAtivo && (
+          <Button size="sm" variant="ghost" onClick={limparFiltros}>Limpar</Button>
+        )}
+      </div>
+
+      {/* Linha 2: chips de status/prazo */}
+      <div className="flex gap-2 mb-2 text-sm overflow-x-auto pb-1">
         <FiltroChip ativo={filtroStatus === "ativas"} onClick={() => setFiltroStatus("ativas")}>Ativas</FiltroChip>
+        <FiltroChip ativo={filtroStatus === "atrasadas"} onClick={() => setFiltroStatus("atrasadas")}>
+          🔥 Atrasadas{atrasadasCount > 0 && ` (${atrasadasCount})`}
+        </FiltroChip>
+        <FiltroChip ativo={filtroStatus === "hoje"} onClick={() => setFiltroStatus("hoje")}>Hoje</FiltroChip>
+        <FiltroChip ativo={filtroStatus === "semana"} onClick={() => setFiltroStatus("semana")}>Próx. 7 dias</FiltroChip>
         <FiltroChip ativo={filtroStatus === "a_fazer"} onClick={() => setFiltroStatus("a_fazer")}>A fazer</FiltroChip>
         <FiltroChip ativo={filtroStatus === "em_andamento"} onClick={() => setFiltroStatus("em_andamento")}>Em andamento</FiltroChip>
         <FiltroChip ativo={filtroStatus === "concluida"} onClick={() => setFiltroStatus("concluida")}>Concluídas</FiltroChip>
         <FiltroChip ativo={filtroStatus === "todos"} onClick={() => setFiltroStatus("todos")}>Todas</FiltroChip>
       </div>
-      <div className="space-y-2">
-        {filtradas.map(t => (
-          <TarefaCard
-            key={t.id}
-            tarefa={t}
-            projetos={projetos}
-            subprojetos={subprojetos}
-            onAbrir={() => onAbrir(t.id)}
-            autor={{ id: pessoaId, nome: pessoaNome }}
-          />
-        ))}
+
+      {/* Linha 3: filtros avançados (toggle) */}
+      {mostrarFiltros && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40">
+          <label className="text-xs">
+            <div className="text-gray-500 dark:text-gray-400 mb-1">Projeto</div>
+            <select value={filtroProjeto} onChange={(e) => setFiltroProjeto(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">— todos —</option>
+              {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
+            </select>
+          </label>
+          <label className="text-xs">
+            <div className="text-gray-500 dark:text-gray-400 mb-1">Empresa</div>
+            <select value={filtroEmpresa} onChange={(e) => setFiltroEmpresa(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">— todas —</option>
+              {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+            </select>
+          </label>
+        </div>
+      )}
+
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+        {filtradas.length} de {tarefas.length} tarefa(s)
       </div>
+
+      {filtradas.length === 0 ? (
+        <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
+          Nenhuma tarefa com esses filtros.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {filtradas.map(t => (
+            <TarefaCard
+              key={t.id}
+              tarefa={t}
+              projetos={projetos}
+              subprojetos={subprojetos}
+              onAbrir={() => onAbrir(t.id)}
+              autor={{ id: pessoaId, nome: pessoaNome }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1080,11 +1175,69 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
   onClose: () => void;
 }) {
   const projeto = projetos.find(p => p.id === tarefa.projetoId);
-  const sub = subprojetos.find(s => s.id === tarefa.subprojetoId);
   const cor = tarefa.corHerdada || projeto?.cor || "#6b7280";
+
+  const { restaurants } = useRestaurant();
+  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
+
+  // Carrega lista de pessoas pra usar nos pickers de responsável/co-resp.
+  // Onsnapshot pra ficar sempre atualizada (raramente muda mas barato).
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const lista = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoasLista(lista);
+    });
+    return () => u();
+  }, []);
 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
+  const [editandoTitulo, setEditandoTitulo] = useState(false);
+  const [tituloDraft, setTituloDraft] = useState(tarefa.titulo);
+  const [editandoDescricao, setEditandoDescricao] = useState(false);
+  const [descricaoDraft, setDescricaoDraft] = useState(tarefa.descricao || "");
+  // Sincroniza drafts se a tarefa mudar de fora (outro usuário editou)
+  useEffect(() => { setTituloDraft(tarefa.titulo); }, [tarefa.titulo]);
+  useEffect(() => { setDescricaoDraft(tarefa.descricao || ""); }, [tarefa.descricao]);
+
+  async function salvarCampo<K extends keyof Tarefa>(
+    campo: K,
+    valor: Tarefa[K],
+    labelHumano?: string,
+  ) {
+    const atual = tarefa[campo];
+    if (JSON.stringify(atual) === JSON.stringify(valor)) return;
+    await atualizarTarefa(tarefa.id, { [campo]: valor } as Partial<Tarefa>, autor, {
+      acao: "editada",
+      campo: labelHumano || String(campo),
+      valorAntes: String(atual ?? "—"),
+      valorDepois: String(valor ?? "—"),
+    });
+  }
+
+  async function trocarProjeto(novoProjetoId: string) {
+    // Ao trocar projeto, escolhe o 1º subprojeto disponível como default
+    const novoSub = subprojetos.find(s => s.projetoId === novoProjetoId);
+    if (!novoSub) {
+      alert("Esse projeto não tem subprojetos. Crie um antes ou escolha outro.");
+      return;
+    }
+    const novoProj = projetos.find(p => p.id === novoProjetoId);
+    await atualizarTarefa(tarefa.id, {
+      projetoId: novoProjetoId,
+      subprojetoId: novoSub.id,
+      corHerdada: novoProj?.cor || tarefa.corHerdada,
+    }, autor, {
+      acao: "editada",
+      campo: "projeto",
+      valorAntes: projeto?.nome || "—",
+      valorDepois: novoProj?.nome || "—",
+    });
+  }
 
   async function addSubtarefa() {
     if (!novaSubtarefa.trim()) return;
@@ -1141,6 +1294,26 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
     }
   }
 
+  async function addAnexoDriveFile() {
+    try {
+      const file = await pickDriveFile("Selecione o arquivo do Drive");
+      if (!file) return;
+      const anexo: TarefaAnexo = {
+        id: Math.random().toString(36).slice(2, 11),
+        nome: file.name,
+        url: `https://drive.google.com/open?id=${file.id}`,
+        tipo: "drive-file",
+        adicionadoEm: new Date().toISOString(),
+        adicionadoPor: autor.id,
+      };
+      await atualizarTarefa(tarefa.id, {
+        anexos: [...(tarefa.anexos || []), anexo],
+      }, autor, { acao: "anexo_adicionado", detalhe: file.name });
+    } catch (e) {
+      alert("Não foi possível abrir o Drive Picker: " + String(e));
+    }
+  }
+
   async function removerAnexo(anexoId: string) {
     if (!confirm("Remover este anexo?")) return;
     await atualizarTarefa(tarefa.id, {
@@ -1153,10 +1326,55 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()} style={{ borderTopWidth: 6, borderTopColor: cor }}>
         <header className="p-5 border-b border-gray-200 dark:border-gray-800">
           <div className="flex items-start justify-between gap-3">
-            <div className="flex-1">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{tarefa.titulo}</h2>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {projeto?.emoji} {projeto?.nome} › {sub?.nome}
+            <div className="flex-1 min-w-0">
+              {editandoTitulo ? (
+                <input
+                  value={tituloDraft}
+                  onChange={(e) => setTituloDraft(e.target.value)}
+                  onBlur={async () => {
+                    setEditandoTitulo(false);
+                    if (tituloDraft.trim() && tituloDraft !== tarefa.titulo) {
+                      await salvarCampo("titulo", tituloDraft.trim(), "título");
+                    }
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    if (e.key === "Escape") { setTituloDraft(tarefa.titulo); setEditandoTitulo(false); }
+                  }}
+                  autoFocus
+                  className="w-full text-lg font-bold bg-transparent border-b-2 border-indigo-500 text-gray-900 dark:text-gray-100 outline-none"
+                />
+              ) : (
+                <h2
+                  onClick={() => setEditandoTitulo(true)}
+                  className="text-lg font-bold text-gray-900 dark:text-gray-100 cursor-text hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded px-1 -mx-1"
+                  title="Clique pra editar"
+                >
+                  {tarefa.titulo}
+                </h2>
+              )}
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 flex-wrap">
+                <select
+                  value={tarefa.projetoId}
+                  onChange={(e) => trocarProjeto(e.target.value)}
+                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
+                  title="Trocar projeto"
+                >
+                  {projetos.map(p => (
+                    <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
+                  ))}
+                </select>
+                <span>›</span>
+                <select
+                  value={tarefa.subprojetoId}
+                  onChange={(e) => salvarCampo("subprojetoId", e.target.value, "subprojeto")}
+                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
+                  title="Trocar subprojeto"
+                >
+                  {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => (
+                    <option key={s.id} value={s.id}>{s.nome}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none">×</button>
@@ -1169,7 +1387,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
               <select
                 value={tarefa.status}
                 onChange={(e) => mudarStatus(tarefa.id, e.target.value as TarefaStatus, autor)}
-                className="mt-1 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
               >
                 {(Object.keys(TAREFA_STATUS_LABEL) as TarefaStatus[]).map(s =>
                   <option key={s} value={s}>{TAREFA_STATUS_LABEL[s]}</option>
@@ -1177,64 +1395,125 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
               </select>
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Responsável</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100 mt-1">{tarefa.responsavelNome || "—"}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Prioridade</div>
+              <select
+                value={tarefa.prioridade}
+                onChange={(e) => salvarCampo("prioridade", e.target.value as TarefaPrioridade, "prioridade")}
+                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+              >
+                {(Object.keys(TAREFA_PRIORIDADE_LABEL) as TarefaPrioridade[]).map(p =>
+                  <option key={p} value={p}>{TAREFA_PRIORIDADE_LABEL[p]}</option>
+                )}
+              </select>
             </div>
             <div>
               <div className="text-xs text-gray-500 dark:text-gray-400">Prazo</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100 mt-1">{tarefa.prazo || "—"}</div>
+              <input
+                type="date"
+                value={tarefa.prazo || ""}
+                onChange={(e) => salvarCampo("prazo", e.target.value || null, "prazo")}
+                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+              />
             </div>
             <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Prioridade</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100 mt-1">{TAREFA_PRIORIDADE_LABEL[tarefa.prioridade]}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">Responsável</div>
+              <select
+                value={tarefa.responsavelId}
+                onChange={(e) => {
+                  const novo = pessoasLista.find(p => p.id === e.target.value);
+                  if (!novo) return;
+                  atualizarTarefa(tarefa.id, {
+                    responsavelId: novo.id,
+                    responsavelNome: novo.nome,
+                  }, autor, {
+                    acao: "responsavel_mudou",
+                    campo: "responsável",
+                    valorAntes: tarefa.responsavelNome || "—",
+                    valorDepois: novo.nome,
+                  });
+                }}
+                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+              >
+                {!pessoasLista.find(p => p.id === tarefa.responsavelId) && tarefa.responsavelNome && (
+                  <option value={tarefa.responsavelId}>{tarefa.responsavelNome} (atual)</option>
+                )}
+                {pessoasLista.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
             </div>
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Origem</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100 mt-1">{TAREFA_ORIGEM_LABEL[tarefa.origem]}</div>
+            <div className="col-span-2">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Co-responsáveis</div>
+              <CoRespPicker
+                tarefa={tarefa}
+                pessoas={pessoasLista}
+                autor={autor}
+              />
             </div>
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Empresa(s)</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100 mt-1">{(tarefa.restaurantIds || []).join(", ") || "—"}</div>
+            <div className="col-span-2">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Empresa(s)</div>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {restaurants.map(r => {
+                  const sel = (tarefa.restaurantIds || []).includes(r.id);
+                  return (
+                    <label key={r.id} className="flex items-center gap-1 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={sel}
+                        onChange={(e) => {
+                          const cur = tarefa.restaurantIds || [];
+                          const novo = e.target.checked ? [...cur, r.id] : cur.filter(x => x !== r.id);
+                          salvarCampo("restaurantIds", novo, "empresa(s)");
+                        }}
+                      />
+                      {r.nome}
+                    </label>
+                  );
+                })}
+                {restaurants.length === 0 && <span className="text-xs text-gray-400">—</span>}
+              </div>
+            </div>
+            <div className="col-span-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
+              <div>Origem: <span className="text-gray-700 dark:text-gray-300">{TAREFA_ORIGEM_LABEL[tarefa.origem]}</span></div>
+              {tarefa.origemRefLabel && <div>· {tarefa.origemRefLabel}</div>}
             </div>
           </div>
 
-          {tarefa.descricao && (
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descrição</div>
-              <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{tarefa.descricao}</div>
-            </div>
-          )}
+          {/* Descrição editável */}
+          <div>
+            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descrição</div>
+            {editandoDescricao ? (
+              <textarea
+                value={descricaoDraft}
+                onChange={(e) => setDescricaoDraft(e.target.value)}
+                onBlur={async () => {
+                  setEditandoDescricao(false);
+                  if (descricaoDraft !== (tarefa.descricao || "")) {
+                    await salvarCampo("descricao", descricaoDraft || undefined, "descrição");
+                  }
+                }}
+                rows={4}
+                autoFocus
+                className="w-full text-sm px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                placeholder="Descrição (opcional)…"
+              />
+            ) : (
+              <div
+                onClick={() => setEditandoDescricao(true)}
+                className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap cursor-text hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded p-1 -m-1 min-h-[1.5rem]"
+                title="Clique pra editar"
+              >
+                {tarefa.descricao || <span className="text-gray-400 italic">+ Adicionar descrição</span>}
+              </div>
+            )}
+          </div>
 
           {/* Subtarefas */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-              Subtarefas {tarefa.subtarefas && tarefa.subtarefas.length > 0 && `(${tarefa.subtarefas.filter(s => s.feito).length}/${tarefa.subtarefas.length})`}
-            </h3>
-            <div className="space-y-1">
-              {(tarefa.subtarefas || []).map(st => (
-                <label key={st.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={st.feito}
-                    onChange={(e) => marcarSubtarefa(tarefa.id, st.id, e.target.checked, autor)}
-                  />
-                  <span className={st.feito ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}>
-                    {st.texto}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-2">
-              <input
-                value={novaSubtarefa}
-                onChange={(e) => setNovaSubtarefa(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addSubtarefa()}
-                placeholder="+ Nova subtarefa…"
-                className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
-              />
-              <Button size="sm" onClick={addSubtarefa}>+</Button>
-            </div>
-          </div>
+          <SubtarefasSection
+            tarefa={tarefa}
+            autor={autor}
+            novaSubtarefa={novaSubtarefa}
+            setNovaSubtarefa={setNovaSubtarefa}
+            addSubtarefa={addSubtarefa}
+          />
 
           {/* Comentários */}
           <div>
@@ -1270,15 +1549,16 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             <div className="space-y-1">
               {(tarefa.anexos || []).map(a => (
                 <div key={a.id} className="flex items-center gap-2 text-sm">
-                  <span>{a.tipo === "drive-folder" ? "📁" : "🔗"}</span>
+                  <span>{a.tipo === "drive-folder" ? "📁" : a.tipo === "drive-file" ? "📎" : "🔗"}</span>
                   <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-indigo-600 dark:text-indigo-400 hover:underline truncate">{a.nome}</a>
                   <button onClick={() => removerAnexo(a.id)} className="text-[11px] text-red-500 hover:underline">×</button>
                 </div>
               ))}
             </div>
-            <div className="flex gap-2 mt-2">
-              <Button size="sm" variant="ghost" onClick={addAnexoManual}>+ Link</Button>
-              <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Drive</Button>
+            <div className="flex gap-2 mt-2 flex-wrap">
+              <Button size="sm" variant="ghost" onClick={addAnexoManual}>🔗 Link</Button>
+              <Button size="sm" variant="ghost" onClick={addAnexoDriveFile}>📎 Arquivo Drive</Button>
+              <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Pasta Drive</Button>
             </div>
           </div>
 
@@ -1311,6 +1591,184 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
           >🗑️ Excluir</Button>
           <Button onClick={onClose}>Fechar</Button>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Picker de co-responsáveis ─────────────────────────────────────────────
+
+function CoRespPicker({ tarefa, pessoas, autor }: {
+  tarefa: Tarefa;
+  pessoas: Array<{ id: string; nome: string }>;
+  autor: { id: string; nome: string };
+}) {
+  const [aberto, setAberto] = useState(false);
+  const atuais = tarefa.coResponsaveis || [];
+  const atuaisNomes = tarefa.coResponsaveisNomes || [];
+
+  async function remover(id: string) {
+    const novoIds = atuais.filter(x => x !== id);
+    const novoNomes = atuaisNomes.filter((_, i) => atuais[i] !== id);
+    const removidoNome = pessoas.find(p => p.id === id)?.nome
+      || atuaisNomes[atuais.indexOf(id)] || "—";
+    await atualizarTarefa(tarefa.id, {
+      coResponsaveis: novoIds,
+      coResponsaveisNomes: novoNomes,
+    }, autor, {
+      acao: "co_resp_removido",
+      detalhe: removidoNome,
+    });
+  }
+  async function adicionar(id: string) {
+    if (atuais.includes(id) || id === tarefa.responsavelId) return;
+    const pessoa = pessoas.find(p => p.id === id);
+    if (!pessoa) return;
+    await atualizarTarefa(tarefa.id, {
+      coResponsaveis: [...atuais, id],
+      coResponsaveisNomes: [...atuaisNomes, pessoa.nome],
+    }, autor, {
+      acao: "co_resp_adicionado",
+      detalhe: pessoa.nome,
+    });
+    setAberto(false);
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 items-center">
+      {atuais.map((id, i) => {
+        const nome = pessoas.find(p => p.id === id)?.nome || atuaisNomes[i] || "—";
+        return (
+          <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-xs">
+            {nome}
+            <button onClick={() => remover(id)} className="text-indigo-400 hover:text-red-500 ml-1">×</button>
+          </span>
+        );
+      })}
+      {!aberto ? (
+        <button
+          onClick={() => setAberto(true)}
+          className="text-xs px-2 py-0.5 rounded-full border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+        >
+          + co-responsável
+        </button>
+      ) : (
+        <select
+          autoFocus
+          onChange={(e) => adicionar(e.target.value)}
+          onBlur={() => setAberto(false)}
+          className="text-xs px-2 py-0.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+          defaultValue=""
+        >
+          <option value="" disabled>— escolha —</option>
+          {pessoas
+            .filter(p => !atuais.includes(p.id) && p.id !== tarefa.responsavelId)
+            .map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ─── Seção de subtarefas com CRUD completo ────────────────────────────────
+
+function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, addSubtarefa }: {
+  tarefa: Tarefa;
+  autor: { id: string; nome: string };
+  novaSubtarefa: string;
+  setNovaSubtarefa: (v: string) => void;
+  addSubtarefa: () => Promise<void>;
+}) {
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [draftTexto, setDraftTexto] = useState("");
+
+  const subs = tarefa.subtarefas || [];
+  const totalFeitos = subs.filter(s => s.feito).length;
+
+  async function salvarEdicao(id: string) {
+    const novo = draftTexto.trim();
+    setEditandoId(null);
+    if (!novo) return;
+    const novas = subs.map(s => s.id === id ? { ...s, texto: novo } : s);
+    await atualizarTarefa(tarefa.id, { subtarefas: novas }, autor, {
+      acao: "editada",
+      campo: "subtarefa",
+      detalhe: novo,
+    });
+  }
+  async function removerSub(id: string) {
+    const removida = subs.find(s => s.id === id);
+    const novas = subs.filter(s => s.id !== id);
+    await atualizarTarefa(tarefa.id, { subtarefas: novas }, autor, {
+      acao: "subtarefa_removida",
+      detalhe: removida?.texto,
+    });
+  }
+  async function mover(id: string, delta: -1 | 1) {
+    const i = subs.findIndex(s => s.id === id);
+    const j = i + delta;
+    if (i < 0 || j < 0 || j >= subs.length) return;
+    const novas = [...subs];
+    [novas[i], novas[j]] = [novas[j], novas[i]];
+    // Re-numera ordem
+    const reordenadas = novas.map((s, k) => ({ ...s, ordem: k + 1 }));
+    await atualizarTarefa(tarefa.id, { subtarefas: reordenadas }, autor, {
+      acao: "editada",
+      campo: "ordem subtarefas",
+    });
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+        Subtarefas {subs.length > 0 && `(${totalFeitos}/${subs.length})`}
+      </h3>
+      <div className="space-y-1">
+        {subs.map((st, idx) => (
+          <div key={st.id} className="flex items-center gap-2 text-sm group">
+            <input
+              type="checkbox"
+              checked={st.feito}
+              onChange={(e) => marcarSubtarefa(tarefa.id, st.id, e.target.checked, autor)}
+            />
+            {editandoId === st.id ? (
+              <input
+                value={draftTexto}
+                onChange={(e) => setDraftTexto(e.target.value)}
+                onBlur={() => salvarEdicao(st.id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                  if (e.key === "Escape") { setEditandoId(null); }
+                }}
+                autoFocus
+                className="flex-1 px-1 py-0.5 text-sm rounded border border-indigo-400 bg-white dark:bg-gray-800"
+              />
+            ) : (
+              <span
+                onClick={() => { setEditandoId(st.id); setDraftTexto(st.texto); }}
+                className={`flex-1 cursor-text ${st.feito ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}`}
+                title="Clique pra editar"
+              >
+                {st.texto}
+              </span>
+            )}
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-xs">
+              <button onClick={() => mover(st.id, -1)} disabled={idx === 0} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Subir">▲</button>
+              <button onClick={() => mover(st.id, 1)} disabled={idx === subs.length - 1} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Descer">▼</button>
+              <button onClick={() => removerSub(st.id)} className="px-1 text-red-500 hover:text-red-700" title="Remover">×</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2 mt-2">
+        <input
+          value={novaSubtarefa}
+          onChange={(e) => setNovaSubtarefa(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && addSubtarefa()}
+          placeholder="+ Nova subtarefa…"
+          className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+        />
+        <Button size="sm" onClick={addSubtarefa}>+</Button>
       </div>
     </div>
   );

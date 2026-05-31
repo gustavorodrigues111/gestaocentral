@@ -126,3 +126,54 @@ export async function pickDriveFolder(
     }
   });
 }
+
+// Variant pra escolher ARQUIVO (não pasta). Usado em Anexos de Tarefa: o
+// usuário escolhe um documento/planilha/PDF qualquer do Drive (mesmo que o
+// app não tenha visto antes — Picker é UI hospedada pelo Google, a seleção
+// concede acesso drive.file àquele arquivo).
+//
+// Por default mostra tudo (sem filtro de mimeType). Passar mimeTypes pra
+// restringir, ex: "application/pdf,application/vnd.google-apps.document".
+export async function pickDriveFile(
+  title = "Selecione o arquivo",
+  parentId?: string,
+  mimeTypes?: string,
+): Promise<{ id: string; name: string } | null> {
+  const token = await requestAccessToken();
+  await loadPickerLib();
+  const picker = globais().google?.picker;
+  if (!picker) throw new Error("Google Picker indisponível.");
+  return new Promise<{ id: string; name: string } | null>((resolve, reject) => {
+    try {
+      // Usa view "DOCS" (todos os tipos) — sem setMimeTypes filtra nada.
+      // Pra restringir, passa mimeTypes (ex: "application/pdf").
+      // Atenção: Picker constants têm ViewId.DOCS = "all", mas a tipagem
+      // declarada acima só expõe FOLDERS. Acessamos via cast pra `unknown`.
+      const ViewIdAny = (picker.ViewId as unknown as Record<string, string>);
+      const viewId = ViewIdAny.DOCS || ViewIdAny.FOLDERS;
+      const view = new picker.DocsView(viewId)
+        .setIncludeFolders(true)
+        .setSelectFolderEnabled(false);
+      if (mimeTypes) view.setMimeTypes(mimeTypes);
+      if (parentId) view.setParent(parentId);
+      const built = new picker.PickerBuilder()
+        .setAppId(GOOGLE_APP_ID)
+        .setOAuthToken(token)
+        .setDeveloperKey(GOOGLE_PICKER_API_KEY)
+        .addView(view)
+        .setTitle(title)
+        .setCallback((data) => {
+          if (data.action === picker.Action.PICKED) {
+            const doc = data.docs?.[0];
+            resolve(doc ? { id: doc.id, name: doc.name } : null);
+          } else if (data.action === picker.Action.CANCEL) {
+            resolve(null);
+          }
+        })
+        .build();
+      built.setVisible(true);
+    } catch (e) {
+      reject(e instanceof Error ? e : new Error("Erro ao abrir o seletor de arquivos."));
+    }
+  });
+}
