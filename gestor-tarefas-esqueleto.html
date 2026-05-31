@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Gestor de Tarefas — esqueleto v2</title>
+<style>
+  :root { --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --ink:#1f2937; --mut:#6b7280; --accent:#6366f1; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; }
+  header { position:sticky; top:0; z-index:10; background:#111827; color:#fff; padding:12px 18px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; font-weight:700; }
+  header .sub { font-size:12px; color:#9ca3af; }
+  header .spacer { flex:1; }
+  button.tb { background:#374151; color:#fff; border:0; border-radius:8px; padding:7px 12px; font-size:13px; font-weight:600; cursor:pointer; }
+  button.tb:hover { background:#4b5563; }
+  button.tb.primary { background:var(--accent); } button.tb.primary:hover { background:#4f46e5; }
+  .wrap { padding:18px; max-width:1100px; margin:0 auto; }
+  .hint { background:#eef2ff; border:1px solid #c7d2fe; border-radius:12px; padding:12px 16px; margin-bottom:16px; font-size:13px; }
+  .hint h3 { margin:0 0 6px; font-size:14px; }
+  .hint ul { margin:6px 0 0; padding-left:18px; } .hint li { margin:2px 0; }
+  .info { background:#fefce8; border:1px solid #fde68a; border-radius:12px; padding:12px 16px; margin-bottom:16px; font-size:13px; }
+  .info h3 { margin:0 0 6px; font-size:14px; color:#854d0e; }
+
+  /* Projeto = card grande com cor */
+  .proj { border:1px solid var(--line); border-left-width:8px; border-radius:12px; margin-bottom:14px; overflow:hidden; background:var(--card); }
+  .proj-head { padding:12px 14px; display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+  .proj-head input.pname { font-weight:700; font-size:15px; border:0; background:transparent; flex:1; padding:4px; border-radius:6px; min-width:200px; }
+  .proj-head input.pname:focus, .proj-head input.pname:hover { background:#fff; outline:1px solid var(--line); }
+  .proj-head .caret { transition:transform .15s; font-size:12px; color:var(--mut); }
+  .proj.collapsed .proj-head .caret { transform:rotate(-90deg); }
+  .proj.collapsed .proj-body { display:none; }
+  .proj-meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px; padding:0 14px 12px; border-bottom:1px solid var(--line); }
+  .proj-meta label { display:flex; flex-direction:column; gap:3px; font-size:10px; color:var(--mut); font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .proj-meta input, .proj-meta select { font-size:12px; border:1px solid var(--line); border-radius:7px; padding:5px 7px; font-family:inherit; background:#fff; }
+  .proj-meta input[type=color] { padding:1px; height:28px; cursor:pointer; }
+  .proj-body { padding:8px 14px 14px; }
+
+  /* Subprojeto = card menor dentro do projeto */
+  .sub { border:1px solid var(--line); border-radius:10px; padding:9px 11px; margin:7px 0; background:#fafbfc; }
+  .sub-top { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .sub-top input.sname { font-weight:700; font-size:13px; border:1px solid transparent; background:transparent; flex:1; min-width:160px; padding:3px; border-radius:6px; }
+  .sub-top input.sname:focus, .sub-top input.sname:hover { background:#fff; border-color:var(--line); }
+  .sub-meta { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:6px; margin-top:8px; }
+  .sub-meta label { display:flex; flex-direction:column; gap:2px; font-size:10px; color:var(--mut); font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+  .sub-meta input, .sub-meta textarea, .sub-meta select { font-size:12px; border:1px solid var(--line); border-radius:6px; padding:5px 7px; font-family:inherit; background:#fff; }
+  .sub-meta textarea { resize:vertical; min-height:32px; }
+
+  .tarefas h5 { margin:10px 0 4px; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); font-weight:700; }
+  .tar { display:grid; grid-template-columns:1fr 130px 90px 120px 28px; gap:5px; align-items:center; margin:4px 0; }
+  .tar input, .tar select { font-size:11px; border:1px solid var(--line); border-radius:5px; padding:4px 6px; font-family:inherit; background:#fff; }
+  .head-tar { display:grid; grid-template-columns:1fr 130px 90px 120px 28px; gap:5px; font-size:9px; font-weight:700; color:var(--mut); text-transform:uppercase; letter-spacing:.04em; padding:0 4px; margin-top:4px; }
+
+  .x { background:#fee2e2; color:#b91c1c; border:0; border-radius:5px; padding:3px 7px; font-size:11px; cursor:pointer; font-weight:700; }
+  .add { background:#ecfdf5; color:#047857; border:1px dashed #6ee7b7; border-radius:7px; padding:5px 10px; font-size:12px; cursor:pointer; font-weight:700; margin-top:6px; }
+  .badge { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; padding:2px 6px; border-radius:999px; }
+  .badge-rot { background:#dbeafe; color:#1e40af; }
+  .badge-dem { background:#fce7f3; color:#9d174d; }
+  .badge-auto { background:#dcfce7; color:#166534; }
+  .badge-futuro { background:#e0e7ff; color:#3730a3; }
+
+  /* Bloco de info: anatomia da tarefa */
+  .anatomia { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-top:14px; font-size:13px; }
+  .anatomia h3 { margin:0 0 8px; font-size:14px; }
+  .anatomia table { width:100%; border-collapse:collapse; }
+  .anatomia td { padding:5px 8px; border-top:1px solid var(--line); vertical-align:top; }
+  .anatomia td:first-child { white-space:nowrap; font-weight:700; width:30%; }
+
+  dialog { border:0; border-radius:14px; padding:0; max-width:680px; width:92%; }
+  dialog .dlg { padding:18px; }
+  dialog textarea { width:100%; min-height:340px; font-family:ui-monospace,Menlo,monospace; font-size:12px; border:1px solid var(--line); border-radius:8px; padding:10px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🗂️ Gestor de Tarefas — esqueleto v2</h1>
+  <span class="sub">Projeto › Subprojeto › Tarefa · Rotinas vs Demandas · multi-rest unificado</span>
+  <span class="spacer"></span>
+  <button class="tb" onclick="resumo()">📋 Resumo</button>
+  <button class="tb primary" onclick="exportar()">⬇️ Exportar</button>
+  <button class="tb" onclick="resetar()">↺ Restaurar</button>
+</header>
+
+<div class="wrap">
+  <div class="hint">
+    <h3>💡 Como ler</h3>
+    Hierarquia <b>Projeto › Subprojeto › Tarefa</b>. Projetos são as grandes áreas (Pessoas, Financeiro…), divididos em <b>Rotinas</b> (recorrentes) e <b>Demandas</b> (pontuais). Cada projeto tem <b>cor</b> (herdada pelas tarefas), <b>dono</b>, <b>visibilidade</b>. Cada subprojeto tem seu <b>gatilho</b> (se for automático), <b>campos custom</b>, <b>pasta Drive padrão</b> e <b>tarefas-template</b>. Edite à vontade.
+  </div>
+  <div class="info">
+    <h3>📌 Pontos transversais já decididos (estão no design, não dá pra editar aqui)</h3>
+    <ul>
+      <li><b>Caixa de tarefas é POR USUÁRIO</b> — independente do restaurante selecionado no topo do app. Quem atende múltiplos rests (escritório) tem tudo num lugar só. Tarefa pode ter restaurante como <b>campo</b> (não como contexto raiz).</li>
+      <li><b>Tarefas-lembrete vêm de cadastros mestres, não vice-versa</b> — quando o trabalho é puxar "fato cadastrado no sistema" pra execução. Cadastros que geram tarefas automaticamente: <i>Conta Fixa</i> (módulo Financeiro: fornecedor + valor + PIX + recorrência → gera tarefa de pagamento na data), <i>Prazo de Licença/Manutenção</i> (tipo + fornecedor + periodicidade → gera tarefa X dias antes do vencimento), <i>Admissão</i> (gera 4-5 prazos trabalhistas: experiência 1ª/2ª, exames, coprocultura), <i>Reunião agendada</i> (gera tarefa-pai com subtarefas = itens da pauta), <i>Folga programada</i> (vira bloqueio na escala, não tarefa). A tarefa carrega <code>linkOrigem</code> que abre o cadastro mestre.</li>
+      <li><b>Co-responsáveis</b> — tarefa tem 1 responsável principal + 0..N co-responsáveis. Co-responsáveis recebem as mesmas notificações e podem concluir, mas só o principal aparece em "Minhas Tarefas" do co-responsável (evita poluição). Útil em demandas colaborativas (ex: "Comprar Vinhos Puba" — Gustavo responsável, Janaynna co-responsável pra pagamento).</li>
+      <li><b>Anexos sobem pro Drive</b> (na pasta definida pelo subprojeto), tarefa guarda só o <b>link</b>.</li>
+      <li><b>Log automático</b> em cada tarefa: check/uncheck de subtarefa, comentário, anexo, edição de campo → registra autor + timestamp. Auditável.</li>
+      <li><b>Soft delete</b> — tarefa excluída vai pra <b>lixeira oculta</b>. Master tem tela pra restaurar/auditar.</li>
+      <li><b>Cor</b> do projeto é background do card da tarefa. Novos projetos: criador escolhe.</li>
+      <li><b>"Prazos Trabalhistas" não é projeto separado</b> — é uma <i>view transversal</i> filtrando tarefas com <code>tipo ∈ {Experiência, Exame Clínico, Exame Complementar, Coprocultura, Gozo de Férias}</code>, ordenadas por vencimento. Fonte da verdade fica nos subprojetos de origem (Admissão, Férias, etc).</li>
+    </ul>
+  </div>
+
+  <div id="board"></div>
+
+  <div class="anatomia">
+    <h3>🧬 Anatomia da Tarefa (referência — não-editável)</h3>
+    <table>
+      <tr><td>Título + Descrição</td><td>Texto livre.</td></tr>
+      <tr><td>Responsável principal</td><td>1 pessoa.</td></tr>
+      <tr><td>Co-responsáveis</td><td>0..N pessoas (recebem notificações).</td></tr>
+      <tr><td>Prazo</td><td>Data + hora opcional.</td></tr>
+      <tr><td>Status</td><td>a fazer / em andamento / concluída / cancelada.</td></tr>
+      <tr><td>Prioridade</td><td>baixa / normal / alta / urgente.</td></tr>
+      <tr><td>Checklist de subtarefas</td><td>Lista de itens marcáveis. Cada check vira entrada no log.</td></tr>
+      <tr><td>Anexos</td><td>Sobem pro Drive na pasta do subprojeto; a tarefa guarda só o link.</td></tr>
+      <tr><td>Comentários</td><td>Com @menções (notificam). Entram no log.</td></tr>
+      <tr><td>Log de atividade</td><td>Tudo que muda fica registrado com autor + quando.</td></tr>
+      <tr><td>Campos custom</td><td>Definidos pelo subprojeto (ex: Empresa, Cargo, Tipo de exame).</td></tr>
+      <tr><td>Cor</td><td>Herdada do projeto.</td></tr>
+      <tr><td>Restaurante vinculado</td><td>Opcional. Algumas tarefas têm, outras são transversais.</td></tr>
+      <tr><td>Empresa(s)</td><td>Multi-select. Tarefa pode pertencer a 1, várias ou todas as empresas. Campo padrão (igual ao Asana hoje).</td></tr>
+      <tr><td>Origem do cadastro</td><td>De onde a tarefa veio: <code>avulsa</code> (criada manualmente), <code>conta-fixa</code> (gerada pelo módulo Contas Fixas), <code>manutencao</code> (gerada pelo cadastro de manutenção), <code>admissao</code> (cascata de Admissão), <code>ferias</code> (gozo programado), <code>reuniao</code> (item da pauta), <code>evento</code> (subtarefa de evento), <code>lote-financeiro</code> (lote mensal). Clicar abre o cadastro mestre.</td></tr>
+      <tr><td>Tipo derivado (subcampo)</td><td>Quando a origem é cadastro, alguns subprojetos usam um sub-campo discriminador: Experiência → <i>1ª/2ª</i>, Exame Médico → <i>Clínico/Complementar</i>, Demissão → <i>Empresa/Empregado/Acordo</i>, Folha → <i>Adiantamento/Salário</i>.</td></tr>
+    </table>
+  </div>
+</div>
+
+<dialog id="dlg"><div class="dlg">
+  <h3 id="dlgTitle" style="margin-top:0"></h3>
+  <textarea id="dlgText" readonly></textarea>
+  <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+    <button class="tb" onclick="copyDlg()">Copiar</button>
+    <button class="tb" onclick="downloadDlg()">Baixar</button>
+    <button class="tb primary" onclick="document.getElementById('dlg').close()">Fechar</button>
+  </div>
+</div></dialog>
+
+<script>
+const RESPS = ["Diretoria (Gustavo)","DP (Ellen)","Financeiro (Janaynna)","Administrativo (Marília)","Ruth","Líder da área","Operação","—"];
+const VIS = ["privado (dono + co-resp)","grupo DP","grupo Financeiro","grupo Diretoria","grupo Operação","todo o escritório","operação (por restaurante)","público (todo o sistema)"];
+const ORIGENS = ["manual","recorrência","processo (Pessoas)","evento","mudança agendada","lote financeiro","prazo do empregado","portal do empregado","módulo (futuro)"];
+const TIPOS = ["rotina","demanda","misto"];
+
+const ORIGINAL = {
+  projetos: [
+    {
+      nome:"👥 Pessoas — Rotinas", cor:"#fbbf24", dono:"DP (Ellen)", visibilidade:"grupo DP", tipo:"rotina",
+      subprojetos: [
+        { nome:"Admissão", auto:true, gatilho:"Nova admissão no kanban de processos", campos:"Empresa · Cargo · Data de admissão", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]", tarefas:[
+          {t:"Preencher dados básicos do candidato", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"Conferir documentos recebidos", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"Agendar exames médicos", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"Envio à contabilidade", r:"DP (Ellen)", p:"D+10", o:"processo (Pessoas)"},
+          {t:"Kit de assinatura (Clicksign)", r:"DP (Ellen)", p:"D+12", o:"processo (Pessoas)"},
+          {t:"Cadastro no Caju / Sólides", r:"Financeiro (Janaynna)", p:"D+15", o:"processo (Pessoas)"},
+          {t:"Entrega de uniformes/EPIs", r:"DP (Ellen)", p:"D+20", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Demissão (unificada — iniciativa empresa/empregado/acordo)", auto:true, gatilho:"Início de processo de desligamento. Campo Iniciativa filtra as tarefas. LÓGICA DA INICIATIVA EMPRESA: define data alvo → pede PRÉVIA à contabilidade (custo da rescisão) → decide com base no custo + caixa se a demissão será realizada naquele momento → segue para informar o empregado e demais etapas. LÓGICA INICIATIVA EMPREGADO: já decidida pelo empregado, sem prévia/decisão — só informa a contabilidade pra calcular e segue. ACORDO: misto (negociação prévia + decisão conjunta).", campos:"Empresa(s) · Iniciativa (empresa/empregado/acordo) · Aviso prévio (trabalhado/indenizado) · Última data trabalhada", pastaDrive:"[Empresa]/Pessoas/Empregados Desligados/[Nome]", tarefas:[
+          {t:"[Empresa] Definir data de demissão", r:"Diretoria (Gustavo)", p:"D-5", o:"processo (Pessoas)"},
+          {t:"[Empresa] Definir se a demissão será realizada", r:"Diretoria (Gustavo)", p:"D-5", o:"processo (Pessoas)"},
+          {t:"[Empregado] Solicitar carta de próprio punho no ato do pedido", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"[Ambas] Definir se cumprirá ou não aviso prévio", r:"Diretoria (Gustavo)", p:"D-3", o:"processo (Pessoas)"},
+          {t:"[Empresa] Solicitar prévia da rescisão para contabilidade", r:"DP (Ellen)", p:"D-3", o:"processo (Pessoas)"},
+          {t:"[Empresa] Solicitar aviso de demissão para a contabilidade", r:"DP (Ellen)", p:"D-2", o:"processo (Pessoas)"},
+          {t:"[Empregado] Informar contabilidade", r:"DP (Ellen)", p:"D+1", o:"processo (Pessoas)"},
+          {t:"[Empresa] Informar demissão para o empregado", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"[Empresa] Se não tiver retorno do informe, enviar telegrama", r:"DP (Ellen)", p:"D+2", o:"processo (Pessoas)"},
+          {t:"[Ambas] Calcular gorjeta — Último dia trabalhado", r:"Diretoria (Gustavo)", p:"D-1", o:"processo (Pessoas)"},
+          {t:"[Ambas] Marcar reunião de demissão + devolução (uniformes, EPIs, chaves, cadeados, aparelhos, utensílios)", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"[Ambas] Marcar exame demissional", r:"DP (Ellen)", p:"D+1", o:"processo (Pessoas)"},
+          {t:"[Ambas] Marcar assinatura da rescisão + outros documentos + entrega do recibo de devolução", r:"DP (Ellen)", p:"D+3", o:"processo (Pessoas)"},
+          {t:"[Ambas] Realizar pagamento de verbas rescisórias", r:"Financeiro (Janaynna)", p:"D+3", o:"processo (Pessoas)"},
+          {t:"[Ambas] Anexar no Drive Rescisão (assinada)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Alterar pasta do empregado para pasta de Desligados", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Excluir da Triagem (clínica de exames)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Excluir da ferramenta de ponto (Sólides)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Excluir conta do Banco", r:"Financeiro (Janaynna)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Excluir da ferramenta de VT (Caju)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Excluir do Seguro", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Remoção da planilha de contatos", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"[Ambas] Remover do grupo de Avisos Gerais (WhatsApp)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Alterações Contratuais", auto:true, gatilho:"Promoção / mudança de cargo / aditivo", campos:"Empresa · Tipo (promoção/aditivo/transferência) · Vigência", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]/Aditivos", tarefas:[
+          {t:"Comunicar empregado + líder", r:"Diretoria (Gustavo)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"Solicitar aditivo à contabilidade", r:"DP (Ellen)", p:"D+2", o:"processo (Pessoas)"},
+          {t:"Assinatura do aditivo (Clicksign)", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+          {t:"Atualizar cadastro + Caju + Sólides", r:"DP (Ellen)", p:"D+5", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Férias", auto:true, gatilho:"Férias programadas (por pedido do empregado ou solicitação da empresa)", campos:"Empresa(s) · Iniciativa (empregado/empresa) · Período · Dias · Compra de dias (abono 1/3)? · 13º antecipado?", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]/Férias", tarefas:[
+          {t:"Definir datas de férias (pedido do empregado OU solicitação da empresa) e aprovar com Gustavo", r:"DP (Ellen)", p:"D-30", o:"processo (Pessoas)"},
+          {t:"Criar cartão informativo de datas de férias no projeto PRAZOS TRABALHISTAS", r:"DP (Ellen)", p:"D-25", o:"processo (Pessoas)"},
+          {t:"Informar a contabilidade (e se haverá compra de dias)", r:"DP (Ellen)", p:"D-15", o:"processo (Pessoas)"},
+          {t:"Receber o cálculo de férias e aprovar com Gustavo", r:"DP (Ellen)", p:"D-7", o:"processo (Pessoas)"},
+          {t:"Coletar assinatura do aviso de férias do empregado + informar datas pro gestor da área", r:"DP (Ellen)", p:"D-2", o:"processo (Pessoas)"},
+          {t:"Lançar o pagamento das férias", r:"Financeiro (Janaynna)", p:"D-2", o:"processo (Pessoas)"},
+          {t:"Subir recibo de férias assinado na pasta do Drive", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Prazos de Experiência (45/90)", auto:true, gatilho:"Calculado automaticamente da data de admissão", campos:"Empresa · Etapa (1ª/2ª) · Decisão", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]", tarefas:[
+          {t:"Avaliação 1ª etapa (40 dias)", r:"DP (Ellen)", p:"D+40 admissão", o:"prazo do empregado"},
+          {t:"Avaliação 2ª etapa (85 dias)", r:"DP (Ellen)", p:"D+85 admissão", o:"prazo do empregado"},
+        ]},
+        { nome:"Prazos do Empregado", auto:true, gatilho:"Cálculo automático a partir do cadastro", campos:"Empresa · Tipo (exame clínico/parasitológico/aniversário aquisitivo)", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]/Exames", tarefas:[
+          {t:"Exame clínico (vence em 12 meses)", r:"DP (Ellen)", p:"D+330", o:"prazo do empregado"},
+          {t:"Exame parasitológico (vence)", r:"DP (Ellen)", p:"variável", o:"prazo do empregado"},
+          {t:"Período aquisitivo de férias completando", r:"DP (Ellen)", p:"D+335 admissão", o:"prazo do empregado"},
+        ]},
+        { nome:"Disciplinares", auto:true, gatilho:"Registro de advertência/suspensão", campos:"Empresa · Tipo (verbal/escrita/suspensão) · Motivo", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]/Disciplinares", tarefas:[
+          {t:"Reunião com empregado + líder", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"Emitir documento (Clicksign)", r:"DP (Ellen)", p:"D+1", o:"processo (Pessoas)"},
+          {t:"Coletar assinatura", r:"DP (Ellen)", p:"D+2", o:"processo (Pessoas)"},
+          {t:"Arquivar", r:"DP (Ellen)", p:"D+3", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Licenças", auto:true, gatilho:"Início de licença (atestado/parto/INSS)", campos:"Empresa · Tipo (maternidade/paternidade/médica/INSS) · Período", pastaDrive:"[Empresa]/Pessoas/Empregados Ativos/[Nome]/Licenças", tarefas:[
+          {t:"Receber atestado/documento", r:"DP (Ellen)", p:"D+0", o:"processo (Pessoas)"},
+          {t:"Comunicar contabilidade", r:"DP (Ellen)", p:"D+1", o:"processo (Pessoas)"},
+          {t:"Registrar afastamento (Sólides + escala)", r:"DP (Ellen)", p:"D+1", o:"processo (Pessoas)"},
+          {t:"Retorno: exame + baixa", r:"DP (Ellen)", p:"D+N", o:"processo (Pessoas)"},
+        ]},
+        { nome:"Folha de Pagamento (Adiantamento + Salário)", auto:true, gatilho:"Recorrente — Adiantamento (pagamento dia 20) + Salário (5º dia útil do mês seguinte)", campos:"Empresa(s) · Mês/Ano · Tipo (adiantamento/salário)", pastaDrive:"Financeiro/Folha/[Ano]/[Mês]", tarefas:[
+          {t:"[Adiantamento] Conferir holerites de adiantamento, subir no Drive e (se necessário) aprovar com Gustavo", r:"DP (Ellen)", p:"dia 18", o:"recorrência"},
+          {t:"[Adiantamento] Lançar os pagamentos das folhas de adiantamento no banco para pagamento em 20", r:"Financeiro (Janaynna)", p:"dia 19", o:"recorrência"},
+          {t:"[Adiantamento] Aprovar os pagamentos das folhas de adiantamento no banco", r:"Diretoria (Gustavo)", p:"dia 20", o:"recorrência"},
+          {t:"[Salário] Conferir fechamento de ponto do mês", r:"DP (Ellen)", p:"último dia útil", o:"recorrência"},
+          {t:"[Salário] Conferir folha da contabilidade (com VT, VR, descontos)", r:"DP (Ellen)", p:"1º dia útil", o:"recorrência"},
+          {t:"[Salário] Conciliar com lote de Benefícios (CSV Caju)", r:"Financeiro (Janaynna)", p:"2º dia útil", o:"recorrência"},
+          {t:"[Salário] Aprovação da diretoria", r:"Diretoria (Gustavo)", p:"4º dia útil", o:"recorrência"},
+          {t:"[Salário] Pagar salários", r:"Financeiro (Janaynna)", p:"5º dia útil", o:"recorrência"},
+        ]},
+      ]
+    },
+    {
+      nome:"👥 Pessoas — Demandas", cor:"#fbbf24", dono:"DP (Ellen)", visibilidade:"grupo DP", tipo:"demanda",
+      subprojetos: [
+        { nome:"Demandas de Empregados (FUTURO)", auto:true, gatilho:"Empregado abre demanda pelo portal", campos:"Empregado · Categoria · Restaurante · Urgência", pastaDrive:"Pessoas/Demandas Empregados/[Ano]", tarefas:[
+          {t:"Triar demanda", r:"DP (Ellen)", p:"D+1", o:"portal do empregado"},
+          {t:"Responder/encaminhar", r:"DP (Ellen)", p:"D+3", o:"portal do empregado"},
+          {t:"Resolver + fechar", r:"DP (Ellen)", p:"variável", o:"portal do empregado"},
+        ]},
+        { nome:"Demandas Internas DP", auto:false, gatilho:"—", campos:"Restaurante (opcional)", pastaDrive:"Pessoas/Demandas Internas", tarefas:[] },
+      ]
+    },
+    {
+      nome:"💰 Financeiro — Rotinas", cor:"#10b981", dono:"Financeiro (Janaynna)", visibilidade:"grupo Financeiro", tipo:"rotina",
+      subprojetos: [
+        { nome:"Contas Fixas Mensais", auto:true, gatilho:"Cada conta = 1 tarefa-template recorrente cadastrada uma vez pela Janaynna (empresas, dia do vencimento, valor opcional, anexos no Drive). Sistema gera as instâncias todo mês no calendário. Inclui TUDO recorrente: encargos, aluguéis, utilidades, sistemas, assessorias, fornecedores, pagamentos do sistema (Folha/VT — gerados automaticamente pelos lotes).", campos:"Empresa(s) [multi] · Categoria · Dia do vencimento · Valor (opcional) · Recorrência (mensal/semanal/anual)", pastaDrive:"Financeiro/Contas Fixas/[Ano]/[Mês]/[Empresa]", tarefas:[
+          {t:"[Categoria 1 — Encargos & Impostos] FGTS · INSS · IRPJ · CSLL · ICMS (Filial/Matriz) · ISS · PIS · COFINS · Simples Nacional · Contribuições Sindicais (SINTHORESP, Sind. Puba)", r:"Financeiro (Janaynna)", p:"dia 10-25", o:"recorrência"},
+          {t:"[Categoria 2 — Aluguéis] Imóveis dos restaurantes (Harmonia, Simão Álvares, Lobozó, Puba Porto, Rua Angelo Custódio, Veiga Cabral) + Escritório (New Place) + Peixaria (Patizal) + IPTU + Taxa Condomínio", r:"Financeiro (Janaynna)", p:"variável (5–28)", o:"recorrência"},
+          {t:"[Categoria 3 — Utilidades] Energia (ENEL, EQUATORIAL, Enel SP) · Água (Águas do Pará, SABESP) · Gás (Comgás) · Internet (Claro, VIVO, Fibralink) · Telefone (VIVO)", r:"Financeiro (Janaynna)", p:"dia 10-15", o:"recorrência"},
+          {t:"[Categoria 4 — Pessoal recorrente (gerados pelos lotes do sistema)] Adiantamento Salarial · Vale Transporte · Vigia/Segurança mensal", r:"Financeiro (Janaynna)", p:"dia 20 / hoje", o:"lote financeiro"},
+          {t:"[Categoria 5 — Coletas] Lixo (Multilixo, Ivan João Correia, Bruno Oliveira) · Vidro (Seiva) · Óleo (futuro)", r:"Financeiro (Janaynna)", p:"dia 14-31", o:"recorrência"},
+          {t:"[Categoria 6 — Sistemas / SaaS] Sólides (ponto) · Caju (benefícios) · Clicksign (assinatura) · Get In (reservas) · Bling (LWSA) · Suflex (etiquetas) · CATHO (vagas)", r:"Financeiro (Janaynna)", p:"dia 5-20", o:"recorrência"},
+          {t:"[Categoria 7 — Seguros & Saúde] Porto Seguro (anual) · Tokio Marine (empregados) · Plano de Saúde Alice", r:"Financeiro (Janaynna)", p:"dia 10-25", o:"recorrência"},
+          {t:"[Categoria 8 — Assessorias / Consultorias] Contabilidade Senador (Exatus) · Consultor Financeiro Daniel Guedes · Assessoria Sanitária (Amanda Nutricionista) · Comunicação (Crudo) · Segurança do Trabalho (Triagem) · Odonto Sindicato", r:"Financeiro (Janaynna)", p:"variável", o:"recorrência"},
+          {t:"[Categoria 9 — Associações & Mensalidades] Abrasel · Abrasel SP · ECAD (Lobozó, Puba) · Mensalidade do Escritório Central (rateio entre empresas)", r:"Financeiro (Janaynna)", p:"dia 10-25", o:"recorrência"},
+          {t:"[Categoria 10 — Fornecedores recorrentes] Hortifruti (Cooperapas/Casa das Frutas — semanal) · Vinho Puba (Senador) · Pedidos Lobozó↔Quibebe (cozinha de produção)", r:"Financeiro (Janaynna)", p:"semanal/mensal", o:"recorrência"},
+          {t:"[Categoria 11 — Locações de equipamento] Lava-louças (Soluções Cozinha) · Máquina de Gelo (Ice4you) · Preshh Aluguel de Máquinas", r:"Financeiro (Janaynna)", p:"dia 10-23", o:"recorrência"},
+          {t:"[Categoria 12 — Bancos & Cartão] Cartão de Crédito (Itaú App) · Tarifas bancárias", r:"Financeiro (Janaynna)", p:"dia 15", o:"recorrência"},
+          {t:"[Categoria 13 — Redes Sociais / Marketing] Valentina Gomes (Redes Sociais Puba) · outros", r:"Financeiro (Janaynna)", p:"variável", o:"recorrência"},
+        ]},
+        { nome:"Fechamento Financeiro Mensal", auto:true, gatilho:"Recorrente — gera 1 tarefa-pai por mês (ex: 'Fechamento Financeiro Mensal | Maio 26') com checklist de subtarefas abaixo. Cada subtarefa tem responsável próprio e Drive próprio (planilhas/pastas por restaurante).", campos:"Mês/Ano · Restaurantes envolvidos", pastaDrive:"Financeiro/Fechamentos/[Ano]/[Mês]", tarefas:[
+          {t:"Inventário Lobozó (planilha)", r:"Financeiro (Janaynna)", p:"dia 1", o:"recorrência"},
+          {t:"Inventário Sororoca (planilha)", r:"Financeiro (Janaynna)", p:"dia 1", o:"recorrência"},
+          {t:"Inventário Puba (planilha)", r:"Financeiro (Janaynna)", p:"dia 1", o:"recorrência"},
+          {t:"Extratos das contas correntes C6 (todas as empresas)", r:"Diretoria (Gustavo)", p:"dia 1", o:"recorrência"},
+          {t:"Iniciar conciliação com ALTEC", r:"Financeiro (Janaynna)", p:"dia 1", o:"recorrência"},
+          {t:"DDA — projeção 90 dias", r:"Financeiro (Janaynna)", p:"dia 1", o:"recorrência"},
+          {t:"Relatório de consumo de sócios por restaurante", r:"Financeiro (Janaynna)", p:"dia 4", o:"recorrência"},
+          {t:"Relatório de vendas de Produção Quibebe → Lobozó", r:"Financeiro (Janaynna)", p:"dia 4", o:"recorrência"},
+          {t:"Relatório de Dinheiro em Espécie (Daniel + Gustavo)", r:"Financeiro (Janaynna)", p:"dia 4", o:"recorrência"},
+          {t:"Relatório de Gorjeta consolidado", r:"Diretoria (Gustavo)", p:"dia 1", o:"recorrência"},
+          {t:"Relatório de Extras / Freelas (Lobozó + Sororoca)", r:"DP (Ellen)", p:"dia 4", o:"recorrência"},
+          {t:"Relatório de rateio do Escritório Central", r:"Financeiro (Janaynna)", p:"dia 8", o:"recorrência"},
+          {t:"Conciliação bancária final", r:"Financeiro (Janaynna)", p:"dia 10", o:"recorrência"},
+          {t:"DRE do mês", r:"Financeiro (Janaynna)", p:"dia 15", o:"recorrência"},
+          {t:"Apresentar resultado à diretoria", r:"Financeiro (Janaynna)", p:"dia 18", o:"recorrência"},
+        ]},
+        { nome:"Fechamento de Caixas", auto:true, gatilho:"Toda segunda-feira (ou conforme rotina)", campos:"Restaurante · Semana", pastaDrive:"Financeiro/Caixas/[Restaurante]/[Ano]/[Mês]", tarefas:[
+          {t:"Conferir caixas da semana anterior", r:"Financeiro (Janaynna)", p:"segunda", o:"recorrência"},
+        ]},
+        { nome:"Guias de Imposto", auto:false, gatilho:"—", campos:"Empresa · Tipo de guia · Mês de competência", pastaDrive:"Financeiro/Impostos/[Ano]/[Mês]", tarefas:[] },
+      ]
+    },
+    {
+      nome:"💰 Financeiro — Demandas", cor:"#10b981", dono:"Financeiro (Janaynna)", visibilidade:"grupo Financeiro", tipo:"demanda",
+      subprojetos: [
+        { nome:"Pedidos de Pagamento Específicos", auto:false, gatilho:"—", campos:"Solicitante · Empresa · Valor · Categoria", pastaDrive:"Financeiro/Pedidos Específicos/[Ano]", tarefas:[] },
+        { nome:"Demandas Internas Financeiro", auto:false, gatilho:"—", campos:"Restaurante (opcional)", pastaDrive:"Financeiro/Demandas Internas", tarefas:[] },
+      ]
+    },
+    {
+      nome:"🎩 Diretoria — Rotinas", cor:"#8b5cf6", dono:"Diretoria (Gustavo)", visibilidade:"grupo Diretoria", tipo:"rotina",
+      subprojetos: [
+        { nome:"Planejamento Administrativo Mensal", auto:true, gatilho:"Recorrente — gera 1 tarefa-pai por mês (ex: 'Planejamento Administrativo Mensal | Junho 26') com checklist de subtarefas abaixo. Responsáveis distribuídos entre Diretoria/DP/Financeiro.", campos:"Mês/Ano", pastaDrive:"Diretoria/Planejamento Mensal/[Ano]/[Mês]", tarefas:[
+          {t:"Planejamento do Fechamento de Relatório Financeiro do mês atual", r:"Financeiro (Janaynna)", p:"dia 20", o:"recorrência"},
+          {t:"Planejamento do Fechamento de Folha Salarial do mês atual", r:"DP (Ellen)", p:"dia 20", o:"recorrência"},
+          {t:"Planejamento de Fechamento de Adiantamento Salarial do próximo mês", r:"DP (Ellen)", p:"dia 22", o:"recorrência"},
+          {t:"Planejamento da Escala do próximo mês", r:"Diretoria (Gustavo)", p:"dia 22", o:"recorrência"},
+          {t:"Planejamento dos Feriados e dias especiais do próximo mês", r:"Diretoria (Gustavo)", p:"dia 22", o:"recorrência"},
+          {t:"Planejamento de janelas de admissão dos próximos dois meses", r:"DP (Ellen)", p:"dia 22", o:"recorrência"},
+          {t:"Ajustes de Google, Get In e Planejamento de folgas de escritório do próximo mês", r:"Diretoria (Gustavo)", p:"dia 24", o:"recorrência"},
+          {t:"Análise dos Prazos Trabalhistas do próximo mês", r:"DP (Ellen)", p:"dia 24", o:"recorrência"},
+          {t:"Análise de férias vencidas e a vencer + planejamento de férias da equipe", r:"DP (Ellen)", p:"dia 24", o:"recorrência"},
+          {t:"Análise do Vencimento de Licenças, Certificados e Contratos dos próximos 2 meses", r:"Diretoria (Gustavo)", p:"dia 26", o:"recorrência"},
+        ]},
+        { nome:"Reuniões com Pauta", auto:false, gatilho:"Reunião agendada com pauta — cada item da pauta vira uma subtarefa. Ao concluir, a discussão fica documentada na tarefa-pai e os encaminhamentos (action items) viram tarefas novas linkadas.", campos:"Tipo (1:1/equipe/preparatória) · Participantes · Data", pastaDrive:"Diretoria/Reuniões/[Ano]/[Tipo]", tarefas:[
+          {t:"Reunião Pré-Férias com [Pessoa] — pauta exemplo: Fechamentos de Caixa · Contas Fixas a Pagar · Processo do Contas a Pagar · Fechamento de Gorjetas", r:"Diretoria (Gustavo)", p:"D-7 das férias", o:"manual"},
+          {t:"Reunião semanal de equipe (toda quinta)", r:"Diretoria (Gustavo)", p:"toda quinta", o:"recorrência"},
+        ]},
+        { nome:"Indicadores e Acompanhamento", auto:false, gatilho:"—", campos:"Mês/Ano", pastaDrive:"Diretoria/Indicadores/[Ano]", tarefas:[] },
+      ]
+    },
+    {
+      nome:"🎩 Diretoria — Demandas", cor:"#8b5cf6", dono:"Diretoria (Gustavo)", visibilidade:"grupo Diretoria", tipo:"demanda",
+      subprojetos: [
+        { nome:"Gustavo | Demandas", auto:false, gatilho:"—", campos:"—", pastaDrive:"Diretoria/Gustavo", tarefas:[] },
+        { nome:"Diretoria | Demandas", auto:false, gatilho:"—", campos:"—", pastaDrive:"Diretoria/Demandas", tarefas:[] },
+      ]
+    },
+    {
+      nome:"🎉 Eventos", cor:"#ec4899", dono:"Diretoria (Gustavo)", visibilidade:"grupo Diretoria + operação do restaurante", tipo:"misto",
+      subprojetos: [
+        { nome:"Captação & Divulgação", auto:false, gatilho:"—", campos:"Restaurante · Origem do lead", pastaDrive:"Eventos/Captação", tarefas:[] },
+        { nome:"Lobozó", auto:true, gatilho:"Cada evento captado no Lobozó", campos:"Data · Nº convidados · Cliente · Valor", pastaDrive:"Lobozó/Eventos/[Cliente] - [Data]", tarefas:[
+          {t:"Definir cardápio + custos", r:"Diretoria (Gustavo)", p:"D-30", o:"evento"},
+          {t:"Contrato (Clicksign)", r:"Diretoria (Gustavo)", p:"D-25", o:"evento"},
+          {t:"Confirmar pagamento sinal", r:"Financeiro (Janaynna)", p:"D-20", o:"evento"},
+          {t:"Alocar equipe e freelas", r:"Líder da área", p:"D-10", o:"evento"},
+          {t:"Compras específicas", r:"Operação", p:"D-5", o:"evento"},
+          {t:"BEO + briefing", r:"Diretoria (Gustavo)", p:"D-2", o:"evento"},
+          {t:"Pagamento final + NPS", r:"Diretoria (Gustavo)", p:"D+3", o:"evento"},
+        ]},
+        { nome:"Pubabar", auto:true, gatilho:"Cada evento captado no Pubabar", campos:"Data · Nº convidados · Cliente · Valor", pastaDrive:"Pubabar/Eventos/[Cliente] - [Data]", tarefas:[] },
+        { nome:"Sororoca", auto:true, gatilho:"Cada evento captado no Sororoca", campos:"Data · Nº convidados · Cliente · Valor", pastaDrive:"Sororoca/Eventos/[Cliente] - [Data]", tarefas:[] },
+      ]
+    },
+    {
+      nome:"🍳 Operação — Rotinas", cor:"#f97316", dono:"Líder da área", visibilidade:"operação (por restaurante)", tipo:"rotina",
+      subprojetos: [
+        { nome:"Lobozó", auto:true, gatilho:"Tarefas recorrentes do líder do Lobozó", campos:"Semana", pastaDrive:"Lobozó/Operação", tarefas:[
+          {t:"Fechar ponto da semana", r:"Líder da área", p:"toda segunda", o:"recorrência"},
+          {t:"Planejar escala do mês seguinte", r:"Líder da área", p:"dia 20", o:"recorrência"},
+          {t:"Contagem mensal", r:"Líder da área", p:"último sábado", o:"recorrência"},
+          {t:"Conferir freelas da semana", r:"Líder da área", p:"toda segunda", o:"módulo (futuro)"},
+        ]},
+        { nome:"Pubabar", auto:true, gatilho:"Idem Lobozó pro Pubabar", campos:"Semana", pastaDrive:"Pubabar/Operação", tarefas:[] },
+        { nome:"Sororoca", auto:true, gatilho:"Idem Lobozó pro Sororoca", campos:"Semana", pastaDrive:"Sororoca/Operação", tarefas:[] },
+        { nome:"Quibebe", auto:true, gatilho:"Idem Lobozó pro Quibebe", campos:"Semana", pastaDrive:"Quibebe/Operação", tarefas:[] },
+      ]
+    },
+    {
+      nome:"🍳 Operação — Demandas", cor:"#f97316", dono:"Líder da área", visibilidade:"operação (por restaurante)", tipo:"demanda",
+      subprojetos: [
+        { nome:"Lobozó", auto:false, gatilho:"—", campos:"—", pastaDrive:"Lobozó/Demandas", tarefas:[] },
+        { nome:"Pubabar", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pubabar/Demandas", tarefas:[] },
+        { nome:"Sororoca", auto:false, gatilho:"—", campos:"—", pastaDrive:"Sororoca/Demandas", tarefas:[] },
+        { nome:"Quibebe", auto:false, gatilho:"—", campos:"—", pastaDrive:"Quibebe/Demandas", tarefas:[] },
+      ]
+    },
+    {
+      nome:"📅 Prazos de Licenças, Certificados e Manutenções", cor:"#f97316", dono:"Diretoria (Gustavo)", visibilidade:"grupo Diretoria + Financeiro", tipo:"rotina",
+      subprojetos: [
+        { nome:"Licenças e Certificados", auto:false, gatilho:"—", campos:"Empresa · Tipo (Bombeiros/Sanitária/CMVS/SPRegula/...) · Vencimento", pastaDrive:"[Empresa]/Licenças", tarefas:[
+          {t:"Vencimento da Licença do Corpo de Bombeiros", r:"Diretoria (Gustavo)", p:"D-30 do venc", o:"recorrência"},
+          {t:"Vencimento da Licença CMVS", r:"Diretoria (Gustavo)", p:"D-30 do venc", o:"recorrência"},
+          {t:"Certificado Digital", r:"Diretoria (Gustavo)", p:"D-30 do venc", o:"recorrência"},
+        ]},
+        { nome:"Manutenções", auto:false, gatilho:"—", campos:"Empresa · Equipamento · Periodicidade", pastaDrive:"[Empresa]/Manutenções", tarefas:[
+          {t:"Troca de filtros de água", r:"Diretoria (Gustavo)", p:"trimestral", o:"recorrência"},
+          {t:"Potabilidade da água (laudo)", r:"Diretoria (Gustavo)", p:"semestral", o:"recorrência"},
+          {t:"Limpeza de caixa d'água (laudo)", r:"Diretoria (Gustavo)", p:"semestral", o:"recorrência"},
+        ]},
+      ]
+    },
+    {
+      nome:"🛠️ Projetos Temporários", cor:"#3b82f6", dono:"Diretoria (Gustavo)", visibilidade:"todo o escritório", tipo:"misto",
+      subprojetos: [
+        { nome:"Reformas / Obras", auto:false, gatilho:"—", campos:"Restaurante · Início · Fim previsto · Orçamento", pastaDrive:"Projetos Temporários/Reformas/[Nome]", tarefas:[] },
+        { nome:"Implantações (Caju, Sólides, etc.)", auto:false, gatilho:"—", campos:"Ferramenta/Sistema · Restaurante", pastaDrive:"Projetos Temporários/Implantações/[Nome]", tarefas:[] },
+        { nome:"Outros", auto:false, gatilho:"—", campos:"—", pastaDrive:"Projetos Temporários/Outros/[Nome]", tarefas:[] },
+      ]
+    },
+    {
+      nome:"📥 Caixa Pessoal de cada usuário", cor:"#6b7280", dono:"—", visibilidade:"privado (dono + co-resp)", tipo:"misto",
+      subprojetos: [
+        { nome:"Pessoal — Gustavo", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pessoal/Gustavo", tarefas:[] },
+        { nome:"Pessoal — Ellen", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pessoal/Ellen", tarefas:[] },
+        { nome:"Pessoal — Janaynna", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pessoal/Janaynna", tarefas:[] },
+        { nome:"Pessoal — Marília", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pessoal/Marília", tarefas:[] },
+        { nome:"Pessoal — Ruth", auto:false, gatilho:"—", campos:"—", pastaDrive:"Pessoal/Ruth", tarefas:[] },
+      ]
+    },
+  ],
+};
+
+const KEY = "gestor_tarefas_v2";
+let data = load();
+
+function load(){ try{ const s=localStorage.getItem(KEY); if(s) return JSON.parse(s); }catch(e){} return structuredClone(ORIGINAL); }
+function save(){ localStorage.setItem(KEY, JSON.stringify(data)); }
+function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+function render(){
+  const board = document.getElementById("board");
+  board.innerHTML = "";
+  data.projetos.forEach((p, pi) => board.appendChild(projEl(p, pi)));
+  const add = document.createElement("button");
+  add.className = "add"; add.textContent = "+ projeto";
+  add.onclick = () => {
+    data.projetos.push({ nome:"Novo Projeto", cor:"#0ea5e9", dono:"Diretoria (Gustavo)", visibilidade:"todo o escritório", tipo:"demanda", subprojetos:[] });
+    save(); render();
+  };
+  board.appendChild(add);
+}
+
+function projEl(p, pi) {
+  const d = document.createElement("div");
+  d.className = "proj";
+  d.style.borderLeftColor = p.cor;
+  const tipoBadge = p.tipo === "rotina" ? `<span class="badge badge-rot">rotina</span>` : p.tipo === "demanda" ? `<span class="badge badge-dem">demanda</span>` : `<span class="badge">misto</span>`;
+  const opcoesResp = RESPS.map(r => `<option ${r===p.dono?"selected":""}>${esc(r)}</option>`).join("");
+  const opcoesVis = VIS.map(v => `<option ${v===p.visibilidade?"selected":""}>${esc(v)}</option>`).join("");
+  const opcoesTipo = TIPOS.map(t => `<option ${t===p.tipo?"selected":""}>${esc(t)}</option>`).join("");
+  d.innerHTML = `
+    <div class="proj-head" onclick="if(event.target.tagName!=='INPUT')togglePro(this.parentNode)">
+      <span class="caret">▼</span>
+      <input class="pname" value="${esc(p.nome)}" oninput="upd(['projetos',${pi},'nome'], this.value)" onclick="event.stopPropagation()" />
+      ${tipoBadge}
+      <button class="x" onclick="event.stopPropagation(); delProj(${pi})">remover</button>
+    </div>
+    <div class="proj-meta">
+      <label>Cor (background do card)<input type="color" value="${esc(p.cor)}" oninput="updCor(${pi}, this.value)" /></label>
+      <label>Dono padrão<select onchange="upd(['projetos',${pi},'dono'], this.value)">${opcoesResp}</select></label>
+      <label>Visibilidade<select onchange="upd(['projetos',${pi},'visibilidade'], this.value)">${opcoesVis}</select></label>
+      <label>Tipo<select onchange="upd(['projetos',${pi},'tipo'], this.value)">${opcoesTipo}</select></label>
+    </div>`;
+  const body = document.createElement("div");
+  body.className = "proj-body";
+  p.subprojetos.forEach((s, si) => body.appendChild(subEl(s, pi, si)));
+  const addSub = document.createElement("button");
+  addSub.className = "add"; addSub.textContent = "+ subprojeto";
+  addSub.onclick = () => {
+    p.subprojetos.push({ nome:"Novo subprojeto", auto:false, gatilho:"—", campos:"", pastaDrive:"", tarefas:[] });
+    save(); render();
+  };
+  body.appendChild(addSub);
+  d.appendChild(body);
+  return d;
+}
+
+function togglePro(p){ p.classList.toggle("collapsed"); }
+function updCor(pi, c){ data.projetos[pi].cor = c; save(); render(); }
+
+function subEl(s, pi, si) {
+  const d = document.createElement("div");
+  d.className = "sub";
+  d.style.background = data.projetos[pi].cor + "12"; // bg suave
+  const opcoesResp = RESPS.map(r => `<option ${r===(s.dono||data.projetos[pi].dono)?"selected":""}>${esc(r)}</option>`).join("");
+  const opcoesAuto = `<option value="true" ${s.auto?"selected":""}>automático (sistema gera)</option><option value="false" ${!s.auto?"selected":""}>livre (você cria)</option>`;
+  const autoBadge = s.auto ? `<span class="badge badge-auto">automático</span>` : `<span class="badge">livre</span>`;
+  const futuroBadge = (s.nome||"").includes("FUTURO") ? `<span class="badge badge-futuro">futuro</span>` : "";
+  d.innerHTML = `
+    <div class="sub-top">
+      <input class="sname" value="${esc(s.nome)}" oninput="upd(['projetos',${pi},'subprojetos',${si},'nome'], this.value)" />
+      ${autoBadge}${futuroBadge}
+      <button class="x" onclick="delSub(${pi},${si})">×</button>
+    </div>
+    <div class="sub-meta">
+      <label>Modo<select onchange="updAuto(${pi},${si},this.value)">${opcoesAuto}</select></label>
+      <label>Gatilho (se automático)<input value="${esc(s.gatilho||"—")}" oninput="upd(['projetos',${pi},'subprojetos',${si},'gatilho'], this.value)" /></label>
+      <label>Campos custom (separados por ·)<input value="${esc(s.campos||"")}" oninput="upd(['projetos',${pi},'subprojetos',${si},'campos'], this.value)" placeholder="Empresa · Tipo · Data" /></label>
+      <label>Pasta Drive (placeholders entre [colchetes])<input value="${esc(s.pastaDrive||"")}" oninput="upd(['projetos',${pi},'subprojetos',${si},'pastaDrive'], this.value)" placeholder="[Empresa]/Pessoas/..." /></label>
+    </div>`;
+  if ((s.tarefas||[]).length > 0 || s.auto) {
+    const tarBox = document.createElement("div");
+    tarBox.className = "tarefas";
+    tarBox.innerHTML = `<h5>📌 Tarefas-template (${(s.tarefas||[]).length})</h5>
+      <div class="head-tar"><div>texto</div><div>responsável</div><div>prazo</div><div>origem</div><div></div></div>`;
+    (s.tarefas||[]).forEach((t, ti) => tarBox.appendChild(tarEl(pi, si, ti, t)));
+    const addT = document.createElement("button");
+    addT.className = "add"; addT.textContent = "+ tarefa-template";
+    addT.onclick = () => {
+      if (!s.tarefas) s.tarefas = [];
+      s.tarefas.push({ t:"Nova tarefa", r:s.dono||data.projetos[pi].dono, p:"D+0", o:"manual" });
+      save(); render();
+    };
+    tarBox.appendChild(addT);
+    d.appendChild(tarBox);
+  }
+  return d;
+}
+
+function tarEl(pi, si, ti, t) {
+  const d = document.createElement("div");
+  d.className = "tar";
+  const opcoesResp = RESPS.map(r => `<option ${r===t.r?"selected":""}>${esc(r)}</option>`).join("");
+  const opcoesOrig = ORIGENS.map(o => `<option ${o===t.o?"selected":""}>${esc(o)}</option>`).join("");
+  d.innerHTML = `
+    <input value="${esc(t.t)}" oninput="upd(['projetos',${pi},'subprojetos',${si},'tarefas',${ti},'t'], this.value)" />
+    <select onchange="upd(['projetos',${pi},'subprojetos',${si},'tarefas',${ti},'r'], this.value)">${opcoesResp}</select>
+    <input value="${esc(t.p)}" oninput="upd(['projetos',${pi},'subprojetos',${si},'tarefas',${ti},'p'], this.value)" placeholder="D+5" />
+    <select onchange="upd(['projetos',${pi},'subprojetos',${si},'tarefas',${ti},'o'], this.value)">${opcoesOrig}</select>
+    <button class="x" onclick="delT(${pi},${si},${ti})">×</button>`;
+  return d;
+}
+
+function upd(path, v) { let o = data; for (let i=0;i<path.length-1;i++) o = o[path[i]]; o[path[path.length-1]] = v; save(); }
+function updAuto(pi, si, val) { data.projetos[pi].subprojetos[si].auto = val === "true"; save(); render(); }
+function delProj(pi){ if(confirm(`Remover "${data.projetos[pi].nome}"?`)){ data.projetos.splice(pi,1); save(); render(); } }
+function delSub(pi,si){ if(confirm(`Remover "${data.projetos[pi].subprojetos[si].nome}"?`)){ data.projetos[pi].subprojetos.splice(si,1); save(); render(); } }
+function delT(pi,si,ti){ data.projetos[pi].subprojetos[si].tarefas.splice(ti,1); save(); render(); }
+function resetar(){ if(confirm("Descartar edições e voltar ao esqueleto v2?")){ data = structuredClone(ORIGINAL); save(); render(); } }
+
+function exportar(){ openDlg("JSON do esqueleto (me mande)", JSON.stringify(data, null, 2), "gestor-tarefas.json"); }
+function resumo() {
+  let o = "GESTOR DE TAREFAS — ESQUELETO v2\n=================================\n\n";
+  data.projetos.forEach(p => {
+    o += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${p.nome}  (cor ${p.cor} · ${p.tipo})\nDono: ${p.dono} · Visibilidade: ${p.visibilidade}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    p.subprojetos.forEach(s => {
+      o += `\n  ▸ ${s.nome}  [${s.auto?"automático":"livre"}]\n`;
+      o += `    Gatilho: ${s.gatilho||"—"}\n`;
+      o += `    Campos: ${s.campos||"—"}\n`;
+      o += `    Pasta Drive: ${s.pastaDrive||"—"}\n`;
+      (s.tarefas||[]).forEach(t => o += `      • ${t.t}  [${t.r} · ${t.p} · ${t.o}]\n`);
+    });
+  });
+  openDlg("Resumo legível", o, "gestor-tarefas.txt");
+}
+let dlgFile = "export.txt";
+function openDlg(t, x, f) { document.getElementById("dlgTitle").textContent=t; document.getElementById("dlgText").value=x; dlgFile=f; document.getElementById("dlg").showModal(); }
+function copyDlg(){ const t=document.getElementById("dlgText"); t.select(); document.execCommand("copy"); }
+function downloadDlg(){ const b=new Blob([document.getElementById("dlgText").value],{type:"text/plain"}); const a=document.createElement("a"); a.href=URL.createObjectURL(b); a.download=dlgFile; a.click(); }
+
+render();
+</script>
+</body>
+</html>

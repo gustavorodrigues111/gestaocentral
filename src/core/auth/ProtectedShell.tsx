@@ -42,6 +42,9 @@ import { UniformesPage } from "../../modules/uniformes/UniformesPage";
 import { ArquiteturaPage } from "../../modules/arquitetura/ArquiteturaPage";
 import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
 import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
+import { TarefasPage } from "../../modules/tarefas/TarefasPage";
+import { ContasFixasPage } from "../../modules/contasFixas/ContasFixasPage";
+import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -79,6 +82,9 @@ function ModuleRouter() {
     case "eventos":       return <EventosPage key={k} />;
     case "sites":         return <SitesPage key={k} />;
     case "uniformes":     return <UniformesPage key={k} />;
+    case "tarefas":       return <TarefasPage key={k} />;
+    case "contasFixas":   return <ContasFixasPage key={k} />;
+    case "manutencoes":   return <ManutencoesPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }

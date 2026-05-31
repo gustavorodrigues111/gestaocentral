@@ -50,7 +50,9 @@ export type ModuleId =
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites"
-  | "uniformes";
+  | "uniformes"
+  // Gestor de Tarefas + cadastros mestres
+  | "tarefas" | "contasFixas" | "manutencoes";
 
 // ─── PERMISSÕES ───
 
@@ -2938,6 +2940,343 @@ export type MovEstoqueUniforme = {
   observacao?: string;
   criadoEm: string;
   criadoPor: { id: string; nome: string };
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+//  GESTOR DE TAREFAS + CADASTROS MESTRES (Contas Fixas, Manutenções)
+//
+//  Modelo: Projeto > Subprojeto > Tarefa. Caixa de tarefas é POR USUÁRIO
+//  (não rest-bound). Cada tarefa carrega empresa(s) como CAMPO opcional.
+//  Tarefas-lembrete podem vir de cadastros mestres (Conta Fixa, Manutenção,
+//  Admissão) — campo `origem` indica a fonte e `origemRefId` linka de volta.
+//
+//  Soft delete: deletadoEm + deletadoPor (lixeira só master vê).
+// ────────────────────────────────────────────────────────────────────────────
+
+// Visibilidade do projeto — quem vê as tarefas dele.
+export type TarefaVisibilidade =
+  | "privado" | "grupo_dp" | "grupo_fin" | "grupo_dir" | "grupo_ops"
+  | "escritorio" | "publico";
+
+export const TAREFA_VISIBILIDADE_LABEL: Record<TarefaVisibilidade, string> = {
+  privado:    "Privado (dono + co-resp)",
+  grupo_dp:   "Grupo DP",
+  grupo_fin:  "Grupo Financeiro",
+  grupo_dir:  "Grupo Diretoria",
+  grupo_ops:  "Grupo Operação",
+  escritorio: "Todo o escritório",
+  publico:    "Público (todo o sistema)",
+};
+
+// Origem da tarefa — de onde veio. Influencia comportamento e link de volta.
+export type TarefaOrigem =
+  | "manual" | "recorrencia" | "admissao" | "demissao" | "ferias"
+  | "reuniao" | "conta_fixa" | "manutencao" | "evento" | "lote_financeiro"
+  | "portal_empregado";
+
+export const TAREFA_ORIGEM_LABEL: Record<TarefaOrigem, string> = {
+  manual:           "Manual",
+  recorrencia:      "Recorrência",
+  admissao:         "Admissão",
+  demissao:         "Demissão",
+  ferias:           "Férias",
+  reuniao:          "Reunião",
+  conta_fixa:       "Conta Fixa",
+  manutencao:       "Manutenção",
+  evento:           "Evento",
+  lote_financeiro:  "Lote Financeiro",
+  portal_empregado: "Portal do Empregado",
+};
+
+export type TarefaStatus = "a_fazer" | "em_andamento" | "concluida" | "cancelada";
+
+export const TAREFA_STATUS_LABEL: Record<TarefaStatus, string> = {
+  a_fazer:      "A fazer",
+  em_andamento: "Em andamento",
+  concluida:    "Concluída",
+  cancelada:    "Cancelada",
+};
+
+export type TarefaPrioridade = "baixa" | "normal" | "alta" | "urgente";
+
+export const TAREFA_PRIORIDADE_LABEL: Record<TarefaPrioridade, string> = {
+  baixa:   "Baixa",
+  normal:  "Normal",
+  alta:    "Alta",
+  urgente: "Urgente",
+};
+
+// Projeto = nível superior. Tem cor (herdada como bg do card da tarefa).
+export type TarefaProjeto = {
+  id: string;
+  nome: string;
+  emoji?: string;
+  cor: string;                  // hex
+  dono: string;                 // pessoaId
+  donoNome?: string;            // snapshot
+  visibilidade: TarefaVisibilidade;
+  tipo: "rotina" | "demanda" | "misto";
+  ordem: number;
+  ativo: boolean;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// Subprojeto = nível intermediário. Pode ser "auto" (sistema gera tarefas).
+export type TarefaSubprojeto = {
+  id: string;
+  projetoId: string;
+  nome: string;
+  descricao?: string;
+  auto: boolean;
+  gatilho?: string;
+  campos?: string;              // texto livre — campos custom separados por ·
+  pastaDriveTemplate?: string;
+  tarefasTemplate?: TarefaTemplate[];
+  ordem: number;
+  ativo: boolean;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// Template de tarefa (linha do esqueleto). Usado pelo gerador de recorrências.
+export type TarefaTemplate = {
+  titulo: string;
+  responsavelHint?: string;
+  prazoOffset?: string;
+  origem?: TarefaOrigem;
+};
+
+export type Subtarefa = {
+  id: string;
+  texto: string;
+  feito: boolean;
+  feitoEm?: string | null;
+  feitoPor?: string | null;
+  feitoPorNome?: string | null;
+  ordem: number;
+};
+
+export type TarefaComentario = {
+  id: string;
+  texto: string;
+  autorId: string;
+  autorNome: string;
+  criadoEm: string;
+};
+
+export type TarefaLogEntry = {
+  id: string;
+  acao:
+    | "criada" | "editada" | "status_mudou" | "responsavel_mudou"
+    | "co_resp_adicionado" | "co_resp_removido"
+    | "subtarefa_adicionada" | "subtarefa_marcada" | "subtarefa_desmarcada" | "subtarefa_removida"
+    | "comentario_adicionado" | "anexo_adicionado"
+    | "deletada" | "restaurada";
+  detalhe?: string;
+  campo?: string;
+  valorAntes?: string;
+  valorDepois?: string;
+  autorId: string;
+  autorNome: string;
+  em: string;
+};
+
+export type TarefaAnexo = {
+  id: string;
+  nome: string;
+  url: string;
+  tipo?: string;
+  adicionadoEm: string;
+  adicionadoPor: string;
+};
+
+// Tarefa — entidade central. Top-level pra facilitar query "minhas".
+export type Tarefa = {
+  id: string;
+  projetoId: string;
+  subprojetoId: string;
+  titulo: string;
+  descricao?: string;
+  responsavelId: string;
+  responsavelNome?: string;
+  coResponsaveis?: string[];
+  coResponsaveisNomes?: string[];
+  restaurantIds?: string[];     // empresa(s) — multi-select opcional
+  prazo?: string | null;
+  inicio?: string | null;
+  status: TarefaStatus;
+  prioridade: TarefaPrioridade;
+  subtarefas?: Subtarefa[];
+  comentarios?: TarefaComentario[];
+  log?: TarefaLogEntry[];
+  anexos?: TarefaAnexo[];
+  origem: TarefaOrigem;
+  origemRefId?: string;
+  origemRefLabel?: string;
+  recorrenciaKey?: string;      // pra idempotência do gerador
+  customFields?: { [k: string]: string };
+  corHerdada?: string;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  motivoDelete?: string;
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  atualizadoEm: string;
+};
+
+// ─── CONTA FIXA (cadastro mestre) ─────────────────────────────────────────
+
+export type ContaFixaCategoria =
+  | "encargos_impostos" | "alugueis" | "utilidades" | "pessoal_recorrente"
+  | "coletas" | "sistemas_saas" | "seguros_saude" | "assessorias"
+  | "associacoes_mensalidades" | "fornecedores_recorrentes"
+  | "locacoes_equipamento" | "bancos_cartao" | "redes_sociais_marketing"
+  | "outros";
+
+export const CONTA_FIXA_CATEGORIA_LABEL: Record<ContaFixaCategoria, string> = {
+  encargos_impostos:        "Encargos & Impostos",
+  alugueis:                 "Aluguéis",
+  utilidades:               "Utilidades (luz, água, gás, internet)",
+  pessoal_recorrente:       "Pessoal recorrente",
+  coletas:                  "Coletas (lixo, vidro, óleo)",
+  sistemas_saas:            "Sistemas / SaaS",
+  seguros_saude:            "Seguros & Saúde",
+  assessorias:              "Assessorias / Consultorias",
+  associacoes_mensalidades: "Associações & Mensalidades",
+  fornecedores_recorrentes: "Fornecedores recorrentes",
+  locacoes_equipamento:     "Locações de equipamento",
+  bancos_cartao:            "Bancos & Cartão",
+  redes_sociais_marketing:  "Redes Sociais / Marketing",
+  outros:                   "Outros",
+};
+
+export type ContaFixaRecorrencia =
+  | "mensal" | "semanal" | "anual" | "trimestral" | "semestral";
+
+export const CONTA_FIXA_RECORRENCIA_LABEL: Record<ContaFixaRecorrencia, string> = {
+  mensal:     "Mensal",
+  semanal:    "Semanal",
+  anual:      "Anual",
+  trimestral: "Trimestral",
+  semestral:  "Semestral",
+};
+
+export type ContaFixa = {
+  id: string;
+  nome: string;
+  fornecedor?: string;
+  categoria: ContaFixaCategoria;
+  restaurantIds: string[];      // empresa(s) pagadora(s)
+  valorEstimado?: number;
+  pix?: string;
+  banco?: string;
+  titular?: string;
+  observacoes?: string;
+  recorrencia: ContaFixaRecorrencia;
+  diaDoMes?: number;            // 1-31
+  diaDaSemana?: number;         // 0-6
+  mesDoAno?: number;            // 1-12
+  diasAntecedencia: number;     // gera tarefa X dias antes (default 3)
+  responsavelPadraoId: string;
+  responsavelPadraoNome?: string;
+  projetoId: string;            // onde tarefa aparece
+  subprojetoId: string;
+  ultimaGeracaoChave?: string;  // ex: "2026-06-15"
+  ativo: boolean;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+};
+
+// ─── MANUTENÇÃO / LICENÇA (cadastro mestre) ───────────────────────────────
+
+export type ManutencaoTipo =
+  | "filtros_agua" | "potabilidade_agua" | "caixa_dagua" | "gelo"
+  | "dedetizacao" | "coifa" | "estofado" | "ar_condicionado" | "termometro"
+  | "coleta_oleo" | "destinacao_residuos" | "clcb_bombeiros" | "cmvs_vigilancia"
+  | "alvara_funcionamento" | "pgr" | "pcmso" | "certificado_digital"
+  | "licenciamento_integrado" | "outro";
+
+export const MANUTENCAO_TIPO_LABEL: Record<ManutencaoTipo, string> = {
+  filtros_agua:            "Filtros de água",
+  potabilidade_agua:       "Potabilidade da água",
+  caixa_dagua:             "Limpeza de Caixa d'água",
+  gelo:                    "Laudo de Potabilidade do Gelo",
+  dedetizacao:             "Dedetização",
+  coifa:                   "Limpeza da Coifa",
+  estofado:                "Limpeza do Estofado",
+  ar_condicionado:         "Manutenção de Ar Condicionado",
+  termometro:              "Calibração de Termômetro",
+  coleta_oleo:             "Coleta de Óleo",
+  destinacao_residuos:     "Destinação de Resíduos",
+  clcb_bombeiros:          "Licença CLCB (Bombeiros)",
+  cmvs_vigilancia:         "Licença CMVS (Vigilância Sanitária)",
+  alvara_funcionamento:    "Alvará de Funcionamento",
+  pgr:                     "PGR — Programa de Gestão de Riscos",
+  pcmso:                   "PCMSO — Programa de Controle Médico",
+  certificado_digital:     "Certificado Digital",
+  licenciamento_integrado: "Licenciamento Integrado",
+  outro:                   "Outro",
+};
+
+export type ManutencaoPeriodicidade =
+  | "45_dias" | "trimestral" | "semestral" | "anual"
+  | "bianual" | "trianual" | "custom";
+
+export const MANUTENCAO_PERIODICIDADE_DIAS: Record<ManutencaoPeriodicidade, number> = {
+  "45_dias":   45,
+  trimestral:  90,
+  semestral:   180,
+  anual:       365,
+  bianual:     730,
+  trianual:    1095,
+  custom:      0,
+};
+
+export const MANUTENCAO_PERIODICIDADE_LABEL: Record<ManutencaoPeriodicidade, string> = {
+  "45_dias":   "45 dias",
+  trimestral:  "Trimestral (3 meses)",
+  semestral:   "Semestral (6 meses)",
+  anual:       "Anual",
+  bianual:     "A cada 2 anos",
+  trianual:    "A cada 3 anos",
+  custom:      "Customizado",
+};
+
+export type Manutencao = {
+  id: string;
+  tipo: ManutencaoTipo;
+  fornecedor?: string;
+  descricao?: string;
+  restaurantIds: string[];
+  periodicidade: ManutencaoPeriodicidade;
+  periodicidadeCustomDias?: number;
+  proximoVencimento: string;    // YYYY-MM-DD
+  ultimaExecucao?: string | null;
+  diasAntecedencia: number;     // default 30
+  responsavelPadraoId: string;
+  responsavelPadraoNome?: string;
+  projetoId: string;
+  subprojetoId: string;
+  pastaDrive?: string;
+  observacoes?: string;
+  ultimaGeracaoChave?: string;
+  ativo: boolean;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
 };
 
 // Override do template de PDF do termo (por restaurante).
