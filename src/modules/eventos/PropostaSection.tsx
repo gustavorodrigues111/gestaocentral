@@ -63,7 +63,10 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     if (!podeEditar) return;
     const pacote = pacoteSelecionado ? pacotes.find(p => p.id === pacoteSelecionado) : null;
     const pax = parseInt(paxOverride, 10) || lead.numConvidados;
-    const precoPax = precoPaxOverride
+    // Override de R$/pax só faz sentido pra pacote por_pessoa ou proposta livre.
+    // Pra total_fixo, o valor do pacote manda — ignora qualquer resíduo no state.
+    const modoPacote = pacote?.precoModo || "por_pessoa";
+    const precoPax = (modoPacote !== "total_fixo" && precoPaxOverride)
       ? parseFloat(precoPaxOverride.replace(",", "."))
       : undefined;
     setCriando(true);
@@ -157,10 +160,16 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   }
 
   // Preview do total que a proposta nova vai ter (antes de gerar).
-  // Se vendedor digitou override de R$/pax, ele manda; senão usa o modo
-  // do pacote (por_pessoa, total_fixo ou personalizado=0).
+  // - Pacote total_fixo: sempre usa o precoTotal (override de R$/pax não se
+  //   aplica — é locação cheia, multiplicar por pax não faz sentido).
+  // - Pacote por_pessoa ou sem pacote: override do vendedor vence; senão
+  //   usa precoPorPessoa do pacote × pax.
   const totalPreview = useMemo(() => {
     const pax = parseInt(paxOverride, 10) || lead.numConvidados;
+    const modo = pacoteAtual?.precoModo || "por_pessoa";
+    if (modo === "total_fixo") {
+      return pacoteAtual ? (pacoteAtual.precoTotal || 0) : 0;
+    }
     if (precoPaxOverride) {
       const v = parseFloat(precoPaxOverride.replace(",", ".")) || 0;
       return Math.round(v * pax * 100) / 100;
@@ -204,17 +213,29 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                 className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
               />
             </div>
-            <div>
-              <label className="text-[11px] uppercase font-bold text-gray-500">Preço/pax R$</label>
-              <input
-                type="number"
-                step="0.01"
-                value={precoPaxOverride}
-                onChange={(e) => setPrecoPaxOverride(e.target.value)}
-                placeholder={pacoteAtual?.precoPorPessoa.toFixed(2) || "0.00"}
-                className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-              />
-            </div>
+            {/* Campo "Preço/pax R$" só aparece pra pacotes por pessoa OU
+                quando não tem pacote selecionado (proposta livre). Pacotes
+                de valor fixo mostram o valor cheio congelado. */}
+            {pacoteAtual && pacoteAtual.precoModo === "total_fixo" ? (
+              <div>
+                <label className="text-[11px] uppercase font-bold text-gray-500">Valor fixo</label>
+                <div className="mt-1 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-700 dark:text-gray-300">
+                  💰 R$ {(pacoteAtual.precoTotal || 0).toFixed(2)} <span className="text-[10px] text-gray-500">(locação)</span>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <label className="text-[11px] uppercase font-bold text-gray-500">Preço/pax R$</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={precoPaxOverride}
+                  onChange={(e) => setPrecoPaxOverride(e.target.value)}
+                  placeholder={pacoteAtual ? (pacoteAtual.precoPorPessoa || 0).toFixed(2) : "0.00"}
+                  className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                />
+              </div>
+            )}
             <div className="flex items-end">
               <div className="text-sm">
                 <span className="text-gray-500">Total preview: </span>
@@ -296,17 +317,23 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                     className="block mt-0.5 w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500">R$/pax</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={precoPaxOverride}
-                    onChange={(e) => setPrecoPaxOverride(e.target.value)}
-                    placeholder={pacoteAtual?.precoPorPessoa.toFixed(2) || ""}
-                    className="block mt-0.5 w-24 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  />
-                </div>
+                {pacoteAtual && pacoteAtual.precoModo === "total_fixo" ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400 self-end pb-1.5">
+                    💰 R$ {(pacoteAtual.precoTotal || 0).toFixed(2)} fixo
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-gray-500">R$/pax</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={precoPaxOverride}
+                      onChange={(e) => setPrecoPaxOverride(e.target.value)}
+                      placeholder={pacoteAtual ? (pacoteAtual.precoPorPessoa || 0).toFixed(2) : ""}
+                      className="block mt-0.5 w-24 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                    />
+                  </div>
+                )}
                 <Button size="sm" variant="secondary" onClick={gerarProposta} disabled={criando}>
                   + Nova versão
                 </Button>
