@@ -213,6 +213,10 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
             restaurantId: adm.restaurantId,
             dataAdmissao: adm.dataAdmissao,
             autor: { id: me.id, nome: me.nome },
+            // Passa subtarefas pra cascata herdar resultado dos exames
+            // admissionais (ASO + Parasitológico) como historico[0] no
+            // ExameEmpregado correspondente.
+            subtarefasAdmissao: adm.subtarefas,
           });
         } catch (err) {
           console.warn("[admissao] falha ao gerar cascata de tarefas/exames:", err);

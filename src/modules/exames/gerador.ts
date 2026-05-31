@@ -138,7 +138,7 @@ function diasEntre(a: string, b: string): number {
 
 // ─── Cascata Admissão → cria ExameEmpregado pra cada tipo aplicável ────
 
-import type { Cargo, Empregado, Area } from "../../core/types";
+import type { Cargo, Empregado, Area, SubtarefaAdmissao } from "../../core/types";
 import { criarExame } from "./repository";
 
 export async function gerarExamesParaAdmissao(input: {
@@ -150,6 +150,10 @@ export async function gerarExamesParaAdmissao(input: {
   restaurantId: string;
   dataAdmissao: string;
   autor: { id: string; nome: string };
+  // Subtarefas do processo de admissão. Se passadas, sistema lê os
+  // resultados de exame admissional (ASO + Parasitológico) e já registra
+  // como historico[0] no ExameEmpregado criado, com link Drive.
+  subtarefasAdmissao?: SubtarefaAdmissao[];
 }): Promise<number> {
   // Carrega tipos ativos do restaurante
   const tiposSnap = await getDocs(query(
@@ -174,8 +178,30 @@ export async function gerarExamesParaAdmissao(input: {
     ));
     if (!existSnap.empty) continue;
 
-    const proximoVencimento = addDias(input.dataAdmissao, tipo.periodicidadeDias);
-    await criarExame({
+    // Procura subtarefa do exame admissional correspondente pra herdar
+    // resultado (data + link Drive do PDF). Heurística por keywords:
+    //   ASO → Clínico
+    //   Parasitológico → Coprocultura
+    // Se não bater, usa dataAdmissao como fallback.
+    const sub = matchSubtarefaAdmissional(input.subtarefasAdmissao, tipo.nome);
+    const dataReal = (sub?.feita && sub.feitaEm?.slice(0, 10)) || input.dataAdmissao;
+    const proximoVencimento = addDias(dataReal, tipo.periodicidadeDias);
+
+    const historico = (sub?.feita && sub.link)
+      ? [{
+          id: Math.random().toString(36).slice(2, 11),
+          realizadoEm: dataReal,
+          fornecedor: tipo.fornecedorPadrao,
+          anexoUrl: sub.link,
+          anexoNome: `Resultado admissional — ${tipo.nome}`,
+          observacao: "Importado da Admissão (subtarefa do processo)",
+          registradoEm: new Date().toISOString(),
+          registradoPor: input.autor.id,
+          registradoPorNome: input.autor.nome,
+        }]
+      : [];
+
+    const exameId = await criarExame({
       restaurantId: input.restaurantId,
       empregadoId: input.empregadoId,
       empregadoNomeSnapshot: input.empregadoNome,
@@ -185,14 +211,48 @@ export async function gerarExamesParaAdmissao(input: {
       periodicidadeDias: tipo.periodicidadeDias,
       diasAntecedencia: tipo.diasAntecedencia,
       fornecedor: tipo.fornecedorPadrao,
-      ultimaRealizacao: input.dataAdmissao,
+      ultimaRealizacao: dataReal,
       proximoVencimento,
       ativo: true,
       criadoPor: input.autor.id,
     });
+    // Se tem histórico inicial, aplica via update (criarExame não suporta historico no input)
+    if (historico.length > 0) {
+      const { atualizarExame } = await import("./repository");
+      await atualizarExame(exameId, { historico });
+    }
     criados++;
   }
   return criados;
+}
+
+// Mapeia nome de tipo de exame → palavra-chave que aparece no nome
+// da subtarefa correspondente no template de admissão. Heurística
+// case-insensitive.
+function matchSubtarefaAdmissional(
+  subs: SubtarefaAdmissao[] | undefined,
+  tipoNome: string,
+): SubtarefaAdmissao | undefined {
+  if (!subs || subs.length === 0) return undefined;
+  const nomeTipo = tipoNome.toLowerCase();
+  // Mapa: se o tipo "casa" com keyword, a subtarefa cuja nome contém o
+  // termo correspondente é a fonte do resultado.
+  const mapa: Array<{ tipoKw: string; subKw: string[] }> = [
+    { tipoKw: "clinico",       subKw: ["aso", "clínic", "clinic"] },
+    { tipoKw: "clínico",       subKw: ["aso", "clínic", "clinic"] },
+    { tipoKw: "coprocultura",  subKw: ["parasitológic", "parasitologic", "coprocultura"] },
+    { tipoKw: "parasitológic", subKw: ["parasitológic", "parasitologic", "coprocultura"] },
+  ];
+  for (const m of mapa) {
+    if (nomeTipo.includes(m.tipoKw)) {
+      const found = subs.find(s => {
+        const n = (s.nome || "").toLowerCase();
+        return m.subKw.some(kw => n.includes(kw));
+      });
+      if (found) return found;
+    }
+  }
+  return undefined;
 }
 
 // ─── Reavaliação por mudança de cargo/área ─────────────────────────────
