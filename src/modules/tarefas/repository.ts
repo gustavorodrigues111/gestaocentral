@@ -300,6 +300,39 @@ export async function hardDeleteTarefa(id: string): Promise<void> {
   await deleteDoc(doc(db, COL_TAREFAS, id));
 }
 
+// Migração: converte docs legados com visibilidade `grupo_*` em `privado`.
+// Idempotente — pode rodar várias vezes sem efeito colateral.
+export async function migrarGruposParaPrivadoLegado(): Promise<{ projetos: number; tarefas: number }> {
+  let projetosFix = 0;
+  let tarefasFix = 0;
+
+  const projSnap = await getDocs(collection(db, COL_PROJETOS));
+  for (const d of projSnap.docs) {
+    const data = d.data() as TarefaProjeto;
+    const v = data.visibilidade as string | undefined;
+    if (typeof v === "string" && v.startsWith("grupo_")) {
+      await updateDoc(doc(db, COL_PROJETOS, d.id), sanitizeForFirestore({ visibilidade: "privado" }));
+      projetosFix++;
+    }
+  }
+
+  const tSnap = await getDocs(collection(db, COL_TAREFAS));
+  for (const d of tSnap.docs) {
+    const data = d.data() as Tarefa;
+    const patch: Record<string, string> = {};
+    const ov = data.visibilidadeOverride as string | undefined;
+    const ef = data.visibilidadeEfetiva as string | undefined;
+    if (typeof ov === "string" && ov.startsWith("grupo_")) patch.visibilidadeOverride = "privado";
+    if (typeof ef === "string" && ef.startsWith("grupo_")) patch.visibilidadeEfetiva = "privado";
+    if (Object.keys(patch).length) {
+      await updateDoc(doc(db, COL_TAREFAS, d.id), sanitizeForFirestore(patch));
+      tarefasFix++;
+    }
+  }
+
+  return { projetos: projetosFix, tarefas: tarefasFix };
+}
+
 // ─── helpers ──────────────────────────────────────────────────────────────
 
 function cryptoId(): string {

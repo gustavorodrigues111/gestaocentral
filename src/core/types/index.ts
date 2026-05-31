@@ -3017,16 +3017,14 @@ export type MovEstoqueUniforme = {
 // ────────────────────────────────────────────────────────────────────────────
 
 // Visibilidade do projeto — quem vê as tarefas dele.
-export type TarefaVisibilidade =
-  | "privado" | "grupo_dp" | "grupo_fin" | "grupo_dir" | "grupo_ops"
-  | "escritorio" | "publico";
+// Modelo simplificado: privado (default, master + autorizados explícitos)
+// | escritorio (todos autenticados) | publico (alias de escritorio).
+// Os antigos grupo_* foram removidos — quando aparecerem em docs legados,
+// são tratados como "privado" pelo podeVerTarefa.
+export type TarefaVisibilidade = "privado" | "escritorio" | "publico";
 
 export const TAREFA_VISIBILIDADE_LABEL: Record<TarefaVisibilidade, string> = {
-  privado:    "Privado (dono + co-resp)",
-  grupo_dp:   "Grupo DP",
-  grupo_fin:  "Grupo Financeiro",
-  grupo_dir:  "Grupo Diretoria",
-  grupo_ops:  "Grupo Operação",
+  privado:    "Privado (só master + autorizados)",
   escritorio: "Todo o escritório",
   publico:    "Público (todo o sistema)",
 };

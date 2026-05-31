@@ -170,13 +170,9 @@ service cloud.firestore {
         || (d.coResponsaveis is list && request.auth.uid in d.coResponsaveis)
         || (d.usuariosAutorizados is list && request.auth.uid in d.usuariosAutorizados)
         || d.visibilidadeEfetiva == "publico"
-        || d.visibilidadeEfetiva == "escritorio"
-        || d.visibilidadeEfetiva == "grupo_dp"     // grupos liberados a authed nessa fase
-        || d.visibilidadeEfetiva == "grupo_fin"    // (apertar quando virar canAcao server-side)
-        || d.visibilidadeEfetiva == "grupo_dir"
-        || d.visibilidadeEfetiva == "grupo_ops"
-        // Retrocompat: docs antigos sem visibilidadeEfetiva
-        || !("visibilidadeEfetiva" in d);
+        || d.visibilidadeEfetiva == "escritorio";
+      // Docs antigos sem visibilidadeEfetiva ou com "grupo_*" legado:
+      // tratados como privados — só passam pelas condições acima.
     }
     match /tarefaProjetos/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /tarefaSubprojetos/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }

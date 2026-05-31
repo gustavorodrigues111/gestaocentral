@@ -12,15 +12,15 @@ import type { TarefaProjeto, TarefaSubprojeto } from "../../core/types";
 
 // IDs fixos pra idempotência — same input, same output.
 const PROJETOS: Array<Omit<TarefaProjeto, "criadoEm" | "atualizadoEm" | "criadoPor">> = [
-  { id: "proj-pessoas-rot",   nome: "Pessoas — Rotinas",   emoji: "👥", cor: "#fbbf24", dono: "system", visibilidade: "grupo_dp",  tipo: "rotina",  ordem: 1,  ativo: true },
-  { id: "proj-pessoas-dem",   nome: "Pessoas — Demandas",  emoji: "👥", cor: "#fbbf24", dono: "system", visibilidade: "grupo_dp",  tipo: "demanda", ordem: 2,  ativo: true },
-  { id: "proj-financ-rot",    nome: "Financeiro — Rotinas",emoji: "💰", cor: "#10b981", dono: "system", visibilidade: "grupo_fin", tipo: "rotina",  ordem: 3,  ativo: true },
-  { id: "proj-financ-dem",    nome: "Financeiro — Demandas",emoji: "💰", cor: "#10b981", dono: "system", visibilidade: "grupo_fin", tipo: "demanda", ordem: 4,  ativo: true },
-  { id: "proj-diretoria-rot", nome: "Diretoria — Rotinas", emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "grupo_dir", tipo: "rotina",  ordem: 5,  ativo: true },
-  { id: "proj-diretoria-dem", nome: "Diretoria — Demandas",emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "grupo_dir", tipo: "demanda", ordem: 6,  ativo: true },
+  { id: "proj-pessoas-rot",   nome: "Pessoas — Rotinas",   emoji: "👥", cor: "#fbbf24", dono: "system", visibilidade: "privado",  tipo: "rotina",  ordem: 1,  ativo: true },
+  { id: "proj-pessoas-dem",   nome: "Pessoas — Demandas",  emoji: "👥", cor: "#fbbf24", dono: "system", visibilidade: "privado",  tipo: "demanda", ordem: 2,  ativo: true },
+  { id: "proj-financ-rot",    nome: "Financeiro — Rotinas",emoji: "💰", cor: "#10b981", dono: "system", visibilidade: "privado", tipo: "rotina",  ordem: 3,  ativo: true },
+  { id: "proj-financ-dem",    nome: "Financeiro — Demandas",emoji: "💰", cor: "#10b981", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 4,  ativo: true },
+  { id: "proj-diretoria-rot", nome: "Diretoria — Rotinas", emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "privado", tipo: "rotina",  ordem: 5,  ativo: true },
+  { id: "proj-diretoria-dem", nome: "Diretoria — Demandas",emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 6,  ativo: true },
   { id: "proj-eventos",       nome: "Eventos",             emoji: "🎉", cor: "#ec4899", dono: "system", visibilidade: "escritorio",tipo: "misto",   ordem: 7,  ativo: true },
-  { id: "proj-operacao-rot",  nome: "Operação — Rotinas",  emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "grupo_ops", tipo: "rotina",  ordem: 8,  ativo: true },
-  { id: "proj-operacao-dem",  nome: "Operação — Demandas", emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "grupo_ops", tipo: "demanda", ordem: 9,  ativo: true },
+  { id: "proj-operacao-rot",  nome: "Operação — Rotinas",  emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "privado", tipo: "rotina",  ordem: 8,  ativo: true },
+  { id: "proj-operacao-dem",  nome: "Operação — Demandas", emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 9,  ativo: true },
   { id: "proj-prazos",        nome: "Prazos de Licenças, Certificados e Manutenções", emoji: "📅", cor: "#f97316", dono: "system", visibilidade: "escritorio", tipo: "rotina", ordem: 10, ativo: true },
   { id: "proj-temporarios",   nome: "Projetos Temporários",emoji: "🛠️", cor: "#3b82f6", dono: "system", visibilidade: "escritorio",tipo: "misto",   ordem: 11, ativo: true },
   { id: "proj-pessoal",       nome: "Caixa Pessoal",       emoji: "📥", cor: "#6b7280", dono: "system", visibilidade: "privado",   tipo: "misto",   ordem: 12, ativo: true },

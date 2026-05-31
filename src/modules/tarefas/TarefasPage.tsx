@@ -15,6 +15,7 @@ import {
   ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
+  migrarGruposParaPrivadoLegado,
 } from "./repository";
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
@@ -86,6 +87,23 @@ export function TarefasPage() {
     const u2 = ouvirSubprojetos(setSubprojetos);
     return () => { u1(); u2(); };
   }, []);
+
+  // Migração 1x: converte docs legados em "grupo_*" para "privado".
+  // Master-only e idempotente — flag no localStorage evita rodar de novo.
+  useEffect(() => {
+    if (!pessoa?.isMaster) return;
+    const FLAG = "tarefas_migrou_grupos_v2";
+    try { if (localStorage.getItem(FLAG) === "1") return; } catch {}
+    migrarGruposParaPrivadoLegado()
+      .then(r => {
+        console.log("[tarefas] migração de grupos legados:", r);
+        try { localStorage.setItem(FLAG, "1"); } catch {}
+        if (r.projetos > 0 || r.tarefas > 0) {
+          alert(`Permissões migradas: ${r.projetos} projeto(s) e ${r.tarefas} tarefa(s) viraram "Privado". Adicione as pessoas autorizadas em cada um conforme necessário.`);
+        }
+      })
+      .catch(e => console.warn("[tarefas] migração falhou:", e));
+  }, [pessoa?.isMaster]);
 
   // Minhas tarefas
   useEffect(() => {
@@ -913,6 +931,18 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
   const [editandoSubId, setEditandoSubId] = useState<string | null>(null);
   const [criandoSubIn, setCriandoSubIn] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
+  const [pessoasMap, setPessoasMap] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const m: Record<string, string> = {};
+      snap.docs.forEach(d => {
+        const data = d.data() as { nome?: string };
+        if (data.nome) m[d.id] = data.nome;
+      });
+      setPessoasMap(m);
+    });
+    return () => u();
+  }, []);
 
   async function deletarProjeto(p: TarefaProjeto) {
     if (!confirm(`Excluir "${p.nome}"? Todos os subprojetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
@@ -955,15 +985,45 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
 
       {projetos.map(p => {
         const subs = subprojetos.filter(s => s.projetoId === p.id);
+        // "Quem vê" — texto resumido
+        const v = (p.visibilidade || "privado") as string;
+        const isPrivado = v === "privado" || v.startsWith("grupo_"); // grupo_* legado = privado
+        const isAberto = v === "escritorio" || v === "publico";
+        const autorizados = (p.usuariosAutorizados || []);
+        const nomesAutorizados = autorizados.map(id => pessoasMap[id]).filter(Boolean);
+
         return (
           <div key={p.id} className="mb-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: p.cor }}>
-            <div className="p-3 flex items-center gap-2">
+            <div className="p-3 flex items-start gap-2">
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-gray-900 dark:text-gray-100">
                   {p.emoji} {p.nome}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {p.tipo} · {TAREFA_VISIBILIDADE_LABEL[p.visibilidade]} · {subs.length} subprojeto(s)
+                  {p.tipo} · {subs.length} subprojeto(s)
+                </div>
+                {/* Quem vê — destaque visual */}
+                <div className="mt-1.5 flex items-start gap-1.5 flex-wrap">
+                  <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${
+                    isPrivado
+                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                      : isAberto
+                        ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                  }`}>
+                    {isPrivado ? "🔒 Privado" : isAberto ? "👥 Todo escritório" : v}
+                  </span>
+                  {isPrivado && (
+                    nomesAutorizados.length === 0 ? (
+                      <span className="text-[11px] text-gray-500 dark:text-gray-400 italic">
+                        só master vê — clique em Editar pra autorizar pessoas
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-gray-600 dark:text-gray-400">
+                        <span className="font-medium">Vêem:</span> {nomesAutorizados.join(", ")} <span className="text-gray-400">+ master</span>
+                      </span>
+                    )
+                  )}
                 </div>
               </div>
               <Button size="sm" variant="ghost" onClick={() => setEditandoId(editandoId === p.id ? null : p.id)}>
@@ -1046,7 +1106,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
     emoji: "📁",
     cor: "#6366f1",
     dono: pessoaId,
-    visibilidade: "escritorio",
+    visibilidade: "privado",
     tipo: "demanda",
     ordem: 99,
     ativo: true,
