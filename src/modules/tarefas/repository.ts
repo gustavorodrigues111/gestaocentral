@@ -206,7 +206,12 @@ export async function marcarSubtarefa(tarefaId: string, subId: string, feito: bo
   });
 }
 
-export async function adicionarComentario(tarefaId: string, texto: string, autor: { id: string; nome: string }): Promise<void> {
+export async function adicionarComentario(
+  tarefaId: string,
+  texto: string,
+  autor: { id: string; nome: string },
+  mencionados?: string[],
+): Promise<void> {
   const ref = doc(db, COL_TAREFAS, tarefaId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
@@ -216,6 +221,7 @@ export async function adicionarComentario(tarefaId: string, texto: string, autor
     texto,
     autorId: autor.id,
     autorNome: autor.nome,
+    mencionados: mencionados && mencionados.length > 0 ? mencionados : undefined,
     criadoEm: new Date().toISOString(),
   };
   await atualizarTarefa(tarefaId, {

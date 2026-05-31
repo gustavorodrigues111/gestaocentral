@@ -182,12 +182,14 @@ export async function tentarAgendarProximaRecorrencia(
   const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
   if (!existSnap.empty) return false; // já agendada
 
-  // Subtarefas a partir do template (se houver)
+  // Subtarefas a partir do template, com prazo resolvido a partir de prazoOffset.
+  const { resolverPrazoOffset } = await import("./prazoOffset");
   const subtarefas: Subtarefa[] | undefined = (sub.tarefasTemplate || []).length > 0
     ? (sub.tarefasTemplate || []).map((t, i) => ({
         id: Math.random().toString(36).slice(2, 11),
-        texto: t.titulo + (t.prazoOffset ? ` (${t.prazoOffset})` : ""),
+        texto: t.titulo,
         feito: false,
+        prazo: resolverPrazoOffset(t.prazoOffset, proxPrazo),
         ordem: i + 1,
       }))
     : undefined;

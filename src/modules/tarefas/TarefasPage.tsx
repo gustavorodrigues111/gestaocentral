@@ -20,13 +20,15 @@ import { seedProjetosIniciais } from "./seed";
 import { gerarTarefasDoDia } from "./generator";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
-  TarefaVisibilidade, TarefaTemplate,
+  TarefaVisibilidade, TarefaTemplate, TarefaCustomField, TarefaCustomFieldTipo,
 } from "../../core/types";
 import {
   TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL,
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
+  TAREFA_CUSTOM_FIELD_TIPO_LABEL,
 } from "../../core/types";
 import type { TarefaAnexo } from "../../core/types";
+import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 
 type Tab = "minhas" | "projeto" | "kanban" | "calendario" | "admin" | "lixeira";
@@ -907,6 +909,25 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
   function addTemplate() {
     setF({ ...f, tarefasTemplate: [...(f.tarefasTemplate || []), { titulo: "", prazoOffset: "D+0" }] });
   }
+  function addCustomField() {
+    const novo: TarefaCustomField = {
+      id: Math.random().toString(36).slice(2, 11),
+      nome: "",
+      tipo: "texto",
+      ordem: (f.customFieldsDef?.length || 0) + 1,
+    };
+    setF({ ...f, customFieldsDef: [...(f.customFieldsDef || []), novo] });
+  }
+  function editCustomField(i: number, patch: Partial<TarefaCustomField>) {
+    const arr = [...(f.customFieldsDef || [])];
+    arr[i] = { ...arr[i], ...patch };
+    setF({ ...f, customFieldsDef: arr });
+  }
+  function removeCustomField(i: number) {
+    const arr = [...(f.customFieldsDef || [])];
+    arr.splice(i, 1);
+    setF({ ...f, customFieldsDef: arr });
+  }
   function editTemplate(i: number, patch: Partial<TarefaTemplate>) {
     const arr = [...(f.tarefasTemplate || [])];
     arr[i] = { ...arr[i], ...patch };
@@ -942,6 +963,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
       campos: f.campos,
       pastaDriveTemplate: f.pastaDriveTemplate,
       tarefasTemplate: (f.tarefasTemplate || []).filter(t => t.titulo.trim()),
+      customFieldsDef: (f.customFieldsDef || []).filter(c => c.nome.trim()),
       responsavelPadraoId: f.responsavelPadraoId,
       responsavelPadraoNome: respNome || f.responsavelPadraoNome,
       recorrenciaTipo: f.recorrenciaTipo,
@@ -974,7 +996,47 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
       {f.auto && (
         <input value={f.gatilho || ""} onChange={(e) => setF({ ...f, gatilho: e.target.value })} placeholder="Gatilho (ex: 'Nova admissão concluída')" className="adm-input text-xs" />
       )}
-      <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom separados por · (opcional)" className="adm-input text-xs" />
+      <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom (legado, descritivo)" className="adm-input text-xs" />
+
+      {/* Custom fields tipados */}
+      <div className="text-xs">
+        <div className="text-gray-600 dark:text-gray-400 mb-1 flex items-center justify-between">
+          <span>Campos custom tipados (preenchidos por tarefa)</span>
+          <button onClick={addCustomField} className="text-emerald-700 dark:text-emerald-300 hover:underline">+ adicionar</button>
+        </div>
+        {(f.customFieldsDef || []).map((c, i) => (
+          <div key={c.id} className="flex items-center gap-1 mb-1 group">
+            <input
+              value={c.nome}
+              onChange={(e) => editCustomField(i, { nome: e.target.value })}
+              placeholder="Nome do campo"
+              className="adm-input flex-1"
+            />
+            <select
+              value={c.tipo}
+              onChange={(e) => editCustomField(i, { tipo: e.target.value as TarefaCustomFieldTipo })}
+              className="adm-input w-24"
+            >
+              {(Object.keys(TAREFA_CUSTOM_FIELD_TIPO_LABEL) as TarefaCustomFieldTipo[]).map(t =>
+                <option key={t} value={t}>{TAREFA_CUSTOM_FIELD_TIPO_LABEL[t]}</option>
+              )}
+            </select>
+            {c.tipo === "select" && (
+              <input
+                value={(c.opcoes || []).join("|")}
+                onChange={(e) => editCustomField(i, { opcoes: e.target.value.split("|").map(x => x.trim()).filter(Boolean) })}
+                placeholder="opções separadas por |"
+                className="adm-input w-32"
+              />
+            )}
+            <label className="flex items-center gap-1 text-[10px]" title="Obrigatório">
+              <input type="checkbox" checked={c.obrigatorio || false} onChange={(e) => editCustomField(i, { obrigatorio: e.target.checked })} />
+              obr
+            </label>
+            <button onClick={() => removeCustomField(i)} className="px-1 text-xs text-red-500 hover:text-red-700">×</button>
+          </div>
+        ))}
+      </div>
 
       {/* Responsável padrão */}
       <label className="block text-xs">
@@ -1332,12 +1394,15 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
     if (!titulo || !projetoId || !subprojetoId) { alert("Preencha título, projeto e subprojeto."); return; }
     setSalvando(true);
     try {
-      // Se tem template e usuário escolheu usar, popula subtarefas
+      // Se tem template e usuário escolheu usar, popula subtarefas com
+      // prazo resolvido a partir do offset (D+5 / dia 20 / fim do mês).
+      const prazoBase = prazo || null;
       const subtarefasFromTemplate = (usarTemplate && temTemplate && subAtual)
         ? (subAtual.tarefasTemplate || []).map((t, i) => ({
             id: Math.random().toString(36).slice(2, 11),
-            texto: t.titulo + (t.prazoOffset ? ` (${t.prazoOffset})` : ""),
+            texto: t.titulo,
             feito: false,
+            prazo: resolverPrazoOffset(t.prazoOffset, prazoBase),
             ordem: i + 1,
           }))
         : undefined;
@@ -1539,7 +1604,8 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
 
   async function addComentario() {
     if (!novoComentario.trim()) return;
-    await adicionarComentario(tarefa.id, novoComentario.trim(), autor);
+    const mencionados = extrairMencoes(novoComentario, pessoasLista);
+    await adicionarComentario(tarefa.id, novoComentario.trim(), autor, mencionados);
     setNovoComentario("");
   }
 
@@ -1755,11 +1821,30 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 {restaurants.length === 0 && <span className="text-xs text-gray-400">—</span>}
               </div>
             </div>
+            <div className="col-span-2">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Visibilidade</div>
+              <select
+                value={tarefa.visibilidadeOverride || ""}
+                onChange={(e) => {
+                  const v = e.target.value as TarefaVisibilidade | "";
+                  salvarCampo("visibilidadeOverride", (v || undefined) as Tarefa["visibilidadeOverride"], "visibilidade");
+                }}
+                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+              >
+                <option value="">— herda do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
+                {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
+                  <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
+                )}
+              </select>
+            </div>
             <div className="col-span-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
               <div>Origem: <span className="text-gray-700 dark:text-gray-300">{TAREFA_ORIGEM_LABEL[tarefa.origem]}</span></div>
               {tarefa.origemRefLabel && <div>· {tarefa.origemRefLabel}</div>}
             </div>
           </div>
+
+          {/* Custom fields tipados do subprojeto */}
+          <CustomFieldsSection tarefa={tarefa} subprojetos={subprojetos} autor={autor} />
 
           {/* Descrição editável */}
           <div>
@@ -1807,7 +1892,14 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             <div className="space-y-2">
               {(tarefa.comentarios || []).map(c => (
                 <div key={c.id} className="text-sm bg-gray-50 dark:bg-gray-800/50 p-2 rounded-md">
-                  <div className="font-medium text-gray-900 dark:text-gray-100 text-xs">{c.autorNome}</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-100 text-xs flex items-center gap-2">
+                    {c.autorNome}
+                    {(c.mencionados?.length ?? 0) > 0 && (
+                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                        → {(c.mencionados || []).map(id => pessoasLista.find(p => p.id === id)?.nome || "?").join(", ")}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{c.texto}</div>
                   <div className="text-[10px] text-gray-400 mt-1">{c.criadoEm.slice(0, 16).replace("T", " ")}</div>
                 </div>
@@ -1818,11 +1910,19 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 value={novoComentario}
                 onChange={(e) => setNovoComentario(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addComentario()}
-                placeholder="Comentar…"
+                placeholder="Comentar… use @nome pra mencionar"
                 className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
               />
               <Button size="sm" onClick={addComentario}>Enviar</Button>
             </div>
+            {extrairMencoes(novoComentario, pessoasLista).length > 0 && (
+              <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">
+                ✓ Vai mencionar: {extrairMencoes(novoComentario, pessoasLista)
+                  .map(id => pessoasLista.find(p => p.id === id)?.nome)
+                  .filter(Boolean)
+                  .join(", ")}
+              </div>
+            )}
           </div>
 
           {/* Anexos */}
@@ -1875,6 +1975,88 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
           >🗑️ Excluir</Button>
           <Button onClick={onClose}>Fechar</Button>
         </footer>
+      </div>
+    </div>
+  );
+}
+
+// ─── Custom fields tipados (preenchidos por tarefa) ──────────────────────
+
+function CustomFieldsSection({ tarefa, subprojetos, autor }: {
+  tarefa: Tarefa;
+  subprojetos: TarefaSubprojeto[];
+  autor: { id: string; nome: string };
+}) {
+  const sub = subprojetos.find(s => s.id === tarefa.subprojetoId);
+  const defs = sub?.customFieldsDef || [];
+  if (defs.length === 0) return null;
+
+  async function salvarValor(fieldId: string, valor: string | number | boolean | null) {
+    const novo = { ...(tarefa.customFields || {}), [fieldId]: valor };
+    await atualizarTarefa(tarefa.id, { customFields: novo }, autor, {
+      acao: "editada",
+      campo: `custom:${defs.find(d => d.id === fieldId)?.nome || fieldId}`,
+      valorDepois: String(valor ?? "—"),
+    });
+  }
+
+  return (
+    <div>
+      <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+        Campos do subprojeto
+      </h3>
+      <div className="grid grid-cols-2 gap-3 text-sm">
+        {defs.sort((a, b) => a.ordem - b.ordem).map(field => {
+          const valor = tarefa.customFields?.[field.id];
+          return (
+            <label key={field.id} className="block">
+              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                {field.nome}{field.obrigatorio && <span className="text-red-500 ml-0.5">*</span>}
+              </div>
+              {field.tipo === "texto" && (
+                <input
+                  value={typeof valor === "string" ? valor : ""}
+                  onChange={(e) => salvarValor(field.id, e.target.value || null)}
+                  className="w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                />
+              )}
+              {field.tipo === "numero" && (
+                <input
+                  type="number"
+                  value={typeof valor === "number" ? valor : ""}
+                  onChange={(e) => salvarValor(field.id, e.target.value ? parseFloat(e.target.value) : null)}
+                  className="w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                />
+              )}
+              {field.tipo === "data" && (
+                <input
+                  type="date"
+                  value={typeof valor === "string" ? valor : ""}
+                  onChange={(e) => salvarValor(field.id, e.target.value || null)}
+                  className="w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                />
+              )}
+              {field.tipo === "select" && (
+                <select
+                  value={typeof valor === "string" ? valor : ""}
+                  onChange={(e) => salvarValor(field.id, e.target.value || null)}
+                  className="w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                >
+                  <option value="">— escolher —</option>
+                  {(field.opcoes || []).map(o => <option key={o} value={o}>{o}</option>)}
+                </select>
+              )}
+              {field.tipo === "checkbox" && (
+                <input
+                  type="checkbox"
+                  checked={valor === true}
+                  onChange={(e) => salvarValor(field.id, e.target.checked)}
+                  className="mt-1"
+                />
+              )}
+            </label>
+          );
+        })}
       </div>
     </div>
   );
@@ -2034,6 +2216,11 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
                 title="Clique pra editar"
               >
                 {st.texto}
+                {st.prazo && (
+                  <span className="ml-2 text-[10px] text-gray-500 dark:text-gray-400">
+                    📅 {st.prazo}
+                  </span>
+                )}
               </span>
             )}
             <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-xs">

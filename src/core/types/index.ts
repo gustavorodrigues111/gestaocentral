@@ -3039,6 +3039,9 @@ export type TarefaSubprojeto = {
   // a partir deste subprojeto. Ex.: Fechamento Financeiro Mensal vira tarefa
   // com 15 subtarefas pré-definidas.
   tarefasTemplate?: TarefaTemplate[];
+  // Definição de campos custom desse subprojeto. Cada tarefa do subprojeto
+  // pode preencher e o valor fica em tarefa.customFields[fieldId].
+  customFieldsDef?: TarefaCustomField[];
   // Responsável padrão pras tarefas criadas neste subprojeto. Se undefined,
   // cai pro criador da tarefa.
   responsavelPadraoId?: string;
@@ -3070,8 +3073,32 @@ export const RECORRENCIA_TIPO_LABEL: Record<NonNullable<TarefaSubprojeto["recorr
 export type TarefaTemplate = {
   titulo: string;
   responsavelHint?: string;
+  // Offset relativo ao prazo da tarefa-pai: "D+5" / "D-2" / "dia 20".
+  // O sistema resolve isso pra data real na hora de criar.
   prazoOffset?: string;
   origem?: TarefaOrigem;
+};
+
+// Definição de um campo custom dentro de um subprojeto. Cada tarefa do
+// subprojeto pode preencher esses campos, e os valores ficam em
+// tarefa.customFields[fieldId].
+export type TarefaCustomFieldTipo = "texto" | "numero" | "data" | "select" | "checkbox";
+
+export const TAREFA_CUSTOM_FIELD_TIPO_LABEL: Record<TarefaCustomFieldTipo, string> = {
+  texto:    "Texto",
+  numero:   "Número",
+  data:     "Data",
+  select:   "Seleção",
+  checkbox: "Checkbox",
+};
+
+export type TarefaCustomField = {
+  id: string;
+  nome: string;
+  tipo: TarefaCustomFieldTipo;
+  opcoes?: string[];          // só pra tipo "select"
+  obrigatorio?: boolean;
+  ordem: number;
 };
 
 export type Subtarefa = {
@@ -3081,6 +3108,9 @@ export type Subtarefa = {
   feitoEm?: string | null;
   feitoPor?: string | null;
   feitoPorNome?: string | null;
+  // Prazo individual da subtarefa (opcional). Calculado a partir de
+  // prazoOffset do template quando a tarefa-pai foi criada com checklist.
+  prazo?: string | null;
   ordem: number;
 };
 
@@ -3089,6 +3119,9 @@ export type TarefaComentario = {
   texto: string;
   autorId: string;
   autorNome: string;
+  // pessoaIds mencionados via "@" no texto. ToastListener detecta menção
+  // do usuário logado e dispara notificação.
+  mencionados?: string[];
   criadoEm: string;
 };
 
@@ -3142,7 +3175,13 @@ export type Tarefa = {
   origemRefId?: string;
   origemRefLabel?: string;
   recorrenciaKey?: string;      // pra idempotência do gerador
-  customFields?: { [k: string]: string };
+  // Valores dos campos custom definidos pelo subprojeto (customFieldsDef).
+  // Chave = field.id, valor = string/number/boolean/Date conforme o tipo.
+  // Mantém union flexível pra evolução do schema.
+  customFields?: { [fieldId: string]: string | number | boolean | null };
+  // Override de visibilidade — quando setado, ignora a visibilidade do
+  // projeto. Útil pra restringir/abrir uma tarefa específica.
+  visibilidadeOverride?: TarefaVisibilidade;
   corHerdada?: string;
   deletadoEm?: string | null;
   deletadoPor?: string | null;

@@ -24,6 +24,7 @@ type Toast = {
 
 const KEY_ULTIMA_GERACAO = "tarefas_lastgen_ymd";
 const KEY_TAREFAS_VISTAS = "tarefas_seen_ids";
+const KEY_COMENTARIOS_VISTOS = "tarefas_seen_comments";
 
 export function ToastListener() {
   const { pessoa } = useAuth();
@@ -72,10 +73,20 @@ export function ToastListener() {
     const qResp = query(collection(db, "tarefas"), where("responsavelId", "==", pessoa.id));
     const qCo = query(collection(db, "tarefas"), where("coResponsaveis", "array-contains", pessoa.id));
 
+    // Comentários já vistos: chave = tarefaId+comentarioId pra detectar
+    // só os novos com menção do user logado.
+    let comentariosVistos: Set<string>;
+    try {
+      const s = localStorage.getItem(KEY_COMENTARIOS_VISTOS);
+      comentariosVistos = new Set(s ? (JSON.parse(s) as string[]) : []);
+    } catch {
+      comentariosVistos = new Set();
+    }
+
     function handle(snap: { docChanges: () => Array<{ type: string; doc: { id: string; data: () => Record<string, unknown> } }> }) {
       for (const ch of snap.docChanges()) {
+        const t = { id: ch.doc.id, ...ch.doc.data() } as Tarefa;
         if (ch.type === "added") {
-          const t = { id: ch.doc.id, ...ch.doc.data() } as Tarefa;
           if (vistos.has(t.id)) continue;
           vistos.add(t.id);
           // Não notifica no carregamento inicial
@@ -90,10 +101,29 @@ export function ToastListener() {
             cor: t.corHerdada || "#6366f1",
           });
         }
+        if (ch.type === "modified" || ch.type === "added") {
+          // Detectar comentários novos com menção do user logado
+          (t.comentarios || []).forEach(c => {
+            const chave = `${t.id}:${c.id}`;
+            if (comentariosVistos.has(chave)) return;
+            comentariosVistos.add(chave);
+            if (inicial) return;
+            if (c.autorId === pessoa?.id) return; // não notifica suas próprias menções
+            if (!(c.mencionados || []).includes(pessoa?.id || "")) return;
+            pushToast({
+              id: `mention-${chave}`,
+              titulo: `💬 ${c.autorNome} te mencionou`,
+              subtitulo: `"${c.texto.slice(0, 80)}" — ${t.titulo}`,
+              cor: t.corHerdada || "#fbbf24",
+            });
+          });
+        }
       }
       // Persiste IDs vistos (truncado pra evitar storage gigante)
       const arr = Array.from(vistos);
       localStorage.setItem(KEY_TAREFAS_VISTAS, JSON.stringify(arr.slice(-500)));
+      const arrC = Array.from(comentariosVistos);
+      localStorage.setItem(KEY_COMENTARIOS_VISTOS, JSON.stringify(arrC.slice(-2000)));
     }
 
     const u1 = onSnapshot(qResp, handle);
