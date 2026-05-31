@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -10,12 +10,17 @@ import { Input } from "../../core/ui/Input";
 import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL } from "../../core/types";
 import type { Cargo, Empregado, EventoTrilha, EventoTrilhaTipo } from "../../core/types";
 import { EventoTrilhaModal } from "./EventoTrilhaModal";
+import { anularEvento, registrarVisualizacao } from "./repository";
 
 const TIPOS_FILTRO: ("todos" | EventoTrilhaTipo)[] = [
   "todos",
-  "admissao", "demissao", "readmissao", "mudanca_cargo", "promocao",
+  "admissao", "demissao", "readmissao",
+  "mudanca_cargo", "promocao", "promocao_salarial",
   "treinamento", "feedback_positivo", "feedback_negativo",
-  "ocorrencia", "premiacao", "outro",
+  "ocorrencia", "premiacao", "advertencia",
+  "ferias", "exame_realizado", "reuniao_individual", "entrega_uniforme",
+  "ponto_atraso", "ponto_falta_j", "ponto_falta_i", "ponto_compensacao",
+  "outro",
 ];
 
 export function TrilhaPage() {
@@ -100,10 +105,33 @@ export function TrilhaPage() {
     });
   }, [eventos, filtroEmp, filtroTipo, search, empMap]);
 
-  async function excluir(e: EventoTrilha) {
-    if (!confirm("Excluir esse evento da trilha? Não dá pra desfazer.")) return;
-    await deleteDoc(doc(db, "eventosTrilha", e.id));
+  async function anular(e: EventoTrilha) {
+    if (!me) return;
+    const motivo = prompt(
+      "Anular evento da trilha.\n\n" +
+      "Eventos da trilha NÃO podem ser deletados (LGPD/auditoria). " +
+      "Eles ficam marcados como anulados com motivo e autor registrados.\n\n" +
+      "Motivo da anulação:"
+    );
+    if (!motivo || !motivo.trim()) return;
+    try {
+      await anularEvento(e.id, motivo.trim(), { id: me.id, nome: me.nome });
+    } catch (err) {
+      alert("Falha ao anular: " + (err instanceof Error ? err.message : String(err)));
+    }
   }
+
+  // Log LGPD: registra que a trilha foi visualizada (lista ou empregado específico)
+  useEffect(() => {
+    if (!rid || !me || !podeVer) return;
+    registrarVisualizacao({
+      restaurantId: rid,
+      empregadoId: filtroEmp || "*todos*",
+      visualizadoPor: me.id,
+      visualizadoPorNome: me.nome,
+      contexto: filtroEmp ? "empregado" : "lista",
+    }).catch(err => console.warn("[trilha] falha ao registrar visualização:", err));
+  }, [rid, me, podeVer, filtroEmp]);
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) {
@@ -123,6 +151,14 @@ export function TrilhaPage() {
 
   return (
     <div className="max-w-5xl">
+      {/* Aviso permanente: dados sensíveis (LGPD) */}
+      <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
+        <span className="text-base leading-none">🔒</span>
+        <div>
+          <strong>Dados sensíveis — uso restrito.</strong> A trilha registra histórico completo do empregado (admissões, demissões, advertências, exames, ferias, ponto e remuneração). Visualizações são auditadas (LGPD). Eventos não podem ser deletados — apenas anulados com motivo.
+        </div>
+      </div>
+
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎯 Trilha do Empregado</h1>
@@ -212,17 +248,22 @@ export function TrilhaPage() {
           {filtered.map(e => {
             const emp = empMap[e.empregadoId];
             const cargoAtual = emp ? cargoMap[emp.cargoId] : null;
+            const anulado = !!e.anulado;
             return (
               <div
                 key={e.id}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4"
+                className={`border rounded-xl p-4 ${
+                  anulado
+                    ? "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-70"
+                    : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
+                }`}
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-start gap-3 flex-1">
-                    <span className="text-2xl">{EVENTO_TRILHA_ICON[e.tipo]}</span>
+                    <span className={`text-2xl ${anulado ? "grayscale" : ""}`}>{EVENTO_TRILHA_ICON[e.tipo]}</span>
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-bold text-gray-900 dark:text-gray-100">{e.titulo}</h3>
+                        <h3 className={`font-bold ${anulado ? "line-through text-gray-500 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{e.titulo}</h3>
                         <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
                           {EVENTO_TRILHA_LABEL[e.tipo]}
                         </span>
@@ -231,23 +272,48 @@ export function TrilhaPage() {
                             🤖 Auto
                           </span>
                         )}
+                        {anulado && (
+                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                            ⚠ Anulado
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                        👤 {emp?.nome || "(empregado removido)"}
+                        👤 {emp?.nome || e.empregadoNomeSnapshot || "(empregado removido)"}
                         {cargoAtual && <> · {cargoAtual.nome} ({cargoAtual.area})</>}
                         <> · 📅 {new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR")}</>
                       </div>
                       {e.descricao && (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{e.descricao}</p>
+                        <p className={`text-sm mt-1 whitespace-pre-wrap ${anulado ? "text-gray-500 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}>{e.descricao}</p>
+                      )}
+                      {e.anexoUrl && !anulado && (
+                        <a
+                          href={e.anexoUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-1"
+                        >
+                          📎 {e.anexoNome || "Anexo"}
+                        </a>
+                      )}
+                      {anulado && (
+                        <div className="mt-2 text-[11px] text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded px-2 py-1">
+                          <strong>Anulado</strong>
+                          {e.anuladoEm && <> em {new Date(e.anuladoEm).toLocaleString("pt-BR")}</>}
+                          {e.anuladoPorNome && <> por {e.anuladoPorNome}</>}
+                          {e.motivoAnulacao && (
+                            <div className="mt-0.5">Motivo: {e.motivoAnulacao}</div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
-                  {podeConfig && (
+                  {podeConfig && !anulado && (
                     <div className="flex gap-1">
                       {e.fonte === "manual" && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing({ empregadoId: e.empregadoId, evento: e })}>Editar</Button>
                       )}
-                      <Button variant="danger" size="sm" onClick={() => excluir(e)}>×</Button>
+                      <Button variant="danger" size="sm" onClick={() => anular(e)}>Anular</Button>
                     </div>
                   )}
                 </div>

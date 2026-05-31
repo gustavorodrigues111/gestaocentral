@@ -1,14 +1,12 @@
 import { useState } from "react";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
-import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL } from "../../core/types";
 import type { Cargo, Empregado, EventoTrilha, EventoTrilhaTipo } from "../../core/types";
+import { editarEvento, registrarEvento } from "./repository";
 
 type Props = {
   empregadoId: string;
@@ -20,9 +18,12 @@ type Props = {
 };
 
 // Tipos disponíveis pra cadastro manual (auto não dá pra escolher)
+// Demais tipos (admissao, demissao, exame_realizado, ferias, ponto_*, etc.)
+// são SEMPRE auto-gerados pelos hooks dos módulos correspondentes.
 const TIPOS_MANUAL: EventoTrilhaTipo[] = [
   "treinamento", "feedback_positivo", "feedback_negativo",
-  "ocorrencia", "premiacao", "promocao", "outro",
+  "ocorrencia", "premiacao", "advertencia",
+  "promocao", "reuniao_individual", "outro",
 ];
 
 export function EventoTrilhaModal({ empregadoId, empregados, cargoMap, evento, restaurantId, onClose }: Props) {
@@ -44,21 +45,26 @@ export function EventoTrilhaModal({ empregadoId, empregados, cargoMap, evento, r
     setErr("");
     setSaving(true);
     try {
-      const payload: Omit<EventoTrilha, "id"> = {
-        restaurantId,
-        empregadoId: empId,
-        tipo,
-        data,
-        titulo: titulo.trim(),
-        descricao: descricao.trim() || undefined,
-        fonte: "manual",
-        registradoEm: evento?.registradoEm || new Date().toISOString(),
-        registradoPor: evento?.registradoPor || me.id,
-      };
+      const emp = empregados.find(e => e.id === empId);
       if (isNew) {
-        await addDoc(collection(db, "eventosTrilha"), sanitizeForFirestore(payload));
-      } else {
-        await updateDoc(doc(db, "eventosTrilha", evento.id), sanitizeForFirestore(payload));
+        await registrarEvento({
+          restaurantId,
+          empregadoId: empId,
+          empregadoNomeSnapshot: emp?.nome,
+          tipo,
+          data,
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || undefined,
+          fonte: "manual",
+          registradoPor: { id: me.id, nome: me.nome },
+        });
+      } else if (evento) {
+        await editarEvento(evento.id, {
+          tipo,
+          data,
+          titulo: titulo.trim(),
+          descricao: descricao.trim() || undefined,
+        });
       }
       onClose();
     } catch (e) {

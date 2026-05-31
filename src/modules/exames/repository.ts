@@ -188,6 +188,33 @@ export async function darBaixa(input: BaixaInput): Promise<string> {
     atualizadoEm: new Date().toISOString(),
   }), { merge: false });
 
+  // Registra evento na Trilha do Empregado
+  try {
+    const { registrarEvento } = await import("../trilha/repository");
+    await registrarEvento({
+      restaurantId: exame.restaurantId,
+      empregadoId: exame.empregadoId,
+      empregadoNomeSnapshot: exame.empregadoNomeSnapshot,
+      tipo: "exame_realizado",
+      data: input.realizadoEm,
+      titulo: `${exame.tipoNomeSnapshot} realizado`,
+      descricao: input.observacao,
+      anexoUrl: input.anexoUrl,
+      anexoNome: input.anexoNome,
+      metadados: {
+        tipoExameId: exame.tipoId,
+        tipoExameNome: exame.tipoNomeSnapshot,
+        fornecedor: input.fornecedor,
+        proximoVencimento: proximo,
+      },
+      fonte: "auto",
+      refOrigem: `exame:${exame.id}:${input.realizadoEm}`,
+      registradoPor: input.autor,
+    });
+  } catch (e) {
+    console.warn("[exames] falha ao registrar trilha:", e);
+  }
+
   return proximo;
 }
 

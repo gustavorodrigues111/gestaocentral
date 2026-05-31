@@ -420,6 +420,31 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           console.warn("[exames] falha ao reavaliar:", e);
         }
       }
+      // Fase 9: registra mudança de salário na Trilha
+      if (c.campo === "salario") {
+        try {
+          const { registrarEvento } = await import("../trilha/repository");
+          await registrarEvento({
+            restaurantId,
+            empregadoId: empregado.id,
+            empregadoNomeSnapshot: empregado.nome,
+            tipo: "promocao_salarial",
+            data: vigencia,
+            titulo: `Promoção salarial — R$ ${c.valorAntes} → R$ ${c.valorDepois}`,
+            descricao: motivo,
+            metadados: {
+              valorAntes: c.rawValorAntes,
+              valorDepois: c.rawValorDepois,
+              vigenteApartir: vigencia,
+            },
+            fonte: "auto",
+            refOrigem: `salario:${empregado.id}:${vigencia}`,
+            registradoPor: { id: me.id, nome: me.nome || "" },
+          });
+        } catch (e) {
+          console.warn("[trilha] falha ao registrar promoção salarial:", e);
+        }
+      }
     }
   }
 

@@ -277,12 +277,17 @@ export const CATALOGO: CatalogoModulo[] = [
     id: "trilha",
     icon: "🎯",
     label: "Trilha do empregado",
-    desc: "Histórico de carreira / eventos individuais (trilha própria fora do self-service)",
+    desc: "Histórico cronológico completo do empregado — dados ultra sensíveis (LGPD + trabalhista). Só perfis autorizados.",
     area: "time",
     acoes: [
-      { id: "verTime",    label: "Ver trilha de qualquer pessoa", sensivel: true },
-      { id: "lancar",     label: "Lançar evento na trilha (promoção, etc)", sensivel: true },
-      { id: "configurar", label: "Configurar tipos de evento, marcos" },
+      { id: "ver",        label: "Ver trilha de qualquer pessoa", sensivel: true },
+      { id: "lancar",     label: "Lançar evento manual (advertência, treinamento, etc)", sensivel: true },
+      { id: "editar",     label: "Editar evento", sensivel: true },
+      { id: "anular",     label: "Anular evento (não apaga)", sensivel: true },
+      { id: "verAuditoria", label: "Ver log de quem viu a trilha", sensivel: true },
+      { id: "configurar", label: "Configurar tipos de evento" },
+      // legado
+      { id: "verTime",    label: "(legado) Ver trilha — use 'ver'", sensivel: true },
     ],
   },
   {

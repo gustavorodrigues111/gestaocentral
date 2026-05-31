@@ -1032,9 +1032,13 @@ export type Reuniao = {
 
 export type EventoTrilhaTipo =
   | "admissao" | "demissao" | "readmissao"
-  | "mudanca_cargo" | "promocao"
+  | "mudanca_cargo" | "promocao" | "promocao_salarial"
   | "treinamento" | "feedback_positivo" | "feedback_negativo"
-  | "ocorrencia" | "premiacao" | "outro";
+  | "ocorrencia" | "premiacao" | "advertencia"
+  | "ferias" | "exame_realizado" | "reuniao_individual"
+  | "entrega_uniforme"
+  | "ponto_atraso" | "ponto_falta_j" | "ponto_falta_i" | "ponto_compensacao"
+  | "outro";
 
 export const EVENTO_TRILHA_LABEL: Record<EventoTrilhaTipo, string> = {
   admissao:           "Admissão",
@@ -1042,11 +1046,21 @@ export const EVENTO_TRILHA_LABEL: Record<EventoTrilhaTipo, string> = {
   readmissao:         "Readmissão",
   mudanca_cargo:      "Mudança de cargo",
   promocao:           "Promoção",
+  promocao_salarial:  "Promoção salarial (sem mudar cargo)",
   treinamento:        "Treinamento",
   feedback_positivo:  "Feedback positivo",
   feedback_negativo:  "Feedback negativo",
   ocorrencia:         "Ocorrência",
   premiacao:          "Premiação",
+  advertencia:        "Advertência",
+  ferias:             "Férias",
+  exame_realizado:    "Exame realizado",
+  reuniao_individual: "Reunião individual",
+  entrega_uniforme:   "Entrega de uniforme/EPI",
+  ponto_atraso:       "Atraso (ponto)",
+  ponto_falta_j:      "Falta justificada",
+  ponto_falta_i:      "Falta injustificada",
+  ponto_compensacao:  "Compensação de horas",
   outro:              "Outro",
 };
 
@@ -1056,11 +1070,21 @@ export const EVENTO_TRILHA_ICON: Record<EventoTrilhaTipo, string> = {
   readmissao:         "🔄",
   mudanca_cargo:      "🔁",
   promocao:           "🚀",
+  promocao_salarial:  "💰",
   treinamento:        "📚",
   feedback_positivo:  "👍",
   feedback_negativo:  "👎",
   ocorrencia:         "⚠️",
   premiacao:          "🏆",
+  advertencia:        "📝",
+  ferias:             "🏖️",
+  exame_realizado:    "🩺",
+  reuniao_individual: "🗣️",
+  entrega_uniforme:   "🦺",
+  ponto_atraso:       "⏰",
+  ponto_falta_j:      "🟡",
+  ponto_falta_i:      "🔴",
+  ponto_compensacao:  "🔄",
   outro:              "📌",
 };
 
@@ -1068,13 +1092,44 @@ export type EventoTrilha = {
   id: string;
   restaurantId: string;
   empregadoId: string;
+  empregadoNomeSnapshot?: string;     // snapshot pra UI mesmo se empregado for renomeado
   tipo: EventoTrilhaTipo;
-  data: string;                  // YYYY-MM-DD
+  data: string;                       // YYYY-MM-DD
   titulo: string;
   descricao?: string;
-  fonte: "auto" | "manual";      // auto = gerado pelo sistema (admissão/cargo/etc)
+  // Anexo Drive opcional (PDF advertência, foto entrega EPI, link laudo, etc)
+  anexoUrl?: string;
+  anexoNome?: string;
+  // Metadados estruturados específicos por tipo (ex: advertencia: tipo/motivo;
+  // promocao_salarial: valorAntes/depois; ferias: inicio/fim/dias).
+  metadados?: Record<string, unknown>;
+  fonte: "auto" | "manual";           // auto = gerado pelo sistema
+  refOrigem?: string;                 // id do doc origem (ex: processoDemissao/exameEmpregado)
   registradoEm: string;
   registradoPor: string;
+  registradoPorNome?: string;
+  // ── Anulação (em vez de hard delete) ──
+  // Eventos da trilha NÃO são apagados. Quando marcados como anulados,
+  // continuam visíveis no histórico mas com tarja "ANULADO" + motivo.
+  // Pra ter visualização limpa, UI pode filtrar por padrão.
+  anulado?: boolean;
+  anuladoEm?: string;
+  anuladoPor?: string;
+  anuladoPorNome?: string;
+  motivoAnulacao?: string;
+};
+
+// Log de visualização de trilha — LGPD/auditoria.
+// Toda vez que alguém abre a trilha de um empregado, grava-se aqui.
+export type TrilhaVisualizacaoLog = {
+  id: string;
+  restaurantId: string;
+  empregadoId: string;                // empregado cuja trilha foi vista
+  empregadoNomeSnapshot?: string;
+  visualizadoPor: string;             // pessoaId
+  visualizadoPorNome?: string;
+  visualizadoEm: string;              // ISO
+  contexto: "lista" | "empregado" | "tipo" | "manual";
 };
 
 // ─── OCORRÊNCIAS ───────────────────────────────────────────────────────────

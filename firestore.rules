@@ -133,7 +133,23 @@ service cloud.firestore {
     match /ocorrencias/{id}         { allow read, write: if authed(); }
     match /ideias/{id}              { allow read, write: if authed(); }
     match /reunioes/{id}            { allow read, write: if authed(); }
-    match /trilhaEventos/{id}       { allow read, write: if authed(); }
+    // Trilha do Empregado — dados ULTRA sensíveis (LGPD + trabalhista).
+    // Por padrão só master pode ver/escrever. Pra liberar outras pessoas:
+    // adicionar email em /admins (vira master) OU evoluir rules futuras
+    // pra checar perfil de acesso server-side.
+    // Não usar hard delete — UI usa anulação (campo `anulado: true`).
+    // Visualizações são logadas em /trilhaVisualizacaoLog (LGPD).
+    match /eventosTrilha/{id} {
+      allow read:   if isMaster();
+      allow create: if isMaster();
+      allow update: if isMaster();
+      allow delete: if false;
+    }
+    match /trilhaVisualizacaoLog/{id} {
+      allow read:   if isMaster();
+      allow create: if authed();                // qualquer um que abre a trilha registra
+      allow update, delete: if false;
+    }
     // ── Gestor de Tarefas — confidencialidade real (Fase 5) ──────────────
     //
     // tarefas: read CONDICIONAL — só vê quem é master, criador, responsável,

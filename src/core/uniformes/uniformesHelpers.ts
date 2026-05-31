@@ -259,6 +259,35 @@ export async function criarEntrega(opts: {
   };
   await setDoc(doc(db, "entregasUniforme", id), sanitizeForFirestore(entrega));
 
+  // Trilha do Empregado: registra entrega de uniforme/EPI (Fase 9).
+  // Só se temos empregadoId (entregas no momento da admissão podem não ter ainda).
+  if (empregadoId) {
+    try {
+      const { registrarEvento } = await import("../../modules/trilha/repository");
+      const totalItens = entrega.itens.reduce((s, i) => s + i.qtd, 0);
+      const listaItens = entrega.itens.map(i => `${i.qtd}× ${i.nome} (${i.tamanho})`).join("; ");
+      await registrarEvento({
+        restaurantId,
+        empregadoId,
+        empregadoNomeSnapshot: candidatoSnapshot?.nome,
+        tipo: "entrega_uniforme",
+        data: now.slice(0, 10),
+        titulo: `Entrega ${tipo === "epi" ? "de EPIs" : "de uniformes"} (${totalItens} itens)`,
+        descricao: listaItens,
+        metadados: {
+          tipoEntrega: tipo,
+          motivo,
+          itens: entrega.itens,
+        },
+        fonte: "auto",
+        refOrigem: `entrega:${id}`,
+        registradoPor: { id: pessoa.id, nome: pessoa.nome },
+      });
+    } catch (e) {
+      console.warn("[uniformes] falha ao registrar trilha:", e);
+    }
+  }
+
   // Baixa estoque + grava movimentações
   const motivoMov: MotivoMovEstoque =
     motivo === "troca" ? "troca" :
