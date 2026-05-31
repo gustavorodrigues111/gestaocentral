@@ -58,7 +58,15 @@ import { RULES_META } from "../../core/excecoes/rules";
 import type {
   ExceptionRecord,
   ExceptionSeverity,
+  PontoDiaStatus,
 } from "../../core/excecoes/types";
+import { REGRA_CATEGORIA_DEFAULT } from "../../core/excecoes/types";
+import {
+  marcarTratado as setDiaTratado,
+  reabrirDia as setDiaReaberto,
+  ouvirStatusDoMes,
+  type PontoDiaStatusDoc,
+} from "../../core/excecoes/statusDia";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
 
@@ -224,6 +232,19 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return s ? s.index : 1;
   });
   const semanaAtiva = semanasMes.find((w) => w.index === semanaIdx) || semanasMes[0];
+
+  // Status do DIA (empregado × data) — listener real-time pro mês inteiro.
+  // Não bloqueia exibição: começa vazio e popula assim que Firestore responde.
+  const [statusDiaMap, setStatusDiaMap] = useState<Map<string, PontoDiaStatusDoc>>(new Map());
+  useEffect(() => {
+    if (!rid) { setStatusDiaMap(new Map()); return; }
+    const u = ouvirStatusDoMes(rid, anoMes.ano, anoMes.mes, (docs) => {
+      const m = new Map<string, PontoDiaStatusDoc>();
+      docs.forEach(d => { m.set(`${d.empregadoId}_${d.data}`, d); });
+      setStatusDiaMap(m);
+    });
+    return () => u();
+  }, [rid, anoMes.ano, anoMes.mes]);
   const startDate = semanaAtiva?.weekStart || firstDayOfCurrentMonth();
   const endDate = semanaAtiva?.weekEnd || todayYmd();
 
@@ -1315,6 +1336,33 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   onAnotacaoLivre={() => criarNotaInterna(grupo.empregadoId, grupo.nome, grupo.cpf)}
                   onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onApagarNota={apagarNotaInterna}
+                  statusDiaMap={statusDiaMap}
+                  onMarcarDiaTratado={async (date) => {
+                    if (!rid || !me) return;
+                    try {
+                      await setDiaTratado({
+                        restaurantId: rid,
+                        empregadoId: grupo.empregadoId,
+                        data: date,
+                        por: { id: me.id, nome: me.nome },
+                      });
+                    } catch (e) {
+                      alert("Falha ao marcar tratado: " + (e instanceof Error ? e.message : String(e)));
+                    }
+                  }}
+                  onReabrirDia={async (date) => {
+                    if (!rid || !me) return;
+                    try {
+                      await setDiaReaberto({
+                        restaurantId: rid,
+                        empregadoId: grupo.empregadoId,
+                        data: date,
+                        por: { id: me.id, nome: me.nome },
+                      });
+                    } catch (e) {
+                      alert("Falha ao reabrir: " + (e instanceof Error ? e.message : String(e)));
+                    }
+                  }}
                 />
               ))}
             </div>
@@ -1422,6 +1470,9 @@ function ColaboradorBlock({
   onAnotacaoLivre,
   onEnviarWhats,
   onApagarNota,
+  statusDiaMap,
+  onMarcarDiaTratado,
+  onReabrirDia,
 }: {
   grupo: GrupoColab;
   podeAnotar: boolean;
@@ -1435,6 +1486,9 @@ function ColaboradorBlock({
   onAnotacaoLivre: () => void;
   onEnviarWhats: () => void;
   onApagarNota: (notaId: string) => void;
+  statusDiaMap?: Map<string, PontoDiaStatusDoc>;
+  onMarcarDiaTratado?: (date: string) => Promise<void>;
+  onReabrirDia?: (date: string) => Promise<void>;
 }) {
   const [expandido, setExpandido] = useState(false);
   return (
@@ -1499,18 +1553,97 @@ function ColaboradorBlock({
 
       {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {grupo.porData.map(({ date, exc }) => (
-          <div key={date} className="px-4 py-3">
-            <div className="flex items-baseline gap-2 mb-1.5">
+        {grupo.porData.map(({ date, exc }) => {
+          // Separar exc por categoria (alinhamento vs ajuste)
+          const excAlinhamento = exc.filter(e => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "alinhamento");
+          const excAjuste = exc.filter(e => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "ajuste");
+          // Status do dia
+          const statusDoc = statusDiaMap?.get(`${grupo.empregadoId}_${date}`);
+          const status: PontoDiaStatus = statusDoc?.status || "pendente";
+          const fundoDia =
+            status === "tratado"            ? "bg-emerald-50/60 dark:bg-emerald-900/15" :
+            status === "corrigido_solides"  ? "bg-emerald-100/60 dark:bg-emerald-900/30" :
+            status === "ajuste_solicitado"  ? "bg-sky-50/60 dark:bg-sky-900/15" :
+            "";
+          const badgeCls =
+            status === "pendente"           ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
+            status === "ajuste_solicitado"  ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" :
+            status === "tratado"            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
+            status === "corrigido_solides"  ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold" :
+            status === "reaberto"           ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" :
+            "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
+          const statusLabel =
+            status === "pendente"           ? "🟡 Pendente" :
+            status === "ajuste_solicitado"  ? "📨 Ajuste solicitado" :
+            status === "tratado"            ? "✓ Tratado" :
+            status === "corrigido_solides"  ? "✅ Corrigido no Sólides" :
+            status === "reaberto"           ? "↻ Reaberto" : status;
+          return (
+          <div key={date} className={`px-4 py-3 ${fundoDia}`}>
+            <div className="flex items-baseline gap-2 mb-2 flex-wrap">
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
                 {fmtDataBr(date)}
               </span>
               <span className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">
                 {diaDaSemana(date)}
               </span>
+              <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls}`}>
+                {statusLabel}
+              </span>
+              {podeAnotar && (
+                <div className="ml-auto flex gap-1">
+                  {status !== "tratado" && status !== "corrigido_solides" && onMarcarDiaTratado && (
+                    <button
+                      type="button"
+                      onClick={() => onMarcarDiaTratado(date)}
+                      className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700"
+                      title="Marcar dia inteiro como tratado (alinhamento verbal feito)"
+                    >
+                      ✓ Tratado
+                    </button>
+                  )}
+                  {(status === "tratado" || status === "corrigido_solides" || status === "ajuste_solicitado") && onReabrirDia && (
+                    <button
+                      type="button"
+                      onClick={() => onReabrirDia(date)}
+                      className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
+                      title="Reabrir o dia pra tratar de novo"
+                    >
+                      ↻ Reabrir
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
-            <ol className="space-y-1.5 ml-0">
-              {exc.map((e, i) => {
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Coluna 1: Alinhamento */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mb-1.5">
+                  🗣️ Alinhamento {excAlinhamento.length > 0 && `(${excAlinhamento.length})`}
+                </div>
+                {excAlinhamento.length === 0 ? (
+                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic">—</div>
+                ) : (
+                  <ol className="space-y-1.5">{renderExcList(excAlinhamento)}</ol>
+                )}
+              </div>
+              {/* Coluna 2: Ajuste de batida */}
+              <div>
+                <div className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mb-1.5">
+                  ✏️ Ajuste de batida {excAjuste.length > 0 && `(${excAjuste.length})`}
+                </div>
+                {excAjuste.length === 0 ? (
+                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic">—</div>
+                ) : (
+                  <ol className="space-y-1.5">{renderExcList(excAjuste)}</ol>
+                )}
+              </div>
+            </div>
+          </div>
+          );
+          // Helper inline pra renderizar lista de exc — evita duplicar JSX
+          function renderExcList(listaExc: ExceptionRecord[]) {
+            return listaExc.map((e, i) => {
                 const meta = RULES_META[e.ruleId];
                 const sev = SEVERITY_INFO[e.severity];
                 const key = `${grupo.empregadoId}_${e.date}_${e.ruleId}`;
@@ -1600,10 +1733,9 @@ function ColaboradorBlock({
                     )}
                   </li>
                 );
-              })}
-            </ol>
-          </div>
-        ))}
+              });
+          }
+        })}
       </div>
 
       {/* Log do tratamento — timeline interna do que foi feito com o empregado

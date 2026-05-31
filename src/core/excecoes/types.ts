@@ -61,6 +61,49 @@ export type ExceptionRuleId =
   | "atrasoEntrada"
   | "entradaProvavelFaltante";
 
+// Categoria do apontamento na UI:
+//   alinhamento  — comportamento a ser alinhado verbalmente com o empregado
+//                  pra não se repetir (ex: atraso, jornada > 10h, falta de
+//                  intervalo de propósito, etc). O líder dá ciência.
+//   ajuste       — erro de lançamento que precisa o empregado refazer
+//                  a marcação no Sólides (ex: esqueceu de bater saída,
+//                  batidas incompletas, 0 batidas, bloco esquisito).
+//
+// Apontamentos de "ajuste" têm botão "Foi isso mesmo" pra reclassificar
+// como alinhamento (ex: trabalhou sem intervalo de propósito = vira
+// alinhamento + ciência).
+export type ApontamentoCategoria = "alinhamento" | "ajuste";
+
+export const REGRA_CATEGORIA_DEFAULT: Record<ExceptionRuleId, ApontamentoCategoria> = {
+  jornadaAcimaDe10h:       "alinhamento",
+  intervaloMenorQueLegal:  "alinhamento",
+  interjornadaCurta:       "alinhamento",
+  setePlusDiasSemFolga:    "alinhamento",
+  atrasoEntrada:           "alinhamento",
+  marcacaoForaDaEscala:    "alinhamento",
+  pontoAberto:             "ajuste",
+  faltaSemAjuste:          "ajuste",
+  entradaProvavelFaltante: "ajuste",
+  blocoSuspeito:           "ajuste",
+};
+
+// Status do DIA (empregado × data) — independente dos apontamentos
+// individuais. Persiste em /excecoesDiaStatus/{restaurantId}_{empregadoId}_{YYYY-MM-DD}.
+export type PontoDiaStatus =
+  | "pendente"            // detectado, ainda não tratado (default — não cria doc)
+  | "ajuste_solicitado"   // líder enviou pedido de ajuste pro empregado (auto ao enviar WhatsApp de ajuste)
+  | "tratado"             // alinhado verbalmente, não precisa do Sólides corrigir
+  | "corrigido_solides"   // empregado corrigiu no Sólides — detectado por diff
+  | "reaberto";           // voltou pra tratar de novo
+
+export const PONTO_DIA_STATUS_LABEL: Record<PontoDiaStatus, string> = {
+  pendente:            "Pendente",
+  ajuste_solicitado:   "Ajuste solicitado",
+  tratado:             "Tratado",
+  corrigido_solides:   "Corrigido no Sólides",
+  reaberto:            "Reaberto",
+};
+
 export type ExceptionRecord = {
   ruleId: ExceptionRuleId;
   severity: ExceptionSeverity;
