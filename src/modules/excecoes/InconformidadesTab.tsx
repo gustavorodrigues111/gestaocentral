@@ -1157,6 +1157,46 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           );
           setStatusSemana(updated);
 
+          // F2 — Atrasos automáticos: pra cada atrasoEntrada, grava
+          // marcador na escala + cria evento ponto_atraso na Trilha.
+          if (me) {
+            try {
+              const { processarAtrasos } = await import("../../core/excecoes/atrasos");
+              const r = await processarAtrasos({
+                restaurantId: rid,
+                excecoes: report.exceptions,
+                empIdByCpf,
+                por: { id: me.id, nome: me.nome },
+              });
+              if (r.novos > 0) {
+                console.log(`[ponto] ${r.novos} atraso(s) registrado(s) na escala + Trilha`);
+              }
+            } catch (e) {
+              console.warn("[ponto] falha ao processar atrasos:", e);
+            }
+          }
+
+          // F6 — Detecção retroativa de ajuste manual na escala:
+          // se o líder já mudou o status da praticada (ex: marcou "ferias")
+          // sem usar o botão "Resolver na escala", marca o apontamento
+          // como ciência automaticamente.
+          if (me && semanaAtiva) {
+            try {
+              await detectarAjustesManuaisRetroativos({
+                rid,
+                weekStart: semanaAtiva.weekStart,
+                weekEnd: semanaAtiva.weekEnd,
+                excecoes: report.exceptions,
+                empIdByCpf,
+                statusSemanaAtual: statusSemana,
+                me,
+                onUpdate: setStatusSemana,
+              });
+            } catch (e) {
+              console.warn("[ponto] falha na detecção retroativa:", e);
+            }
+          }
+
           // Diff "corrigido no Sólides": tudo que estava no antesSnap e
           // não está no novo report vira "corrigido_solides".
           if (antesSnap.length > 0 && me) {
@@ -1626,6 +1666,81 @@ type GrupoColab = {
   totalGraves: number;
   porData: { date: string; exc: ExceptionRecord[] }[];
 };
+
+// F6 — Detecção retroativa: pra cada exception de faltaSemAjuste/
+// marcacaoForaDaEscala, verifica se o líder já ajustou manualmente o
+// status na escala praticada. Se sim, marca o apontamento como ciência
+// auto + nota interna.
+async function detectarAjustesManuaisRetroativos(input: {
+  rid: string;
+  weekStart: string;
+  weekEnd: string;
+  excecoes: ExceptionRecord[];
+  empIdByCpf: Map<string, string>;
+  statusSemanaAtual: ExcecaoStatusSemana | null;
+  me: Pessoa;
+  onUpdate: (s: ExcecaoStatusSemana) => void;
+}): Promise<void> {
+  const { rid, weekStart, weekEnd, statusSemanaAtual, me, onUpdate } = input;
+  void input.excecoes; void input.empIdByCpf; // disponíveis pra futura expansão
+  if (!statusSemanaAtual?.apontamentos?.length) return;
+
+  // Filtra só apontamentos pendentes de ausência/presença divergente
+  const pendentesAusenciaPresenca = statusSemanaAtual.apontamentos.filter(a =>
+    a.status === "pendente" &&
+    (a.ruleId === "faltaSemAjuste" || a.ruleId === "marcacaoForaDaEscala")
+  );
+  if (pendentesAusenciaPresenca.length === 0) return;
+
+  // Agrupa por mês pra fazer 1 getDoc por mês
+  const porMes = new Map<string, typeof pendentesAusenciaPresenca>();
+  for (const a of pendentesAusenciaPresenca) {
+    if (!a.data) continue;
+    const yyyymm = a.data.slice(0, 7);
+    const arr = porMes.get(yyyymm) || [];
+    arr.push(a);
+    porMes.set(yyyymm, arr);
+  }
+
+  let updated = statusSemanaAtual;
+  for (const [yyyymm, lista] of porMes) {
+    const ano = parseInt(yyyymm.slice(0, 4), 10);
+    const mes = parseInt(yyyymm.slice(5, 7), 10);
+    const escalaId = `${rid}_${fmtAnoMes(ano, mes)}`;
+    const snap = await getDoc(doc(db, "escalas", escalaId));
+    if (!snap.exists()) continue;
+    const d = snap.data() as { real?: Record<string, Record<string, string>> };
+
+    for (const ap of lista) {
+      if (!ap.data) continue;
+      const real = d.real?.[ap.empregadoId]?.[ap.data];
+      // Pra faltaSemAjuste: já está ajustado se real != "trabalho" e !== undefined
+      // Pra marcacaoForaDaEscala: já está ajustado se real == "trabalho" ou comp_trab
+      let foiAjustado = false;
+      if (ap.ruleId === "faltaSemAjuste") {
+        foiAjustado = !!real && real !== "trabalho";
+      } else if (ap.ruleId === "marcacaoForaDaEscala") {
+        foiAjustado = real === "trabalho" || real === "comp_trab" || real === "freela";
+      }
+      if (!foiAjustado) continue;
+
+      // Marca como ciência + cria nota
+      try {
+        updated = await marcarApontamentoCiencia(rid, weekStart, weekEnd, ap.id, me);
+        updated = await adicionarNotaInterna(rid, weekStart, weekEnd, {
+          empregadoId: ap.empregadoId,
+          empregadoNome: ap.empregadoNome,
+          texto: `🔄 Ajuste detectado retroativamente na escala: status "${real}" em ${ap.data}. Apontamento marcado como tratado.`,
+          origem: "ciencia",
+          apontamentoIds: [ap.id],
+        }, me);
+      } catch (e) {
+        console.warn("[retroativo] falha:", e);
+      }
+    }
+  }
+  onUpdate(updated);
+}
 
 // `empIdByCpf` resolve o ID do Planejamento (string) — exc.employeeId é o
 // ID da Sólides (number), inadequado pra ancorar apontamentos.

@@ -14,8 +14,8 @@ import { Input } from "../../core/ui/Input";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase } from "../../core/types";
-import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase } from "../../core/types";
+import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
+import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
@@ -1303,6 +1303,9 @@ function Grade({
                         unidadeBadge={unidadeBadge}
                         swap={swap}
                         empregadoId={e.id}
+                        // F5 — ícones de origem (ponto): só na PRATICADA
+                        ajuste={versao === "real" ? escala?.realAjustes?.[e.id]?.[d] : undefined}
+                        atraso={versao === "real" ? escala?.atrasos?.[e.id]?.[d] : undefined}
                       />
                     </td>
                   );
@@ -1342,6 +1345,7 @@ function Grade({
 // - Selecionada (multi-select): ring indigo
 function Celula({
   override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge, swap, empregadoId,
+  ajuste, atraso,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
@@ -1352,6 +1356,9 @@ function Celula({
   unidadeBadge?: string;     // letra única da unidade (ex: "M", "F", "P")
   swap?: SundaySwap;         // se a célula tem inversão de domingo registrada
   empregadoId?: string;      // pra montar o tooltip do swap
+  // F5 — integração com Ponto: marcadores de ajuste auto / atraso
+  ajuste?: AjusteEscalaMeta;
+  atraso?: AtrasoEscalaMeta;
 }) {
   // Resolve display
   const displayStatus = override ?? derived?.status;
@@ -1370,6 +1377,37 @@ function Celula({
       {unidadeBadge}
     </span>
   ) : null;
+
+  // F5 — Marcadores de origem (vindos do módulo Ponto):
+  //   ⚡ no canto superior esquerdo: ajuste automático via apontamento
+  //   🕐 no canto inferior esquerdo: atraso detectado pela regra atrasoEntrada
+  // Tooltips agregados com info de origem.
+  const ajusteBadge = ajuste && ajuste.origem === "ponto_auto" ? (
+    <span
+      className="absolute -top-1 -left-1 text-[9px] leading-none px-0.5 rounded bg-indigo-600 text-white font-bold border border-indigo-700 shadow-sm"
+      style={{ minWidth: "11px", textAlign: "center" }}
+      title={`⚡ Ajuste automático via apontamento de ponto${ajuste.motivo ? ` (${AJUSTE_MOTIVO_LABEL[ajuste.motivo]})` : ""}${ajuste.ajustadoPorNome ? ` por ${ajuste.ajustadoPorNome}` : ""}`}
+    >
+      ⚡
+    </span>
+  ) : null;
+  const atrasoBadge = atraso ? (
+    <span
+      className="absolute -bottom-1 -left-1 text-[9px] leading-none px-0.5 rounded bg-rose-500 text-white font-bold border border-rose-600 shadow-sm"
+      style={{ minWidth: "11px", textAlign: "center" }}
+      title={`🕐 Atraso de ${atraso.minutos}min${atraso.previsto ? ` (previsto ${atraso.previsto}, chegou ${atraso.realizado || "?"})` : ""} — auto-registrado na Trilha`}
+    >
+      🕐
+    </span>
+  ) : null;
+  const ajusteAtrasoTitle = [
+    ajuste && ajuste.origem === "ponto_auto"
+      ? `⚡ Ajuste automático: ${ajuste.motivo ? AJUSTE_MOTIVO_LABEL[ajuste.motivo] : "—"}${ajuste.observacao ? ` (${ajuste.observacao})` : ""}${ajuste.ajustadoPorNome ? ` · por ${ajuste.ajustadoPorNome}` : ""}${ajuste.ajustadoEm ? ` em ${new Date(ajuste.ajustadoEm).toLocaleString("pt-BR")}` : ""}`
+      : null,
+    atraso
+      ? `🕐 Atraso de ${atraso.minutos}min${atraso.previsto ? ` (previsto ${atraso.previsto}, chegou ${atraso.realizado || "?"})` : ""}`
+      : null,
+  ].filter(Boolean).join(" · ");
 
   // Inversão de domingo: borda violet sólida 2px (cor única no sistema —
   // nenhum outro estado/status usa violet) + badge ↔ pequeno no canto.
@@ -1402,11 +1440,13 @@ function Celula({
         className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
         } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-        title={swapTitle || (isImplicito ? "Sem horário cadastrado — assume trabalho no cálculo" : "Vazio")}
+        title={[swapTitle, ajusteAtrasoTitle, isImplicito ? "Sem horário cadastrado — assume trabalho no cálculo" : "Vazio"].filter(Boolean).join(" · ")}
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
         {swapBadge}
+        {ajusteBadge}
+        {atrasoBadge}
       </button>
     );
   }
@@ -1423,11 +1463,13 @@ function Celula({
       className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
         podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
       } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-      title={swapTitle || (isFromOverride ? `${info.label} (override manual)` : info.label)}
+      title={[swapTitle, ajusteAtrasoTitle, isFromOverride ? `${info.label} (override manual)` : info.label].filter(Boolean).join(" · ")}
     >
       {info.short}
       {unidadeSubscript}
       {swapBadge}
+      {ajusteBadge}
+      {atrasoBadge}
     </button>
   );
 }
