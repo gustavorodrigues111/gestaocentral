@@ -37,6 +37,7 @@ export const MODULES: ModuleDef[] = [
   { id: "escala",      area: "dp", label: "Escala",              icon: "📅", status: "ativo", etapa: "beta",               desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
   { id: "uniformes",   area: "dp", label: "Uniformes & EPIs",    icon: "🦺", status: "ativo", etapa: "em_desenvolvimento", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
   { id: "exames",      area: "dp", label: "Exames Médicos",      icon: "🩺", status: "ativo", etapa: "beta",               desc: "Exames periódicos dos empregados (Clínico, Complementar, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
+  { id: "demissao",    area: "dp", label: "Demissão",            icon: "👋", status: "ativo", etapa: "beta",               desc: "Processo de demissão com kanban, fluxo de subtarefas e cascata de inativação (acesso, exames, tarefas)", dependsOn: ["pessoas"] },
   { id: "comunicados", area: "dp", label: "Comunicados",         icon: "📣", status: "ativo", etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
   { id: "trilha",      area: "dp", label: "Trilha do Empregado", icon: "🎯", status: "ativo", etapa: "em_desenvolvimento", desc: "Desenvolvimento e histórico", dependsOn: ["pessoas"] },
   { id: "excecoes",    area: "dp", label: "Registros de Ponto",  icon: "🕐", status: "ativo", etapa: "beta",               desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"] },

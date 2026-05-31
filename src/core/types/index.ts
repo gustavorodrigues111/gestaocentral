@@ -54,7 +54,9 @@ export type ModuleId =
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
   // Exames médicos do empregado (Fase 7)
-  | "exames";
+  | "exames"
+  // Processo de Demissão (Fase 8)
+  | "demissao";
 
 // ─── PERMISSÕES ───
 
@@ -3361,6 +3363,158 @@ export type Manutencao = {
   criadoEm: string;
   criadoPor: string;
   atualizadoEm: string;
+};
+
+// ────────────────────────────────────────────────────────────────────────────
+//  PROCESSO DE DEMISSÃO — Fase 8
+//
+//  Modelo análogo ao de Admissão: kanban próprio com colunas, subtarefas
+//  template, cadastro mestre 1 por processo. Cobre as 3 iniciativas:
+//  empresa, empregado, acordo.
+//
+//  Bloqueio de acesso:
+//    - Empregado/Acordo → ao criar processo
+//    - Empresa → ao marcar subtarefa com ehBloqueioAcesso=true (Informar
+//                demissão pro empregado), ou botão manual no detalhe
+//
+//  Cancelamento: reverte pessoa.ativa, exames desativados durante o
+//  processo, tarefas vivas do empregado. Tudo guardado em backup pra
+//  reversão atômica.
+// ────────────────────────────────────────────────────────────────────────────
+
+export type DemissaoIniciativa = "empresa" | "empregado" | "acordo";
+
+export const DEMISSAO_INICIATIVA_LABEL: Record<DemissaoIniciativa, string> = {
+  empresa:   "Empresa",
+  empregado: "Empregado (pediu)",
+  acordo:    "Acordo (negociado)",
+};
+
+export type DemissaoStatus =
+  | "iniciado"                  // recém-criado
+  | "previa_solicitada"          // contabilidade respondendo
+  | "aguardando_decisao"         // prévia recebida, esperando decisão
+  | "decidido_realizar"          // empresa decidiu prosseguir
+  | "comunicado"                 // empregado oficialmente avisado (= bloqueio empresa)
+  | "em_andamento"               // execução das subtarefas
+  | "aviso_em_curso"             // aviso prévio trabalhado
+  | "concluido"                  // tudo pronto, empregado demitido
+  | "cancelado";                 // não vai realizar (só Empresa pré-decisão)
+
+export const DEMISSAO_STATUS_LABEL: Record<DemissaoStatus, string> = {
+  iniciado:             "Iniciado",
+  previa_solicitada:    "Prévia solicitada",
+  aguardando_decisao:   "Aguardando decisão",
+  decidido_realizar:    "Decidido — realizar",
+  comunicado:           "Empregado comunicado",
+  em_andamento:         "Em andamento",
+  aviso_em_curso:       "Aviso prévio em curso",
+  concluido:            "Concluído",
+  cancelado:            "Cancelado",
+};
+
+// Template de subtarefa do processo de demissão.
+export type SubtarefaDemissaoTemplate = {
+  id: string;
+  nome: string;
+  colunaId: string;             // FK em KanbanColunaDemissao
+  checklistId: string;          // sub-agrupamento dentro da coluna
+  checklistNome: string;
+  obrigatoria: boolean;
+  ordem: number;
+  // Filtra por iniciativa: só aparece se iniciativa da demissão está aqui.
+  // Vazio = aparece pra todas.
+  iniciativaAplicavel?: DemissaoIniciativa[];
+  // Flags especiais que disparam ações ao marcar
+  ehBloqueioAcesso?: boolean;   // ao marcar, bloqueia pessoa.ativa = false
+  ehDecisaoRealizar?: boolean;  // ao marcar, abre prompt sim/não; "não" cancela
+  ehInativacaoFinal?: boolean;  // ao marcar, finaliza processo (empregado.estaAtivo=false)
+  pedeLink?: boolean;           // input URL Drive (pra anexar rescisão, exame)
+  pedeData?: boolean;           // input date
+  atalho?:
+    | { tipo: "contato_contabilidade" }
+    | { tipo: "contato_clinica" }
+    | { tipo: "whatsapp_empregado" };
+};
+
+export type SubtarefaDemissaoInstance = SubtarefaDemissaoTemplate & {
+  feita: boolean;
+  feitaEm?: string;
+  feitaPor?: { id: string; nome: string };
+  observacao?: string;
+  link?: string;
+  dataInformada?: string;
+};
+
+export type KanbanColunaDemissao = {
+  id: string;
+  nome: string;
+  ordem: number;
+  statusAuto?: DemissaoStatus | DemissaoStatus[];
+  cor?: string;
+};
+
+export type ProcessoDemissao = {
+  id: string;
+  restaurantId: string;
+  empregadoId: string;
+  empregadoNomeSnapshot: string;
+  cargoSnapshot?: string;
+  pessoaId?: string;            // pra reverter pessoa.ativa se cancelar
+
+  iniciativa: DemissaoIniciativa;
+  status: DemissaoStatus;
+  kanbanColunaId?: string;
+
+  // Auditoria de início
+  iniciadoEm: string;
+  iniciadoPor: { id: string; nome: string };
+  motivoIniciacao?: string;     // ex: "Não renovação experiência", texto livre
+
+  // Datas-chave
+  dataAlvo?: string;            // YYYY-MM-DD (alvo da demissão)
+  previaSolicitadaEm?: string;
+  previaRecebidaEm?: string;
+  valorPrevia?: number;
+  decisaoRealizarEm?: string;
+  decisaoRealizarPor?: { id: string; nome: string };
+  comunicadoEmpregadoEm?: string;
+  comunicadoEmpregadoPor?: { id: string; nome: string };
+  acessoBloqueadoEm?: string;
+  acessoBloqueadoPor?: { id: string; nome: string };
+
+  // Aviso prévio
+  avisoPrevio?: "trabalhado" | "indenizado";
+  ultimoDiaTrabalhado?: string;
+
+  // Anexos finais
+  rescisaoAssinadaUrl?: string;
+  examedemissionalUrl?: string;
+  pastaDriveDesligadosUrl?: string;
+
+  // Cancelamento
+  canceladoEm?: string;
+  canceladoPor?: { id: string; nome: string };
+  motivoCancelamento?: string;
+
+  // Conclusão
+  concluidoEm?: string;
+  concluidoPor?: { id: string; nome: string };
+
+  // Backup pra reversão de cancelamento
+  pessoaAtivaAnterior?: boolean;
+  examesIdsDesativados?: string[];
+  tarefasIdsCanceladas?: string[];
+
+  // Subtarefas (snapshot do template no momento da criação)
+  schemaUsado?: SubtarefaDemissaoTemplate[];
+  subtarefas?: SubtarefaDemissaoInstance[];
+
+  // Link com Tarefa-pai no Gestor (opcional — pra visualização integrada)
+  tarefaPaiId?: string;
+
+  createdAt: string;
+  updatedAt: string;
 };
 
 // ────────────────────────────────────────────────────────────────────────────

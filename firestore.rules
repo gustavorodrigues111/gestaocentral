@@ -177,6 +177,8 @@ service cloud.firestore {
     // por rest + perfis com canAcao("exames", "ver"). Dados sensíveis (LGPD).
     match /exameTiposConfig/{id}    { allow read, write: if authed(); allow delete: if isMaster(); }
     match /examesEmpregado/{id}     { allow read, write: if authed(); allow delete: if isMaster(); }
+    // Processos de Demissão (Fase 8) — auth-only por enquanto. Sensível.
+    match /processosDemissao/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
     // Reservas: doc PRINCIPAL contém só metadados sem PII (data, horario,
     // pessoas, salaoId, status, clienteId). PII (nome/telefone/email/
     // observações/ocasião) vive em /reservasPII com read auth-only.

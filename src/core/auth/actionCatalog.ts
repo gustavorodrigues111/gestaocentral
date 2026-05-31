@@ -463,6 +463,21 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "demissao",
+    icon: "👋",
+    label: "Demissão",
+    desc: "Processo de demissão com kanban + cascata de inativação",
+    area: "gestao",
+    acoes: [
+      { id: "ver",       label: "Ver processos de demissão", sensivel: true },
+      { id: "iniciar",   label: "Iniciar processo de demissão", sensivel: true },
+      { id: "processar", label: "Processar subtarefas + anexar docs", sensivel: true },
+      { id: "bloquear",  label: "Bloquear acesso do empregado manualmente", sensivel: true },
+      { id: "cancelar",  label: "Cancelar processo (reverte tudo)", sensivel: true },
+      { id: "concluir",  label: "Finalizar demissão (inativa empregado)", sensivel: true },
+    ],
+  },
+  {
     id: "perfisAcesso",
     icon: "🛡️",
     label: "Perfis de Acesso",
