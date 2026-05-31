@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -49,6 +49,13 @@ export function ReunioesPage() {
   const [filtroStatus, setFiltroStatus] = useState<"proximas" | "passadas" | "todas">("proximas");
   const [editing, setEditing] = useState<Reuniao | "new" | null>(null);
   const [detalhe, setDetalhe] = useState<Reuniao | null>(null);
+  const [view, setView] = useState<"lista" | "kanban">(() => {
+    try { return (localStorage.getItem("reunioes_view") as "lista" | "kanban") || "kanban"; }
+    catch { return "kanban"; }
+  });
+  useEffect(() => { try { localStorage.setItem("reunioes_view", view); } catch {} }, [view]);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -122,13 +129,32 @@ export function ReunioesPage() {
         </div>
       )}
 
-      <Input
-        placeholder="🔍 Buscar..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="mb-3"
-      />
+      <div className="flex gap-2 mb-3 flex-wrap items-center">
+        <Input
+          placeholder="🔍 Buscar..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 min-w-[200px]"
+        />
+        <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+          {(["kanban", "lista"] as const).map(v => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setView(v)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                view === v
+                  ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+                  : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+              }`}
+            >
+              {v === "kanban" ? "📊 Kanban" : "📋 Lista"}
+            </button>
+          ))}
+        </div>
+      </div>
 
+      {view === "lista" && (
       <div className="flex items-center gap-2 mb-4">
         {(["proximas", "passadas", "todas"] as const).map(f => (
           <button
@@ -145,8 +171,20 @@ export function ReunioesPage() {
           </button>
         ))}
       </div>
+      )}
 
-      {loading ? (
+      {view === "kanban" && <KanbanReunioes
+        reunioes={reunioes.filter(r => !search.trim() || r.titulo.toLowerCase().includes(search.toLowerCase()))}
+        loading={loading}
+        podeConfig={podeConfig}
+        onAbrir={(r) => setDetalhe(r)}
+        draggingId={draggingId}
+        dropTarget={dropTarget}
+        setDraggingId={setDraggingId}
+        setDropTarget={setDropTarget}
+      />}
+
+      {view === "lista" && (loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
@@ -211,7 +249,7 @@ export function ReunioesPage() {
             );
           })}
         </div>
-      )}
+      ))}
 
       {editing && (
         <ReuniaoEditorModal
@@ -228,6 +266,135 @@ export function ReunioesPage() {
           onClose={() => setDetalhe(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── KANBAN ───────────────────────────────────────────────────────────────
+
+const KANBAN_COLS_R: Array<{ id: ReuniaoStatus; titulo: string; descricao: string; bordaCls: string }> = [
+  { id: "planejada", titulo: "📅 Planejadas", descricao: "Marcadas pra acontecer",                  bordaCls: "border-t-blue-500" },
+  { id: "realizada", titulo: "✅ Realizadas", descricao: "Já ocorreram (com ata e ações)",          bordaCls: "border-t-emerald-500" },
+  { id: "cancelada", titulo: "✕ Canceladas", descricao: "Não vão acontecer",                       bordaCls: "border-t-gray-400" },
+];
+
+function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+  reunioes: Reuniao[];
+  loading: boolean;
+  podeConfig: boolean;
+  onAbrir: (r: Reuniao) => void;
+  draggingId: string | null;
+  dropTarget: string | null;
+  setDraggingId: (id: string | null) => void;
+  setDropTarget: (id: string | null) => void;
+}) {
+  const today = todayYmd();
+
+  async function moverPara(id: string, status: ReuniaoStatus) {
+    // Drag direto só muda o status — sem cascata em ideias linkadas.
+    // Pra cascata completa (marcar realizada, cancelar com retroagir),
+    // o usuário abre o detalhe e usa os botões dedicados (mais explícito).
+    try {
+      await updateDoc(doc(db, "reunioes", id), {
+        status,
+        atualizadoEm: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[reunioes] falha ao mover:", e);
+      alert("Falha ao mover reunião: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
+  const porCol: Record<ReuniaoStatus, Reuniao[]> = { planejada: [], realizada: [], cancelada: [] };
+  reunioes.forEach(r => { porCol[r.status]?.push(r); });
+
+  // Planejadas ordena por data crescente (próxima primeiro). Resto desc.
+  porCol.planejada.sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+  porCol.realizada.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  porCol.cancelada.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+
+  if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
+
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 overflow-x-auto">
+      {KANBAN_COLS_R.map(col => {
+        const lista = porCol[col.id];
+        const ehAlvo = dropTarget === col.id;
+        return (
+          <div
+            key={col.id}
+            onDragOver={podeConfig ? (e) => {
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "move";
+              if (dropTarget !== col.id) setDropTarget(col.id);
+            } : undefined}
+            onDragLeave={podeConfig ? () => {
+              if (dropTarget === col.id) setDropTarget(null);
+            } : undefined}
+            onDrop={podeConfig ? (e) => {
+              e.preventDefault();
+              const id = e.dataTransfer.getData("text/plain");
+              setDropTarget(null);
+              setDraggingId(null);
+              if (id) moverPara(id, col.id);
+            } : undefined}
+            className={`bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2 min-h-[300px] border-t-4 ${col.bordaCls} transition-colors ${ehAlvo ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : ""}`}
+          >
+            <div className="mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-800">
+              <div className="font-bold text-xs text-gray-900 dark:text-gray-100 flex items-center justify-between">
+                <span>{col.titulo}</span>
+                <span className="text-[10px] font-normal text-gray-500">{lista.length}</span>
+              </div>
+              <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{col.descricao}</div>
+            </div>
+            <div className="space-y-1.5">
+              {lista.map(r => {
+                const arrastando = draggingId === r.id;
+                const vencida = col.id === "planejada" && r.data < today;
+                const acoesPend = (r.acoes || []).filter(a => a.status === "pendente").length;
+                const topicosTotal = (r.pauta || []).length;
+                const topicosDisc = (r.pauta || []).filter(t => t.discutido).length;
+                return (
+                  <button
+                    key={r.id}
+                    draggable={podeConfig}
+                    onDragStart={podeConfig ? (e) => {
+                      e.dataTransfer.setData("text/plain", r.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      setDraggingId(r.id);
+                    } : undefined}
+                    onDragEnd={podeConfig ? () => {
+                      setDraggingId(null);
+                      setDropTarget(null);
+                    } : undefined}
+                    onClick={() => onAbrir(r)}
+                    className={`w-full text-left bg-white dark:bg-gray-900 rounded-md p-2 text-xs border ${vencida ? "border-rose-300 dark:border-rose-700" : "border-gray-200 dark:border-gray-800"} ${podeConfig ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${arrastando ? "opacity-40" : ""} hover:border-indigo-400 transition-colors`}
+                    title={podeConfig ? `${r.titulo} (arrastar pra mover)` : r.titulo}
+                  >
+                    <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1">
+                      <span>{TIPO_ICON[r.tipo]}</span>
+                      <span className="flex-1 truncate">{r.titulo}</span>
+                    </div>
+                    <div className={`text-[10px] mt-0.5 ${vencida ? "text-rose-600 dark:text-rose-400 font-medium" : "text-gray-500 dark:text-gray-400"}`}>
+                      📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}{r.horario && ` ${r.horario}`}
+                      {vencida && " · vencida"}
+                    </div>
+                    {(topicosTotal > 0 || acoesPend > 0) && (
+                      <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                        {topicosTotal > 0 && <span>📋 {topicosDisc}/{topicosTotal}</span>}
+                        {acoesPend > 0 && <span className="text-amber-600 dark:text-amber-400">⚠️ {acoesPend} ação</span>}
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
+              {lista.length === 0 && (
+                <div className="text-[10px] text-gray-400 dark:text-gray-600 italic text-center py-4">—</div>
+              )}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }
