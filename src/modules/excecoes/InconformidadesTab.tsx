@@ -1669,16 +1669,29 @@ function ColaboradorBlock({
             status === "tratado"            ? "✓ Tratado" :
             status === "corrigido_solides"  ? "✅ Corrigido no Sólides" :
             status === "reaberto"           ? "↻ Reaberto" : status;
+          const ambasComConteudo = excAlinhamento.length > 0 && excAjuste.length > 0;
+          // Cor da borda esquerda do dia inteiro — destaca status à esquerda
+          const corBordaLateral =
+            status === "tratado"            ? "border-l-emerald-500" :
+            status === "corrigido_solides"  ? "border-l-emerald-600" :
+            status === "ajuste_solicitado"  ? "border-l-sky-500" :
+            status === "reaberto"           ? "border-l-rose-500" :
+            "border-l-amber-500";
           return (
-          <div key={date} className={`px-4 py-3 ${fundoDia}`}>
-            <div className="flex items-baseline gap-2 mb-2 flex-wrap">
+          <div key={date} className={`px-4 py-3 border-l-4 ${corBordaLateral} ${fundoDia}`}>
+            {/* Header do dia: data · dia · status · ações */}
+            <div className="flex items-center gap-2 mb-2 flex-wrap">
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
                 {fmtDataBr(date)}
               </span>
               <span className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">
-                {diaDaSemana(date)}
+                · {diaDaSemana(date)}
               </span>
-              <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls}`}>
+              <span className="text-[10px] text-gray-500 dark:text-gray-400">·</span>
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">
+                {exc.length} {exc.length === 1 ? "ocorrência" : "ocorrências"}
+              </span>
+              <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls} ml-1`}>
                 {statusLabel}
               </span>
               {podeAnotar && (
@@ -1687,17 +1700,17 @@ function ColaboradorBlock({
                     <button
                       type="button"
                       onClick={() => onMarcarDiaTratado(date)}
-                      className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-emerald-600 text-white hover:bg-emerald-700"
+                      className="text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
                       title="Marcar dia inteiro como tratado (alinhamento verbal feito)"
                     >
-                      ✓ Tratado
+                      ✓ Marcar tratado
                     </button>
                   )}
                   {(status === "tratado" || status === "corrigido_solides" || status === "ajuste_solicitado") && onReabrirDia && (
                     <button
                       type="button"
                       onClick={() => onReabrirDia(date)}
-                      className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300"
+                      className="text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
                       title="Reabrir o dia pra tratar de novo"
                     >
                       ↻ Reabrir
@@ -1706,29 +1719,34 @@ function ColaboradorBlock({
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Coluna 1: Alinhamento */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mb-1.5">
-                  🗣️ Alinhamento {excAlinhamento.length > 0 && `(${excAlinhamento.length})`}
-                </div>
-                {excAlinhamento.length === 0 ? (
-                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic">—</div>
-                ) : (
+            {/* Conteúdo: 2 colunas se AMBAS têm itens, senão 1 col */}
+            <div className={ambasComConteudo ? "grid grid-cols-1 md:grid-cols-2 gap-2.5" : "space-y-2.5"}>
+              {excAlinhamento.length > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/40 p-2.5">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400">
+                      🗣️ Alinhamento
+                    </span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                      ({excAlinhamento.length})
+                    </span>
+                  </div>
                   <ol className="space-y-1.5">{renderExcList(excAlinhamento)}</ol>
-                )}
-              </div>
-              {/* Coluna 2: Ajuste de batida */}
-              <div>
-                <div className="text-[10px] uppercase tracking-wider font-bold text-gray-500 dark:text-gray-400 mb-1.5">
-                  ✏️ Ajuste de batida {excAjuste.length > 0 && `(${excAjuste.length})`}
                 </div>
-                {excAjuste.length === 0 ? (
-                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic">—</div>
-                ) : (
+              )}
+              {excAjuste.length > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-900/40 p-2.5">
+                  <div className="flex items-center gap-1.5 mb-1.5">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400">
+                      ✏️ Ajuste de batida
+                    </span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                      ({excAjuste.length})
+                    </span>
+                  </div>
                   <ol className="space-y-1.5">{renderExcList(excAjuste)}</ol>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           </div>
           );
