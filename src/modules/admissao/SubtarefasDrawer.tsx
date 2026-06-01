@@ -48,7 +48,7 @@ import { ChecklistTermosModal } from "./ChecklistTermosModal";
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
-  montarMensagemKitAssinatura,
+  montarMensagemKitAssinatura, finalizarAdmissao,
 } from "../../core/admissao/admissaoHelpers";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
@@ -577,6 +577,36 @@ export function SubtarefasDrawer({
                   className="px-3 py-1.5 text-xs rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   ▶ Avançar pra "{proximaColuna?.nome || ADMISSAO_STATUS_LABEL[proxStatus]}"
+                </button>
+              </div>
+            </footer>
+          )}
+
+          {/* Footer alternativo: status final (admitido) + ainda não
+              finalizada. Botão arquiva a admissão pro histórico — Kanban
+              ativo deixa de mostrá-la. */}
+          {admissao.status === "admitido" && !admissao.finalizadoEm && (
+            <footer className="border-t border-gray-200 dark:border-gray-800 p-4 bg-emerald-50/40 dark:bg-emerald-900/10">
+              <div className="text-xs text-emerald-800 dark:text-emerald-300 mb-2">
+                ✓ Admissão concluída. Quando o onboarding terminar, finalize
+                pra tirar do Kanban ativo — fica em "Finalizadas" e pode
+                ser reativada se precisar.
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!confirm(`Finalizar a admissão de ${admissao.candidato.nome}?\n\nSai do Kanban e vai pra aba "Finalizadas". Pode ser reativada depois.`)) return;
+                    try {
+                      await finalizarAdmissao(admissao.id, pessoa);
+                      onClose();
+                    } catch (e) {
+                      alert("Erro ao finalizar: " + (e instanceof Error ? e.message : "?"));
+                    }
+                  }}
+                  className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+                >
+                  ✓ Finalizar admissão
                 </button>
               </div>
             </footer>

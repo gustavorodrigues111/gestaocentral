@@ -134,6 +134,9 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     const m = new Map<string, Admissao[]>();
     for (const c of colunas) m.set(c.id, []);
     for (const a of admissoes) {
+      // Esconde admissões finalizadas (botão "Finalizar admissão" depois
+      // do onboarding) — elas vivem na aba "Finalizadas" agora.
+      if (a.finalizadoEm) continue;
       const colId = colunaDaAdmissao(a, colunas);
       if (!colId) continue;
       const arr = m.get(colId) || [];

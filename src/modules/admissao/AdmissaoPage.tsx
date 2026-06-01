@@ -23,15 +23,17 @@ import { canVer } from "../../core/auth/permissions";
 import { AdmissaoKanban } from "./AdmissaoKanban";
 import { AdmissaoConfig } from "./AdmissaoConfig";
 import { CandidaturasTab } from "./CandidaturasTab";
+import { AdmissoesFinalizadas } from "./AdmissoesFinalizadas";
 import type { Restaurant } from "../../core/types";
 import { canConfigurar } from "../../core/auth/permissions";
 import { TabBadge } from "../../core/ui/TabBadge";
 
-type TabId = "kanban" | "candidaturas" | "config";
+type TabId = "kanban" | "candidaturas" | "finalizadas" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "kanban",       label: "Kanban",        icon: "🗂️" },
   { id: "candidaturas", label: "Candidaturas",  icon: "💼" },
+  { id: "finalizadas",  label: "Finalizadas",   icon: "📦" },
   { id: "config",       label: "Configurações", icon: "⚙️" },
 ];
 
@@ -67,8 +69,9 @@ export function AdmissaoPage() {
       query(collection(db, "admissoes"), where("restaurantId", "==", rid)),
       (snap) => {
         const ativas = snap.docs.filter(d => {
-          const s = (d.data() as { status?: string }).status;
-          return s && s !== "concluida" && s !== "cancelada";
+          const data = d.data() as { status?: string; finalizadoEm?: string };
+          if (data.finalizadoEm) return false;
+          return data.status && data.status !== "concluida" && data.status !== "cancelada";
         }).length;
         setCountAdmissoesAtivas(ativas);
       },
@@ -91,6 +94,7 @@ export function AdmissaoPage() {
   const badges: Record<TabId, number> = {
     kanban: countAdmissoesAtivas,
     candidaturas: countCandidaturasNovas,
+    finalizadas: 0,
     config: 0,
   };
 
@@ -140,6 +144,7 @@ export function AdmissaoPage() {
 
       {tab === "kanban"       && <AdmissaoKanban  rid={rid} activeRestaurant={activeRestaurant} />}
       {tab === "candidaturas" && <CandidaturasTab rid={rid} podeEditar={podeConfig} />}
+      {tab === "finalizadas"  && <AdmissoesFinalizadas rid={rid} />}
       {tab === "config"       && <AdmissaoConfig  rid={rid} activeRestaurant={activeRestaurant} />}
     </div>
   );

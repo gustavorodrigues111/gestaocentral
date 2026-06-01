@@ -2369,6 +2369,13 @@ export type Admissao = {
   canceladoEm?: string;
   motivoCancelamento?: string;             // texto livre (legado)
   motivosCancelamento?: MotivoCancelamento[]; // tags cumulativas (cancelado_empresa, desistencia, etc)
+
+  // ─── Finalização (arquivo) ───
+  // Marca admissão como "arquivada" após onboarding completo. Sai do
+  // Kanban ativo (aparece só em "Finalizados"), mas pode ser reativada.
+  // Status continua "admitido" — só o flag finalizadoEm muda a visibilidade.
+  finalizadoEm?: string;
+  finalizadoPor?: { id: string; nome: string };
   // Snapshot do status que a admissão tinha ANTES de virar cancelada/expirada.
   // Usado pelo botão "↶ Reabrir" (master) pra restaurar a admissão pro ponto
   // exato onde ela estava no fluxo. Se ausente (admissões antigas), reabertura

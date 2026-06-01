@@ -980,6 +980,31 @@ export async function moverColunaKanban(
   });
 }
 
+// Marca admissão como finalizada — sai do Kanban ativo e vai pra lista
+// "Finalizados". Status continua "admitido"; só o flag finalizadoEm
+// determina a visibilidade. Reversível via reativarAdmissao.
+export async function finalizarAdmissao(
+  admissaoId: string,
+  pessoa: Pessoa,
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    finalizadoEm: now,
+    finalizadoPor: { id: pessoa.id, nome: pessoa.nome },
+    updatedAt: now,
+  });
+}
+
+// Desfaz a finalização — admissão volta pro Kanban ativo no mesmo status.
+export async function reativarAdmissao(admissaoId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), {
+    finalizadoEm: deleteField(),
+    finalizadoPor: deleteField(),
+    updatedAt: now,
+  });
+}
+
 // Atualiza o schema/prazo/whatsapp DP/contatos/template de um restaurante.
 export async function salvarConfigAdmissao(
   restaurantId: string,
