@@ -263,6 +263,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     selecionados: Set<string>;
   } | null>(null);
 
+  // Extrai o fileId de uma URL do Drive. Funciona com os formatos
+  // comuns: /file/d/<id>/view, /open?id=<id>, /uc?id=<id>.
+  function extractDriveFileId(url: string): string | null {
+    const m1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m1) return m1[1];
+    const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m2) return m2[1];
+    return null;
+  }
+
   // Passo 1: valida pré-condições, lista arquivos da pasta e abre o modal.
   async function abrirSelecaoClicksign() {
     setClicksignErro("");
@@ -278,21 +288,6 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       setClicksignErro("Configure o signatário da empresa em Admissão → Configurações antes de enviar.");
       return;
     }
-    // Gate: obrigatórios marcados como assinados mas SÓ com link externo
-    // (sem PDF na pasta) — esses não vão automaticamente pro Clicksign.
-    const obrigSoLink = termos.filter(t =>
-      t.obrigatorio && !t.naoSeAplica && t.assinado && t.link && !t.linkFileId
-    );
-    if (obrigSoLink.length > 0) {
-      const lista = obrigSoLink.map(t => `• ${t.nome}`).join("\n");
-      setClicksignErro(
-        `Os seguintes termos obrigatórios estão como link externo e NÃO vão ` +
-        `pro Clicksign automaticamente:\n\n${lista}\n\n` +
-        `Clique em "⬆️ Subir pra assinatura" em cada um pra subir o PDF pra ` +
-        `pasta "docs a assinar" do Drive. Depois tente enviar de novo.`,
-      );
-      return;
-    }
     setClicksignBusy("enviando");
     try {
       const { aAssinar } = await ensureTree();
@@ -300,6 +295,45 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       if (arquivos.length === 0) {
         throw new Error("Nenhum documento em 'docs a assinar'. Gere/suba os termos primeiro.");
       }
+
+      // ─── Reconciliação retroativa de linkFileId ───
+      // Termos criados ANTES do schema linkFileId não têm o campo, mesmo
+      // que o PDF esteja na pasta. Aqui cruzamos cada termo com link
+      // mas SEM linkFileId contra os arquivos: se o fileId da URL bate
+      // com algum arquivo da pasta, preenchemos retroativamente. Persiste
+      // pra próximas vezes não precisar reconciliar.
+      const idsNaPasta = new Set(arquivos.map(a => a.id));
+      let mudou = false;
+      const termosReconciliados = termos.map(t => {
+        if (t.linkFileId) return t;
+        if (!t.link) return t;
+        const fileId = extractDriveFileId(t.link);
+        if (fileId && idsNaPasta.has(fileId)) {
+          mudou = true;
+          return { ...t, linkFileId: fileId };
+        }
+        return t;
+      });
+      if (mudou) {
+        await persistirTermos(termosReconciliados);
+      }
+
+      // Gate APÓS reconciliação: obrigatórios marcados como assinados mas
+      // ainda com link externo (link aponta pra arquivo fora da pasta).
+      const obrigSoLink = termosReconciliados.filter(t =>
+        t.obrigatorio && !t.naoSeAplica && t.assinado && t.link && !t.linkFileId
+      );
+      if (obrigSoLink.length > 0) {
+        const lista = obrigSoLink.map(t => `• ${t.nome}`).join("\n");
+        setClicksignErro(
+          `Os seguintes termos obrigatórios estão como link externo e NÃO vão ` +
+          `pro Clicksign automaticamente:\n\n${lista}\n\n` +
+          `Clique em "⬆️ Subir pra assinatura" em cada um pra subir o PDF pra ` +
+          `pasta "docs a assinar" do Drive. Depois tente enviar de novo.`,
+        );
+        return;
+      }
+
       // Se há envelope ativo (não fechado), busca a lista de docs nele
       // pra anotar quais arquivos JÁ aguardam assinatura. Esses ficam
       // desmarcados por padrão — usuário só marca os novos a enviar.
