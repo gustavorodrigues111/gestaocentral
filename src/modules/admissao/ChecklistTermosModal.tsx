@@ -279,7 +279,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     // Histórico de envios deste arquivo (de TODOS os envelopes que essa
     // admissão já criou) — calculado a partir de admissao.clicksignHistorico
     // cruzando por fileId/filename. Vazio = nunca enviado.
-    enviadoEm?: string[];
+    envios?: { envelopeId: string; enviadoEm: string }[];
   };
   // Modal de seleção pré-envio. Inclui um cache do status dos docs do
   // envelope ativo (consultado uma vez na abertura via API) pra mostrar
@@ -386,15 +386,15 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       // mais de um envelope foi criado. Match por fileId (preferencial)
       // ou filename (fallback pra envios antigos sem fileId).
       const enriquecidos: ItemEnvio[] = arquivosTotais.map(a => {
-        const enviadoEm: string[] = [];
+        const envios: { envelopeId: string; enviadoEm: string }[] = [];
         for (const envio of clicksignHistorico) {
           const bate = envio.arquivos.some(
             arq => (arq.fileId && arq.fileId === a.id) || arq.filename === a.name,
           );
-          if (bate) enviadoEm.push(envio.enviadoEm);
+          if (bate) envios.push({ envelopeId: envio.envelopeId, enviadoEm: envio.enviadoEm });
         }
-        enviadoEm.sort();
-        return { ...a, enviadoEm };
+        envios.sort((x, y) => x.enviadoEm.localeCompare(y.enviadoEm));
+        return { ...a, envios };
       });
       // Consulta o envelope ativo (último) pra obter status de cada doc —
       // mostra individualmente no modal (assinado / pendente / etc).
@@ -410,8 +410,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         }
       }
       // Default: marca SÓ os arquivos que NUNCA foram enviados antes.
-      const naoEnviados = enriquecidos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
-      const haAlgumEnviado = enriquecidos.some(a => a.enviadoEm && a.enviadoEm.length > 0);
+      const naoEnviados = enriquecidos.filter(a => !a.envios || a.envios.length === 0);
+      const haAlgumEnviado = enriquecidos.some(a => a.envios && a.envios.length > 0);
       const selecionadosInit = haAlgumEnviado
         ? new Set(naoEnviados.map(a => a.id))
         : new Set(enriquecidos.map(a => a.id));
@@ -1301,7 +1301,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               já enviados antes vêm desmarcados.
             </p>
             {(() => {
-              const novos = selecaoEnvio.arquivos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
+              const novos = selecaoEnvio.arquivos.filter(a => !a.envios || a.envios.length === 0);
               const enviados = selecaoEnvio.arquivos.length - novos.length;
               return (
                 <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 pb-2 flex-wrap">
@@ -1345,8 +1345,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             <div className="space-y-1 max-h-[50vh] overflow-y-auto">
               {selecaoEnvio.arquivos.map(a => {
                 const checked = selecaoEnvio.selecionados.has(a.id);
-                const jaEnviado = (a.enviadoEm || []).length > 0;
-                const ultimoEnvio = jaEnviado ? a.enviadoEm![a.enviadoEm!.length - 1] : undefined;
+                const envios = a.envios || [];
+                const jaEnviado = envios.length > 0;
                 return (
                   <label
                     key={a.id}
@@ -1395,15 +1395,18 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                           </a>
                         )}
                       </div>
-                      {jaEnviado && ultimoEnvio && (
-                        <div
-                          className="text-[10px] text-amber-800 dark:text-amber-300 mt-0.5"
-                          title={a.enviadoEm!.length > 1
-                            ? `Enviado ${a.enviadoEm!.length}× — última vez ${fmtDateTime(ultimoEnvio)}`
-                            : undefined}
-                        >
-                          📨 enviado em {fmtDateTime(ultimoEnvio)}
-                          {a.enviadoEm!.length > 1 && ` · ${a.enviadoEm!.length}×`}
+                      {jaEnviado && (
+                        <div className="text-[10px] text-amber-800 dark:text-amber-300 mt-0.5 space-y-0.5 font-mono">
+                          {envios.map((envio, idx) => (
+                            <div key={envio.envelopeId + envio.enviadoEm} className="truncate" title={`Envelope ${envio.envelopeId}`}>
+                              📨 {envios.length > 1 ? `#${idx + 1} ` : ""}
+                              enviado em {fmtDateTime(envio.enviadoEm)}
+                              {" · "}
+                              <span className="text-amber-700/80 dark:text-amber-400/80">
+                                env: {envio.envelopeId.slice(0, 8)}…{envio.envelopeId.slice(-4)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
