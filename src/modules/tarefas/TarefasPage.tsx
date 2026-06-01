@@ -456,8 +456,9 @@ function ProjetosSidebar({
                   <span className="truncate flex-1">{p.nome}</span>
                 </button>
                 {/* Accordion de subprojetos — só do projeto ativo. Separa
-                    em "Manuais" (criação livre) e "Automáticos" (bloqueados,
-                    só recebem tarefas via hooks de outros módulos). */}
+                    em "Manuais" (criação livre, caixa verde) e "Automáticos"
+                    (bloqueados, caixa vermelha) — destaque visual ajuda a
+                    diferenciar os 2 modos de origem das tarefas. */}
                 {projetoAtivo && subs.length > 0 && (() => {
                   const manuais = subs.filter(s => !s.bloqueadoCriacaoManual);
                   const automaticos = subs.filter(s => !!s.bloqueadoCriacaoManual);
@@ -471,8 +472,8 @@ function ProjetosSidebar({
                         onClick={() => onAbrirSubprojeto(p.id, s.id)}
                         className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
                           sel
-                            ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                            ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium shadow-sm"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-900/40"
                         }`}
                         title={s.nome}
                       >
@@ -482,7 +483,7 @@ function ProjetosSidebar({
                     );
                   };
                   return (
-                    <div className="pl-5 mt-0.5 space-y-0.5">
+                    <div className="pl-5 mt-0.5 space-y-1.5">
                       <button
                         onClick={() => onAbrirSubprojeto(p.id, "")}
                         className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
@@ -494,15 +495,31 @@ function ProjetosSidebar({
                         <span className="flex-1">Todos</span>
                         <span className="text-[10px] text-gray-500">{ativas(tarefasProjeto)}</span>
                       </button>
-                      {manuais.map(renderBtn)}
-                      {automaticos.length > 0 && (
-                        <>
-                          <div className="px-2 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
-                            🔒 Automáticos
-                            <span className="text-[9px] text-gray-400 font-normal normal-case tracking-normal">(só hooks)</span>
+
+                      {/* Caixa verde — subprojetos manuais (criação livre) */}
+                      {manuais.length > 0 && (
+                        <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15 p-1.5">
+                          <div className="px-1 pb-1 text-[9px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                            ✏️ Manuais
+                            <span className="text-[9px] text-emerald-600/70 dark:text-emerald-400/70 font-normal normal-case tracking-normal">(editáveis)</span>
                           </div>
-                          {automaticos.map(renderBtn)}
-                        </>
+                          <div className="space-y-0.5">
+                            {manuais.map(renderBtn)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Caixa vermelha — subprojetos automáticos (só hooks) */}
+                      {automaticos.length > 0 && (
+                        <div className="rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50/60 dark:bg-rose-900/15 p-1.5">
+                          <div className="px-1 pb-1 text-[9px] uppercase tracking-wider font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-1">
+                            🔒 Automáticos
+                            <span className="text-[9px] text-rose-600/70 dark:text-rose-400/70 font-normal normal-case tracking-normal">(só hooks)</span>
+                          </div>
+                          <div className="space-y-0.5">
+                            {automaticos.map(renderBtn)}
+                          </div>
+                        </div>
                       )}
                     </div>
                   );
