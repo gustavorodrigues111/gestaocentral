@@ -55,3 +55,28 @@ export function shiftMonth(ano: number, mes: number, delta: number): { ano: numb
   while (m > 12) { m -= 12; a += 1; }
   return { ano: a, mes: m };
 }
+
+// ─── Formatação BR ────────────────────────────────────────────────────────
+// Padrão do sistema: datas sempre exibidas em DD/MM/AAAA.
+
+// "YYYY-MM-DD" ou ISO completo → "DD/MM/AAAA". Vazio/nulo → "".
+export function fmtBR(s: string | null | undefined): string {
+  if (!s) return "";
+  // YYYY-MM-DD puro: split direto (não cria Date pra não mexer com timezone)
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  // ISO ou outra string parseável: deixa Date converter pro fuso local
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
+
+// ISO → "DD/MM/AAAA HH:mm". Aceita YYYY-MM-DD puro (sem hora).
+export function fmtBRDateTime(s: string | null | undefined): string {
+  if (!s) return "";
+  // Sem hora: cai pro fmtBR puro
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return fmtBR(s);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}

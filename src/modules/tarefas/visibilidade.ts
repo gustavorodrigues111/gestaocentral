@@ -43,6 +43,10 @@ export function podeVerTarefa(
   if (tarefa.criadoPor === pessoa.id) return true;
   if (tarefa.responsavelId === pessoa.id) return true;
   if ((tarefa.coResponsaveis || []).includes(pessoa.id)) return true;
+  if ((tarefa.observadoresIds || []).includes(pessoa.id)) return true;
+  // Responsável de subtarefa também enxerga a tarefa-pai.
+  if ((tarefa.subtarefaResponsaveisIds || []).includes(pessoa.id)) return true;
+  if ((tarefa.subtarefas || []).some(s => s.responsavelId === pessoa.id)) return true;
   if ((tarefa.usuariosAutorizados || []).includes(pessoa.id)) return true;
   if (projeto && (projeto.usuariosAutorizados || []).includes(pessoa.id)) return true;
 

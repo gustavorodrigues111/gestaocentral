@@ -169,6 +169,8 @@ service cloud.firestore {
         || request.auth.uid == d.criadoPor
         || request.auth.uid == d.responsavelId
         || (d.coResponsaveis is list && request.auth.uid in d.coResponsaveis)
+        || (d.observadoresIds is list && request.auth.uid in d.observadoresIds)
+        || (d.subtarefaResponsaveisIds is list && request.auth.uid in d.subtarefaResponsaveisIds)
         || (d.usuariosAutorizados is list && request.auth.uid in d.usuariosAutorizados)
         || d.visibilidadeEfetiva == "publico"
         || d.visibilidadeEfetiva == "escritorio";

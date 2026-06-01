@@ -44,35 +44,38 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return () => unsub();
   }, [rid, pessoa?.id]);
 
-  // Contador GLOBAL de tarefas pendentes do usuário (responsável OU co-resp).
-  // Independente do restaurante selecionado — é caixa por usuário.
+  // Contador GLOBAL de tarefas pendentes do usuário (responsável, co-resp,
+  // observador ou responsável de alguma subtarefa). Independente do
+  // restaurante selecionado — é caixa por usuário.
   const [tarefasPendentes, setTarefasPendentes] = useState(0);
   useEffect(() => {
     if (!pessoa?.id) { setTarefasPendentes(0); return; }
     const qResp = query(collection(db, "tarefas"), where("responsavelId", "==", pessoa.id));
     const qCo = query(collection(db, "tarefas"), where("coResponsaveis", "array-contains", pessoa.id));
-    let lastResp: Array<{ status: string; deletadoEm?: string | null }> = [];
-    let lastCo: Array<{ status: string; deletadoEm?: string | null }> = [];
+    const qObs = query(collection(db, "tarefas"), where("observadoresIds", "array-contains", pessoa.id));
+    const qSub = query(collection(db, "tarefas"), where("subtarefaResponsaveisIds", "array-contains", pessoa.id));
+    type Row = { id: string; status: string; deletadoEm?: string | null };
+    let lastResp: Row[] = [];
+    let lastCo: Row[] = [];
+    let lastObs: Row[] = [];
+    let lastSub: Row[] = [];
     function recompute() {
-      // Dedup por id seria mais correto, mas array-contains query não retorna
-      // os mesmos docs do responsavelId — só intersecção é se a pessoa é AS
-      // duas coisas na mesma tarefa, o que é raro. Sum-then-dedupe via Map.
-      const map = new Map<string, { status: string; deletadoEm?: string | null }>();
-      [...lastResp, ...lastCo].forEach((t, i) => map.set(String(i), t));
+      const map = new Map<string, Row>();
+      [...lastResp, ...lastCo, ...lastObs, ...lastSub].forEach(t => map.set(t.id, t));
       const pend = Array.from(map.values()).filter(t =>
         !t.deletadoEm && t.status !== "concluida" && t.status !== "cancelada"
       ).length;
       setTarefasPendentes(pend);
     }
-    const u1 = onSnapshot(qResp, snap => {
-      lastResp = snap.docs.map(d => ({ status: (d.data() as { status?: string }).status || "a_fazer", deletadoEm: (d.data() as { deletadoEm?: string | null }).deletadoEm }));
-      recompute();
-    });
-    const u2 = onSnapshot(qCo, snap => {
-      lastCo = snap.docs.map(d => ({ status: (d.data() as { status?: string }).status || "a_fazer", deletadoEm: (d.data() as { deletadoEm?: string | null }).deletadoEm }));
-      recompute();
-    });
-    return () => { u1(); u2(); };
+    function toRow(d: { id: string; data: () => unknown }): Row {
+      const data = d.data() as { status?: string; deletadoEm?: string | null };
+      return { id: d.id, status: data.status || "a_fazer", deletadoEm: data.deletadoEm };
+    }
+    const u1 = onSnapshot(qResp, snap => { lastResp = snap.docs.map(toRow); recompute(); });
+    const u2 = onSnapshot(qCo, snap => { lastCo = snap.docs.map(toRow); recompute(); });
+    const u3 = onSnapshot(qObs, snap => { lastObs = snap.docs.map(toRow); recompute(); });
+    const u4 = onSnapshot(qSub, snap => { lastSub = snap.docs.map(toRow); recompute(); });
+    return () => { u1(); u2(); u3(); u4(); };
   }, [pessoa?.id]);
 
   function visibleModule(moduleId: ModuleId) {

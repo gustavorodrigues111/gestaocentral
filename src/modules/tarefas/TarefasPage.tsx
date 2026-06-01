@@ -45,6 +45,7 @@ import {
   TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
 import type { TarefaAnexo, Subtarefa } from "../../core/types";
+import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
@@ -1060,7 +1061,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
             {sub && <span>· {sub.nome}</span>}
             {tarefa.prazo && (
               <span className={atrasada ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                · 📅 {tarefa.prazo}
+                · 📅 {fmtBR(tarefa.prazo)}
               </span>
             )}
             {subtarefasTotal > 0 && (
@@ -2363,7 +2364,7 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     <div className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{t.titulo}</div>
                     <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
-                      {t.prazo && <span>📅 {t.prazo}</span>}
+                      {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
                       {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
                   </div>
@@ -2686,7 +2687,7 @@ function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNova
                 <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-rose-200 dark:border-rose-900/40 cursor-pointer hover:shadow-sm flex items-center gap-2" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
                   <span style={{ color: cor }}>{proj?.emoji}</span>
                   <span className="flex-1">{t.titulo}</span>
-                  <span className="text-[10px] text-rose-600 dark:text-rose-400">{t.prazo}</span>
+                  <span className="text-[10px] text-rose-600 dark:text-rose-400">{fmtBR(t.prazo)}</span>
                 </div>
               );
             })}
@@ -2775,7 +2776,7 @@ function LixeiraView({ tarefas, projetos, autor }: {
             <div className="flex-1 min-w-0">
               <div className="font-medium text-gray-900 dark:text-gray-100 line-through">{t.titulo}</div>
               <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {proj?.emoji} {proj?.nome} · deletada em {t.deletadoEm?.slice(0, 10)}
+                {proj?.emoji} {proj?.nome} · deletada em {fmtBR(t.deletadoEm)}
                 {t.motivoDelete && ` · motivo: ${t.motivoDelete}`}
               </div>
               <div className="mt-2">
@@ -3620,6 +3621,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             <SubtarefasSection
               tarefa={tarefa}
               autor={autor}
+              pessoas={pessoasLista}
               novaSubtarefa={novaSubtarefa}
               setNovaSubtarefa={setNovaSubtarefa}
               addSubtarefa={addSubtarefa}
@@ -3732,7 +3734,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                           )}
                         </div>
                         <div className="text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{c.texto}</div>
-                        <div className="text-[10px] text-gray-400 mt-1">{c.criadoEm.slice(0, 16).replace("T", " ")}</div>
+                        <div className="text-[10px] text-gray-400 mt-1">{fmtBRDateTime(c.criadoEm)}</div>
                       </div>
                     ))}
                     {(tarefa.comentarios?.length || 0) === 0 && (
@@ -3764,7 +3766,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                     <div key={l.id} className="py-1">
                       <span className="font-medium text-gray-700 dark:text-gray-300">{l.autorNome}</span> {l.acao.replace(/_/g, " ")}
                       {l.detalhe && `: ${l.detalhe}`}
-                      <span className="ml-2 text-gray-400">{l.em.slice(0, 16).replace("T", " ")}</span>
+                      <span className="ml-2 text-gray-400">{fmtBRDateTime(l.em)}</span>
                     </div>
                   ))}
                   {(tarefa.log?.length || 0) === 0 && (
@@ -4076,7 +4078,7 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                           <div key={i}>
                             <div className="font-medium text-gray-800 dark:text-gray-200">
                               {p.status === "concluida" && "✓ "}{p.titulo}
-                              {p.prazo && <span className="ml-2 text-gray-500">📅 {p.prazo}</span>}
+                              {p.prazo && <span className="ml-2 text-gray-500">📅 {fmtBR(p.prazo)}</span>}
                               {p.responsavelNome && <span className="ml-2 text-indigo-600 dark:text-indigo-400">{p.responsavelNome}</span>}
                               {(p.restaurantIds?.length ?? 0) > 0 && <span className="ml-2 text-emerald-600">🏢 {p.restaurantIds?.length}</span>}
                               {!p.responsavelId && p.assigneeNome && <span className="ml-2 text-amber-500" title="Não bateu com nenhuma pessoa">⚠ {p.assigneeNome}</span>}
@@ -4290,15 +4292,49 @@ function CoRespPicker({ tarefa, pessoas, autor }: {
 
 // ─── Seção de subtarefas com CRUD completo ────────────────────────────────
 
-function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, addSubtarefa }: {
+function SubtarefasSection({ tarefa, autor, pessoas, novaSubtarefa, setNovaSubtarefa, addSubtarefa }: {
   tarefa: Tarefa;
   autor: { id: string; nome: string };
+  pessoas: Array<{ id: string; nome: string }>;
   novaSubtarefa: string;
   setNovaSubtarefa: (v: string) => void;
   addSubtarefa: () => Promise<void>;
 }) {
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [draftTexto, setDraftTexto] = useState("");
+  // Subtarefa cujo painel "expandido" (responsável + prazo) está aberto.
+  // Pra não poluir a tela quando há muitas subtarefas, o painel é
+  // exibido sob demanda — clique no ⚙ ou no chip do responsável.
+  const [expandirId, setExpandirId] = useState<string | null>(null);
+
+  async function setResponsavel(id: string, pessoaId: string | null) {
+    const p = pessoas.find(x => x.id === pessoaId);
+    const novas = subs.map(s => s.id === id ? {
+      ...s,
+      responsavelId: pessoaId,
+      responsavelNome: p?.nome ?? null,
+    } : s);
+    const denorm = Array.from(new Set(
+      novas.map(s => s.responsavelId).filter((x): x is string => !!x)
+    ));
+    await atualizarTarefa(tarefa.id, {
+      subtarefas: novas,
+      subtarefaResponsaveisIds: denorm,
+    }, autor, {
+      acao: "editada",
+      campo: "responsável da subtarefa",
+      valorDepois: p?.nome ?? "—",
+    });
+  }
+
+  async function setPrazo(id: string, prazo: string | null) {
+    const novas = subs.map(s => s.id === id ? { ...s, prazo: prazo || null } : s);
+    await atualizarTarefa(tarefa.id, { subtarefas: novas }, autor, {
+      acao: "editada",
+      campo: "prazo da subtarefa",
+      valorDepois: prazo ? fmtBR(prazo) : "—",
+    });
+  }
 
   const subs = tarefa.subtarefas || [];
   const totalFeitos = subs.filter(s => s.feito).length;
@@ -4317,7 +4353,13 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
   async function removerSub(id: string) {
     const removida = subs.find(s => s.id === id);
     const novas = subs.filter(s => s.id !== id);
-    await atualizarTarefa(tarefa.id, { subtarefas: novas }, autor, {
+    const denorm = Array.from(new Set(
+      novas.map(s => s.responsavelId).filter((x): x is string => !!x)
+    ));
+    await atualizarTarefa(tarefa.id, {
+      subtarefas: novas,
+      subtarefaResponsaveisIds: denorm,
+    }, autor, {
       acao: "subtarefa_removida",
       detalhe: removida?.texto,
     });
@@ -4407,46 +4449,105 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
         Subtarefas {subs.length > 0 && `(${totalFeitos}/${subs.length})`}
       </h3>
       <div className="space-y-1">
-        {subs.map((st, idx) => (
-          <div key={st.id} className="flex items-center gap-2 text-sm group">
-            <input
-              type="checkbox"
-              checked={st.feito}
-              onChange={(e) => handleMarcar(st, e.target.checked)}
-            />
-            {editandoId === st.id ? (
-              <input
-                value={draftTexto}
-                onChange={(e) => setDraftTexto(e.target.value)}
-                onBlur={() => salvarEdicao(st.id)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                  if (e.key === "Escape") { setEditandoId(null); }
-                }}
-                autoFocus
-                className="flex-1 px-1 py-0.5 text-sm rounded border border-indigo-400 bg-white dark:bg-gray-800"
-              />
-            ) : (
-              <span
-                onClick={() => { setEditandoId(st.id); setDraftTexto(st.texto); }}
-                className={`flex-1 cursor-text ${st.feito ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}`}
-                title="Clique pra editar"
-              >
-                {st.texto}
-                {st.prazo && (
-                  <span className="ml-2 text-[10px] text-gray-500 dark:text-gray-400">
-                    📅 {st.prazo}
+        {subs.map((st, idx) => {
+          const expandido = expandirId === st.id;
+          const temResp = !!st.responsavelId;
+          const temPrazo = !!st.prazo;
+          return (
+            <div key={st.id} className="text-sm">
+              <div className="flex items-center gap-2 group">
+                <input
+                  type="checkbox"
+                  checked={st.feito}
+                  onChange={(e) => handleMarcar(st, e.target.checked)}
+                />
+                {editandoId === st.id ? (
+                  <input
+                    value={draftTexto}
+                    onChange={(e) => setDraftTexto(e.target.value)}
+                    onBlur={() => salvarEdicao(st.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                      if (e.key === "Escape") { setEditandoId(null); }
+                    }}
+                    autoFocus
+                    className="flex-1 px-1 py-0.5 text-sm rounded border border-indigo-400 bg-white dark:bg-gray-800"
+                  />
+                ) : (
+                  <span
+                    onClick={() => { setEditandoId(st.id); setDraftTexto(st.texto); }}
+                    className={`flex-1 cursor-text ${st.feito ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-300"}`}
+                    title="Clique pra editar"
+                  >
+                    {st.texto}
                   </span>
                 )}
-              </span>
-            )}
-            <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-xs">
-              <button onClick={() => mover(st.id, -1)} disabled={idx === 0} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Subir">▲</button>
-              <button onClick={() => mover(st.id, 1)} disabled={idx === subs.length - 1} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Descer">▼</button>
-              <button onClick={() => removerSub(st.id)} className="px-1 text-red-500 hover:text-red-700" title="Remover">×</button>
+                {/* Chips inline (sempre visíveis quando setados) */}
+                <div className="flex items-center gap-1 text-[10px]">
+                  {temResp && (
+                    <button
+                      onClick={() => setExpandirId(expandido ? null : st.id)}
+                      className="px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
+                      title="Responsável da subtarefa"
+                    >
+                      👤 {st.responsavelNome}
+                    </button>
+                  )}
+                  {temPrazo && (
+                    <button
+                      onClick={() => setExpandirId(expandido ? null : st.id)}
+                      className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                      title="Prazo da subtarefa"
+                    >
+                      📅 {fmtBR(st.prazo)}
+                    </button>
+                  )}
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 text-xs">
+                  <button
+                    onClick={() => setExpandirId(expandido ? null : st.id)}
+                    className={`px-1 hover:text-indigo-600 ${expandido ? "text-indigo-600" : ""}`}
+                    title="Responsável e prazo"
+                  >⚙</button>
+                  <button onClick={() => mover(st.id, -1)} disabled={idx === 0} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Subir">▲</button>
+                  <button onClick={() => mover(st.id, 1)} disabled={idx === subs.length - 1} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Descer">▼</button>
+                  <button onClick={() => removerSub(st.id)} className="px-1 text-red-500 hover:text-red-700" title="Remover">×</button>
+                </div>
+              </div>
+              {expandido && (
+                <div className="ml-6 mt-1 mb-2 p-2 rounded-md bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 flex flex-wrap items-center gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-gray-500 dark:text-gray-400">Responsável:</span>
+                    <select
+                      value={st.responsavelId || ""}
+                      onChange={(e) => setResponsavel(st.id, e.target.value || null)}
+                      className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs"
+                    >
+                      <option value="">— ninguém —</option>
+                      {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    </select>
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <span className="text-gray-500 dark:text-gray-400">Prazo:</span>
+                    <input
+                      type="date"
+                      value={st.prazo || ""}
+                      onChange={(e) => setPrazo(st.id, e.target.value || null)}
+                      className="px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs"
+                    />
+                    {st.prazo && (
+                      <button
+                        onClick={() => setPrazo(st.id, null)}
+                        className="text-gray-400 hover:text-red-500"
+                        title="Limpar"
+                      >×</button>
+                    )}
+                  </label>
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <div className="flex gap-2 mt-2">
         <input

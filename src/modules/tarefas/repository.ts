@@ -102,8 +102,10 @@ export async function moverSubprojetoParaProjeto(
 // ─── TAREFAS ──────────────────────────────────────────────────────────────
 
 export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {
-  // "Minhas Tarefas" = responsável OU co-responsável (queries unidas client-side).
-  // Firestore não tem OR composto em queries simples; fazemos 2 listeners.
+  // "Minhas Tarefas" = responsável, co-responsável, observador, ou
+  // responsável de alguma subtarefa (denormalizado em
+  // subtarefaResponsaveisIds). Firestore não tem OR composto em queries
+  // simples; fazemos 4 listeners.
   const unsubResp = onSnapshot(
     query(collection(db, COL_TAREFAS), where("responsavelId", "==", pessoaId)),
     () => recarregar(),
@@ -112,25 +114,34 @@ export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) 
     query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId)),
     () => recarregar(),
   );
-
-  let respData: Tarefa[] = [];
-  let coData: Tarefa[] = [];
+  const unsubObs = onSnapshot(
+    query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId)),
+    () => recarregar(),
+  );
+  const unsubSub = onSnapshot(
+    query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId)),
+    () => recarregar(),
+  );
 
   async function recarregar() {
-    const [respSnap, coSnap] = await Promise.all([
+    const [respSnap, coSnap, obsSnap, subSnap] = await Promise.all([
       getDocs(query(collection(db, COL_TAREFAS), where("responsavelId", "==", pessoaId))),
       getDocs(query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId))),
+      getDocs(query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId))),
+      getDocs(query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId))),
     ]);
-    respData = respSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
-    coData = coSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
+    const respData = respSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
+    const coData = coSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
+    const obsData = obsSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
+    const subData = subSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
     // Mescla deduplicando por id
     const map = new Map<string, Tarefa>();
-    [...respData, ...coData].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
+    [...respData, ...coData, ...obsData, ...subData].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
     cb(Array.from(map.values()));
   }
   recarregar();
 
-  return () => { unsubResp(); unsubCo(); };
+  return () => { unsubResp(); unsubCo(); unsubObs(); unsubSub(); };
 }
 
 export function ouvirTarefasDeProjeto(projetoId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {

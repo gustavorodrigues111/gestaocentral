@@ -3493,6 +3493,12 @@ export type Subtarefa = {
   // Prazo individual da subtarefa (opcional). Calculado a partir de
   // prazoOffset do template quando a tarefa-pai foi criada com checklist.
   prazo?: string | null;
+  // Responsável opcional da subtarefa. Quando setado, a subtarefa aparece
+  // em "Minhas Tarefas" do responsável (mesmo que ele não seja o
+  // responsável da tarefa-pai). Quando ausente, fica restrita ao escopo
+  // da tarefa-pai.
+  responsavelId?: string | null;
+  responsavelNome?: string | null;
   // Flags especiais propagados do ExameSubtarefaTemplate:
   // - ehBaixa: ao marcar, abre modal de baixa que atualiza ExameEmpregado
   // - ehAnexoResultado: ao marcar, abre Drive Picker e anexa
@@ -3554,6 +3560,10 @@ export type Tarefa = {
   // poder de ação.
   observadoresIds?: string[];
   observadoresNomes?: string[];
+  // Denormalizado: união dos responsavelId de todas as subtarefas que têm
+  // responsável atribuído. Permite query array-contains pra incluir essa
+  // tarefa em "Minhas Tarefas" do responsável de qualquer subtarefa.
+  subtarefaResponsaveisIds?: string[];
   restaurantIds?: string[];     // empresa(s) — multi-select opcional
   prazo?: string | null;
   inicio?: string | null;
