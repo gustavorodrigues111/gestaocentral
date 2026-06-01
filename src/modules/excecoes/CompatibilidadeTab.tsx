@@ -45,6 +45,7 @@ type ResultadoEmpregado = {
   dias: DiaComparacao[];
   totalDiffs: number;
   alternating?: boolean;
+  sidSolides?: number; // employeeId na Sólides (pra sondagem do PUT)
 };
 
 const DOW_LABEL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -108,6 +109,58 @@ export function CompatibilidadeTab({ rid }: Props) {
   // sobrescrever o quadro do Planejamento com o que veio da Sólides.
   const [copiarParaPlanejamento, setCopiarParaPlanejamento] = useState<ResultadoEmpregado | null>(null);
 
+  // Sondagem PUT na API Sólides (master only). Estado do probe ativo.
+  type ProbeResult = {
+    ok: boolean;
+    step: "get" | "put";
+    getStatus: number;
+    getBodyPreview: string;
+    putStatus?: number;
+    putBodyPreview?: string;
+    putHeaders?: Record<string, string>;
+    echoBytes?: number;
+    diagnostic: string;
+  };
+  const [probandoSid, setProbandoSid] = useState<number | null>(null);
+  const [probeAlvo, setProbeAlvo] = useState<{ empregado: Empregado; sid: number } | null>(null);
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null);
+  const [probeErro, setProbeErro] = useState("");
+
+  async function sondarPut(emp: Empregado, sid: number) {
+    setProbandoSid(sid);
+    setProbeAlvo({ empregado: emp, sid });
+    setProbeResult(null);
+    setProbeErro("");
+    try {
+      const shortCode = activeRestaurant?.shortCode || "";
+      const params = new URLSearchParams({ restaurant: shortCode, employeeId: String(sid) });
+      const resp = await fetch(`/api/solides-probe-schedule-write?${params.toString()}`, {
+        method: "POST",
+      });
+      const text = await resp.text();
+      let json: unknown = {};
+      if (text) {
+        try { json = JSON.parse(text); } catch { /* keep empty */ }
+      }
+      if (!resp.ok) {
+        const msg = (json as { error?: string }).error || `HTTP ${resp.status}`;
+        setProbeErro(msg);
+      } else {
+        setProbeResult(json as ProbeResult);
+      }
+    } catch (e) {
+      setProbeErro(e instanceof Error ? e.message : String(e));
+    } finally {
+      setProbandoSid(null);
+    }
+  }
+
+  function fecharProbe() {
+    setProbeAlvo(null);
+    setProbeResult(null);
+    setProbeErro("");
+  }
+
   useEffect(() => {
     if (!rid) return;
     const u1 = onSnapshot(
@@ -159,18 +212,16 @@ export function CompatibilidadeTab({ rid }: Props) {
         }
         const solRaw = schedRes.schedules[String(sid)];
         if (!solRaw) {
-          out.push({ empregado: emp, status: "sem_quadro_sol", dias: [], totalDiffs: 0 });
+          out.push({ empregado: emp, status: "sem_quadro_sol", dias: [], totalDiffs: 0, sidSolides: sid });
           continue;
         }
         const solNorm: QuadroNorm = { byDay: solRaw.byDay as Record<number, DiaNorm> };
         if (!planNorm) {
-          // Planejamento vazio: ainda popula `dias` pra UI mostrar o que vem
-          // da Sólides + permitir copiar. plan = null em todas as linhas.
           const dias: DiaComparacao[] = [];
           for (let d = 0; d < 7; d++) {
             dias.push({ dow: d, plan: null, sol: solNorm.byDay[d] ?? { active: false }, diff: [] });
           }
-          out.push({ empregado: emp, status: "sem_quadro_plan", dias, totalDiffs: 0, alternating });
+          out.push({ empregado: emp, status: "sem_quadro_plan", dias, totalDiffs: 0, alternating, sidSolides: sid });
           continue;
         }
 
@@ -189,6 +240,7 @@ export function CompatibilidadeTab({ rid }: Props) {
           dias,
           totalDiffs,
           alternating,
+          sidSolides: sid,
         });
       }
       const ord = (r: ResultadoEmpregado) =>
@@ -341,9 +393,23 @@ export function CompatibilidadeTab({ rid }: Props) {
               expandido={expandidos.has(r.empregado.id)}
               onToggle={() => toggleExp(r.empregado.id)}
               onCopiarSolPraPlan={() => setCopiarParaPlanejamento(r)}
+              isMaster={!!pessoa?.isMaster}
+              probandoSid={probandoSid}
+              onSondarPut={(emp, sid) => void sondarPut(emp, sid)}
             />
           ))}
         </div>
+      )}
+
+      {probeAlvo && (
+        <ProbeResultadoModal
+          empregado={probeAlvo.empregado}
+          sid={probeAlvo.sid}
+          rodando={probandoSid === probeAlvo.sid}
+          erro={probeErro}
+          resultado={probeResult}
+          onClose={fecharProbe}
+        />
       )}
 
       {copiarParaPlanejamento && (
@@ -372,13 +438,17 @@ export function CompatibilidadeTab({ rid }: Props) {
 
 function ResultadoCard({
   resultado, expandido, onToggle, onCopiarSolPraPlan,
+  isMaster, probandoSid, onSondarPut,
 }: {
   resultado: ResultadoEmpregado;
   expandido: boolean;
   onToggle: () => void;
   onCopiarSolPraPlan: () => void;
+  isMaster: boolean;
+  probandoSid: number | null;
+  onSondarPut: (emp: Empregado, sid: number) => void;
 }) {
-  const { empregado, status, dias, totalDiffs, alternating } = resultado;
+  const { empregado, status, dias, totalDiffs, alternating, sidSolides } = resultado;
   // sem_quadro_plan também é expansível pra mostrar o que vem da Sólides
   // e oferecer o "Trazer cadastro da Sólides".
   const podeExpandir = status === "ok" || status === "diverge" || status === "sem_quadro_plan";
@@ -503,6 +573,22 @@ function ResultadoCard({
               </button>
             </div>
           )}
+          {/* Painel master: sondagem do PUT na API Sólides (Fase 0).
+              Não modifica dados — reenvia o body do GET como PUT pra ver se
+              o token aceita escrita. Master only. */}
+          {isMaster && sidSolides != null && (
+            <div className="px-4 py-2 border-t border-dashed border-amber-300/60 dark:border-amber-700/40 bg-amber-50/30 dark:bg-amber-900/10 text-[10px] text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2">
+              <span>🔬 <strong>master:</strong> sondar se a API Sólides aceita PUT (não altera dados — usa payload idêntico do GET)</span>
+              <button
+                type="button"
+                onClick={() => onSondarPut(empregado, sidSolides)}
+                disabled={probandoSid === sidSolides}
+                className="text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full bg-amber-600 hover:bg-amber-700 text-white shadow-sm disabled:opacity-50"
+              >
+                {probandoSid === sidSolides ? "⏳ sondando…" : "🧪 Sondar PUT"}
+              </button>
+            </div>
+          )}
         </>
       )}
     </section>
@@ -527,6 +613,135 @@ function labelCampo(c: "active" | "in" | "out" | "break"): string {
     case "out": return "saída";
     case "break": return "intervalo";
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Modal: resultado da sondagem do PUT na API Sólides (Fase 0)
+// ────────────────────────────────────────────────────────────────────────────
+
+type ProbeOut = {
+  ok: boolean;
+  step: "get" | "put";
+  getStatus: number;
+  getBodyPreview: string;
+  putStatus?: number;
+  putBodyPreview?: string;
+  putHeaders?: Record<string, string>;
+  echoBytes?: number;
+  diagnostic: string;
+};
+
+function ProbeResultadoModal({
+  empregado, sid, rodando, erro, resultado, onClose,
+}: {
+  empregado: Empregado;
+  sid: number;
+  rodando: boolean;
+  erro: string;
+  resultado: ProbeOut | null;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            🔬 Sondagem PUT — Sólides API
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Empregado: <strong>{empregado.nome}</strong> · sid Sólides: <strong className="font-mono">{sid}</strong>
+          </p>
+          <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1.5">
+            ⚠ A sondagem faz GET pra capturar o quadro atual e PUT com payload idêntico. Não há alteração de dados, mas a Sólides PODE registrar a chamada em log interno.
+          </p>
+        </header>
+
+        <div className="px-5 py-4 space-y-3">
+          {rodando && (
+            <div className="text-sm text-gray-600 dark:text-gray-400">⏳ Sondando endpoint…</div>
+          )}
+
+          {erro && (
+            <div className="border border-rose-300 dark:border-rose-700/60 bg-rose-50 dark:bg-rose-900/20 rounded-lg p-3 text-xs">
+              <div className="font-semibold text-rose-800 dark:text-rose-200 mb-1">Falha:</div>
+              <pre className="whitespace-pre-wrap break-words text-rose-700 dark:text-rose-300">{erro}</pre>
+            </div>
+          )}
+
+          {resultado && (
+            <>
+              <div className={`rounded-lg p-3 text-xs ${resultado.ok ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200" : "bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700/60 text-amber-800 dark:text-amber-200"}`}>
+                <div className="font-semibold mb-1">Diagnóstico</div>
+                <div>{resultado.diagnostic}</div>
+              </div>
+
+              <div className="text-xs space-y-1">
+                <div>
+                  <span className="text-gray-500">GET</span>{" "}
+                  <span className={`font-mono font-semibold ${resultado.getStatus >= 200 && resultado.getStatus < 300 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>HTTP {resultado.getStatus}</span>
+                </div>
+                {resultado.step === "put" && resultado.putStatus != null && (
+                  <div>
+                    <span className="text-gray-500">PUT</span>{" "}
+                    <span className={`font-mono font-semibold ${resultado.putStatus >= 200 && resultado.putStatus < 300 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>HTTP {resultado.putStatus}</span>
+                    {typeof resultado.echoBytes === "number" && (
+                      <span className="text-gray-500"> · payload reenviado: <strong>{resultado.echoBytes} bytes</strong></span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <details className="border border-gray-200 dark:border-gray-800 rounded-lg">
+                <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                  📄 Body do GET (preview 500c)
+                </summary>
+                <pre className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap break-words border-t border-gray-200 dark:border-gray-800 max-h-60 overflow-y-auto">
+                  {resultado.getBodyPreview || "(vazio)"}
+                </pre>
+              </details>
+
+              {resultado.step === "put" && (
+                <details className="border border-gray-200 dark:border-gray-800 rounded-lg" open>
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    📄 Body da resposta do PUT (preview 1000c)
+                  </summary>
+                  <pre className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap break-words border-t border-gray-200 dark:border-gray-800 max-h-60 overflow-y-auto">
+                    {resultado.putBodyPreview || "(vazio)"}
+                  </pre>
+                </details>
+              )}
+
+              {resultado.putHeaders && (
+                <details className="border border-gray-200 dark:border-gray-800 rounded-lg">
+                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    🏷️ Headers da resposta do PUT
+                  </summary>
+                  <div className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-800 space-y-0.5">
+                    {Object.entries(resultado.putHeaders).map(([k, v]) => (
+                      <div key={k}><span className="text-gray-400">{k}:</span> {v}</div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+
+        <footer className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 flex items-center justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-xs font-semibold uppercase tracking-wider px-4 py-1.5 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+          >
+            Fechar
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────
