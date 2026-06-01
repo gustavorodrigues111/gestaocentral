@@ -1004,6 +1004,8 @@ export async function salvarConfigAdmissao(
     | "clicksignEmpresaAssinaturaAuto"
     | "clicksignEmpresaCpf"
     | "clicksignEmpresaNascimento"
+    | "regulamentoInternoUrl"
+    | "regulamentoInternoFileId"
   >>,
 ): Promise<void> {
   await setDoc(

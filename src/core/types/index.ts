@@ -614,6 +614,12 @@ export type Restaurant = {
   clicksignEmpresaAssinaturaAuto?: boolean;
   clicksignEmpresaCpf?: string;
   clicksignEmpresaNascimento?: string;   // YYYY-MM-DD
+  // Documentos PADRÃO por restaurante — mesmo PDF pra toda admissão. O DP
+  // sobe uma vez no Drive e cola o link aqui; o checklist da admissão
+  // pré-popula o termo correspondente automaticamente. Hoje só Regulamento
+  // Interno tem esse comportamento; futuro pode expandir.
+  regulamentoInternoUrl?: string;        // URL do PDF no Drive
+  regulamentoInternoFileId?: string;     // fileId extraído (pra ir no Clicksign)
 
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)

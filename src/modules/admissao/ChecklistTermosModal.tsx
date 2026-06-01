@@ -547,6 +547,38 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setTermos(instanciarTermosAssinados(admissao.termosAssinados));
   }, [admissao.termosAssinados]);
 
+  // Pré-popula termos PADRÃO do restaurante (Regulamento Interno, futuramente
+  // outros). Roda 1x quando o componente monta: se o termo está vazio e o
+  // restaurante tem o link configurado, herda o link/fileId + marca como
+  // assinado (já que o conteúdo é o mesmo). Persiste no Firestore na hora.
+  useEffect(() => {
+    const url = activeRestaurant.regulamentoInternoUrl?.trim();
+    const fileId = activeRestaurant.regulamentoInternoFileId?.trim();
+    if (!url) return;
+    setTermos(prev => {
+      const tRegul = prev.find(t => t.id === "tm_regulamento_interno");
+      if (!tRegul || tRegul.naoSeAplica) return prev;
+      if (tRegul.link) return prev;  // já tem link específico — não sobrescreve
+      const novos = prev.map(t => {
+        if (t.id !== "tm_regulamento_interno") return t;
+        const now = new Date().toISOString();
+        return {
+          ...t,
+          link: url,
+          linkFileId: fileId || undefined,
+          assinado: true,
+          assinadoEm: now,
+          assinadoPor: { id: pessoa.id, nome: pessoa.nome },
+        };
+      });
+      void atualizarTermoAssinado(admissao.id, novos).catch(e =>
+        console.warn("[checklist] persistir prefill regulamento falhou:", e),
+      );
+      return novos;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRestaurant.regulamentoInternoUrl, activeRestaurant.regulamentoInternoFileId]);
+
   // Ao abrir o kit, se há um envelope Clicksign em andamento, checa o status
   // automaticamente (atalho do "Verificar assinatura"). Se fechou, baixa os
   // assinados pra "docs assinados". Roda 1x na montagem.

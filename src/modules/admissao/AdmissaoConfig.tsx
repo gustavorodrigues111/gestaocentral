@@ -33,6 +33,16 @@ function onlyDigits(s: string): string {
   return (s || "").replace(/\D/g, "");
 }
 
+// Extrai fileId de URLs do Drive: /file/d/<id>/view ou ?id=<id>
+function extractDriveFileId(url: string): string | null {
+  if (!url) return null;
+  const m1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+  if (m1) return m1[1];
+  const m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+  if (m2) return m2[1];
+  return null;
+}
+
 export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
   const [prazoDias, setPrazoDias] = useState<number>(getPrazoDias(activeRestaurant));
@@ -79,6 +89,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   );
   const [clicksignEmpresaNascimento, setClicksignEmpresaNascimento] = useState<string>(
     activeRestaurant.clicksignEmpresaNascimento || "",
+  );
+  const [regulamentoInternoUrl, setRegulamentoInternoUrl] = useState<string>(
+    activeRestaurant.regulamentoInternoUrl || "",
   );
 
   async function selecionarPastaDrive() {
@@ -152,6 +165,8 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         clicksignEmpresaAssinaturaAuto: clicksignEmpresaAuto || undefined,
         clicksignEmpresaCpf: clicksignEmpresaCpf.trim() || undefined,
         clicksignEmpresaNascimento: clicksignEmpresaNascimento.trim() || undefined,
+        regulamentoInternoUrl: regulamentoInternoUrl.trim() || undefined,
+        regulamentoInternoFileId: extractDriveFileId(regulamentoInternoUrl.trim()) || undefined,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -311,6 +326,35 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             </p>
           </div>
         )}
+      </div>
+
+      {/* Documentos padrão — mesmo PDF pra toda admissão deste restaurante.
+          O checklist da admissão pré-popula o termo correspondente. */}
+      <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+            📄 Documentos padrão deste restaurante
+          </h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            PDFs que são iguais pra todo empregado. Suba uma vez no Drive
+            (pasta que a conta conectada do app tenha acesso) e cole o link
+            aqui — a admissão pré-popula esses termos automaticamente.
+          </p>
+        </div>
+        <div>
+          <Input
+            label="Regulamento Interno (URL do PDF no Drive)"
+            value={regulamentoInternoUrl}
+            onChange={(e) => setRegulamentoInternoUrl(e.target.value)}
+            placeholder="https://drive.google.com/file/d/.../view"
+          />
+          {regulamentoInternoUrl && !extractDriveFileId(regulamentoInternoUrl) && (
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">
+              ⚠ Não reconheci o formato do link do Drive. Use o formato
+              <code className="ml-1">https://drive.google.com/file/d/.../view</code>.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Contatos externos — 3 cards: Clínica de exames, Contabilidade,
