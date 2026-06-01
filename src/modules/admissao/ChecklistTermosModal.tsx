@@ -251,14 +251,23 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // ─── Clicksign ───
-  // Modal de seleção pré-envio: lista os PDFs em "docs a assinar" e deixa o
-  // usuário escolher quais vão pro envelope. Para cada arquivo, anota se já
-  // está num envelope ativo (mesmo nome de arquivo no Clicksign) — esses
-  // ficam desmarcados por padrão, pra evitar reenvio acidental do que já
-  // está aguardando assinatura.
+  // Item enviável no modal de seleção pré-envio. Vem de 2 origens:
+  //  - "pasta": PDF já está na pasta "docs a assinar" do Drive
+  //  - "externo": termo tem link Drive em outra pasta — vamos tentar
+  //    baixar via API quando o usuário confirmar.
+  type ItemEnvio = {
+    id: string;          // fileId no Drive (chave única)
+    name: string;        // filename pro Clicksign
+    source: "pasta" | "externo";
+    webViewLink?: string;
+    termoNome?: string;  // se source === "externo", nome do termo
+  };
+  // Modal de seleção pré-envio. Para cada item, anota se já está num
+  // envelope ativo (mesmo filename no Clicksign) — esses ficam desmarcados
+  // por padrão, evitando reenvio acidental.
   const [selecaoEnvio, setSelecaoEnvio] = useState<{
-    arquivos: DriveFile[];
-    // Nomes de arquivos que estão no envelope ativo (status atual).
+    arquivos: ItemEnvio[];
+    // Nomes de arquivos que estão no envelope ativo.
     noEnvelopeAtual: Set<string>;
     selecionados: Set<string>;
   } | null>(null);
@@ -318,19 +327,38 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         await persistirTermos(termosReconciliados);
       }
 
-      // Gate APÓS reconciliação: obrigatórios marcados como assinados mas
-      // ainda com link externo (link aponta pra arquivo fora da pasta).
-      const obrigSoLink = termosReconciliados.filter(t =>
-        t.obrigatorio && !t.naoSeAplica && t.assinado && t.link && !t.linkFileId
-      );
-      if (obrigSoLink.length > 0) {
-        const lista = obrigSoLink.map(t => `• ${t.nome}`).join("\n");
-        setClicksignErro(
-          `Os seguintes termos obrigatórios estão como link externo e NÃO vão ` +
-          `pro Clicksign automaticamente:\n\n${lista}\n\n` +
-          `Clique em "⬆️ Subir pra assinatura" em cada um pra subir o PDF pra ` +
-          `pasta "docs a assinar" do Drive. Depois tente enviar de novo.`,
-        );
+      // Monta a lista pro modal:
+      //  1) Cada arquivo da pasta → source "pasta"
+      //  2) Cada termo obrigatório+assinado com link Drive que NÃO está
+      //     na pasta → source "externo" (vai tentar baixar via Drive API
+      //     na hora do envio; se não tiver permissão, falha graciosamente)
+      const itensPasta: ItemEnvio[] = arquivos.map(a => ({
+        id: a.id,
+        name: a.name,
+        source: "pasta" as const,
+        webViewLink: a.webViewLink,
+      }));
+      const idsJaIncluidos = new Set(itensPasta.map(i => i.id));
+      const itensExternos: ItemEnvio[] = [];
+      for (const t of termosReconciliados) {
+        if (t.naoSeAplica || !t.assinado || !t.link || t.linkFileId) continue;
+        const fileId = extractDriveFileId(t.link);
+        if (!fileId || idsJaIncluidos.has(fileId)) continue;
+        // Nome amigável pra Clicksign: usa o nome do termo, com extensão
+        const nomeArquivo = `${t.nome.replace(/[/\\?%*:|"<>]/g, "-")}.pdf`;
+        itensExternos.push({
+          id: fileId,
+          name: nomeArquivo,
+          source: "externo" as const,
+          webViewLink: t.link,
+          termoNome: t.nome,
+        });
+        idsJaIncluidos.add(fileId);
+      }
+      const arquivosTotais = [...itensPasta, ...itensExternos];
+
+      if (arquivosTotais.length === 0) {
+        setClicksignErro("Nenhum documento pra enviar. Gere/suba os termos primeiro.");
         return;
       }
 
@@ -351,12 +379,11 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         }
       }
       // Default: marca SÓ os arquivos que não estão no envelope ativo.
-      // Quando não há envelope ativo, marca todos.
-      const naoEnviados = arquivos.filter(a => !noEnvelopeAtual.has(a.name));
+      const naoEnviados = arquivosTotais.filter(a => !noEnvelopeAtual.has(a.name));
       const selecionadosInit = noEnvelopeAtual.size > 0
         ? new Set(naoEnviados.map(a => a.id))
-        : new Set(arquivos.map(a => a.id));
-      setSelecaoEnvio({ arquivos, noEnvelopeAtual, selecionados: selecionadosInit });
+        : new Set(arquivosTotais.map(a => a.id));
+      setSelecaoEnvio({ arquivos: arquivosTotais, noEnvelopeAtual, selecionados: selecionadosInit });
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
     } finally {
@@ -379,9 +406,30 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     setClicksignErro("");
     setClicksignBusy("enviando");
     try {
+      // Baixa cada PDF por fileId. Pra itens "pasta" o download é
+      // garantido. Pra itens "externo" o arquivo pode estar em pasta sem
+      // permissão da conta conectada — coleta falhas e reporta no fim.
       const docs: { filename: string; base64: string }[] = [];
+      const falhas: { item: ItemEnvio; erro: string }[] = [];
       for (const a of escolhidos) {
-        docs.push({ filename: a.name, base64: await downloadDriveFileBase64(a.id) });
+        try {
+          docs.push({ filename: a.name, base64: await downloadDriveFileBase64(a.id) });
+        } catch (e) {
+          falhas.push({ item: a, erro: e instanceof Error ? e.message : "Falha no download" });
+        }
+      }
+      if (falhas.length > 0) {
+        const lista = falhas
+          .map(f => `• ${f.item.termoNome || f.item.name}${f.item.source === "externo" ? " (link externo)" : ""}`)
+          .join("\n");
+        throw new Error(
+          `Não consegui baixar ${falhas.length} arquivo(s) do Drive:\n\n${lista}\n\n` +
+          `Provavelmente o link aponta pra uma pasta sem permissão da conta conectada. ` +
+          `Suba esses PDFs pela pasta "docs a assinar" usando "⬆️ Subir pra assinatura" e tente de novo.`,
+        );
+      }
+      if (docs.length === 0) {
+        throw new Error("Nenhum documento pôde ser baixado.");
       }
       // Data de nascimento vem da ficha preenchida pelo candidato.
       const dn = admissao.dadosPreenchidos?.data_nascimento;
@@ -1213,6 +1261,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate" title={a.name}>
                       {a.name}
                     </span>
+                    {a.source === "externo" && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap"
+                        title="Este PDF está em outra pasta do Drive. Vou tentar baixar via API — se a conta conectada tiver permissão de leitura, vai."
+                      >
+                        📎 link externo
+                      </span>
+                    )}
                     {noEnvelope && (
                       <span
                         className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap"
