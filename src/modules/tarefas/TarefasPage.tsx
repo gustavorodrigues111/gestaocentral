@@ -1139,11 +1139,16 @@ function BannerSubAuto({ sub, restTravadoId }: {
   const label = sub.moduloOrigemLabel || "Ir pra origem";
   const rota = sub.moduloOrigemRota || "";
 
+  // Estilo unificado do CTA — mesmo tamanho/padding pra ambos os
+  // caminhos (link direto vs botão que abre modal).
+  const ctaClass =
+    "shrink-0 inline-flex items-center gap-1 px-4 py-2 h-9 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium transition-colors";
+
   return (
-    <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
-      <span className="text-2xl shrink-0" aria-hidden>🤖</span>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap">
+    <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-center gap-4">
+      <span className="text-3xl shrink-0 leading-none" aria-hidden>🤖</span>
+      <div className="flex-1 min-w-0 space-y-1">
+        <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap leading-tight">
           Subprojeto automático
           {restTravado && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
@@ -1151,28 +1156,22 @@ function BannerSubAuto({ sub, restTravadoId }: {
             </span>
           )}
         </div>
-        <p className="text-[13px] text-amber-800 dark:text-amber-300 mt-0.5">
-          As tarefas aqui são criadas automaticamente pelo sistema —
-          você não cria manualmente.
-          {sub.gatilho && <> <strong>Gatilho:</strong> {sub.gatilho}.</>}
+        <p className="text-[13px] text-amber-800 dark:text-amber-300 leading-snug">
+          As tarefas aqui são criadas automaticamente pelo sistema — você não cria manualmente.
         </p>
+        {sub.gatilho && (
+          <p className="text-[12px] text-amber-700 dark:text-amber-400 leading-snug">
+            <strong>Gatilho:</strong> {sub.gatilho}
+          </p>
+        )}
       </div>
       {rota && (
         restTravado ? (
-          // Travado: link direto, sem perguntar nada
-          <a
-            href={`/r/${restTravado.id}${rota}`}
-            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
-          >
+          <a href={`/r/${restTravado.id}${rota}`} className={ctaClass}>
             {label} →
           </a>
         ) : (
-          // Sem trava: abre modal pra user escolher qual restaurante
-          <button
-            type="button"
-            onClick={() => setEscolhendoRest(true)}
-            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
-          >
+          <button type="button" onClick={() => setEscolhendoRest(true)} className={ctaClass}>
             {label} →
           </button>
         )
