@@ -1,6 +1,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Vercel API Route — lista TODOS os cargos (job-role) da Sólides.
-//  Endpoint Tangerino: GET https://employer.tangerino.com.br/job-role
+//  Endpoint Tangerino: GET https://employer.tangerino.com.br/job-role/find-all
+//  (paginado — doc oficial). Antes tentamos /job-role direto e dava 404.
 //
 //  Usado pela aba "Compatibilidade de cadastros" → sub-tab "Cargos" pra
 //  comparar Planejamento ↔ Sólides e gerar o mapeamento bidirecional.
@@ -12,7 +13,7 @@
 //  Usa o MESMO token de SOLIDES_TOKENS{shortCode} usado em solides-employees.ts.
 // ════════════════════════════════════════════════════════════════════════════
 
-const JOB_ROLE_API = "https://employer.tangerino.com.br/job-role";
+const JOB_ROLE_API = "https://employer.tangerino.com.br/job-role/find-all";
 const PAGE_SIZE = 200;
 const MAX_PAGES = 20;
 const REQ_TIMEOUT_MS = 25_000;
