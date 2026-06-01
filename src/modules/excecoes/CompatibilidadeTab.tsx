@@ -10,13 +10,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { fetchSolidesSchedules } from "../../core/excecoes/solidesScheduleClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import { todayYmd } from "../../core/utils/date";
 import { empregadoBatePonto } from "../../core/types";
+import { validateWorkScheduleDays } from "../../core/escala/horarios";
 import type { Cargo, Empregado, HorarioDia, WorkSchedule } from "../../core/types";
 
 type Props = { rid: string };
@@ -95,12 +97,16 @@ function comparaDia(plan: DiaNorm | null, sol: DiaNorm | null): DiaComparacao["d
 
 export function CompatibilidadeTab({ rid }: Props) {
   const { activeRestaurant } = useRestaurant();
+  const { pessoa } = useAuth();
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [resultados, setResultados] = useState<ResultadoEmpregado[] | null>(null);
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
+  // Modal de "Copiar Sólides → Planejamento" — empregado escolhido pra
+  // sobrescrever o quadro do Planejamento com o que veio da Sólides.
+  const [copiarParaPlanejamento, setCopiarParaPlanejamento] = useState<ResultadoEmpregado | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -158,7 +164,13 @@ export function CompatibilidadeTab({ rid }: Props) {
         }
         const solNorm: QuadroNorm = { byDay: solRaw.byDay as Record<number, DiaNorm> };
         if (!planNorm) {
-          out.push({ empregado: emp, status: "sem_quadro_plan", dias: [], totalDiffs: 0, alternating });
+          // Planejamento vazio: ainda popula `dias` pra UI mostrar o que vem
+          // da Sólides + permitir copiar. plan = null em todas as linhas.
+          const dias: DiaComparacao[] = [];
+          for (let d = 0; d < 7; d++) {
+            dias.push({ dow: d, plan: null, sol: solNorm.byDay[d] ?? { active: false }, diff: [] });
+          }
+          out.push({ empregado: emp, status: "sem_quadro_plan", dias, totalDiffs: 0, alternating });
           continue;
         }
 
@@ -202,6 +214,60 @@ export function CompatibilidadeTab({ rid }: Props) {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  }
+
+  // Aplica o quadro vindo da Sólides como NOVA versão do WorkSchedule do
+  // empregado no Planejamento, com `validFrom` informado. O array é
+  // versionado por data, então o quadro antigo continua válido até a
+  // véspera da nova vigência.
+  async function salvarSolidesNoPlanejamento(
+    emp: Empregado,
+    solByDay: Record<number, DiaNorm>,
+    validFrom: string,
+    motivo: string,
+  ) {
+    if (!pessoa?.id) {
+      alert("Sem usuário logado.");
+      return;
+    }
+    // Monta o days[0..6] no formato HorarioDia
+    const days: { [key: number]: HorarioDia } = {};
+    for (let d = 0; d < 7; d++) {
+      const x = solByDay[d];
+      if (!x || !x.active) {
+        days[d] = { active: false };
+      } else {
+        days[d] = { active: true, in: x.in, out: x.out, break: x.break };
+      }
+    }
+    // Calcula totalContract (limites frouxos — Compatibilidade não impõe CLT)
+    const { totalContract } = validateWorkScheduleDays(days, 0, Number.MAX_SAFE_INTEGER);
+
+    const novo: WorkSchedule = {
+      validFrom,
+      type: "single",
+      totalContract,
+      days,
+      registradoEm: new Date().toISOString(),
+      registradoPor: pessoa.id,
+      ...(motivo ? { motivo } : {}),
+    };
+
+    const arr = emp.workSchedules || [];
+    // Se já existe uma entrada com o MESMO validFrom, sobrescreve em vez de
+    // duplicar (evita histórico sujo com 2 quadros pra mesma data).
+    const idxExistente = arr.findIndex((w) => w.validFrom === validFrom);
+    const novoArr = idxExistente >= 0
+      ? arr.map((w, i) => (i === idxExistente ? novo : w))
+      : [...arr, novo].sort((a, b) => (a.validFrom || "").localeCompare(b.validFrom || ""));
+
+    await updateDoc(doc(db, "empregados", emp.id), {
+      workSchedules: novoArr,
+    });
+    // Atualiza state local pra refletir já sem precisar re-comparar
+    setEmpregados((prev) => prev.map((e) => (e.id === emp.id ? { ...e, workSchedules: novoArr } : e)));
+    setResultados((prev) => prev ? prev.map((r) => r.empregado.id === emp.id ? { ...r, status: "ok" as const, totalDiffs: 0 } : r) : null);
+    setCopiarParaPlanejamento(null);
   }
 
   const resumo = useMemo(() => {
@@ -270,23 +336,50 @@ export function CompatibilidadeTab({ rid }: Props) {
               resultado={r}
               expandido={expandidos.has(r.empregado.id)}
               onToggle={() => toggleExp(r.empregado.id)}
+              onCopiarSolPraPlan={() => setCopiarParaPlanejamento(r)}
             />
           ))}
         </div>
+      )}
+
+      {copiarParaPlanejamento && (
+        <CopiarSolidesParaPlanejamentoModal
+          resultado={copiarParaPlanejamento}
+          onClose={() => setCopiarParaPlanejamento(null)}
+          onConfirm={(validFrom, motivo) => {
+            const solByDay: Record<number, DiaNorm> = {};
+            for (const d of copiarParaPlanejamento.dias) {
+              solByDay[d.dow] = d.sol ?? { active: false };
+            }
+            return salvarSolidesNoPlanejamento(
+              copiarParaPlanejamento.empregado,
+              solByDay,
+              validFrom,
+              motivo,
+            );
+          }}
+        />
       )}
     </div>
   );
 }
 
 function ResultadoCard({
-  resultado, expandido, onToggle,
+  resultado, expandido, onToggle, onCopiarSolPraPlan,
 }: {
   resultado: ResultadoEmpregado;
   expandido: boolean;
   onToggle: () => void;
+  onCopiarSolPraPlan: () => void;
 }) {
   const { empregado, status, dias, totalDiffs, alternating } = resultado;
-  const podeExpandir = status === "ok" || status === "diverge";
+  // sem_quadro_plan também é expansível pra mostrar o que vem da Sólides
+  // e oferecer o "Trazer cadastro da Sólides".
+  const podeExpandir = status === "ok" || status === "diverge" || status === "sem_quadro_plan";
+  // Permite copiar de Sólides → Planejamento quando:
+  // - há divergência (diverge) OU
+  // - Planejamento está sem quadro (sem_quadro_plan) E Sólides tem
+  const podeCopiarSolPraPlan = status === "diverge" || status === "sem_quadro_plan";
 
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
@@ -336,39 +429,75 @@ function ResultadoCard({
       </header>
 
       {expandido && podeExpandir && (
-        <div className="border-t border-gray-200 dark:border-gray-800 overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead className="bg-gray-50 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400">
-              <tr>
-                <th className="px-3 py-2 text-left font-semibold">Dia</th>
-                <th className="px-3 py-2 text-left font-semibold">Planejamento</th>
-                <th className="px-3 py-2 text-left font-semibold">Sólides</th>
-                <th className="px-3 py-2 text-left font-semibold">Status</th>
-              </tr>
-            </thead>
-            <tbody className="text-gray-700 dark:text-gray-300">
-              {dias.map((d) => {
-                const ok = d.diff.length === 0;
-                return (
-                  <tr key={d.dow} className={`border-t border-gray-100 dark:border-gray-800/60 ${ok ? "" : "bg-amber-50/40 dark:bg-amber-900/10"}`}>
-                    <td className="px-3 py-2 font-medium">{DOW_LABEL[d.dow]}</td>
-                    <td className="px-3 py-2 tabular-nums">{renderDia(d.plan)}</td>
-                    <td className="px-3 py-2 tabular-nums">{renderDia(d.sol)}</td>
-                    <td className="px-3 py-2 text-[11px]">
-                      {ok ? (
-                        <span className="text-emerald-700 dark:text-emerald-400">✓</span>
-                      ) : (
-                        <span className="text-amber-700 dark:text-amber-300">
-                          {d.diff.map(c => labelCampo(c)).join(", ")}
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="border-t border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead className="bg-gray-50 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Dia</th>
+                  <th className="px-3 py-2 text-left font-semibold">Planejamento</th>
+                  <th className="px-3 py-2 text-left font-semibold">Sólides</th>
+                  <th className="px-3 py-2 text-left font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody className="text-gray-700 dark:text-gray-300">
+                {dias.map((d) => {
+                  const ok = d.diff.length === 0;
+                  return (
+                    <tr key={d.dow} className={`border-t border-gray-100 dark:border-gray-800/60 ${ok ? "" : "bg-amber-50/40 dark:bg-amber-900/10"}`}>
+                      <td className="px-3 py-2 font-medium">{DOW_LABEL[d.dow]}</td>
+                      <td className="px-3 py-2 tabular-nums">{renderDia(d.plan)}</td>
+                      <td className="px-3 py-2 tabular-nums">{renderDia(d.sol)}</td>
+                      <td className="px-3 py-2 text-[11px]">
+                        {ok ? (
+                          <span className="text-emerald-700 dark:text-emerald-400">✓</span>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-300">
+                            {d.diff.map(c => labelCampo(c)).join(", ")}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {status === "diverge" && (
+            <div className="px-4 py-2.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/20 flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={onCopiarSolPraPlan}
+                disabled={!podeCopiarSolPraPlan}
+                className="text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50"
+                title="Sobrescreve o quadro do Planejamento usando o que está cadastrado na Sólides (cria nova versão com a data de vigência que você escolher)."
+              >
+                ↓ Copiar Sólides → Planejamento
+              </button>
+              <button
+                type="button"
+                disabled
+                className="text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                title="Em validação. Vai sobrescrever o quadro da Sólides com o do Planejamento, mas precisa confirmar primeiro se a API aceita escrita (POC com 1 empregado pendente)."
+              >
+                ↑ Copiar Planejamento → Sólides
+              </button>
+            </div>
+          )}
+          {status === "sem_quadro_plan" && (
+            <div className="px-4 py-2.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/20">
+              <button
+                type="button"
+                onClick={onCopiarSolPraPlan}
+                disabled={!podeCopiarSolPraPlan}
+                className="text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50"
+                title="Cria o cadastro de horários no Planejamento usando o que está na Sólides."
+              >
+                ↓ Trazer cadastro da Sólides
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -392,4 +521,141 @@ function labelCampo(c: "active" | "in" | "out" | "break"): string {
     case "out": return "saída";
     case "break": return "intervalo";
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Modal: confirmação pra copiar quadro Sólides → Planejamento
+// ────────────────────────────────────────────────────────────────────────────
+
+function CopiarSolidesParaPlanejamentoModal({
+  resultado,
+  onClose,
+  onConfirm,
+}: {
+  resultado: ResultadoEmpregado;
+  onClose: () => void;
+  onConfirm: (validFrom: string, motivo: string) => Promise<void>;
+}) {
+  const { empregado, dias } = resultado;
+  // Default: primeiro dia do mês atual (vigência costuma ser fechamento de
+  // folha). Usuário pode alterar.
+  const hoje = new Date();
+  const yyyy = hoje.getFullYear();
+  const mm = String(hoje.getMonth() + 1).padStart(2, "0");
+  const defaultValidFrom = `${yyyy}-${mm}-01`;
+  const [validFrom, setValidFrom] = useState(defaultValidFrom);
+  const [motivo, setMotivo] = useState("Sincronizado pela Sólides via aba Compatibilidade.");
+  const [salvando, setSalvando] = useState(false);
+
+  async function confirmar() {
+    if (!validFrom) {
+      alert("Informe a data de vigência.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      await onConfirm(validFrom, motivo.trim());
+    } catch (e) {
+      alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <header className="px-5 py-4 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">
+            Copiar Sólides → Planejamento
+          </h2>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Cria uma nova versão do cadastro de horários de <strong>{empregado.nome}</strong> no
+            Planejamento, com base no quadro vinculado na Sólides. As versões anteriores ficam
+            preservadas no histórico.
+          </p>
+        </header>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Quadro que vai ser gravado */}
+          <div>
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wider">
+              Quadro que vai ser gravado (da Sólides)
+            </div>
+            <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-gray-50 dark:bg-gray-800/40 text-gray-600 dark:text-gray-400">
+                  <tr>
+                    <th className="px-3 py-2 text-left">Dia</th>
+                    <th className="px-3 py-2 text-left">Horário</th>
+                  </tr>
+                </thead>
+                <tbody className="text-gray-700 dark:text-gray-300">
+                  {dias.map((d) => (
+                    <tr key={d.dow} className="border-t border-gray-100 dark:border-gray-800/60">
+                      <td className="px-3 py-1.5 font-medium">{DOW_LABEL[d.dow]}</td>
+                      <td className="px-3 py-1.5 tabular-nums">{renderDia(d.sol)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Data de vigência */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+              Vigência a partir de
+            </label>
+            <input
+              type="date"
+              value={validFrom}
+              onChange={(e) => setValidFrom(e.target.value)}
+              className="mt-1.5 w-full px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            />
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              O quadro novo passa a valer dessa data em diante. Cadastros anteriores continuam
+              valendo pras datas antes dessa.
+            </p>
+          </div>
+
+          {/* Motivo */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider">
+              Motivo (opcional)
+            </label>
+            <input
+              type="text"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+              placeholder="Ex.: Sincronizado pela Sólides"
+              className="mt-1.5 w-full px-3 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        <footer className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={salvando}
+            className="text-xs font-semibold px-3 py-1.5 rounded-md text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={confirmar}
+            disabled={salvando}
+            className="text-xs font-semibold uppercase tracking-wider px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50"
+          >
+            {salvando ? "Salvando…" : "Confirmar e salvar"}
+          </button>
+        </footer>
+      </div>
+    </div>
+  );
 }
