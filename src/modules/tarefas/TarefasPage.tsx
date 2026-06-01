@@ -2222,7 +2222,9 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
 }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [projetoId, setProjetoId] = useState(projetoIdInicial || projetos[0]?.id || "");
+  // Sem default — vazio força o usuário a escolher conscientemente.
+  // Pré-preenche só quando vem do contexto (calendário, click num dia).
+  const [projetoId, setProjetoId] = useState(projetoIdInicial || "");
   const [subprojetoId, setSubprojetoId] = useState(subprojetoIdInicial || "");
   const [prazo, setPrazo] = useState(prazoInicial || "");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
@@ -2230,24 +2232,71 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   const [usarTemplate, setUsarTemplate] = useState(true);
   const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(null);
   const [puxarAberto, setPuxarAberto] = useState(false);
+  // Responsável: começa em quem criou; user pode trocar pra outra pessoa
+  // autorizada no projeto.
+  const [responsavelId, setResponsavelId] = useState<string>(pessoaId);
+
+  // Lista de pessoas — pra select de responsável. Snapshot direto da coleção.
+  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoasLista(list);
+    });
+    return () => u();
+  }, []);
 
   const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
+  // Quando user troca de projeto, reseta o subprojeto pra forçar nova
+  // escolha (em vez de ficar com um sub residual de outro projeto).
   useEffect(() => {
-    if (subsDoProjeto.length > 0 && !subsDoProjeto.find(s => s.id === subprojetoId)) {
-      setSubprojetoId(subsDoProjeto[0].id);
+    if (subprojetoId && !subsDoProjeto.find(s => s.id === subprojetoId)) {
+      setSubprojetoId("");
     }
   }, [projetoId, subprojetoId, subsDoProjeto]);
 
   const subAtual = subprojetos.find(s => s.id === subprojetoId);
+  const projetoAtual = projetos.find(p => p.id === projetoId);
   const temTemplate = (subAtual?.tarefasTemplate?.length ?? 0) > 0;
-  const cor = projetos.find(p => p.id === projetoId)?.cor;
+  const cor = projetoAtual?.cor;
 
-  // Responsável: usa do subprojeto se definido, senão criador
-  const responsavelId = subAtual?.responsavelPadraoId || pessoaId;
-  const responsavelNome = subAtual?.responsavelPadraoNome || pessoaNome;
+  // Quando muda o subprojeto, se ele tem responsável padrão, usa-o.
+  useEffect(() => {
+    if (subAtual?.responsavelPadraoId) {
+      setResponsavelId(subAtual.responsavelPadraoId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subprojetoId]);
+
+  // Filtra pessoas elegíveis pra ser responsável, com base na visibilidade
+  // do projeto. Pra projetos privados, só quem está em usuariosAutorizados
+  // (+ o próprio criador) pode ser responsável — atribuir pra alguém sem
+  // acesso resultaria em tarefa que o responsável não consegue ver.
+  const responsaveisElegiveis = (() => {
+    if (!projetoAtual) return pessoasLista;
+    const vis = (projetoAtual.visibilidade || "privado") as string;
+    const aberto = vis === "escritorio" || vis === "publico";
+    if (aberto) return pessoasLista;
+    // Privado: só autorizados + criador
+    const ids = new Set([
+      ...((projetoAtual.usuariosAutorizados || []) as string[]),
+      pessoaId,
+    ]);
+    return pessoasLista.filter(p => ids.has(p.id));
+  })();
+  const responsavelEhElegivel = responsaveisElegiveis.some(p => p.id === responsavelId);
+  const responsavelNome = pessoasLista.find(p => p.id === responsavelId)?.nome
+    || (responsavelId === pessoaId ? pessoaNome : "");
+
+  // Validação: título, projeto, subprojeto, prazo e responsável elegível.
+  const formValido = !!titulo.trim() && !!projetoId && !!subprojetoId && !!prazo && !!responsavelId && responsavelEhElegivel;
 
   function salvar() {
-    if (!titulo || !projetoId || !subprojetoId) { alert("Preencha título, projeto e subprojeto."); return; }
+    if (!formValido) return;
     // Se tem template e usuário escolheu usar, popula subtarefas com
     // prazo resolvido a partir do offset (D+5 / dia 20 / fim do mês).
     const prazoBase = prazo || null;
@@ -2351,19 +2400,45 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
           </Field>
           <Field label="Projeto *">
             <select value={projetoId} onChange={(e) => setProjetoId(e.target.value)} className="input">
+              <option value="" disabled>Selecione…</option>
               {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
             </select>
           </Field>
           <Field label="Subprojeto *">
-            <select value={subprojetoId} onChange={(e) => setSubprojetoId(e.target.value)} className="input">
+            <select
+              value={subprojetoId}
+              onChange={(e) => setSubprojetoId(e.target.value)}
+              className="input"
+              disabled={!projetoId}
+            >
+              <option value="" disabled>{projetoId ? "Selecione…" : "Escolha um projeto primeiro"}</option>
               {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
             </select>
           </Field>
-          {subAtual?.responsavelPadraoNome && (
-            <div className="text-xs text-gray-500 dark:text-gray-400 -mt-1">
-              Responsável: <span className="font-medium text-gray-700 dark:text-gray-300">{subAtual.responsavelPadraoNome}</span> (padrão do subprojeto)
-            </div>
-          )}
+          <Field label="Responsável *">
+            <select
+              value={responsavelId}
+              onChange={(e) => setResponsavelId(e.target.value)}
+              className="input"
+              disabled={!projetoId}
+            >
+              {!projetoId && <option value="">Escolha um projeto primeiro</option>}
+              {projetoId && !responsaveisElegiveis.find(p => p.id === responsavelId) && (
+                <option value="" disabled>Selecione…</option>
+              )}
+              {responsaveisElegiveis.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.id === pessoaId ? `${p.nome} (você)` : p.nome}
+                </option>
+              ))}
+            </select>
+            {projetoAtual && projetoAtual.visibilidade === "privado" && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                🔒 Projeto privado — só pessoas autorizadas no projeto podem ser responsáveis.
+                {responsaveisElegiveis.length === 1 && " Adicione pessoas autorizadas no Admin Projetos pra atribuir a outros."}
+              </p>
+            )}
+          </Field>
           {temTemplate && (
             <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
               <input type="checkbox" checked={usarTemplate} onChange={(e) => setUsarTemplate(e.target.checked)} />
@@ -2376,7 +2451,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             </label>
           )}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Prazo">
+            <Field label="Prazo *">
               <input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="input" />
             </Field>
             <Field label="Prioridade">
@@ -2408,10 +2483,34 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             </Field>
           )}
         </div>
-        <style>{`.input { width: 100%; padding: 6px 10px; border: 1px solid rgb(209 213 219); border-radius: 8px; background: white; font-size: 14px; } .dark .input { background: rgb(17 24 39); border-color: rgb(55 65 81); color: white; }`}</style>
+        {/* Altura fixa em todos os campos (input/select/textarea pequeno)
+            pra evitar selects mais altos que inputs nativos. textarea com
+            min-height próprio sobrescreve. */}
+        <style>{`
+          .input {
+            width: 100%;
+            height: 38px;
+            padding: 6px 10px;
+            border: 1px solid rgb(209 213 219);
+            border-radius: 8px;
+            background: white;
+            font-size: 14px;
+            box-sizing: border-box;
+            line-height: 1.4;
+          }
+          .input:disabled { opacity: 0.6; cursor: not-allowed; }
+          textarea.input { height: auto; min-height: 60px; padding-top: 8px; padding-bottom: 8px; }
+          .dark .input { background: rgb(17 24 39); border-color: rgb(55 65 81); color: white; }
+        `}</style>
         <div className="flex gap-2 justify-end mt-5">
           <Button onClick={onClose} variant="ghost">Cancelar</Button>
-          <Button onClick={salvar}>Criar Tarefa</Button>
+          <Button
+            onClick={salvar}
+            disabled={!formValido}
+            title={!formValido ? "Preencha título, projeto, subprojeto, prazo e responsável" : undefined}
+          >
+            Criar Tarefa
+          </Button>
         </div>
         {puxarAberto && (
           <PuxarIdeiaOcorrenciaModal
