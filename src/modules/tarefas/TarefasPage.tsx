@@ -33,6 +33,7 @@ async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id:
 }
 import { seedProjetosIniciais } from "./seed";
 import { gerarTarefasDoDia } from "./generator";
+import { MODULES } from "../../config/modules";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
   TarefaVisibilidade, TarefaTemplate, TarefaCustomField, TarefaCustomFieldTipo,
@@ -1936,35 +1937,45 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
             </div>
           </div>
         </label>
-        {/* Quando bloqueado, perguntamos rota/label do módulo origem pra
-            o banner explicativo que aparece pro usuário ao ver as tarefas
-            do sub poder linkar de volta pro lugar onde criar. */}
-        {f.bloqueadoCriacaoManual && (
-          <div className="grid grid-cols-2 gap-2 pl-6">
-            <div>
+        {/* Quando bloqueado, o admin escolhe o módulo de origem das tarefas.
+            Rota e label do CTA do banner são derivados automaticamente do
+            MODULES registry. Pra rota custom, edita direto no Firestore. */}
+        {f.bloqueadoCriacaoManual && (() => {
+          // Match: o sub aponta pra esse módulo se a rota guardada bate com
+          // "/{moduleId}". Funciona pra dados antigos digitados à mão também.
+          const moduloAtualId = (f.moduloOrigemRota || "").replace(/^\//, "");
+          const opcoesModulos = MODULES
+            .filter(m => !m.oculto && m.status === "ativo")
+            .sort((a, b) => a.label.localeCompare(b.label));
+          return (
+            <div className="pl-6">
               <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-0.5">
-                Rota do módulo origem
+                Módulo origem das tarefas
               </label>
-              <input
-                value={f.moduloOrigemRota || ""}
-                onChange={(e) => setF({ ...f, moduloOrigemRota: e.target.value })}
-                placeholder="/admissao"
+              <select
+                value={moduloAtualId}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const mod = MODULES.find(m => m.id === id);
+                  setF({
+                    ...f,
+                    moduloOrigemRota: id ? `/${id}` : undefined,
+                    moduloOrigemLabel: mod ? `Ir pra ${mod.label}` : undefined,
+                  });
+                }}
                 className="adm-input text-xs"
-              />
+              >
+                <option value="">— selecione —</option>
+                {opcoesModulos.map(m => (
+                  <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">
+                O banner do sub vai mostrar um botão "Ir pra {MODULES.find(m => m.id === moduloAtualId)?.label || "Módulo"}".
+              </p>
             </div>
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-0.5">
-                Label do CTA
-              </label>
-              <input
-                value={f.moduloOrigemLabel || ""}
-                onChange={(e) => setF({ ...f, moduloOrigemLabel: e.target.value })}
-                placeholder="Ir pra Admissão"
-                className="adm-input text-xs"
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
       <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom (legado, descritivo)" className="adm-input text-xs" />
 
