@@ -455,42 +455,58 @@ function ProjetosSidebar({
                   <span className="text-sm leading-none">{p.emoji || "📁"}</span>
                   <span className="truncate flex-1">{p.nome}</span>
                 </button>
-                {/* Accordion de subprojetos — só do projeto ativo */}
-                {projetoAtivo && subs.length > 0 && (
-                  <div className="pl-5 mt-0.5 space-y-0.5">
-                    <button
-                      onClick={() => onAbrirSubprojeto(p.id, "")}
-                      className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                        subFiltroAtual === ""
-                          ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
-                      }`}
-                    >
-                      <span className="flex-1">Todos</span>
-                      <span className="text-[10px] text-gray-500">{ativas(tarefasProjeto)}</span>
-                    </button>
-                    {subs.map(s => {
-                      const ts = tarefasProjeto.filter(t => t.subprojetoId === s.id);
-                      const ativ = ativas(ts);
-                      const sel = subFiltroAtual === s.id;
-                      return (
-                        <button
-                          key={s.id}
-                          onClick={() => onAbrirSubprojeto(p.id, s.id)}
-                          className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                            sel
-                              ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
-                          }`}
-                          title={s.nome}
-                        >
-                          <span className="truncate flex-1">{s.nome}</span>
-                          {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Accordion de subprojetos — só do projeto ativo. Separa
+                    em "Manuais" (criação livre) e "Automáticos" (bloqueados,
+                    só recebem tarefas via hooks de outros módulos). */}
+                {projetoAtivo && subs.length > 0 && (() => {
+                  const manuais = subs.filter(s => !s.bloqueadoCriacaoManual);
+                  const automaticos = subs.filter(s => !!s.bloqueadoCriacaoManual);
+                  const renderBtn = (s: TarefaSubprojeto) => {
+                    const ts = tarefasProjeto.filter(t => t.subprojetoId === s.id);
+                    const ativ = ativas(ts);
+                    const sel = subFiltroAtual === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        onClick={() => onAbrirSubprojeto(p.id, s.id)}
+                        className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                          sel
+                            ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                        }`}
+                        title={s.nome}
+                      >
+                        <span className="truncate flex-1">{s.nome}</span>
+                        {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
+                      </button>
+                    );
+                  };
+                  return (
+                    <div className="pl-5 mt-0.5 space-y-0.5">
+                      <button
+                        onClick={() => onAbrirSubprojeto(p.id, "")}
+                        className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                          subFiltroAtual === ""
+                            ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                        }`}
+                      >
+                        <span className="flex-1">Todos</span>
+                        <span className="text-[10px] text-gray-500">{ativas(tarefasProjeto)}</span>
+                      </button>
+                      {manuais.map(renderBtn)}
+                      {automaticos.length > 0 && (
+                        <>
+                          <div className="px-2 pt-1.5 pb-0.5 text-[9px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                            🔒 Automáticos
+                            <span className="text-[9px] text-gray-400 font-normal normal-case tracking-normal">(só hooks)</span>
+                          </div>
+                          {automaticos.map(renderBtn)}
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -1049,22 +1065,28 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                 autor={autor}
               />
             )}
-            {view === "calendario" && (
-              <CalendarioView
-                tarefas={tarefasFiltradas}
-                projetos={projetos}
-                subprojetos={subprojetos}
-                onAbrir={onAbrir}
-                autor={autor}
-                /* Pré-preenche projeto (sempre) e subprojeto (se um sub está
-                   filtrado). Sem subFiltro, o user escolhe no modal. */
-                onNovaTarefaNoDia={(prazo) => onNovaTarefa({
-                  prazo,
-                  projetoId: projetoFiltro,
-                  subprojetoId: subFiltro || undefined,
-                })}
-              />
-            )}
+            {view === "calendario" && (() => {
+              // Se o sub filtrado está bloqueado pra criação manual, não
+              // passa o callback — CalendarioView esconde os "+ Nova tarefa"
+              // tracejados das colunas naturalmente.
+              const subBloqueado = !!(subAtual && subAtual.bloqueadoCriacaoManual);
+              return (
+                <CalendarioView
+                  tarefas={tarefasFiltradas}
+                  projetos={projetos}
+                  subprojetos={subprojetos}
+                  onAbrir={onAbrir}
+                  autor={autor}
+                  /* Pré-preenche projeto (sempre) e subprojeto (se um sub está
+                     filtrado). Sem subFiltro, o user escolhe no modal. */
+                  onNovaTarefaNoDia={subBloqueado ? undefined : (prazo) => onNovaTarefa({
+                    prazo,
+                    projetoId: projetoFiltro,
+                    subprojetoId: subFiltro || undefined,
+                  })}
+                />
+              );
+            })()}
             {view === "kanban" && (
               <KanbanView tarefas={tarefasFiltradas} projetos={projetos} autor={autor} onAbrir={onAbrir} />
             )}
@@ -1515,6 +1537,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       nome: f.nome,
       descricao: f.descricao,
       auto: f.auto ?? false,
+      bloqueadoCriacaoManual: f.bloqueadoCriacaoManual ?? false,
       gatilho: f.gatilho,
       campos: f.campos,
       pastaDriveTemplate: f.pastaDriveTemplate,
@@ -1577,6 +1600,21 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       {f.auto && (
         <input value={f.gatilho || ""} onChange={(e) => setF({ ...f, gatilho: e.target.value })} placeholder="Gatilho (ex: 'Nova admissão concluída')" className="adm-input text-xs" />
       )}
+      <label className="flex items-start gap-2 text-xs px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+        <input
+          type="checkbox"
+          checked={f.bloqueadoCriacaoManual || false}
+          onChange={(e) => setF({ ...f, bloqueadoCriacaoManual: e.target.checked })}
+          className="mt-0.5"
+        />
+        <div className="flex-1">
+          <div className="font-medium text-amber-900 dark:text-amber-200">🔒 Bloquear criação manual</div>
+          <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+            Quando ativo, esse sub não aceita "+ Nova tarefa" no app — só recebe
+            tarefas geradas por hooks de outros módulos (Admissão, Exames, etc).
+          </div>
+        </div>
+      </label>
       <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom (legado, descritivo)" className="adm-input text-xs" />
 
       {/* Custom fields tipados */}
@@ -2250,7 +2288,9 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
     return () => u();
   }, []);
 
-  const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId);
+  // Sub bloqueado pra criação manual não aparece na lista de seleção —
+  // ele só recebe tarefas via hooks automáticos.
+  const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoId && !s.bloqueadoCriacaoManual);
   // Quando user troca de projeto, reseta o subprojeto pra forçar nova
   // escolha (em vez de ficar com um sub residual de outro projeto).
   useEffect(() => {

@@ -3313,6 +3313,11 @@ export type TarefaSubprojeto = {
   nome: string;
   descricao?: string;
   auto: boolean;
+  // Quando true, bloqueia criação manual de tarefas neste subprojeto —
+  // ele só recebe tarefas vindas de hooks automáticos de outros módulos
+  // (Admissão, Demissão, Exames, etc). Diferente de `auto`: um sub pode
+  // ser bloqueado sem ser auto (subprojeto "Em construção", por ex.).
+  bloqueadoCriacaoManual?: boolean;
   gatilho?: string;
   campos?: string;              // texto livre — campos custom separados por ·
   pastaDriveTemplate?: string;
