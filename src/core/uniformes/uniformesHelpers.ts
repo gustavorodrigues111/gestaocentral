@@ -100,13 +100,11 @@ export async function ajustarEstoque(opts: {
   const variacao = item.variacoes.find(v => v.id === variacaoId);
   if (!variacao) throw new Error(`Variação não encontrada: ${variacaoId}`);
 
+  // Permite estoque negativo: cenário real é "DP gera o termo + entrega
+  // assinatura antes do equipamento chegar do fornecedor". Estoque vai a
+  // -2 e zera quando a compra entra. UI mostra negativo em vermelho como
+  // sinal pra repor.
   const novoEstoque = (variacao.estoque || 0) + delta;
-  if (novoEstoque < 0) {
-    throw new Error(
-      `Estoque insuficiente: ${item.nome} (${variacao.tamanho}) tem ${variacao.estoque} disponível, ` +
-      `precisa de ${Math.abs(delta)}.`,
-    );
-  }
 
   // Atualiza o array de variações do item
   const variacoesNovas = item.variacoes.map(v =>
@@ -220,7 +218,9 @@ export async function criarEntrega(opts: {
     throw new Error("Forneça pessoaId ou candidatoSnapshot.");
   }
 
-  // Resolve cada item + valida estoque ANTES de baixar (idempotência best-effort)
+  // Resolve cada item. Estoque negativo é PERMITIDO — DP frequentemente
+  // gera termo + dispara assinatura antes do equipamento chegar do
+  // fornecedor (compra atrasada). Quando a compra entra, soma e zera.
   type Resolved = { item: ItemUniforme; variacao: VariacaoItem; qtd: number };
   const resolved: Resolved[] = [];
   for (const i of itens) {
@@ -228,9 +228,6 @@ export async function criarEntrega(opts: {
     if (!item) throw new Error(`Item não encontrado no catálogo: ${i.itemId}`);
     const variacao = item.variacoes.find(v => v.id === i.variacaoId);
     if (!variacao) throw new Error(`Variação não encontrada em ${item.nome}: ${i.variacaoId}`);
-    if (variacao.estoque < i.qtd) {
-      throw new Error(`Estoque insuficiente: ${item.nome} (${variacao.tamanho}) tem ${variacao.estoque}, precisa de ${i.qtd}.`);
-    }
     resolved.push({ item, variacao, qtd: i.qtd });
   }
 
@@ -380,12 +377,7 @@ export async function atualizarEntrega(opts: {
     if (!item) throw new Error(`Item do catálogo sumiu durante o update: ${itemId}`);
     const variacao = item.variacoes.find(v => v.id === variacaoId);
     if (!variacao) throw new Error(`Variação sumiu durante o update: ${variacaoId}`);
-    if (delta > 0 && variacao.estoque < delta) {
-      throw new Error(
-        `Estoque insuficiente pra aumentar: ${item.nome} (${variacao.tamanho}) tem ${variacao.estoque}, ` +
-        `precisa de ${delta} a mais.`,
-      );
-    }
+    // Estoque negativo permitido — ver criarEntrega pra contexto.
     movimentos.push({ item, variacao, delta });
   }
 

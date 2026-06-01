@@ -395,7 +395,10 @@ export function NovaEntregaModal({
               const item = itens.find(i => i.id === l.itemId);
               const variacoes = item?.variacoes || [];
               const variacaoSel = variacoes.find(v => v.id === l.variacaoId);
-              const insufic = variacaoSel && variacaoSel.estoque < l.qtd;
+              // Estoque insuficiente agora é só AVISO (não erro): o sistema
+              // permite gerar entrega mesmo zerado/negativo — o item entra
+              // depois via compra. Borda amarela alerta pra repor.
+              const estoqueBaixo = variacaoSel && variacaoSel.estoque < l.qtd;
               return (
                 <div key={idx} className="grid grid-cols-[1fr_120px_60px_30px] gap-1.5 items-center">
                   <select
@@ -427,8 +430,11 @@ export function NovaEntregaModal({
                     value={l.qtd}
                     onChange={(e) => setLinha(idx, { qtd: parseInt(e.target.value, 10) || 0 })}
                     className={`px-2 py-1.5 text-sm rounded border ${
-                      insufic ? "border-rose-400" : "border-gray-300 dark:border-gray-700"
+                      estoqueBaixo ? "border-amber-400" : "border-gray-300 dark:border-gray-700"
                     } bg-white dark:bg-gray-900 tabular-nums`}
+                    title={estoqueBaixo
+                      ? `Estoque atual: ${variacaoSel?.estoque}. Entrega permitida — saldo ficará negativo até a próxima compra.`
+                      : undefined}
                   />
                   <button
                     type="button"
