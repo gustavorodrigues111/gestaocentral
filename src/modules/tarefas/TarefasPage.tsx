@@ -83,7 +83,10 @@ export function TarefasPage() {
   const [subFiltro, setSubFiltro] = useState<string>("");
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
-  const [novaAberta, setNovaAberta] = useState<{ prazo?: string } | null>(null);
+  // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
+  // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
+  // de um projeto, etc.).
+  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos
@@ -192,11 +195,6 @@ export function TarefasPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400 flex-1">
           Caixa por usuário · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} pendentes
         </p>
-        {isMaster && !semEstrutura && (
-          <Button variant="ghost" size="sm" onClick={rodarGerador} disabled={gerando} title="Gera tarefas-lembrete pendentes a partir de Contas Fixas e Manutenções cadastradas">
-            {gerando ? "Gerando…" : "🔁 Gerar pendentes"}
-          </Button>
-        )}
         <Button onClick={() => setNovaAberta({})} disabled={semEstrutura}>+ Nova Tarefa</Button>
       </header>
 
@@ -252,6 +250,16 @@ export function TarefasPage() {
 
       {tab === "minhas" && (
         <div>
+          {/* Título igual ao do ProjetoView, pra padronizar — "Minhas tarefas"
+              é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
+          <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+              📋 Minhas tarefas
+            </h2>
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              {minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
+            </span>
+          </div>
           <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
           {viewMinhas === "calendario" && (
             <CalendarioView
@@ -295,11 +303,14 @@ export function TarefasPage() {
           view={viewProjeto}
           onChangeView={setViewProjeto}
           autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+          onNovaTarefa={(opts) => setNovaAberta(opts)}
         />
       )}
 
       {tab === "admin" && isMaster && (
         <AdminView
+          onGerarPendentes={rodarGerador}
+          gerandoPendentes={gerando}
           projetos={projetos}
           subprojetos={subprojetos}
           pessoaId={pessoa?.id || ""}
@@ -323,6 +334,8 @@ export function TarefasPage() {
           pessoaId={pessoa?.id || ""}
           pessoaNome={pessoa?.nome || ""}
           prazoInicial={novaAberta.prazo}
+          projetoIdInicial={novaAberta.projetoId}
+          subprojetoIdInicial={novaAberta.subprojetoId}
         />
       )}
 
@@ -958,7 +971,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
@@ -969,6 +982,9 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   view: ViewMode;
   onChangeView: (v: ViewMode) => void;
   autor: { id: string; nome: string };
+  // Abre modal de nova tarefa já com prazo/projeto/subprojeto pré-preenchidos
+  // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
+  onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
@@ -1009,9 +1025,20 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
               />
             )}
             {view === "calendario" && (
-              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} subprojetos={subprojetos} onAbrir={onAbrir} autor={autor} />
-              /* Em Por Projeto não passamos onNovaTarefaNoDia — a criação rápida
-                 fica reservada pra Minhas Tarefas (caixa pessoal de pra-fazer). */
+              <CalendarioView
+                tarefas={tarefasFiltradas}
+                projetos={projetos}
+                subprojetos={subprojetos}
+                onAbrir={onAbrir}
+                autor={autor}
+                /* Pré-preenche projeto (sempre) e subprojeto (se um sub está
+                   filtrado). Sem subFiltro, o user escolhe no modal. */
+                onNovaTarefaNoDia={(prazo) => onNovaTarefa({
+                  prazo,
+                  projetoId: projetoFiltro,
+                  subprojetoId: subFiltro || undefined,
+                })}
+              />
             )}
             {view === "kanban" && (
               <KanbanView tarefas={tarefasFiltradas} projetos={projetos} autor={autor} onAbrir={onAbrir} />
@@ -1076,7 +1103,13 @@ function ProjetoListaView({ projeto, subprojetos, subFiltro, tarefas, projetos, 
 
 // ─── VIEW: Admin de Projetos (master) — CRUD inline ───────────────────────
 
-function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjeto[]; subprojetos: TarefaSubprojeto[]; pessoaId: string }) {
+function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoPendentes }: {
+  projetos: TarefaProjeto[];
+  subprojetos: TarefaSubprojeto[];
+  pessoaId: string;
+  onGerarPendentes: () => void;
+  gerandoPendentes: boolean;
+}) {
   const [criandoProjeto, setCriandoProjeto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [editandoSubId, setEditandoSubId] = useState<string | null>(null);
@@ -1121,6 +1154,15 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
           Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
         </p>
         <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onGerarPendentes}
+            disabled={gerandoPendentes}
+            title="Roda manualmente o gerador de tarefas-lembrete a partir de Contas Fixas e Manutenções cadastradas. Normalmente roda automático via cron diário — só use se o cron falhou."
+          >
+            {gerandoPendentes ? "Gerando…" : "🔁 Gerar pendentes"}
+          </Button>
           <Button size="sm" variant="ghost" onClick={() => setImportando(true)}>📥 Importar CSV</Button>
           <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
         </div>
@@ -2142,7 +2184,7 @@ function LixeiraView({ tarefas, projetos, autor }: {
 
 // ─── MODAL: Nova Tarefa ───────────────────────────────────────────────────
 
-function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial }: {
+function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -2150,11 +2192,13 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   pessoaId: string;
   pessoaNome: string;
   prazoInicial?: string;
+  projetoIdInicial?: string;
+  subprojetoIdInicial?: string;
 }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
-  const [projetoId, setProjetoId] = useState(projetos[0]?.id || "");
-  const [subprojetoId, setSubprojetoId] = useState("");
+  const [projetoId, setProjetoId] = useState(projetoIdInicial || projetos[0]?.id || "");
+  const [subprojetoId, setSubprojetoId] = useState(subprojetoIdInicial || "");
   const [prazo, setPrazo] = useState(prazoInicial || "");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
