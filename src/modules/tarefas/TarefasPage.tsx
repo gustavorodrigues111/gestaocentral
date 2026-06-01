@@ -1023,13 +1023,6 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-// Hook só pra ler activeId — ProjetoView precisa só disso pra construir
-// o link do CTA do banner de sub automático.
-function useActiveRid(): string {
-  const { activeId } = useRestaurant();
-  return activeId || "";
-}
-
 function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -1045,7 +1038,6 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
 }) {
-  const rid = useActiveRid();
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
   const tarefasFiltradas = subFiltro
@@ -1077,16 +1069,12 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                 ele recebe tarefas e dá CTA pro módulo origem. CTA respeita
                 o moduloOrigemRestaurantId travado (se houver) ou usa o rest
                 atual como fallback. */}
-            {subAtual?.bloqueadoCriacaoManual && (() => {
-              const ridLink = subAtual.moduloOrigemRestaurantId || rid;
-              const restTravado = subAtual.moduloOrigemRestaurantId
-                ? projetos.length && projetos[0] // só pra usar o restaurants hook abaixo
-                : null;
-              return (
-                <BannerSubAuto sub={subAtual} ridLink={ridLink} restTravadoId={subAtual.moduloOrigemRestaurantId} />
-              );
-              void restTravado;
-            })()}
+            {subAtual?.bloqueadoCriacaoManual && (
+              <BannerSubAuto
+                sub={subAtual}
+                restTravadoId={subAtual.moduloOrigemRestaurantId}
+              />
+            )}
 
             <ViewSwitcher value={view} onChange={onChangeView} />
             {view === "lista" && (
@@ -1133,26 +1121,33 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
 }
 
 // Banner explicativo pra subprojeto bloqueado. Mostra origem + CTA pro
-// módulo. Quando o sub tem moduloOrigemRestaurantId, mostra chip com o
-// nome do rest travado pra evitar confusão entre unidades.
-function BannerSubAuto({ sub, ridLink, restTravadoId }: {
+// módulo. Comportamento do CTA:
+// - Sub travado num restaurante (moduloOrigemRestaurantId): link direto
+//   pra /r/{travado}/{rota}. Mostra chip "🔒 Nome".
+// - Sub sem trava: clica abre modal perguntando QUAL restaurante (em
+//   vez de assumir o rest atual e arriscar confusão).
+function BannerSubAuto({ sub, restTravadoId }: {
   sub: TarefaSubprojeto;
-  ridLink: string;
   restTravadoId?: string;
 }) {
   const { restaurants } = useRestaurant();
-  const restNome = restTravadoId
-    ? restaurants.find(r => r.id === restTravadoId)?.nome
+  const restTravado = restTravadoId
+    ? restaurants.find(r => r.id === restTravadoId)
     : null;
+  const [escolhendoRest, setEscolhendoRest] = useState(false);
+
+  const label = sub.moduloOrigemLabel || "Ir pra origem";
+  const rota = sub.moduloOrigemRota || "";
+
   return (
     <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
       <span className="text-2xl shrink-0" aria-hidden>🤖</span>
       <div className="flex-1 min-w-0">
         <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap">
           Subprojeto automático
-          {restNome && (
+          {restTravado && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
-              🔒 {restNome}
+              🔒 {restTravado.nome}
             </span>
           )}
         </div>
@@ -1162,14 +1157,79 @@ function BannerSubAuto({ sub, ridLink, restTravadoId }: {
           {sub.gatilho && <> <strong>Gatilho:</strong> {sub.gatilho}.</>}
         </p>
       </div>
-      {sub.moduloOrigemRota && ridLink && (
-        <a
-          href={`/r/${ridLink}${sub.moduloOrigemRota}`}
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
-        >
-          {sub.moduloOrigemLabel || "Ir pra origem"} →
-        </a>
+      {rota && (
+        restTravado ? (
+          // Travado: link direto, sem perguntar nada
+          <a
+            href={`/r/${restTravado.id}${rota}`}
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
+          >
+            {label} →
+          </a>
+        ) : (
+          // Sem trava: abre modal pra user escolher qual restaurante
+          <button
+            type="button"
+            onClick={() => setEscolhendoRest(true)}
+            className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
+          >
+            {label} →
+          </button>
+        )
       )}
+      {escolhendoRest && (
+        <EscolhaRestauranteModal
+          restaurants={restaurants}
+          rota={rota}
+          tituloModulo={label.replace(/^Ir pra /i, "")}
+          onClose={() => setEscolhendoRest(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal: lista os restaurantes do user e ao escolher, navega pra
+// /r/{escolhido}/{rota}. Usado pelo banner quando o sub não tem rest
+// travado e o user precisa decidir qual unidade abrir.
+function EscolhaRestauranteModal({ restaurants, rota, tituloModulo, onClose }: {
+  restaurants: Array<{ id: string; nome: string }>;
+  rota: string;
+  tituloModulo: string;
+  onClose: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
+          Qual restaurante?
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Você vai pra <span className="font-medium">{tituloModulo}</span>. Escolha em qual restaurante quer abrir.
+        </p>
+        <div className="space-y-1.5">
+          {restaurants.map(r => (
+            <a
+              key={r.id}
+              href={`/r/${r.id}${rota}`}
+              className="block w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-sm font-medium text-gray-800 dark:text-gray-200 transition-colors"
+            >
+              🏠 {r.nome} →
+            </a>
+          ))}
+          {restaurants.length === 0 && (
+            <div className="text-sm text-gray-400 italic text-center py-4">
+              Nenhum restaurante disponível.
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end mt-4">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        </div>
+      </div>
     </div>
   );
 }
