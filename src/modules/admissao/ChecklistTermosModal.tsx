@@ -801,6 +801,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 <Button size="sm" variant="secondary" onClick={verificarAssinatura} disabled={clicksignBusy !== ""}>
                   {clicksignBusy === "verificando" ? "Verificando…" : "🔄 Verificar assinatura"}
                 </Button>
+                {/* Permite enviar mais documentos mesmo com envelope ativo —
+                    cria um NOVO envelope (não adiciona ao atual). O modal de
+                    seleção marca os docs já enviados pra evitar duplicação. */}
+                <Button size="sm" onClick={abrirSelecaoClicksign} disabled={clicksignBusy !== ""}>
+                  {clicksignBusy === "enviando" ? "Carregando…" : "✍️ Enviar mais docs"}
+                </Button>
               </div>
             )}
             {clicksignMsg && (
