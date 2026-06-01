@@ -307,17 +307,40 @@ function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggi
     }
   }
 
+  // Cutoff pra mover automático pro histórico (mantém o kanban limpo):
+  // - canceladas com mais de 14 dias  → histórico
+  // - realizadas com mais de 45 dias  → histórico
+  // Planejadas nunca vão pra histórico (mesmo vencidas) — DP precisa ver
+  // pra tomar ação. Comparação pela data da REUNIÃO, não atualizadoEm.
+  const todayDate = new Date(today + "T00:00:00");
+  const cutoff14 = new Date(todayDate); cutoff14.setDate(cutoff14.getDate() - 14);
+  const cutoff45 = new Date(todayDate); cutoff45.setDate(cutoff45.getDate() - 45);
+  const cutoff14Ymd = cutoff14.toISOString().slice(0, 10);
+  const cutoff45Ymd = cutoff45.toISOString().slice(0, 10);
+
+  function vaiPraHistorico(r: Reuniao): boolean {
+    if (r.status === "cancelada" && r.data && r.data < cutoff14Ymd) return true;
+    if (r.status === "realizada" && r.data && r.data < cutoff45Ymd) return true;
+    return false;
+  }
+
   const porCol: Record<ReuniaoStatus, Reuniao[]> = { planejada: [], realizada: [], cancelada: [] };
-  reunioes.forEach(r => { porCol[r.status]?.push(r); });
+  const historico: Reuniao[] = [];
+  reunioes.forEach(r => {
+    if (vaiPraHistorico(r)) historico.push(r);
+    else porCol[r.status]?.push(r);
+  });
 
   // Planejadas ordena por data crescente (próxima primeiro). Resto desc.
   porCol.planejada.sort((a, b) => (a.data || "").localeCompare(b.data || ""));
   porCol.realizada.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
   porCol.cancelada.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  historico.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
 
   return (
+    <div className="space-y-4">
     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 overflow-x-auto">
       {KANBAN_COLS_R.map(col => {
         const lista = porCol[col.id];
@@ -407,6 +430,64 @@ function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggi
           </div>
         );
       })}
+    </div>
+
+    {/* Histórico: canceladas > 14 dias + realizadas > 45 dias.
+        Renderizado abaixo do Kanban, accordion fechado por padrão. */}
+    {historico.length > 0 && (
+      <HistoricoReunioes itens={historico} onAbrir={onAbrir} />
+    )}
+    </div>
+  );
+}
+
+function HistoricoReunioes({ itens, onAbrir }: {
+  itens: Reuniao[];
+  onAbrir: (r: Reuniao) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const nCanceladas = itens.filter(r => r.status === "cancelada").length;
+  const nRealizadas = itens.length - nCanceladas;
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-900/20">
+      <button
+        type="button"
+        onClick={() => setAberto(a => !a)}
+        className="w-full px-3 py-2 flex items-center justify-between text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/40 rounded-t-lg"
+      >
+        <span className="flex items-center gap-2">
+          <span className={`transition-transform leading-none ${aberto ? "" : "-rotate-90"}`}>▾</span>
+          <span className="font-semibold">📚 Histórico</span>
+          <span className="text-gray-500 dark:text-gray-400">
+            ({itens.length} — {nRealizadas} realizadas há +45d, {nCanceladas} canceladas há +14d)
+          </span>
+        </span>
+        <span className="text-[10px] text-gray-400">{aberto ? "ocultar" : "expandir"}</span>
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3 space-y-1">
+          {itens.map(r => (
+            <button
+              key={r.id}
+              type="button"
+              onClick={() => onAbrir(r)}
+              className="w-full text-left text-xs px-2 py-1.5 rounded hover:bg-white dark:hover:bg-gray-900 border border-transparent hover:border-gray-200 dark:hover:border-gray-800 flex items-center gap-2"
+            >
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold uppercase tracking-wider ${
+                r.status === "cancelada"
+                  ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+              }`}>
+                {r.status === "cancelada" ? "cancelada" : "realizada"}
+              </span>
+              <span className="text-gray-500 dark:text-gray-400 tabular-nums">
+                {r.data ? new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR") : "—"}
+              </span>
+              <span className="flex-1 truncate text-gray-900 dark:text-gray-100">{r.titulo}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
