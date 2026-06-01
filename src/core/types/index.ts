@@ -2472,12 +2472,18 @@ export type TermoAssinado = {
   assinadoEm?: string;              // ISO
   assinadoPor?: { id: string; nome: string };
   // Tipos especiais que disparam fluxo próprio no ChecklistTermosModal:
-  //   "uniforme" → botão "📦 Gerar termo de uniformes" que abre
+  //   "uniforme"    → botão "📦 Gerar termo de uniformes" que abre
   //     NovaEntregaModal em modo admissão (cria entrega + gera PDF +
   //     baixa estoque). Termo entra no kit do Clicksign.
-  //   "epi"      → idem, mas pra EPIs (termo separado por exigência legal).
+  //   "epi"         → idem, mas pra EPIs (termo separado por exigência legal).
+  //   "prorrogacao" → Termo de Prorrogação da experiência (45→90). DP
+  //     recebe junto com o contrato e sobe o PDF na admissão pra deixar
+  //     guardado, mas o termo NÃO PODE ser enviado pro Clicksign no envio
+  //     inicial (senão a prorrogação ficaria automática). Só é enviado
+  //     pelo botão "Prorrogar contrato" na tarefa de Decisão de Experiência
+  //     (1ª etapa) — quando a renovação for de fato decidida.
   // Ausente = termo comum (só checkbox + link).
-  tipoEspecial?: "uniforme" | "epi";
+  tipoEspecial?: "uniforme" | "epi" | "prorrogacao";
   // ID da EntregaUniforme gerada (quando tipoEspecial existe + assinado=true).
   entregaIdGerada?: string;
   // Marcado pelo DP = este termo "não se aplica" a esta admissão → deixa de

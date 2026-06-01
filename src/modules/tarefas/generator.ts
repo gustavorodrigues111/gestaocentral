@@ -348,11 +348,9 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
   // estas subtarefas, com prazos relativos ao prazo da pai.
   // Se o subprojeto tiver tarefasTemplate definido no Admin, ele sobrescreve.
   const checklistDefault = [
-    { texto: "Conversar com líder sobre desempenho do colaborador", offset: "D-5" },
-    { texto: "Avaliar comportamento, pontualidade e adaptação", offset: "D-3" },
-    { texto: "Decisão: renovar OU não renovar", offset: "D-2" },
-    { texto: "Comunicar empregado da decisão", offset: "D-1" },
-    { texto: "Se não renovar: usar botão 'Iniciar demissão' no detalhe da tarefa", offset: "D+0" },
+    { texto: "Conversar com líder sobre desempenho técnico e comportamental do empregado", offset: "D-7" },
+    { texto: "Avaliar faltas e pontualidade do primeiro período", offset: "D-5" },
+    { texto: "Definir renovação ou demissão com Gustavo", offset: "D-2" },
   ];
 
   // Carrega responsável padrão + observadores padrão do subprojeto

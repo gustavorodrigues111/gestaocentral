@@ -280,6 +280,10 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     // admissão já criou) — calculado a partir de admissao.clicksignHistorico
     // cruzando por fileId/filename. Vazio = nunca enviado.
     envios?: { envelopeId: string; enviadoEm: string }[];
+    // Quando setado, o checkbox aparece DISABLED + motivo visível. Usado
+    // pelo Termo de Prorrogação (tipoEspecial="prorrogacao"), que só pode
+    // ser enviado pelo botão "Prorrogar contrato" na tarefa de Decisão.
+    bloqueado?: { motivo: string };
   };
   // Modal de seleção pré-envio. Inclui um cache do status dos docs do
   // envelope ativo (consultado uma vez na abertura via API) pra mostrar
@@ -351,11 +355,26 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       //  2) Cada termo obrigatório+assinado com link Drive que NÃO está
       //     na pasta → source "externo" (vai tentar baixar via Drive API
       //     na hora do envio; se não tiver permissão, falha graciosamente)
+      // Termo de Prorrogação tem bloqueio: não pode ser enviado no envelope
+      // inicial (senão a prorrogação ficaria automática). Detecto pelo
+      // linkFileId do termo cujo tipoEspecial === "prorrogacao".
+      const idsBloqueados = new Map<string, string>();
+      for (const t of termosReconciliados) {
+        if (t.tipoEspecial === "prorrogacao" && t.linkFileId) {
+          idsBloqueados.set(
+            t.linkFileId,
+            "🔒 Termo de Prorrogação — só vai pro Clicksign pelo botão 'Prorrogar contrato' na tarefa de Decisão de Experiência.",
+          );
+        }
+      }
       const itensPasta: ItemEnvio[] = arquivos.map(a => ({
         id: a.id,
         name: a.name,
         source: "pasta" as const,
         webViewLink: a.webViewLink,
+        bloqueado: idsBloqueados.has(a.id)
+          ? { motivo: idsBloqueados.get(a.id)! }
+          : undefined,
       }));
       const idsJaIncluidos = new Set(itensPasta.map(i => i.id));
       const itensExternos: ItemEnvio[] = [];
@@ -459,11 +478,13 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         enriquecidos = enriquecer(arquivosTotais, historicoEfetivo);
       }
       // Default: marca SÓ os arquivos que NUNCA foram enviados antes.
-      const naoEnviados = enriquecidos.filter(a => !a.envios || a.envios.length === 0);
-      const haAlgumEnviado = enriquecidos.some(a => a.envios && a.envios.length > 0);
+      // Bloqueados (Termo de Prorrogação) nunca entram no default.
+      const naoBloqueados = enriquecidos.filter(a => !a.bloqueado);
+      const naoEnviados = naoBloqueados.filter(a => !a.envios || a.envios.length === 0);
+      const haAlgumEnviado = naoBloqueados.some(a => a.envios && a.envios.length > 0);
       const selecionadosInit = haAlgumEnviado
         ? new Set(naoEnviados.map(a => a.id))
-        : new Set(enriquecidos.map(a => a.id));
+        : new Set(naoBloqueados.map(a => a.id));
       setSelecaoEnvio({ arquivos: enriquecidos, selecionados: selecionadosInit, statusDocsAtivo });
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
@@ -1107,21 +1128,22 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     registro de entrega. Quando já existe uma entrega criada
                     pra esta admissão, o modal abre em modo EDIÇÃO (hidrata
                     itens, chama atualizarEntrega no save — não duplica). */}
-                {t.tipoEspecial && (() => {
-                  const entExistente = entregasExistentes[t.tipoEspecial];
+                {(t.tipoEspecial === "uniforme" || t.tipoEspecial === "epi") && (() => {
+                  const tipo: "uniforme" | "epi" = t.tipoEspecial;
+                  const entExistente = entregasExistentes[tipo];
                   const label = carregandoUniformes
                     ? "Carregando catálogo…"
                     : entExistente
-                      ? (t.tipoEspecial === "uniforme"
+                      ? (tipo === "uniforme"
                           ? `📦 Ver/editar termo de uniformes (${entExistente.itens.length} item(ns))`
                           : `🦺 Ver/editar termo de EPIs (${entExistente.itens.length} item(ns))`)
-                      : (t.tipoEspecial === "uniforme"
+                      : (tipo === "uniforme"
                           ? "📦 Gerar termo de uniformes"
                           : "🦺 Gerar termo de EPIs");
                   return (
                     <button
                       type="button"
-                      onClick={() => abrirGerarTermo(t.tipoEspecial!)}
+                      onClick={() => abrirGerarTermo(tipo)}
                       disabled={carregandoUniformes}
                       className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
                     >
@@ -1362,7 +1384,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     type="button"
                     onClick={() => setSelecaoEnvio(prev => prev && {
                       ...prev,
-                      selecionados: new Set(prev.arquivos.map(a => a.id)),
+                      selecionados: new Set(prev.arquivos.filter(a => !a.bloqueado).map(a => a.id)),
                     })}
                     className="text-indigo-600 dark:text-indigo-400 hover:underline"
                   >
@@ -1396,28 +1418,35 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 const checked = selecaoEnvio.selecionados.has(a.id);
                 const envios = a.envios || [];
                 const jaEnviado = envios.length > 0;
+                const bloqueado = !!a.bloqueado;
                 return (
                   <label
                     key={a.id}
-                    className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition-colors ${
-                      checked
-                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800"
-                        : jaEnviado
-                          ? "bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/60"
-                          : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    className={`flex items-start gap-2 p-2 rounded border transition-colors ${
+                      bloqueado
+                        ? "bg-gray-50 dark:bg-gray-900/40 border-gray-200 dark:border-gray-800 opacity-70 cursor-not-allowed"
+                        : checked
+                          ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 cursor-pointer"
+                          : jaEnviado
+                            ? "bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/60 cursor-pointer"
+                            : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer"
                     }`}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => setSelecaoEnvio(prev => {
-                        if (!prev) return prev;
-                        const next = new Set(prev.selecionados);
-                        if (next.has(a.id)) next.delete(a.id);
-                        else next.add(a.id);
-                        return { ...prev, selecionados: next };
-                      })}
-                      className="w-4 h-4 mt-0.5 accent-indigo-600 flex-shrink-0"
+                      disabled={bloqueado}
+                      onChange={() => {
+                        if (bloqueado) return;
+                        setSelecaoEnvio(prev => {
+                          if (!prev) return prev;
+                          const next = new Set(prev.selecionados);
+                          if (next.has(a.id)) next.delete(a.id);
+                          else next.add(a.id);
+                          return { ...prev, selecionados: next };
+                        });
+                      }}
+                      className="w-4 h-4 mt-0.5 accent-indigo-600 flex-shrink-0 disabled:opacity-40"
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
@@ -1444,6 +1473,11 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                           </a>
                         )}
                       </div>
+                      {bloqueado && a.bloqueado && (
+                        <div className="text-[10px] text-gray-700 dark:text-gray-300 mt-0.5">
+                          {a.bloqueado.motivo}
+                        </div>
+                      )}
                       {jaEnviado && (
                         <div className="text-[10px] text-amber-800 dark:text-amber-300 mt-0.5 space-y-0.5 font-mono">
                           {envios.map((envio, idx) => (

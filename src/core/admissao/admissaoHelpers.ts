@@ -790,16 +790,17 @@ export function getTermosAssinaturaDefault(): {
   id: string;
   nome: string;
   obrigatorio: boolean;
-  tipoEspecial?: "uniforme" | "epi";
+  tipoEspecial?: "uniforme" | "epi" | "prorrogacao";
 }[] {
   return [
-    { id: "tm_contrato_clt",        nome: "Contrato de Trabalho (CLT)",                  obrigatorio: true },
-    { id: "tm_confidencialidade",   nome: "Termo de Confidencialidade",                  obrigatorio: true },
-    { id: "tm_uniforme",            nome: "Termo de entrega de Uniformes",               obrigatorio: true, tipoEspecial: "uniforme" },
-    { id: "tm_epi",                 nome: "Termo de entrega de EPIs",                    obrigatorio: true, tipoEspecial: "epi" },
-    { id: "tm_regulamento_interno", nome: "Regulamento Interno (ciência e assinatura)",  obrigatorio: true },
-    { id: "tm_lgpd",                nome: "Política de Privacidade / LGPD",              obrigatorio: true },
-    { id: "tm_outros",              nome: "Outros termos (especificar nas notas)",       obrigatorio: false },
+    { id: "tm_contrato_clt",            nome: "Contrato de Trabalho (CLT)",                          obrigatorio: true },
+    { id: "tm_confidencialidade",       nome: "Termo de Confidencialidade",                          obrigatorio: true },
+    { id: "tm_uniforme",                nome: "Termo de entrega de Uniformes",                       obrigatorio: true, tipoEspecial: "uniforme" },
+    { id: "tm_epi",                     nome: "Termo de entrega de EPIs",                            obrigatorio: true, tipoEspecial: "epi" },
+    { id: "tm_regulamento_interno",     nome: "Regulamento Interno (ciência e assinatura)",          obrigatorio: true },
+    { id: "tm_lgpd",                    nome: "Política de Privacidade / LGPD",                      obrigatorio: true },
+    { id: "tm_prorrogacao_experiencia", nome: "Termo de Prorrogação da Experiência (45→90)",         obrigatorio: false, tipoEspecial: "prorrogacao" },
+    { id: "tm_outros",                  nome: "Outros termos (especificar nas notas)",               obrigatorio: false },
   ];
 }
 
