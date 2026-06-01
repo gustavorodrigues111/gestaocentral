@@ -5,6 +5,7 @@ import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
+import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { fbUser, pessoa, signOut } = useAuth();
@@ -60,6 +61,18 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       <div className="flex-1 min-w-0" />
 
+      {/* Chip de versão — visível em mobile e desktop. Click hard-reload
+          pra forçar atualização. Usuário lê esse número e dá pro suporte
+          conferir se está na versão mais recente do deploy. */}
+      <button
+        type="button"
+        onClick={() => window.location.reload()}
+        title={`Versão do app: ${APP_VERSION_LABEL}\nClique pra atualizar`}
+        className="text-[10px] sm:text-xs font-mono text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+      >
+        v.{APP_COMMIT}
+      </button>
+
       {/* Badge de "novos restaurantes" — pessoa foi adicionada e ainda não viu */}
       {pessoa && (pessoa.novosRestaurantes?.length || 0) > 0 && (
         <NovosRestaurantesBadge pessoaId={pessoa.id} novosRids={pessoa.novosRestaurantes!} />
@@ -81,9 +94,35 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         {menuOpen && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-20">
+            <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-20">
               <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
                 {fbUser?.email}
+              </div>
+              <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+                <div className="text-[10px] uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-0.5">
+                  Versão do app
+                </div>
+                <div className="font-mono text-xs text-gray-700 dark:text-gray-300">
+                  {APP_COMMIT}
+                </div>
+                {APP_BUILD_DATE && (
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                    Build em {APP_BUILD_DATE}
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Hard reload limpando o cache do bundle. Em PWA/Vercel
+                    // edge, o SW pode ter cacheado a versão antiga — esse
+                    // reload força o browser a buscar tudo de novo.
+                    setMenuOpen(false);
+                    window.location.reload();
+                  }}
+                  className="mt-2 w-full text-left text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                >
+                  ↻ Atualizar agora
+                </button>
               </div>
               <button
                 onClick={() => { setMenuOpen(false); signOut(); }}
