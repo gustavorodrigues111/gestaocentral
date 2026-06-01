@@ -3417,6 +3417,11 @@ export type TarefaSubprojeto = {
   // cai pro criador da tarefa.
   responsavelPadraoId?: string;
   responsavelPadraoNome?: string;
+  // Observadores padrão — toda tarefa criada neste subprojeto vem com
+  // esses ids em observadoresIds (somam aos manualmente adicionados na
+  // criação). Útil pra "líder de área sempre acompanha o que rola no
+  // sub X". Filtrado pela visibilidade do projeto pai.
+  observadoresPadraoIds?: string[];
   // Recorrência da tarefa-pai (rotinas). Quando setado + auto:true, sistema
   // pode gerar próxima ocorrência automaticamente ao concluir.
   recorrenciaTipo?: "nenhuma" | "mensal" | "semanal" | "anual" | "trimestral" | "semestral";

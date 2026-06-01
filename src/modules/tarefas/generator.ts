@@ -27,6 +27,19 @@ function addDias(yyyymmdd: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Carrega observadoresPadraoIds de um subprojeto. Retorna [] em falha
+// pra não quebrar a criação da tarefa.
+async function loadObservadoresPadraoSub(subprojetoId: string): Promise<string[]> {
+  try {
+    const snap = await getDoc(doc(db, "tarefaSubprojetos", subprojetoId));
+    if (!snap.exists()) return [];
+    const data = snap.data() as { observadoresPadraoIds?: string[] };
+    return data.observadoresPadraoIds || [];
+  } catch {
+    return [];
+  }
+}
+
 /** Próximo vencimento de uma Conta Fixa a partir de hoje. */
 function proximoVencimentoContaFixa(cf: ContaFixa): string | null {
   const hoje = new Date();
@@ -88,6 +101,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       cf.titular && `Titular: ${cf.titular}`,
       cf.observacoes && `\n${cf.observacoes}`,
     ].filter(Boolean).join("\n");
+    const obsCF = await loadObservadoresPadraoSub(cf.subprojetoId);
     const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
       projetoId: cf.projetoId,
       subprojetoId: cf.subprojetoId,
@@ -95,6 +109,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       descricao: notes || undefined,
       responsavelId: cf.responsavelPadraoId,
       responsavelNome: cf.responsavelPadraoNome,
+      observadoresIds: obsCF.length > 0 ? obsCF : undefined,
       restaurantIds: cf.restaurantIds,
       prazo: venc,
       status: "a_fazer",
@@ -127,6 +142,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
     if (m.ultimaGeracaoChave === chave) { jaExistiam++; continue; }
     const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
     if (!existSnap.empty) { jaExistiam++; continue; }
+    const obsM = await loadObservadoresPadraoSub(m.subprojetoId);
     const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
       projetoId: m.projetoId,
       subprojetoId: m.subprojetoId,
@@ -139,6 +155,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       ].filter(Boolean).join("\n"),
       responsavelId: m.responsavelPadraoId,
       responsavelNome: m.responsavelPadraoNome,
+      observadoresIds: obsM.length > 0 ? obsM : undefined,
       restaurantIds: m.restaurantIds,
       prazo: venc,
       status: "a_fazer",
@@ -199,6 +216,12 @@ export async function tentarAgendarProximaRecorrencia(
       }))
     : undefined;
 
+  // Herda observadores padrão do sub + os que a tarefa concluída tinha
+  // (próxima rotina geralmente mantém o mesmo conjunto de observadores).
+  const obsRec = Array.from(new Set([
+    ...(sub.observadoresPadraoIds || []),
+    ...(tarefaConcluida.observadoresIds || []),
+  ]));
   await criarTarefa({
     projetoId: tarefaConcluida.projetoId,
     subprojetoId: tarefaConcluida.subprojetoId,
@@ -206,6 +229,7 @@ export async function tentarAgendarProximaRecorrencia(
     descricao: tarefaConcluida.descricao,
     responsavelId: sub.responsavelPadraoId || tarefaConcluida.responsavelId,
     responsavelNome: sub.responsavelPadraoNome || tarefaConcluida.responsavelNome,
+    observadoresIds: obsRec.length > 0 ? obsRec : undefined,
     restaurantIds: tarefaConcluida.restaurantIds,
     prazo: proxPrazo,
     status: "a_fazer",
@@ -331,20 +355,29 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     { texto: "Se não renovar: usar botão 'Iniciar demissão' no detalhe da tarefa", offset: "D+0" },
   ];
 
-  // Carrega responsável padrão do subprojeto (sobrescreve quem moveu o card)
+  // Carrega responsável padrão + observadores padrão do subprojeto
+  // (sobrescrevem/adicionam ao que veio de quem moveu o card)
   let respIdFinal = responsavelPadraoId;
   let respNomeFinal = responsavelPadraoNome;
+  let observadoresPadrao: string[] = [];
   try {
     const subSnap = await getDoc(doc(db, "tarefaSubprojetos", "sub-pessoas-experiencia"));
     if (subSnap.exists()) {
-      const sub = subSnap.data() as { responsavelPadraoId?: string; responsavelPadraoNome?: string };
+      const sub = subSnap.data() as {
+        responsavelPadraoId?: string;
+        responsavelPadraoNome?: string;
+        observadoresPadraoIds?: string[];
+      };
       if (sub.responsavelPadraoId) {
         respIdFinal = sub.responsavelPadraoId;
         respNomeFinal = sub.responsavelPadraoNome;
       }
+      if (sub.observadoresPadraoIds?.length) {
+        observadoresPadrao = sub.observadoresPadraoIds;
+      }
     }
   } catch (e) {
-    console.warn("[cascata] falha ao carregar resp padrão do subprojeto:", e);
+    console.warn("[cascata] falha ao carregar config do subprojeto:", e);
   }
 
   // Filtra os que já existem
@@ -368,6 +401,7 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
       titulo: t.titulo,
       responsavelId: respIdFinal,
       responsavelNome: respNomeFinal,
+      observadoresIds: observadoresPadrao.length > 0 ? observadoresPadrao : undefined,
       restaurantIds: [restaurantId],
       prazo: t.prazo,
       status: "a_fazer" as const,

@@ -2145,6 +2145,21 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
         </select>
       </label>
 
+      {/* Observadores padrão — adicionam-se sempre que uma tarefa nasce
+          neste subprojeto. Filtrado pela visibilidade do projeto pai. */}
+      <div className="block text-xs">
+        <div className="text-gray-600 dark:text-gray-400 mb-1">
+          Observadores padrão (recebem notificações de toda tarefa nova deste subprojeto)
+        </div>
+        <PessoasMultiPicker
+          value={f.observadoresPadraoIds || []}
+          onChange={(ids) => setF({ ...f, observadoresPadraoIds: ids.length > 0 ? ids : undefined })}
+          pessoas={pessoasElegiveis}
+          excluir={f.responsavelPadraoId ? [f.responsavelPadraoId] : []}
+          placeholder="adicionar observador padrão"
+        />
+      </div>
+
       {/* Recorrência */}
       <label className="block text-xs">
         <div className="text-gray-600 dark:text-gray-400 mb-1">Recorrência (rotinas — ao concluir, gera próxima)</div>
@@ -2782,10 +2797,18 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   const temTemplate = (subAtual?.tarefasTemplate?.length ?? 0) > 0;
   const cor = projetoAtual?.cor;
 
-  // Quando muda o subprojeto, se ele tem responsável padrão, usa-o.
+  // Quando muda o subprojeto, se ele tem responsável padrão + observadores
+  // padrão, aplica-os no form (merge com o que o user já marcou).
   useEffect(() => {
     if (subAtual?.responsavelPadraoId) {
       setResponsavelId(subAtual.responsavelPadraoId);
+    }
+    const obsPadrao = subAtual?.observadoresPadraoIds || [];
+    if (obsPadrao.length > 0) {
+      setObservadoresIds(prev => {
+        const merged = new Set([...prev, ...obsPadrao]);
+        return Array.from(merged);
+      });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subprojetoId]);
