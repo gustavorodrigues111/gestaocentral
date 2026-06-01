@@ -46,7 +46,7 @@ import {
 } from "../../core/types";
 import type { TarefaAnexo, Subtarefa } from "../../core/types";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
-import { podeVerTarefa, isConfidencial } from "./visibilidade";
+import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
 import type { LinhaImportada } from "./importador";
 import type { Pessoa, Restaurant } from "../../core/types";
@@ -155,6 +155,23 @@ export function TarefasPage() {
     [detalheId, minhas, tarefasProjeto],
   );
 
+  // Projetos que esta pessoa pode ver na sidebar. Master vê todos;
+  // demais veem só os com visibilidade "publico"/"escritorio", os de que
+  // são donos, e aqueles em que estão na lista de usuariosAutorizados.
+  // Subprojetos herdam: se o projeto pai não está visível, o sub também não.
+  const projetosVisiveis = useMemo(
+    () => projetos.filter(p => podeVerProjeto(p, pessoa)),
+    [projetos, pessoa],
+  );
+  const idsProjetosVisiveis = useMemo(
+    () => new Set(projetosVisiveis.map(p => p.id)),
+    [projetosVisiveis],
+  );
+  const subprojetosVisiveis = useMemo(
+    () => subprojetos.filter(s => idsProjetosVisiveis.has(s.projetoId)),
+    [subprojetos, idsProjetosVisiveis],
+  );
+
   async function rodarSeed() {
     if (!pessoa?.id) return;
     setSeeding(true);
@@ -217,8 +234,8 @@ export function TarefasPage() {
             projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
             subFiltroAtual={subFiltro}
             minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
-            projetos={projetos}
-            subprojetos={subprojetos}
+            projetos={projetosVisiveis}
+            subprojetos={subprojetosVisiveis}
             tarefasProjeto={tarefasProjeto}
             onAbrirMinhas={() => setTab("minhas")}
             onAbrirProjeto={(pid) => {
@@ -251,7 +268,7 @@ export function TarefasPage() {
               )}
             </TabButton>
             <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
-            {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Admin Projetos</TabButton>}
+            {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Configurações de Tarefas</TabButton>}
             {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
           </nav>
 
@@ -525,7 +542,7 @@ function ProjetosSidebar({
               ativo={tabAtual === "admin"}
               onClick={onAbrirAdmin}
               icone="⚙️"
-              label="Admin Projetos"
+              label="Configurações de Tarefas"
             />
           )}
           {onAbrirLixeira && (
@@ -2943,7 +2960,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
                 🔒 Projeto privado — só pessoas autorizadas no projeto podem ser responsáveis.
-                {responsaveisElegiveis.length === 1 && " Adicione pessoas autorizadas no Admin Projetos pra atribuir a outros."}
+                {responsaveisElegiveis.length === 1 && " Adicione pessoas autorizadas em Configurações de Tarefas pra atribuir a outros."}
               </p>
             )}
           </Field>

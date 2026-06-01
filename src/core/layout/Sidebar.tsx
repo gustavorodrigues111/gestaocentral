@@ -102,7 +102,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
         <nav className="flex-1 p-3 space-y-4">
-          {/* Tarefas é a tela inicial — link de topo, fora dos agrupamentos */}
+          {/* Tarefas é a tela inicial — link de topo, fora dos agrupamentos.
+              Só aparece pra quem tem permissão no módulo "tarefas". */}
+          {visibleModule("tarefas") && (
           <NavLink
             to={rid ? `/r/${rid}/tarefas` : "/"}
             end
@@ -122,6 +124,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               </span>
             )}
           </NavLink>
+          )}
 
           {souEquipe && rid && (
             <NavLink

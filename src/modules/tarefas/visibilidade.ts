@@ -17,6 +17,22 @@ export function visibilidadeEfetiva(tarefa: Tarefa, projeto?: TarefaProjeto): st
     || "privado";
 }
 
+// Mesma lógica usada em Tarefa, aplicada ao Projeto. Determina se a pessoa
+// pode ver/listar o projeto na sidebar do Gestor de Tarefas. Subprojetos
+// herdam — escondemos sub se o pai não está visível.
+export function podeVerProjeto(
+  projeto: TarefaProjeto,
+  pessoa: Pessoa | null,
+): boolean {
+  if (!pessoa) return false;
+  if (pessoa.isMaster) return true;
+  if (projeto.dono === pessoa.id) return true;
+  if ((projeto.usuariosAutorizados || []).includes(pessoa.id)) return true;
+  const v = projeto.visibilidade || "privado";
+  if (v === "publico" || v === "escritorio") return true;
+  return false;
+}
+
 export function podeVerTarefa(
   tarefa: Tarefa,
   projeto: TarefaProjeto | undefined,
