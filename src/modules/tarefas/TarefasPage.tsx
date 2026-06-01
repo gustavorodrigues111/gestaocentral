@@ -208,19 +208,39 @@ export function TarefasPage() {
         </div>
       )}
 
-      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        <TabButton ativo={tab === "minhas"} onClick={() => setTab("minhas")}>
-          Minhas Tarefas
-          {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length > 0 && (
-            <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-              {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
-            </span>
-          )}
-        </TabButton>
-        <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
-        {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Admin Projetos</TabButton>}
-        {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
-      </nav>
+      {/* Layout 2 colunas no desktop: sidebar lateral leve (estilo Asana —
+          Minhas tarefas no topo + lista de projetos como favoritos clicáveis)
+          + área principal com tabs e views. Mobile colapsa: sidebar some,
+          tabs ficam por cima. */}
+      <div className="md:grid md:grid-cols-[220px_1fr] md:gap-5">
+        <aside className="hidden md:block">
+          <ProjetosSidebar
+            tabAtual={tab}
+            projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
+            minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
+            projetos={projetos}
+            onAbrirMinhas={() => setTab("minhas")}
+            onAbrirProjeto={(pid) => { setTab("projeto"); setProjetoFiltro(pid); }}
+            onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
+            onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
+          />
+        </aside>
+
+        <div className="min-w-0">
+          {/* Tabs ainda visíveis (mobile + atalho rápido no desktop) */}
+          <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto md:hidden">
+            <TabButton ativo={tab === "minhas"} onClick={() => setTab("minhas")}>
+              Minhas Tarefas
+              {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length > 0 && (
+                <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                  {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
+                </span>
+              )}
+            </TabButton>
+            <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
+            {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Admin Projetos</TabButton>}
+            {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
+          </nav>
 
       {tab === "minhas" && (
         <div>
@@ -229,6 +249,7 @@ export function TarefasPage() {
             <CalendarioView
               tarefas={minhas}
               projetos={projetos}
+              subprojetos={subprojetos}
               onAbrir={setDetalheId}
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
@@ -297,6 +318,9 @@ export function TarefasPage() {
         />
       )}
 
+        </div> {/* fecha .min-w-0 (área de conteúdo principal) */}
+      </div> {/* fecha grid sidebar+content */}
+
       {tarefaSelecionada && (
         podeVerTarefa(tarefaSelecionada, projetos.find(p => p.id === tarefaSelecionada.projetoId), pessoa) ? (
           <DetalheModal
@@ -311,6 +335,121 @@ export function TarefasPage() {
         )
       )}
     </div>
+  );
+}
+
+// Sidebar lateral (estilo Asana) — atalho "Minhas tarefas" no topo + lista
+// de projetos clicáveis. Click em projeto leva pra aba "Por Projeto" com
+// aquele projeto pré-selecionado.
+function ProjetosSidebar({
+  tabAtual, projetoFiltroAtual, minhasPendentes, projetos,
+  onAbrirMinhas, onAbrirProjeto, onAbrirAdmin, onAbrirLixeira,
+}: {
+  tabAtual: string;
+  projetoFiltroAtual: string;
+  minhasPendentes: number;
+  projetos: TarefaProjeto[];
+  onAbrirMinhas: () => void;
+  onAbrirProjeto: (id: string) => void;
+  onAbrirAdmin?: () => void;
+  onAbrirLixeira?: () => void;
+}) {
+  return (
+    <div className="sticky top-4 space-y-4">
+      {/* Bloco superior — caixa pessoal */}
+      <div className="space-y-0.5">
+        <SidebarItem
+          ativo={tabAtual === "minhas"}
+          onClick={onAbrirMinhas}
+          icone="📋"
+          label="Minhas tarefas"
+          badge={minhasPendentes || undefined}
+        />
+      </div>
+
+      {/* Bloco Projetos */}
+      <div>
+        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-2 mb-1">
+          Projetos
+        </div>
+        <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
+          {projetos.length === 0 && (
+            <div className="px-2 py-1 text-xs text-gray-400 italic">Sem projetos ainda.</div>
+          )}
+          {projetos.map(p => {
+            const ativo = tabAtual === "projeto" && projetoFiltroAtual === p.id;
+            return (
+              <button
+                key={p.id}
+                onClick={() => onAbrirProjeto(p.id)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
+                  ativo
+                    ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
+                    : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                }`}
+                title={p.nome}
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                  style={{ background: p.cor || "#6b7280" }}
+                />
+                <span className="text-base leading-none">{p.emoji || "📁"}</span>
+                <span className="truncate flex-1">{p.nome}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Bloco Admin/Lixeira — só master */}
+      {(onAbrirAdmin || onAbrirLixeira) && (
+        <div className="space-y-0.5 pt-3 border-t border-gray-200 dark:border-gray-800">
+          {onAbrirAdmin && (
+            <SidebarItem
+              ativo={tabAtual === "admin"}
+              onClick={onAbrirAdmin}
+              icone="⚙️"
+              label="Admin Projetos"
+            />
+          )}
+          {onAbrirLixeira && (
+            <SidebarItem
+              ativo={tabAtual === "lixeira"}
+              onClick={onAbrirLixeira}
+              icone="🗑️"
+              label="Lixeira"
+            />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SidebarItem({ ativo, onClick, icone, label, badge }: {
+  ativo: boolean;
+  onClick: () => void;
+  icone: string;
+  label: string;
+  badge?: number;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
+        ativo
+          ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
+          : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+      }`}
+    >
+      <span className="text-base leading-none">{icone}</span>
+      <span className="flex-1">{label}</span>
+      {badge !== undefined && badge > 0 && (
+        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+          {badge}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -887,7 +1026,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, t
               />
             )}
             {view === "calendario" && (
-              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} onAbrir={onAbrir} autor={autor} />
+              <CalendarioView tarefas={tarefasFiltradas} projetos={projetos} subprojetos={subprojetos} onAbrir={onAbrir} autor={autor} />
               /* Em Por Projeto não passamos onNovaTarefaNoDia — a criação rápida
                  fica reservada pra Minhas Tarefas (caixa pessoal de pra-fazer). */
             )}
@@ -1556,12 +1695,14 @@ function inicioSemanaSeg(yyyymmdd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
+function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNovaTarefaNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
+  subprojetos?: TarefaSubprojeto[];
   onAbrir: (id: string) => void;
   autor?: { id: string; nome: string };
-  onNovaTarefaNoDia?: (prazo: string) => void;
+  // Quando chamado com `prazo`, vai pra aquele dia; sem args, cria sem data.
+  onNovaTarefaNoDia?: (prazo?: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -1683,6 +1824,9 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
             const cor = t.corHerdada || proj?.cor || "#6b7280";
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
+            // Asana-style: "‹ Subprojeto" em cinza menor abaixo do título.
+            // Fonte do prefixo é o subprojeto (não tem tarefa-pai no schema).
+            const sub = subprojetos?.find(s => s.id === t.subprojetoId);
             return (
               <button
                 key={t.id}
@@ -1697,11 +1841,16 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                   setDropTarget(null);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
-                className={`w-full text-left text-[11px] px-1.5 py-1 rounded truncate hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                className={`w-full text-left text-[11px] px-1.5 py-1 rounded hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                 style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
-                {t.titulo}
+                <div className="truncate font-medium">{t.titulo}</div>
+                {sub && (
+                  <div className="truncate text-[10px] opacity-70 leading-tight">
+                    ‹ {sub.nome}
+                  </div>
+                )}
               </button>
             );
           })}
@@ -1721,16 +1870,35 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
 
   return (
     <div>
+      {/* Toolbar estilo Asana: botão "+ Adicionar tarefa" proeminente à
+          esquerda, nav semana no meio, chip "Sem data (X)" + total à direita. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[180px] text-center">
-            {titulo}
-          </span>
-          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
-          <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
+        <div className="flex items-center gap-3 flex-wrap">
+          {onNovaTarefaNoDia && (
+            <button
+              onClick={() => onNovaTarefaNoDia()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition-colors"
+              title="Criar nova tarefa"
+            >
+              <span className="text-base leading-none">+</span>
+              Adicionar tarefa
+            </button>
+          )}
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
+            <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-2">
+              {titulo}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
+          {semProprio.length > 0 && (
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">
+              📭 Sem data ({semProprio.length})
+            </span>
+          )}
           <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
             <input
               type="checkbox"
