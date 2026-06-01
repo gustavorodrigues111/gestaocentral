@@ -216,6 +216,10 @@ export function CompatibilidadeTab({ rid }: Props) {
     });
   }
 
+  // Limites de carga semanal do restaurante (default CLT padrão 43:55–44:00).
+  const cargaMinMin = activeRestaurant?.horarioConfig?.cargaSemanalMinMin ?? 2635;
+  const cargaMaxMin = activeRestaurant?.horarioConfig?.cargaSemanalMaxMin ?? 2640;
+
   // Aplica o quadro vindo da Sólides como NOVA versão do WorkSchedule do
   // empregado no Planejamento, com `validFrom` informado. O array é
   // versionado por data, então o quadro antigo continua válido até a
@@ -230,7 +234,6 @@ export function CompatibilidadeTab({ rid }: Props) {
       alert("Sem usuário logado.");
       return;
     }
-    // Monta o days[0..6] no formato HorarioDia
     const days: { [key: number]: HorarioDia } = {};
     for (let d = 0; d < 7; d++) {
       const x = solByDay[d];
@@ -240,8 +243,9 @@ export function CompatibilidadeTab({ rid }: Props) {
         days[d] = { active: true, in: x.in, out: x.out, break: x.break };
       }
     }
-    // Calcula totalContract (limites frouxos — Compatibilidade não impõe CLT)
-    const { totalContract } = validateWorkScheduleDays(days, 0, Number.MAX_SAFE_INTEGER);
+    // totalContract com limites REAIS do restaurante. Errors da CLT são
+    // tratados na UI do modal (bloqueia "Confirmar" sem o opt-out).
+    const { totalContract } = validateWorkScheduleDays(days, cargaMinMin, cargaMaxMin);
 
     const novo: WorkSchedule = {
       validFrom,
@@ -345,6 +349,8 @@ export function CompatibilidadeTab({ rid }: Props) {
       {copiarParaPlanejamento && (
         <CopiarSolidesParaPlanejamentoModal
           resultado={copiarParaPlanejamento}
+          cargaMinMin={cargaMinMin}
+          cargaMaxMin={cargaMaxMin}
           onClose={() => setCopiarParaPlanejamento(null)}
           onConfirm={(validFrom, motivo) => {
             const solByDay: Record<number, DiaNorm> = {};
@@ -529,16 +535,18 @@ function labelCampo(c: "active" | "in" | "out" | "break"): string {
 
 function CopiarSolidesParaPlanejamentoModal({
   resultado,
+  cargaMinMin,
+  cargaMaxMin,
   onClose,
   onConfirm,
 }: {
   resultado: ResultadoEmpregado;
+  cargaMinMin: number;
+  cargaMaxMin: number;
   onClose: () => void;
-  onConfirm: (validFrom: string, motivo: string) => Promise<void>;
+  onConfirm: (validFrom: string, motivo: string, ignorarClt: boolean) => Promise<void>;
 }) {
   const { empregado, dias } = resultado;
-  // Default: primeiro dia do mês atual (vigência costuma ser fechamento de
-  // folha). Usuário pode alterar.
   const hoje = new Date();
   const yyyy = hoje.getFullYear();
   const mm = String(hoje.getMonth() + 1).padStart(2, "0");
@@ -546,20 +554,50 @@ function CopiarSolidesParaPlanejamentoModal({
   const [validFrom, setValidFrom] = useState(defaultValidFrom);
   const [motivo, setMotivo] = useState("Sincronizado pela Sólides via aba Compatibilidade.");
   const [salvando, setSalvando] = useState(false);
+  const [ignorarClt, setIgnorarClt] = useState(false);
+
+  // Roda a validação CLT no quadro que veio da Sólides. Resultado vira o
+  // bloqueio do botão "Confirmar e salvar" — mesma régua do cadastro manual
+  // de horários.
+  const validacao = useMemo(() => {
+    const days: { [key: number]: HorarioDia } = {};
+    for (const d of dias) {
+      const x = d.sol;
+      if (!x || !x.active) {
+        days[d.dow] = { active: false };
+      } else {
+        days[d.dow] = { active: true, in: x.in, out: x.out, break: x.break };
+      }
+    }
+    return validateWorkScheduleDays(days, cargaMinMin, cargaMaxMin);
+  }, [dias, cargaMinMin, cargaMaxMin]);
+
+  const temErroClt = validacao.errors.length > 0;
+  const podeConfirmar = !temErroClt || ignorarClt;
 
   async function confirmar() {
     if (!validFrom) {
       alert("Informe a data de vigência.");
       return;
     }
+    if (temErroClt && !ignorarClt) {
+      alert("O quadro vindo da Sólides tem violações de CLT. Corrija lá ou marque a opção pra salvar mesmo assim.");
+      return;
+    }
     setSalvando(true);
     try {
-      await onConfirm(validFrom, motivo.trim());
+      await onConfirm(validFrom, motivo.trim(), ignorarClt);
     } catch (e) {
       alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSalvando(false);
     }
+  }
+
+  function fmtHora(totalMin: number): string {
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return `${String(h).padStart(2, "0")}h${String(m).padStart(2, "0")}`;
   }
 
   return (
@@ -603,6 +641,42 @@ function CopiarSolidesParaPlanejamentoModal({
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Validação CLT */}
+          <div>
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2 uppercase tracking-wider">
+              Conferência CLT
+            </div>
+            {temErroClt ? (
+              <div className="border border-rose-300 dark:border-rose-700/60 bg-rose-50 dark:bg-rose-900/20 rounded-lg p-3 text-xs">
+                <div className="font-semibold text-rose-800 dark:text-rose-200 mb-1.5">
+                  ⚠ {validacao.errors.length} violação(ões) de CLT detectada(s)
+                </div>
+                <ul className="space-y-1 text-rose-700 dark:text-rose-300 list-disc list-inside">
+                  {validacao.errors.map((iss, i) => (
+                    <li key={i}>
+                      <span className="font-semibold">{iss.artigo}:</span> {iss.mensagem}
+                    </li>
+                  ))}
+                </ul>
+                <label className="mt-2.5 flex items-start gap-2 text-rose-800 dark:text-rose-200 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={ignorarClt}
+                    onChange={(e) => setIgnorarClt(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-[11px]">
+                    Salvar mesmo assim. O quadro está cadastrado assim na Sólides — em geral conserta-se lá antes, mas se você precisa replicar pra cá pode marcar isso.
+                  </span>
+                </label>
+              </div>
+            ) : (
+              <div className="border border-emerald-300 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-200">
+                ✓ Quadro está dentro da CLT. Carga contratual semanal: <strong>{fmtHora(validacao.totalContract)}</strong> · {validacao.diasAtivos} dia(s) ativo(s).
+              </div>
+            )}
           </div>
 
           {/* Data de vigência */}
@@ -649,8 +723,9 @@ function CopiarSolidesParaPlanejamentoModal({
           <button
             type="button"
             onClick={confirmar}
-            disabled={salvando}
-            className="text-xs font-semibold uppercase tracking-wider px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50"
+            disabled={salvando || !podeConfirmar}
+            className="text-xs font-semibold uppercase tracking-wider px-4 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title={!podeConfirmar ? "Marque \"Salvar mesmo assim\" pra prosseguir com violações de CLT" : undefined}
           >
             {salvando ? "Salvando…" : "Confirmar e salvar"}
           </button>
