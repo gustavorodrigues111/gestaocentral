@@ -17,6 +17,7 @@ import {
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
   migrarGruposParaPrivadoLegado, aposentarCaixaPessoal,
   contarTarefasDoSubprojeto, moverSubprojetoParaProjeto,
+  ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas,
 } from "./repository";
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
@@ -35,11 +36,12 @@ import { gerarTarefasDoDia } from "./generator";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
   TarefaVisibilidade, TarefaTemplate, TarefaCustomField, TarefaCustomFieldTipo,
+  TarefaAutomacao, ModuloOrigemTarefa,
 } from "../../core/types";
 import {
   TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL,
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
-  TAREFA_CUSTOM_FIELD_TIPO_LABEL,
+  TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
 import type { TarefaAnexo, Subtarefa } from "../../core/types";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
@@ -1217,6 +1219,9 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
   const [criandoSubIn, setCriandoSubIn] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
   const [pessoasMap, setPessoasMap] = useState<Record<string, string>>({});
+  // Sub-tab interna do AdminView: "Projetos" (CRUD atual) vs "Automações"
+  // (config de responsáveis padrão por módulo origem das tarefas auto).
+  const [adminTab, setAdminTab] = useState<"projetos" | "automacoes">("projetos");
   useEffect(() => {
     const u = onSnapshot(collection(db, "pessoas"), snap => {
       const m: Record<string, string> = {};
@@ -1261,6 +1266,36 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
 
   return (
     <div>
+      {/* Sub-tabs: separa CRUD de projetos da config de automações */}
+      <div className="flex gap-1 mb-3 border-b border-gray-200 dark:border-gray-800">
+        <button
+          onClick={() => setAdminTab("projetos")}
+          className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            adminTab === "projetos"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          }`}
+        >
+          📁 Projetos
+        </button>
+        <button
+          onClick={() => setAdminTab("automacoes")}
+          className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            adminTab === "automacoes"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+          }`}
+        >
+          🤖 Automações
+        </button>
+      </div>
+
+      {adminTab === "automacoes" && (
+        <AutomacoesTab pessoaId={pessoaId} />
+      )}
+
+      {adminTab === "projetos" && (
+      <>
       <div className="flex items-center justify-between mb-4">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
@@ -1399,6 +1434,221 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
           onClose={() => setCriandoProjeto(false)}
           isModal
         />
+      )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// ─── Aba "Automações" — config de tarefas auto por módulo origem ─────────
+
+function AutomacoesTab({ pessoaId }: { pessoaId: string }) {
+  const { activeId } = useRestaurant();
+  const rid = activeId || "";
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const [automacoes, setAutomacoes] = useState<TarefaAutomacao[]>([]);
+  const [salvandoMod, setSalvandoMod] = useState<string | null>(null);
+
+  // Pessoas (pra picker)
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list = snap.docs
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .filter(p => p.ativa !== false && p.nome)
+        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoas(list);
+    });
+    return () => u();
+  }, []);
+
+  // Automações do restaurante atual
+  useEffect(() => {
+    if (!rid) return;
+    const u = ouvirAutomacoes(rid, setAutomacoes);
+    return () => u();
+  }, [rid]);
+
+  async function salvar(moduloId: ModuloOrigemTarefa, patch: Partial<TarefaAutomacao>) {
+    if (!rid) return;
+    setSalvandoMod(moduloId);
+    try {
+      const atual = automacoes.find(a => a.moduloId === moduloId);
+      const novo: TarefaAutomacao = {
+        id: `${rid}_${moduloId}`,
+        restaurantId: rid,
+        moduloId,
+        ...atual,
+        ...patch,
+        atualizadoEm: new Date().toISOString(),
+        atualizadoPor: pessoaId,
+      };
+      await salvarAutomacao(novo);
+      // Pergunta sobre propagação SÓ se há campos significativos preenchidos.
+      const temConfig = !!novo.responsavelId || (novo.coResponsaveisIds?.length || 0) > 0 || (novo.observadoresIds?.length || 0) > 0;
+      if (temConfig) {
+        const ok = confirm(
+          `Config salva. Deseja aplicar nas tarefas EM ABERTO (a fazer + em andamento) do módulo "${moduloId}" também?\n\n` +
+          `Tarefas concluídas/canceladas não são afetadas.`,
+        );
+        if (ok) {
+          const r = await propagarAutomacaoEmAbertas(novo, { id: pessoaId, nome: "Admin" });
+          alert(`${r.afetadas} tarefa(s) atualizada(s).`);
+        }
+      }
+    } catch (e) {
+      alert("Erro ao salvar: " + String(e));
+    } finally {
+      setSalvandoMod(null);
+    }
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+        Defina quem é o responsável padrão, co-responsáveis e observadores das tarefas
+        que cada módulo gera automaticamente. Ao salvar, o sistema oferece propagar a
+        mudança pras tarefas em aberto desse módulo (responsável: ex. trocar Ellen → outro
+        quando ela sai).
+      </p>
+      <div className="space-y-2">
+        {MODULOS_ORIGEM_TAREFA.map(modId => {
+          const a = automacoes.find(x => x.moduloId === modId);
+          return (
+            <AutomacaoLinha
+              key={modId}
+              moduloId={modId}
+              automacao={a}
+              pessoas={pessoas}
+              salvando={salvandoMod === modId}
+              onSave={(patch) => salvar(modId, patch)}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function AutomacaoLinha({ moduloId, automacao, pessoas, salvando, onSave }: {
+  moduloId: ModuloOrigemTarefa;
+  automacao?: TarefaAutomacao;
+  pessoas: Array<{ id: string; nome: string }>;
+  salvando: boolean;
+  onSave: (patch: Partial<TarefaAutomacao>) => void;
+}) {
+  // Buffer local — pra salvar só quando o user clica "Salvar"
+  const [respId, setRespId] = useState(automacao?.responsavelId || "");
+  const [coIds, setCoIds] = useState<string[]>(automacao?.coResponsaveisIds || []);
+  const [obsIds, setObsIds] = useState<string[]>(automacao?.observadoresIds || []);
+  // Sincroniza buffer com server quando snapshot chega
+  useEffect(() => {
+    setRespId(automacao?.responsavelId || "");
+    setCoIds(automacao?.coResponsaveisIds || []);
+    setObsIds(automacao?.observadoresIds || []);
+  }, [automacao?.responsavelId, automacao?.coResponsaveisIds, automacao?.observadoresIds]);
+
+  const moduloLabel = TAREFA_ORIGEM_LABEL[moduloId];
+  const respNome = pessoas.find(p => p.id === respId)?.nome;
+  const coNomes = coIds.map(id => pessoas.find(p => p.id === id)?.nome).filter((n): n is string => !!n);
+  const obsNomes = obsIds.map(id => pessoas.find(p => p.id === id)?.nome).filter((n): n is string => !!n);
+
+  function salvar() {
+    onSave({
+      responsavelId: respId || undefined,
+      responsavelNome: respNome,
+      coResponsaveisIds: coIds.length ? coIds : undefined,
+      coResponsaveisNomes: coIds.length ? coNomes : undefined,
+      observadoresIds: obsIds.length ? obsIds : undefined,
+      observadoresNomes: obsIds.length ? obsNomes : undefined,
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 bg-white dark:bg-gray-900">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{moduloLabel}</h3>
+        <Button size="sm" onClick={salvar} disabled={salvando}>
+          {salvando ? "Salvando…" : "Salvar"}
+        </Button>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="block text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+            Responsável
+          </label>
+          <select
+            value={respId}
+            onChange={(e) => setRespId(e.target.value)}
+            className="w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+          >
+            <option value="">— nenhum (usa fallback do hook) —</option>
+            {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+            Co-responsáveis (podem editar)
+          </label>
+          <PessoasMultiPicker
+            value={coIds}
+            onChange={setCoIds}
+            pessoas={pessoas}
+            excluir={respId ? [respId] : []}
+            placeholder="+ adicionar"
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] uppercase tracking-wider font-bold text-gray-500 mb-1">
+            Observadores (só acompanham)
+          </label>
+          <PessoasMultiPicker
+            value={obsIds}
+            onChange={setObsIds}
+            pessoas={pessoas}
+            excluir={[...(respId ? [respId] : []), ...coIds]}
+            placeholder="+ adicionar"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Multi-picker simples: chips + select com opções restantes. Reusado em
+// co-responsáveis e observadores.
+function PessoasMultiPicker({ value, onChange, pessoas, excluir, placeholder }: {
+  value: string[];
+  onChange: (ids: string[]) => void;
+  pessoas: Array<{ id: string; nome: string }>;
+  excluir?: string[];
+  placeholder?: string;
+}) {
+  const excluirSet = new Set([...(excluir || []), ...value]);
+  const disponiveis = pessoas.filter(p => !excluirSet.has(p.id));
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap gap-1">
+        {value.map(id => {
+          const p = pessoas.find(x => x.id === id);
+          return (
+            <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-[11px]">
+              {p?.nome || id}
+              <button onClick={() => onChange(value.filter(v => v !== id))} className="hover:text-rose-600">×</button>
+            </span>
+          );
+        })}
+      </div>
+      {disponiveis.length > 0 && (
+        <select
+          value=""
+          onChange={(e) => { if (e.target.value) onChange([...value, e.target.value]); }}
+          className="w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+        >
+          <option value="">{placeholder || "+ adicionar"}</option>
+          {disponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+        </select>
       )}
     </div>
   );
@@ -3015,6 +3265,19 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             </FieldRow>
             <FieldRow label="Co-responsáveis">
               <CoRespPicker tarefa={tarefa} pessoas={pessoasLista} autor={autor} />
+            </FieldRow>
+            <FieldRow label="Observadores">
+              <PessoasMultiPicker
+                value={tarefa.observadoresIds || []}
+                onChange={(ids) => {
+                  const nomes = ids.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean);
+                  salvarCampo("observadoresIds", ids.length ? ids : undefined, "observadores");
+                  salvarCampo("observadoresNomes", ids.length ? nomes : undefined);
+                }}
+                pessoas={pessoasLista}
+                excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
+                placeholder="+ adicionar"
+              />
             </FieldRow>
             <FieldRow label="Empresa(s)">
               <div className="flex flex-wrap gap-2 py-1">

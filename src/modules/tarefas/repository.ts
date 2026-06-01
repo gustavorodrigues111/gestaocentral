@@ -11,11 +11,13 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaLogEntry,
   Subtarefa, TarefaComentario, TarefaVisibilidade,
+  TarefaAutomacao, ModuloOrigemTarefa,
 } from "../../core/types";
 
 const COL_PROJETOS = "tarefaProjetos";
 const COL_SUBPROJETOS = "tarefaSubprojetos";
 const COL_TAREFAS = "tarefas";
+const COL_AUTOMACOES = "tarefaAutomacoes";
 
 // ─── PROJETOS ─────────────────────────────────────────────────────────────
 
@@ -408,3 +410,71 @@ function cryptoId(): string {
 }
 
 export { cryptoId };
+
+// ─── AUTOMAÇÕES (config de tarefas auto por módulo) ──────────────────────
+
+// Listen das configs de automação do restaurante atual. Uma config por
+// (restaurantId, módulo). Sem doc = sem config (cai pra fallback do hook).
+export function ouvirAutomacoes(rid: string, cb: (lista: TarefaAutomacao[]) => void): Unsubscribe {
+  return onSnapshot(
+    query(collection(db, COL_AUTOMACOES), where("restaurantId", "==", rid)),
+    snap => {
+      cb(snap.docs.map(d => ({ id: d.id, ...d.data() }) as TarefaAutomacao));
+    },
+  );
+}
+
+// Lê 1 config sob demanda (pra usar nos hooks de criação automática).
+export async function lerAutomacao(rid: string, moduloId: ModuloOrigemTarefa): Promise<TarefaAutomacao | null> {
+  const ref = doc(db, COL_AUTOMACOES, `${rid}_${moduloId}`);
+  const snap = await getDoc(ref);
+  if (!snap.exists()) return null;
+  return { id: snap.id, ...snap.data() } as TarefaAutomacao;
+}
+
+export async function salvarAutomacao(a: TarefaAutomacao): Promise<void> {
+  await setDoc(doc(db, COL_AUTOMACOES, a.id), sanitizeForFirestore(a));
+}
+
+// Propaga a config nas tarefas EM ABERTO (a_fazer / em_andamento) do mesmo
+// módulo + restaurante. Não toca em concluídas/canceladas pra não revisitar
+// história. Retorna quantas foram afetadas pra confirmar no modal.
+//
+// Estratégia: itera tarefas, monta patch só com os campos da automação
+// (responsavel / co / observadores). Mantém log de mudança no autor passado.
+export async function propagarAutomacaoEmAbertas(
+  a: TarefaAutomacao,
+  autor: { id: string; nome: string },
+): Promise<{ afetadas: number }> {
+  const snap = await getDocs(query(
+    collection(db, COL_TAREFAS),
+    where("restaurantId", "==", a.restaurantId),
+    where("origem", "==", a.moduloId),
+  ));
+  let afetadas = 0;
+  await Promise.all(snap.docs.map(async d => {
+    const t = d.data() as Tarefa;
+    if (t.status === "concluida" || t.status === "cancelada" || t.deletadoEm) return;
+    const patch: Partial<Tarefa> = {};
+    if (a.responsavelId && t.responsavelId !== a.responsavelId) {
+      patch.responsavelId = a.responsavelId;
+      patch.responsavelNome = a.responsavelNome || "";
+    }
+    if (a.coResponsaveisIds && a.coResponsaveisIds.length > 0) {
+      patch.coResponsaveis = a.coResponsaveisIds;
+      patch.coResponsaveisNomes = a.coResponsaveisNomes || [];
+    }
+    if (a.observadoresIds && a.observadoresIds.length > 0) {
+      patch.observadoresIds = a.observadoresIds;
+      patch.observadoresNomes = a.observadoresNomes || [];
+    }
+    if (Object.keys(patch).length === 0) return;
+    afetadas += 1;
+    await atualizarTarefa(d.id, patch, autor, {
+      acao: "editada",
+      campo: "automação",
+      detalhe: `propagado de "Config Automações ${a.moduloId}"`,
+    });
+  }));
+  return { afetadas };
+}

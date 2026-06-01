@@ -3264,6 +3264,35 @@ export const TAREFA_ORIGEM_LABEL: Record<TarefaOrigem, string> = {
   portal_empregado: "Portal do Empregado",
 };
 
+// Config "Tarefas Automáticas" por (restaurantId, módulo origem). Define
+// quem é o responsável padrão + co-responsáveis + observadores das tarefas
+// que vêm dos hooks daquele módulo. Editável pela aba Automações no Admin
+// Projetos. Quando alterada, oferece propagar nas tarefas em aberto.
+//
+// Módulos origem suportados (mesmo conjunto que TarefaOrigem, excluindo
+// "manual" e "recorrencia" — esses não têm "config de geração automática"
+// no sentido tradicional).
+export type ModuloOrigemTarefa = Exclude<TarefaOrigem, "manual" | "recorrencia">;
+
+export const MODULOS_ORIGEM_TAREFA: ModuloOrigemTarefa[] = [
+  "admissao", "demissao", "ferias", "reuniao",
+  "conta_fixa", "manutencao", "evento", "lote_financeiro", "portal_empregado",
+];
+
+export type TarefaAutomacao = {
+  id: string;                          // `${restaurantId}_${moduloId}`
+  restaurantId: string;
+  moduloId: ModuloOrigemTarefa;
+  responsavelId?: string;
+  responsavelNome?: string;
+  coResponsaveisIds?: string[];
+  coResponsaveisNomes?: string[];
+  observadoresIds?: string[];
+  observadoresNomes?: string[];
+  atualizadoEm: string;
+  atualizadoPor: string;
+};
+
 export type TarefaStatus = "a_fazer" | "em_andamento" | "concluida" | "cancelada";
 
 export const TAREFA_STATUS_LABEL: Record<TarefaStatus, string> = {
@@ -3462,6 +3491,11 @@ export type Tarefa = {
   responsavelNome?: string;
   coResponsaveis?: string[];
   coResponsaveisNomes?: string[];
+  // Observadores acompanham a tarefa (recebem notificações de mudanças e
+  // menções) mas não podem editá-la. Diferente de coResponsaveis que têm
+  // poder de ação.
+  observadoresIds?: string[];
+  observadoresNomes?: string[];
   restaurantIds?: string[];     // empresa(s) — multi-select opcional
   prazo?: string | null;
   inicio?: string | null;
