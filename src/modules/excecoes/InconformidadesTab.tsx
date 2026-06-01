@@ -6,11 +6,10 @@
 //  Recebe rid + activeRestaurant da page-shell (RegistrosPontoPage).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { Button } from "../../core/ui/Button";
 import { fmtAnoMes, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type {
@@ -37,19 +36,15 @@ import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
 import {
   adicionarApontamento,
   adicionarNotaInterna,
-  carregarStatusSemana,
-  gerarApontamentosEscala,
   listarStatusDoRestaurante,
   marcarApontamentoCiencia,
   marcarApontamentosEnviados,
-  marcarStatus,
-  podeMarcarStatus,
   removerApontamento,
   removerNotaInterna,
   salvarRelatorioCache,
 } from "../../core/excecoes/statusSemana";
 import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
-import { EXCECAO_STATUS_LABEL, type ExcecaoStatusSemana, type ExcecaoStatusValor } from "../../core/types";
+import type { ExcecaoStatusSemana } from "../../core/types";
 import {
   generateExceptionsReport,
   type GenerateReportResult,
@@ -74,10 +69,6 @@ import { MotivoAjusteModal } from "./MotivoAjusteModal";
 function todayYmd(): string {
   const d = new Date();
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
-}
-function firstDayOfCurrentMonth(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-01`;
 }
 
 // Data do "meio" do range [start, end] em YYYY-MM-DD. Usado pra buscar o
@@ -134,28 +125,6 @@ const SEVERITY_INFO: Record<
     label: "Info",
     badge: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
     dot: "bg-sky-500",
-  },
-};
-
-// ─── Cores dos chips de semana conforme status do tratamento ───────────────
-// aberto: cinza claro (default); em_tratamento: amarelo; tratado_lider: verde;
-// conferido_gerente: azul. Quando ativo (chip selecionado), versão saturada.
-const CHIP_COR_POR_STATUS: Record<ExcecaoStatusValor, { ativo: string; inativo: string }> = {
-  aberto: {
-    ativo:   "bg-indigo-600 text-white",
-    inativo: "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700",
-  },
-  em_tratamento: {
-    ativo:   "bg-amber-500 text-white",
-    inativo: "bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50",
-  },
-  tratado_lider: {
-    ativo:   "bg-emerald-600 text-white",
-    inativo: "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300 hover:bg-emerald-200 dark:hover:bg-emerald-900/50",
-  },
-  conferido_gerente: {
-    ativo:   "bg-sky-600 text-white",
-    inativo: "bg-sky-100 dark:bg-sky-900/30 text-sky-800 dark:text-sky-300 hover:bg-sky-200 dark:hover:bg-sky-900/50",
   },
 };
 
@@ -227,10 +196,18 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     () => semanasDoMes(anoMes.ano, anoMes.mes),
     [anoMes.ano, anoMes.mes],
   );
-  // Default: "Mês todo" (-1). Agrega caches das semanas que já têm relatório.
-  // Pra atualizar/regerar via Sólides, escolhe uma semana específica.
-  const [semanaIdx, setSemanaIdx] = useState<number>(-1);
-  const semanaAtiva = semanasMes.find((w) => w.index === semanaIdx) || semanasMes[0];
+  // Filtro multi-seleção de semanas pra VISUALIZAÇÃO. Vazio = mês todo
+  // (default). Click em chip toggle (adiciona ou remove do Set). Atualizar
+  // sempre regenera o mês todo via `atualizarMesTodo`.
+  const [semanasFiltro, setSemanasFiltro] = useState<Set<number>>(new Set());
+
+  // Resolve a SemanaInfo correspondente a uma data YYYY-MM-DD do mês visualizado.
+  // Usado em ações por apontamento (dar ciência, WhatsApp etc) pra resolver
+  // os endpoints `weekStart`/`weekEnd` a partir da data do fato em vez de
+  // depender de uma semana ativa global.
+  function semanaInfoParaData(date: string): SemanaInfo | null {
+    return semanasMes.find((w) => w.weekStart <= date && w.weekEnd >= date) || null;
+  }
 
   // Status do DIA (empregado × data) — listener real-time pro mês inteiro.
   // Não bloqueia exibição: começa vazio e popula assim que Firestore responde.
@@ -253,18 +230,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     });
     return () => u();
   }, [rid, anoMes.ano, anoMes.mes]);
-  const startDate = semanaAtiva?.weekStart || firstDayOfCurrentMonth();
-  const endDate = semanaAtiva?.weekEnd || todayYmd();
-
-  // Status da semana selecionada (persistido em /excecoesStatusSemana)
-  const [statusSemana, setStatusSemana] = useState<ExcecaoStatusSemana | null>(null);
-  const [carregandoStatus, setCarregandoStatus] = useState(false);
-  const [showHistoricoStatus, setShowHistoricoStatus] = useState(false);
-
-  // Status DE TODAS as semanas do mês — alimenta a cor dos chips. Recarregado
-  // quando muda o mês ou quando o status da semana ativa muda.
-  // Também guarda o array completo (com relatorioCache) pra o modo "Mês todo".
-  const [statusPorWeekStart, setStatusPorWeekStart] = useState<Map<string, ExcecaoStatusValor>>(new Map());
+  // Caches de relatório de TODAS as semanas do restaurante — agora é a única
+  // fonte de exibição. Recarregado quando muda o mês (e re-puxado ao fim do
+  // loop em `atualizarMesTodo`).
   const [todosStatusDoRest, setTodosStatusDoRest] = useState<ExcecaoStatusSemana[]>([]);
   useEffect(() => {
     if (!rid) return;
@@ -272,139 +240,41 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     listarStatusDoRestaurante(rid)
       .then((rows) => {
         if (cancelled) return;
-        const m = new Map<string, ExcecaoStatusValor>();
-        for (const r of rows) m.set(r.weekStart, r.status);
-        setStatusPorWeekStart(m);
         setTodosStatusDoRest(rows);
       })
       .catch(() => {
-        if (!cancelled) {
-          setStatusPorWeekStart(new Map());
-          setTodosStatusDoRest([]);
-        }
+        if (!cancelled) setTodosStatusDoRest([]);
       });
     return () => { cancelled = true; };
-  }, [rid, anoMes.ano, anoMes.mes, statusSemana?.status, statusSemana?.relatorioCache?.geradoEm]);
+  }, [rid, anoMes.ano, anoMes.mes]);
 
-  // Carrega status da semana selecionada. Quando muda de semana, ZERA o
-  // relatório atualmente exibido — depois, se a semana já tem cache salvo
-  // (porque está em tratamento+), restaura o snapshot.
-  useEffect(() => {
-    if (!rid || !semanaAtiva) return;
-    let cancelled = false;
-    // Reset visual imediato
-    setStatusSemana(null);
-    setResult(null);
-    setDebug(null);
-    setEscalaDebug(null);
-    setErro("");
-    setCarregandoStatus(true);
-    carregarStatusSemana(rid, semanaAtiva.weekStart)
-      .then((s) => {
-        if (cancelled) return;
-        setStatusSemana(s);
-        // Restaura relatório cacheado (só faz sentido se semana está em
-        // tratamento+, mas o cache só é salvo nesses casos, então confia)
-        if (s?.relatorioCache) {
-          const c = s.relatorioCache;
-          setResult({
-            exceptions: c.exceptions as ExceptionRecord[],
-            unmatched: c.unmatched as GenerateReportResult["unmatched"],
-            diasAnalisados: c.diasAnalisados,
-          });
-        }
-      })
-      .catch(() => { if (!cancelled) setStatusSemana(null); })
-      .finally(() => { if (!cancelled) setCarregandoStatus(false); });
-    return () => { cancelled = true; };
-  }, [rid, semanaAtiva?.weekStart]);
-
-  // Auto-gerar relatório ao entrar numa semana SEM cache. Roda uma vez por
-  // chip — depois disso, o botão "🔄 Atualizar" toca de novo manualmente.
-  // Precisa esperar empregados estarem carregados (senão dá relatório vazio).
-  const autoGeradoParaSemana = useRef<string | null>(null);
-  useEffect(() => {
-    if (!semanaAtiva || !rid || empregados.length === 0) return;
-    if (carregandoStatus) return; // espera o load do status terminar
-    // Tem cache → não gera (restaurar é responsabilidade do outro useEffect)
-    if (statusSemana?.relatorioCache) return;
-    // Já tentou auto-gerar essa semana nessa sessão → não repete
-    if (autoGeradoParaSemana.current === semanaAtiva.weekStart) return;
-    autoGeradoParaSemana.current = semanaAtiva.weekStart;
-    void gerar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [semanaAtiva?.weekStart, rid, empregados.length, carregandoStatus, statusSemana?.relatorioCache]);
+  // statusSemana virou um agregado virtual derivado dos caches do mês —
+  // só pra alimentar apontamentos/notas internas da UI (única coisa que ainda
+  // vive em /excecoesStatusSemana). Status por semana (aberto/em_tratamento/
+  // tratado_lider/conferido_gerente) NÃO é mais exposto nem editado.
+  const statusAgregado = useMemo<ExcecaoStatusSemana | null>(() => {
+    if (todosStatusDoRest.length === 0) return null;
+    const mesPrefix = `${anoMes.ano}-${pad2(anoMes.mes)}-`;
+    const cachesDoMes = todosStatusDoRest.filter(s =>
+      (s.weekStart || "").startsWith(mesPrefix) ||
+      (s.weekEnd || "").startsWith(mesPrefix)
+    );
+    if (cachesDoMes.length === 0) return null;
+    const apontamentos = cachesDoMes.flatMap(s => s.apontamentos || []);
+    const notasInternas = cachesDoMes.flatMap(s => s.notasInternas || []);
+    return {
+      ...cachesDoMes[0],
+      apontamentos,
+      notasInternas,
+    };
+  }, [todosStatusDoRest, anoMes.ano, anoMes.mes]);
 
   function navegaMes(delta: number) {
     setAnoMes((cur) => {
       const d = new Date(cur.ano, cur.mes - 1 + delta, 1);
       return { ano: d.getFullYear(), mes: d.getMonth() + 1 };
     });
-    setSemanaIdx(1);
-  }
-
-  async function aplicarStatus(novoStatus: ExcecaoStatusValor) {
-    if (!me || !semanaAtiva) return;
-    const statusAtual = statusSemana?.status || "aberto";
-    if (!podeMarcarStatus(me, rid, novoStatus, statusAtual)) {
-      alert("Sem permissão pra marcar esse status.");
-      return;
-    }
-    // Pede observação quando líder coloca em tratamento (anotando o que vai
-    // ajustar) ou quando reverte (justificativa).
-    const ehRegressao =
-      (statusAtual === "conferido_gerente" && novoStatus !== "conferido_gerente") ||
-      (statusAtual === "tratado_lider"     && novoStatus === "em_tratamento")    ||
-      (statusAtual === "em_tratamento"     && novoStatus === "aberto");
-    let obs: string | undefined;
-    if (novoStatus === "em_tratamento" && !ehRegressao) {
-      obs = prompt("Observação (opcional) — o que foi pedido pra ajustar?") || undefined;
-    } else if (ehRegressao) {
-      const r = prompt("Por que você está revertendo? (opcional)");
-      obs = r ? `[reverter] ${r}` : undefined;
-    }
-    try {
-      let updated = await marcarStatus(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, novoStatus, me, obs);
-      // Ao iniciar tratamento (saída de "aberto"), congelar o relatório
-      // atual no doc pra manter memória entre sessões.
-      if (statusAtual === "aberto" && novoStatus !== "aberto" && result) {
-        try {
-          updated = await salvarRelatorioCache(
-            rid,
-            semanaAtiva.weekStart,
-            semanaAtiva.weekEnd,
-            {
-              geradoEm: new Date().toISOString(),
-              exceptions: result.exceptions,
-              unmatched: result.unmatched,
-              diasAnalisados: result.diasAnalisados,
-            },
-          );
-        } catch (e) {
-          console.error("Erro salvando cache do relatório no início do tratamento:", e);
-          alert("Status atualizado, mas o cache do relatório não foi salvo: " + (e instanceof Error ? e.message : "?"));
-        }
-      }
-      // Ao confirmar conferência do gerente, gera o relatório de Apontamentos
-      // de Escala a partir do snapshot do relatório de inconformidades.
-      // Preserva o status "ajustado" de itens equivalentes existentes (caso
-      // tenha sido reaberto e re-conferido).
-      if (novoStatus === "conferido_gerente") {
-        try {
-          updated = await gerarApontamentosEscala(
-            rid,
-            semanaAtiva.weekStart,
-            semanaAtiva.weekEnd,
-          );
-        } catch (e) {
-          console.error("Erro gerando Apontamentos de Escala:", e);
-          alert("Conferência salva, mas falhou ao gerar apontamentos de escala: " + (e instanceof Error ? e.message : "?"));
-        }
-      }
-      setStatusSemana(updated);
-    } catch (e) {
-      alert("Erro ao salvar status: " + (e instanceof Error ? e.message : "?"));
-    }
+    setSemanasFiltro(new Set());
   }
 
   // ─── Apontamentos por empregado ────────────────────────────────────────────
@@ -413,7 +283,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // apontamentos não-tratáveis (intervalo a menos passado), o líder clica em
   // "Ciência" → status="ciencia" (fica registrado mas não vai pro empregado).
   // Anotações livres viram NOTAS INTERNAS (não vão pro WhatsApp).
-  const semanaConferida = statusSemana?.status === "conferido_gerente";
+  // semanaConferida: não existe mais bloqueio por status — qualquer ação é
+  // permitida desde que a semana esteja dentro do mês visualizado.
+  const semanaConferida = false;
 
   // Cruza CPF → empregadoId do Planejamento. exc.employeeId é o ID da Sólides
   // (number), não casa com /empregados/{id} — precisamos do ID local pra
@@ -427,10 +299,22 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [empregados]);
 
+  // Recarrega caches do mês inteiro — usado depois de uma ação por apontamento
+  // pra refletir o novo estado na UI agregada.
+  async function recarregarCaches() {
+    try {
+      const rows = await listarStatusDoRestaurante(rid);
+      setTodosStatusDoRest(rows);
+    } catch (e) {
+      console.warn("[ponto] falha ao recarregar caches:", e);
+    }
+  }
+
   // Resolve o apontamento existente (se houver) pra uma inconformidade,
-  // identificado pela tripla (empregadoId, data, ruleId).
+  // identificado pela tripla (empregadoId, data, ruleId). Procura nos
+  // caches agregados do mês.
   function acharApontamento(empregadoId: string, data: string, ruleId: string) {
-    return (statusSemana?.apontamentos || []).find(
+    return (statusAgregado?.apontamentos || []).find(
       (a) =>
         a.origem === "inconformidade" &&
         a.empregadoId === empregadoId &&
@@ -462,9 +346,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Se o apontamento já está "enviado"/"ciencia", desmarcar volta pra "pendente"
   // (em outras palavras: o checkbox em itens finalizados serve pra REABRIR).
   async function toggleEnviarExcecao(exc: ExceptionRecord) {
-    if (!me || !semanaAtiva) return;
-    if (semanaConferida) {
-      alert("Semana já conferida — não dá pra mexer em apontamento.");
+    if (!me) return;
+    const wk = semanaInfoParaData(exc.date);
+    if (!wk) {
+      console.warn(`[ponto] semana não encontrada pra data ${exc.date} no mês visualizado`);
       return;
     }
     const empId = resolverEmpId(exc);
@@ -473,8 +358,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     try {
       if (existente && existente.status === "pendente") {
         // Desmarca pendente → remove
-        const updated = await removerApontamento(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, existente.id);
-        setStatusSemana(updated);
+        await removerApontamento(rid, wk.weekStart, wk.weekEnd, existente.id);
+        await recarregarCaches();
       } else if (existente) {
         // Já enviado/ciência → não toca (use botão dedicado pra reabrir)
         alert(
@@ -483,10 +368,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             : `Já marcado como ciência por ${existente.cienciaPorNome}. Pra reabrir, use o botão "↩ reabrir".`,
         );
       } else {
-        const updated = await adicionarApontamento(
+        await adicionarApontamento(
           rid,
-          semanaAtiva.weekStart,
-          semanaAtiva.weekEnd,
+          wk.weekStart,
+          wk.weekEnd,
           {
             empregadoId: empId,
             empregadoNome: exc.employeeName,
@@ -499,7 +384,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           me,
           "pendente",
         );
-        setStatusSemana(updated);
+        await recarregarCaches();
       }
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
@@ -509,9 +394,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Marca a inconformidade como "ciência" — fica registrado mas NÃO vai pro
   // WhatsApp (caso clássico: intervalo a menos que já passou, fica só pra log).
   async function darCienciaExcecao(exc: ExceptionRecord) {
-    if (!me || !semanaAtiva) return;
-    if (semanaConferida) {
-      alert("Semana já conferida — não dá pra mexer em apontamento.");
+    if (!me) return;
+    const wk = semanaInfoParaData(exc.date);
+    if (!wk) {
+      console.warn(`[ponto] semana não encontrada pra data ${exc.date}`);
       return;
     }
     const empId = resolverEmpId(exc);
@@ -520,20 +406,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     try {
       let apontamentoId: string;
       if (existente) {
-        const updated = await marcarApontamentoCiencia(
-          rid,
-          semanaAtiva.weekStart,
-          semanaAtiva.weekEnd,
-          existente.id,
-          me,
-        );
+        await marcarApontamentoCiencia(rid, wk.weekStart, wk.weekEnd, existente.id, me);
         apontamentoId = existente.id;
-        setStatusSemana(updated);
       } else {
         const updated = await adicionarApontamento(
           rid,
-          semanaAtiva.weekStart,
-          semanaAtiva.weekEnd,
+          wk.weekStart,
+          wk.weekEnd,
           {
             empregadoId: empId,
             empregadoNome: exc.employeeName,
@@ -546,16 +425,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           me,
           "ciencia",
         );
-        // Pega o id que acabou de criar (último apontamento)
         apontamentoId = (updated.apontamentos || []).slice(-1)[0]?.id || "";
-        setStatusSemana(updated);
       }
       // Cria nota interna automática registrando a ciência → timeline completa
       try {
-        const updated = await adicionarNotaInterna(
+        await adicionarNotaInterna(
           rid,
-          semanaAtiva.weekStart,
-          semanaAtiva.weekEnd,
+          wk.weekStart,
+          wk.weekEnd,
           {
             empregadoId: empId,
             empregadoNome: exc.employeeName,
@@ -565,10 +442,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           },
           me,
         );
-        setStatusSemana(updated);
       } catch (e) {
         console.warn("Erro criando nota auto de ciência:", e);
       }
+      await recarregarCaches();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
@@ -580,21 +457,20 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Reabre apontamento finalizado (enviado ou ciência) → vira pendente.
   // Remove o apontamento — próxima ação do líder cria de novo se quiser.
   async function reabrirExcecao(exc: ExceptionRecord) {
-    if (!me || !semanaAtiva) return;
-    if (semanaConferida) return;
+    if (!me) return;
+    const wk = semanaInfoParaData(exc.date);
+    if (!wk) {
+      console.warn(`[ponto] semana não encontrada pra data ${exc.date}`);
+      return;
+    }
     const empId = resolverEmpId(exc);
     if (!empId) return;
     const existente = acharApontamento(empId, exc.date, exc.ruleId);
     if (!existente) return;
     if (!confirm("Reabrir esse apontamento? Vai voltar pra pendente.")) return;
     try {
-      const updated = await removerApontamento(
-        rid,
-        semanaAtiva.weekStart,
-        semanaAtiva.weekEnd,
-        existente.id,
-      );
-      setStatusSemana(updated);
+      await removerApontamento(rid, wk.weekStart, wk.weekEnd, existente.id);
+      await recarregarCaches();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
@@ -604,24 +480,29 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // saber o status visual e o botão a renderizar.
   const apontamentosPorChave = useMemo(() => {
     const m = new Map<string, ApontamentoFuncionario>();
-    for (const a of statusSemana?.apontamentos || []) {
+    for (const a of statusAgregado?.apontamentos || []) {
       if (a.origem === "inconformidade" && a.ruleId && a.data) {
         m.set(`${a.empregadoId}_${a.data}_${a.ruleId}`, a);
       }
     }
     return m;
-  }, [statusSemana?.apontamentos]);
+  }, [statusAgregado?.apontamentos]);
 
   // Nota INTERNA sobre o empregado (não vai pro WhatsApp). Tipo: "já conversei
   // pessoalmente", "veio explicar que foi atestado", "deixei recado pra ele".
+  // Resolve a semana a partir da data do PRIMEIRO apontamento do empregado
+  // no mês (nota tá ancorada na semana, então precisa de uma — usa qualquer
+  // uma do empregado nesse mês; senão, a 1ª semana do mês como fallback).
   async function criarNotaInterna(empregadoId: string, empregadoNome: string, cpf?: string) {
-    if (!me || !semanaAtiva) return;
-    if (semanaConferida) {
-      alert("Semana já conferida — não dá pra adicionar nota.");
-      return;
-    }
+    if (!me) return;
     if (!empregadoId) {
       alert(`Não achei empregado com CPF ${cpf || "?"} no Planejamento.`);
+      return;
+    }
+    const apDoEmp = (statusAgregado?.apontamentos || []).find(a => a.empregadoId === empregadoId && a.data);
+    const wk = apDoEmp?.data ? semanaInfoParaData(apDoEmp.data) : semanasMes[0];
+    if (!wk) {
+      alert("Sem semana disponível pra ancorar a nota.");
       return;
     }
     const txt = prompt(
@@ -630,31 +511,31 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     );
     if (!txt || !txt.trim()) return;
     try {
-      const updated = await adicionarNotaInterna(
+      await adicionarNotaInterna(
         rid,
-        semanaAtiva.weekStart,
-        semanaAtiva.weekEnd,
+        wk.weekStart,
+        wk.weekEnd,
         { empregadoId, empregadoNome, texto: txt.trim(), origem: "manual" },
         me,
       );
-      setStatusSemana(updated);
+      await recarregarCaches();
     } catch (e) {
       alert("Erro ao salvar nota: " + (e instanceof Error ? e.message : "?"));
     }
   }
 
   async function apagarNotaInterna(notaId: string) {
-    if (!me || !semanaAtiva) return;
-    if (semanaConferida) return;
+    if (!me) return;
     if (!confirm("Apagar essa nota interna?")) return;
+    // Acha em qual semana a nota tá ancorada
+    const cache = todosStatusDoRest.find(s => (s.notasInternas || []).some(n => n.id === notaId));
+    if (!cache) {
+      console.warn(`[ponto] semana não encontrada pra nota ${notaId}`);
+      return;
+    }
     try {
-      const updated = await removerNotaInterna(
-        rid,
-        semanaAtiva.weekStart,
-        semanaAtiva.weekEnd,
-        notaId,
-      );
-      setStatusSemana(updated);
+      await removerNotaInterna(rid, cache.weekStart, cache.weekEnd, notaId);
+      await recarregarCaches();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
@@ -663,13 +544,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Agrupa notas internas por empregado
   const notasPorEmpregado = useMemo(() => {
     const m = new Map<string, NotaInterna[]>();
-    for (const n of statusSemana?.notasInternas || []) {
+    for (const n of statusAgregado?.notasInternas || []) {
       const arr = m.get(n.empregadoId) || [];
       arr.push(n);
       m.set(n.empregadoId, arr);
     }
     return m;
-  }, [statusSemana?.notasInternas]);
+  }, [statusAgregado?.notasInternas]);
 
   // Conta os apontamentos `pendente` por empregado, SEPARADOS por categoria:
   //   alinhamento → vai pra "Dar ciência" (alinhamento é presencial, não vai
@@ -678,7 +559,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   //                 de batida no Sólides)
   const pendentesPorEmpregado = useMemo(() => {
     const m = new Map<string, { alinhamento: number; ajuste: number; total: number }>();
-    for (const a of statusSemana?.apontamentos || []) {
+    for (const a of statusAgregado?.apontamentos || []) {
       if (a.status !== "pendente") continue;
       const cat = a.ruleId
         ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
@@ -690,20 +571,32 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       m.set(a.empregadoId, cur);
     }
     return m;
-  }, [statusSemana?.apontamentos]);
+  }, [statusAgregado?.apontamentos]);
 
   // Marca em lote como "ciência" os apontamentos `pendente` de ALINHAMENTO do
   // empregado. Alinhamento é registro trabalhista — feito PRESENCIALMENTE com
   // o empregado, NÃO vai por WhatsApp. Aqui só registramos a ciência.
   // Itens de "ajuste" marcados como pendentes ficam intactos (vão pelo botão
   // do WhatsApp de regularização).
-  async function darCienciaPendentesDoEmpregado(empregadoId: string, empregadoNome: string) {
-    if (!me || !semanaAtiva || !statusSemana) return;
-    if (semanaConferida) {
-      alert("Semana já conferida — não dá pra mexer em apontamento.");
-      return;
+  // Agrupa apontamentos por semana — necessário pra ações em lote que podem
+  // tocar apontamentos de mais de uma semana (mês todo visível agora).
+  function agruparApontamentosPorSemana(aps: ApontamentoFuncionario[]):
+    Map<string, { wk: SemanaInfo; lista: ApontamentoFuncionario[] }> {
+    const m = new Map<string, { wk: SemanaInfo; lista: ApontamentoFuncionario[] }>();
+    for (const a of aps) {
+      if (!a.data) continue;
+      const wk = semanaInfoParaData(a.data);
+      if (!wk) continue;
+      const entry = m.get(wk.weekStart) || { wk, lista: [] };
+      entry.lista.push(a);
+      m.set(wk.weekStart, entry);
     }
-    const pendentes = (statusSemana.apontamentos || []).filter((a) => {
+    return m;
+  }
+
+  async function darCienciaPendentesDoEmpregado(empregadoId: string, empregadoNome: string) {
+    if (!me || !statusAgregado) return;
+    const pendentes = (statusAgregado.apontamentos || []).filter((a) => {
       if (a.empregadoId !== empregadoId) return false;
       if (a.status !== "pendente") return false;
       const cat = a.ruleId
@@ -715,33 +608,39 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Marque pelo menos 1 ALINHAMENTO pra dar ciência. Itens de ajuste vão pelo WhatsApp.");
       return;
     }
+    const porSemana = agruparApontamentosPorSemana(pendentes);
+    if (porSemana.size === 0) {
+      console.warn("[ponto] nenhuma semana encontrada pros apontamentos pendentes");
+      return;
+    }
     try {
-      let updated = statusSemana;
-      const idsCienciados: string[] = [];
-      for (const ap of pendentes) {
-        updated = await marcarApontamentoCiencia(rid, semanaAtiva.weekStart, semanaAtiva.weekEnd, ap.id, me);
-        idsCienciados.push(ap.id);
+      for (const { wk, lista } of porSemana.values()) {
+        const idsCienciados: string[] = [];
+        for (const ap of lista) {
+          await marcarApontamentoCiencia(rid, wk.weekStart, wk.weekEnd, ap.id, me);
+          idsCienciados.push(ap.id);
+        }
+        // Nota interna registrando a ciência em lote (1 por semana)
+        try {
+          const linhas = lista.map(a => `• ${a.texto}${a.data ? ` (${a.data})` : ""}`).join("\n");
+          await adicionarNotaInterna(
+            rid,
+            wk.weekStart,
+            wk.weekEnd,
+            {
+              empregadoId,
+              empregadoNome,
+              texto: `👁 Ciência tomada em ${lista.length} item(ns):\n${linhas}`,
+              origem: "ciencia",
+              apontamentoIds: idsCienciados,
+            },
+            me,
+          );
+        } catch (e) {
+          console.warn("Erro criando nota auto de ciência em lote:", e);
+        }
       }
-      // Nota interna registrando a ciência em lote
-      try {
-        const linhas = pendentes.map(a => `• ${a.texto}${a.data ? ` (${a.data})` : ""}`).join("\n");
-        updated = await adicionarNotaInterna(
-          rid,
-          semanaAtiva.weekStart,
-          semanaAtiva.weekEnd,
-          {
-            empregadoId,
-            empregadoNome,
-            texto: `👁 Ciência tomada em ${pendentes.length} item(ns):\n${linhas}`,
-            origem: "ciencia",
-            apontamentoIds: idsCienciados,
-          },
-          me,
-        );
-      } catch (e) {
-        console.warn("Erro criando nota auto de ciência em lote:", e);
-      }
-      setStatusSemana(updated);
+      await recarregarCaches();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
@@ -751,9 +650,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // batida". Alinhamentos são tratados PRESENCIALMENTE (botão "Dar ciência").
   // 1. Marca os itens de ajuste como `enviado` (com enviadoEm)
   // 2. Cria NOTA INTERNA automática registrando o envio (data + itens)
+  // Quando apontamentos do empregado cobrem múltiplas semanas, agrupa por
+  // semana pros writes em /excecoesStatusSemana — a MENSAGEM do WhatsApp é
+  // 1 só (range = min/max das datas).
   async function enviarWhatsDoEmpregado(empregadoId: string, empregadoNome: string) {
-    if (!me || !semanaAtiva || !statusSemana) return;
-    const pendentes = (statusSemana.apontamentos || []).filter((a) => {
+    if (!me || !statusAgregado) return;
+    const pendentes = (statusAgregado.apontamentos || []).filter((a) => {
       if (a.empregadoId !== empregadoId) return false;
       if (a.status !== "pendente") return false;
       const cat = a.ruleId
@@ -770,11 +672,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert(`${empregadoNome} não tem WhatsApp cadastrado em Pessoas.`);
       return;
     }
+    // Range global da mensagem do WhatsApp = min data → max data
+    const datas = pendentes.map(a => a.data!).filter(Boolean).sort();
+    const rangeStart = datas[0];
+    const rangeEnd = datas[datas.length - 1];
     const msg = montarMensagemAjustes({
       empregadoNome,
       restNome: activeRestaurant.nome,
-      weekStart: semanaAtiva.weekStart,
-      weekEnd: semanaAtiva.weekEnd,
+      weekStart: rangeStart,
+      weekEnd: rangeEnd,
       apontamentos: pendentes,
     });
     const link = whatsLink(whatsapp, msg);
@@ -783,32 +689,35 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       return;
     }
     window.open(link, "_blank");
+    const porSemana = agruparApontamentosPorSemana(pendentes);
     try {
-      // 1. Marca como enviado
-      await marcarApontamentosEnviados(
-        rid,
-        semanaAtiva.weekStart,
-        semanaAtiva.weekEnd,
-        pendentes.map((a) => a.id),
-      );
-      // 2. Cria nota interna automática registrando o envio
-      const resumoItens = pendentes
-        .map((a, i) => `${i + 1}. ${a.texto}`)
-        .join("\n");
-      const updated = await adicionarNotaInterna(
-        rid,
-        semanaAtiva.weekStart,
-        semanaAtiva.weekEnd,
-        {
-          empregadoId,
-          empregadoNome,
-          texto: `📨 Empregado avisado via WhatsApp em ${fmtDataHora(new Date().toISOString())} com ${pendentes.length} apontamento(s):\n${resumoItens}`,
-          origem: "envio_whatsapp",
-          apontamentoIds: pendentes.map((a) => a.id),
-        },
-        me,
-      );
-      setStatusSemana(updated);
+      for (const { wk, lista } of porSemana.values()) {
+        // 1. Marca como enviado
+        await marcarApontamentosEnviados(
+          rid,
+          wk.weekStart,
+          wk.weekEnd,
+          lista.map((a) => a.id),
+        );
+        // 2. Cria nota interna automática registrando o envio (1 por semana)
+        const resumoItens = lista
+          .map((a, i) => `${i + 1}. ${a.texto}`)
+          .join("\n");
+        await adicionarNotaInterna(
+          rid,
+          wk.weekStart,
+          wk.weekEnd,
+          {
+            empregadoId,
+            empregadoNome,
+            texto: `📨 Empregado avisado via WhatsApp em ${fmtDataHora(new Date().toISOString())} com ${lista.length} apontamento(s):\n${resumoItens}`,
+            origem: "envio_whatsapp",
+            apontamentoIds: lista.map((a) => a.id),
+          },
+          me,
+        );
+      }
+      await recarregarCaches();
     } catch (e) {
       console.warn("Erro pós-envio:", e);
     }
@@ -816,25 +725,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
-  const [result, setResult] = useState<GenerateReportResult | null>(null);
 
-  // Modo "Mês todo": agrega caches de TODAS as semanas do mês ativo.
-  // Modo leitura — não permite "Atualizar" (precisa ir semana a semana).
-  // Quando semanaIdx === -1, displayedResult ignora `result` (semana) e
-  // monta um snapshot agregado pra renderização.
-  const mesTodo = semanaIdx === -1;
+  // Visualização SEMPRE vem dos caches agregados do mês. Filtra ainda pelas
+  // semanas selecionadas em `semanasFiltro` (vazio = mês todo).
   const displayedResult: GenerateReportResult | null = useMemo(() => {
-    if (!mesTodo) return result;
-    // Agrega caches do mês ativo. Filtra docs cuja weekStart pertence
-    // ao mês (ou cujo weekEnd cai no mês, pra semanas truncadas).
     const mesPrefix = `${anoMes.ano}-${pad2(anoMes.mes)}-`;
-    const cachesDoMes = todosStatusDoRest.filter(s =>
+    let cachesDoMes = todosStatusDoRest.filter(s =>
       s.relatorioCache && (
         (s.weekStart || "").startsWith(mesPrefix) ||
         (s.weekEnd || "").startsWith(mesPrefix)
       )
     );
     if (cachesDoMes.length === 0) return null;
+    // Filtro multi-seleção de semanas. Cada chip selecionado adiciona a
+    // semana correspondente; vazio = mostra todas.
+    if (semanasFiltro.size > 0) {
+      const weekStartsAceitos = new Set<string>();
+      for (const w of semanasMes) {
+        if (semanasFiltro.has(w.index)) weekStartsAceitos.add(w.weekStart);
+      }
+      cachesDoMes = cachesDoMes.filter(s => weekStartsAceitos.has(s.weekStart));
+      if (cachesDoMes.length === 0) return null;
+    }
     // Concatena exceptions de todos os caches, filtrando pelo mês.
     // (semanas truncadas podem ter dias do mês anterior/seguinte.)
     const exceptions: ExceptionRecord[] = [];
@@ -864,7 +776,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       unmatched: Array.from(unmatchedMap.values()),
       diasAnalisados,
     };
-  }, [mesTodo, result, todosStatusDoRest, anoMes.ano, anoMes.mes]);
+  }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
+  // Mês todo = nenhuma semana selecionada (default agora).
+  const mesTodo = semanasFiltro.size === 0;
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
   type EscalaDebugInfo = {
     allanId?: string;
@@ -1014,19 +928,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Texto exibido no botão durante loop "Mês todo"
   const [progressoMes, setProgressoMes] = useState<string | null>(null);
 
-  // gerar() pode rodar pra `semanaAtiva` (modo padrão) ou pra uma semana
-  // específica passada via override (modo "Mês todo" — loopa todas).
-  // Quando há override: NÃO mexe no result/setStatusSemana exibidos
-  // (estamos iterando); só salva cache no Firestore. O reload do
-  // `todosStatusDoRest` ao fim do loop atualiza `displayedResult`.
+  // gerar() é invocado APENAS pelo loop `atualizarMesTodo` — sempre com uma
+  // semana específica (wk) e o status atual dela (pra preservar relatorioCache
+  // anterior pro diff "corrigido no Sólides"). Apenas grava o cache em
+  // Firestore — o reload de `todosStatusDoRest` no fim do loop atualiza a UI.
   async function gerar(
-    wkOverride?: SemanaInfo,
-    statusOverride?: ExcecaoStatusSemana | null,
+    wk: SemanaInfo,
+    statusSemanaParam: ExcecaoStatusSemana | null,
   ) {
     if (!rid) return;
-    const wk = wkOverride || semanaAtiva;
-    const rawSd = wk?.weekStart || startDate;
-    const rawEd = wk?.weekEnd   || endDate;
+    const rawSd = wk.weekStart;
+    const rawEd = wk.weekEnd;
     // Clampa o fim a HOJE. Sem isso, dias futuros da semana atual
     // (ou semanas inteiras no futuro de um mês ainda em curso) virariam
     // "Falta sem ajuste" porque a escala marca trabalho mas ainda não
@@ -1034,20 +946,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const hoje = todayYmd();
     const sd = rawSd;
     const ed = rawEd > hoje ? hoje : rawEd;
-    const statusSemanaParam = wkOverride !== undefined ? (statusOverride ?? null) : statusSemana;
-    const isOverride = !!wkOverride;
-    if (!sd || !ed) {
-      if (!isOverride) setErro("Informe o período (data inicial e final).");
-      return;
-    }
-    if (sd > ed) {
-      // Semana inteira no futuro — nada a analisar
-      if (!isOverride) setErro("Esse período ainda não começou.");
-      return;
-    }
-    setLoading(true);
-    setErro("");
-    if (!isOverride) setResult(null);
+    if (!sd || !ed) return;
+    if (sd > ed) return; // Semana inteira no futuro
     try {
       const shortCode = activeRestaurant?.shortCode || "";
       const { punches, debug: dbg } = await fetchPunches(sd, ed, shortCode);
@@ -1058,9 +958,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
       let horariosPrevistos: Record<string, Record<string, { in: string; out: string }>> = {};
       const debugInfo: EscalaDebugInfo = {};
-      // Acumula cobertura Sólides pra exibir banner (só em modo
-      // single-semana — em loop "Mês todo" deixamos a última iteração
-      // valer, ou sumimos pra não piscar).
+      // Acumula cobertura Sólides — banner sumiu junto com a noção de semana
+      // ativa, mas mantemos a coleta no caso de querermos exibir agregado
+      // depois.
       const cobertura: CoberturaSolides = {
         semCpf: [], semMatch: [], semQuadro: [], solidesFalhou: false,
       };
@@ -1137,7 +1037,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         console.warn("Sólides schedules falhou, usando fallback do Planejamento:", e);
         cobertura.solidesFalhou = true;
       }
-      if (!isOverride) setCoberturaSolides(cobertura);
+      setCoberturaSolides(cobertura);
 
       // Fallback / merge: pra empregados que NÃO tiveram escala vinda da
       // Sólides (sem CPF, sem quadro), usa a escala do Planejamento.
@@ -1181,7 +1081,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       if (allanFinal && escalaPorEmpregado[allanFinal.id]) {
         debugInfo.escala = Object.fromEntries(Object.entries(escalaPorEmpregado[allanFinal.id]));
       }
-      if (!isOverride) setEscalaDebug(debugInfo);
+      setEscalaDebug(debugInfo);
 
       const report = generateExceptionsReport({
         punches,
@@ -1192,101 +1092,88 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         startDate: sd,
         endDate: ed,
       });
-      if (!isOverride) {
-        setResult(report);
-        setDebug(dbg || null);
-      }
+      setDebug(dbg || null);
 
       // Salva o snapshot no doc da semana SEMPRE — assim o líder pode gerar,
-      // sair, e voltar depois sem perder o que já tinha visto. Ao mudar pra
-      // "em_tratamento", o cache vira o ponto de partida do tratamento.
-      if (wk) {
-        // Antes de sobrescrever o cache, captura o snapshot anterior pra
-        // diff "corrigido no Sólides" (#194).
-        const antesSnap = statusSemanaParam?.relatorioCache?.exceptions || [];
-        try {
-          const updated = await salvarRelatorioCache(
-            rid,
-            wk.weekStart,
-            wk.weekEnd,
-            {
-              geradoEm: new Date().toISOString(),
-              exceptions: report.exceptions,
-              unmatched: report.unmatched,
-              diasAnalisados: report.diasAnalisados,
-            },
-            me || undefined, // registra evento no histórico se semana já estiver em tratamento
-          );
-          if (!isOverride) setStatusSemana(updated);
+      // sair, e voltar depois sem perder o que já tinha visto.
+      // Antes de sobrescrever o cache, captura o snapshot anterior pra
+      // diff "corrigido no Sólides" (#194).
+      const antesSnap = statusSemanaParam?.relatorioCache?.exceptions || [];
+      try {
+        await salvarRelatorioCache(
+          rid,
+          wk.weekStart,
+          wk.weekEnd,
+          {
+            geradoEm: new Date().toISOString(),
+            exceptions: report.exceptions,
+            unmatched: report.unmatched,
+            diasAnalisados: report.diasAnalisados,
+          },
+          me || undefined,
+        );
 
-          // F2 — Atrasos automáticos: pra cada atrasoEntrada, grava
-          // marcador na escala + cria evento ponto_atraso na Trilha.
-          if (me) {
-            try {
-              const { processarAtrasos } = await import("../../core/excecoes/atrasos");
-              const r = await processarAtrasos({
-                restaurantId: rid,
-                excecoes: report.exceptions,
-                empIdByCpf,
-                por: { id: me.id, nome: me.nome },
-              });
-              if (r.novos > 0) {
-                console.log(`[ponto] ${r.novos} atraso(s) registrado(s) na escala + Trilha`);
-              }
-            } catch (e) {
-              console.warn("[ponto] falha ao processar atrasos:", e);
-            }
-          }
-
-          // F6 — Detecção retroativa de ajuste manual na escala:
-          // se o líder já mudou o status da praticada (ex: marcou "ferias")
-          // sem usar o botão "Resolver na escala", marca o apontamento
-          // como ciência automaticamente.
-          if (me && wk) {
-            try {
-              await detectarAjustesManuaisRetroativos({
-                rid,
-                weekStart: wk.weekStart,
-                weekEnd: wk.weekEnd,
-                excecoes: report.exceptions,
-                empIdByCpf,
-                statusSemanaAtual: statusSemanaParam,
-                me,
-                onUpdate: isOverride ? () => {} : setStatusSemana,
-              });
-            } catch (e) {
-              console.warn("[ponto] falha na detecção retroativa:", e);
-            }
-          }
-
-          // Diff "corrigido no Sólides": tudo que estava no antesSnap e
-          // não está no novo report vira "corrigido_solides".
-          if (antesSnap.length > 0 && me) {
-            const { marcarCorrigidosNoSolides } = await import("../../core/excecoes/statusDia");
-            const r = await marcarCorrigidosNoSolides({
+        // F2 — Atrasos automáticos: pra cada atrasoEntrada, grava
+        // marcador na escala + cria evento ponto_atraso na Trilha.
+        if (me) {
+          try {
+            const { processarAtrasos } = await import("../../core/excecoes/atrasos");
+            const r = await processarAtrasos({
               restaurantId: rid,
-              excecoesAntes: (antesSnap as Array<{ cpf: string; date: string }>).map(e => ({ cpf: e.cpf, date: e.date })),
-              excecoesDepois: report.exceptions.map(e => ({ cpf: e.cpf, date: e.date })),
+              excecoes: report.exceptions,
               empIdByCpf,
               por: { id: me.id, nome: me.nome },
             });
-            if (r.marcados > 0) {
-              console.log(`[ponto] ${r.marcados} dia(s) marcado(s) como corrigido_solides`);
+            if (r.novos > 0) {
+              console.log(`[ponto] ${r.novos} atraso(s) registrado(s) na escala + Trilha`);
             }
+          } catch (e) {
+            console.warn("[ponto] falha ao processar atrasos:", e);
           }
-        } catch (e) {
-          console.error("Erro salvando cache do relatório:", e);
-          alert("Relatório gerado mas o cache não foi salvo: " + (e instanceof Error ? e.message : "?"));
         }
-      }
-    } catch (e) {
-      if (isOverride) {
-        // Em loop "Mês todo": joga pro chamador agregar falhas no console
+
+        // F6 — Detecção retroativa de ajuste manual na escala:
+        // se o líder já mudou o status da praticada (ex: marcou "ferias")
+        // sem usar o botão "Resolver na escala", marca o apontamento
+        // como ciência automaticamente.
+        if (me) {
+          try {
+            await detectarAjustesManuaisRetroativos({
+              rid,
+              weekStart: wk.weekStart,
+              weekEnd: wk.weekEnd,
+              excecoes: report.exceptions,
+              empIdByCpf,
+              statusSemanaAtual: statusSemanaParam,
+              me,
+            });
+          } catch (e) {
+            console.warn("[ponto] falha na detecção retroativa:", e);
+          }
+        }
+
+        // Diff "corrigido no Sólides": tudo que estava no antesSnap e
+        // não está no novo report vira "corrigido_solides".
+        if (antesSnap.length > 0 && me) {
+          const { marcarCorrigidosNoSolides } = await import("../../core/excecoes/statusDia");
+          const r = await marcarCorrigidosNoSolides({
+            restaurantId: rid,
+            excecoesAntes: (antesSnap as Array<{ cpf: string; date: string }>).map(e => ({ cpf: e.cpf, date: e.date })),
+            excecoesDepois: report.exceptions.map(e => ({ cpf: e.cpf, date: e.date })),
+            empIdByCpf,
+            por: { id: me.id, nome: me.nome },
+          });
+          if (r.marcados > 0) {
+            console.log(`[ponto] ${r.marcados} dia(s) marcado(s) como corrigido_solides`);
+          }
+        }
+      } catch (e) {
+        console.error("Erro salvando cache do relatório:", e);
         throw e;
       }
-      setErro(e instanceof Error ? e.message : "Erro ao gerar o relatório.");
-    } finally {
-      if (!isOverride) setLoading(false);
+    } catch (e) {
+      // Loop "Mês todo" — joga pro chamador agregar falhas
+      throw e;
     }
   }
 
@@ -1311,6 +1198,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       return;
     }
     try {
+      // Carrega caches atuais 1x pra alimentar `statusSemanaParam` no `gerar`
+      // (preserva o snapshot anterior pro diff "corrigido no Sólides").
+      let cachesAtuais: ExcecaoStatusSemana[] = [];
+      try {
+        cachesAtuais = await listarStatusDoRestaurante(rid);
+      } catch (e) {
+        console.warn("[ponto] falha ao carregar caches antes do loop:", e);
+      }
       for (let i = 0; i < semanasParaAtualizar.length; i++) {
         const w = semanasParaAtualizar[i];
         // Clampa o endDate a hoje pra não gerar inconformidade em dia
@@ -1318,7 +1213,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         const wClamp: SemanaInfo = w.weekEnd > hoje ? { ...w, weekEnd: hoje } : w;
         setProgressoMes(`${i + 1}/${semanasParaAtualizar.length}`);
         try {
-          const st = await carregarStatusSemana(rid, w.weekStart);
+          const st = cachesAtuais.find(s => s.weekStart === w.weekStart) || null;
           await gerar(wClamp, st);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
@@ -1329,9 +1224,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // Recarrega os caches do mês pra o displayedResult agregar tudo
       try {
         const rows = await listarStatusDoRestaurante(rid);
-        const m = new Map<string, ExcecaoStatusValor>();
-        for (const r of rows) m.set(r.weekStart, r.status);
-        setStatusPorWeekStart(m);
         setTodosStatusDoRest(rows);
       } catch (e) {
         console.warn("[ponto] falha ao recarregar caches:", e);
@@ -1397,48 +1289,37 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               onClick={() => {
                 const h = new Date();
                 setAnoMes({ ano: h.getFullYear(), mes: h.getMonth() + 1 });
-                setSemanaIdx(semanasDoMes(h.getFullYear(), h.getMonth() + 1).find((w) => w.containsToday)?.index || 1);
+                setSemanasFiltro(new Set());
               }}
               className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline ml-1"
             >hoje</button>
           </div>
         </div>
 
-        {/* Chips de semana — cor reflete o status do tratamento:
-            aberto → cinza claro; em_tratamento → amarelo; tratado_lider →
-            verde; conferido_gerente → azul.
-            O último chip é "🔄 Atualizar" — força regerar via Sólides
-            (auto-gera é por semana na 1ª visita; depois é manual). */}
+        {/* Chips de semana — filtro multi-seleção pra visualização.
+            Vazio = mês todo (default). Click adiciona/remove do filtro.
+            O botão final "🔄 Atualizar" sempre regenera o mês todo. */}
         <div className="flex items-center gap-1.5 flex-wrap">
-          {/* Chip "Mês todo" — index = -1. Agrega caches de todas as semanas
-              do mês que já têm relatório gerado. Modo leitura apenas:
-              gerar/atualizar precisa ser feito semana por semana. */}
-          <button
-            key="mes-todo"
-            type="button"
-            onClick={() => setSemanaIdx(-1)}
-            className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-              semanaIdx === -1
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
-            }`}
-            title="Ver todas as inconformidades do mês inteiro (consolidado)"
-          >
-            📅 Mês todo
-          </button>
           {semanasMes.map((w) => {
-            const ativo = w.index === semanaIdx;
-            const status = statusPorWeekStart.get(w.weekStart) || "aberto";
-            const cor = CHIP_COR_POR_STATUS[status];
+            const ativo = semanasFiltro.has(w.index);
             return (
               <button
                 key={w.index}
                 type="button"
-                onClick={() => setSemanaIdx(w.index)}
+                onClick={() =>
+                  setSemanasFiltro((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(w.index)) next.delete(w.index);
+                    else next.add(w.index);
+                    return next;
+                  })
+                }
                 className={`text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full transition-colors ${
-                  ativo ? cor.ativo : cor.inativo
+                  ativo
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
                 } ${w.containsToday && !ativo ? "ring-1 ring-indigo-400 dark:ring-indigo-500" : ""}`}
-                title={`${w.weekStart} a ${w.weekEnd} · ${EXCECAO_STATUS_LABEL[status]}`}
+                title={`${w.weekStart} a ${w.weekEnd}${ativo ? " — clique pra remover do filtro" : " — clique pra filtrar"}`}
               >
                 {w.label}
               </button>
@@ -1446,14 +1327,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           })}
           <button
             type="button"
-            onClick={() => { if (mesTodo) void atualizarMesTodo(); else void gerar(); }}
+            onClick={() => void atualizarMesTodo()}
             disabled={loading || empregados.length === 0}
             className="ml-auto text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            title={
-              mesTodo
-                ? "Atualizar todas as semanas do mês pela Sólides (1 por vez)"
-                : (statusSemana?.relatorioCache ? "Atualizar pela Sólides (sobrescreve o cache)" : "Gerar relatório dessa semana")
-            }
+            title="Atualizar todas as semanas do mês pela Sólides (1 por vez)"
           >
             {loading
               ? (progressoMes ? `⏳ ${progressoMes}…` : "⏳ atualizando…")
@@ -1468,18 +1345,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           </p>
         )}
       </div>
-
-      {/* ── Card de Status da Semana (workflow líder → gerente) ── */}
-      <StatusSemanaCard
-        statusSemana={statusSemana}
-        carregando={carregandoStatus}
-        semanaAtiva={semanaAtiva}
-        temRelatorio={!!displayedResult && !mesTodo}
-        podeMarcar={(s) => podeMarcarStatus(me, rid, s, statusSemana?.status || "aberto")}
-        onMarcar={aplicarStatus}
-        showHistorico={showHistoricoStatus}
-        onToggleHistorico={() => setShowHistoricoStatus((v) => !v)}
-      />
 
       {erro && (
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
@@ -1797,21 +1662,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           onClose={() => setResolverNaEscala(null)}
           onSalvo={async () => {
             // Após o modal aplicar na escala, marca o apontamento como ciência
-            // e cria nota interna documentando a resolução.
-            if (!resolverNaEscala.apontamentoId || !semanaAtiva) return;
+            // e cria nota interna documentando a resolução. Resolve a semana
+            // a partir da DATA do apontamento (não há mais semana ativa).
+            if (!resolverNaEscala.apontamentoId) return;
+            const wk = semanaInfoParaData(resolverNaEscala.data);
+            if (!wk) {
+              console.warn(`[ponto] semana não encontrada pra data ${resolverNaEscala.data}`);
+              return;
+            }
             try {
-              const updated = await marcarApontamentoCiencia(
+              await marcarApontamentoCiencia(
                 rid,
-                semanaAtiva.weekStart,
-                semanaAtiva.weekEnd,
+                wk.weekStart,
+                wk.weekEnd,
                 resolverNaEscala.apontamentoId,
                 me,
               );
-              setStatusSemana(updated);
-              const updated2 = await adicionarNotaInterna(
+              await adicionarNotaInterna(
                 rid,
-                semanaAtiva.weekStart,
-                semanaAtiva.weekEnd,
+                wk.weekStart,
+                wk.weekEnd,
                 {
                   empregadoId: resolverNaEscala.empregadoId,
                   empregadoNome: resolverNaEscala.empregadoNome,
@@ -1821,7 +1691,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                 },
                 me,
               );
-              setStatusSemana(updated2);
+              await recarregarCaches();
             } catch (e) {
               console.warn("Erro pós resolver na escala:", e);
             }
@@ -1855,9 +1725,8 @@ async function detectarAjustesManuaisRetroativos(input: {
   empIdByCpf: Map<string, string>;
   statusSemanaAtual: ExcecaoStatusSemana | null;
   me: Pessoa;
-  onUpdate: (s: ExcecaoStatusSemana) => void;
 }): Promise<void> {
-  const { rid, weekStart, weekEnd, statusSemanaAtual, me, onUpdate } = input;
+  const { rid, weekStart, weekEnd, statusSemanaAtual, me } = input;
   void input.excecoes; void input.empIdByCpf; // disponíveis pra futura expansão
   if (!statusSemanaAtual?.apontamentos?.length) return;
 
@@ -1878,7 +1747,6 @@ async function detectarAjustesManuaisRetroativos(input: {
     porMes.set(yyyymm, arr);
   }
 
-  let updated = statusSemanaAtual;
   for (const [yyyymm, lista] of porMes) {
     const ano = parseInt(yyyymm.slice(0, 4), 10);
     const mes = parseInt(yyyymm.slice(5, 7), 10);
@@ -1902,8 +1770,8 @@ async function detectarAjustesManuaisRetroativos(input: {
 
       // Marca como ciência + cria nota
       try {
-        updated = await marcarApontamentoCiencia(rid, weekStart, weekEnd, ap.id, me);
-        updated = await adicionarNotaInterna(rid, weekStart, weekEnd, {
+        await marcarApontamentoCiencia(rid, weekStart, weekEnd, ap.id, me);
+        await adicionarNotaInterna(rid, weekStart, weekEnd, {
           empregadoId: ap.empregadoId,
           empregadoNome: ap.empregadoNome,
           texto: `🔄 Ajuste detectado retroativamente na escala: status "${real}" em ${ap.data}. Apontamento marcado como tratado.`,
@@ -1915,7 +1783,6 @@ async function detectarAjustesManuaisRetroativos(input: {
       }
     }
   }
-  onUpdate(updated);
 }
 
 // `empIdByCpf` resolve o ID do Planejamento (string) — exc.employeeId é o
@@ -2387,122 +2254,7 @@ function ColaboradorBlock({
   );
 }
 
-// ─── Card de Status da Semana ───────────────────────────────────────────────
-const STATUS_COR: Record<ExcecaoStatusValor, { bg: string; border: string; emoji: string; cor: string }> = {
-  aberto:            { bg: "bg-gray-50 dark:bg-gray-900/40",        border: "border-gray-300 dark:border-gray-700",       emoji: "⚪",  cor: "text-gray-700 dark:text-gray-200" },
-  em_tratamento:     { bg: "bg-amber-50 dark:bg-amber-900/20",      border: "border-amber-300 dark:border-amber-800",     emoji: "🟡",  cor: "text-amber-800 dark:text-amber-300" },
-  tratado_lider:     { bg: "bg-sky-50 dark:bg-sky-900/20",          border: "border-sky-300 dark:border-sky-800",         emoji: "🔵",  cor: "text-sky-800 dark:text-sky-300" },
-  conferido_gerente: { bg: "bg-emerald-50 dark:bg-emerald-900/20",  border: "border-emerald-300 dark:border-emerald-800", emoji: "🟢",  cor: "text-emerald-800 dark:text-emerald-300" },
-};
-
-function fmtDataBrCurta(ymd: string): string {
-  const [_a, m, d] = ymd.split("-");
-  return `${d}/${m}`;
-}
-
 function fmtDataHora(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function StatusSemanaCard({
-  statusSemana, carregando, semanaAtiva, temRelatorio, podeMarcar, onMarcar, showHistorico, onToggleHistorico,
-}: {
-  statusSemana: ExcecaoStatusSemana | null;
-  carregando: boolean;
-  semanaAtiva: SemanaInfo | undefined;
-  temRelatorio: boolean;
-  podeMarcar: (s: ExcecaoStatusValor) => boolean;
-  onMarcar: (s: ExcecaoStatusValor) => void;
-  showHistorico: boolean;
-  onToggleHistorico: () => void;
-}) {
-  if (!semanaAtiva) return null;
-  const status: ExcecaoStatusValor = statusSemana?.status || "aberto";
-  const c = STATUS_COR[status];
-  const label = EXCECAO_STATUS_LABEL[status];
-
-  // Botões disponíveis baseados em status atual + permissão.
-  // Cada estado oferece ações de avançar (primary) e voltar (secondary).
-  type Acao = { proximo: ExcecaoStatusValor; label: string; variant?: "primary" | "secondary"; disabled?: boolean; tooltip?: string };
-  const acoes: Acao[] = [];
-  if (status === "aberto") {
-    // "Iniciar tratamento" não existe mais como botão — vira automático
-    // quando o líder faz a 1ª ação (marcar checkbox, ciência ou +nota).
-    if (podeMarcar("tratado_lider")) acoes.push({
-      proximo: "tratado_lider",
-      label: "✅ Conferido pelo líder",
-      disabled: !temRelatorio,
-      tooltip: !temRelatorio ? "Gere o relatório antes de marcar como tratado" : undefined,
-    });
-  } else if (status === "em_tratamento") {
-    if (podeMarcar("tratado_lider")) acoes.push({ proximo: "tratado_lider", label: "✅ Conferido pelo líder" });
-    if (podeMarcar("aberto"))        acoes.push({ proximo: "aberto",        label: "↩ Reabrir", variant: "secondary" });
-  } else if (status === "tratado_lider") {
-    if (podeMarcar("conferido_gerente")) acoes.push({ proximo: "conferido_gerente", label: "✓✓ Conferir e fechar" });
-    if (podeMarcar("em_tratamento"))     acoes.push({ proximo: "em_tratamento",     label: "↩ Reabrir tratamento", variant: "secondary" });
-  } else if (status === "conferido_gerente") {
-    if (podeMarcar("tratado_lider"))     acoes.push({ proximo: "tratado_lider",     label: "↩ Reabrir conferência", variant: "secondary" });
-  }
-
-  return (
-    <div className={`rounded-xl border ${c.border} ${c.bg} p-3 mb-4`}>
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="min-w-0">
-          <div className={`text-sm font-bold ${c.cor}`}>
-            {c.emoji} Status: {label}
-          </div>
-          <div className="text-[11px] text-gray-600 dark:text-gray-400">
-            Semana de {fmtDataBrCurta(semanaAtiva.weekStart)} a {fmtDataBrCurta(semanaAtiva.weekEnd)}
-            {carregando ? " · carregando…" : ""}
-            {statusSemana?.historico && statusSemana.historico.length > 0 && (
-              <>
-                {" · "}
-                <button
-                  type="button"
-                  onClick={onToggleHistorico}
-                  className="text-indigo-600 dark:text-indigo-400 hover:underline"
-                >
-                  {showHistorico ? "ocultar histórico" : `${statusSemana.historico.length} evento(s) no histórico`}
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {acoes.map((a) => (
-            <Button
-              key={a.proximo + a.label}
-              variant={a.variant === "secondary" ? "secondary" : "primary"}
-              size="sm"
-              disabled={a.disabled}
-              onClick={() => onMarcar(a.proximo)}
-              title={a.tooltip}
-            >
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      </div>
-
-      {showHistorico && statusSemana?.historico && statusSemana.historico.length > 0 && (
-        <div className="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700">
-          <ol className="space-y-1 text-[11px] text-gray-700 dark:text-gray-300">
-            {[...statusSemana.historico].reverse().map((h, i) => (
-              <li key={i} className="tabular-nums">
-                <span className="text-gray-500">{fmtDataHora(h.em)}</span> ·{" "}
-                {h.tipo === "atualizacao" ? (
-                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">🔄 Relatório atualizado</span>
-                ) : (
-                  <strong>{EXCECAO_STATUS_LABEL[h.status]}</strong>
-                )}{" "}
-                · {h.porNome}
-                {h.observacao && <span className="italic text-gray-500"> — "{h.observacao}"</span>}
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
-    </div>
-  );
 }
