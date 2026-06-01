@@ -3357,6 +3357,12 @@ export type TarefaSubprojeto = {
   moduloOrigemRota?: string;
   // Label do CTA, ex: "Ir pra Admissão". Se vazio, usa "Ir pra origem".
   moduloOrigemLabel?: string;
+  // Restaurante de origem do módulo. Quando preenchido, o link do CTA do
+  // banner trava aquele rest (`/r/{esseRest}/{rota}`). Quando vazio, usa
+  // o rest atualmente selecionado (RestaurantContext). Use preenchido pra
+  // sub específico de uma unidade (ex: "Eventos Laje Lobozó"); deixe
+  // vazio pra sub compartilhado (ex: "Admissão" recebendo de todas).
+  moduloOrigemRestaurantId?: string;
   campos?: string;              // texto livre — campos custom separados por ·
   pastaDriveTemplate?: string;
   // Templates de tarefa-filha (checklist) usados quando criar uma tarefa-pai

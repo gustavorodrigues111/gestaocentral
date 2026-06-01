@@ -1074,32 +1074,19 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
             </div>
 
             {/* Banner pra subprojeto automático/bloqueado — explica como
-                ele recebe tarefas e dá CTA pro módulo origem. */}
-            {subAtual?.bloqueadoCriacaoManual && (
-              <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
-                <span className="text-2xl shrink-0" aria-hidden>🤖</span>
-                <div className="flex-1 min-w-0">
-                  <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-                    Subprojeto automático
-                  </div>
-                  <p className="text-[13px] text-amber-800 dark:text-amber-300 mt-0.5">
-                    As tarefas aqui são criadas automaticamente pelo sistema —
-                    você não cria manualmente.
-                    {subAtual.gatilho && (
-                      <> <strong>Gatilho:</strong> {subAtual.gatilho}.</>
-                    )}
-                  </p>
-                </div>
-                {subAtual.moduloOrigemRota && rid && (
-                  <a
-                    href={`/r/${rid}${subAtual.moduloOrigemRota}`}
-                    className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
-                  >
-                    {subAtual.moduloOrigemLabel || "Ir pra origem"} →
-                  </a>
-                )}
-              </div>
-            )}
+                ele recebe tarefas e dá CTA pro módulo origem. CTA respeita
+                o moduloOrigemRestaurantId travado (se houver) ou usa o rest
+                atual como fallback. */}
+            {subAtual?.bloqueadoCriacaoManual && (() => {
+              const ridLink = subAtual.moduloOrigemRestaurantId || rid;
+              const restTravado = subAtual.moduloOrigemRestaurantId
+                ? projetos.length && projetos[0] // só pra usar o restaurants hook abaixo
+                : null;
+              return (
+                <BannerSubAuto sub={subAtual} ridLink={ridLink} restTravadoId={subAtual.moduloOrigemRestaurantId} />
+              );
+              void restTravado;
+            })()}
 
             <ViewSwitcher value={view} onChange={onChangeView} />
             {view === "lista" && (
@@ -1141,6 +1128,48 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
           </>
         )}
       </main>
+    </div>
+  );
+}
+
+// Banner explicativo pra subprojeto bloqueado. Mostra origem + CTA pro
+// módulo. Quando o sub tem moduloOrigemRestaurantId, mostra chip com o
+// nome do rest travado pra evitar confusão entre unidades.
+function BannerSubAuto({ sub, ridLink, restTravadoId }: {
+  sub: TarefaSubprojeto;
+  ridLink: string;
+  restTravadoId?: string;
+}) {
+  const { restaurants } = useRestaurant();
+  const restNome = restTravadoId
+    ? restaurants.find(r => r.id === restTravadoId)?.nome
+    : null;
+  return (
+    <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
+      <span className="text-2xl shrink-0" aria-hidden>🤖</span>
+      <div className="flex-1 min-w-0">
+        <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap">
+          Subprojeto automático
+          {restNome && (
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+              🔒 {restNome}
+            </span>
+          )}
+        </div>
+        <p className="text-[13px] text-amber-800 dark:text-amber-300 mt-0.5">
+          As tarefas aqui são criadas automaticamente pelo sistema —
+          você não cria manualmente.
+          {sub.gatilho && <> <strong>Gatilho:</strong> {sub.gatilho}.</>}
+        </p>
+      </div>
+      {sub.moduloOrigemRota && ridLink && (
+        <a
+          href={`/r/${ridLink}${sub.moduloOrigemRota}`}
+          className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
+        >
+          {sub.moduloOrigemLabel || "Ir pra origem"} →
+        </a>
+      )}
     </div>
   );
 }
@@ -1755,6 +1784,8 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
   projetos: TarefaProjeto[];
   onClose: () => void;
 }) {
+  // Lista de restaurantes pra select de "Restaurante origem fixo".
+  const { restaurants } = useRestaurant();
   const [f, setF] = useState<Partial<TarefaSubprojeto>>(sub ? { ...sub } : {
     projetoId: projetoId || "",
     nome: "",
@@ -1852,6 +1883,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       gatilho: f.gatilho,
       moduloOrigemRota: f.moduloOrigemRota,
       moduloOrigemLabel: f.moduloOrigemLabel,
+      moduloOrigemRestaurantId: f.moduloOrigemRestaurantId,
       campos: f.campos,
       pastaDriveTemplate: f.pastaDriveTemplate,
       tarefasTemplate: (f.tarefasTemplate || []).filter(t => t.titulo.trim()),
@@ -1965,6 +1997,25 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
               </select>
               <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">
                 O banner do sub vai mostrar um botão "Ir pra {MODULES.find(m => m.id === moduloAtualId)?.label || "Módulo"}".
+              </p>
+
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mt-2 mb-0.5">
+                Restaurante origem (opcional)
+              </label>
+              <select
+                value={f.moduloOrigemRestaurantId || ""}
+                onChange={(e) => setF({ ...f, moduloOrigemRestaurantId: e.target.value || undefined })}
+                className="adm-input text-xs"
+              >
+                <option value="">— Restaurante ativo (usa o atualmente selecionado) —</option>
+                {restaurants.map(r => (
+                  <option key={r.id} value={r.id}>{r.nome}</option>
+                ))}
+              </select>
+              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">
+                {f.moduloOrigemRestaurantId
+                  ? `🔒 Link trava em "${restaurants.find(r => r.id === f.moduloOrigemRestaurantId)?.nome}". Use pra sub específico de uma unidade.`
+                  : "Sem trava: o banner abre o módulo do restaurante ATUALMENTE selecionado. Use pra sub compartilhado entre unidades."}
               </p>
             </div>
           );
