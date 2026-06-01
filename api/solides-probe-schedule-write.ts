@@ -58,12 +58,13 @@ function resolveToken(restaurantKey: string): { token: string } | { error: strin
   return { token };
 }
 
-function todayYmd(): string {
+// API Tangerino espera `date` como epoch ms (Long), NÃO como string YYYY-MM-DD.
+// Passar string dá 400 "Failed to convert value of type java.lang.String to
+// required type java.lang.Long".
+function todayMs(): number {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  d.setHours(12, 0, 0, 0); // meio-dia local pra não ter ambiguidade de fuso
+  return d.getTime();
 }
 
 async function doFetch(url: string, init: RequestInit): Promise<{ status: number; bodyText: string; headers: Record<string, string> }> {
@@ -112,7 +113,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   try {
     // 1) GET quadro atual
-    const getUrl = `${WORK_SCHEDULE_API}/${employeeId}?date=${todayYmd()}`;
+    const getUrl = `${WORK_SCHEDULE_API}/${employeeId}?date=${todayMs()}`;
     const getResp = await doFetch(getUrl, {
       method: "GET",
       headers: {
