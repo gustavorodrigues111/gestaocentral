@@ -3197,6 +3197,10 @@ export type EntregaUniforme = {
     canceladoPor: { id: string; nome: string };
     motivo: string;
   };
+  // Última edição (via atualizarEntrega). Não confundir com entregueEm: a
+  // data da entrega original não muda; isso é só audit do reajuste.
+  atualizadoEm?: string;
+  atualizadoPor?: { id: string; nome: string };
 };
 
 export type MotivoMovEstoque =

@@ -15,7 +15,16 @@ import type {
   Admissao, Cargo, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant,
   TermoUniformesConfig, TipoItemUniforme,
 } from "../../core/types";
-import { criarEntrega } from "../../core/uniformes/uniformesHelpers";
+
+// Formata "YYYY-MM-DDTHH:mm:ss.sssZ" → "DD/MM/YYYY HH:mm"
+function fmtDateTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
+}
+import { criarEntrega, atualizarEntrega } from "../../core/uniformes/uniformesHelpers";
 import { gerarTermoUniformesPDF, termoUniformesFilename } from "./gerarTermoPDF";
 
 type Props = {
@@ -29,6 +38,11 @@ type Props = {
   /** Quando aberto a partir do checklist de uma admissão, pré-preenche
       tudo (motivo=admissao, candidato fixo, tipo fixo). */
   admissaoContexto?: Admissao;
+  /** Quando passa uma entrega já criada (mesma admissão, mesmo tipo), o
+      modal entra em modo EDIÇÃO: hidrata linhas com o que foi entregue,
+      mostra banner explicativo, e no salvar chama `atualizarEntrega` em
+      vez de `criarEntrega` (recalcula deltas de estoque, sem duplicar). */
+  entregaExistente?: EntregaUniforme;
   /** Callback chamado quando a entrega é criada com sucesso —
       usado pra marcar a subtarefa correspondente. */
   onEntregaCriada?: (pdf?: { blob: Blob; filename: string }) => void;
@@ -42,11 +56,14 @@ type LinhaEntrega = {
 
 export function NovaEntregaModal({
   tipo, itens, kits, restaurantId, activeRestaurant, pessoa, onClose,
-  admissaoContexto, onEntregaCriada,
+  admissaoContexto, entregaExistente, onEntregaCriada,
 }: Props) {
   // Modo "admissão": pessoa fixa (candidato), tipo fixo, motivo=admissao.
   // Não permite trocar a pessoa.
   const modoAdmissao = !!admissaoContexto;
+  // Modo "edição": existe entrega anterior pra esta admissão+tipo. Em vez
+  // de criar nova entrega (que duplicaria estoque + PDF), edita a existente.
+  const modoEdicao = !!entregaExistente;
   // Catálogo de pessoas + cargos pra autocomplete e detecção de área
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -79,12 +96,22 @@ export function NovaEntregaModal({
     return c?.area || null;
   }, [pessoaSel, cargos, restaurantId]);
 
-  // Linhas da entrega (editáveis)
-  const [linhas, setLinhas] = useState<LinhaEntrega[]>([]);
+  // Linhas da entrega (editáveis). Em modo edição, hidrata com o que já foi
+  // entregue antes — usuário pode ajustar quantidades, adicionar/remover.
+  const [linhas, setLinhas] = useState<LinhaEntrega[]>(() => {
+    if (entregaExistente) {
+      return entregaExistente.itens.map(i => ({
+        itemId: i.itemId,
+        variacaoId: i.variacaoId,
+        qtd: i.qtd,
+      }));
+    }
+    return [];
+  });
   const [motivo, setMotivo] = useState<EntregaUniforme["motivo"]>(
-    modoAdmissao ? "admissao" : "admissao",
+    entregaExistente?.motivo || (modoAdmissao ? "admissao" : "admissao"),
   );
-  const [observacao, setObservacao] = useState("");
+  const [observacao, setObservacao] = useState(entregaExistente?.observacao || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [busca, setBusca] = useState("");
@@ -112,8 +139,10 @@ export function NovaEntregaModal({
     }
     setLinhas(novas);
   }
-  // Auto-aplica kit quando seleciona pessoa
+  // Auto-aplica kit quando seleciona pessoa — exceto em modo edição (a entrega
+  // anterior já tem linhas hidratadas; aplicar o kit aqui zeraria a edição).
   useEffect(() => {
+    if (modoEdicao) return;
     if (areaDaPessoa) aplicarKit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areaDaPessoa, tipo]);
@@ -158,23 +187,32 @@ export function NovaEntregaModal({
             whatsapp: admissaoContexto.candidato.whatsapp,
           }
         : undefined;
-      // Cria entrega
+      // Modo edição → atualiza a entrega existente (recalcula deltas de
+      // estoque). Modo criação → cria nova entrega + baixa estoque.
       const empregadoId = (pessoaSel as unknown as {
         teamData?: { [rid: string]: { empregadoId?: string } };
       })?.teamData?.[restaurantId]?.empregadoId;
-      const entrega = await criarEntrega({
-        restaurantId,
-        pessoaId: pessoaSelId || undefined,
-        candidatoSnapshot,
-        empregadoId,
-        admissaoId: admissaoContexto?.id,
-        tipo,
-        motivo,
-        itens: linhas,
-        observacao: observacao.trim() || undefined,
-        pessoa,
-        catalogo: itens,
-      });
+      const entrega = entregaExistente
+        ? await atualizarEntrega({
+            entrega: entregaExistente,
+            itens: linhas,
+            observacao: observacao.trim() || undefined,
+            pessoa,
+            catalogo: itens,
+          })
+        : await criarEntrega({
+            restaurantId,
+            pessoaId: pessoaSelId || undefined,
+            candidatoSnapshot,
+            empregadoId,
+            admissaoId: admissaoContexto?.id,
+            tipo,
+            motivo,
+            itens: linhas,
+            observacao: observacao.trim() || undefined,
+            pessoa,
+            catalogo: itens,
+          });
 
       // Busca config de termo (override por restaurante)
       const cfgSnap = await getDocs(query(
@@ -220,11 +258,29 @@ export function NovaEntregaModal({
 
   return (
     <Modal
-      title={`Nova entrega de ${tipo === "epi" ? "EPI" : "Uniforme"}`}
+      title={modoEdicao
+        ? `Editar entrega de ${tipo === "epi" ? "EPI" : "Uniforme"}`
+        : `Nova entrega de ${tipo === "epi" ? "EPI" : "Uniforme"}`}
       onClose={onClose}
       maxWidth="max-w-2xl"
     >
       <div className="p-4 space-y-4">
+        {/* Modo edição: aviso de que estamos editando uma entrega já registrada */}
+        {modoEdicao && entregaExistente && (
+          <div className="rounded border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800 p-3">
+            <div className="text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300">
+              Editando entrega já registrada
+            </div>
+            <div className="text-xs text-amber-900 dark:text-amber-200 mt-1">
+              Entrega criada em <strong>{fmtDateTime(entregaExistente.entregueEm)}</strong>
+              {entregaExistente.entreguePor?.nome && <> por {entregaExistente.entreguePor.nome}</>}.
+              <br />
+              Salvar vai recalcular o estoque (ajusta diferenças) e gerar um PDF novo —
+              em vez de criar uma 2ª entrega.
+            </div>
+          </div>
+        )}
+
         {/* Modo admissão: mostra candidato fixo da admissão */}
         {modoAdmissao && admissaoContexto && (
           <div className="rounded border border-indigo-300 bg-indigo-50/40 dark:bg-indigo-900/20 dark:border-indigo-800 p-3">
@@ -408,7 +464,11 @@ export function NovaEntregaModal({
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
           <Button onClick={salvarEGerarPDF} disabled={salvando}>
-            {salvando ? "Salvando…" : "Salvar e gerar PDF"}
+            {salvando
+              ? "Salvando…"
+              : modoEdicao
+                ? "Salvar alterações e regerar PDF"
+                : "Salvar e gerar PDF"}
           </Button>
         </div>
       </div>

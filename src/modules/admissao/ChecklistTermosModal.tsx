@@ -19,7 +19,7 @@ import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
-  Admissao, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TermoAssinado,
+  Admissao, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TermoAssinado,
 } from "../../core/types";
 import {
   atualizarTermoAssinado,
@@ -130,6 +130,41 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   const [itensUniforme, setItensUniforme] = useState<ItemUniforme[]>([]);
   const [kitsAreaUniforme, setKitsAreaUniforme] = useState<KitAreaUniforme[]>([]);
   const [carregandoUniformes, setCarregandoUniformes] = useState(false);
+  // Entregas já criadas pra esta admissão, indexadas por tipo. Quando o usuário
+  // clica em "Gerar termo" de novo, o NovaEntregaModal abre em modo edição
+  // (hidrata itens + chama atualizarEntrega no save). Evita duplicar entrega
+  // + estoque + PDF.
+  const [entregasExistentes, setEntregasExistentes] = useState<{
+    uniforme?: EntregaUniforme;
+    epi?: EntregaUniforme;
+  }>({});
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const snap = await getDocs(query(
+          collection(db, "entregasUniforme"),
+          where("admissaoId", "==", admissao.id),
+        ));
+        if (cancelado) return;
+        const porTipo: { uniforme?: EntregaUniforme; epi?: EntregaUniforme } = {};
+        for (const d of snap.docs) {
+          const ent = { ...d.data(), id: d.id } as EntregaUniforme;
+          // Ignora entregas canceladas/com devolução — não conta como "ativa"
+          if (ent.cancelamento || ent.devolucao) continue;
+          // Mantém a mais recente por tipo
+          const atual = porTipo[ent.tipo];
+          if (!atual || (ent.entregueEm || "") > (atual.entregueEm || "")) {
+            porTipo[ent.tipo] = ent;
+          }
+        }
+        setEntregasExistentes(porTipo);
+      } catch (e) {
+        console.warn("[checklist] falha ao carregar entregas existentes:", e);
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [admissao.id]);
   async function abrirGerarTermo(tipo: "uniforme" | "epi") {
     if (itensUniforme.length === 0 && !carregandoUniformes) {
       setCarregandoUniformes(true);
@@ -180,6 +215,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // Sobe o termo gerado do preview pra "docs a assinar" (vai pro Clicksign).
+  // IMPORTANTE: persiste o link no Firestore — antes só atualizava state
+  // local via atualizarLink(), então fechar/reabrir o checklist perdia o link.
   async function confirmarUploadPreview() {
     if (!previewUpload) return;
     const { pdf, termoId } = previewUpload;
@@ -189,7 +226,13 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       const { aAssinar } = await ensureTree();
       const file = new File([pdf.blob], pdf.filename, { type: "application/pdf" });
       const uploaded = await uploadFileToFolder(aAssinar, file);
-      if (uploaded.webViewLink && termoId) atualizarLink(termoId, uploaded.webViewLink);
+      if (uploaded.webViewLink && termoId) {
+        // Salva o link no termo + grava no Firestore na hora — assim o
+        // ponteiro pro PDF sobrevive ao reload.
+        const link = uploaded.webViewLink;
+        const novos = termos.map(t => t.id === termoId ? { ...t, link } : t);
+        await persistirTermos(novos);
+      }
       fecharPreview();
     } catch (e) {
       setDriveErro(e instanceof Error ? e.message : "Falha ao subir o termo gerado pro Drive.");
@@ -767,21 +810,31 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               <div className="mt-2 pl-6 space-y-1.5">
                 {/* Botão "Gerar termo" pra termos com tipo especial (uniforme/EPI).
                     Abre o modal de entrega — gera PDF + baixa estoque + cria
-                    registro de entrega. Termo entra no kit do Clicksign depois. */}
-                {t.tipoEspecial && !t.assinado && (
-                  <button
-                    type="button"
-                    onClick={() => abrirGerarTermo(t.tipoEspecial!)}
-                    disabled={carregandoUniformes}
-                    className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
-                  >
-                    {carregandoUniformes
-                      ? "Carregando catálogo…"
-                      : t.tipoEspecial === "uniforme"
-                        ? "📦 Gerar termo de uniformes"
-                        : "🦺 Gerar termo de EPIs"}
-                  </button>
-                )}
+                    registro de entrega. Quando já existe uma entrega criada
+                    pra esta admissão, o modal abre em modo EDIÇÃO (hidrata
+                    itens, chama atualizarEntrega no save — não duplica). */}
+                {t.tipoEspecial && (() => {
+                  const entExistente = entregasExistentes[t.tipoEspecial];
+                  const label = carregandoUniformes
+                    ? "Carregando catálogo…"
+                    : entExistente
+                      ? (t.tipoEspecial === "uniforme"
+                          ? `📦 Ver/editar termo de uniformes (${entExistente.itens.length} item(ns))`
+                          : `🦺 Ver/editar termo de EPIs (${entExistente.itens.length} item(ns))`)
+                      : (t.tipoEspecial === "uniforme"
+                          ? "📦 Gerar termo de uniformes"
+                          : "🦺 Gerar termo de EPIs");
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => abrirGerarTermo(t.tipoEspecial!)}
+                      disabled={carregandoUniformes}
+                      className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
+                    >
+                      {label}
+                    </button>
+                  );
+                })()}
                 {isDriveConfigured() && (
                   <div className="flex flex-wrap items-center gap-2">
                     {/* Primário: sobe o doc que VAI pro Clicksign (docs a assinar) */}
@@ -850,7 +903,32 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           activeRestaurant={activeRestaurant}
           pessoa={pessoa}
           admissaoContexto={admissao}
-          onEntregaCriada={(pdf) => aoGerarTermoEspecial(pdf)}
+          entregaExistente={entregasExistentes[gerarTermoTipo]}
+          onEntregaCriada={(pdf) => {
+            // Após criar/editar, refetch das entregas pra a próxima abertura
+            // já abrir com o estado atualizado (mais itens, ou itens removidos).
+            void (async () => {
+              try {
+                const snap = await getDocs(query(
+                  collection(db, "entregasUniforme"),
+                  where("admissaoId", "==", admissao.id),
+                ));
+                const porTipo: { uniforme?: EntregaUniforme; epi?: EntregaUniforme } = {};
+                for (const d of snap.docs) {
+                  const ent = { ...d.data(), id: d.id } as EntregaUniforme;
+                  if (ent.cancelamento || ent.devolucao) continue;
+                  const atual = porTipo[ent.tipo];
+                  if (!atual || (ent.entregueEm || "") > (atual.entregueEm || "")) {
+                    porTipo[ent.tipo] = ent;
+                  }
+                }
+                setEntregasExistentes(porTipo);
+              } catch (e) {
+                console.warn("[checklist] refetch entregas falhou:", e);
+              }
+            })();
+            aoGerarTermoEspecial(pdf);
+          }}
           onClose={() => setGerarTermoTipo(null)}
         />
       )}

@@ -306,6 +306,125 @@ export async function criarEntrega(opts: {
 }
 
 /**
+ * Atualiza uma entrega existente — usado quando o usuário reabre o modal
+ * de entrega (admissão, geralmente) e ajusta os itens. Em vez de criar
+ * uma entrega nova (que duplicaria estoque e PDF), recalcula deltas:
+ *
+ *   delta_kv = nova_qtd[k,v] − antiga_qtd[k,v]
+ *
+ * Pra cada (item, variação) com delta != 0, chama `ajustarEstoque` com
+ * `-delta` (saída adicional se delta>0, devolução se delta<0). Itens
+ * removidos viram delta negativo (estoque volta). Itens novos viram
+ * delta positivo.
+ *
+ * Atualiza o doc `entregasUniforme/{id}` substituindo `itens` pela nova
+ * lista. NÃO mexe em devolução (se já tiver `devolucao`, lança erro —
+ * não dá pra editar uma entrega já devolvida).
+ */
+export async function atualizarEntrega(opts: {
+  entrega: EntregaUniforme;
+  itens: { itemId: string; variacaoId: string; qtd: number }[];
+  observacao?: string;
+  pessoa: Pessoa;
+  catalogo: ItemUniforme[];
+}): Promise<EntregaUniforme> {
+  const { entrega, itens: novosItens, observacao, pessoa, catalogo } = opts;
+  if (entrega.devolucao) {
+    throw new Error("Essa entrega já tem devolução registrada — não dá pra editar.");
+  }
+  if (novosItens.length === 0) {
+    throw new Error("A entrega precisa de pelo menos 1 item.");
+  }
+
+  // Resolve catálogo + valida que tudo existe
+  type Resolved = { item: ItemUniforme; variacao: VariacaoItem; qtd: number };
+  const resolvidos: Resolved[] = [];
+  for (const i of novosItens) {
+    const item = catalogo.find(x => x.id === i.itemId);
+    if (!item) throw new Error(`Item não encontrado no catálogo: ${i.itemId}`);
+    const variacao = item.variacoes.find(v => v.id === i.variacaoId);
+    if (!variacao) throw new Error(`Variação não encontrada em ${item.nome}: ${i.variacaoId}`);
+    resolvidos.push({ item, variacao, qtd: i.qtd });
+  }
+
+  // Agrega qtds atuais (antigas) e novas por (itemId, variacaoId)
+  const chave = (itemId: string, varId: string) => `${itemId}::${varId}`;
+  const antigas = new Map<string, number>();
+  for (const it of entrega.itens) {
+    antigas.set(chave(it.itemId, it.variacaoId), (antigas.get(chave(it.itemId, it.variacaoId)) || 0) + it.qtd);
+  }
+  const novas = new Map<string, number>();
+  for (const r of resolvidos) {
+    novas.set(chave(r.item.id, r.variacao.id), (novas.get(chave(r.item.id, r.variacao.id)) || 0) + r.qtd);
+  }
+
+  // Pré-valida estoque pra deltas positivos (saída adicional). Pra
+  // delta negativo (devolução), `ajustarEstoque` aceita aumentar estoque.
+  const todasChaves = new Set([...antigas.keys(), ...novas.keys()]);
+  type Movimento = { item: ItemUniforme; variacao: VariacaoItem; delta: number };
+  const movimentos: Movimento[] = [];
+  for (const k of todasChaves) {
+    const ant = antigas.get(k) || 0;
+    const nov = novas.get(k) || 0;
+    const delta = nov - ant;
+    if (delta === 0) continue;
+    const [itemId, variacaoId] = k.split("::");
+    const item = catalogo.find(x => x.id === itemId);
+    if (!item) throw new Error(`Item do catálogo sumiu durante o update: ${itemId}`);
+    const variacao = item.variacoes.find(v => v.id === variacaoId);
+    if (!variacao) throw new Error(`Variação sumiu durante o update: ${variacaoId}`);
+    if (delta > 0 && variacao.estoque < delta) {
+      throw new Error(
+        `Estoque insuficiente pra aumentar: ${item.nome} (${variacao.tamanho}) tem ${variacao.estoque}, ` +
+        `precisa de ${delta} a mais.`,
+      );
+    }
+    movimentos.push({ item, variacao, delta });
+  }
+
+  // Aplica movimentos (saída quando delta>0, devolução quando delta<0)
+  const motivoMov: MotivoMovEstoque =
+    entrega.motivo === "troca" ? "troca" :
+    entrega.motivo === "admissao" ? "entrega" :
+    "entrega";
+  for (const m of movimentos) {
+    await ajustarEstoque({
+      item: m.item,
+      variacaoId: m.variacao.id,
+      delta: -m.delta,    // delta positivo = saída → ajusta com -delta
+      motivo: m.delta < 0 ? "ajuste" : motivoMov,
+      refEntregaId: entrega.id,
+      observacao: m.delta < 0
+        ? `Devolução por ajuste da entrega ${entrega.id}`
+        : `Acréscimo no ajuste da entrega ${entrega.id}`,
+      pessoa,
+    });
+  }
+
+  // Atualiza o doc da entrega com novos itens snapshot
+  const now = new Date().toISOString();
+  const itensAtualizados: EntregaUniforme["itens"] = resolvidos.map(({ item, variacao, qtd }) => ({
+    itemId: item.id,
+    variacaoId: variacao.id,
+    nome: item.nome,
+    tamanho: variacao.tamanho,
+    qtd,
+    custoUnit: variacao.custoUnitOverride ?? item.custoUnit,
+    caEpi: item.caEpi,
+    validadeAte: calcValidadeAte(entrega.entregueEm, item.validadeDias),
+  }));
+  const patch = {
+    itens: itensAtualizados,
+    observacao,
+    atualizadoEm: now,
+    atualizadoPor: { id: pessoa.id, nome: pessoa.nome },
+  };
+  await updateDoc(doc(db, "entregasUniforme", entrega.id), sanitizeForFirestore(patch));
+
+  return { ...entrega, ...patch };
+}
+
+/**
  * Registra devolução total/parcial de uma entrega. Pra cada item devolvido
  * com status="devolvido", devolve a qtd ao estoque. Status "descartado" e
  * "levado_pelo_empregado" NÃO alteram estoque (item sai do controle).
