@@ -24,7 +24,7 @@ import type {
   Restaurant,
   ScheduleStatus,
 } from "../../core/types";
-import { AREAS } from "../../core/types";
+import { AREAS, empregadoBatePonto } from "../../core/types";
 import { fetchPunches, type SolidesDebug } from "../../core/excecoes/solidesClient";
 import {
   buildEscalaFromSolides,
@@ -884,6 +884,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   };
   const [escalaDebug, setEscalaDebug] = useState<EscalaDebugInfo | null>(null);
 
+  // Cobertura Sólides: quais empregados (que batem ponto) ficaram sem
+  // quadro Sólides? Banner amarelo aparece pro gestor avisando que
+  // esses casos estão sendo avaliados pela escala do Planejamento
+  // (fallback) — não pela Sólides como deveriam.
+  type CoberturaSolides = {
+    semCpf: Array<{ id: string; nome: string }>;        // Planejamento sem CPF
+    semMatch: Array<{ id: string; nome: string; cpf: string }>; // CPF não casa na Sólides
+    semQuadro: Array<{ id: string; nome: string; cpf: string }>; // tem sid mas sem quadro
+    solidesFalhou: boolean; // toda a chamada da API falhou
+  };
+  const [coberturaSolides, setCoberturaSolides] = useState<CoberturaSolides | null>(null);
 
   // Carrega empregados do restaurante
   useEffect(() => {
@@ -1047,6 +1058,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
       let horariosPrevistos: Record<string, Record<string, { in: string; out: string }>> = {};
       const debugInfo: EscalaDebugInfo = {};
+      // Acumula cobertura Sólides pra exibir banner (só em modo
+      // single-semana — em loop "Mês todo" deixamos a última iteração
+      // valer, ou sumimos pra não piscar).
+      const cobertura: CoberturaSolides = {
+        semCpf: [], semMatch: [], semQuadro: [], solidesFalhou: false,
+      };
       try {
         // Várias datas em ordem de prioridade — workaround pro bug da Sólides
         // que às vezes retorna null pra uma data específica mesmo o quadro
@@ -1068,6 +1085,24 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         horariosPrevistos = buildHorariosPrevistosFromSolides(
           schedRes.schedules, sidByCpf, empIdByCpf, sd, ed,
         );
+        // Classifica cobertura — só pra quem bate ponto (cargo "bate ponto").
+        // Empregado pode estar em 3 estados problemáticos:
+        //   - sem CPF no Planejamento (não dá nem pra tentar match)
+        //   - CPF no Planejamento sem match na lista Sólides
+        //   - tem sid Sólides mas sem schedule (quadro não atribuído ou bug API)
+        const cargoByIdLocal = new Map<string, Cargo>();
+        for (const c of (cargos || [])) cargoByIdLocal.set(c.id, c);
+        for (const emp of empregados) {
+          const cargo = cargoByIdLocal.get(emp.cargoId);
+          if (cargo && !empregadoBatePonto(emp, cargo)) continue;
+          const cpf = onlyDigits(emp.cpf);
+          if (!cpf) { cobertura.semCpf.push({ id: emp.id, nome: emp.nome }); continue; }
+          const sid = sidByCpf.get(cpf);
+          if (sid == null) { cobertura.semMatch.push({ id: emp.id, nome: emp.nome, cpf }); continue; }
+          if (!schedRes.schedules[String(sid)]) {
+            cobertura.semQuadro.push({ id: emp.id, nome: emp.nome, cpf });
+          }
+        }
         // Debug pro Allan + agregados
         const totalEmps = Object.keys(schedRes.schedules).length;
         const empsComSchedule = Object.values(schedRes.schedules).filter((s) => s != null).length;
@@ -1100,7 +1135,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         }
       } catch (e) {
         console.warn("Sólides schedules falhou, usando fallback do Planejamento:", e);
+        cobertura.solidesFalhou = true;
       }
+      if (!isOverride) setCoberturaSolides(cobertura);
 
       // Fallback / merge: pra empregados que NÃO tiveram escala vinda da
       // Sólides (sem CPF, sem quadro), usa a escala do Planejamento.
@@ -1613,6 +1650,51 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* ── Banner de cobertura Sólides ──
+              Quem caiu em fallback ou está sem CPF — risco de "inconformidade"
+              ser na verdade só ausência de quadro na Sólides. Só aparece
+              fora do modo "Mês todo" (no agregado a cobertura é por semana
+              e perde sentido). */}
+          {coberturaSolides && !mesTodo && (
+            coberturaSolides.solidesFalhou ||
+            coberturaSolides.semCpf.length > 0 ||
+            coberturaSolides.semMatch.length > 0 ||
+            coberturaSolides.semQuadro.length > 0
+          ) && (
+            <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 text-sm text-amber-900 dark:text-amber-200">
+              <div className="font-semibold mb-1">⚠ Cobertura da Sólides incompleta</div>
+              {coberturaSolides.solidesFalhou && (
+                <div className="text-[12px]">
+                  Nenhum quadro veio da Sólides — usando escala do Planejamento pra todos os empregados. Reabrir a semana pode resolver se foi falha pontual de rede.
+                </div>
+              )}
+              {coberturaSolides.semCpf.length > 0 && (
+                <div className="text-[12px]">
+                  <strong>{coberturaSolides.semCpf.length}</strong> sem CPF no Planejamento (não dá match com Sólides):
+                  {" "}<span className="italic">{coberturaSolides.semCpf.slice(0, 6).map(e => e.nome).join(", ")}</span>
+                  {coberturaSolides.semCpf.length > 6 && ` +${coberturaSolides.semCpf.length - 6}`}
+                </div>
+              )}
+              {coberturaSolides.semMatch.length > 0 && (
+                <div className="text-[12px]">
+                  <strong>{coberturaSolides.semMatch.length}</strong> com CPF que não casou na lista Sólides (confira pontuação/dígitos):
+                  {" "}<span className="italic">{coberturaSolides.semMatch.slice(0, 6).map(e => e.nome).join(", ")}</span>
+                  {coberturaSolides.semMatch.length > 6 && ` +${coberturaSolides.semMatch.length - 6}`}
+                </div>
+              )}
+              {coberturaSolides.semQuadro.length > 0 && (
+                <div className="text-[12px]">
+                  <strong>{coberturaSolides.semQuadro.length}</strong> com CPF na Sólides mas sem quadro de horários atribuído lá:
+                  {" "}<span className="italic">{coberturaSolides.semQuadro.slice(0, 6).map(e => e.nome).join(", ")}</span>
+                  {coberturaSolides.semQuadro.length > 6 && ` +${coberturaSolides.semQuadro.length - 6}`}
+                </div>
+              )}
+              <div className="text-[11px] mt-1.5 text-amber-700 dark:text-amber-300/80">
+                Esses casos estão sendo avaliados pela escala do Planejamento como fallback. Pra ficar 100% consistente, ajuste o cadastro na Sólides e atualize.
+              </div>
             </div>
           )}
 
