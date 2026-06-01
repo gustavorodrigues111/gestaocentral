@@ -1000,22 +1000,38 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }, [empregados, areaByEmpId, filtroAreas, displayedResult, empIdByCpf]);
 
-  async function gerar() {
+  // Texto exibido no botão durante loop "Mês todo"
+  const [progressoMes, setProgressoMes] = useState<string | null>(null);
+
+  // gerar() pode rodar pra `semanaAtiva` (modo padrão) ou pra uma semana
+  // específica passada via override (modo "Mês todo" — loopa todas).
+  // Quando há override: NÃO mexe no result/setStatusSemana exibidos
+  // (estamos iterando); só salva cache no Firestore. O reload do
+  // `todosStatusDoRest` ao fim do loop atualiza `displayedResult`.
+  async function gerar(
+    wkOverride?: SemanaInfo,
+    statusOverride?: ExcecaoStatusSemana | null,
+  ) {
     if (!rid) return;
-    if (!startDate || !endDate) {
+    const wk = wkOverride || semanaAtiva;
+    const sd = wk?.weekStart || startDate;
+    const ed = wk?.weekEnd   || endDate;
+    const statusSemanaParam = wkOverride !== undefined ? (statusOverride ?? null) : statusSemana;
+    const isOverride = !!wkOverride;
+    if (!sd || !ed) {
       setErro("Informe o período (data inicial e final).");
       return;
     }
-    if (startDate > endDate) {
+    if (sd > ed) {
       setErro("A data inicial não pode ser depois da final.");
       return;
     }
     setLoading(true);
     setErro("");
-    setResult(null);
+    if (!isOverride) setResult(null);
     try {
       const shortCode = activeRestaurant?.shortCode || "";
-      const { punches, debug: dbg } = await fetchPunches(startDate, endDate, shortCode);
+      const { punches, debug: dbg } = await fetchPunches(sd, ed, shortCode);
 
       // Escala vinda da Sólides (fonte primária). Pra cada empregado do
       // Planejamento que tenha CPF, busca o sid Sólides e o quadro do meio
@@ -1027,7 +1043,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         // Várias datas em ordem de prioridade — workaround pro bug da Sólides
         // que às vezes retorna null pra uma data específica mesmo o quadro
         // existindo. Tenta endDate, depois meio, depois startDate, depois hoje.
-        const datasTry = [endDate, midDate(startDate, endDate), startDate, todayYmd()];
+        const datasTry = [ed, midDate(sd, ed), sd, todayYmd()];
         const schedRes = await fetchSolidesSchedules(datasTry, shortCode);
         const sidByCpf = new Map<string, number>();
         for (const e of schedRes.employees) {
@@ -1038,11 +1054,11 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           if (e.cpf) empIdByCpf.set(onlyDigits(e.cpf), e.id);
         }
         escalaPorEmpregado = buildEscalaFromSolides(
-          schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
+          schedRes.schedules, sidByCpf, empIdByCpf, sd, ed,
         );
         // Horários previstos por data (alimenta a regra de atraso)
         horariosPrevistos = buildHorariosPrevistosFromSolides(
-          schedRes.schedules, sidByCpf, empIdByCpf, startDate, endDate,
+          schedRes.schedules, sidByCpf, empIdByCpf, sd, ed,
         );
         // Debug pro Allan + agregados
         const totalEmps = Object.keys(schedRes.schedules).length;
@@ -1080,7 +1096,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
       // Fallback / merge: pra empregados que NÃO tiveram escala vinda da
       // Sólides (sem CPF, sem quadro), usa a escala do Planejamento.
-      const fallback = await buildEscalaContext(empregados, rid, startDate, endDate);
+      const fallback = await buildEscalaContext(empregados, rid, sd, ed);
       for (const [empId, perDate] of Object.entries(fallback)) {
         if (!escalaPorEmpregado[empId]) {
           escalaPorEmpregado[empId] = perDate;
@@ -1092,8 +1108,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // sem ajuste" em dias em que o RH justificou ausência. Falta NÃO
       // justificada é deixada como "trabalho" pra a regra continuar disparando.
       try {
-        const [y1, m1, d1] = startDate.split("-").map(Number);
-        const [y2, m2, d2] = endDate.split("-").map(Number);
+        const [y1, m1, d1] = sd.split("-").map(Number);
+        const [y2, m2, d2] = ed.split("-").map(Number);
         const startMs = Date.UTC(y1, m1 - 1, d1, 0, 0, 0, 0);
         const endMs   = Date.UTC(y2, m2 - 1, d2, 23, 59, 59, 999);
         const adjRes = await fetchSolidesAdjustments(startMs, endMs, shortCode);
@@ -1120,7 +1136,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       if (allanFinal && escalaPorEmpregado[allanFinal.id]) {
         debugInfo.escala = Object.fromEntries(Object.entries(escalaPorEmpregado[allanFinal.id]));
       }
-      setEscalaDebug(debugInfo);
+      if (!isOverride) setEscalaDebug(debugInfo);
 
       const report = generateExceptionsReport({
         punches,
@@ -1128,24 +1144,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         cargos,
         escalaPorEmpregado,
         horariosPrevistos,
-        startDate,
-        endDate,
+        startDate: sd,
+        endDate: ed,
       });
-      setResult(report);
-      setDebug(dbg || null);
+      if (!isOverride) {
+        setResult(report);
+        setDebug(dbg || null);
+      }
 
       // Salva o snapshot no doc da semana SEMPRE — assim o líder pode gerar,
       // sair, e voltar depois sem perder o que já tinha visto. Ao mudar pra
       // "em_tratamento", o cache vira o ponto de partida do tratamento.
-      if (semanaAtiva) {
+      if (wk) {
         // Antes de sobrescrever o cache, captura o snapshot anterior pra
         // diff "corrigido no Sólides" (#194).
-        const antesSnap = statusSemana?.relatorioCache?.exceptions || [];
+        const antesSnap = statusSemanaParam?.relatorioCache?.exceptions || [];
         try {
           const updated = await salvarRelatorioCache(
             rid,
-            semanaAtiva.weekStart,
-            semanaAtiva.weekEnd,
+            wk.weekStart,
+            wk.weekEnd,
             {
               geradoEm: new Date().toISOString(),
               exceptions: report.exceptions,
@@ -1154,7 +1172,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             },
             me || undefined, // registra evento no histórico se semana já estiver em tratamento
           );
-          setStatusSemana(updated);
+          if (!isOverride) setStatusSemana(updated);
 
           // F2 — Atrasos automáticos: pra cada atrasoEntrada, grava
           // marcador na escala + cria evento ponto_atraso na Trilha.
@@ -1179,17 +1197,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           // se o líder já mudou o status da praticada (ex: marcou "ferias")
           // sem usar o botão "Resolver na escala", marca o apontamento
           // como ciência automaticamente.
-          if (me && semanaAtiva) {
+          if (me && wk) {
             try {
               await detectarAjustesManuaisRetroativos({
                 rid,
-                weekStart: semanaAtiva.weekStart,
-                weekEnd: semanaAtiva.weekEnd,
+                weekStart: wk.weekStart,
+                weekEnd: wk.weekEnd,
                 excecoes: report.exceptions,
                 empIdByCpf,
-                statusSemanaAtual: statusSemana,
+                statusSemanaAtual: statusSemanaParam,
                 me,
-                onUpdate: setStatusSemana,
+                onUpdate: isOverride ? () => {} : setStatusSemana,
               });
             } catch (e) {
               console.warn("[ponto] falha na detecção retroativa:", e);
@@ -1217,8 +1235,56 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         }
       }
     } catch (e) {
+      if (isOverride) {
+        // Em loop "Mês todo": joga pro chamador agregar falhas no console
+        throw e;
+      }
       setErro(e instanceof Error ? e.message : "Erro ao gerar o relatório.");
     } finally {
+      if (!isOverride) setLoading(false);
+    }
+  }
+
+  // Atualiza pela Sólides TODAS as semanas do mês ativo, em sequência.
+  // Usado quando o usuário está em "Mês todo" e clica "🔄 Atualizar" —
+  // antes esse botão regenerava só a 1ª semana (fallback de semanaAtiva).
+  async function atualizarMesTodo() {
+    if (!rid || semanasMes.length === 0) return;
+    setLoading(true);
+    setErro("");
+    const falhas: Array<{ semana: string; motivo: string }> = [];
+    try {
+      for (let i = 0; i < semanasMes.length; i++) {
+        const w = semanasMes[i];
+        setProgressoMes(`${i + 1}/${semanasMes.length}`);
+        try {
+          const st = await carregarStatusSemana(rid, w.weekStart);
+          await gerar(w, st);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          console.warn(`[ponto] falha na semana ${w.weekStart}:`, e);
+          falhas.push({ semana: w.label, motivo: msg });
+        }
+      }
+      // Recarrega os caches do mês pra o displayedResult agregar tudo
+      try {
+        const rows = await listarStatusDoRestaurante(rid);
+        const m = new Map<string, ExcecaoStatusValor>();
+        for (const r of rows) m.set(r.weekStart, r.status);
+        setStatusPorWeekStart(m);
+        setTodosStatusDoRest(rows);
+      } catch (e) {
+        console.warn("[ponto] falha ao recarregar caches:", e);
+      }
+      if (falhas.length > 0) {
+        setErro(
+          `Sólides falhou em ${falhas.length}/${semanasMes.length} semana(s): ` +
+          falhas.map(f => `${f.semana} (${f.motivo})`).join("; ") +
+          ". Tente atualizar essas semanas individualmente.",
+        );
+      }
+    } finally {
+      setProgressoMes(null);
       setLoading(false);
     }
   }
@@ -1320,12 +1386,18 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           })}
           <button
             type="button"
-            onClick={gerar}
+            onClick={() => { if (mesTodo) void atualizarMesTodo(); else void gerar(); }}
             disabled={loading || empregados.length === 0}
             className="ml-auto text-[11px] uppercase tracking-wider font-semibold px-3 py-1 rounded-full transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            title={statusSemana?.relatorioCache ? "Atualizar pela Sólides (sobrescreve o cache)" : "Gerar relatório dessa semana"}
+            title={
+              mesTodo
+                ? "Atualizar todas as semanas do mês pela Sólides (1 por vez)"
+                : (statusSemana?.relatorioCache ? "Atualizar pela Sólides (sobrescreve o cache)" : "Gerar relatório dessa semana")
+            }
           >
-            {loading ? "⏳ atualizando…" : "🔄 Atualizar"}
+            {loading
+              ? (progressoMes ? `⏳ ${progressoMes}…` : "⏳ atualizando…")
+              : "🔄 Atualizar"}
           </button>
         </div>
 
