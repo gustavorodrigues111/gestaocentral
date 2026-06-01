@@ -1870,28 +1870,17 @@ function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNova
 
   return (
     <div>
-      {/* Toolbar estilo Asana: botão "+ Adicionar tarefa" proeminente à
-          esquerda, nav semana no meio, chip "Sem data (X)" + total à direita. */}
+      {/* Toolbar do calendário: nav semana + chip "Sem data (X)".
+          Criação avulsa fica no botão "+ Nova Tarefa" do header global;
+          criação por dia fica no botão tracejado dentro de cada coluna. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-3 flex-wrap">
-          {onNovaTarefaNoDia && (
-            <button
-              onClick={() => onNovaTarefaNoDia()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium shadow-sm transition-colors"
-              title="Criar nova tarefa"
-            >
-              <span className="text-base leading-none">+</span>
-              Adicionar tarefa
-            </button>
-          )}
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
-            <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
-            <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
-            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-2">
-              {titulo}
-            </span>
-          </div>
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
+          <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
+          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-2">
+            {titulo}
+          </span>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           {semProprio.length > 0 && (
