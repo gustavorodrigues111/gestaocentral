@@ -2635,6 +2635,9 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   // Responsável: começa em quem criou; user pode trocar pra outra pessoa
   // autorizada no projeto.
   const [responsavelId, setResponsavelId] = useState<string>(pessoaId);
+  // Co-responsáveis (podem editar) e observadores (só acompanham) — opcionais.
+  const [coResponsaveisIds, setCoResponsaveisIds] = useState<string[]>([]);
+  const [observadoresIds, setObservadoresIds] = useState<string[]>([]);
 
   // Lista de pessoas — pra select de responsável. Snapshot direto da coleção.
   const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
@@ -2715,7 +2718,14 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
       projetoId, subprojetoId, titulo,
       descricao: descricao || undefined,
       responsavelId, responsavelNome,
-      coResponsaveis: [],
+      coResponsaveis: coResponsaveisIds.length ? coResponsaveisIds : undefined,
+      coResponsaveisNomes: coResponsaveisIds.length
+        ? coResponsaveisIds.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean)
+        : undefined,
+      observadoresIds: observadoresIds.length ? observadoresIds : undefined,
+      observadoresNomes: observadoresIds.length
+        ? observadoresIds.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean)
+        : undefined,
       restaurantIds: restaurantIds.length ? restaurantIds : undefined,
       prazo: prazo || null,
       status: "a_fazer" as const,
@@ -2840,6 +2850,24 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
                 {responsaveisElegiveis.length === 1 && " Adicione pessoas autorizadas no Admin Projetos pra atribuir a outros."}
               </p>
             )}
+          </Field>
+          <Field label="Co-responsáveis (podem editar)">
+            <PessoasMultiPicker
+              value={coResponsaveisIds}
+              onChange={setCoResponsaveisIds}
+              pessoas={responsaveisElegiveis}
+              excluir={[responsavelId, ...observadoresIds]}
+              placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"}
+            />
+          </Field>
+          <Field label="Observadores (só acompanham)">
+            <PessoasMultiPicker
+              value={observadoresIds}
+              onChange={setObservadoresIds}
+              pessoas={responsaveisElegiveis}
+              excluir={[responsavelId, ...coResponsaveisIds]}
+              placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"}
+            />
           </Field>
           {temTemplate && (
             <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
