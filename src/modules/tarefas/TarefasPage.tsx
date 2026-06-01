@@ -3454,7 +3454,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                   }}
                   className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
                 >
-                  <option value="">— herda do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
+                  <option value="">— A mesma do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
                   {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
                     <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
                   )}
