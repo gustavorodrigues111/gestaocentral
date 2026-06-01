@@ -2338,12 +2338,98 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
     }, autor, { acao: "editada", campo: "anexos", detalhe: "Anexo removido" });
   }
 
+  const isConcluida = tarefa.status === "concluida";
+  // Toggle do botão "Marcar como concluída". Volta pra "a_fazer" se já concluída.
+  async function toggleConcluida() {
+    const novo: TarefaStatus = isConcluida ? "a_fazer" : "concluida";
+    await mudarStatusComErro(tarefa.id, novo, autor);
+  }
+
+  // Tab de atividade no fim do drawer — comentários ou log (atividade)
+  const [activityTab, setActivityTab] = useState<"comentarios" | "atividade">("comentarios");
+
+  const subprojeto = subprojetos.find(s => s.id === tarefa.subprojetoId);
+
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()} style={{ borderTopWidth: 6, borderTopColor: cor }}>
-        <header className="p-5 border-b border-gray-200 dark:border-gray-800">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 w-full md:max-w-[760px] h-full overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ borderLeftWidth: 4, borderLeftColor: cor }}
+      >
+        {/* ─── Top bar: Concluir + ações ─────────────────────────────── */}
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3 shrink-0">
+          <button
+            onClick={toggleConcluida}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+              isConcluida
+                ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+                : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-emerald-50 hover:border-emerald-300 dark:hover:bg-emerald-900/20"
+            }`}
+            title={isConcluida ? "Reabrir tarefa" : "Marcar como concluída"}
+          >
+            <span className="text-base leading-none">{isConcluida ? "✓" : "○"}</span>
+            {isConcluida ? "Concluída" : "Marcar como concluída"}
+          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                const motivo = prompt("Excluir tarefa. Motivo (opcional):");
+                if (motivo !== null) {
+                  softDeleteTarefa(tarefa.id, autor, motivo || undefined);
+                  onClose();
+                }
+              }}
+              className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
+              title="Excluir"
+            >
+              🗑️
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none px-2"
+              title="Fechar"
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {/* ─── Banner confidencial ─────────────────────────────────────── */}
+        {isConfidencial(tarefa, projeto) && (
+          <div className="px-5 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 shrink-0">
+            🔒 Esta tarefa é confidencial — só pessoas autorizadas podem ver.
+          </div>
+        )}
+
+        {/* ─── Corpo scrollável ────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Breadcrumb + Título */}
+          <div className="px-5 pt-4 pb-3">
+            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 flex-wrap">
+              <select
+                value={tarefa.projetoId}
+                onChange={(e) => trocarProjeto(e.target.value)}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
+                title="Trocar projeto"
+              >
+                {projetos.map(p => (
+                  <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
+                ))}
+              </select>
+              <span className="text-gray-400">›</span>
+              <select
+                value={tarefa.subprojetoId}
+                onChange={(e) => salvarCampo("subprojetoId", e.target.value, "subprojeto")}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
+                title="Trocar subprojeto"
+              >
+                {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => (
+                  <option key={s.id} value={s.id}>{s.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="mt-2">
               {editandoTitulo ? (
                 <input
                   value={tituloDraft}
@@ -2359,81 +2445,23 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                     if (e.key === "Escape") { setTituloDraft(tarefa.titulo); setEditandoTitulo(false); }
                   }}
                   autoFocus
-                  className="w-full text-lg font-bold bg-transparent border-b-2 border-indigo-500 text-gray-900 dark:text-gray-100 outline-none"
+                  className="w-full text-2xl font-bold bg-transparent border-b-2 border-indigo-500 text-gray-900 dark:text-gray-100 outline-none"
                 />
               ) : (
                 <h2
                   onClick={() => setEditandoTitulo(true)}
-                  className="text-lg font-bold text-gray-900 dark:text-gray-100 cursor-text hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded px-1 -mx-1"
+                  className={`text-2xl font-bold text-gray-900 dark:text-gray-100 cursor-text hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded px-1 -mx-1 ${isConcluida ? "line-through opacity-70" : ""}`}
                   title="Clique pra editar"
                 >
                   {tarefa.titulo}
                 </h2>
               )}
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-1 flex-wrap">
-                <select
-                  value={tarefa.projetoId}
-                  onChange={(e) => trocarProjeto(e.target.value)}
-                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                  title="Trocar projeto"
-                >
-                  {projetos.map(p => (
-                    <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
-                  ))}
-                </select>
-                <span>›</span>
-                <select
-                  value={tarefa.subprojetoId}
-                  onChange={(e) => salvarCampo("subprojetoId", e.target.value, "subprojeto")}
-                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                  title="Trocar subprojeto"
-                >
-                  {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => (
-                    <option key={s.id} value={s.id}>{s.nome}</option>
-                  ))}
-                </select>
-              </div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none">×</button>
           </div>
-        </header>
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Status</div>
-              <select
-                value={tarefa.status}
-                onChange={(e) => mudarStatusComErro(tarefa.id, e.target.value as TarefaStatus, autor)}
-                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
-              >
-                {(Object.keys(TAREFA_STATUS_LABEL) as TarefaStatus[]).map(s =>
-                  <option key={s} value={s}>{TAREFA_STATUS_LABEL[s]}</option>
-                )}
-              </select>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Prioridade</div>
-              <select
-                value={tarefa.prioridade}
-                onChange={(e) => salvarCampo("prioridade", e.target.value as TarefaPrioridade, "prioridade")}
-                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
-              >
-                {(Object.keys(TAREFA_PRIORIDADE_LABEL) as TarefaPrioridade[]).map(p =>
-                  <option key={p} value={p}>{TAREFA_PRIORIDADE_LABEL[p]}</option>
-                )}
-              </select>
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Prazo</div>
-              <input
-                type="date"
-                value={tarefa.prazo || ""}
-                onChange={(e) => salvarCampo("prazo", e.target.value || null, "prazo")}
-                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
-              />
-            </div>
-            <div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">Responsável</div>
+
+          {/* ─── Bloco de campos (linhas horizontais label/valor) ─── */}
+          <div className="px-5 pb-4 space-y-2">
+            <FieldRow label="Responsável">
               <select
                 value={tarefa.responsavelId}
                 onChange={(e) => {
@@ -2449,29 +2477,53 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                     valorDepois: novo.nome,
                   });
                 }}
-                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
               >
                 {!pessoasLista.find(p => p.id === tarefa.responsavelId) && tarefa.responsavelNome && (
                   <option value={tarefa.responsavelId}>{tarefa.responsavelNome} (atual)</option>
                 )}
                 {pessoasLista.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
-            </div>
-            <div className="col-span-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Co-responsáveis</div>
-              <CoRespPicker
-                tarefa={tarefa}
-                pessoas={pessoasLista}
-                autor={autor}
+            </FieldRow>
+            <FieldRow label="Data de conclusão">
+              <input
+                type="date"
+                value={tarefa.prazo || ""}
+                onChange={(e) => salvarCampo("prazo", e.target.value || null, "prazo")}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
               />
-            </div>
-            <div className="col-span-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Empresa(s)</div>
-              <div className="flex flex-wrap gap-2 mt-1">
+            </FieldRow>
+            <FieldRow label="Status">
+              <select
+                value={tarefa.status}
+                onChange={(e) => mudarStatusComErro(tarefa.id, e.target.value as TarefaStatus, autor)}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
+              >
+                {(Object.keys(TAREFA_STATUS_LABEL) as TarefaStatus[]).map(s =>
+                  <option key={s} value={s}>{TAREFA_STATUS_LABEL[s]}</option>
+                )}
+              </select>
+            </FieldRow>
+            <FieldRow label="Prioridade">
+              <select
+                value={tarefa.prioridade}
+                onChange={(e) => salvarCampo("prioridade", e.target.value as TarefaPrioridade, "prioridade")}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
+              >
+                {(Object.keys(TAREFA_PRIORIDADE_LABEL) as TarefaPrioridade[]).map(p =>
+                  <option key={p} value={p}>{TAREFA_PRIORIDADE_LABEL[p]}</option>
+                )}
+              </select>
+            </FieldRow>
+            <FieldRow label="Co-responsáveis">
+              <CoRespPicker tarefa={tarefa} pessoas={pessoasLista} autor={autor} />
+            </FieldRow>
+            <FieldRow label="Empresa(s)">
+              <div className="flex flex-wrap gap-2 py-1">
                 {restaurants.map(r => {
                   const sel = (tarefa.restaurantIds || []).includes(r.id);
                   return (
-                    <label key={r.id} className="flex items-center gap-1 text-xs">
+                    <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
                       <input
                         type="checkbox"
                         checked={sel}
@@ -2487,51 +2539,52 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 })}
                 {restaurants.length === 0 && <span className="text-xs text-gray-400">—</span>}
               </div>
-            </div>
-            <div className="col-span-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-2">
-                Visibilidade
-                {isConfidencial(tarefa, projeto) && (
-                  <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
-                    🔒 confidencial
-                  </span>
-                )}
+            </FieldRow>
+            <FieldRow label="Visibilidade">
+              <div className="space-y-1.5">
+                <select
+                  value={tarefa.visibilidadeOverride || ""}
+                  onChange={(e) => {
+                    const v = e.target.value as TarefaVisibilidade | "";
+                    salvarCampo("visibilidadeOverride", (v || undefined) as Tarefa["visibilidadeOverride"], "visibilidade");
+                  }}
+                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
+                >
+                  <option value="">— herda do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
+                  {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
+                    <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
+                  )}
+                </select>
+                <UsuariosAutorizadosPicker
+                  ids={tarefa.usuariosAutorizados || []}
+                  pessoas={pessoasLista}
+                  excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
+                  onChange={(ids) => salvarCampo("usuariosAutorizados", ids.length ? ids : undefined, "autorizados")}
+                />
               </div>
-              <select
-                value={tarefa.visibilidadeOverride || ""}
-                onChange={(e) => {
-                  const v = e.target.value as TarefaVisibilidade | "";
-                  salvarCampo("visibilidadeOverride", (v || undefined) as Tarefa["visibilidadeOverride"], "visibilidade");
-                }}
-                className="mt-1 w-full px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
-              >
-                <option value="">— herda do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
-                {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
-                  <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
-                )}
-              </select>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-2 mb-1">
-                Pessoas autorizadas (acesso explícito além da visibilidade):
+            </FieldRow>
+            <FieldRow label="Origem">
+              <div className="text-sm text-gray-600 dark:text-gray-400 py-1">
+                {TAREFA_ORIGEM_LABEL[tarefa.origem]}
+                {tarefa.origemRefLabel && <span className="text-gray-400"> · {tarefa.origemRefLabel}</span>}
               </div>
-              <UsuariosAutorizadosPicker
-                ids={tarefa.usuariosAutorizados || []}
-                pessoas={pessoasLista}
-                excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
-                onChange={(ids) => salvarCampo("usuariosAutorizados", ids.length ? ids : undefined, "autorizados")}
-              />
-            </div>
-            <div className="col-span-2 flex gap-3 text-xs text-gray-500 dark:text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">
-              <div>Origem: <span className="text-gray-700 dark:text-gray-300">{TAREFA_ORIGEM_LABEL[tarefa.origem]}</span></div>
-              {tarefa.origemRefLabel && <div>· {tarefa.origemRefLabel}</div>}
-            </div>
+            </FieldRow>
           </div>
 
-          {/* Custom fields tipados do subprojeto */}
-          <CustomFieldsSection tarefa={tarefa} subprojetos={subprojetos} autor={autor} />
+          <div className="border-t border-gray-100 dark:border-gray-800 mx-5" />
 
-          {/* Descrição editável */}
-          <div>
-            <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Descrição</div>
+          {/* Custom fields tipados do subprojeto */}
+          {(subprojeto?.customFieldsDef?.length || 0) > 0 && (
+            <div className="px-5 py-4">
+              <CustomFieldsSection tarefa={tarefa} subprojetos={subprojetos} autor={autor} />
+            </div>
+          )}
+
+          {/* ─── Descrição ─────────────────────────────────────────────── */}
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+              Descrição
+            </div>
             {editandoDescricao ? (
               <textarea
                 value={descricaoDraft}
@@ -2542,7 +2595,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                     await salvarCampo("descricao", descricaoDraft || undefined, "descrição");
                   }
                 }}
-                rows={4}
+                rows={5}
                 autoFocus
                 className="w-full text-sm px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
                 placeholder="Descrição (opcional)…"
@@ -2558,61 +2611,22 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             )}
           </div>
 
-          {/* Subtarefas */}
-          <SubtarefasSection
-            tarefa={tarefa}
-            autor={autor}
-            novaSubtarefa={novaSubtarefa}
-            setNovaSubtarefa={setNovaSubtarefa}
-            addSubtarefa={addSubtarefa}
-          />
-
-          {/* Comentários */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-              Comentários
-            </h3>
-            <div className="space-y-2">
-              {(tarefa.comentarios || []).map(c => (
-                <div key={c.id} className="text-sm bg-gray-50 dark:bg-gray-800/50 p-2 rounded-md">
-                  <div className="font-medium text-gray-900 dark:text-gray-100 text-xs flex items-center gap-2">
-                    {c.autorNome}
-                    {(c.mencionados?.length ?? 0) > 0 && (
-                      <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
-                        → {(c.mencionados || []).map(id => pessoasLista.find(p => p.id === id)?.nome || "?").join(", ")}
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{c.texto}</div>
-                  <div className="text-[10px] text-gray-400 mt-1">{c.criadoEm.slice(0, 16).replace("T", " ")}</div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-2">
-              <input
-                value={novoComentario}
-                onChange={(e) => setNovoComentario(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addComentario()}
-                placeholder="Comentar… use @nome pra mencionar"
-                className="flex-1 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
-              />
-              <Button size="sm" onClick={addComentario}>Enviar</Button>
-            </div>
-            {extrairMencoes(novoComentario, pessoasLista).length > 0 && (
-              <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">
-                ✓ Vai mencionar: {extrairMencoes(novoComentario, pessoasLista)
-                  .map(id => pessoasLista.find(p => p.id === id)?.nome)
-                  .filter(Boolean)
-                  .join(", ")}
-              </div>
-            )}
+          {/* ─── Subtarefas ────────────────────────────────────────────── */}
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800">
+            <SubtarefasSection
+              tarefa={tarefa}
+              autor={autor}
+              novaSubtarefa={novaSubtarefa}
+              setNovaSubtarefa={setNovaSubtarefa}
+              addSubtarefa={addSubtarefa}
+            />
           </div>
 
-          {/* Anexos */}
-          <div>
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+          {/* ─── Anexos ────────────────────────────────────────────────── */}
+          <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-800">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
               Anexos {tarefa.anexos && tarefa.anexos.length > 0 && `(${tarefa.anexos.length})`}
-            </h3>
+            </div>
             <div className="space-y-1">
               {(tarefa.anexos || []).map(a => (
                 <div key={a.id} className="flex items-center gap-2 text-sm">
@@ -2629,66 +2643,129 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
             </div>
           </div>
 
-          {/* Log */}
-          <details>
-            <summary className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 cursor-pointer">
-              Log de atividade ({tarefa.log?.length || 0})
-            </summary>
-            <div className="mt-2 space-y-1 text-xs text-gray-600 dark:text-gray-400">
-              {(tarefa.log || []).slice().reverse().map(l => (
-                <div key={l.id}>
-                  <span className="font-medium">{l.autorNome}</span> {l.acao.replace(/_/g, " ")}
-                  {l.detalhe && `: ${l.detalhe}`}
-                  <span className="ml-2 text-gray-400">{l.em.slice(0, 16).replace("T", " ")}</span>
+          {/* ─── Ação especial: decisão Experiência ─── */}
+          {tarefa.ehDecisaoExperiencia && tarefa.origemRefId && (
+            <div className="mx-5 my-4 px-3 py-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-sm">
+              <div className="font-medium text-amber-900 dark:text-amber-100 mb-1">
+                Decisão de Experiência ({tarefa.ehDecisaoExperiencia === "1a" ? "1ª etapa" : "2ª etapa"})
+              </div>
+              <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">
+                Caso a decisão seja <b>não renovar o contrato</b>, use o botão abaixo pra abrir o processo de demissão pré-preenchido.
+              </p>
+              <Button
+                size="sm"
+                variant="danger"
+                onClick={() => {
+                  const aviso = `Iniciar processo de demissão por NÃO RENOVAÇÃO do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)?\n\nIsso vai abrir o módulo Pessoas pra você concluir o desligamento.`;
+                  if (!confirm(aviso)) return;
+                  const motivoStr = `Não renovação do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)`;
+                  if (tarefa.restaurantIds && tarefa.restaurantIds[0]) {
+                    window.location.href = `/r/${tarefa.restaurantIds[0]}/demissao?empregadoId=${tarefa.origemRefId}&motivo=${encodeURIComponent(motivoStr)}`;
+                  } else {
+                    alert(`Vá em Demissão → '+ Iniciar Demissão' → escolha o empregado → iniciativa: Empresa → motivo: "${motivoStr}".`);
+                  }
+                }}
+              >
+                ✗ Não renovar — iniciar demissão
+              </Button>
+            </div>
+          )}
+
+          {/* ─── Tabs Comentários / Atividade ─────────────────────────── */}
+          <div className="border-t border-gray-100 dark:border-gray-800">
+            <div className="px-5 pt-3 flex items-center gap-4 text-sm border-b border-gray-100 dark:border-gray-800">
+              <button
+                onClick={() => setActivityTab("comentarios")}
+                className={`py-2 -mb-px border-b-2 transition-colors ${
+                  activityTab === "comentarios"
+                    ? "border-indigo-500 text-gray-900 dark:text-gray-100 font-semibold"
+                    : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+              >
+                Comentários {(tarefa.comentarios?.length || 0) > 0 && <span className="text-xs text-gray-400">({tarefa.comentarios!.length})</span>}
+              </button>
+              <button
+                onClick={() => setActivityTab("atividade")}
+                className={`py-2 -mb-px border-b-2 transition-colors ${
+                  activityTab === "atividade"
+                    ? "border-indigo-500 text-gray-900 dark:text-gray-100 font-semibold"
+                    : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                }`}
+              >
+                Todas as atividades {(tarefa.log?.length || 0) > 0 && <span className="text-xs text-gray-400">({tarefa.log!.length})</span>}
+              </button>
+            </div>
+            <div className="px-5 py-3">
+              {activityTab === "comentarios" ? (
+                <div>
+                  <div className="space-y-2">
+                    {(tarefa.comentarios || []).map(c => (
+                      <div key={c.id} className="text-sm bg-gray-50 dark:bg-gray-800/50 p-2 rounded-md">
+                        <div className="font-medium text-gray-900 dark:text-gray-100 text-xs flex items-center gap-2">
+                          {c.autorNome}
+                          {(c.mencionados?.length ?? 0) > 0 && (
+                            <span className="text-[10px] text-indigo-600 dark:text-indigo-400">
+                              → {(c.mencionados || []).map(id => pessoasLista.find(p => p.id === id)?.nome || "?").join(", ")}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{c.texto}</div>
+                        <div className="text-[10px] text-gray-400 mt-1">{c.criadoEm.slice(0, 16).replace("T", " ")}</div>
+                      </div>
+                    ))}
+                    {(tarefa.comentarios?.length || 0) === 0 && (
+                      <div className="text-xs text-gray-400 italic">Nenhum comentário ainda.</div>
+                    )}
+                  </div>
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      value={novoComentario}
+                      onChange={(e) => setNovoComentario(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && addComentario()}
+                      placeholder="Adicionar comentário… use @nome pra mencionar"
+                      className="flex-1 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800"
+                    />
+                    <Button size="sm" onClick={addComentario}>Enviar</Button>
+                  </div>
+                  {extrairMencoes(novoComentario, pessoasLista).length > 0 && (
+                    <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">
+                      ✓ Vai mencionar: {extrairMencoes(novoComentario, pessoasLista)
+                        .map(id => pessoasLista.find(p => p.id === id)?.nome)
+                        .filter(Boolean)
+                        .join(", ")}
+                    </div>
+                  )}
                 </div>
-              ))}
+              ) : (
+                <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                  {(tarefa.log || []).slice().reverse().map(l => (
+                    <div key={l.id} className="py-1">
+                      <span className="font-medium text-gray-700 dark:text-gray-300">{l.autorNome}</span> {l.acao.replace(/_/g, " ")}
+                      {l.detalhe && `: ${l.detalhe}`}
+                      <span className="ml-2 text-gray-400">{l.em.slice(0, 16).replace("T", " ")}</span>
+                    </div>
+                  ))}
+                  {(tarefa.log?.length || 0) === 0 && (
+                    <div className="text-xs text-gray-400 italic">Sem atividade registrada.</div>
+                  )}
+                </div>
+              )}
             </div>
-          </details>
-        </div>
-        {/* Ação especial: tarefa de decisão de Experiência */}
-        {tarefa.ehDecisaoExperiencia && tarefa.origemRefId && (
-          <div className="px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border-t border-amber-200 dark:border-amber-800 text-sm">
-            <div className="font-medium text-amber-900 dark:text-amber-100 mb-1">
-              Decisão de Experiência ({tarefa.ehDecisaoExperiencia === "1a" ? "1ª etapa" : "2ª etapa"})
-            </div>
-            <p className="text-xs text-amber-800 dark:text-amber-300 mb-2">
-              Caso a decisão seja <b>não renovar o contrato</b>, use o botão abaixo pra abrir o processo de demissão pré-preenchido com motivo de não-renovação.
-            </p>
-            <Button
-              size="sm"
-              variant="danger"
-              onClick={() => {
-                const aviso = `Iniciar processo de demissão por NÃO RENOVAÇÃO do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)?\n\n` +
-                  `Isso vai abrir o módulo Pessoas pra você concluir o desligamento. Quando finalizar lá, esta tarefa pode ser marcada como concluída.`;
-                if (!confirm(aviso)) return;
-                // Redireciona pro módulo Demissão pré-preenchido. O
-                // IniciarDemissaoModal lê query string (empregadoId + motivo).
-                const motivoStr = `Não renovação do contrato de experiência (${tarefa.ehDecisaoExperiencia === "1a" ? "1ª" : "2ª"} etapa)`;
-                if (tarefa.restaurantIds && tarefa.restaurantIds[0]) {
-                  window.location.href = `/r/${tarefa.restaurantIds[0]}/demissao?empregadoId=${tarefa.origemRefId}&motivo=${encodeURIComponent(motivoStr)}`;
-                } else {
-                  alert(`Vá em Demissão → '+ Iniciar Demissão' → escolha o empregado → iniciativa: Empresa → motivo: "${motivoStr}".`);
-                }
-              }}
-            >
-              ✗ Não renovar — iniciar demissão
-            </Button>
           </div>
-        )}
-        <footer className="p-3 border-t border-gray-200 dark:border-gray-800 flex justify-between">
-          <Button
-            variant="ghost"
-            onClick={() => {
-              const motivo = prompt("Motivo (opcional):");
-              if (motivo !== null) {
-                softDeleteTarefa(tarefa.id, autor, motivo || undefined);
-                onClose();
-              }
-            }}
-          >🗑️ Excluir</Button>
-          <Button onClick={onClose}>Fechar</Button>
-        </footer>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// Helper de linha label/valor. Asana usa label fixo à esquerda, valor à direita
+// com hover-edit. Aqui mantemos selects/inputs inline pra simplificar — mas
+// removendo a moldura visual quando não está em hover.
+function FieldRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="w-40 shrink-0 text-xs text-gray-500 dark:text-gray-400 pt-1.5">{label}</div>
+      <div className="flex-1 min-w-0">{children}</div>
     </div>
   );
 }
