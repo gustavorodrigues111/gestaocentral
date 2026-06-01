@@ -252,10 +252,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
 
   // ─── Clicksign ───
   // Modal de seleção pré-envio: lista os PDFs em "docs a assinar" e deixa o
-  // usuário escolher quais vão pro envelope (alguns podem não precisar de
-  // assinatura, e em reenvios o que já foi enviado normalmente não volta).
+  // usuário escolher quais vão pro envelope. Para cada arquivo, anota se já
+  // está num envelope ativo (mesmo nome de arquivo no Clicksign) — esses
+  // ficam desmarcados por padrão, pra evitar reenvio acidental do que já
+  // está aguardando assinatura.
   const [selecaoEnvio, setSelecaoEnvio] = useState<{
     arquivos: DriveFile[];
+    // Nomes de arquivos que estão no envelope ativo (status atual).
+    noEnvelopeAtual: Set<string>;
     selecionados: Set<string>;
   } | null>(null);
 
@@ -296,11 +300,29 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       if (arquivos.length === 0) {
         throw new Error("Nenhum documento em 'docs a assinar'. Gere/suba os termos primeiro.");
       }
-      // Default: todos marcados. Usuário desmarca o que não quer enviar.
-      setSelecaoEnvio({
-        arquivos,
-        selecionados: new Set(arquivos.map(a => a.id)),
-      });
+      // Se há envelope ativo (não fechado), busca a lista de docs nele
+      // pra anotar quais arquivos JÁ aguardam assinatura. Esses ficam
+      // desmarcados por padrão — usuário só marca os novos a enviar.
+      let noEnvelopeAtual = new Set<string>();
+      if (clicksignEnvelopeId && clicksignStatus !== "closed") {
+        try {
+          const { documents } = await statusEnvelopeClicksign(clicksignEnvelopeId);
+          noEnvelopeAtual = new Set(
+            documents
+              .map(d => d.filename)
+              .filter((n): n is string => typeof n === "string" && n.length > 0),
+          );
+        } catch (e) {
+          console.warn("[clicksign] falha ao buscar docs do envelope ativo:", e);
+        }
+      }
+      // Default: marca SÓ os arquivos que não estão no envelope ativo.
+      // Quando não há envelope ativo, marca todos.
+      const naoEnviados = arquivos.filter(a => !noEnvelopeAtual.has(a.name));
+      const selecionadosInit = noEnvelopeAtual.size > 0
+        ? new Set(naoEnviados.map(a => a.id))
+        : new Set(arquivos.map(a => a.id));
+      setSelecaoEnvio({ arquivos, noEnvelopeAtual, selecionados: selecionadosInit });
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
     } finally {
@@ -1067,49 +1089,73 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         >
           <div className="p-4 space-y-3">
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Selecione os documentos que vão pro envelope. O candidato vai
-              assinar todos os marcados — desmarque os que não precisam de
-              assinatura ou que já foram assinados antes.
+              Selecione os documentos que vão pro novo envelope. Docs marcados
+              com "📨 já aguarda" estão no envelope atual e vêm desmarcados
+              por padrão — você só envia os novos que faltam.
             </p>
-            {clicksignEnvelopeId && clicksignStatus !== "closed" && (
+            {selecaoEnvio.noEnvelopeAtual.size > 0 && (
               <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-2">
-                ⚠ Já existe um envelope em andamento ({traduzStatusClicksign(clicksignStatus)}).
-                Este envio cria um <strong>novo envelope</strong> — não adiciona docs ao atual.
+                ⚠ Já existe envelope em andamento ({traduzStatusClicksign(clicksignStatus)})
+                com <strong>{selecaoEnvio.noEnvelopeAtual.size}</strong> documento(s).
+                Este envio cria um <strong>novo envelope</strong> — não adiciona ao atual.
+                Os já enviados são marcáveis se você quiser reenviá-los.
               </div>
             )}
-            <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 pb-2">
-              <span>{selecaoEnvio.selecionados.size} de {selecaoEnvio.arquivos.length} selecionado(s)</span>
-              <button
-                type="button"
-                onClick={() => setSelecaoEnvio(prev => prev && {
-                  ...prev,
-                  selecionados: new Set(prev.arquivos.map(a => a.id)),
-                })}
-                className="text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                Marcar todos
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelecaoEnvio(prev => prev && {
-                  ...prev,
-                  selecionados: new Set(),
-                })}
-                className="text-indigo-600 dark:text-indigo-400 hover:underline"
-              >
-                Desmarcar todos
-              </button>
-            </div>
+            {(() => {
+              const novos = selecaoEnvio.arquivos.filter(a => !selecaoEnvio.noEnvelopeAtual.has(a.name));
+              const noEnv = selecaoEnvio.arquivos.length - novos.length;
+              return (
+                <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 pb-2 flex-wrap">
+                  <span>
+                    {selecaoEnvio.selecionados.size} selecionado(s) de {selecaoEnvio.arquivos.length}
+                    {noEnv > 0 && <> · {novos.length} novo(s), {noEnv} já no envelope</>}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelecaoEnvio(prev => prev && {
+                      ...prev,
+                      selecionados: new Set(prev.arquivos.map(a => a.id)),
+                    })}
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Marcar todos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelecaoEnvio(prev => prev && {
+                      ...prev,
+                      selecionados: new Set(novos.map(a => a.id)),
+                    })}
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Só os novos
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelecaoEnvio(prev => prev && {
+                      ...prev,
+                      selecionados: new Set(),
+                    })}
+                    className="text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    Desmarcar todos
+                  </button>
+                </div>
+              );
+            })()}
             <div className="space-y-1 max-h-[50vh] overflow-y-auto">
               {selecaoEnvio.arquivos.map(a => {
                 const checked = selecaoEnvio.selecionados.has(a.id);
+                const noEnvelope = selecaoEnvio.noEnvelopeAtual.has(a.name);
                 return (
                   <label
                     key={a.id}
                     className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
                       checked
                         ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800"
-                        : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        : noEnvelope
+                          ? "bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/60"
+                          : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
                   >
                     <input
@@ -1127,6 +1173,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate" title={a.name}>
                       {a.name}
                     </span>
+                    {noEnvelope && (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap"
+                        title="Este documento já está no envelope ativo aguardando assinatura."
+                      >
+                        📨 já aguarda
+                      </span>
+                    )}
                     {a.webViewLink && (
                       <a
                         href={a.webViewLink}
