@@ -7,7 +7,7 @@
 
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { criarTarefa, aplicarAutomacaoNoPayload } from "./repository";
+import { criarTarefa, aplicarAutomacaoNoPayload, atualizarTarefa } from "./repository";
 import type {
   ContaFixa, Manutencao, Tarefa, TarefaSubprojeto, Subtarefa,
 } from "../../core/types";
@@ -385,4 +385,64 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     criadas++;
   }
   return criadas;
+}
+
+// ─── Recalcular prazos de Experiência quando admissão muda ───────────────
+// Quando RH edita a data de admissão de um empregado, as tarefas de
+// experiência criadas pela cascata ficam com prazo desatualizado. Esta
+// função recalcula os prazos das tarefas em aberto (1ª e 2ª etapas) e
+// das subtarefas internas (D-5, D-3, etc) com base na nova data.
+// Idempotente: chama 2× com a mesma data e nada acontece.
+//
+// Retorna { afetadas } pra mostrar no toast/confirm. Tarefas concluídas
+// ou canceladas não são tocadas — histórico preservado.
+export async function recalcularPrazosExperiencia(
+  empregadoId: string,
+  novaAdmissao: string,
+  autor: { id: string; nome: string },
+): Promise<{ afetadas: number }> {
+  const snap = await getDocs(query(
+    collection(db, "tarefas"),
+    where("origemRefId", "==", empregadoId),
+    where("origem", "==", "admissao"),
+  ));
+  // Mesmo cálculo do cascata original
+  const NOVO_PRAZO_POR_KEY: Record<string, string> = {
+    exp1: addDias(novaAdmissao, 40),
+    exp2: addDias(novaAdmissao, 85),
+  };
+  const { resolverPrazoOffset } = await import("./prazoOffset");
+  // Mesmos offsets do checklist default da cascata. Como o template pode
+  // ter sido customizado depois, preserva os textos atuais e só recalcula
+  // os prazos das subtarefas — assumindo offsets D-5/D-3/D-2/D-1/D+0 pela
+  // ordem original. Subtarefas adicionadas manualmente depois ficam intactas
+  // (sem prazo recalculado), o que é seguro: mantém a edição do RH.
+  const offsetsDefault = ["D-5", "D-3", "D-2", "D-1", "D+0"];
+  let afetadas = 0;
+  await Promise.all(snap.docs.map(async d => {
+    const t = d.data() as Tarefa;
+    if (t.status === "concluida" || t.status === "cancelada" || t.deletadoEm) return;
+    // Identifica 1ª/2ª pela recorrenciaKey "adm-{id}-exp1" ou "adm-{id}-exp2"
+    const sufixo = t.recorrenciaKey?.split("-").pop() || "";
+    const novoPrazo = NOVO_PRAZO_POR_KEY[sufixo];
+    if (!novoPrazo) return; // não é tarefa de experiência identificável
+    if (t.prazo === novoPrazo) return; // já está no prazo certo
+    // Recalcula prazo de subtarefas existentes — preserva textos e ordem.
+    // Aplica offset default pela posição (ordem-1); se a tarefa tem mais
+    // subtarefas que o template, as extras ficam sem prazo recalculado.
+    const subs = (t.subtarefas || []).map((s, i) => ({
+      ...s,
+      prazo: i < offsetsDefault.length ? resolverPrazoOffset(offsetsDefault[i], novoPrazo) : s.prazo,
+    }));
+    await atualizarTarefa(d.id, {
+      prazo: novoPrazo,
+      subtarefas: subs,
+    }, autor, {
+      acao: "editada",
+      campo: "prazo",
+      detalhe: `Recalculado por mudança de data de admissão: ${t.prazo} → ${novoPrazo}`,
+    });
+    afetadas += 1;
+  }));
+  return { afetadas };
 }

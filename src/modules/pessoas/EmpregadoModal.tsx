@@ -357,6 +357,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     const { criticas, nonCritical } = diffCriticoEmpregado();
     // periodos sempre vai junto se admissao mudou
     const periodos = buildPeriodos();
+    const admissaoMudou = empregado!.admissaoAtual !== admissao;
     if (JSON.stringify(periodos) !== JSON.stringify(empregado!.periodos)) {
       nonCritical.periodos = periodos;
       nonCritical.admissaoAtual = admissao;
@@ -375,6 +376,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           acao: "alterado",
           registradoPor: me.id,
         });
+        // Se a admissão mudou, oferece recalcular prazos de Experiência
+        // das tarefas em aberto. Só pergunta se há tarefas pra recalcular,
+        // pra não jogar confirm vazio no caminho do user.
+        if (admissaoMudou && empregado) {
+          await oferecerRecalculoExperiencia(empregado.id, admissao, { id: me.id, nome: me.nome });
+        }
         onClose();
       } catch (e) {
         setErr(e instanceof Error ? e.message : "Erro");
@@ -456,6 +463,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         } catch (e) {
           console.warn("[trilha] falha ao registrar promoção salarial:", e);
         }
+      }
+    }
+    // Mesmo caminho com vigência: se mudou admissão (vai dentro de
+    // nonVersionedUpdates.admissaoAtual), oferece recalcular Experiência.
+    if (pendingVigencia.nonVersionedUpdates.admissaoAtual && me) {
+      const novaAdm = pendingVigencia.nonVersionedUpdates.admissaoAtual as string;
+      if (novaAdm !== empregado.admissaoAtual) {
+        await oferecerRecalculoExperiencia(empregado.id, novaAdm, { id: me.id, nome: me.nome });
       }
     }
   }
@@ -838,4 +853,43 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       )}
     </Modal>
   );
+}
+
+// Helper local: oferece (via confirm) recalcular prazos de Experiência
+// quando a admissão muda. Verifica primeiro se há tarefas em aberto pra
+// não jogar um confirm vazio na cara do user (caso comum: empregado
+// recém-criado ainda sem cascata gerada, ou já demitido).
+async function oferecerRecalculoExperiencia(
+  empregadoId: string,
+  novaAdmissao: string,
+  autor: { id: string; nome: string },
+): Promise<void> {
+  try {
+    const { getDocs, query, collection, where } = await import("firebase/firestore");
+    const snap = await getDocs(query(
+      collection(db, "tarefas"),
+      where("origemRefId", "==", empregadoId),
+      where("origem", "==", "admissao"),
+    ));
+    // Filtra só as em aberto e que ainda apontam pra prazo diferente da
+    // nova admissão (sempre seguro recalcular — função é idempotente).
+    const emAberto = snap.docs.filter(d => {
+      const t = d.data() as { status?: string; deletadoEm?: string | null; recorrenciaKey?: string };
+      const isExp = t.recorrenciaKey?.endsWith("-exp1") || t.recorrenciaKey?.endsWith("-exp2");
+      return isExp && t.status !== "concluida" && t.status !== "cancelada" && !t.deletadoEm;
+    });
+    if (emAberto.length === 0) return; // nada a recalcular
+    const ok = confirm(
+      `Você alterou a data de admissão.\n\n` +
+      `Há ${emAberto.length} tarefa(s) de Experiência (1ª/2ª etapa) em aberto vinculadas a esse empregado. ` +
+      `Deseja recalcular os prazos pra refletir a nova data de admissão?\n\n` +
+      `(Tarefas concluídas ou canceladas não são afetadas.)`,
+    );
+    if (!ok) return;
+    const { recalcularPrazosExperiencia } = await import("../tarefas/generator");
+    const r = await recalcularPrazosExperiencia(empregadoId, novaAdmissao, autor);
+    alert(`${r.afetadas} tarefa(s) atualizada(s) com os novos prazos.`);
+  } catch (e) {
+    console.warn("[experiencia] falha ao oferecer recálculo:", e);
+  }
 }
