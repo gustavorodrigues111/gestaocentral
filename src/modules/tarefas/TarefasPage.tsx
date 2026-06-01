@@ -2067,7 +2067,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
                 onChange={(e) => setF({ ...f, moduloOrigemRestaurantId: e.target.value || undefined })}
                 className="adm-input text-xs"
               >
-                <option value="">— Restaurante ativo (usa o atualmente selecionado) —</option>
+                <option value="">— Restaurante selecionado no modal —</option>
                 {restaurants.map(r => (
                   <option key={r.id} value={r.id}>{r.nome}</option>
                 ))}
@@ -2075,7 +2075,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
               <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">
                 {f.moduloOrigemRestaurantId
                   ? `🔒 Link trava em "${restaurants.find(r => r.id === f.moduloOrigemRestaurantId)?.nome}". Use pra sub específico de uma unidade.`
-                  : "Sem trava: o banner abre o módulo do restaurante ATUALMENTE selecionado. Use pra sub compartilhado entre unidades."}
+                  : "Sem trava: ao clicar no botão do banner, abre um modal perguntando qual restaurante. Use pra sub compartilhado entre unidades."}
               </p>
             </div>
           );
