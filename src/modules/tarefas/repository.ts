@@ -436,6 +436,41 @@ export async function salvarAutomacao(a: TarefaAutomacao): Promise<void> {
   await setDoc(doc(db, COL_AUTOMACOES, a.id), sanitizeForFirestore(a));
 }
 
+// Decora o payload de uma tarefa que vai ser criada por hook automático
+// com a TarefaAutomacao configurada pra esse módulo (se houver).
+// Estratégia: config explícita VENCE o fallback do hook — admin definiu.
+// Quando o campo da config está vazio (ex: sem co-resp), mantém o que
+// o hook passou.
+export async function aplicarAutomacaoNoPayload<T extends {
+  responsavelId?: string;
+  responsavelNome?: string;
+  coResponsaveis?: string[];
+  coResponsaveisNomes?: string[];
+  observadoresIds?: string[];
+  observadoresNomes?: string[];
+}>(payload: T, rid: string, moduloId: ModuloOrigemTarefa): Promise<T> {
+  if (!rid) return payload;
+  let cfg: TarefaAutomacao | null;
+  try {
+    cfg = await lerAutomacao(rid, moduloId);
+  } catch {
+    return payload; // falha de leitura não bloqueia geração
+  }
+  if (!cfg) return payload;
+  const usaResp = !!cfg.responsavelId;
+  const usaCo = (cfg.coResponsaveisIds?.length || 0) > 0;
+  const usaObs = (cfg.observadoresIds?.length || 0) > 0;
+  return {
+    ...payload,
+    responsavelId: usaResp ? cfg.responsavelId : payload.responsavelId,
+    responsavelNome: usaResp ? (cfg.responsavelNome || "") : payload.responsavelNome,
+    coResponsaveis: usaCo ? cfg.coResponsaveisIds : payload.coResponsaveis,
+    coResponsaveisNomes: usaCo ? cfg.coResponsaveisNomes : payload.coResponsaveisNomes,
+    observadoresIds: usaObs ? cfg.observadoresIds : payload.observadoresIds,
+    observadoresNomes: usaObs ? cfg.observadoresNomes : payload.observadoresNomes,
+  };
+}
+
 // Propaga a config nas tarefas EM ABERTO (a_fazer / em_andamento) do mesmo
 // módulo + restaurante. Não toca em concluídas/canceladas pra não revisitar
 // história. Retorna quantas foram afetadas pra confirmar no modal.

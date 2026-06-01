@@ -7,7 +7,7 @@
 
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { criarTarefa } from "./repository";
+import { criarTarefa, aplicarAutomacaoNoPayload } from "./repository";
 import type {
   ContaFixa, Manutencao, Tarefa, TarefaSubprojeto, Subtarefa,
 } from "../../core/types";
@@ -88,7 +88,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       cf.titular && `Titular: ${cf.titular}`,
       cf.observacoes && `\n${cf.observacoes}`,
     ].filter(Boolean).join("\n");
-    const t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
+    const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
       projetoId: cf.projetoId,
       subprojetoId: cf.subprojetoId,
       titulo: `Pagar — ${cf.nome}`,
@@ -106,6 +106,10 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       criadoPor: autor.id,
       criadoPorNome: autor.nome,
     };
+    // Override pela config Automações se houver — admin define no Gestor
+    // de Tarefas → Admin Projetos → Automações. Restaurante: usa o 1º do
+    // array (conta fixa pode estar em N restaurantes; config é por restaurante).
+    const t = await aplicarAutomacaoNoPayload(tBase, cf.restaurantIds[0] || "", "conta_fixa");
     await criarTarefa(t);
     contasGeradas++;
   }
@@ -123,7 +127,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
     if (m.ultimaGeracaoChave === chave) { jaExistiam++; continue; }
     const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
     if (!existSnap.empty) { jaExistiam++; continue; }
-    const t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
+    const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
       projetoId: m.projetoId,
       subprojetoId: m.subprojetoId,
       titulo: `${nomeTipo(m.tipo)} — vence ${venc}${m.fornecedor ? ` (${m.fornecedor})` : ""}`,
@@ -146,6 +150,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
       criadoPor: autor.id,
       criadoPorNome: autor.nome,
     };
+    const t = await aplicarAutomacaoNoPayload(tBase, m.restaurantIds[0] || "", "manutencao");
     await criarTarefa(t);
     manutencoesGeradas++;
   }
@@ -357,7 +362,7 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
       prazo: resolverPrazoOffset(c.offset, t.prazo),
       ordem: i + 1,
     }));
-    await criarTarefa({
+    const payload = await aplicarAutomacaoNoPayload({
       projetoId: "proj-pessoas-rot",
       subprojetoId: "sub-pessoas-experiencia",
       titulo: t.titulo,
@@ -365,17 +370,18 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
       responsavelNome: respNomeFinal,
       restaurantIds: [restaurantId],
       prazo: t.prazo,
-      status: "a_fazer",
-      prioridade: "normal",
+      status: "a_fazer" as const,
+      prioridade: "normal" as const,
       subtarefas,
-      origem: "admissao",
+      origem: "admissao" as const,
       origemRefId: empregadoId,
       origemRefLabel: `Admissão: ${pessoaNome}`,
       recorrenciaKey: chave,
       ehDecisaoExperiencia: t.ehDecisaoExperiencia,
       criadoPor: autorId,
       criadoPorNome: autorNome,
-    });
+    }, restaurantId, "admissao");
+    await criarTarefa(payload);
     criadas++;
   }
   return criadas;

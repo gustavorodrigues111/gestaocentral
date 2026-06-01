@@ -10,7 +10,7 @@
 import { collection, getDocs, query, where, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { criarTarefa } from "../tarefas/repository";
+import { criarTarefa, aplicarAutomacaoNoPayload } from "../tarefas/repository";
 import { resolverPrazoOffset } from "../tarefas/prazoOffset";
 import type { ExameEmpregado, ExameTipoConfig, Tarefa, Subtarefa } from "../../core/types";
 
@@ -80,7 +80,7 @@ export async function gerarTarefasDeExames(autor: { id: string; nome: string }):
       const responsavelId = tipo?.responsavelPadraoId || autor.id;
       const responsavelNome = tipo?.responsavelPadraoNome || autor.nome;
 
-      const t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
+      const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
         projetoId: PROJETO_DESTINO,
         subprojetoId: SUBPROJETO_DESTINO,
         titulo,
@@ -106,6 +106,9 @@ export async function gerarTarefasDeExames(autor: { id: string; nome: string }):
         criadoPor: autor.id,
         criadoPorNome: autor.nome,
       };
+      // Override pela config Automações (módulo "admissao" cobre exames
+      // porque a origem semântica é gestão do empregado).
+      const t = await aplicarAutomacaoNoPayload(tBase, exame.restaurantId, "admissao");
       await criarTarefa(t);
 
       // Marca o ciclo como gerado no cadastro mestre
