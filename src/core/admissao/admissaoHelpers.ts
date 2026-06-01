@@ -8,7 +8,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import type {
-  Admissao, AdmissaoStatus, AutoTriggerSubtarefa, Empregado, EmpregadoPeriodo,
+  Admissao, AdmissaoStatus, AutoTriggerSubtarefa, ClicksignEnvioRef,
+  Empregado, EmpregadoPeriodo,
   FormField, HorarioDia, MotivoCancelamento,
   Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado, WorkSchedule,
 } from "../types";
@@ -872,19 +873,29 @@ export async function salvarDriveFolder(
 }
 
 // Grava o envelope do Clicksign criado pra esta admissão.
+// `historicoAtual` é a lista de envios já feitos (vinda do estado em memória) —
+// se passada, append o novo envio. Mantém atalhos rápidos (clicksignEnvelopeId
+// e amigos) sempre apontando pro último envelope.
 export async function salvarClicksignEnvelope(
   admissaoId: string,
   envelopeId: string,
   status: string,
   sandbox: boolean,
+  novoEnvio?: ClicksignEnvioRef,
+  historicoAtual?: ClicksignEnvioRef[],
 ): Promise<void> {
-  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+  const now = new Date().toISOString();
+  const patch: Record<string, unknown> = {
     clicksignEnvelopeId: envelopeId,
     clicksignStatus: status,
-    clicksignEnviadoEm: new Date().toISOString(),
+    clicksignEnviadoEm: now,
     clicksignSandbox: sandbox,
-    updatedAt: new Date().toISOString(),
-  }));
+    updatedAt: now,
+  };
+  if (novoEnvio) {
+    patch.clicksignHistorico = [...(historicoAtual || []), novoEnvio];
+  }
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined(patch));
 }
 
 // Atualiza só o status do envelope (após uma consulta de status).

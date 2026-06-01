@@ -19,7 +19,8 @@ import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
-  Admissao, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TermoAssinado,
+  Admissao, ClicksignEnvioRef, EntregaUniforme, ItemUniforme, KitAreaUniforme,
+  Pessoa, Restaurant, TermoAssinado,
 } from "../../core/types";
 import {
   atualizarTermoAssinado,
@@ -48,6 +49,15 @@ function traduzStatusClicksign(s: string): string {
     case "canceled": return "cancelado";
     default: return s || "—";
   }
+}
+
+// Formata "YYYY-MM-DDTHH:mm:ss.sssZ" → "DD/MM/YYYY HH:mm" pt-BR.
+function fmtDateTime(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString("pt-BR", {
+      day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit",
+    });
+  } catch { return iso; }
 }
 
 // CPF (dígitos) → formatado "000.000.000-00" (Clicksign documentation).
@@ -115,6 +125,11 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     admissao.clicksignEnvelopeId || null,
   );
   const [clicksignStatus, setClicksignStatus] = useState<string>(admissao.clicksignStatus || "");
+  // Histórico completo de envios pro Clicksign (vários envelopes ao longo
+  // do tempo). Usado pelo modal pra mostrar quando cada arquivo foi enviado.
+  const [clicksignHistorico, setClicksignHistorico] = useState<ClicksignEnvioRef[]>(
+    admissao.clicksignHistorico || [],
+  );
   const [clicksignBusy, setClicksignBusy] = useState("");   // "enviando" | "verificando"
   const [clicksignErro, setClicksignErro] = useState("");
   const [clicksignMsg, setClicksignMsg] = useState("");
@@ -261,14 +276,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     source: "pasta" | "externo";
     webViewLink?: string;
     termoNome?: string;  // se source === "externo", nome do termo
+    // Histórico de envios deste arquivo (de TODOS os envelopes que essa
+    // admissão já criou) — calculado a partir de admissao.clicksignHistorico
+    // cruzando por fileId/filename. Vazio = nunca enviado.
+    enviadoEm?: string[];
   };
-  // Modal de seleção pré-envio. Para cada item, anota se já está num
-  // envelope ativo (mesmo filename no Clicksign) — esses ficam desmarcados
-  // por padrão, evitando reenvio acidental.
+  // Modal de seleção pré-envio.
   const [selecaoEnvio, setSelecaoEnvio] = useState<{
     arquivos: ItemEnvio[];
-    // Nomes de arquivos que estão no envelope ativo.
-    noEnvelopeAtual: Set<string>;
     selecionados: Set<string>;
   } | null>(null);
 
@@ -362,28 +377,28 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         return;
       }
 
-      // Se há envelope ativo (não fechado), busca a lista de docs nele
-      // pra anotar quais arquivos JÁ aguardam assinatura. Esses ficam
-      // desmarcados por padrão — usuário só marca os novos a enviar.
-      let noEnvelopeAtual = new Set<string>();
-      if (clicksignEnvelopeId && clicksignStatus !== "closed") {
-        try {
-          const { documents } = await statusEnvelopeClicksign(clicksignEnvelopeId);
-          noEnvelopeAtual = new Set(
-            documents
-              .map(d => d.filename)
-              .filter((n): n is string => typeof n === "string" && n.length > 0),
+      // Cruza cada arquivo com o histórico DE TODOS os envios desta
+      // admissão (não só o envelope ativo) — preserva o log mesmo quando
+      // mais de um envelope foi criado. Match por fileId (preferencial)
+      // ou filename (fallback pra envios antigos sem fileId).
+      const enriquecidos: ItemEnvio[] = arquivosTotais.map(a => {
+        const enviadoEm: string[] = [];
+        for (const envio of clicksignHistorico) {
+          const bate = envio.arquivos.some(
+            arq => (arq.fileId && arq.fileId === a.id) || arq.filename === a.name,
           );
-        } catch (e) {
-          console.warn("[clicksign] falha ao buscar docs do envelope ativo:", e);
+          if (bate) enviadoEm.push(envio.enviadoEm);
         }
-      }
-      // Default: marca SÓ os arquivos que não estão no envelope ativo.
-      const naoEnviados = arquivosTotais.filter(a => !noEnvelopeAtual.has(a.name));
-      const selecionadosInit = noEnvelopeAtual.size > 0
+        enviadoEm.sort();
+        return { ...a, enviadoEm };
+      });
+      // Default: marca SÓ os arquivos que NUNCA foram enviados antes.
+      const naoEnviados = enriquecidos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
+      const haAlgumEnviado = enriquecidos.some(a => a.enviadoEm && a.enviadoEm.length > 0);
+      const selecionadosInit = haAlgumEnviado
         ? new Set(naoEnviados.map(a => a.id))
-        : new Set(arquivosTotais.map(a => a.id));
-      setSelecaoEnvio({ arquivos: arquivosTotais, noEnvelopeAtual, selecionados: selecionadosInit });
+        : new Set(enriquecidos.map(a => a.id));
+      setSelecaoEnvio({ arquivos: enriquecidos, selecionados: selecionadosInit });
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
     } finally {
@@ -462,9 +477,23 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         docs,
         externalId: admissao.id,
       });
-      await salvarClicksignEnvelope(admissao.id, envelopeId, status, CLICKSIGN_SANDBOX);
+      // Monta o registro do envio pra gravar no histórico — preserva log
+      // mesmo após múltiplos envelopes serem criados.
+      const novoEnvio: ClicksignEnvioRef = {
+        envelopeId,
+        enviadoEm: new Date().toISOString(),
+        enviadoPor: { id: pessoa.id, nome: pessoa.nome },
+        sandbox: CLICKSIGN_SANDBOX,
+        statusInicial: status,
+        arquivos: docs.map((d, i) => ({ fileId: escolhidos[i].id, filename: d.filename })),
+      };
+      await salvarClicksignEnvelope(
+        admissao.id, envelopeId, status, CLICKSIGN_SANDBOX,
+        novoEnvio, clicksignHistorico,
+      );
       setClicksignEnvelopeId(envelopeId);
       setClicksignStatus(status);
+      setClicksignHistorico([...clicksignHistorico, novoEnvio]);
       setClicksignMsg(`✓ Enviado pro Clicksign (${docs.length} doc). O candidato recebe por e-mail.`);
       setSelecaoEnvio(null);
     } catch (e) {
@@ -1181,22 +1210,26 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               com "📨 já aguarda" estão no envelope atual e vêm desmarcados
               por padrão — você só envia os novos que faltam.
             </p>
-            {selecaoEnvio.noEnvelopeAtual.size > 0 && (
-              <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-2">
-                ⚠ Já existe envelope em andamento ({traduzStatusClicksign(clicksignStatus)})
-                com <strong>{selecaoEnvio.noEnvelopeAtual.size}</strong> documento(s).
-                Este envio cria um <strong>novo envelope</strong> — não adiciona ao atual.
-                Os já enviados são marcáveis se você quiser reenviá-los.
-              </div>
-            )}
             {(() => {
-              const novos = selecaoEnvio.arquivos.filter(a => !selecaoEnvio.noEnvelopeAtual.has(a.name));
-              const noEnv = selecaoEnvio.arquivos.length - novos.length;
+              const enviadosAntes = selecaoEnvio.arquivos.filter(a => (a.enviadoEm || []).length > 0);
+              if (enviadosAntes.length === 0) return null;
+              return (
+                <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-2">
+                  ⚠ Esta admissão já tem <strong>{clicksignHistorico.length}</strong> envelope(s) criado(s)
+                  ({traduzStatusClicksign(clicksignStatus)}).
+                  Este envio cria um <strong>novo envelope</strong> — não adiciona ao atual.
+                  Docs já enviados antes vêm desmarcados; marque pra reenviá-los.
+                </div>
+              );
+            })()}
+            {(() => {
+              const novos = selecaoEnvio.arquivos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
+              const enviados = selecaoEnvio.arquivos.length - novos.length;
               return (
                 <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 pb-2 flex-wrap">
                   <span>
                     {selecaoEnvio.selecionados.size} selecionado(s) de {selecaoEnvio.arquivos.length}
-                    {noEnv > 0 && <> · {novos.length} novo(s), {noEnv} já no envelope</>}
+                    {enviados > 0 && <> · {novos.length} novo(s), {enviados} já enviado(s)</>}
                   </span>
                   <button
                     type="button"
@@ -1234,14 +1267,15 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             <div className="space-y-1 max-h-[50vh] overflow-y-auto">
               {selecaoEnvio.arquivos.map(a => {
                 const checked = selecaoEnvio.selecionados.has(a.id);
-                const noEnvelope = selecaoEnvio.noEnvelopeAtual.has(a.name);
+                const jaEnviado = (a.enviadoEm || []).length > 0;
+                const ultimoEnvio = jaEnviado ? a.enviadoEm![a.enviadoEm!.length - 1] : undefined;
                 return (
                   <label
                     key={a.id}
-                    className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                    className={`flex items-start gap-2 p-2 rounded border cursor-pointer transition-colors ${
                       checked
                         ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800"
-                        : noEnvelope
+                        : jaEnviado
                           ? "bg-amber-50/40 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/60"
                           : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
@@ -1256,38 +1290,45 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                         else next.add(a.id);
                         return { ...prev, selecionados: next };
                       })}
-                      className="w-4 h-4 accent-indigo-600 flex-shrink-0"
+                      className="w-4 h-4 mt-0.5 accent-indigo-600 flex-shrink-0"
                     />
-                    <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate" title={a.name}>
-                      {a.name}
-                    </span>
-                    {a.source === "externo" && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap"
-                        title="Este PDF está em outra pasta do Drive. Vou tentar baixar via API — se a conta conectada tiver permissão de leitura, vai."
-                      >
-                        📎 link externo
-                      </span>
-                    )}
-                    {noEnvelope && (
-                      <span
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 whitespace-nowrap"
-                        title="Este documento já está no envelope ativo aguardando assinatura."
-                      >
-                        📨 já aguarda
-                      </span>
-                    )}
-                    {a.webViewLink && (
-                      <a
-                        href={a.webViewLink}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
-                      >
-                        ↗ ver
-                      </a>
-                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate" title={a.name}>
+                          {a.name}
+                        </span>
+                        {a.source === "externo" && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap"
+                            title="Este PDF está em outra pasta do Drive. Vou tentar baixar via API — se a conta conectada tiver permissão de leitura, vai."
+                          >
+                            📎 link externo
+                          </span>
+                        )}
+                        {a.webViewLink && (
+                          <a
+                            href={a.webViewLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
+                          >
+                            ↗ ver
+                          </a>
+                        )}
+                      </div>
+                      {jaEnviado && ultimoEnvio && (
+                        <div
+                          className="text-[10px] text-amber-800 dark:text-amber-300 mt-0.5"
+                          title={a.enviadoEm!.length > 1
+                            ? `Enviado ${a.enviadoEm!.length}× — última vez ${fmtDateTime(ultimoEnvio)}`
+                            : undefined}
+                        >
+                          📨 enviado em {fmtDateTime(ultimoEnvio)}
+                          {a.enviadoEm!.length > 1 && ` · ${a.enviadoEm!.length}×`}
+                        </div>
+                      )}
+                    </div>
                   </label>
                 );
               })}

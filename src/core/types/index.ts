@@ -2417,13 +2417,31 @@ export type Admissao = {
   // Envelope criado via API v3. status: draft|running|closed|canceled.
   // O fluxo é por polling (cliente consulta o status); quando "closed", baixa
   // os PDFs assinados e sobe pra "docs assinados".
-  clicksignEnvelopeId?: string;
-  clicksignStatus?: string;
-  clicksignEnviadoEm?: string;   // ISO
-  clicksignSandbox?: boolean;    // se foi criado no ambiente sandbox (teste)
+  clicksignEnvelopeId?: string;        // último envelope criado (atalho rápido)
+  clicksignStatus?: string;            // status do último envelope
+  clicksignEnviadoEm?: string;         // ISO do último envio
+  clicksignSandbox?: boolean;          // sandbox (teste)
+  // Histórico de TODOS os envios pro Clicksign — preserva log mesmo após
+  // múltiplos envelopes. Usado pelo modal de seleção pra marcar arquivos
+  // que já foram enviados em qualquer envelope (não só o último). Cada
+  // envio corresponde a 1 envelope com 1+ documentos.
+  clicksignHistorico?: ClicksignEnvioRef[];
 
   createdAt: string;
   updatedAt: string;
+};
+
+// Registro de UM envio pro Clicksign. Vive em admissao.clicksignHistorico
+// como array — cada item representa um envelope que foi disparado.
+export type ClicksignEnvioRef = {
+  envelopeId: string;
+  enviadoEm: string;             // ISO
+  enviadoPor?: { id: string; nome: string };
+  sandbox?: boolean;
+  statusInicial?: string;        // snapshot do status no momento do envio
+  // Arquivos que foram nesse envelope. fileId vem do Drive (quando
+  // possível); filename é o nome usado no Clicksign (sempre presente).
+  arquivos: { fileId?: string; filename: string }[];
 };
 
 export type TermoAssinado = {
