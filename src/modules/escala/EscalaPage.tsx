@@ -1780,13 +1780,28 @@ function GradeMobile({
   }
   // Semana inicial visível:
   // - Se está vendo o mês corrente → semana de HOJE (mais útil no dia-a-dia)
-  // - Senão → 1ª segunda que cai no mês
+  // - Senão → 1ª segunda que cai DENTRO do mês (não a segunda da semana do
+  //   dia 1, que frequentemente está no mês anterior — quando o dia 1 é
+  //   ter/qua/qui/sex/sáb/dom, a segunda dessa semana cai no mês passado.
+  //   Isso gerava bug: mudar de junho pra maio caía na semana 04-27, que
+  //   tem maioria em abril, e o efeito "majMes !== mes" disparava
+  //   onMesChange(abril) — pulando maio inteiro).
   function initialWeekStart(): Date {
     const hoje = new Date();
     if (hoje.getFullYear() === ano && hoje.getMonth() + 1 === mes) {
       return getSegunda(hoje);
     }
-    return getSegunda(new Date(ano, mes - 1, 1));
+    const dia1 = new Date(ano, mes - 1, 1);
+    const segDaSemanaDoDia1 = getSegunda(dia1);
+    // Se a segunda já caiu DENTRO do mês (dia1 é segunda), usa essa.
+    // Senão, adiciona 7 dias pra cair na 1ª segunda do mês.
+    if (segDaSemanaDoDia1.getMonth() === dia1.getMonth() &&
+        segDaSemanaDoDia1.getFullYear() === dia1.getFullYear()) {
+      return segDaSemanaDoDia1;
+    }
+    const proxSegunda = new Date(segDaSemanaDoDia1);
+    proxSegunda.setDate(proxSegunda.getDate() + 7);
+    return proxSegunda;
   }
   const [weekStart, setWeekStart] = useState<Date>(() => initialWeekStart());
 
