@@ -282,7 +282,7 @@ export function QuadrosSubTab({ rid }: Props) {
         resultados: out.map((r) => ({
           empregadoId: r.empregado.id,
           empregadoNome: r.empregado.nome,
-          empregadoCpf: r.empregado.cpf,
+          empregadoCpf: r.empregado.cpf || undefined,
           status: r.status,
           totalDiffs: r.totalDiffs,
           alternating: r.alternating,
