@@ -619,6 +619,15 @@ function labelCampo(c: "active" | "in" | "out" | "break"): string {
 //  Modal: resultado da sondagem do PUT na API Sólides (Fase 0)
 // ────────────────────────────────────────────────────────────────────────────
 
+type ProbeAttempt = {
+  label: string;
+  url: string;
+  method: string;
+  status?: number;
+  bodyPreview?: string;
+  headers?: Record<string, string>;
+};
+
 type ProbeOut = {
   ok: boolean;
   step: "get" | "put";
@@ -628,6 +637,7 @@ type ProbeOut = {
   putBodyPreview?: string;
   putHeaders?: Record<string, string>;
   echoBytes?: number;
+  attempts?: ProbeAttempt[];
   diagnostic: string;
 };
 
@@ -682,16 +692,16 @@ function ProbeResultadoModal({
                 <div>
                   <span className="text-gray-500">GET</span>{" "}
                   <span className={`font-mono font-semibold ${resultado.getStatus >= 200 && resultado.getStatus < 300 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>HTTP {resultado.getStatus}</span>
+                  {typeof resultado.echoBytes === "number" && (
+                    <span className="text-gray-500"> · payload reenviado: <strong>{resultado.echoBytes} bytes</strong></span>
+                  )}
                 </div>
-                {resultado.step === "put" && resultado.putStatus != null && (
-                  <div>
-                    <span className="text-gray-500">PUT</span>{" "}
-                    <span className={`font-mono font-semibold ${resultado.putStatus >= 200 && resultado.putStatus < 300 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>HTTP {resultado.putStatus}</span>
-                    {typeof resultado.echoBytes === "number" && (
-                      <span className="text-gray-500"> · payload reenviado: <strong>{resultado.echoBytes} bytes</strong></span>
-                    )}
+                {(resultado.attempts || []).map((a, i) => (
+                  <div key={i}>
+                    <span className="text-gray-500">{a.method} {new URL(a.url).pathname}</span>{" "}
+                    <span className={`font-mono font-semibold ${a.status != null && a.status >= 200 && a.status < 300 ? "text-emerald-700 dark:text-emerald-400" : "text-rose-700 dark:text-rose-400"}`}>HTTP {a.status ?? "?"}</span>
                   </div>
-                )}
+                ))}
               </div>
 
               <details className="border border-gray-200 dark:border-gray-800 rounded-lg">
@@ -703,29 +713,24 @@ function ProbeResultadoModal({
                 </pre>
               </details>
 
-              {resultado.step === "put" && (
-                <details className="border border-gray-200 dark:border-gray-800 rounded-lg" open>
+              {(resultado.attempts || []).map((a, i) => (
+                <details key={i} className="border border-gray-200 dark:border-gray-800 rounded-lg" open={i === (resultado.attempts?.length ?? 1) - 1}>
                   <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    📄 Body da resposta do PUT (preview 1000c)
+                    📄 {a.method} {new URL(a.url).pathname} · HTTP {a.status ?? "?"}
                   </summary>
                   <pre className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 overflow-x-auto whitespace-pre-wrap break-words border-t border-gray-200 dark:border-gray-800 max-h-60 overflow-y-auto">
-                    {resultado.putBodyPreview || "(vazio)"}
+                    {a.bodyPreview || "(vazio)"}
                   </pre>
+                  {a.headers && Object.keys(a.headers).length > 0 && (
+                    <div className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 border-t border-gray-100 dark:border-gray-800/60 space-y-0.5">
+                      <div className="font-semibold text-gray-700 dark:text-gray-300 mb-0.5">Headers:</div>
+                      {Object.entries(a.headers).map(([k, v]) => (
+                        <div key={k}><span className="text-gray-400">{k}:</span> {v}</div>
+                      ))}
+                    </div>
+                  )}
                 </details>
-              )}
-
-              {resultado.putHeaders && (
-                <details className="border border-gray-200 dark:border-gray-800 rounded-lg">
-                  <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300">
-                    🏷️ Headers da resposta do PUT
-                  </summary>
-                  <div className="px-3 py-2 text-[10px] font-mono text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-800 space-y-0.5">
-                    {Object.entries(resultado.putHeaders).map(([k, v]) => (
-                      <div key={k}><span className="text-gray-400">{k}:</span> {v}</div>
-                    ))}
-                  </div>
-                </details>
-              )}
+              ))}
             </>
           )}
         </div>

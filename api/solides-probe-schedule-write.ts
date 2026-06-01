@@ -136,44 +136,94 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       return;
     }
 
-    // 2) PUT com payload IDÊNTICO ao recebido
-    const putResp = await doFetch(`${WORK_SCHEDULE_API}/${employeeId}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Basic ${token}`,
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: getResp.bodyText,
-    });
+    // 2) Tenta uma cadeia de verbos: PUT primeiro; se 405, tenta POST.
+    // Também tenta POST em /employee-work-schedule (sem id) caso a Sólides
+    // expose um endpoint de "criar/atualizar" sem path-param.
+    const attempts: Array<{
+      label: string;
+      url: string;
+      method: string;
+      status?: number;
+      bodyPreview?: string;
+      headers?: Record<string, string>;
+    }> = [];
 
-    // 3) Diagnóstico amigável
-    let diagnostic = "";
+    async function tryVerb(label: string, url: string, method: string): Promise<{ status: number; bodyText: string; headers: Record<string, string> }> {
+      const r = await doFetch(url, {
+        method,
+        headers: {
+          Authorization: `Basic ${token}`,
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: getResp.bodyText,
+      });
+      attempts.push({
+        label,
+        url,
+        method,
+        status: r.status,
+        bodyPreview: r.bodyText.slice(0, 1000),
+        headers: r.headers,
+      });
+      return r;
+    }
+
+    let ok = false;
+    let vencedor: typeof attempts[number] | null = null;
+
+    // Verbo 1: PUT em /employee-work-schedule/{id}
+    const putResp = await tryVerb("PUT /employee-work-schedule/{id}", `${WORK_SCHEDULE_API}/${employeeId}`, "PUT");
     if (putResp.status >= 200 && putResp.status < 300) {
-      diagnostic = "✅ ESCRITA AUTORIZADA. Token aceita PUT no employee-work-schedule. Pode planejar a Fase 1 do POC.";
-    } else if (putResp.status === 401 || putResp.status === 403) {
-      diagnostic = "❌ Token é read-only. Sólides retornou 401/403 — vamos precisar de credencial com escopo de escrita.";
+      ok = true;
+      vencedor = attempts[attempts.length - 1];
     } else if (putResp.status === 405) {
-      diagnostic = "❌ Endpoint não suporta PUT (405 Method Not Allowed). Verbo correto pode ser POST ou outra rota — checar com suporte Tangerino.";
-    } else if (putResp.status === 400 || putResp.status === 422) {
-      diagnostic = `⚠ Body rejeitado (HTTP ${putResp.status}). API espera formato diferente do GET — leia o body abaixo pra ver o que reclamou.`;
-    } else if (putResp.status === 404) {
-      diagnostic = "❌ Endpoint não encontrado pra escrita (404). Rota correta pode ser diferente do GET.";
-    } else if (putResp.status === 429) {
+      // PUT bloqueado — tenta POST no mesmo path
+      const postSameResp = await tryVerb("POST /employee-work-schedule/{id}", `${WORK_SCHEDULE_API}/${employeeId}`, "POST");
+      if (postSameResp.status >= 200 && postSameResp.status < 300) {
+        ok = true;
+        vencedor = attempts[attempts.length - 1];
+      } else if (postSameResp.status === 405 || postSameResp.status === 404) {
+        // Tenta POST na coleção (sem id)
+        const postCollResp = await tryVerb("POST /employee-work-schedule (coleção)", `${WORK_SCHEDULE_API}`, "POST");
+        if (postCollResp.status >= 200 && postCollResp.status < 300) {
+          ok = true;
+          vencedor = attempts[attempts.length - 1];
+        }
+      }
+    }
+
+    const ultima = attempts[attempts.length - 1];
+
+    // 3) Diagnóstico amigável baseado na última tentativa
+    let diagnostic = "";
+    if (ok && vencedor) {
+      diagnostic = `✅ ESCRITA AUTORIZADA via ${vencedor.label}. Token aceita escrita — pode planejar a Fase 1.`;
+    } else if (ultima.status === 401 || ultima.status === 403) {
+      diagnostic = "❌ Token é read-only. Sólides retornou 401/403 — precisa de credencial com escopo de escrita.";
+    } else if (ultima.status === 405) {
+      diagnostic = `❌ Nenhum dos verbos testados (PUT, POST) foi aceito. Tentamos: ${attempts.map(a => `${a.method} ${new URL(a.url).pathname} → ${a.status}`).join("; ")}. Provavelmente a escrita não é exposta na API pública — checar com suporte Tangerino se há rota oficial.`;
+    } else if (ultima.status === 400 || ultima.status === 422) {
+      diagnostic = `⚠ Body rejeitado (HTTP ${ultima.status}) na tentativa "${ultima.label}". API espera formato diferente do GET — leia o body pra ver o que reclamou.`;
+    } else if (ultima.status === 404) {
+      diagnostic = `❌ Endpoint não encontrado (404) em "${ultima.label}". Rota de escrita pode ser outra.`;
+    } else if (ultima.status === 429) {
       diagnostic = "⏳ Rate limit (429). Tentar de novo daqui a pouco.";
     } else {
-      diagnostic = `⚠ Status inesperado HTTP ${putResp.status}. Inspecione o body abaixo.`;
+      diagnostic = `⚠ Última tentativa "${ultima.label}" retornou HTTP ${ultima.status}. Inspecione o body abaixo.`;
     }
 
     res.status(200).json({
-      ok: putResp.status >= 200 && putResp.status < 300,
+      ok,
       step: "put",
       getStatus: getResp.status,
       getBodyPreview: getResp.bodyText.slice(0, 500),
-      putStatus: putResp.status,
-      putBodyPreview: putResp.bodyText.slice(0, 1000),
-      putHeaders: putResp.headers,
+      // Compat com versão anterior — putStatus/body são da PRIMEIRA tentativa
+      putStatus: attempts[0]?.status,
+      putBodyPreview: attempts[0]?.bodyPreview,
+      putHeaders: attempts[0]?.headers,
       echoBytes: getResp.bodyText.length,
+      attempts, // todas as tentativas pra mostrar na UI
       diagnostic,
     });
   } catch (e) {
