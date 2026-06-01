@@ -487,17 +487,8 @@ function ProjetosSidebar({
                   };
                   return (
                     <div className="pl-5 mt-0.5 space-y-1.5">
-                      <button
-                        onClick={() => onAbrirSubprojeto(p.id, "")}
-                        className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                          subFiltroAtual === ""
-                            ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
-                        }`}
-                      >
-                        <span className="flex-1">Todos</span>
-                        <span className="text-[10px] text-gray-500">{ativas(tarefasProjeto)}</span>
-                      </button>
+                      {/* Sem "Todos" — o próprio click no nome do projeto
+                          já filtra tudo (subFiltro vazio). */}
 
                       {/* Caixa verde — subprojetos manuais (criação livre) */}
                       {manuais.length > 0 && (
@@ -1645,7 +1636,9 @@ function PessoasMultiPicker({ value, onChange, pessoas, excluir, placeholder }: 
         <select
           value=""
           onChange={(e) => { if (e.target.value) onChange([...value, e.target.value]); }}
-          className="w-full px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
+          /* h-[38px] alinha com inputs/selects do mesmo form (NovaTarefaModal,
+             Automações). Box-sizing border-box vem do Tailwind reset. */
+          className="w-full h-[38px] px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm"
         >
           <option value="">{placeholder || "+ adicionar"}</option>
           {disponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
