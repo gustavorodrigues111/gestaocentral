@@ -60,6 +60,43 @@ export async function salvarSubprojeto(s: TarefaSubprojeto): Promise<void> {
   await setDoc(doc(db, COL_SUBPROJETOS, s.id), sanitizeForFirestore(s));
 }
 
+// Conta quantas tarefas existentes apontam pra esse subprojeto — usado pra
+// avisar o admin antes de mover o subprojeto pra outro projeto.
+export async function contarTarefasDoSubprojeto(subId: string): Promise<number> {
+  const s = await getDocs(query(collection(db, COL_TAREFAS), where("subprojetoId", "==", subId)));
+  return s.size;
+}
+
+// Move um subprojeto pra outro projeto e cascateia: atualiza projetoId +
+// corHerdada de TODAS as tarefas que pertenciam ao subprojeto. Mantém o
+// subprojetoId (mesma referência) — só re-aponta o projeto pai.
+export async function moverSubprojetoParaProjeto(
+  sub: TarefaSubprojeto,
+  novoProjetoId: string,
+  novoProjetoCor: string | undefined,
+  pessoaId: string,
+): Promise<{ tarefasAfetadas: number }> {
+  // 1) Atualiza o subprojeto
+  await setDoc(doc(db, COL_SUBPROJETOS, sub.id), sanitizeForFirestore({
+    ...sub,
+    projetoId: novoProjetoId,
+    atualizadoEm: new Date().toISOString(),
+    atualizadoPor: pessoaId,
+  }));
+  // 2) Re-aponta projetoId/corHerdada nas tarefas com esse subprojetoId
+  const snap = await getDocs(query(collection(db, COL_TAREFAS), where("subprojetoId", "==", sub.id)));
+  let count = 0;
+  await Promise.all(snap.docs.map(d => {
+    count += 1;
+    return setDoc(doc(db, COL_TAREFAS, d.id), sanitizeForFirestore({
+      ...d.data(),
+      projetoId: novoProjetoId,
+      corHerdada: novoProjetoCor,
+    }));
+  }));
+  return { tarefasAfetadas: count };
+}
+
 // ─── TAREFAS ──────────────────────────────────────────────────────────────
 
 export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {

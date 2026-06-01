@@ -16,6 +16,7 @@ import {
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
   migrarGruposParaPrivadoLegado, aposentarCaixaPessoal,
+  contarTarefasDoSubprojeto, moverSubprojetoParaProjeto,
 } from "./repository";
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
@@ -1210,6 +1211,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
                     <SubprojetoForm
                       sub={s}
                       pessoaId={pessoaId}
+                      projetos={projetos}
                       onClose={() => setEditandoSubId(null)}
                     />
                   )}
@@ -1221,6 +1223,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: { projetos: TarefaProjet
                   sub={null}
                   projetoId={p.id}
                   pessoaId={pessoaId}
+                  projetos={projetos}
                   onClose={() => setCriandoSubIn(null)}
                 />
               ) : (
@@ -1343,10 +1346,13 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
   return body;
 }
 
-function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
+function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
   sub: TarefaSubprojeto | null;
   projetoId?: string;
   pessoaId: string;
+  // Lista de projetos pro select "Mover pra outro projeto" (só relevante
+  // quando estamos editando um sub existente).
+  projetos: TarefaProjeto[];
   onClose: () => void;
 }) {
   const [f, setF] = useState<Partial<TarefaSubprojeto>>(sub ? { ...sub } : {
@@ -1417,9 +1423,28 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
     const respNome = f.responsavelPadraoId
       ? pessoas.find(p => p.id === f.responsavelPadraoId)?.nome
       : undefined;
+    const projetoIdFinal = f.projetoId || projetoId || "";
+
+    // Caso especial: editou um subprojeto existente e mudou o projeto pai.
+    // Precisamos cascatear pras tarefas que apontam pra ele (projetoId +
+    // corHerdada). Mostra contagem antes de confirmar.
+    if (sub && sub.projetoId && projetoIdFinal !== sub.projetoId) {
+      const n = await contarTarefasDoSubprojeto(sub.id);
+      const projDe = projetos.find(p => p.id === sub.projetoId)?.nome || sub.projetoId;
+      const projPra = projetos.find(p => p.id === projetoIdFinal)?.nome || projetoIdFinal;
+      const aviso = n > 0
+        ? `Mover subprojeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\n${n} tarefa(s) existente(s) vão acompanhar (projeto pai e cor do card atualizam).`
+        : `Mover subprojeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\nNão há tarefas existentes — só o subprojeto muda.`;
+      if (!confirm(aviso)) return;
+      const novoProj = projetos.find(p => p.id === projetoIdFinal);
+      // Move o subprojeto + cascateia nas tarefas, depois grava os outros
+      // campos editados do form via salvarSubprojeto normal.
+      await moverSubprojetoParaProjeto(sub, projetoIdFinal, novoProj?.cor, pessoaId);
+    }
+
     const data: TarefaSubprojeto = {
       id,
-      projetoId: f.projetoId || projetoId || "",
+      projetoId: projetoIdFinal,
       nome: f.nome,
       descricao: f.descricao,
       auto: f.auto ?? false,
@@ -1450,6 +1475,31 @@ function SubprojetoForm({ sub, projetoId, pessoaId, onClose }: {
   return (
     <div className="p-2 mt-1 bg-gray-50 dark:bg-gray-800/40 rounded-md space-y-1.5">
       <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do subprojeto" className="adm-input" />
+
+      {/* Select de "Projeto pai" — só faz sentido ao editar subprojeto
+          existente, pra permitir movê-lo entre projetos. */}
+      {sub && (
+        <div className="text-xs">
+          <label className="block text-gray-600 dark:text-gray-400 mb-0.5">
+            Projeto pai
+            {f.projetoId !== sub.projetoId && (
+              <span className="ml-1 text-amber-700 dark:text-amber-400 font-medium">
+                · alteração pendente — tarefas serão movidas junto ao salvar
+              </span>
+            )}
+          </label>
+          <select
+            value={f.projetoId || ""}
+            onChange={(e) => setF({ ...f, projetoId: e.target.value })}
+            className="adm-input"
+          >
+            {projetos.map(p => (
+              <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-2">
         <label className="flex items-center gap-1 text-xs">
           <input type="checkbox" checked={f.auto || false} onChange={(e) => setF({ ...f, auto: e.target.checked })} />
