@@ -142,6 +142,11 @@ export type Cargo = {
   ativo: boolean;
   ordem: number;
   createdAt: string;
+
+  // Mapeamento Sólides (Tangerino): id do cargo equivalente na conta da
+  // Sólides do restaurante. Salvo automaticamente quando o nome casa
+  // (case-insensitive sem acento) na aba Compatibilidade de cadastros.
+  solidesId?: number;
 };
 
 // Default por TipoVinculo — base da cascata empregado→cargo→default.
