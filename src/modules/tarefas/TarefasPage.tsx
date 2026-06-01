@@ -77,6 +77,9 @@ export function TarefasPage() {
   const [seeding, setSeeding] = useState(false);
   const [gerando, setGerando] = useState(false);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
+  // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
+  // os subprojetos como accordion dentro do próprio projeto selecionado.
+  const [subFiltro, setSubFiltro] = useState<string>("");
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
   const [novaAberta, setNovaAberta] = useState<{ prazo?: string } | null>(null);
@@ -217,10 +220,14 @@ export function TarefasPage() {
           <ProjetosSidebar
             tabAtual={tab}
             projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
+            subFiltroAtual={subFiltro}
             minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
             projetos={projetos}
+            subprojetos={subprojetos}
+            tarefasProjeto={tarefasProjeto}
             onAbrirMinhas={() => setTab("minhas")}
-            onAbrirProjeto={(pid) => { setTab("projeto"); setProjetoFiltro(pid); }}
+            onAbrirProjeto={(pid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }}
+            onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
             onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
             onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
           />
@@ -281,7 +288,7 @@ export function TarefasPage() {
           projetos={projetos}
           subprojetos={subprojetos}
           projetoFiltro={projetoFiltro}
-          setProjetoFiltro={setProjetoFiltro}
+          subFiltro={subFiltro}
           tarefas={tarefasProjeto.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
           onAbrir={setDetalheId}
           view={viewProjeto}
@@ -339,21 +346,30 @@ export function TarefasPage() {
 }
 
 // Sidebar lateral (estilo Asana) — atalho "Minhas tarefas" no topo + lista
-// de projetos clicáveis. Click em projeto leva pra aba "Por Projeto" com
-// aquele projeto pré-selecionado.
+// de projetos como accordion (click expande mostrando subprojetos inline,
+// sem abrir uma 2ª coluna duplicada).
 function ProjetosSidebar({
-  tabAtual, projetoFiltroAtual, minhasPendentes, projetos,
-  onAbrirMinhas, onAbrirProjeto, onAbrirAdmin, onAbrirLixeira,
+  tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
+  projetos, subprojetos, tarefasProjeto,
+  onAbrirMinhas, onAbrirProjeto, onAbrirSubprojeto,
+  onAbrirAdmin, onAbrirLixeira,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
+  subFiltroAtual: string;
   minhasPendentes: number;
   projetos: TarefaProjeto[];
+  subprojetos: TarefaSubprojeto[];
+  // Pra contadores de ativas no projeto expandido (tarefas só carregam quando
+  // o projeto está aberto; vazio fora disso é esperado).
+  tarefasProjeto: Tarefa[];
   onAbrirMinhas: () => void;
   onAbrirProjeto: (id: string) => void;
+  onAbrirSubprojeto: (projetoId: string, subId: string) => void;
   onAbrirAdmin?: () => void;
   onAbrirLixeira?: () => void;
 }) {
+  const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
   return (
     <div className="sticky top-4 space-y-4">
       {/* Bloco superior — caixa pessoal */}
@@ -367,7 +383,7 @@ function ProjetosSidebar({
         />
       </div>
 
-      {/* Bloco Projetos */}
+      {/* Bloco Projetos com accordion inline */}
       <div>
         <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-2 mb-1">
           Projetos
@@ -377,25 +393,66 @@ function ProjetosSidebar({
             <div className="px-2 py-1 text-xs text-gray-400 italic">Sem projetos ainda.</div>
           )}
           {projetos.map(p => {
-            const ativo = tabAtual === "projeto" && projetoFiltroAtual === p.id;
+            const projetoAtivo = tabAtual === "projeto" && projetoFiltroAtual === p.id;
+            const subs = subprojetos.filter(s => s.projetoId === p.id);
             return (
-              <button
-                key={p.id}
-                onClick={() => onAbrirProjeto(p.id)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
-                  ativo
-                    ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
-                    : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                }`}
-                title={p.nome}
-              >
-                <span
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: p.cor || "#6b7280" }}
-                />
-                <span className="text-base leading-none">{p.emoji || "📁"}</span>
-                <span className="truncate flex-1">{p.nome}</span>
-              </button>
+              <div key={p.id}>
+                <button
+                  onClick={() => onAbrirProjeto(p.id)}
+                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
+                    projetoAtivo
+                      ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
+                      : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+                  }`}
+                  title={p.nome}
+                >
+                  <span className="text-[9px] text-gray-400 w-3 text-center" aria-hidden>
+                    {projetoAtivo ? "▾" : "▸"}
+                  </span>
+                  <span
+                    className="w-2 h-2 rounded-full shrink-0"
+                    style={{ background: p.cor || "#6b7280" }}
+                  />
+                  <span className="text-sm leading-none">{p.emoji || "📁"}</span>
+                  <span className="truncate flex-1">{p.nome}</span>
+                </button>
+                {/* Accordion de subprojetos — só do projeto ativo */}
+                {projetoAtivo && subs.length > 0 && (
+                  <div className="pl-5 mt-0.5 space-y-0.5">
+                    <button
+                      onClick={() => onAbrirSubprojeto(p.id, "")}
+                      className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                        subFiltroAtual === ""
+                          ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                      }`}
+                    >
+                      <span className="flex-1">Todos</span>
+                      <span className="text-[10px] text-gray-500">{ativas(tarefasProjeto)}</span>
+                    </button>
+                    {subs.map(s => {
+                      const ts = tarefasProjeto.filter(t => t.subprojetoId === s.id);
+                      const ativ = ativas(ts);
+                      const sel = subFiltroAtual === s.id;
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => onAbrirSubprojeto(p.id, s.id)}
+                          className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
+                            sel
+                              ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
+                          }`}
+                          title={s.nome}
+                        >
+                          <span className="truncate flex-1">{s.nome}</span>
+                          {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -900,19 +957,18 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, tarefas, onAbrir, view, onChangeView, autor }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
-  setProjetoFiltro: (id: string) => void;
+  // Vem de cima — a sidebar lateral controla a seleção de subprojeto.
+  subFiltro: string;
   tarefas: Tarefa[];
   onAbrir: (id: string) => void;
   view: ViewMode;
   onChangeView: (v: ViewMode) => void;
   autor: { id: string; nome: string };
 }) {
-  const [subFiltro, setSubFiltro] = useState<string>("");
-  const [mobileOpen, setMobileOpen] = useState(false);
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
   const tarefasFiltradas = subFiltro
@@ -923,82 +979,8 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, setProjetoFiltro, t
   const subAtual = subFiltro ? subsDoProj.find(s => s.id === subFiltro) : null;
 
   return (
-    <div className="flex gap-4">
-      {/* Sidebar de projetos (estilo Asana) */}
-      <aside className={`
-        ${mobileOpen ? "block" : "hidden"} md:block
-        w-64 shrink-0 bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800
-        rounded-xl p-2 self-start sticky top-2 max-h-[calc(100vh-120px)] overflow-y-auto
-      `}>
-        <div className="px-2 py-1 mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-          Projetos
-        </div>
-        <div className="space-y-0.5">
-          {projetos.map(p => {
-            const ativo = p.id === projetoFiltro;
-            const subs = subprojetos.filter(s => s.projetoId === p.id);
-            return (
-              <div key={p.id}>
-                <button
-                  onClick={() => { setProjetoFiltro(p.id); setSubFiltro(""); setMobileOpen(false); }}
-                  className={`w-full text-left flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                    ativo
-                      ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 font-medium"
-                      : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  <span>{p.emoji}</span>
-                  <span className="flex-1 truncate">{p.nome}</span>
-                </button>
-                {ativo && subs.length > 0 && (
-                  <div className="pl-3 mt-0.5 space-y-0.5">
-                    <button
-                      onClick={() => { setSubFiltro(""); setMobileOpen(false); }}
-                      className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                        subFiltro === ""
-                          ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
-                      }`}
-                    >
-                      <span className="flex-1">Todos</span>
-                      <span className="text-[10px] text-gray-500">{ativas(tarefas)}</span>
-                    </button>
-                    {subs.map(s => {
-                      const ts = tarefas.filter(t => t.subprojetoId === s.id);
-                      const ativ = ativas(ts);
-                      const sel = subFiltro === s.id;
-                      return (
-                        <button
-                          key={s.id}
-                          onClick={() => { setSubFiltro(s.id); setMobileOpen(false); }}
-                          className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                            sel
-                              ? "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
-                              : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800/60"
-                          }`}
-                        >
-                          <span className="flex-1 truncate">{s.nome}</span>
-                          {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      </aside>
-
-      {/* Área principal */}
+    <div>
       <main className="flex-1 min-w-0">
-        <button
-          className="md:hidden mb-2 px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700"
-          onClick={() => setMobileOpen(o => !o)}
-        >
-          {mobileOpen ? "✕ Fechar projetos" : "📁 Escolher projeto"}
-        </button>
-
         {!proj ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400">
             Escolha um projeto na lateral pra ver suas tarefas.
