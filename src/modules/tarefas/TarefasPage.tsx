@@ -326,18 +326,51 @@ export function TarefasPage() {
       )}
 
       {tab === "projeto" && (
-        <ProjetoView
-          projetos={projetos}
-          subprojetos={subprojetos}
-          projetoFiltro={projetoFiltro}
-          subFiltro={subFiltro}
-          tarefas={tarefasProjeto.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
-          onAbrir={setDetalheId}
-          view={viewProjeto}
-          onChangeView={setViewProjeto}
-          autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
-          onNovaTarefa={(opts) => setNovaAberta(opts)}
-        />
+        <>
+          {/* Picker de projeto/sub no mobile — no desktop a sidebar lateral
+              cuida disso, mas no mobile ela some (hidden md:block). */}
+          <div className="md:hidden mb-3 grid grid-cols-1 gap-2">
+            <select
+              value={projetoFiltro}
+              onChange={(e) => { setProjetoFiltro(e.target.value); setSubFiltro(""); }}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+            >
+              <option value="">— Escolha um projeto —</option>
+              {projetosVisiveis.map(p => (
+                <option key={p.id} value={p.id}>{p.emoji || "📁"} {p.nome}</option>
+              ))}
+            </select>
+            {projetoFiltro && (
+              <select
+                value={subFiltro}
+                onChange={(e) => setSubFiltro(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+              >
+                <option value="">— Todos os subprojetos —</option>
+                {subprojetosVisiveis
+                  .filter(s => s.projetoId === projetoFiltro)
+                  .map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.bloqueadoCriacaoManual ? "🔒 " : ""}{s.nome}
+                    </option>
+                  ))}
+              </select>
+            )}
+          </div>
+
+          <ProjetoView
+            projetos={projetos}
+            subprojetos={subprojetos}
+            projetoFiltro={projetoFiltro}
+            subFiltro={subFiltro}
+            tarefas={tarefasProjeto.filter(t => podeVerTarefa(t, projetos.find(p => p.id === t.projetoId), pessoa))}
+            onAbrir={setDetalheId}
+            view={viewProjeto}
+            onChangeView={setViewProjeto}
+            autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+            onNovaTarefa={(opts) => setNovaAberta(opts)}
+          />
+        </>
       )}
 
       {tab === "admin" && isMaster && (
@@ -1070,8 +1103,9 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
     <div>
       <main className="flex-1 min-w-0">
         {!proj ? (
-          <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-            Escolha um projeto na lateral pra ver suas tarefas.
+          <div className="text-center py-12 text-gray-500 dark:text-gray-400 text-sm">
+            <span className="hidden md:inline">Escolha um projeto na lateral pra ver suas tarefas.</span>
+            <span className="md:hidden">Escolha um projeto acima pra ver suas tarefas.</span>
           </div>
         ) : (
           <>
