@@ -50,6 +50,8 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao,
 } from "../../core/admissao/admissaoHelpers";
+import { gerarCascataAdmissao } from "../tarefas/generator";
+import { carregarCargo } from "../exames/gerador";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
 import { pickDriveFolder } from "../../core/google/drivePicker";
@@ -592,7 +594,44 @@ export function SubtarefasDrawer({
                 pra tirar do Kanban ativo — fica em "Finalizadas" e pode
                 ser reativada se precisar.
               </div>
-              <div className="flex justify-end gap-2">
+              <div className="flex justify-end gap-2 flex-wrap">
+                {/* Botão de retroação: dispara cascata pra criar Experiência
+                    1ª/2ª no Gestor de Tarefas. Idempotente (recorrenciaKey).
+                    Só faz sentido quando empregado + data já estão setados. */}
+                {admissao.empregadoIdCriado && admissao.dataAdmissao && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!confirm(
+                        `Sincronizar prazos de experiência de ${admissao.candidato.nome}?\n\n` +
+                        `Cria as tarefas Experiência 1ª (45d) e 2ª (90d) no Gestor de Tarefas. ` +
+                        `Se já existirem, não duplica.`,
+                      )) return;
+                      try {
+                        const cargo = admissao.cargoId ? await carregarCargo(admissao.cargoId) : null;
+                        const n = await gerarCascataAdmissao({
+                          pessoaNome: admissao.candidato.nome,
+                          empregadoId: admissao.empregadoIdCriado!,
+                          restaurantId: admissao.restaurantId,
+                          admissaoData: admissao.dataAdmissao!,
+                          manipulaAlimentos: cargo?.area === "Cozinha" || cargo?.area === "Bar",
+                          responsavelPadraoId: pessoa.id,
+                          responsavelPadraoNome: pessoa.nome,
+                          autorId: pessoa.id,
+                          autorNome: pessoa.nome,
+                        });
+                        alert(n > 0
+                          ? `✓ ${n} tarefa(s) de experiência criada(s) no Gestor de Tarefas.`
+                          : "✓ Tarefas de experiência já existiam — nada novo criado.");
+                      } catch (e) {
+                        alert("Erro: " + (e instanceof Error ? e.message : "?"));
+                      }
+                    }}
+                    className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+                  >
+                    🔁 Sincronizar prazos de experiência
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={async () => {
