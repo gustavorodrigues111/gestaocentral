@@ -281,10 +281,14 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
     // cruzando por fileId/filename. Vazio = nunca enviado.
     enviadoEm?: string[];
   };
-  // Modal de seleção pré-envio.
+  // Modal de seleção pré-envio. Inclui um cache do status dos docs do
+  // envelope ativo (consultado uma vez na abertura via API) pra mostrar
+  // qual está assinado / pendente individualmente.
   const [selecaoEnvio, setSelecaoEnvio] = useState<{
     arquivos: ItemEnvio[];
     selecionados: Set<string>;
+    // filename → status (running, signed, etc) do envelope ATIVO
+    statusDocsAtivo: Map<string, string>;
   } | null>(null);
 
   // Extrai o fileId de uma URL do Drive. Funciona com os formatos
@@ -392,13 +396,26 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         enviadoEm.sort();
         return { ...a, enviadoEm };
       });
+      // Consulta o envelope ativo (último) pra obter status de cada doc —
+      // mostra individualmente no modal (assinado / pendente / etc).
+      const statusDocsAtivo = new Map<string, string>();
+      if (clicksignEnvelopeId && clicksignStatus !== "closed") {
+        try {
+          const { documents } = await statusEnvelopeClicksign(clicksignEnvelopeId);
+          for (const d of documents) {
+            if (d.filename && d.status) statusDocsAtivo.set(d.filename, d.status);
+          }
+        } catch (e) {
+          console.warn("[clicksign] falha ao buscar status do envelope ativo:", e);
+        }
+      }
       // Default: marca SÓ os arquivos que NUNCA foram enviados antes.
       const naoEnviados = enriquecidos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
       const haAlgumEnviado = enriquecidos.some(a => a.enviadoEm && a.enviadoEm.length > 0);
       const selecionadosInit = haAlgumEnviado
         ? new Set(naoEnviados.map(a => a.id))
         : new Set(enriquecidos.map(a => a.id));
-      setSelecaoEnvio({ arquivos: enriquecidos, selecionados: selecionadosInit });
+      setSelecaoEnvio({ arquivos: enriquecidos, selecionados: selecionadosInit, statusDocsAtivo });
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
     } finally {
@@ -941,14 +958,11 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               </>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
-                <Button size="sm" variant="secondary" onClick={verificarAssinatura} disabled={clicksignBusy !== ""}>
-                  {clicksignBusy === "verificando" ? "Verificando…" : "🔄 Verificar assinatura"}
-                </Button>
-                {/* Permite enviar mais documentos mesmo com envelope ativo —
-                    cria um NOVO envelope (não adiciona ao atual). O modal de
-                    seleção marca os docs já enviados pra evitar duplicação. */}
+                {/* Único botão: abre modal que mostra status de cada doc
+                    enviado + permite enviar novos no mesmo lugar. Verificação
+                    de status (que baixa PDFs assinados) acontece dentro. */}
                 <Button size="sm" onClick={abrirSelecaoClicksign} disabled={clicksignBusy !== ""}>
-                  {clicksignBusy === "enviando" ? "Carregando…" : "✍️ Enviar mais docs"}
+                  {clicksignBusy === "enviando" ? "Carregando…" : "📋 Ver/enviar documentos"}
                 </Button>
               </div>
             )}
@@ -1232,28 +1246,60 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           não devem voltar. Default: todos marcados. */}
       {selecaoEnvio && (
         <Modal
-          title="✍️ Enviar pro Clicksign"
+          title="📋 Documentos & assinaturas"
           onClose={() => setSelecaoEnvio(null)}
           maxWidth="max-w-xl"
         >
           <div className="p-4 space-y-3">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Selecione os documentos que vão pro novo envelope. Docs marcados
-              com "📨 já aguarda" estão no envelope atual e vêm desmarcados
-              por padrão — você só envia os novos que faltam.
-            </p>
-            {(() => {
-              const enviadosAntes = selecaoEnvio.arquivos.filter(a => (a.enviadoEm || []).length > 0);
-              if (enviadosAntes.length === 0) return null;
-              return (
-                <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-2">
-                  ⚠ Esta admissão já tem <strong>{clicksignHistorico.length}</strong> envelope(s) criado(s)
-                  ({traduzStatusClicksign(clicksignStatus)}).
-                  Este envio cria um <strong>novo envelope</strong> — não adiciona ao atual.
-                  Docs já enviados antes vêm desmarcados; marque pra reenviá-los.
+            {/* ─── Status do envelope ativo (se houver) ─── */}
+            {clicksignEnvelopeId && clicksignHistorico.length > 0 && (
+              <div className="rounded-lg border border-orange-200 dark:border-orange-900/60 bg-orange-50/50 dark:bg-orange-900/10 p-2.5">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <span className="text-xs font-semibold text-orange-900 dark:text-orange-200">
+                    Envelope ativo · {traduzStatusClicksign(clicksignStatus)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={verificarAssinatura}
+                    disabled={clicksignBusy !== ""}
+                    className="text-[10px] text-orange-700 dark:text-orange-300 hover:underline disabled:opacity-50"
+                  >
+                    {clicksignBusy === "verificando" ? "Atualizando…" : "🔄 Atualizar status"}
+                  </button>
                 </div>
-              );
-            })()}
+                {selecaoEnvio.statusDocsAtivo.size > 0 ? (
+                  <ul className="space-y-0.5 text-[11px] text-gray-700 dark:text-gray-300">
+                    {Array.from(selecaoEnvio.statusDocsAtivo.entries()).map(([filename, status]) => (
+                      <li key={filename} className="flex items-center gap-1.5 truncate">
+                        <span className="flex-1 truncate" title={filename}>{filename}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap ${
+                          status === "signed" || status === "closed"
+                            ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                            : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                        }`}>
+                          {status}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 italic">
+                    Status individual indisponível.
+                  </div>
+                )}
+                {clicksignHistorico.length > 1 && (
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 pt-1.5 border-t border-orange-200/60 dark:border-orange-900/40">
+                    📚 {clicksignHistorico.length} envelopes criados pra esta admissão
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="text-sm text-gray-600 dark:text-gray-400 pt-1 border-t border-gray-200 dark:border-gray-800">
+              <strong>Enviar mais documentos:</strong> selecione os PDFs e
+              confirme. Cada envio cria um novo envelope no Clicksign — docs
+              já enviados antes vêm desmarcados.
+            </p>
             {(() => {
               const novos = selecaoEnvio.arquivos.filter(a => !a.enviadoEm || a.enviadoEm.length === 0);
               const enviados = selecaoEnvio.arquivos.length - novos.length;
