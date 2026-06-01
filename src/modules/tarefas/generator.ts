@@ -321,13 +321,15 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
   } = input;
 
   // Idempotência: usa origemRefId+tipo na chave pra evitar duplicar
-  // mesmo se chamar 2× pra mesma admissão.
+  // mesmo se chamar 2× pra mesma admissão. Tarefas soft-deletadas NÃO
+  // contam — sincronizar de novo recria normalmente.
   const existSnap = await getDocs(query(
     collection(db, "tarefas"),
     where("origemRefId", "==", empregadoId),
     where("origem", "==", "admissao"),
   ));
-  if (existSnap.size >= 2) return 0; // já gerou tudo (Experiência 1ª + 2ª)
+  const existAtivas = existSnap.docs.filter(d => !(d.data() as Tarefa).deletadoEm);
+  if (existAtivas.length >= 2) return 0; // já gerou tudo (Experiência 1ª + 2ª)
 
   const tarefas: Array<{ titulo: string; prazo: string; origemKey: string; ehDecisaoExperiencia: "1a" | "2a" }> = [
     {
@@ -378,8 +380,8 @@ export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Prom
     console.warn("[cascata] falha ao carregar config do subprojeto:", e);
   }
 
-  // Filtra os que já existem
-  const chavesExistentes = new Set(existSnap.docs.map(d => (d.data() as Tarefa).recorrenciaKey));
+  // Filtra os que já existem (ativos — soft-deletados não contam)
+  const chavesExistentes = new Set(existAtivas.map(d => (d.data() as Tarefa).recorrenciaKey));
   let criadas = 0;
   for (const t of tarefas) {
     const chave = `adm-${empregadoId}-${t.origemKey}`;
