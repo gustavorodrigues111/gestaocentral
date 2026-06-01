@@ -10,13 +10,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { fetchSolidesSchedules } from "../../core/excecoes/solidesScheduleClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
-import { todayYmd } from "../../core/utils/date";
+import { fmtBRDateTime, todayYmd } from "../../core/utils/date";
 import { empregadoBatePonto } from "../../core/types";
 import { validateWorkScheduleDays } from "../../core/escala/horarios";
 import type { Cargo, Empregado, HorarioDia, WorkSchedule } from "../../core/types";
@@ -52,6 +53,25 @@ type ResultadoEmpregado = {
   totalDiffs: number;
   alternating?: boolean;
   sidSolides?: number; // employeeId na Sólides (pra sondagem do PUT)
+};
+
+// Schema do doc /comparacoesCadastros/{rid} — persiste o resultado da última
+// comparação pra hidratar a aba sem precisar re-comparar a cada visita.
+type ComparacaoCadastrosDoc = {
+  rid: string;
+  atualizadoEm: string;       // ISO
+  atualizadoPor: string;      // pessoaId
+  atualizadoPorNome: string;
+  resultados: Array<{
+    empregadoId: string;
+    empregadoNome: string;
+    empregadoCpf?: string;
+    status: ResultadoEmpregado["status"];
+    totalDiffs: number;
+    alternating?: boolean;
+    sidSolides?: number;
+    dias: DiaComparacao[];   // dia/plan/sol/diff — serializável
+  }>;
 };
 
 const DOW_LABEL = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -110,6 +130,8 @@ export function CompatibilidadeTab({ rid }: Props) {
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
   const [resultados, setResultados] = useState<ResultadoEmpregado[] | null>(null);
+  const [ultimaAtualizacao, setUltimaAtualizacao] = useState<string | null>(null);
+  const [atualizadoPorNome, setAtualizadoPorNome] = useState<string>("");
   const [expandidos, setExpandidos] = useState<Set<string>>(new Set());
   // Modal de "Copiar Sólides → Planejamento" — empregado escolhido pra
   // sobrescrever o quadro do Planejamento com o que veio da Sólides.
@@ -132,6 +154,51 @@ export function CompatibilidadeTab({ rid }: Props) {
     for (const c of cargos) m.set(c.id, c);
     return m;
   }, [cargos]);
+
+  // Hidrata estado a partir do doc Firestore (última comparação salva). Roda
+  // ao montar e quando troca o rid; só executa o build dos resultados quando
+  // empregados[] já está carregado (precisa do objeto Empregado completo no
+  // ResultadoEmpregado). Empregados que saíram (demitidos / deletados) são
+  // ignorados — versão salva no doc é só pra hidratar a UI.
+  useEffect(() => {
+    if (!rid) return;
+    if (empregados.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "comparacoesCadastros", rid));
+        if (cancelled) return;
+        if (!snap.exists()) {
+          setResultados(null);
+          setUltimaAtualizacao(null);
+          setAtualizadoPorNome("");
+          return;
+        }
+        const data = snap.data() as ComparacaoCadastrosDoc;
+        const empById = new Map<string, Empregado>();
+        for (const e of empregados) empById.set(e.id, e);
+        const reconstituidos: ResultadoEmpregado[] = [];
+        for (const r of data.resultados || []) {
+          const emp = empById.get(r.empregadoId);
+          if (!emp) continue; // empregado removido — ignora
+          reconstituidos.push({
+            empregado: emp,
+            status: r.status,
+            dias: r.dias,
+            totalDiffs: r.totalDiffs,
+            alternating: r.alternating,
+            sidSolides: r.sidSolides,
+          });
+        }
+        setResultados(reconstituidos);
+        setUltimaAtualizacao(data.atualizadoEm || null);
+        setAtualizadoPorNome(data.atualizadoPorNome || "");
+      } catch (e) {
+        console.warn("[compatibilidade] falha ao hidratar do doc:", e);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [rid, empregados]);
 
   async function comparar() {
     if (!rid) return;
@@ -207,6 +274,34 @@ export function CompatibilidadeTab({ rid }: Props) {
         return a.empregado.nome.localeCompare(b.empregado.nome);
       });
       setResultados(out);
+
+      // Persiste em /comparacoesCadastros/{rid} pra hidratar a aba na próxima
+      // visita sem precisar re-comparar. Schema simplificado (sem o objeto
+      // Empregado inteiro — só os campos que precisamos pra reconstruir).
+      const agora = new Date().toISOString();
+      const docPayload: ComparacaoCadastrosDoc = {
+        rid,
+        atualizadoEm: agora,
+        atualizadoPor: pessoa?.id || "",
+        atualizadoPorNome: pessoa?.nome || "",
+        resultados: out.map((r) => ({
+          empregadoId: r.empregado.id,
+          empregadoNome: r.empregado.nome,
+          empregadoCpf: r.empregado.cpf,
+          status: r.status,
+          totalDiffs: r.totalDiffs,
+          alternating: r.alternating,
+          sidSolides: r.sidSolides,
+          dias: r.dias,
+        })),
+      };
+      try {
+        await setDoc(doc(db, "comparacoesCadastros", rid), sanitizeForFirestore(docPayload));
+        setUltimaAtualizacao(agora);
+        setAtualizadoPorNome(pessoa?.nome || "");
+      } catch (e) {
+        console.warn("[compatibilidade] falha ao persistir doc:", e);
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao comparar.");
     } finally {
@@ -328,6 +423,13 @@ export function CompatibilidadeTab({ rid }: Props) {
             <span className={`px-2.5 py-1 rounded-full font-semibold ${resumo.semCadastro > 0 ? "bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>
               — {resumo.semCadastro} sem cadastro completo
             </span>
+          </div>
+        )}
+
+        {ultimaAtualizacao && (
+          <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+            Última atualização: <span className="tabular-nums">{fmtBRDateTime(ultimaAtualizacao)}</span>
+            {atualizadoPorNome && <> · por {atualizadoPorNome}</>}
           </div>
         )}
       </div>

@@ -10,7 +10,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { fmtAnoMes, pad2 } from "../../core/utils/date";
+import { fmtAnoMes, fmtBRDateTime, pad2 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type {
   ApontamentoFuncionario,
@@ -777,6 +777,25 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       diasAnalisados,
     };
   }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
+
+  // Última atualização agregada do mês ativo — pega o MAX(geradoEm) dos
+  // caches cujo weekStart/weekEnd cai no mês visualizado. Alimenta o badge
+  // "Última atualização: DD/MM/AAAA HH:mm" exibido logo abaixo dos chips.
+  const ultimaAtualizacaoMes = useMemo<string | null>(() => {
+    const mesPrefix = `${anoMes.ano}-${pad2(anoMes.mes)}-`;
+    let max: string | null = null;
+    for (const s of todosStatusDoRest) {
+      if (
+        !(s.weekStart || "").startsWith(mesPrefix) &&
+        !(s.weekEnd || "").startsWith(mesPrefix)
+      ) continue;
+      const g = s.relatorioCache?.geradoEm;
+      if (!g) continue;
+      if (max === null || g > max) max = g;
+    }
+    return max;
+  }, [todosStatusDoRest, anoMes.ano, anoMes.mes]);
+
   // Mês todo = nenhuma semana selecionada (default agora).
   const mesTodo = semanasFiltro.size === 0;
   const [debug, setDebug] = useState<SolidesDebug | null>(null);
@@ -1337,6 +1356,16 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
               : "🔄 Atualizar"}
           </button>
         </div>
+
+        {ultimaAtualizacaoMes ? (
+          <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
+            Última atualização: <span className="tabular-nums">{fmtBRDateTime(ultimaAtualizacaoMes)}</span>
+          </div>
+        ) : (
+          <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 italic">
+            Nunca atualizado neste mês
+          </div>
+        )}
 
         {empregados.length === 0 && (
           <p className="text-xs text-amber-600 dark:text-amber-400">
