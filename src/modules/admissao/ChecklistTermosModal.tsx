@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -385,29 +385,78 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       // admissão (não só o envelope ativo) — preserva o log mesmo quando
       // mais de um envelope foi criado. Match por fileId (preferencial)
       // ou filename (fallback pra envios antigos sem fileId).
-      const enriquecidos: ItemEnvio[] = arquivosTotais.map(a => {
-        const envios: { envelopeId: string; enviadoEm: string }[] = [];
-        for (const envio of clicksignHistorico) {
-          const bate = envio.arquivos.some(
-            arq => (arq.fileId && arq.fileId === a.id) || arq.filename === a.name,
-          );
-          if (bate) envios.push({ envelopeId: envio.envelopeId, enviadoEm: envio.enviadoEm });
-        }
-        envios.sort((x, y) => x.enviadoEm.localeCompare(y.enviadoEm));
-        return { ...a, envios };
-      });
+      // (Aplicação do enriquecimento usa o histórico DEPOIS da reconciliação
+      // retroativa que pode ter sintetizado a entry do envelope ativo — ver
+      // bloco abaixo.)
+      const enriquecer = (lista: ItemEnvio[], hist: ClicksignEnvioRef[]): ItemEnvio[] =>
+        lista.map(a => {
+          const envios: { envelopeId: string; enviadoEm: string }[] = [];
+          for (const envio of hist) {
+            const bate = envio.arquivos.some(
+              arq => (arq.fileId && arq.fileId === a.id) || arq.filename === a.name,
+            );
+            if (bate) envios.push({ envelopeId: envio.envelopeId, enviadoEm: envio.enviadoEm });
+          }
+          envios.sort((x, y) => x.enviadoEm.localeCompare(y.enviadoEm));
+          return { ...a, envios };
+        });
+      // Enriquecimento inicial com histórico atual (pode ser substituído após
+      // a reconciliação abaixo).
+      let enriquecidos: ItemEnvio[] = enriquecer(arquivosTotais, clicksignHistorico);
       // Consulta o envelope ativo (último) pra obter status de cada doc —
       // mostra individualmente no modal (assinado / pendente / etc).
       const statusDocsAtivo = new Map<string, string>();
+      let documentsAtivos: { id: string; filename?: string; status?: string }[] = [];
       if (clicksignEnvelopeId && clicksignStatus !== "closed") {
         try {
           const { documents } = await statusEnvelopeClicksign(clicksignEnvelopeId);
+          documentsAtivos = documents;
           for (const d of documents) {
             if (d.filename && d.status) statusDocsAtivo.set(d.filename, d.status);
           }
         } catch (e) {
           console.warn("[clicksign] falha ao buscar status do envelope ativo:", e);
         }
+      }
+
+      // Reconciliação retroativa do histórico: se o histórico local NÃO
+      // tem entry pro envelope ativo (envelope criado antes do schema novo),
+      // sintetizamos uma a partir do que veio da API + clicksignEnviadoEm.
+      // Cobre só o envelope ATUAL; envelopes anteriores ao último ficaram
+      // sem rastro (clicksignEnvelopeId só guardava 1).
+      let historicoEfetivo = clicksignHistorico;
+      if (
+        clicksignEnvelopeId &&
+        documentsAtivos.length > 0 &&
+        !historicoEfetivo.some(h => h.envelopeId === clicksignEnvelopeId)
+      ) {
+        const enviadoEm = admissao.clicksignEnviadoEm || new Date().toISOString();
+        const sintetico: ClicksignEnvioRef = {
+          envelopeId: clicksignEnvelopeId,
+          enviadoEm,
+          sandbox: CLICKSIGN_SANDBOX,
+          statusInicial: clicksignStatus,
+          arquivos: documentsAtivos
+            .filter((d): d is { id: string; filename: string; status?: string } =>
+              typeof d.filename === "string" && d.filename.length > 0)
+            .map(d => ({ filename: d.filename })),
+        };
+        const novoHistorico = [...historicoEfetivo, sintetico];
+        historicoEfetivo = novoHistorico;
+        setClicksignHistorico(novoHistorico);
+        try {
+          await updateDoc(doc(db, "admissoes", admissao.id), {
+            clicksignHistorico: novoHistorico,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.warn("[clicksign] falha ao persistir histórico retroativo:", e);
+        }
+      }
+      // Se o histórico foi sintetizado retroativamente, re-enriquece os
+      // items com o histórico novo.
+      if (historicoEfetivo !== clicksignHistorico) {
+        enriquecidos = enriquecer(arquivosTotais, historicoEfetivo);
       }
       // Default: marca SÓ os arquivos que NUNCA foram enviados antes.
       const naoEnviados = enriquecidos.filter(a => !a.envios || a.envios.length === 0);
