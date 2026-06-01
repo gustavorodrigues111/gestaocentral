@@ -17,7 +17,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  addDoc, collection, doc, getDoc, onSnapshot, setDoc, updateDoc,
+  addDoc, collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../../core/firebase/config";
 import { sanitizeForFirestore } from "../../../core/firebase/sanitize";
@@ -97,13 +97,20 @@ export function CargosSubTab({ rid }: Props) {
   const isMaster = pessoa?.isMaster === true;
   const shortCode = activeRestaurant?.shortCode || "";
 
-  // Carrega cargos do Firestore (global, sem filtro por rid)
+  // Carrega cargos do Firestore filtrando por restaurante ativo. Cada Cargo
+  // tem restaurantId obrigatório (ver schema), então comparar contra a
+  // Sólides faz sentido só dentro do mesmo restaurante (cada um tem sua
+  // conta Sólides com cargos próprios).
   useEffect(() => {
-    const u = onSnapshot(collection(db, "cargos"), (snap) => {
-      setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
-    });
+    if (!rid) { setCargos([]); return; }
+    const u = onSnapshot(
+      query(collection(db, "cargos"), where("restaurantId", "==", rid)),
+      (snap) => {
+        setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
+      },
+    );
     return () => u();
-  }, []);
+  }, [rid]);
 
   // Reconstroi linhas a partir de cargos[] + solidesCache[].
   // Usado tanto pelo botão "Comparar agora" quanto pela hidratação a partir
