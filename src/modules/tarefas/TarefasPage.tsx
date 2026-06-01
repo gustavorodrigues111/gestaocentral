@@ -191,7 +191,7 @@ export function TarefasPage() {
   return (
     <div className="max-w-7xl mx-auto p-4">
       <header className="flex items-center gap-3 mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📋 Tarefas</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🗂️ Gestor de Tarefas</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 flex-1">
           Caixa por usuário · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} pendentes
         </p>
@@ -225,7 +225,18 @@ export function TarefasPage() {
             subprojetos={subprojetos}
             tarefasProjeto={tarefasProjeto}
             onAbrirMinhas={() => setTab("minhas")}
-            onAbrirProjeto={(pid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }}
+            onAbrirProjeto={(pid) => {
+              // Toggle: click no projeto já ativo colapsa (volta pra Minhas).
+              // Click em projeto diferente abre aquele.
+              if (tab === "projeto" && projetoFiltro === pid) {
+                setTab("minhas");
+                setSubFiltro("");
+              } else {
+                setTab("projeto");
+                setProjetoFiltro(pid);
+                setSubFiltro("");
+              }
+            }}
             onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
             onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
             onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
@@ -254,7 +265,7 @@ export function TarefasPage() {
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
           <div className="mb-3 flex items-baseline gap-2 flex-wrap">
             <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              📋 Minhas tarefas
+              📥 Minhas tarefas
             </h2>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               {minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
@@ -386,15 +397,29 @@ function ProjetosSidebar({
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
   return (
     <div className="sticky top-4 space-y-4">
-      {/* Bloco superior — caixa pessoal */}
+      {/* Bloco superior — caixa pessoal. Mesma estrutura visual dos itens
+          de projeto (chevron placeholder + dot + emoji) pra tamanho consistente. */}
       <div className="space-y-0.5">
-        <SidebarItem
-          ativo={tabAtual === "minhas"}
+        <button
           onClick={onAbrirMinhas}
-          icone="📋"
-          label="Minhas tarefas"
-          badge={minhasPendentes || undefined}
-        />
+          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
+            tabAtual === "minhas"
+              ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
+              : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
+          }`}
+        >
+          {/* Placeholder do chevron pra alinhar com os projetos */}
+          <span className="w-3" aria-hidden />
+          {/* Dot indigo pra dar identidade visual igual aos projetos */}
+          <span className="w-2 h-2 rounded-full shrink-0 bg-indigo-500" />
+          <span className="text-sm leading-none">📥</span>
+          <span className="truncate flex-1">Minhas tarefas</span>
+          {minhasPendentes > 0 && (
+            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+              {minhasPendentes}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Bloco Projetos com accordion inline */}

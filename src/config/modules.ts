@@ -34,7 +34,7 @@ export const MODULES: ModuleDef[] = [
   { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "beta",               desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
-  { id: "tarefas",     area: "ops", subarea: "Tarefas",                label: "Tarefas",         icon: "📋", status: "ativo", etapa: "beta",               desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+  { id: "tarefas",     area: "ops", subarea: "Tarefas",                label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
