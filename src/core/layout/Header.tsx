@@ -94,8 +94,12 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </button>
         {menuOpen && (
           <>
-            <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-full mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-20">
+            <div className="fixed inset-0 z-[60]" onClick={() => setMenuOpen(false)} />
+            {/* Dropdown usa `fixed` pra fugir do stacking context do header
+                (que tem [overflow-x:clip] e z-30). Em mobile, conteúdo de
+                módulos com z-index alto estava ficando ACIMA do dropdown
+                quando ele era position:absolute. */}
+            <div className="fixed right-3 sm:right-4 top-14 mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-[70]">
               <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
                 {fbUser?.email}
               </div>
