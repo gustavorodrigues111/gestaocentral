@@ -202,13 +202,22 @@ export function TarefasPage() {
   const semEstrutura = projetos.length === 0;
 
   return (
-    <div className="max-w-7xl mx-auto p-4">
-      <header className="flex items-center gap-3 mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🗂️ Gestor de Tarefas</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 flex-1">
+    <div className="max-w-7xl mx-auto p-3 sm:p-4">
+      <header className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
+        <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap leading-tight">
+          🗂️ <span className="hidden sm:inline">Gestor de </span>Tarefas
+        </h1>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex-1 hidden md:block">
           Caixa por usuário · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} pendentes
         </p>
-        <Button onClick={() => setNovaAberta({})} disabled={semEstrutura}>+ Nova Tarefa</Button>
+        <div className="flex-1 md:hidden" />
+        <Button
+          onClick={() => setNovaAberta({})}
+          disabled={semEstrutura}
+          className="whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
+        >
+          + Nova<span className="hidden sm:inline"> Tarefa</span>
+        </Button>
       </header>
 
       {semEstrutura && (
@@ -277,10 +286,10 @@ export function TarefasPage() {
           {/* Título igual ao do ProjetoView, pra padronizar — "Minhas tarefas"
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
           <div className="mb-3 flex items-baseline gap-2 flex-wrap">
-            <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">
               📥 Minhas tarefas
             </h2>
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
               {minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
             </span>
           </div>
@@ -590,7 +599,7 @@ function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () =
   return (
     <button
       onClick={onClick}
-      className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+      className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
         ativo
           ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
           : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"

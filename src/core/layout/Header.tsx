@@ -61,14 +61,15 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
 
       <div className="flex-1 min-w-0" />
 
-      {/* Chip de versão — visível em mobile e desktop. Click hard-reload
-          pra forçar atualização. Usuário lê esse número e dá pro suporte
-          conferir se está na versão mais recente do deploy. */}
+      {/* Chip de versão — visível só do sm pra cima pra não apertar mobile
+          (no mobile aparece no menu do avatar). Click hard-reload pra forçar
+          atualização. Usuário lê esse número e dá pro suporte conferir se
+          está na versão mais recente do deploy. */}
       <button
         type="button"
         onClick={() => window.location.reload()}
         title={`Versão do app: ${APP_VERSION_LABEL}\nClique pra atualizar`}
-        className="text-[10px] sm:text-xs font-mono text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
+        className="hidden sm:inline-flex text-xs font-mono text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 px-1.5 py-0.5 rounded hover:bg-gray-100 dark:hover:bg-gray-800 flex-shrink-0"
       >
         v.{APP_COMMIT}
       </button>
