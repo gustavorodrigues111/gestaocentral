@@ -91,14 +91,18 @@ export function listarCandidatos(
     });
   }
   // Pessoas do restaurante com cadastro completo de freela (CPF + PIX + WhatsApp)
-  // Pessoa só aparece se NÃO é empregado já listado acima (evita duplicar pelo CPF)
-  const cpfsEmpregados = new Set(
-    empregados.filter((e) => e.cpf).map((e) => onlyDigits(e.cpf)),
+  // Pessoa só aparece se NÃO é empregado ATIVO DESTE restaurante. Empregado
+  // ativo em OUTRA unidade pode ser freela aqui (CLT do Lobozó cobrindo no
+  // Sororoca é caso real). Bug anterior: filtrava por CPF globalmente.
+  const cpfsEmpregadosDesteRest = new Set(
+    empregados
+      .filter((e) => e.restaurantId === restaurantId && e.estaAtivo && e.cpf)
+      .map((e) => onlyDigits(e.cpf)),
   );
   for (const p of pessoas) {
     if (!p.restaurantIds.includes(restaurantId)) continue;
     if (!p.ativa) continue;
-    if (p.cpf && cpfsEmpregados.has(onlyDigits(p.cpf))) continue;
+    if (p.cpf && cpfsEmpregadosDesteRest.has(onlyDigits(p.cpf))) continue;
     if (!p.pix) continue; // só candidato a freela se tem PIX cadastrado
     cands.push({
       tipo: "freela",

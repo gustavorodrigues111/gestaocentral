@@ -55,17 +55,25 @@ export function NovoTurnoModal({
     [empregados, restaurantId],
   );
 
-  // Freelas = pessoas do restaurante com PIX e que NÃO são empregados (CPF diferente)
-  const cpfsEmpregados = useMemo(
-    () => new Set(empregados.filter((e) => e.cpf).map((e) => onlyDigits(e.cpf))),
-    [empregados],
+  // Freelas = pessoas vinculadas ao restaurante com PIX e que NÃO são
+  // empregados ATIVOS DESTE restaurante. Empregados ativos em OUTRAS
+  // unidades PODEM virar freela aqui (CLT do Lobozó cobrindo turno no
+  // Sororoca é caso real). Bug anterior: cpfsEmpregados não filtrava por
+  // restaurantId — bloqueava todos os empregados do sistema.
+  const cpfsEmpregadosDesteRest = useMemo(
+    () => new Set(
+      empregados
+        .filter((e) => e.restaurantId === restaurantId && e.estaAtivo && e.cpf)
+        .map((e) => onlyDigits(e.cpf)),
+    ),
+    [empregados, restaurantId],
   );
   const freelas = useMemo(
     () => pessoas
       .filter((p) => p.restaurantIds.includes(restaurantId) && p.ativa && p.pix)
-      .filter((p) => !p.cpf || !cpfsEmpregados.has(onlyDigits(p.cpf)))
+      .filter((p) => !p.cpf || !cpfsEmpregadosDesteRest.has(onlyDigits(p.cpf)))
       .sort((a, b) => a.nome.localeCompare(b.nome)),
-    [pessoas, restaurantId, cpfsEmpregados],
+    [pessoas, restaurantId, cpfsEmpregadosDesteRest],
   );
 
   async function salvar() {
