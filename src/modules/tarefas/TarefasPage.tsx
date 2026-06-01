@@ -31,7 +31,6 @@ async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id:
     throw e;
   }
 }
-import { seedProjetosIniciais } from "./seed";
 import { MODULES } from "../../config/modules";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
@@ -70,7 +69,6 @@ export function TarefasPage() {
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
-  const [seeding, setSeeding] = useState(false);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
@@ -170,22 +168,6 @@ export function TarefasPage() {
     [subprojetos, idsProjetosVisiveis],
   );
 
-  async function rodarSeed() {
-    if (!pessoa?.id) return;
-    setSeeding(true);
-    try {
-      const r = await seedProjetosIniciais(pessoa.id);
-      alert(`Estrutura inicial: ${r.criados} criados, ${r.existentes} já existiam.`);
-    } catch (e) {
-      alert("Erro no seed: " + String(e));
-    } finally {
-      setSeeding(false);
-    }
-  }
-
-  // Estado de empty na 1ª vez (sem projetos no Firestore)
-  const semEstrutura = projetos.length === 0;
-
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">
       <header className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
@@ -198,24 +180,11 @@ export function TarefasPage() {
         <div className="flex-1 md:hidden" />
         <Button
           onClick={() => setNovaAberta({})}
-          disabled={semEstrutura}
           className="whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
         >
           + Nova<span className="hidden sm:inline"> Tarefa</span>
         </Button>
       </header>
-
-      {semEstrutura && (
-        <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl">
-          <h2 className="font-bold text-amber-900 dark:text-amber-100">Estrutura inicial não criada ainda</h2>
-          <p className="text-sm text-amber-800 dark:text-amber-300 mt-1">
-            Crie os 12 projetos padrão (Pessoas, Financeiro, Diretoria, Eventos, Operação, etc) com seus subprojetos.
-          </p>
-          <Button onClick={rodarSeed} disabled={seeding} className="mt-3">
-            {seeding ? "Criando…" : "🌱 Criar estrutura inicial"}
-          </Button>
-        </div>
-      )}
 
       {/* Layout 2 colunas no desktop: sidebar lateral leve (estilo Asana —
           Minhas tarefas no topo + lista de projetos como favoritos clicáveis)
