@@ -1014,16 +1014,24 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   ) {
     if (!rid) return;
     const wk = wkOverride || semanaAtiva;
-    const sd = wk?.weekStart || startDate;
-    const ed = wk?.weekEnd   || endDate;
+    const rawSd = wk?.weekStart || startDate;
+    const rawEd = wk?.weekEnd   || endDate;
+    // Clampa o fim a HOJE. Sem isso, dias futuros da semana atual
+    // (ou semanas inteiras no futuro de um mês ainda em curso) virariam
+    // "Falta sem ajuste" porque a escala marca trabalho mas ainda não
+    // há punches — daria a impressão de empregado faltando.
+    const hoje = todayYmd();
+    const sd = rawSd;
+    const ed = rawEd > hoje ? hoje : rawEd;
     const statusSemanaParam = wkOverride !== undefined ? (statusOverride ?? null) : statusSemana;
     const isOverride = !!wkOverride;
     if (!sd || !ed) {
-      setErro("Informe o período (data inicial e final).");
+      if (!isOverride) setErro("Informe o período (data inicial e final).");
       return;
     }
     if (sd > ed) {
-      setErro("A data inicial não pode ser depois da final.");
+      // Semana inteira no futuro — nada a analisar
+      if (!isOverride) setErro("Esse período ainda não começou.");
       return;
     }
     setLoading(true);
@@ -1253,13 +1261,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     setLoading(true);
     setErro("");
     const falhas: Array<{ semana: string; motivo: string }> = [];
+    const hoje = todayYmd();
+    // Filtra semanas que JÁ COMEÇARAM. Semanas inteiramente no futuro
+    // geram falsas "Falta sem ajuste" porque a escala marca trabalho
+    // mas ainda não há punches — daria a impressão de que o empregado
+    // não bateu ponto em vários dias. Semana que contém hoje passa
+    // (será clampada via endDate ≤ hoje dentro do gerar).
+    const semanasParaAtualizar = semanasMes.filter(w => w.weekStart <= hoje);
+    if (semanasParaAtualizar.length === 0) {
+      setLoading(false);
+      setErro("Esse mês ainda não começou — nada a atualizar.");
+      return;
+    }
     try {
-      for (let i = 0; i < semanasMes.length; i++) {
-        const w = semanasMes[i];
-        setProgressoMes(`${i + 1}/${semanasMes.length}`);
+      for (let i = 0; i < semanasParaAtualizar.length; i++) {
+        const w = semanasParaAtualizar[i];
+        // Clampa o endDate a hoje pra não gerar inconformidade em dia
+        // que ainda não chegou (semana atual).
+        const wClamp: SemanaInfo = w.weekEnd > hoje ? { ...w, weekEnd: hoje } : w;
+        setProgressoMes(`${i + 1}/${semanasParaAtualizar.length}`);
         try {
           const st = await carregarStatusSemana(rid, w.weekStart);
-          await gerar(w, st);
+          await gerar(wClamp, st);
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           console.warn(`[ponto] falha na semana ${w.weekStart}:`, e);
