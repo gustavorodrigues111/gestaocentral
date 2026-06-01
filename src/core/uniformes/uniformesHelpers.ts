@@ -347,10 +347,17 @@ export async function atualizarEntrega(opts: {
     resolvidos.push({ item, variacao, qtd: i.qtd });
   }
 
-  // Agrega qtds atuais (antigas) e novas por (itemId, variacaoId)
+  // Agrega qtds atuais (antigas) e novas por (itemId, variacaoId).
+  // EntregaItemUniforme.variacaoId é opcional pra retro-compat — entregas
+  // legadas sem variação não dá pra ajustar estoque (estoque é por
+  // variação), então pulamos.
   const chave = (itemId: string, varId: string) => `${itemId}::${varId}`;
   const antigas = new Map<string, number>();
   for (const it of entrega.itens) {
+    if (!it.variacaoId) {
+      console.warn(`[atualizarEntrega] item legado sem variacaoId — ignorado: ${it.nome}`);
+      continue;
+    }
     antigas.set(chave(it.itemId, it.variacaoId), (antigas.get(chave(it.itemId, it.variacaoId)) || 0) + it.qtd);
   }
   const novas = new Map<string, number>();

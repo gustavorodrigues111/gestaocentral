@@ -98,11 +98,13 @@ export function NovaEntregaModal({
 
   // Linhas da entrega (editáveis). Em modo edição, hidrata com o que já foi
   // entregue antes — usuário pode ajustar quantidades, adicionar/remover.
+  // variacaoId é opcional no schema (retro-compat): se faltar, vira "" e o
+  // usuário precisa escolher antes de salvar (validação no save).
   const [linhas, setLinhas] = useState<LinhaEntrega[]>(() => {
     if (entregaExistente) {
       return entregaExistente.itens.map(i => ({
         itemId: i.itemId,
-        variacaoId: i.variacaoId,
+        variacaoId: i.variacaoId || "",
         qtd: i.qtd,
       }));
     }
