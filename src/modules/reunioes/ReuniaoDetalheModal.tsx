@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -267,6 +267,25 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
     await patchReuniao({ status: "planejada" });
   }
 
+  // Exclusão definitiva (master only) — apaga o doc do Firestore. Usado
+  // pra reuniões canceladas que viraram lixo no histórico. Idempotente
+  // sobre ideias linkadas: já viraram "aberta" no cancelamento, então
+  // só some o doc.
+  async function excluirDefinitivo() {
+    if (!confirm(
+      `Excluir DEFINITIVAMENTE a reunião "${reuniao.titulo}"?\n\n` +
+      `Esta operação não pode ser desfeita. O registro some do Firestore.`,
+    )) return;
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, "reunioes", reuniao.id));
+      onClose();
+    } catch (e) {
+      alert("Erro ao excluir: " + (e instanceof Error ? e.message : "?"));
+      setSaving(false);
+    }
+  }
+
   // ── Ações ────────────────────────────────────────────────────────────────
   async function adicionarAcao() {
     const desc = novaAcaoDesc.trim();
@@ -404,6 +423,11 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
               )}
               {(isRealizada || isCancelada) && (
                 <Button variant="secondary" size="sm" onClick={reabrirComoPlanejada} disabled={saving}>↻ Voltar pra planejada</Button>
+              )}
+              {isCancelada && me?.isMaster && (
+                <Button variant="danger" size="sm" onClick={excluirDefinitivo} disabled={saving}>
+                  🗑 Excluir definitivo
+                </Button>
               )}
             </div>
           )}

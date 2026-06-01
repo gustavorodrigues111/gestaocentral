@@ -1847,18 +1847,34 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
     ativo: true,
     recorrenciaTipo: "nenhuma",
   });
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string; isMaster?: boolean }>>([]);
   useEffect(() => {
     const u = onSnapshot(collection(db, "pessoas"), snap => {
       const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
+        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean; isMaster?: boolean })
         .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
+        .map(p => ({ id: p.id, nome: p.nome as string, isMaster: !!p.isMaster }))
         .sort((a, b) => a.nome.localeCompare(b.nome));
       setPessoas(list);
     });
     return () => u();
   }, []);
+
+  // Filtra pessoas elegíveis pra responsável padrão deste subprojeto baseado
+  // na visibilidade do PROJETO pai. Não faz sentido oferecer pessoas que
+  // nem veem o projeto. Master sempre passa (vê tudo).
+  const projetoPai = projetos.find(p => p.id === f.projetoId);
+  const pessoasElegiveis = useMemo(() => {
+    if (!projetoPai) return pessoas;
+    const vis = projetoPai.visibilidade || "privado";
+    if (vis === "publico" || vis === "escritorio") return pessoas;
+    // Privado: só master + dono + usuariosAutorizados
+    const autorizados = new Set<string>([
+      projetoPai.dono,
+      ...(projetoPai.usuariosAutorizados || []),
+    ]);
+    return pessoas.filter(p => p.isMaster || autorizados.has(p.id));
+  }, [pessoas, projetoPai]);
 
   function addTemplate() {
     setF({ ...f, tarefasTemplate: [...(f.tarefasTemplate || []), { titulo: "", prazoOffset: "D+0" }] });
@@ -2125,7 +2141,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
           className="adm-input"
         >
           <option value="">— criador da tarefa (default) —</option>
-          {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+          {pessoasElegiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
         </select>
       </label>
 
