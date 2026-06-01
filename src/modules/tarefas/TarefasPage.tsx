@@ -6,9 +6,11 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
+import { canVer } from "../../core/auth/permissions";
+import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
@@ -47,7 +49,7 @@ import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
 import type { LinhaImportada } from "./importador";
-import type { Pessoa, Restaurant } from "../../core/types";
+import type { AccessProfile, Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
@@ -70,12 +72,17 @@ export function TarefasPage() {
     let cancel = false;
     (async () => {
       try {
-        const snap = await getDoc(doc(db, "pessoas", viewingAsId));
-        if (cancel || !snap.exists()) return;
-        const data = { id: snap.id, ...snap.data() } as Pessoa;
-        // Força isMaster = false na visualização (queremos simular o que
-        // a pessoa vê com permissões reais, não com bypass de master).
-        setViewingAsData({ ...data, isMaster: false });
+        const [pessoaSnap, perfisSnap] = await Promise.all([
+          getDoc(doc(db, "pessoas", viewingAsId)),
+          getDocs(collection(db, "accessProfiles")),
+        ]);
+        if (cancel || !pessoaSnap.exists()) return;
+        const raw = { id: pessoaSnap.id, ...pessoaSnap.data() } as Pessoa;
+        const perfis = perfisSnap.docs.map(d => ({ id: d.id, ...d.data() }) as AccessProfile);
+        // Hidrata permissions a partir de profileIds + perfis (mesmo bridge
+        // do AuthContext). Força isMaster = false pra simular permissões reais.
+        const enriquecida = aplicarPerfisNaPessoa(raw, perfis);
+        setViewingAsData({ ...enriquecida, isMaster: false });
       } catch (e) {
         console.warn("[ver-como] falha ao carregar pessoa:", e);
       }
@@ -4437,37 +4444,41 @@ function VerComoButton({ onSelect }: { onSelect: (id: string) => void }) {
   const [busca, setBusca] = useState("");
   useEffect(() => {
     if (!aberto) return;
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
+    // Carrega perfis custom (collection /accessProfiles) e pessoas em
+    // paralelo. permissions[rid] da Pessoa é derivado dos profileIds via
+    // aplicarPerfisNaPessoa — sem isso, o doc bruto do Firestore vem sem
+    // permissions e o filtro de canVer pra "tarefas" retorna vazio.
+    let perfisAtual: AccessProfile[] = [];
+    let pessoasAtual: Array<{ id: string; data: Pessoa }> = [];
+    function recalcular() {
       const list: Array<{ id: string; nome: string; cargosResumo: string }> = [];
-      for (const d of snap.docs) {
-        const data = d.data() as {
-          nome?: string;
-          ativa?: boolean;
-          isMaster?: boolean;
-          permissions?: Record<string, Record<string, { ver?: boolean }>>;
-        };
+      for (const { id, data } of pessoasAtual) {
         if (data.ativa === false) continue;
-        if (data.isMaster) continue; // master vê tudo — não faz sentido impersonar
+        if (data.isMaster) continue; // master vê tudo
         if (!data.nome) continue;
-        // Tem permissão "tarefas" em algum restaurante?
-        const perms = data.permissions || {};
-        const temAcesso = Object.values(perms).some(porModulo =>
-          (porModulo as Record<string, { ver?: boolean }>)?.tarefas?.ver === true,
+        const enriquecida = aplicarPerfisNaPessoa(data, perfisAtual);
+        const rids = Object.keys(enriquecida.permissions || {}).filter(rid =>
+          canVer(enriquecida, rid, "tarefas"),
         );
-        if (!temAcesso) continue;
-        const rids = Object.keys(perms).filter(rid =>
-          (perms[rid] as Record<string, { ver?: boolean }>)?.tarefas?.ver === true,
-        );
+        if (rids.length === 0) continue;
         list.push({
-          id: d.id,
+          id,
           nome: data.nome,
           cargosResumo: `${rids.length} restaurante(s)`,
         });
       }
       list.sort((a, b) => a.nome.localeCompare(b.nome));
       setPessoas(list);
+    }
+    const u1 = onSnapshot(collection(db, "accessProfiles"), snap => {
+      perfisAtual = snap.docs.map(d => ({ id: d.id, ...d.data() }) as AccessProfile);
+      recalcular();
     });
-    return () => u();
+    const u2 = onSnapshot(collection(db, "pessoas"), snap => {
+      pessoasAtual = snap.docs.map(d => ({ id: d.id, data: { id: d.id, ...d.data() } as Pessoa }));
+      recalcular();
+    });
+    return () => { u1(); u2(); };
   }, [aberto]);
 
   const filtrada = useMemo(() => {
