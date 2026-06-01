@@ -2432,6 +2432,12 @@ export type TermoAssinado = {
   obrigatorio: boolean;
   assinado: boolean;
   link?: string;                    // URL do PDF assinado (Drive/Clicksign)
+  // ID do arquivo no Drive QUANDO o PDF foi subido pela pasta "docs a
+  // assinar" via app (uploadFileToFolder). Pra esses, o envio pro Clicksign
+  // pega automático. Pra termos com apenas `link` colado manualmente (Drive
+  // de outra pasta, OneDrive, etc), `linkFileId` fica vazio — esses NÃO
+  // vão pro Clicksign no envio automático.
+  linkFileId?: string;
   assinadoEm?: string;              // ISO
   assinadoPor?: { id: string; nome: string };
   // Tipos especiais que disparam fluxo próprio no ChecklistTermosModal:

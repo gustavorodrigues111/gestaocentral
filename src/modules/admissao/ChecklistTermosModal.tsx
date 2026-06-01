@@ -227,10 +227,12 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       const file = new File([pdf.blob], pdf.filename, { type: "application/pdf" });
       const uploaded = await uploadFileToFolder(aAssinar, file);
       if (uploaded.webViewLink && termoId) {
-        // Salva o link no termo + grava no Firestore na hora — assim o
-        // ponteiro pro PDF sobrevive ao reload.
+        // Salva o link + linkFileId no termo. O `linkFileId` marca que o
+        // PDF está NA pasta "docs a assinar" do Drive — usado pelo envio
+        // do Clicksign pra distinguir de links externos colados manuais.
         const link = uploaded.webViewLink;
-        const novos = termos.map(t => t.id === termoId ? { ...t, link } : t);
+        const fileId = uploaded.id;
+        const novos = termos.map(t => t.id === termoId ? { ...t, link, linkFileId: fileId } : t);
         await persistirTermos(novos);
       }
       fecharPreview();
@@ -265,6 +267,24 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       setClicksignErro("Configure o signatário da empresa em Admissão → Configurações antes de enviar.");
       return;
     }
+    // Gate de pré-envio: detecta obrigatórios assinados que estão SÓ como
+    // link externo (Drive de outra pasta, OneDrive, etc) — esses não estão
+    // na pasta "docs a assinar" e portanto NÃO vão automaticamente pro
+    // Clicksign. Bloqueia o envio listando os termos faltantes.
+    const obrigSoLink = termos.filter(t =>
+      t.obrigatorio && !t.naoSeAplica && t.assinado && t.link && !t.linkFileId
+    );
+    if (obrigSoLink.length > 0) {
+      const lista = obrigSoLink.map(t => `• ${t.nome}`).join("\n");
+      setClicksignErro(
+        `Os seguintes termos obrigatórios estão como link externo e NÃO vão ` +
+        `pro Clicksign automaticamente:\n\n${lista}\n\n` +
+        `Clique em "⬆️ Subir pra assinatura" em cada um pra subir o PDF pra ` +
+        `pasta "docs a assinar" do Drive. Depois clique em "Enviar pro Clicksign" de novo.`,
+      );
+      return;
+    }
+
     setClicksignBusy("enviando");
     try {
       const { aAssinar } = await ensureTree();
@@ -432,13 +452,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // Edição manual do link (digitação) — só atualiza o estado; a persistência
-  // acontece no onBlur do campo (pra não gravar a cada tecla).
+  // acontece no onBlur do campo (pra não gravar a cada tecla). Link colado
+  // manualmente NUNCA tem linkFileId (não é arquivo NA pasta) — limpa pra
+  // não enganar o gate do envio do Clicksign.
   function atualizarLink(id: string, link: string) {
     setTermos(prev => prev.map(t => {
       if (t.id !== id) return t;
       const merged: TermoAssinado = { ...t };
       if (link.trim()) merged.link = link.trim();
       else delete merged.link;
+      delete merged.linkFileId;
       return merged;
     }));
   }
@@ -528,7 +551,11 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       const alvo = target === "assinados" ? assinados : aAssinar;
       const uploaded = await uploadFileToFolder(alvo, file);
       // Subiu com sucesso → fixa o link, marca o termo (tica) e PERSISTE na
-      // hora. Assim, fechar e reabrir o checklist mantém tudo.
+      // hora. Assim, fechar e reabrir o checklist mantém tudo. linkFileId
+      // só é marcado quando o upload foi pra pasta "docs a assinar" — é
+      // esse marcador que o envio pro Clicksign usa pra saber que o doc
+      // está acessível na pasta vigiada. Upload em "docs assinados" (manual
+      // de garantia) NÃO marca: aqueles ficam só como link.
       const now = new Date().toISOString();
       const novos = termos.map(t => {
         if (t.id !== termoId) return t;
@@ -539,6 +566,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           assinadoPor: { id: pessoa.id, nome: pessoa.nome },
         };
         if (uploaded.webViewLink) merged.link = uploaded.webViewLink;
+        if (uploaded.id && target === "a_assinar") merged.linkFileId = uploaded.id;
         return merged;
       });
       await persistirTermos(novos);
@@ -867,14 +895,33 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
                 />
                 {t.link && (
-                  <a
-                    href={t.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 inline-block"
-                  >
-                    ↗ abrir link
-                  </a>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <a
+                      href={t.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                    >
+                      ↗ abrir link
+                    </a>
+                    {/* Sinal de fonte do PDF — pra DP saber se vai pro
+                        Clicksign automático ou se precisa anexar manual. */}
+                    {t.linkFileId ? (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        title="PDF está na pasta 'docs a assinar' do Drive — vai pro Clicksign automaticamente."
+                      >
+                        ✓ na pasta
+                      </span>
+                    ) : (
+                      <span
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                        title="Link externo: NÃO está na pasta 'docs a assinar'. Pra ir pro Clicksign, suba o PDF clicando em '⬆️ Subir pra assinatura'."
+                      >
+                        ⚠ link externo
+                      </span>
+                    )}
+                  </div>
                 )}
               </div>
               )}
