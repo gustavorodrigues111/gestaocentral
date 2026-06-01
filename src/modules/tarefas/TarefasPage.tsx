@@ -32,7 +32,6 @@ async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id:
   }
 }
 import { seedProjetosIniciais } from "./seed";
-import { gerarTarefasDoDia } from "./generator";
 import { MODULES } from "../../config/modules";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaPrioridade,
@@ -72,7 +71,6 @@ export function TarefasPage() {
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
   const [seeding, setSeeding] = useState(false);
-  const [gerando, setGerando] = useState(false);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
@@ -182,19 +180,6 @@ export function TarefasPage() {
       alert("Erro no seed: " + String(e));
     } finally {
       setSeeding(false);
-    }
-  }
-
-  async function rodarGerador() {
-    if (!pessoa) return;
-    setGerando(true);
-    try {
-      const r = await gerarTarefasDoDia({ id: pessoa.id, nome: pessoa.nome });
-      alert(`Geração:\n${r.contasGeradas} conta(s) fixa(s)\n${r.manutencoesGeradas} manutenção(ões)\n${r.jaExistiam} já existiam`);
-    } catch (e) {
-      alert("Erro no gerador: " + String(e));
-    } finally {
-      setGerando(false);
     }
   }
 
@@ -375,8 +360,6 @@ export function TarefasPage() {
 
       {tab === "admin" && isMaster && (
         <AdminView
-          onGerarPendentes={rodarGerador}
-          gerandoPendentes={gerando}
           projetos={projetos}
           subprojetos={subprojetos}
           pessoaId={pessoa?.id || ""}
@@ -1339,12 +1322,10 @@ function ProjetoListaView({ projeto, subprojetos, subFiltro, tarefas, projetos, 
 
 // ─── VIEW: Admin de Projetos (master) — CRUD inline ───────────────────────
 
-function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoPendentes }: {
+function AdminView({ projetos, subprojetos, pessoaId }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   pessoaId: string;
-  onGerarPendentes: () => void;
-  gerandoPendentes: boolean;
 }) {
   const [criandoProjeto, setCriandoProjeto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -1429,20 +1410,11 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
 
       {adminTab === "projetos" && (
       <>
-      <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 sm:flex-1 sm:pr-3">
           Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
         </p>
-        <div className="flex gap-2">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onGerarPendentes}
-            disabled={gerandoPendentes}
-            title="Roda manualmente o gerador de tarefas-lembrete a partir de Contas Fixas e Manutenções cadastradas. Normalmente roda automático via cron diário — só use se o cron falhou."
-          >
-            {gerandoPendentes ? "Gerando…" : "🔁 Gerar pendentes"}
-          </Button>
+        <div className="flex gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
           <Button size="sm" variant="ghost" onClick={() => setImportando(true)}>📥 Importar CSV</Button>
           <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
         </div>
