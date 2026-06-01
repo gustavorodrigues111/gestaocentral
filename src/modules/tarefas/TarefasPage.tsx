@@ -56,24 +56,17 @@ import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal"
 type Tab = "minhas" | "projeto" | "admin" | "lixeira";
 type ViewMode = "calendario" | "lista" | "kanban";
 
-function readLS<T extends string>(key: string, fallback: T, allowed: readonly T[]): T {
-  try {
-    const v = localStorage.getItem(key);
-    if (v && (allowed as readonly string[]).includes(v)) return v as T;
-  } catch {}
-  return fallback;
-}
-
 export function TarefasPage() {
   const { pessoa } = useAuth();
   const { restaurants } = useRestaurant();
-  const [tab, setTab] = useState<Tab>(() => readLS<Tab>("tarefas_tab", "minhas", ["minhas", "projeto", "admin", "lixeira"]));
-  const [viewMinhas, setViewMinhas] = useState<ViewMode>(() => readLS<ViewMode>("tarefas_view_minhas", "calendario", ["calendario", "lista", "kanban"]));
-  const [viewProjeto, setViewProjeto] = useState<ViewMode>(() => readLS<ViewMode>("tarefas_view_projeto", "lista", ["calendario", "lista", "kanban"]));
-
-  useEffect(() => { try { localStorage.setItem("tarefas_tab", tab); } catch {} }, [tab]);
-  useEffect(() => { try { localStorage.setItem("tarefas_view_minhas", viewMinhas); } catch {} }, [viewMinhas]);
-  useEffect(() => { try { localStorage.setItem("tarefas_view_projeto", viewProjeto); } catch {} }, [viewProjeto]);
+  // Entry point fixo: ao abrir o módulo, sempre cai em Minhas tarefas +
+  // Calendário. Preferência do user dentro da sessão funciona normal,
+  // mas ao sair e voltar, reseta — é o "home" do gestor. View de projeto
+  // continua em "lista" como default (que abre rara — só ao clicar num
+  // projeto da sidebar, e aí faz sentido lista).
+  const [tab, setTab] = useState<Tab>("minhas");
+  const [viewMinhas, setViewMinhas] = useState<ViewMode>("calendario");
+  const [viewProjeto, setViewProjeto] = useState<ViewMode>("lista");
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
