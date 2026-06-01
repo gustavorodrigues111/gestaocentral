@@ -8,7 +8,7 @@ import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
@@ -55,8 +55,37 @@ type Tab = "minhas" | "projeto" | "admin" | "lixeira";
 type ViewMode = "calendario" | "lista" | "kanban";
 
 export function TarefasPage() {
-  const { pessoa } = useAuth();
+  const { pessoa: pessoaReal } = useAuth();
   const { restaurants } = useRestaurant();
+
+  // ── "Ver como…" (master only) ────────────────────────────────────────
+  // Master pode visualizar o Gestor de Tarefas com a permissão de outra
+  // pessoa pra entender o que ela vê. State guarda o id; carrega o doc
+  // completo do Firestore. `pessoa` efetiva é a impersonada (com isMaster
+  // forçado a false pra realmente simular permissões reais).
+  const [viewingAsId, setViewingAsId] = useState<string | null>(null);
+  const [viewingAsData, setViewingAsData] = useState<Pessoa | null>(null);
+  useEffect(() => {
+    if (!viewingAsId) { setViewingAsData(null); return; }
+    let cancel = false;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "pessoas", viewingAsId));
+        if (cancel || !snap.exists()) return;
+        const data = { id: snap.id, ...snap.data() } as Pessoa;
+        // Força isMaster = false na visualização (queremos simular o que
+        // a pessoa vê com permissões reais, não com bypass de master).
+        setViewingAsData({ ...data, isMaster: false });
+      } catch (e) {
+        console.warn("[ver-como] falha ao carregar pessoa:", e);
+      }
+    })();
+    return () => { cancel = true; };
+  }, [viewingAsId]);
+  // Pessoa "efetiva" usada em toda a página — substitui o user logado
+  // quando o master está visualizando como outro.
+  const pessoa = viewingAsData || pessoaReal;
+  const isViewingAs = !!viewingAsData;
   // Entry point fixo: ao abrir o módulo, sempre cai em Minhas tarefas +
   // Calendário. Preferência do user dentro da sessão funciona normal,
   // mas ao sair e voltar, reseta — é o "home" do gestor. View de projeto
@@ -91,7 +120,7 @@ export function TarefasPage() {
   // Migração 1x: converte docs legados em "grupo_*" para "privado".
   // Master-only e idempotente — flag no localStorage evita rodar de novo.
   useEffect(() => {
-    if (!pessoa?.isMaster) return;
+    if (!pessoaReal?.isMaster) return;
     const FLAG = "tarefas_migrou_grupos_v2";
     try { if (localStorage.getItem(FLAG) === "1") return; } catch {}
     migrarGruposParaPrivadoLegado()
@@ -103,11 +132,11 @@ export function TarefasPage() {
         }
       })
       .catch(e => console.warn("[tarefas] migração falhou:", e));
-  }, [pessoa?.isMaster]);
+  }, [pessoaReal?.isMaster]);
 
   // Migração 1x: remove projeto "Caixa Pessoal" (substituído por Banco de Ideias).
   useEffect(() => {
-    if (!pessoa?.isMaster) return;
+    if (!pessoaReal?.isMaster) return;
     const FLAG = "tarefas_aposentou_caixa_pessoal";
     try { if (localStorage.getItem(FLAG) === "1") return; } catch {}
     aposentarCaixaPessoal()
@@ -122,7 +151,7 @@ export function TarefasPage() {
         }
       })
       .catch(e => console.warn("[tarefas] aposentar caixa pessoal falhou:", e));
-  }, [pessoa?.isMaster]);
+  }, [pessoaReal?.isMaster]);
 
   // Minhas tarefas
   useEffect(() => {
@@ -145,7 +174,11 @@ export function TarefasPage() {
     return () => u();
   }, [tab]);
 
-  const isMaster = !!pessoa?.isMaster;
+  // `isMaster` reflete o USER REAL (não a pessoa impersonada). Permissão de
+  // master pra usar AdminView/Lixeira/Ver-como vem da identidade autêntica.
+  // Mas `pessoa` usada nos filtros de visibilidade É a impersonada — pra
+  // simular o que ela vê.
+  const isMaster = !!pessoaReal?.isMaster;
   const tarefaSelecionada = useMemo(
     () => [...minhas, ...tarefasProjeto].find(t => t.id === detalheId) || null,
     [detalheId, minhas, tarefasProjeto],
@@ -185,6 +218,31 @@ export function TarefasPage() {
           + Nova<span className="hidden sm:inline"> Tarefa</span>
         </Button>
       </header>
+
+      {/* Banner "Visualizando como…" — só renderiza quando master ativou
+          a impersonação. Indica claramente que o conteúdo abaixo é o que
+          a outra pessoa veria, e dá saída rápida. */}
+      {isViewingAs && viewingAsData && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
+          <span>👁</span>
+          <span>
+            Visualizando como <strong>{viewingAsData.nome}</strong> (sem o bypass de master).
+            O que ela enxerga no Gestor de Tarefas é o que aparece aqui.
+          </span>
+          <button
+            type="button"
+            onClick={() => setViewingAsId(null)}
+            className="ml-auto text-amber-900 dark:text-amber-200 hover:underline font-medium"
+          >
+            ← voltar pro meu perfil
+          </button>
+        </div>
+      )}
+
+      {/* Botão "Ver como…" — só pra master, abre modal de seleção */}
+      {isMaster && !isViewingAs && (
+        <VerComoButton onSelect={setViewingAsId} />
+      )}
 
       {/* Layout 2 colunas no desktop: sidebar lateral leve (estilo Asana —
           Minhas tarefas no topo + lista de projetos como favoritos clicáveis)
@@ -4366,5 +4424,123 @@ function SubtarefasSection({ tarefa, autor, novaSubtarefa, setNovaSubtarefa, add
         <Button size="sm" onClick={addSubtarefa}>+</Button>
       </div>
     </div>
+  );
+}
+
+// ─── "Ver como…" — master only ────────────────────────────────────────────
+// Lista pessoas com permissão "tarefas" em algum restaurante e deixa o
+// master escolher uma pra impersonar. Pessoas com isMaster ficam de fora
+// (a visualização delas é igual à do user atual quando ele é master).
+function VerComoButton({ onSelect }: { onSelect: (id: string) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string; cargosResumo: string }>>([]);
+  const [busca, setBusca] = useState("");
+  useEffect(() => {
+    if (!aberto) return;
+    const u = onSnapshot(collection(db, "pessoas"), snap => {
+      const list: Array<{ id: string; nome: string; cargosResumo: string }> = [];
+      for (const d of snap.docs) {
+        const data = d.data() as {
+          nome?: string;
+          ativa?: boolean;
+          isMaster?: boolean;
+          permissions?: Record<string, Record<string, { ver?: boolean }>>;
+        };
+        if (data.ativa === false) continue;
+        if (data.isMaster) continue; // master vê tudo — não faz sentido impersonar
+        if (!data.nome) continue;
+        // Tem permissão "tarefas" em algum restaurante?
+        const perms = data.permissions || {};
+        const temAcesso = Object.values(perms).some(porModulo =>
+          (porModulo as Record<string, { ver?: boolean }>)?.tarefas?.ver === true,
+        );
+        if (!temAcesso) continue;
+        const rids = Object.keys(perms).filter(rid =>
+          (perms[rid] as Record<string, { ver?: boolean }>)?.tarefas?.ver === true,
+        );
+        list.push({
+          id: d.id,
+          nome: data.nome,
+          cargosResumo: `${rids.length} restaurante(s)`,
+        });
+      }
+      list.sort((a, b) => a.nome.localeCompare(b.nome));
+      setPessoas(list);
+    });
+    return () => u();
+  }, [aberto]);
+
+  const filtrada = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return pessoas;
+    return pessoas.filter(p => p.nome.toLowerCase().includes(q));
+  }, [pessoas, busca]);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setAberto(true)}
+        className="mb-3 text-[11px] px-2.5 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
+      >
+        👁 Ver como outro usuário (master)
+      </button>
+      {aberto && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => setAberto(false)}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+              <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
+                👁 Visualizar Gestor de Tarefas como…
+              </h2>
+              <button
+                type="button"
+                onClick={() => setAberto(false)}
+                className="text-gray-500 hover:text-gray-900 text-xl leading-none p-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
+                Escolha uma pessoa pra ver a tela do Gestor de Tarefas com as
+                permissões dela. O bypass de master fica desativado nessa
+                visualização.
+              </p>
+              <input
+                type="text"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar por nome…"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                autoFocus
+              />
+              <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+                {filtrada.length === 0 ? (
+                  <div className="text-xs text-gray-500 italic text-center py-4">
+                    Nenhuma pessoa{busca && ` com "${busca}"`} tem acesso ao Gestor de Tarefas.
+                  </div>
+                ) : filtrada.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { onSelect(p.id); setAberto(false); }}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
+                  >
+                    <div className="text-sm text-gray-900 dark:text-gray-100">{p.nome}</div>
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.cargosResumo}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
