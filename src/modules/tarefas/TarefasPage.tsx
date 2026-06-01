@@ -1012,6 +1012,13 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
+// Hook só pra ler activeId — ProjetoView precisa só disso pra construir
+// o link do CTA do banner de sub automático.
+function useActiveRid(): string {
+  const { activeId } = useRestaurant();
+  return activeId || "";
+}
+
 function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -1027,6 +1034,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
 }) {
+  const rid = useActiveRid();
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
   const tarefasFiltradas = subFiltro
@@ -1053,6 +1061,35 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                 {tarefasFiltradas.length} tarefa(s) · {ativas(tarefasFiltradas)} ativas
               </span>
             </div>
+
+            {/* Banner pra subprojeto automático/bloqueado — explica como
+                ele recebe tarefas e dá CTA pro módulo origem. */}
+            {subAtual?.bloqueadoCriacaoManual && (
+              <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-3">
+                <span className="text-2xl shrink-0" aria-hidden>🤖</span>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
+                    Subprojeto automático
+                  </div>
+                  <p className="text-[13px] text-amber-800 dark:text-amber-300 mt-0.5">
+                    As tarefas aqui são criadas automaticamente pelo sistema —
+                    você não cria manualmente.
+                    {subAtual.gatilho && (
+                      <> <strong>Gatilho:</strong> {subAtual.gatilho}.</>
+                    )}
+                  </p>
+                </div>
+                {subAtual.moduloOrigemRota && rid && (
+                  <a
+                    href={`/r/${rid}${subAtual.moduloOrigemRota}`}
+                    className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-xs font-medium transition-colors"
+                  >
+                    {subAtual.moduloOrigemLabel || "Ir pra origem"} →
+                  </a>
+                )}
+              </div>
+            )}
+
             <ViewSwitcher value={view} onChange={onChangeView} />
             {view === "lista" && (
               <ProjetoListaView
@@ -1185,6 +1222,17 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
     });
   }
   async function deletarSub(s: TarefaSubprojeto) {
+    // Subs bloqueados pra criação manual são "automáticos" — não dá pra
+    // excluir, senão hooks de outros módulos quebram ao tentar criar tarefa
+    // num sub que não existe.
+    if (s.bloqueadoCriacaoManual) {
+      alert(
+        `Subprojeto "${s.nome}" não pode ser excluído porque está marcado como ` +
+        `bloqueado pra criação manual (recebe tarefas de hooks automáticos). ` +
+        `Pra excluir, primeiro desmarque o bloqueio no editor.`,
+      );
+      return;
+    }
     if (!confirm(`Excluir subprojeto "${s.nome}"?`)) return;
     await salvarSubprojeto({
       ...s,
@@ -1294,7 +1342,9 @@ function AdminView({ projetos, subprojetos, pessoaId, onGerarPendentes, gerandoP
                     <button onClick={() => setEditandoSubId(editandoSubId === s.id ? null : s.id)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">
                       {editandoSubId === s.id ? "fechar" : "editar"}
                     </button>
-                    <button onClick={() => deletarSub(s)} className="text-[11px] text-red-500 hover:underline">excluir</button>
+                    {!s.bloqueadoCriacaoManual && (
+                      <button onClick={() => deletarSub(s)} className="text-[11px] text-red-500 hover:underline">excluir</button>
+                    )}
                   </div>
                   {editandoSubId === s.id && (
                     <SubprojetoForm
@@ -1539,6 +1589,8 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       auto: f.auto ?? false,
       bloqueadoCriacaoManual: f.bloqueadoCriacaoManual ?? false,
       gatilho: f.gatilho,
+      moduloOrigemRota: f.moduloOrigemRota,
+      moduloOrigemLabel: f.moduloOrigemLabel,
       campos: f.campos,
       pastaDriveTemplate: f.pastaDriveTemplate,
       tarefasTemplate: (f.tarefasTemplate || []).filter(t => t.titulo.trim()),
@@ -1600,21 +1652,53 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       {f.auto && (
         <input value={f.gatilho || ""} onChange={(e) => setF({ ...f, gatilho: e.target.value })} placeholder="Gatilho (ex: 'Nova admissão concluída')" className="adm-input text-xs" />
       )}
-      <label className="flex items-start gap-2 text-xs px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-        <input
-          type="checkbox"
-          checked={f.bloqueadoCriacaoManual || false}
-          onChange={(e) => setF({ ...f, bloqueadoCriacaoManual: e.target.checked })}
-          className="mt-0.5"
-        />
-        <div className="flex-1">
-          <div className="font-medium text-amber-900 dark:text-amber-200">🔒 Bloquear criação manual</div>
-          <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
-            Quando ativo, esse sub não aceita "+ Nova tarefa" no app — só recebe
-            tarefas geradas por hooks de outros módulos (Admissão, Exames, etc).
+      <div className="px-2 py-1.5 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 space-y-2">
+        <label className="flex items-start gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={f.bloqueadoCriacaoManual || false}
+            onChange={(e) => setF({ ...f, bloqueadoCriacaoManual: e.target.checked })}
+            className="mt-0.5"
+          />
+          <div className="flex-1">
+            <div className="font-medium text-amber-900 dark:text-amber-200">🔒 Bloquear criação manual</div>
+            <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
+              Quando ativo, esse sub não aceita "+ Nova tarefa" no app — só recebe
+              tarefas geradas por hooks de outros módulos (Admissão, Exames, etc).
+              Bloqueado também não pode ser excluído.
+            </div>
           </div>
-        </div>
-      </label>
+        </label>
+        {/* Quando bloqueado, perguntamos rota/label do módulo origem pra
+            o banner explicativo que aparece pro usuário ao ver as tarefas
+            do sub poder linkar de volta pro lugar onde criar. */}
+        {f.bloqueadoCriacaoManual && (
+          <div className="grid grid-cols-2 gap-2 pl-6">
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+                Rota do módulo origem
+              </label>
+              <input
+                value={f.moduloOrigemRota || ""}
+                onChange={(e) => setF({ ...f, moduloOrigemRota: e.target.value })}
+                placeholder="/admissao"
+                className="adm-input text-xs"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+                Label do CTA
+              </label>
+              <input
+                value={f.moduloOrigemLabel || ""}
+                onChange={(e) => setF({ ...f, moduloOrigemLabel: e.target.value })}
+                placeholder="Ir pra Admissão"
+                className="adm-input text-xs"
+              />
+            </div>
+          </div>
+        )}
+      </div>
       <input value={f.campos || ""} onChange={(e) => setF({ ...f, campos: e.target.value })} placeholder="Campos custom (legado, descritivo)" className="adm-input text-xs" />
 
       {/* Custom fields tipados */}

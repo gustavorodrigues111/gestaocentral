@@ -3317,8 +3317,17 @@ export type TarefaSubprojeto = {
   // ele só recebe tarefas vindas de hooks automáticos de outros módulos
   // (Admissão, Demissão, Exames, etc). Diferente de `auto`: um sub pode
   // ser bloqueado sem ser auto (subprojeto "Em construção", por ex.).
+  // Quando bloqueado, o subprojeto também não pode ser excluído via UI.
   bloqueadoCriacaoManual?: boolean;
+  // Texto livre descrevendo o gatilho da geração automática
+  // (ex: "Nova admissão concluída no módulo Pessoas").
   gatilho?: string;
+  // Rota relativa pra onde o usuário vai pra gerar tarefas deste sub
+  // (ex: "/admissao", "/exames"). Mostrada como CTA no banner explicativo
+  // quando o sub é bloqueado. Sem o `/r/{rid}` — calculado em runtime.
+  moduloOrigemRota?: string;
+  // Label do CTA, ex: "Ir pra Admissão". Se vazio, usa "Ir pra origem".
+  moduloOrigemLabel?: string;
   campos?: string;              // texto livre — campos custom separados por ·
   pastaDriveTemplate?: string;
   // Templates de tarefa-filha (checklist) usados quando criar uma tarefa-pai
