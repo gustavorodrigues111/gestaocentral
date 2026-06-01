@@ -251,9 +251,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   // ─── Clicksign ───
-  // Junta os PDFs de "docs a assinar" (Drive) e cria o envelope no Clicksign,
-  // disparando a solicitação de assinatura por e-mail pro candidato.
-  async function enviarClicksign() {
+  // Modal de seleção pré-envio: lista os PDFs em "docs a assinar" e deixa o
+  // usuário escolher quais vão pro envelope (alguns podem não precisar de
+  // assinatura, e em reenvios o que já foi enviado normalmente não volta).
+  const [selecaoEnvio, setSelecaoEnvio] = useState<{
+    arquivos: DriveFile[];
+    selecionados: Set<string>;
+  } | null>(null);
+
+  // Passo 1: valida pré-condições, lista arquivos da pasta e abre o modal.
+  async function abrirSelecaoClicksign() {
     setClicksignErro("");
     setClicksignMsg("");
     const cand = admissao.candidato;
@@ -267,10 +274,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       setClicksignErro("Configure o signatário da empresa em Admissão → Configurações antes de enviar.");
       return;
     }
-    // Gate de pré-envio: detecta obrigatórios assinados que estão SÓ como
-    // link externo (Drive de outra pasta, OneDrive, etc) — esses não estão
-    // na pasta "docs a assinar" e portanto NÃO vão automaticamente pro
-    // Clicksign. Bloqueia o envio listando os termos faltantes.
+    // Gate: obrigatórios marcados como assinados mas SÓ com link externo
+    // (sem PDF na pasta) — esses não vão automaticamente pro Clicksign.
     const obrigSoLink = termos.filter(t =>
       t.obrigatorio && !t.naoSeAplica && t.assinado && t.link && !t.linkFileId
     );
@@ -280,11 +285,10 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         `Os seguintes termos obrigatórios estão como link externo e NÃO vão ` +
         `pro Clicksign automaticamente:\n\n${lista}\n\n` +
         `Clique em "⬆️ Subir pra assinatura" em cada um pra subir o PDF pra ` +
-        `pasta "docs a assinar" do Drive. Depois clique em "Enviar pro Clicksign" de novo.`,
+        `pasta "docs a assinar" do Drive. Depois tente enviar de novo.`,
       );
       return;
     }
-
     setClicksignBusy("enviando");
     try {
       const { aAssinar } = await ensureTree();
@@ -292,8 +296,35 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       if (arquivos.length === 0) {
         throw new Error("Nenhum documento em 'docs a assinar'. Gere/suba os termos primeiro.");
       }
+      // Default: todos marcados. Usuário desmarca o que não quer enviar.
+      setSelecaoEnvio({
+        arquivos,
+        selecionados: new Set(arquivos.map(a => a.id)),
+      });
+    } catch (e) {
+      setClicksignErro(e instanceof Error ? e.message : "Falha ao listar documentos.");
+    } finally {
+      setClicksignBusy("");
+    }
+  }
+
+  // Passo 2: usuário confirmou a seleção — envia os PDFs selecionados pro
+  // Clicksign, cria envelope, dispara e-mail pro candidato.
+  async function confirmarEnvioClicksign() {
+    if (!selecaoEnvio) return;
+    const cand = admissao.candidato;
+    const empresaNome = activeRestaurant.clicksignEmpresaNome?.trim() || "";
+    const empresaEmail = activeRestaurant.clicksignEmpresaEmail?.trim() || "";
+    const escolhidos = selecaoEnvio.arquivos.filter(a => selecaoEnvio.selecionados.has(a.id));
+    if (escolhidos.length === 0) {
+      setClicksignErro("Selecione pelo menos 1 documento pra enviar.");
+      return;
+    }
+    setClicksignErro("");
+    setClicksignBusy("enviando");
+    try {
       const docs: { filename: string; base64: string }[] = [];
-      for (const a of arquivos) {
+      for (const a of escolhidos) {
         docs.push({ filename: a.name, base64: await downloadDriveFileBase64(a.id) });
       }
       // Data de nascimento vem da ficha preenchida pelo candidato.
@@ -318,7 +349,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           // Empregado (dados da ficha cadastral)
           {
             name: cand.nome,
-            email: cand.email,
+            email: cand.email!,
             phone: cand.whatsapp || undefined,
             documentation: formatCpf(cand.cpf) || undefined,
             birthday,
@@ -331,6 +362,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       setClicksignEnvelopeId(envelopeId);
       setClicksignStatus(status);
       setClicksignMsg(`✓ Enviado pro Clicksign (${docs.length} doc). O candidato recebe por e-mail.`);
+      setSelecaoEnvio(null);
     } catch (e) {
       setClicksignErro(e instanceof Error ? e.message : "Falha ao enviar pro Clicksign.");
     } finally {
@@ -738,8 +770,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   assinatura por e-mail pro candidato.
                   {CLICKSIGN_SANDBOX && " ⚠ Ambiente SANDBOX — sem validade jurídica."}
                 </p>
-                <Button size="sm" onClick={enviarClicksign} disabled={clicksignBusy !== ""}>
-                  {clicksignBusy === "enviando" ? "Enviando…" : "✍️ Enviar pro Clicksign"}
+                <Button size="sm" onClick={abrirSelecaoClicksign} disabled={clicksignBusy !== ""}>
+                  {clicksignBusy === "enviando" ? "Carregando…" : "✍️ Enviar pro Clicksign"}
                 </Button>
               </>
             ) : (
@@ -1016,6 +1048,118 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               </Button>
               <Button onClick={confirmarUploadPreview} disabled={driveBusy !== ""}>
                 {driveBusy !== "" ? "Subindo…" : "⬆️ Subir pra docs a assinar"}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal de seleção pré-envio: usuário escolhe quais PDFs vão pro
+          envelope. Importante quando: (a) algum doc da pasta não precisa
+          ser assinado pelo candidato (já assinado, só pra arquivo);
+          (b) reenvio — alguns já foram assinados em envelope anterior e
+          não devem voltar. Default: todos marcados. */}
+      {selecaoEnvio && (
+        <Modal
+          title="✍️ Enviar pro Clicksign"
+          onClose={() => setSelecaoEnvio(null)}
+          maxWidth="max-w-xl"
+        >
+          <div className="p-4 space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Selecione os documentos que vão pro envelope. O candidato vai
+              assinar todos os marcados — desmarque os que não precisam de
+              assinatura ou que já foram assinados antes.
+            </p>
+            {clicksignEnvelopeId && clicksignStatus !== "closed" && (
+              <div className="text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 rounded p-2">
+                ⚠ Já existe um envelope em andamento ({traduzStatusClicksign(clicksignStatus)}).
+                Este envio cria um <strong>novo envelope</strong> — não adiciona docs ao atual.
+              </div>
+            )}
+            <div className="flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-800 pb-2">
+              <span>{selecaoEnvio.selecionados.size} de {selecaoEnvio.arquivos.length} selecionado(s)</span>
+              <button
+                type="button"
+                onClick={() => setSelecaoEnvio(prev => prev && {
+                  ...prev,
+                  selecionados: new Set(prev.arquivos.map(a => a.id)),
+                })}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Marcar todos
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelecaoEnvio(prev => prev && {
+                  ...prev,
+                  selecionados: new Set(),
+                })}
+                className="text-indigo-600 dark:text-indigo-400 hover:underline"
+              >
+                Desmarcar todos
+              </button>
+            </div>
+            <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+              {selecaoEnvio.arquivos.map(a => {
+                const checked = selecaoEnvio.selecionados.has(a.id);
+                return (
+                  <label
+                    key={a.id}
+                    className={`flex items-center gap-2 p-2 rounded border cursor-pointer transition-colors ${
+                      checked
+                        ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800"
+                        : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => setSelecaoEnvio(prev => {
+                        if (!prev) return prev;
+                        const next = new Set(prev.selecionados);
+                        if (next.has(a.id)) next.delete(a.id);
+                        else next.add(a.id);
+                        return { ...prev, selecionados: next };
+                      })}
+                      className="w-4 h-4 accent-indigo-600 flex-shrink-0"
+                    />
+                    <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate" title={a.name}>
+                      {a.name}
+                    </span>
+                    {a.webViewLink && (
+                      <a
+                        href={a.webViewLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
+                      >
+                        ↗ ver
+                      </a>
+                    )}
+                  </label>
+                );
+              })}
+            </div>
+            {clicksignErro && (
+              <div className="text-xs text-rose-600 dark:text-rose-400 whitespace-pre-wrap">{clicksignErro}</div>
+            )}
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+              <Button
+                variant="secondary"
+                onClick={() => setSelecaoEnvio(null)}
+                disabled={clicksignBusy !== ""}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={confirmarEnvioClicksign}
+                disabled={clicksignBusy !== "" || selecaoEnvio.selecionados.size === 0}
+              >
+                {clicksignBusy === "enviando"
+                  ? "Enviando…"
+                  : `Enviar ${selecaoEnvio.selecionados.size} documento(s)`}
               </Button>
             </div>
           </div>
