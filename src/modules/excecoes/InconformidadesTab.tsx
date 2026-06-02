@@ -1233,7 +1233,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       try {
         const [y1, m1, d1] = sd.split("-").map(Number);
         const [y2, m2, d2] = ed.split("-").map(Number);
-        const startMs = Date.UTC(y1, m1 - 1, d1, 0, 0, 0, 0);
+        // Expande o startDate em 90 dias pra trás pra capturar ajustes longos
+        // (férias de 30d, atestados longos, afastamentos) que COMEÇARAM antes
+        // do range mas cobrem dias dentro dele. A API Sólides parece filtrar
+        // por `adjustment.startDate IN range` (não overlap), então sem essa
+        // expansão um ajuste de férias começando em 21/05 não retorna pra
+        // semana 25–31/05. O `aplicarAjustesNaEscala` ignora dias fora do
+        // range visualizado (perDate[d] só existe pros dias da escala).
+        const startMs = Date.UTC(y1, m1 - 1, d1 - 90, 0, 0, 0, 0);
         const endMs   = Date.UTC(y2, m2 - 1, d2, 23, 59, 59, 999);
         const adjRes = await fetchSolidesAdjustments(startMs, endMs, shortCode);
         // mapa empregadoId Planejamento → sid Sólides
