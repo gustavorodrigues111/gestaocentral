@@ -196,6 +196,52 @@ export function DivisaoMesTab({
     );
   }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro]);
 
+  // Detalha a discrepância entre líquido do mês e soma distribuída.
+  // Duas causas reais (NÃO existe efeito de semGorjeta=true diluindo, esse
+  // cargo é só pulado em calc.ts:123):
+  //   1. Arredondamento por dia: calc.ts:173 usa Math.floor pro valorPonto em
+  //      centavos. Cada dia perde pontos × 0.0099 no pior caso. Acumula.
+  //   2. Dia sem ninguém elegível: se itens.length === 0 em calc.ts:160, o
+  //      líquido INTEIRO do dia vira resto (não distribuído). Tipicamente o
+  //      maior contribuinte quando a diferença passa de R$ 20.
+  const discrepanciaDetalhe = useMemo(() => {
+    const diasSemDistribuicao: { date: string; valor: number }[] = [];
+    let arredondamentoCentavos = 0;
+    for (const g of gorjetasFiltradas) {
+      const splitVersion = getActiveSplitVersion(splitVersions, g.date);
+      const taxRate = (g.publicada && g.divisaoSnapshot)
+        ? (g.taxRate || 0)
+        : (splitVersion?.taxRate ?? 0);
+      const fator = 1 - taxRate / 100;
+      let valorLiquido: number;
+      let totalDistribuido: number;
+      let itensCount: number;
+      if (g.publicada && g.divisaoSnapshot) {
+        valorLiquido = g.valorLiquido || 0;
+        totalDistribuido = g.divisaoSnapshot.reduce((s, it) => s + it.valor, 0);
+        itensCount = g.divisaoSnapshot.length;
+      } else {
+        valorLiquido = g.valorBruto * fator;
+        const r = calcularDivisaoDia(g.date, valorLiquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
+        totalDistribuido = r.totalDistribuido;
+        itensCount = r.itens.length;
+      }
+      const resto = valorLiquido - totalDistribuido;
+      if (itensCount === 0 && valorLiquido > 0.005) {
+        diasSemDistribuicao.push({ date: g.date, valor: Math.round(valorLiquido * 100) / 100 });
+      } else if (resto > 0.005) {
+        arredondamentoCentavos += resto;
+      }
+    }
+    diasSemDistribuicao.sort((a, b) => a.date.localeCompare(b.date));
+    const totalSemDistribuicao = diasSemDistribuicao.reduce((s, d) => s + d.valor, 0);
+    return {
+      diasSemDistribuicao,
+      totalSemDistribuicao: Math.round(totalSemDistribuicao * 100) / 100,
+      arredondamentoCentavos: Math.round(arredondamentoCentavos * 100) / 100,
+    };
+  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades]);
+
   // Totais do mês (respeitam filtro).
   // Líquido: pra gorjetas pagas usa o snapshot armazenado; pra pendentes
   // calcula a partir do bruto + splitVersion.taxRate ativa da data.
@@ -526,16 +572,54 @@ export function DivisaoMesTab({
         </div>
       </div>
 
-      {/* Discrepância (caso o líquido distribuído não bata com o líquido do mês) */}
+      {/* Discrepância (caso o líquido distribuído não bata com o líquido do mês).
+          Detalha as 2 causas reais com valores específicos pra investigação. */}
       {Math.abs(totais.liquido - totais.distribuido) > 0.05 && (
-        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300">
-          ⚠ Pequena discrepância de <strong>{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</strong> entre
-          o líquido do mês e a soma distribuída. Pode ser:
-          <ul className="list-disc ml-5 mt-1">
-            <li>Arredondamento centavos por dia</li>
-            <li>Dia(s) sem ninguém pra dividir (resto vira 0)</li>
-            <li>Cargo com semGorjeta=true presente na escala</li>
-          </ul>
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200">
+          <div className="font-bold text-amber-900 dark:text-amber-100 mb-2">
+            ⚠ Diferença de <span className="tabular-nums">{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</span> entre o líquido do mês e a soma distribuída
+          </div>
+
+          {discrepanciaDetalhe.arredondamentoCentavos > 0.005 && (
+            <div className="mb-2">
+              <div>
+                <strong>1. Arredondamento por dia:</strong> <span className="tabular-nums">{fmtBR(discrepanciaDetalhe.arredondamentoCentavos)}</span>
+              </div>
+              <div className="text-[11px] text-amber-700 dark:text-amber-300/80 mt-0.5">
+                O valor por ponto é arredondado pra baixo em centavos a cada dia. Em meses com muitos lançamentos acumula uns poucos reais — comportamento esperado.
+              </div>
+            </div>
+          )}
+
+          {discrepanciaDetalhe.diasSemDistribuicao.length > 0 && (
+            <div className="mb-1">
+              <div>
+                <strong>
+                  {discrepanciaDetalhe.arredondamentoCentavos > 0.005 ? "2. " : ""}
+                  Dias com gorjeta sem ninguém pra dividir:
+                </strong>{" "}
+                <span className="tabular-nums">{fmtBR(discrepanciaDetalhe.totalSemDistribuicao)}</span> em {discrepanciaDetalhe.diasSemDistribuicao.length} dia(s)
+              </div>
+              <div className="text-[11px] text-amber-700 dark:text-amber-300/80 mt-0.5 mb-1">
+                Geralmente significa que ninguém estava escalado, ou todos os escalados tinham cargo sem direito à gorjeta. Vale checar a escala desses dias:
+              </div>
+              <ul className="ml-4 space-y-0.5">
+                {discrepanciaDetalhe.diasSemDistribuicao.slice(0, 10).map(d => {
+                  const [y, m, dd] = d.date.split("-");
+                  return (
+                    <li key={d.date} className="tabular-nums">
+                      • {dd}/{m}/{y} — <strong>{fmtBR(d.valor)}</strong>
+                    </li>
+                  );
+                })}
+                {discrepanciaDetalhe.diasSemDistribuicao.length > 10 && (
+                  <li className="text-[11px] italic text-amber-700 dark:text-amber-300/80">
+                    + {discrepanciaDetalhe.diasSemDistribuicao.length - 10} dia(s) a mais
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
       )}
 
