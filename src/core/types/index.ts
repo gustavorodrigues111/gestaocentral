@@ -2155,6 +2155,10 @@ export type NotaInterna = {
   // Quando origem === "envio_whatsapp", guarda os IDs dos apontamentos avisados.
   // Quando origem === "ciencia", guarda o ID do apontamento marcado como ciência.
   apontamentoIds?: string[];
+  // Quando preenchido, vincula a nota a UM apontamento específico no formato
+  // "YYYY-MM-DD_ruleId". UI mostra a nota dentro do card daquele apontamento
+  // (não na lista geral do empregado). Notas sem essa chave são "do empregado".
+  apontamentoChave?: string;
   criadoEm: string;
   criadoPor: string;
   criadoPorNome: string;

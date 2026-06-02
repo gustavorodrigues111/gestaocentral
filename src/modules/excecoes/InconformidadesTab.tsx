@@ -38,12 +38,10 @@ import {
   adicionarNotaInterna,
   listarStatusDoRestaurante,
   marcarApontamentoCiencia,
-  marcarApontamentosEnviados,
   removerApontamento,
   removerNotaInterna,
   salvarRelatorioCache,
 } from "../../core/excecoes/statusSemana";
-import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
 import { montarMensagemLoteAjuste, montarLinkWhats } from "../../core/excecoes/loteAjusteWhats";
 import type { ExcecaoStatusSemana } from "../../core/types";
 import {
@@ -68,6 +66,11 @@ import {
   isStatusTerminal,
   type PontoApontamentoStatusDoc,
 } from "../../core/excecoes/statusApontamento";
+import {
+  ouvirLotesRascunhoDoRestaurante,
+  salvarLoteRascunho,
+  limparLoteRascunho,
+} from "../../core/excecoes/loteRascunho";
 import { MotivoAjusteModal } from "./MotivoAjusteModal";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
@@ -517,34 +520,34 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return m;
   }, [statusAgregado?.apontamentos]);
 
-  // Nota INTERNA sobre o empregado (não vai pro WhatsApp). Tipo: "já conversei
-  // pessoalmente", "veio explicar que foi atestado", "deixei recado pra ele".
-  // Resolve a semana a partir da data do PRIMEIRO apontamento do empregado
-  // no mês (nota tá ancorada na semana, então precisa de uma — usa qualquer
-  // uma do empregado nesse mês; senão, a 1ª semana do mês como fallback).
-  async function criarNotaInterna(empregadoId: string, empregadoNome: string, cpf?: string) {
+  // Nota interna vinculada a UM apontamento específico (empregado × data × regra).
+  // Aparece dentro do card desse apontamento; aceita texto pré-digitado (vindo de
+  // prompt() ou input controlado). Texto vazio → noop.
+  async function adicionarNotaApontamento(
+    empregadoId: string,
+    empregadoNome: string,
+    exc: ExceptionRecord,
+    texto: string,
+  ) {
     if (!me) return;
-    if (!empregadoId) {
-      alert(`Não achei empregado com CPF ${cpf || "?"} no Planejamento.`);
-      return;
-    }
-    const apDoEmp = (statusAgregado?.apontamentos || []).find(a => a.empregadoId === empregadoId && a.data);
-    const wk = apDoEmp?.data ? semanaInfoParaData(apDoEmp.data) : semanasMes[0];
+    if (!empregadoId || !texto.trim()) return;
+    const wk = semanaInfoParaData(exc.date) || semanasMes[0];
     if (!wk) {
       alert("Sem semana disponível pra ancorar a nota.");
       return;
     }
-    const txt = prompt(
-      `Nota INTERNA sobre ${empregadoNome} (não vai pro WhatsApp — só pro nosso registro):`,
-      "",
-    );
-    if (!txt || !txt.trim()) return;
     try {
       await adicionarNotaInterna(
         rid,
         wk.weekStart,
         wk.weekEnd,
-        { empregadoId, empregadoNome, texto: txt.trim(), origem: "manual" },
+        {
+          empregadoId,
+          empregadoNome,
+          texto: texto.trim(),
+          origem: "manual",
+          apontamentoChave: `${exc.date}_${exc.ruleId}`,
+        },
         me,
       );
       await recarregarCaches();
@@ -580,177 +583,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
     return m;
   }, [statusAgregado?.notasInternas]);
-
-  // Conta os apontamentos `pendente` por empregado, SEPARADOS por categoria:
-  //   alinhamento → vai pra "Dar ciência" (alinhamento é presencial, não vai
-  //                 por WhatsApp — é registro trabalhista)
-  //   ajuste      → vai pra "Enviar via WhatsApp" (pedido de regularização
-  //                 de batida no Sólides)
-  const pendentesPorEmpregado = useMemo(() => {
-    const m = new Map<string, { alinhamento: number; ajuste: number; total: number }>();
-    for (const a of statusAgregado?.apontamentos || []) {
-      if (a.status !== "pendente") continue;
-      const cat = a.ruleId
-        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
-        : "ajuste";
-      const cur = m.get(a.empregadoId) || { alinhamento: 0, ajuste: 0, total: 0 };
-      if (cat === "alinhamento") cur.alinhamento++;
-      else cur.ajuste++;
-      cur.total++;
-      m.set(a.empregadoId, cur);
-    }
-    return m;
-  }, [statusAgregado?.apontamentos]);
-
-  // Marca em lote como "ciência" os apontamentos `pendente` de ALINHAMENTO do
-  // empregado. Alinhamento é registro trabalhista — feito PRESENCIALMENTE com
-  // o empregado, NÃO vai por WhatsApp. Aqui só registramos a ciência.
-  // Itens de "ajuste" marcados como pendentes ficam intactos (vão pelo botão
-  // do WhatsApp de regularização).
-  // Agrupa apontamentos por semana — necessário pra ações em lote que podem
-  // tocar apontamentos de mais de uma semana (mês todo visível agora).
-  function agruparApontamentosPorSemana(aps: ApontamentoFuncionario[]):
-    Map<string, { wk: SemanaInfo; lista: ApontamentoFuncionario[] }> {
-    const m = new Map<string, { wk: SemanaInfo; lista: ApontamentoFuncionario[] }>();
-    for (const a of aps) {
-      if (!a.data) continue;
-      const wk = semanaInfoParaData(a.data);
-      if (!wk) continue;
-      const entry = m.get(wk.weekStart) || { wk, lista: [] };
-      entry.lista.push(a);
-      m.set(wk.weekStart, entry);
-    }
-    return m;
-  }
-
-  async function darCienciaPendentesDoEmpregado(empregadoId: string, empregadoNome: string) {
-    if (!me || !statusAgregado) return;
-    const pendentes = (statusAgregado.apontamentos || []).filter((a) => {
-      if (a.empregadoId !== empregadoId) return false;
-      if (a.status !== "pendente") return false;
-      const cat = a.ruleId
-        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
-        : "ajuste";
-      return cat === "alinhamento";
-    });
-    if (pendentes.length === 0) {
-      alert("Marque pelo menos 1 ALINHAMENTO pra dar ciência. Itens de ajuste vão pelo WhatsApp.");
-      return;
-    }
-    const porSemana = agruparApontamentosPorSemana(pendentes);
-    if (porSemana.size === 0) {
-      console.warn("[ponto] nenhuma semana encontrada pros apontamentos pendentes");
-      return;
-    }
-    try {
-      for (const { wk, lista } of porSemana.values()) {
-        const idsCienciados: string[] = [];
-        for (const ap of lista) {
-          await marcarApontamentoCiencia(rid, wk.weekStart, wk.weekEnd, ap.id, me);
-          idsCienciados.push(ap.id);
-        }
-        // Nota interna registrando a ciência em lote (1 por semana)
-        try {
-          const linhas = lista.map(a => `• ${a.texto}${a.data ? ` (${a.data})` : ""}`).join("\n");
-          await adicionarNotaInterna(
-            rid,
-            wk.weekStart,
-            wk.weekEnd,
-            {
-              empregadoId,
-              empregadoNome,
-              texto: `👁 Ciência tomada em ${lista.length} item(ns):\n${linhas}`,
-              origem: "ciencia",
-              apontamentoIds: idsCienciados,
-            },
-            me,
-          );
-        } catch (e) {
-          console.warn("Erro criando nota auto de ciência em lote:", e);
-        }
-      }
-      await recarregarCaches();
-    } catch (e) {
-      alert("Erro: " + (e instanceof Error ? e.message : "?"));
-    }
-  }
-
-  // Envia via WhatsApp pedido de regularização — APENAS itens de "ajuste de
-  // batida". Alinhamentos são tratados PRESENCIALMENTE (botão "Dar ciência").
-  // 1. Marca os itens de ajuste como `enviado` (com enviadoEm)
-  // 2. Cria NOTA INTERNA automática registrando o envio (data + itens)
-  // Quando apontamentos do empregado cobrem múltiplas semanas, agrupa por
-  // semana pros writes em /excecoesStatusSemana — a MENSAGEM do WhatsApp é
-  // 1 só (range = min/max das datas).
-  async function enviarWhatsDoEmpregado(empregadoId: string, empregadoNome: string) {
-    if (!me || !statusAgregado) return;
-    const pendentes = (statusAgregado.apontamentos || []).filter((a) => {
-      if (a.empregadoId !== empregadoId) return false;
-      if (a.status !== "pendente") return false;
-      const cat = a.ruleId
-        ? (REGRA_CATEGORIA_DEFAULT[a.ruleId as keyof typeof REGRA_CATEGORIA_DEFAULT] || "ajuste")
-        : "ajuste";
-      return cat === "ajuste";
-    });
-    if (pendentes.length === 0) {
-      alert("Marque pelo menos 1 AJUSTE DE BATIDA pra enviar. Itens de alinhamento são tratados presencialmente (botão 'Dar ciência').");
-      return;
-    }
-    const whatsapp = whatsByEmpId.get(empregadoId);
-    if (!whatsapp) {
-      alert(`${empregadoNome} não tem WhatsApp cadastrado em Pessoas.`);
-      return;
-    }
-    // Range global da mensagem do WhatsApp = min data → max data
-    const datas = pendentes.map(a => a.data!).filter(Boolean).sort();
-    const rangeStart = datas[0];
-    const rangeEnd = datas[datas.length - 1];
-    const msg = montarMensagemAjustes({
-      empregadoNome,
-      restNome: activeRestaurant.nome,
-      weekStart: rangeStart,
-      weekEnd: rangeEnd,
-      apontamentos: pendentes,
-    });
-    const link = whatsLink(whatsapp, msg);
-    if (!link) {
-      alert(`WhatsApp de ${empregadoNome} inválido (precisa ter DDD + número).`);
-      return;
-    }
-    window.open(link, "_blank");
-    const porSemana = agruparApontamentosPorSemana(pendentes);
-    try {
-      for (const { wk, lista } of porSemana.values()) {
-        // 1. Marca como enviado
-        await marcarApontamentosEnviados(
-          rid,
-          wk.weekStart,
-          wk.weekEnd,
-          lista.map((a) => a.id),
-        );
-        // 2. Cria nota interna automática registrando o envio (1 por semana)
-        const resumoItens = lista
-          .map((a, i) => `${i + 1}. ${a.texto}`)
-          .join("\n");
-        await adicionarNotaInterna(
-          rid,
-          wk.weekStart,
-          wk.weekEnd,
-          {
-            empregadoId,
-            empregadoNome,
-            texto: `📨 Empregado avisado via WhatsApp em ${fmtDataHora(new Date().toISOString())} com ${lista.length} apontamento(s):\n${resumoItens}`,
-            origem: "envio_whatsapp",
-            apontamentoIds: lista.map((a) => a.id),
-          },
-          me,
-        );
-      }
-      await recarregarCaches();
-    } catch (e) {
-      console.warn("Erro pós-envio:", e);
-    }
-  }
 
   // ─── Status por APONTAMENTO ─────────────────────────────────────────────
   //
@@ -920,34 +752,72 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Usado pra disabled + texto "salvando…" no botão.
   const [salvandoApontamento, setSalvandoApontamento] = useState<Set<string>>(new Set());
 
-  // ─── Lote de solicitação de ajuste (rascunho local) ──────────────────────
+  // ─── Lote de solicitação de ajuste (rascunho persistido) ─────────────────
   // Map empregadoId → Set de lockKeys (apontamentoKey) que estão no lote
-  // rascunho daquele empregado. Não persiste — se sair da tela, esvazia.
-  // Conforme o líder adiciona apontamentos com "+ Lote", aparece o bloco
-  // amarelo no card do empregado pra enviar tudo via WhatsApp ou registrar
-  // como alinhado presencialmente. Os apontamentos viram "aguardando_ajuste"
-  // (não-terminal) até a Sólides sincronizar e detectar que sumiram.
+  // rascunho daquele empregado. Sincronizado em tempo real com Firestore
+  // (/excecoesLoteRascunho/{rid}_{empregadoId}) — o líder pode fechar a aba,
+  // continuar depois, ou montar lotes em paralelo pra vários empregados e
+  // enviar tudo de uma vez.
+  // Update otimista: a UI muda imediatamente; a escrita Firestore roda em
+  // background. Se falhar, próximo snapshot do listener corrige.
   const [lotesRascunho, setLotesRascunho] = useState<Map<string, Set<string>>>(new Map());
 
+  // Hidrata o map a partir do Firestore (real-time). Cada doc da coleção
+  // /excecoesLoteRascunho vira uma entry no map.
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = ouvirLotesRascunhoDoRestaurante(rid, (docs) => {
+      const next = new Map<string, Set<string>>();
+      for (const d of docs) {
+        if (!d.empregadoId) continue;
+        next.set(d.empregadoId, new Set(d.apontamentoChaves || []));
+      }
+      setLotesRascunho(next);
+    });
+    return unsub;
+  }, [rid]);
+
+  // Helper: persiste o estado novo do lote no Firestore (sem otimismo extra —
+  // o caller já mudou setLotesRascunho). Lote vazio → deleta o doc.
+  async function persistirLote(empregadoId: string, chaves: Set<string>) {
+    if (!me) return;
+    try {
+      await salvarLoteRascunho({
+        restaurantId: rid,
+        empregadoId,
+        apontamentoChaves: Array.from(chaves),
+        por: { id: me.id, nome: me.nome },
+      });
+    } catch (e) {
+      console.warn("[ponto] persistir lote falhou:", e);
+    }
+  }
+
   function adicionarAoLote(empregadoId: string, lockKey: string) {
+    let chavesFinal: Set<string> | null = null;
     setLotesRascunho((prev) => {
       const next = new Map(prev);
       const set = new Set(next.get(empregadoId) || []);
       set.add(lockKey);
       next.set(empregadoId, set);
+      chavesFinal = set;
       return next;
     });
+    if (chavesFinal) void persistirLote(empregadoId, chavesFinal);
   }
 
   function removerDoLote(empregadoId: string, lockKey: string) {
+    let chavesFinal: Set<string> | null = null;
     setLotesRascunho((prev) => {
       const next = new Map(prev);
       const set = new Set(next.get(empregadoId) || []);
       set.delete(lockKey);
       if (set.size === 0) next.delete(empregadoId);
       else next.set(empregadoId, set);
+      chavesFinal = set;
       return next;
     });
+    if (chavesFinal) void persistirLote(empregadoId, chavesFinal);
   }
 
   function cancelarLote(empregadoId: string) {
@@ -956,6 +826,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       next.delete(empregadoId);
       return next;
     });
+    void limparLoteRascunho({ restaurantId: rid, empregadoId });
   }
 
   // Toggle: se já está no lote, tira; senão, adiciona. Usado pelo botão
@@ -2110,15 +1981,11 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   grupo={grupo}
                   diasAnalisados={diasAnalisados}
                   podeAnotar={!semanaConferida}
-                  pendentesAlinhamento={pendentesPorEmpregado.get(grupo.empregadoId)?.alinhamento || 0}
-                  pendentesAjuste={pendentesPorEmpregado.get(grupo.empregadoId)?.ajuste || 0}
                   temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
                   apontamentosPorChave={apontamentosPorChave}
                   notas={notasPorEmpregado.get(grupo.empregadoId) || []}
-                  onAnotacaoLivre={() => criarNotaInterna(grupo.empregadoId, grupo.nome, grupo.cpf)}
-                  onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
-                  onDarCiencia={() => darCienciaPendentesDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onApagarNota={apagarNotaInterna}
+                  onAdicionarNotaApontamento={(exc, texto) => adicionarNotaApontamento(grupo.empregadoId, grupo.nome, exc, texto)}
                   onResolverNaEscala={(exc) => {
                     const ehAusencia = exc.ruleId === "faltaSemAjuste";
                     setResolverNaEscala({
@@ -2645,15 +2512,11 @@ function ColaboradorBlock({
   grupo,
   diasAnalisados,
   podeAnotar,
-  pendentesAlinhamento,
-  pendentesAjuste,
   temWhatsapp,
   apontamentosPorChave,
   notas,
-  onAnotacaoLivre,
-  onEnviarWhats,
-  onDarCiencia,
   onApagarNota,
+  onAdicionarNotaApontamento,
   onResolverNaEscala,
   statusDiaMap,
   statusApontamentoMap,
@@ -2670,15 +2533,11 @@ function ColaboradorBlock({
   grupo: GrupoColab;
   diasAnalisados: string[];
   podeAnotar: boolean;
-  pendentesAlinhamento: number;
-  pendentesAjuste: number;
   temWhatsapp: boolean;
   apontamentosPorChave: Map<string, ApontamentoFuncionario>;
   notas: NotaInterna[];
-  onAnotacaoLivre: () => void;
-  onEnviarWhats: () => void;
-  onDarCiencia: () => void;
   onApagarNota: (notaId: string) => void;
+  onAdicionarNotaApontamento: (exc: ExceptionRecord, texto: string) => Promise<void> | void;
   onResolverNaEscala?: (exc: ExceptionRecord) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
   statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>;
@@ -2696,6 +2555,19 @@ function ColaboradorBlock({
   onCancelarLote: () => void;
 }) {
   const [expandido, setExpandido] = useState(false);
+  // Indexa as notas do empregado por (data_ruleId) — usado pra renderizar
+  // direto no card do apontamento. Notas sem `apontamentoChave` ficam de fora
+  // (vão na timeline geral da semana, mantém compatibilidade com o que existe).
+  const notasPorApontamentoKey = useMemo(() => {
+    const m = new Map<string, NotaInterna[]>();
+    for (const n of notas) {
+      if (!n.apontamentoChave) continue;
+      const arr = m.get(n.apontamentoChave) || [];
+      arr.push(n);
+      m.set(n.apontamentoChave, arr);
+    }
+    return m;
+  }, [notas]);
   return (
     <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
       <header
@@ -2714,28 +2586,53 @@ function ColaboradorBlock({
           </div>
         </div>
         <div className="flex items-center gap-2 text-[11px] flex-wrap" onClick={(e) => e.stopPropagation()}>
-          {grupo.vistaCompleta ? (
-            <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-semibold tabular-nums">
-              {grupo.summary.trabalho} trab · {grupo.summary.folga} folga · {grupo.summary.ajusteAprovado} ajuste
-              {grupo.summary.inconformidades > 0 && (
-                <>
-                  {" · "}
-                  <span className={grupo.summary.pendentes > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-emerald-700 dark:text-emerald-400"}>
-                    {grupo.summary.pendentes > 0 ? "⚠ " : "✓ "}
-                    {grupo.summary.inconformidades} incon.
-                    {grupo.summary.inconformidades > 0 && (() => {
-                      const tratadas = grupo.summary.inconformidades - grupo.summary.pendentes;
-                      const aguardando = grupo.summary.aguardando;
-                      if (aguardando > 0) {
-                        return <> ({tratadas} tratadas · {aguardando} aguardando)</>;
-                      }
-                      return <> ({tratadas}/{grupo.summary.inconformidades} tratadas)</>;
-                    })()}
-                  </span>
-                </>
-              )}
-            </span>
-          ) : (
+          {grupo.vistaCompleta ? (() => {
+            // Cor do chip de inconformidades baseado no progresso:
+            //  - rosa:    nenhuma tratada ainda (todas pendentes)
+            //  - âmbar:   parcialmente tratado
+            //  - verde:   todas tratadas
+            // Quando não há inconformidades, mostra só o resumo cinza.
+            const tratadas = grupo.summary.inconformidades - grupo.summary.pendentes;
+            const pendentes = grupo.summary.pendentes;
+            const total = grupo.summary.inconformidades;
+            let chipCls = "text-gray-700 dark:text-gray-200";
+            let chipIcon = "";
+            if (total > 0) {
+              if (pendentes === 0) {
+                chipCls = "text-emerald-700 dark:text-emerald-400 font-bold";
+                chipIcon = "✓ ";
+              } else if (tratadas === 0) {
+                chipCls = "text-rose-700 dark:text-rose-400 font-bold";
+                chipIcon = "⚠ ";
+              } else {
+                chipCls = "text-amber-700 dark:text-amber-400 font-bold";
+                chipIcon = "◐ ";
+              }
+            }
+            return (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 font-semibold tabular-nums">
+                <span className="text-gray-700 dark:text-gray-200">
+                  {grupo.summary.trabalho} trab · {grupo.summary.folga} folga · {grupo.summary.ajusteAprovado} ajuste
+                </span>
+                {total > 0 && (
+                  <>
+                    {" · "}
+                    <span className={chipCls}>
+                      {chipIcon}
+                      {total} incon.
+                      {(() => {
+                        const aguardando = grupo.summary.aguardando;
+                        if (aguardando > 0) {
+                          return <> ({tratadas} tratadas · {aguardando} aguardando)</>;
+                        }
+                        return <> ({tratadas}/{total} tratadas)</>;
+                      })()}
+                    </span>
+                  </>
+                )}
+              </span>
+            );
+          })() : (
             <>
               <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
                 {grupo.totalExc} exc.
@@ -2746,56 +2643,6 @@ function ColaboradorBlock({
                 </span>
               )}
             </>
-          )}
-          {podeAnotar && (
-            <button
-              type="button"
-              onClick={onAnotacaoLivre}
-              className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-[11px] font-semibold hover:bg-gray-200 dark:hover:bg-gray-600"
-              title="Adicionar nota INTERNA pra este empregado (não vai pro WhatsApp)"
-            >
-              + nota interna
-            </button>
-          )}
-          {podeAnotar && (
-            <button
-              type="button"
-              onClick={onDarCiencia}
-              disabled={pendentesAlinhamento === 0}
-              className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                pendentesAlinhamento > 0
-                  ? "bg-sky-600 text-white hover:bg-sky-700"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-              }`}
-              title={
-                pendentesAlinhamento === 0
-                  ? "Marque ao menos 1 ALINHAMENTO pra dar ciência (alinhamento é presencial — registro trabalhista)"
-                  : `Tomar ciência de ${pendentesAlinhamento} alinhamento(s) — alinhar pessoalmente. Só registra, NÃO envia WhatsApp`
-              }
-            >
-              👁 Dar ciência {pendentesAlinhamento > 0 && `(${pendentesAlinhamento})`}
-            </button>
-          )}
-          {podeAnotar && (
-            <button
-              type="button"
-              onClick={onEnviarWhats}
-              disabled={pendentesAjuste === 0 || !temWhatsapp}
-              className={`px-3 py-1 rounded-full text-[11px] font-semibold transition-colors ${
-                pendentesAjuste > 0 && temWhatsapp
-                  ? "bg-emerald-600 text-white hover:bg-emerald-700"
-                  : "bg-gray-200 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-              }`}
-              title={
-                !temWhatsapp
-                  ? "Sem WhatsApp cadastrado em Pessoas pra este empregado"
-                  : pendentesAjuste === 0
-                  ? "Marque ao menos 1 AJUSTE DE BATIDA pra enviar (alinhamento é presencial, não vai por WhatsApp)"
-                  : `Enviar ${pendentesAjuste} pedido(s) de ajuste de batida via WhatsApp`
-              }
-            >
-              💬 Pedir ajuste no WhatsApp {pendentesAjuste > 0 && `(${pendentesAjuste})`}
-            </button>
           )}
         </div>
       </header>
@@ -3333,6 +3180,27 @@ function ColaboradorBlock({
                             📋 Resolver na escala
                           </button>
                         )}
+                        {/* "💬 + nota" — adiciona nota interna ao apontamento.
+                            Sempre habilitado (mesmo em estado terminal) pra o
+                            líder registrar contexto retroativo. */}
+                        {podeAnotar && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const txt = prompt(
+                                `Nota interna sobre ${meta?.label || e.ruleId} (${fmtDataBr(e.date)}):`,
+                                "",
+                              );
+                              if (txt && txt.trim()) {
+                                void onAdicionarNotaApontamento(e, txt);
+                              }
+                            }}
+                            className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap"
+                            title="Adicionar nota interna a este apontamento — fica registrada aqui pra contexto"
+                          >
+                            💬 + nota
+                          </button>
+                        )}
                       </div>
                     </div>
                     {/* Linha 2: descrição em fonte menor, alinhada com o conteúdo (após o "N.") */}
@@ -3353,6 +3221,40 @@ function ColaboradorBlock({
                         );
                       })()}
                     </div>
+                    {/* Linha 3 (opcional): notas internas associadas ao apontamento */}
+                    {(() => {
+                      const notasDoApontamento = notasPorApontamentoKey.get(`${e.date}_${e.ruleId}`);
+                      if (!notasDoApontamento || notasDoApontamento.length === 0) return null;
+                      return (
+                        <ul className="pl-5 space-y-0.5 mt-0.5">
+                          {notasDoApontamento.map((n) => (
+                            <li
+                              key={n.id}
+                              className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300 italic leading-snug"
+                            >
+                              <span className="shrink-0">💬</span>
+                              <span className="flex-1 min-w-0">{n.texto}</span>
+                              <span
+                                className="text-[10px] text-gray-400 dark:text-gray-500 not-italic shrink-0"
+                                title={`${n.criadoPorNome} · ${fmtDataHora(n.criadoEm)}`}
+                              >
+                                {n.criadoPorNome.split(" ")[0]}
+                              </span>
+                              {podeAnotar && (
+                                <button
+                                  type="button"
+                                  onClick={() => onApagarNota(n.id)}
+                                  className="text-[10px] text-rose-500 hover:underline not-italic shrink-0"
+                                  title="Apagar esta nota"
+                                >
+                                  ✕
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      );
+                    })()}
                   </li>
                 );
               });
