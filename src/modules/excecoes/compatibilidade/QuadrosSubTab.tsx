@@ -579,7 +579,7 @@ function ResultadoCard({
             </table>
           </div>
           {(status === "diverge" || status === "sem_quadro_plan") && (
-            <div className="px-4 py-2.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/20">
+            <div className="px-4 py-2.5 border-t border-gray-200 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/20 flex items-center gap-2 flex-wrap">
               <button
                 type="button"
                 onClick={onCopiarSolPraPlan}
@@ -588,6 +588,55 @@ function ResultadoCard({
                 title="Cria nova versão no Planejamento usando o quadro da Sólides (com a data de vigência que você escolher)."
               >
                 {status === "sem_quadro_plan" ? "↓ Trazer cadastro da Sólides" : "↓ Copiar Sólides → Planejamento"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  // Painel de inspeção bruto — útil pra diagnosticar quando
+                  // o usuário acha que já copiou mas continua aparecendo divergente.
+                  const linhas: string[] = [];
+                  linhas.push(`═══ INSPEÇÃO — ${resultado.empregado.nome} ═══`);
+                  linhas.push(`empregadoId: ${resultado.empregado.id}`);
+                  linhas.push(`CPF: ${resultado.empregado.cpf || "(sem)"}`);
+                  linhas.push(`sidSolides: ${resultado.sidSolides ?? "(sem)"}`);
+                  linhas.push("");
+                  const arr = resultado.empregado.workSchedules || [];
+                  linhas.push(`workSchedules cadastrados: ${arr.length}`);
+                  if (arr.length === 0) linhas.push("  (vazio — nenhum quadro salvo)");
+                  for (const ws of arr) {
+                    linhas.push(`  • validFrom: ${ws.validFrom || "(sem)"} · type: ${ws.type}`);
+                    const days = ws.type === "alternating" ? ws.weeks?.A?.days : ws.days;
+                    for (let d = 0; d < 7; d++) {
+                      const h = days?.[d];
+                      const nome = ["dom","seg","ter","qua","qui","sex","sab"][d];
+                      if (!h?.active) linhas.push(`     ${nome}: folga`);
+                      else linhas.push(`     ${nome}: ${h.in}–${h.out} (int ${h.break || 0}min)`);
+                    }
+                  }
+                  const hoje = todayYmd();
+                  linhas.push("");
+                  linhas.push(`Hoje: ${hoje}`);
+                  const validos = arr
+                    .filter(w => (w.validFrom || "") <= hoje)
+                    .sort((a, b) => (a.validFrom || "").localeCompare(b.validFrom || ""));
+                  const vigente = validos[validos.length - 1];
+                  linhas.push(`Quadro vigente HOJE (validFrom <= ${hoje}):`);
+                  linhas.push(`  → ${vigente?.validFrom || "(NENHUM — todos têm validFrom no futuro!)"}`);
+                  linhas.push("");
+                  linhas.push(`Diffs (o que vem da Sólides x o que está vigente):`);
+                  for (const d of resultado.dias) {
+                    const nome = ["dom","seg","ter","qua","qui","sex","sab"][d.dow];
+                    const fmt = (x: typeof d.plan) => x?.active ? `${x.in}-${x.out} (${x.break}min)` : "folga";
+                    linhas.push(`  ${nome}: PLAN=${fmt(d.plan)} | SOL=${fmt(d.sol)} | diffs=${d.diff.join(",") || "—"}`);
+                  }
+                  // eslint-disable-next-line no-console
+                  console.log(linhas.join("\n"));
+                  alert(linhas.join("\n"));
+                }}
+                className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+                title="Mostra o estado bruto dos quadros do empregado pra diagnóstico"
+              >
+                🔍 Inspecionar dados
               </button>
             </div>
           )}
