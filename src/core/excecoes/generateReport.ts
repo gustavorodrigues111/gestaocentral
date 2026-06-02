@@ -43,6 +43,10 @@ export type GenerateReportResult = {
   // data → status. Inclui só empregados que batem ponto. Usado pela UI de
   // Inconformidades pra listar todos os dias do mês com estado visual correto.
   escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>>;
+  // Batidas formatadas (ex: "E1 09:26 → S1 11:20 · E2 12:19 → S2 16:41") por
+  // CPF (só dígitos) → data. Inclui TODOS os dias com punches, mesmo os sem
+  // inconformidade — permite a UI mostrar as horas nos dias "Trabalhou normal".
+  batidasPorCpfData: Record<string, Record<string, string>>;
 };
 
 // "2026-05-10" + n → "2026-05-1X" (lida com virada de mês/ano via Date local)
@@ -91,6 +95,7 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
   const matchedSolidesIds = new Set<number>();
   let diasAnalisados = 0;
   const diasAnalisadosPorCpf: Record<string, string[]> = {};
+  const batidasPorCpfData: Record<string, Record<string, string>> = {};
   // Escala efetiva por CPF — preenchida só pra empregados que batem ponto.
   // Cada mapa por data é a escala JÁ COM os ajustes Sólides aplicados (folga/
   // férias/atestado/abono colapsam em "folga" — perda de informação aceitável
@@ -179,6 +184,13 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
         const arr = diasAnalisadosPorCpf[cpf] || [];
         arr.push(date);
         diasAnalisadosPorCpf[cpf] = arr;
+        if (metrics.blocks.length > 0) {
+          const batidasFmt = formatarBatidas(metrics.blocks);
+          if (batidasFmt) {
+            if (!batidasPorCpfData[cpf]) batidasPorCpfData[cpf] = {};
+            batidasPorCpfData[cpf][date] = batidasFmt;
+          }
+        }
       }
     }
   }
@@ -206,7 +218,7 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       a.ruleId.localeCompare(b.ruleId),
   );
 
-  return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf, escalaEfetivaPorCpf };
+  return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf, escalaEfetivaPorCpf, batidasPorCpfData };
 }
 
 // ────────────────────────────────────────────────────────────────────────────

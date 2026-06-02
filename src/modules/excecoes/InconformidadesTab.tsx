@@ -996,6 +996,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     // RECENTE (geradoEm maior) ganha quando há conflito no mesmo dia — isso
     // garante que regenerar uma semana reflete o estado novo.
     const escalaEfetivaPorCpfAcc = new Map<string, Map<string, { st: ScheduleStatus; geradoEm: string }>>();
+    // Mesma lógica do escalaEfetivaPorCpfAcc, mas pra batidas (string formatada).
+    const batidasPorCpfAcc = new Map<string, Map<string, { txt: string; geradoEm: string }>>();
     cachesDoMes.forEach(c => {
       const cache = c.relatorioCache;
       if (!cache) return;
@@ -1036,6 +1038,19 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           if (!prev || geradoEm > prev.geradoEm) m.set(d, { st, geradoEm });
         }
       }
+      const batidasPorCpf = (cache.batidasPorCpfData || {}) as Record<string, Record<string, string>>;
+      for (const [cpf, perDate] of Object.entries(batidasPorCpf)) {
+        let m = batidasPorCpfAcc.get(cpf);
+        if (!m) {
+          m = new Map();
+          batidasPorCpfAcc.set(cpf, m);
+        }
+        for (const [d, txt] of Object.entries(perDate)) {
+          if (!(d || "").startsWith(mesPrefix)) continue;
+          const prev = m.get(d);
+          if (!prev || geradoEm > prev.geradoEm) m.set(d, { txt, geradoEm });
+        }
+      }
     });
     const diasAnalisadosPorCpf: Record<string, string[]> = {};
     for (const [cpf, set] of diasAnalisadosPorCpfSet) {
@@ -1047,12 +1062,19 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       for (const [d, { st }] of m) perDate[d] = st;
       escalaEfetivaPorCpf[cpf] = perDate;
     }
+    const batidasPorCpfData: Record<string, Record<string, string>> = {};
+    for (const [cpf, m] of batidasPorCpfAcc) {
+      const perDate: Record<string, string> = {};
+      for (const [d, { txt }] of m) perDate[d] = txt;
+      batidasPorCpfData[cpf] = perDate;
+    }
     return {
       exceptions,
       unmatched: Array.from(unmatchedMap.values()),
       diasAnalisados,
       diasAnalisadosPorCpf,
       escalaEfetivaPorCpf,
+      batidasPorCpfData,
     };
   }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
 
@@ -1984,6 +2006,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
                   apontamentosPorChave={apontamentosPorChave}
                   notas={notasPorEmpregado.get(grupo.empregadoId) || []}
+                  batidasPorCpfData={displayedResult?.batidasPorCpfData}
                   onApagarNota={apagarNotaInterna}
                   onAdicionarNotaApontamento={(exc, texto) => adicionarNotaApontamento(grupo.empregadoId, grupo.nome, exc, texto)}
                   onResolverNaEscala={(exc) => {
@@ -2515,6 +2538,7 @@ function ColaboradorBlock({
   temWhatsapp,
   apontamentosPorChave,
   notas,
+  batidasPorCpfData,
   onApagarNota,
   onAdicionarNotaApontamento,
   onResolverNaEscala,
@@ -2536,6 +2560,7 @@ function ColaboradorBlock({
   temWhatsapp: boolean;
   apontamentosPorChave: Map<string, ApontamentoFuncionario>;
   notas: NotaInterna[];
+  batidasPorCpfData?: Record<string, Record<string, string>>;
   onApagarNota: (notaId: string) => void;
   onAdicionarNotaApontamento: (exc: ExceptionRecord, texto: string) => Promise<void> | void;
   onResolverNaEscala?: (exc: ExceptionRecord) => void;
@@ -2746,10 +2771,12 @@ function ColaboradorBlock({
           }
           return todasAsLinhas.map((linha) => {
             if (linha.kind === "verde" || linha.kind === "trabalho_ok") {
+              const cpfD = (grupo.cpf || "").replace(/\D/g, "");
+              const batidas = batidasPorCpfData?.[cpfD]?.[linha.date];
               return (
                 <div
                   key={linha.date}
-                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm"
+                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm flex-wrap"
                 >
                   <span className="text-emerald-700 dark:text-emerald-400">✓</span>
                   <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
@@ -2761,14 +2788,21 @@ function ColaboradorBlock({
                   <span className="text-emerald-700 dark:text-emerald-400 text-xs ml-1">
                     {linha.kind === "verde" ? "Sem inconformidade" : "Trabalhou normal"}
                   </span>
+                  {batidas && (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2">
+                      📍 {batidas}
+                    </span>
+                  )}
                 </div>
               );
             }
             if (linha.kind === "trabalho_comp") {
+              const cpfD = (grupo.cpf || "").replace(/\D/g, "");
+              const batidas = batidasPorCpfData?.[cpfD]?.[linha.date];
               return (
                 <div
                   key={linha.date}
-                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm"
+                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm flex-wrap"
                 >
                   <span className="text-emerald-700 dark:text-emerald-400">✓</span>
                   <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
@@ -2780,6 +2814,11 @@ function ColaboradorBlock({
                   <span className="text-emerald-700 dark:text-emerald-400 text-xs ml-1">
                     Trabalhou (compensado)
                   </span>
+                  {batidas && (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2">
+                      📍 {batidas}
+                    </span>
+                  )}
                 </div>
               );
             }

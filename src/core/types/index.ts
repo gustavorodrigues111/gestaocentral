@@ -2209,6 +2209,10 @@ export type RelatorioSnapshot = {
   // com exception. Inclui só empregados que batem ponto. Opcional pra
   // retrocompat — caches antigos não têm esse campo e a UI cai no modo antigo.
   escalaEfetivaPorCpf?: Record<string, Record<string, ScheduleStatus>>;
+  // Batidas formatadas por CPF (só dígitos) → data → string
+  // (ex: "E1 09:26 → S1 11:20 · E2 12:19 → S2 16:41"). Inclui todos os dias
+  // com punches, mesmo os "Trabalhou normal". Opcional pra retrocompat.
+  batidasPorCpfData?: Record<string, Record<string, string>>;
 };
 
 export type ExcecaoStatusSemana = {
