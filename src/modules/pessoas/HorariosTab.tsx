@@ -436,8 +436,8 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
             {[...empregado.workSchedules]
               .sort((a, b) => b.validFrom.localeCompare(a.validFrom))
               .map((ws, i) => (
-                <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1">
-                  <span className="text-gray-700 dark:text-gray-300">
+                <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1 gap-2">
+                  <span className="text-gray-700 dark:text-gray-300 flex-1 min-w-0">
                     {i === 0 && <strong>Vigente · </strong>}
                     A partir de {ws.validFrom} · {
                       ws.type === "alternating" && ws.weeks
@@ -446,6 +446,37 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                     }
                     {ws.motivo && ` · "${ws.motivo}"`}
                   </span>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!me) return;
+                      if (!confirm(`Apagar a versão de horário a partir de ${ws.validFrom}?\n\nIsso volta o quadro vigente pra versão anterior (se houver). Ação irreversível.`)) return;
+                      try {
+                        const lista = (empregado.workSchedules || []).filter(s => s.validFrom !== ws.validFrom);
+                        await updateDoc(doc(db, "empregados", empregado.id), {
+                          workSchedules: sanitizeForFirestore(lista),
+                        });
+                        await logAudit({
+                          entityType: "empregado",
+                          entityId: empregado.id,
+                          restaurantId,
+                          acao: "alterado",
+                          diff: {
+                            workSchedules: { antes: empregado.workSchedules?.length || 0, depois: lista.length },
+                            removidoValidFrom: { antes: ws.validFrom, depois: null },
+                          },
+                          motivo: `Versão apagada: ${ws.validFrom}`,
+                          registradoPor: me.id,
+                        });
+                      } catch (e) {
+                        alert("Erro ao apagar: " + (e instanceof Error ? e.message : "?"));
+                      }
+                    }}
+                    className="text-[10px] text-rose-600 hover:text-rose-800 hover:underline font-semibold shrink-0"
+                    title="Apagar esta versão do quadro de horários"
+                  >
+                    ✗ apagar
+                  </button>
                 </div>
               ))}
           </div>
