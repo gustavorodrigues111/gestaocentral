@@ -17,13 +17,15 @@ import { canVer } from "../../core/auth/permissions";
 import { InconformidadesTab } from "./InconformidadesTab";
 import { CompatibilidadeTab } from "./CompatibilidadeTab";
 import { AjustesEscalaTab } from "./AjustesEscalaTab";
+import { ResumoMesTab } from "./ResumoMesTab";
 
-type TabId = "inconformidades" | "ajustes" | "compatibilidade";
+type TabId = "inconformidades" | "ajustes" | "compatibilidade" | "resumo";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "inconformidades", label: "Inconformidades",              icon: "⚠️" },
   { id: "ajustes",         label: "Apontamentos de Escala",       icon: "🛠️" },
   { id: "compatibilidade", label: "Compatibilidade de cadastros", icon: "🪪" },
+  { id: "resumo",          label: "Resumo do mês",                icon: "📊" },
 ];
 
 export function RegistrosPontoPage() {
@@ -84,6 +86,7 @@ export function RegistrosPontoPage() {
       )}
       {tab === "ajustes" && <AjustesEscalaTab rid={rid} />}
       {tab === "compatibilidade" && <CompatibilidadeTab rid={rid} />}
+      {tab === "resumo" && <ResumoMesTab rid={rid} />}
     </div>
   );
 }
