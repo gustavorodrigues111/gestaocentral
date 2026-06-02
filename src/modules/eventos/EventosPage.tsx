@@ -8,9 +8,10 @@ import { canUse, canConfig } from "../../core/auth/permissions";
 import { EspacoConfigTab } from "./EspacoConfigTab";
 import { PacotesTab } from "./PacotesTab";
 import { KanbanTab } from "./KanbanTab";
+import { ComercialConfigTab } from "./ComercialConfigTab";
 import { TabBadge } from "../../core/ui/TabBadge";
 
-type Tab = "kanban" | "pacotes" | "config";
+type Tab = "kanban" | "pacotes" | "comercial" | "config";
 
 // Página esqueleto do módulo Eventos.
 // PR1: rota + permissão.
@@ -78,6 +79,9 @@ export function EventosPage() {
         <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban<TabBadge count={novosLeads} /></TabButton>
         <TabButton active={tab === "pacotes"} onClick={() => setTab("pacotes")}>📦 Pacotes</TabButton>
         {podeConfigurar && (
+          <TabButton active={tab === "comercial"} onClick={() => setTab("comercial")}>💼 Comercial</TabButton>
+        )}
+        {podeConfigurar && (
           <TabButton active={tab === "config"} onClick={() => setTab("config")}>⚙️ Configurações</TabButton>
         )}
       </div>
@@ -88,6 +92,10 @@ export function EventosPage() {
 
       {tab === "pacotes" && (
         <PacotesTab rid={rid} podeEditar={podeConfigurar} />
+      )}
+
+      {tab === "comercial" && podeConfigurar && (
+        <ComercialConfigTab rid={rid} />
       )}
 
       {tab === "config" && podeConfigurar && (

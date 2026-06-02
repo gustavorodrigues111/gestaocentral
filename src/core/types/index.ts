@@ -633,6 +633,13 @@ export type Restaurant = {
     cargaSemanalMaxMin?: number;  // default 2640 (44:00)
   };
 
+  // Config de Eventos — pessoas que podem aparecer nos pickers do
+  // fechamento de evento (vendedor que captou, negociou, acompanhou).
+  // Master/admin seleciona em Eventos → Configurações.
+  eventosConfig?: {
+    pessoasComerciaisIds?: string[];
+  };
+
   ativo: boolean;
   createdAt: string;
   createdBy: string;
@@ -2770,6 +2777,18 @@ export type LeadEvento = {
   // Perda
   perdidoEm?: string;
   motivoPerda?: string;
+  // Fechamento do evento — preenchido quando o lead vira "realizado".
+  // Dados pra apuração posterior de comissão por vendedor.
+  fechamento?: {
+    faturamentoBrutoSemGorjeta: number;   // R$
+    classificacao: "inbound" | "outbound";
+    captacaoAtiva: { ativo: boolean; pessoaId?: string; pessoaNome?: string };
+    negociacaoPor: { pessoaId: string; pessoaNome: string };
+    acompanhamentoPresencial: { ativo: boolean; pessoaId?: string; pessoaNome?: string };
+    fechadoEm: string;                     // ISO
+    fechadoPor: string;                    // pessoaId que fechou
+    fechadoPorNome?: string;
+  };
 };
 
 export type AjusteProposta = {

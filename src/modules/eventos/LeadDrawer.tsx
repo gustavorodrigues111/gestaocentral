@@ -1,15 +1,18 @@
-import { useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { useEffect, useState } from "react";
+import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { parseYmd, pad2 } from "../../core/utils/date";
-import type { LeadEvento, LeadEventoStatus, PacoteEvento } from "../../core/types";
+import type { LeadEvento, LeadEventoStatus, PacoteEvento, Pessoa } from "../../core/types";
 import { PropostaSection } from "./PropostaSection";
 import { BEOSection } from "./BEOSection";
 import { ESCOPO_PACOTE_LABEL, MODELO_LABEL, OCASIAO_LABEL } from "./validacoes";
+import { FecharEventoModal } from "./FecharEventoModal";
+import { fecharEvento, precoUltimaProposta } from "./leadHelpers";
 
 const STATUS_LABEL: Record<LeadEventoStatus, string> = {
   novo: "Novo",
@@ -72,15 +75,64 @@ type Props = {
 
 export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const restaurant = restaurants.find(r => r.id === lead.restaurantId) || null;
+  const pessoasComerciaisIds = restaurant?.eventosConfig?.pessoasComerciaisIds || [];
+
   const [salvando, setSalvando] = useState(false);
   const [novaPergunta, setNovaPergunta] = useState("");
   const [novaResposta, setNovaResposta] = useState("");
 
+  // Modal de fechamento de evento
+  const [fecharModalOpen, setFecharModalOpen] = useState(false);
+  const [precoSugerido, setPrecoSugerido] = useState<number>(0);
+
+  // Pessoas — carregadas pra alimentar os pickers do modal de fechamento.
+  // Filtragem por pessoasComerciaisIds acontece no próprio modal.
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, "pessoas"),
+      (snap) => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)),
+      () => { /* silent */ },
+    );
+    return () => unsub();
+  }, []);
+
   const pacote = lead.pacoteSugeridoId ? pacotes.find(p => p.id === lead.pacoteSugeridoId) : null;
   const data = parseYmd(lead.dataDesejada);
 
+  async function abrirFecharModal() {
+    if (!podeEditar) return;
+    // Pré-carrega preço sugerido só se o lead ainda não tem fechamento (1ª vez).
+    if (!lead.fechamento) {
+      try {
+        const preco = await precoUltimaProposta(lead.id);
+        setPrecoSugerido(preco);
+      } catch {
+        setPrecoSugerido(0);
+      }
+    }
+    setFecharModalOpen(true);
+  }
+
+  async function confirmarFechamento(fech: NonNullable<LeadEvento["fechamento"]>) {
+    if (!me) throw new Error("Sessão não identificada");
+    // Carimba quem fechou. Se já havia fechamento (edição), preserva o original.
+    const fechamento: NonNullable<LeadEvento["fechamento"]> = lead.fechamento
+      ? { ...fech, fechadoEm: lead.fechamento.fechadoEm, fechadoPor: lead.fechamento.fechadoPor, fechadoPorNome: lead.fechamento.fechadoPorNome }
+      : { ...fech, fechadoEm: new Date().toISOString(), fechadoPor: me.id, fechadoPorNome: me.nome };
+    await fecharEvento(lead.id, fechamento);
+  }
+
   async function mudarStatus(novoStatus: LeadEventoStatus, motivoPerda?: string) {
     if (!podeEditar) return;
+    // Bloqueia transição pra "realizado" sem passar pelo fechamento.
+    // Se já tem fechamento, deixa fluir (reabrir após voltar coluna não força modal de novo).
+    if (novoStatus === "realizado" && !lead.fechamento) {
+      await abrirFecharModal();
+      return;
+    }
     setSalvando(true);
     try {
       const updates: Record<string, unknown> = {
@@ -386,6 +438,75 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
           />
         )}
 
+        {/* Fechamento do evento — bloco read-only + edit. Aparece a partir de
+            "confirmado" (CTA pra marcar realizado) e fica como histórico em "realizado". */}
+        {(lead.status === "confirmado" || lead.status === "realizado") && (
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+              Fechamento do evento
+            </div>
+            {lead.fechamento ? (
+              <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-sm space-y-1">
+                <div>
+                  <strong>Faturamento bruto:</strong>{" "}
+                  R$ {lead.fechamento.faturamentoBrutoSemGorjeta.toFixed(2)}
+                </div>
+                <div>
+                  <strong>Classificação:</strong>{" "}
+                  {lead.fechamento.classificacao === "inbound" ? "Inbound" : "Outbound"}
+                </div>
+                <div>
+                  <strong>Captação ativa:</strong>{" "}
+                  {lead.fechamento.captacaoAtiva.ativo
+                    ? `Sim — ${lead.fechamento.captacaoAtiva.pessoaNome || "?"}`
+                    : "Não"}
+                </div>
+                <div>
+                  <strong>Negociação:</strong>{" "}
+                  {lead.fechamento.negociacaoPor.pessoaNome}
+                </div>
+                <div>
+                  <strong>Acompanhamento presencial:</strong>{" "}
+                  {lead.fechamento.acompanhamentoPresencial.ativo
+                    ? `Sim — ${lead.fechamento.acompanhamentoPresencial.pessoaNome || "?"}`
+                    : "Não"}
+                </div>
+                <div className="text-[10px] text-gray-500 mt-1">
+                  fechado em {new Date(lead.fechamento.fechadoEm).toLocaleString("pt-BR")}
+                  {lead.fechamento.fechadoPorNome && ` por ${lead.fechamento.fechadoPorNome}`}
+                </div>
+                {podeEditar && (
+                  <div className="pt-2">
+                    <Button size="sm" variant="secondary" onClick={abrirFecharModal} disabled={salvando}>
+                      Editar fechamento
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm">
+                {lead.status === "realizado" ? (
+                  <p className="text-gray-500 italic">
+                    Evento marcado como realizado, mas o fechamento ainda não foi preenchido.
+                  </p>
+                ) : (
+                  <p className="text-gray-600 dark:text-gray-400">
+                    Quando o evento acontecer, preencha o fechamento pra registrar
+                    faturamento e dados de comissão.
+                  </p>
+                )}
+                {podeEditar && (
+                  <div className="mt-2">
+                    <Button size="sm" onClick={abrirFecharModal} disabled={salvando}>
+                      ✓ Marcar realizado
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex justify-between gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           {podeEditar && lead.status !== "perdido" && (
@@ -396,6 +517,17 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
           </div>
         </div>
       </div>
+
+      {fecharModalOpen && (
+        <FecharEventoModal
+          lead={lead}
+          pessoasComerciaisIds={pessoasComerciaisIds}
+          pessoas={pessoas}
+          precoSugerido={precoSugerido}
+          onClose={() => setFecharModalOpen(false)}
+          onConfirm={confirmarFechamento}
+        />
+      )}
     </Modal>
   );
 }
