@@ -115,6 +115,22 @@ export type ExceptionRecord = {
   detail?: string; // contexto extra opcional
 };
 
+// Status por APONTAMENTO individual (empregado × data × ruleId).
+// Persiste em /excecoesApontamentoStatus/{rid}_{empId}_{date}_{ruleId}.
+// Default = "aberto" (não cria doc — derivado na ausência).
+export type PontoApontamentoStatus =
+  | "aberto"               // sem ação tomada
+  | "ciencia"              // líder deu ciência (alinhamento presencial — usado em apontamentos de categoria "alinhamento")
+  | "nao_e_inconformidade" // marcado como falso positivo (usado em "ajuste")
+  | "corrigido_solides";   // sumiu no próximo report (preenchido automaticamente)
+
+export const PONTO_APONTAMENTO_STATUS_LABEL: Record<PontoApontamentoStatus, string> = {
+  aberto:                 "Aberto",
+  ciencia:                "Ciência dada",
+  nao_e_inconformidade:   "Não é inconformidade",
+  corrigido_solides:      "Corrigido no Sólides",
+};
+
 // ─── Contexto que cada regra recebe ─────────────────────────────────────────
 export type DayContext = {
   metrics: DayMetrics;

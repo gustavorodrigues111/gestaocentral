@@ -53,15 +53,20 @@ import { RULES_META } from "../../core/excecoes/rules";
 import type {
   ExceptionRecord,
   ExceptionSeverity,
-  PontoDiaStatus,
+  PontoApontamentoStatus,
 } from "../../core/excecoes/types";
 import { REGRA_CATEGORIA_DEFAULT } from "../../core/excecoes/types";
 import {
-  marcarTratado as setDiaTratado,
-  reabrirDia as setDiaReaberto,
   ouvirStatusDoMes,
   type PontoDiaStatusDoc,
 } from "../../core/excecoes/statusDia";
+import {
+  setStatusApontamento,
+  ouvirStatusApontamentoDoMes,
+  apontamentoKey,
+  isStatusTerminal,
+  type PontoApontamentoStatusDoc,
+} from "../../core/excecoes/statusApontamento";
 import { MotivoAjusteModal } from "./MotivoAjusteModal";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
@@ -227,6 +232,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       const m = new Map<string, PontoDiaStatusDoc>();
       docs.forEach(d => { m.set(`${d.empregadoId}_${d.data}`, d); });
       setStatusDiaMap(m);
+    });
+    return () => u();
+  }, [rid, anoMes.ano, anoMes.mes]);
+
+  // Status POR APONTAMENTO (granular) — listener real-time. Chave =
+  // `${empregadoId}_${data}_${ruleId}`. Ausência ⇒ "aberto" (default).
+  const [statusApontamentoMap, setStatusApontamentoMap] = useState<
+    Map<string, PontoApontamentoStatusDoc>
+  >(new Map());
+  useEffect(() => {
+    if (!rid) return;
+    const u = ouvirStatusApontamentoDoMes(rid, anoMes.ano, anoMes.mes, (docs) => {
+      const m = new Map<string, PontoApontamentoStatusDoc>();
+      docs.forEach(d => {
+        m.set(apontamentoKey(d.empregadoId, d.data, d.ruleId), d);
+      });
+      setStatusApontamentoMap(m);
     });
     return () => u();
   }, [rid, anoMes.ano, anoMes.mes]);
@@ -475,6 +497,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
     }
   }
+  // `toggleEnviarExcecao` e `reabrirExcecao` viraram retroatividade do
+  // fluxo legado (checkbox + WhatsApp) — ainda existem mas a UI nova de
+  // status por apontamento usa o caminho `aplicarStatusApontamento`.
+  // Mantemos os helpers no escopo pra reuso futuro/manual.
+  void toggleEnviarExcecao;
+  void reabrirExcecao;
 
   // Map (empregadoId_data_ruleId) → apontamento existente. Alimenta a UI pra
   // saber o status visual e o botão a renderizar.
@@ -723,6 +751,120 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // ─── Status por APONTAMENTO ─────────────────────────────────────────────
+  //
+  // Aplica novo status num apontamento individual e, se com isso TODOS os
+  // apontamentos do dia ficarem terminais E pelo menos 1 deles for
+  // "alinhamento", gera 1 evento na Trilha do empregado (ponto_atraso —
+  // usamos o tipo existente mais próximo de "evento disciplinar de ponto").
+  // Idempotente: registrarEvento usa refOrigem `apontamento_dia_tratado:<empId>:<date>`.
+  async function aplicarStatusApontamento(input: {
+    empregadoId: string;
+    empregadoNome: string;
+    data: string;
+    ruleId: string;
+    novoStatus: PontoApontamentoStatus;
+  }) {
+    if (!me) return;
+    try {
+      await setStatusApontamento({
+        restaurantId: rid,
+        empregadoId: input.empregadoId,
+        data: input.data,
+        ruleId: input.ruleId,
+        novoStatus: input.novoStatus,
+        por: { id: me.id, nome: me.nome },
+      });
+    } catch (e) {
+      alert("Falha ao atualizar status: " + (e instanceof Error ? e.message : String(e)));
+      return;
+    }
+
+    // Pós-write: verifica se o dia inteiro ficou terminal. Como o listener
+    // real-time pode demorar, simulamos o map atualizado localmente.
+    if (!isStatusTerminal(input.novoStatus)) return;
+    if (!displayedResult) return;
+
+    const exDoDia = displayedResult.exceptions.filter((e) => {
+      const cpfD = (e.cpf || "").replace(/\D/g, "");
+      const empId = empIdByCpf.get(cpfD);
+      return empId === input.empregadoId && e.date === input.data;
+    });
+    if (exDoDia.length === 0) return;
+
+    // Status efetivo de cada exception do dia (combina map + status novo simulado)
+    const statusPorEx = exDoDia.map((e) => {
+      if (e.ruleId === input.ruleId) {
+        return { rule: e.ruleId, status: input.novoStatus as PontoApontamentoStatus };
+      }
+      const k = apontamentoKey(input.empregadoId, e.date, e.ruleId);
+      const doc = statusApontamentoMap.get(k);
+      // Fallback "migração suave": dia legado terminal ⇒ ciência implícita
+      if (!doc) {
+        const diaDoc = statusDiaMap.get(`${input.empregadoId}_${e.date}`);
+        if (diaDoc && (diaDoc.status === "tratado" || diaDoc.status === "corrigido_solides")) {
+          return { rule: e.ruleId, status: "ciencia" as PontoApontamentoStatus };
+        }
+      }
+      return { rule: e.ruleId, status: (doc?.status || "aberto") as PontoApontamentoStatus };
+    });
+    const todosTerminais = statusPorEx.every((x) => isStatusTerminal(x.status));
+    if (!todosTerminais) return;
+
+    // Categoria por rule: precisa ter ao menos 1 alinhamento (não puro ajuste).
+    const temAlinhamento = exDoDia.some(
+      (e) => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "alinhamento",
+    );
+    if (!temAlinhamento) return;
+
+    // Gera 1 evento por dia na Trilha (idempotente).
+    try {
+      const { registrarEvento } = await import("../trilha/repository");
+      await registrarEvento({
+        restaurantId: rid,
+        empregadoId: input.empregadoId,
+        empregadoNomeSnapshot: input.empregadoNome,
+        tipo: "ponto_atraso",
+        data: input.data,
+        titulo: `Inconformidades alinhadas em ${fmtDataBr(input.data)}`,
+        descricao: exDoDia
+          .map((e) => `• ${RULES_META[e.ruleId]?.label || e.ruleId}: ${e.description}`)
+          .join("\n"),
+        metadados: {
+          totalApontamentos: exDoDia.length,
+          regras: exDoDia.map((e) => e.ruleId),
+        },
+        fonte: "auto",
+        refOrigem: `apontamento_dia_tratado:${input.empregadoId}:${input.data}`,
+        registradoPor: { id: me.id, nome: me.nome },
+      });
+    } catch (e) {
+      console.warn("[ponto] falha ao registrar trilha do dia tratado:", e);
+    }
+  }
+
+  // Wrapper pra reabrir um apontamento — volta pra "aberto".
+  async function reabrirApontamento(input: {
+    empregadoId: string;
+    empregadoNome: string;
+    data: string;
+    ruleId: string;
+  }) {
+    if (!me) return;
+    try {
+      await setStatusApontamento({
+        restaurantId: rid,
+        empregadoId: input.empregadoId,
+        data: input.data,
+        ruleId: input.ruleId,
+        novoStatus: "aberto",
+        por: { id: me.id, nome: me.nome },
+      });
+    } catch (e) {
+      alert("Falha ao reabrir: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -752,6 +894,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const exceptions: ExceptionRecord[] = [];
     const unmatchedMap = new Map<string, { cpf: string; nome: string; dias: number }>();
     let diasAnalisados = 0;
+    // Agrega dias analisados por CPF (só dígitos) acumulando entre semanas.
+    // Usa Set por cpf pra deduplicar quando 2 semanas se sobrepõem no mesmo
+    // dia (não devia acontecer, mas é defensivo).
+    const diasAnalisadosPorCpfSet = new Map<string, Set<string>>();
     cachesDoMes.forEach(c => {
       const cache = c.relatorioCache;
       if (!cache) return;
@@ -770,11 +916,24 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         }
       });
       diasAnalisados += (cache.diasAnalisados as number | undefined) || 0;
+      const diasPorCpf = (cache.diasAnalisadosPorCpf || {}) as Record<string, string[]>;
+      for (const [cpf, lista] of Object.entries(diasPorCpf)) {
+        const set = diasAnalisadosPorCpfSet.get(cpf) || new Set<string>();
+        for (const d of lista) {
+          if ((d || "").startsWith(mesPrefix)) set.add(d);
+        }
+        diasAnalisadosPorCpfSet.set(cpf, set);
+      }
     });
+    const diasAnalisadosPorCpf: Record<string, string[]> = {};
+    for (const [cpf, set] of diasAnalisadosPorCpfSet) {
+      diasAnalisadosPorCpf[cpf] = Array.from(set).sort();
+    }
     return {
       exceptions,
       unmatched: Array.from(unmatchedMap.values()),
       diasAnalisados,
+      diasAnalisadosPorCpf,
     };
   }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
 
@@ -1128,6 +1287,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             exceptions: report.exceptions,
             unmatched: report.unmatched,
             diasAnalisados: report.diasAnalisados,
+            diasAnalisadosPorCpf: report.diasAnalisadosPorCpf,
           },
           me || undefined,
         );
@@ -1605,18 +1765,34 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             </div>
           ) : (
             <div className="space-y-4">
-              {agruparPorColabDate(excecoesFiltradas, empIdByCpf).map((grupo) => (
+              {agruparPorColabDate(excecoesFiltradas, empIdByCpf).map((grupo) => {
+                // Dias analisados do empregado dentro do filtro (mês ou
+                // semanas selecionadas). Vem do cache; serve pra mostrar
+                // "✓ Sem inconformidade" em dias avaliados sem exception.
+                const cpfD = (grupo.cpf || "").replace(/\D/g, "");
+                const diasAnalisados = (
+                  displayedResult?.diasAnalisadosPorCpf?.[cpfD] || []
+                ).filter((d) => {
+                  // Mantém só dias dentro do filtro de semana
+                  if (semanasFiltro.size === 0) return true;
+                  return semanasMes.some(
+                    (w) =>
+                      semanasFiltro.has(w.index) &&
+                      w.weekStart <= d &&
+                      w.weekEnd >= d,
+                  );
+                });
+                return (
                 <ColaboradorBlock
                   key={grupo.key}
                   grupo={grupo}
+                  diasAnalisados={diasAnalisados}
                   podeAnotar={!semanaConferida}
                   pendentesAlinhamento={pendentesPorEmpregado.get(grupo.empregadoId)?.alinhamento || 0}
                   pendentesAjuste={pendentesPorEmpregado.get(grupo.empregadoId)?.ajuste || 0}
                   temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
                   apontamentosPorChave={apontamentosPorChave}
                   notas={notasPorEmpregado.get(grupo.empregadoId) || []}
-                  onToggleEnviar={toggleEnviarExcecao}
-                  onReabrir={reabrirExcecao}
                   onAnotacaoLivre={() => criarNotaInterna(grupo.empregadoId, grupo.nome, grupo.cpf)}
                   onEnviarWhats={() => enviarWhatsDoEmpregado(grupo.empregadoId, grupo.nome)}
                   onDarCiencia={() => darCienciaPendentesDoEmpregado(grupo.empregadoId, grupo.nome)}
@@ -1633,34 +1809,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                     });
                   }}
                   statusDiaMap={statusDiaMap}
-                  onMarcarDiaTratado={async (date) => {
-                    if (!rid || !me) return;
-                    try {
-                      await setDiaTratado({
-                        restaurantId: rid,
-                        empregadoId: grupo.empregadoId,
-                        data: date,
-                        por: { id: me.id, nome: me.nome },
-                      });
-                    } catch (e) {
-                      alert("Falha ao marcar tratado: " + (e instanceof Error ? e.message : String(e)));
-                    }
-                  }}
-                  onReabrirDia={async (date) => {
-                    if (!rid || !me) return;
-                    try {
-                      await setDiaReaberto({
-                        restaurantId: rid,
-                        empregadoId: grupo.empregadoId,
-                        data: date,
-                        por: { id: me.id, nome: me.nome },
-                      });
-                    } catch (e) {
-                      alert("Falha ao reabrir: " + (e instanceof Error ? e.message : String(e)));
-                    }
-                  }}
+                  statusApontamentoMap={statusApontamentoMap}
+                  onAplicarStatusApontamento={(e, novo) => aplicarStatusApontamento({
+                    empregadoId: grupo.empregadoId,
+                    empregadoNome: grupo.nome,
+                    data: e.date,
+                    ruleId: e.ruleId,
+                    novoStatus: novo,
+                  })}
+                  onReabrirApontamento={(e) => reabrirApontamento({
+                    empregadoId: grupo.empregadoId,
+                    empregadoNome: grupo.nome,
+                    data: e.date,
+                    ruleId: e.ruleId,
+                  })}
                 />
-              ))}
+                );
+              })}
             </div>
           )}
         </>
@@ -1880,40 +2045,43 @@ function diaDaSemana(ymd: string): string {
 
 function ColaboradorBlock({
   grupo,
+  diasAnalisados,
   podeAnotar,
   pendentesAlinhamento,
   pendentesAjuste,
   temWhatsapp,
   apontamentosPorChave,
   notas,
-  onToggleEnviar,
-  onReabrir,
   onAnotacaoLivre,
   onEnviarWhats,
   onDarCiencia,
   onApagarNota,
   onResolverNaEscala,
   statusDiaMap,
-  onMarcarDiaTratado,
-  onReabrirDia,
+  statusApontamentoMap,
+  onAplicarStatusApontamento,
+  onReabrirApontamento,
 }: {
   grupo: GrupoColab;
+  diasAnalisados: string[];
   podeAnotar: boolean;
   pendentesAlinhamento: number;
   pendentesAjuste: number;
   temWhatsapp: boolean;
   apontamentosPorChave: Map<string, ApontamentoFuncionario>;
   notas: NotaInterna[];
-  onToggleEnviar: (exc: ExceptionRecord) => void;
-  onReabrir: (exc: ExceptionRecord) => void;
   onAnotacaoLivre: () => void;
   onEnviarWhats: () => void;
   onDarCiencia: () => void;
   onApagarNota: (notaId: string) => void;
   onResolverNaEscala?: (exc: ExceptionRecord) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
-  onMarcarDiaTratado?: (date: string) => Promise<void>;
-  onReabrirDia?: (date: string) => Promise<void>;
+  statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>;
+  onAplicarStatusApontamento: (
+    exc: ExceptionRecord,
+    novoStatus: PontoApontamentoStatus,
+  ) => Promise<void> | void;
+  onReabrirApontamento: (exc: ExceptionRecord) => Promise<void> | void;
 }) {
   const [expandido, setExpandido] = useState(false);
   return (
@@ -1997,180 +2165,202 @@ function ColaboradorBlock({
 
       {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {grupo.porData.map(({ date, exc }) => {
-          // Separar exc por categoria (alinhamento vs ajuste)
-          const excAlinhamento = exc.filter(e => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "alinhamento");
-          const excAjuste = exc.filter(e => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "ajuste");
-          // Status do dia
-          const statusDoc = statusDiaMap?.get(`${grupo.empregadoId}_${date}`);
-          const status: PontoDiaStatus = statusDoc?.status || "pendente";
-          const fundoDia =
-            status === "tratado"            ? "bg-emerald-50/60 dark:bg-emerald-900/15" :
-            status === "corrigido_solides"  ? "bg-emerald-100/60 dark:bg-emerald-900/30" :
-            status === "ajuste_solicitado"  ? "bg-sky-50/60 dark:bg-sky-900/15" :
-            "";
-          const badgeCls =
-            status === "pendente"           ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" :
-            status === "ajuste_solicitado"  ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" :
-            status === "tratado"            ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" :
-            status === "corrigido_solides"  ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold" :
-            status === "reaberto"           ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" :
-            "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300";
-          const statusLabel =
-            status === "pendente"           ? "🟡 Pendente" :
-            status === "ajuste_solicitado"  ? "📨 Ajuste solicitado" :
-            status === "tratado"            ? "✓ Tratado" :
-            status === "corrigido_solides"  ? "✅ Corrigido no Sólides" :
-            status === "reaberto"           ? "↻ Reaberto" : status;
-          // Cor da borda esquerda do dia inteiro — destaca status à esquerda
-          const corBordaLateral =
-            status === "tratado"            ? "border-l-emerald-500" :
-            status === "corrigido_solides"  ? "border-l-emerald-600" :
-            status === "ajuste_solicitado"  ? "border-l-sky-500" :
-            status === "reaberto"           ? "border-l-rose-500" :
-            "border-l-amber-500";
-          return (
-          <div key={date} className={`px-4 py-3 border-l-4 ${corBordaLateral} ${fundoDia}`}>
-            {/* Header do dia: data · dia · status · ações */}
-            <div className="flex items-center gap-2 mb-2 flex-wrap">
-              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
-                {fmtDataBr(date)}
-              </span>
-              <span className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">
-                · {diaDaSemana(date)}
-              </span>
-              <span className="text-[10px] text-gray-500 dark:text-gray-400">·</span>
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">
-                {exc.length} {exc.length === 1 ? "ocorrência" : "ocorrências"}
-              </span>
-              {/* Badge só pra status com ação tomada — "pendente" é o default
-                  e não precisa de selo (basta a presença do dia na lista). */}
-              {status !== "pendente" && (
-                <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full ${badgeCls} ml-1`}>
-                  {statusLabel}
-                </span>
-              )}
-              {podeAnotar && (
-                <div className="ml-auto flex gap-1">
-                  {status !== "tratado" && status !== "corrigido_solides" && onMarcarDiaTratado && (
-                    <button
-                      type="button"
-                      onClick={() => onMarcarDiaTratado(date)}
-                      className="text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
-                      title="Marcar dia inteiro como tratado (alinhamento verbal feito)"
-                    >
-                      ✓ Marcar tratado
-                    </button>
-                  )}
-                  {(status === "tratado" || status === "corrigido_solides" || status === "ajuste_solicitado") && onReabrirDia && (
-                    <button
-                      type="button"
-                      onClick={() => onReabrirDia(date)}
-                      className="text-[10px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-md border border-gray-300 text-gray-600 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                      title="Reabrir o dia pra tratar de novo"
-                    >
-                      ↻ Reabrir
-                    </button>
+        {(() => {
+          // Junta dias com exception + dias só analisados (verdes).
+          const datasComExc = new Set(grupo.porData.map(g => g.date));
+          const datasVerdes = (diasAnalisados || []).filter(d => !datasComExc.has(d));
+          const todasAsLinhas: Array<
+            | { kind: "exc"; date: string; exc: ExceptionRecord[] }
+            | { kind: "verde"; date: string }
+          > = [
+            ...grupo.porData.map(g => ({ kind: "exc" as const, date: g.date, exc: g.exc })),
+            ...datasVerdes.map(d => ({ kind: "verde" as const, date: d })),
+          ].sort((a, b) => a.date.localeCompare(b.date));
+          return todasAsLinhas.map((linha) => {
+            if (linha.kind === "verde") {
+              return (
+                <div
+                  key={linha.date}
+                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-lg flex items-center gap-2 text-sm"
+                >
+                  <span className="text-emerald-700 dark:text-emerald-400">✓</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+                    {fmtDataBr(linha.date)}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400 capitalize text-[11px]">
+                    · {diaDaSemana(linha.date)}
+                  </span>
+                  <span className="text-emerald-700 dark:text-emerald-400 text-xs ml-1">
+                    Sem inconformidade
+                  </span>
+                </div>
+              );
+            }
+            const { date, exc } = linha;
+            // ── Dedupe: agrupa por ruleId (mesma regra no mesmo dia) ──
+            type DedupExc = {
+              ruleId: ExceptionRecord["ruleId"];
+              count: number;
+              first: ExceptionRecord;        // representante (1º) — pra texto/severidade
+              all: ExceptionRecord[];        // pra tooltip com horários acumulados
+            };
+            const dedupMap = new Map<string, DedupExc>();
+            for (const e of exc) {
+              const cur = dedupMap.get(e.ruleId);
+              if (cur) {
+                cur.count += 1;
+                cur.all.push(e);
+              } else {
+                dedupMap.set(e.ruleId, { ruleId: e.ruleId, count: 1, first: e, all: [e] });
+              }
+            }
+            const dedupList = Array.from(dedupMap.values());
+            const excAlinhamento = dedupList.filter(d => REGRA_CATEGORIA_DEFAULT[d.ruleId] === "alinhamento");
+            const excAjuste = dedupList.filter(d => REGRA_CATEGORIA_DEFAULT[d.ruleId] === "ajuste");
+
+            // Status efetivo por apontamento (combina map + fallback dia
+            // legado). Spec: doc antigo "tratado"/"corrigido_solides" no
+            // dia ⇒ todos os apontamentos do dia são tratados como
+            // ciência implícita (sem criar docs novos retroativamente).
+            const diaLegado = statusDiaMap?.get(`${grupo.empregadoId}_${date}`);
+            const diaLegadoTerminal =
+              diaLegado?.status === "tratado" || diaLegado?.status === "corrigido_solides";
+            function statusEfetivoApontamento(ruleId: string): PontoApontamentoStatus {
+              const doc = statusApontamentoMap.get(apontamentoKey(grupo.empregadoId, date, ruleId));
+              if (doc) return doc.status;
+              if (diaLegadoTerminal) return "ciencia";
+              return "aberto";
+            }
+
+            // Agregado do dia: "X de Y tratados"
+            const total = dedupList.length;
+            const tratados = dedupList.filter(d => isStatusTerminal(statusEfetivoApontamento(d.ruleId))).length;
+            const tudoTratado = total > 0 && tratados === total;
+
+            return (
+              <div
+                key={date}
+                className={`px-4 py-3 border-l-4 ${
+                  tudoTratado
+                    ? "border-l-emerald-500 bg-emerald-50/40 dark:bg-emerald-900/15"
+                    : "border-l-amber-500"
+                }`}
+              >
+                {/* Header do dia: data · dia · contador agregado (sem botão de ação) */}
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
+                    {fmtDataBr(date)}
+                  </span>
+                  <span className="text-[11px] text-gray-500 dark:text-gray-400 capitalize">
+                    · {diaDaSemana(date)}
+                  </span>
+                  <span className="text-[10px] text-gray-500 dark:text-gray-400">·</span>
+                  <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-medium">
+                    {exc.length} {exc.length === 1 ? "ocorrência" : "ocorrências"}
+                  </span>
+                  {tudoTratado ? (
+                    <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 ml-1">
+                      ✓ Tudo tratado
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 ml-1">
+                      {tratados} de {total} tratados
+                    </span>
                   )}
                 </div>
-              )}
-            </div>
-            {/* Conteúdo: SEMPRE 2 colunas (Alinhamento × Ajuste) lado a lado.
-                Coluna sem itens fica discreta com placeholder, mas mantém
-                a comparação visual consistente. */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
-              {/* Coluna Alinhamento */}
-              <div className={`rounded-lg border p-2.5 ${
-                excAlinhamento.length > 0
-                  ? "border-amber-200 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-900/10"
-                  : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
-              }`}>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                {/* Conteúdo: SEMPRE 2 colunas (Alinhamento × Ajuste) lado a lado. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                  {/* Coluna Alinhamento */}
+                  <div className={`rounded-lg border p-2.5 ${
                     excAlinhamento.length > 0
-                      ? "text-amber-700 dark:text-amber-400"
-                      : "text-gray-400 dark:text-gray-600"
+                      ? "border-amber-200 dark:border-amber-800/40 bg-amber-50/30 dark:bg-amber-900/10"
+                      : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
                   }`}>
-                    🗣️ Alinhamento
-                  </span>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
-                    ({excAlinhamento.length})
-                  </span>
-                </div>
-                {excAlinhamento.length > 0 ? (
-                  <ol className="space-y-1.5">{renderExcList(excAlinhamento)}</ol>
-                ) : (
-                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
-                    Nada pra alinhar
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                        excAlinhamento.length > 0
+                          ? "text-amber-700 dark:text-amber-400"
+                          : "text-gray-400 dark:text-gray-600"
+                      }`}>
+                        🗣️ Alinhamento
+                      </span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                        ({excAlinhamento.length})
+                      </span>
+                    </div>
+                    {excAlinhamento.length > 0 ? (
+                      <ol className="space-y-1.5">
+                        {renderDedupList(excAlinhamento, "alinhamento")}
+                      </ol>
+                    ) : (
+                      <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
+                        Nada pra alinhar
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              {/* Coluna Ajuste de batida */}
-              <div className={`rounded-lg border p-2.5 ${
-                excAjuste.length > 0
-                  ? "border-rose-200 dark:border-rose-800/40 bg-rose-50/30 dark:bg-rose-900/10"
-                  : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
-              }`}>
-                <div className="flex items-center gap-1.5 mb-1.5">
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                  {/* Coluna Ajuste de batida */}
+                  <div className={`rounded-lg border p-2.5 ${
                     excAjuste.length > 0
-                      ? "text-rose-700 dark:text-rose-400"
-                      : "text-gray-400 dark:text-gray-600"
+                      ? "border-rose-200 dark:border-rose-800/40 bg-rose-50/30 dark:bg-rose-900/10"
+                      : "border-dashed border-gray-200 dark:border-gray-800 bg-transparent"
                   }`}>
-                    ✏️ Ajuste de batida
-                  </span>
-                  <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
-                    ({excAjuste.length})
-                  </span>
-                </div>
-                {excAjuste.length > 0 ? (
-                  <ol className="space-y-1.5">{renderExcList(excAjuste)}</ol>
-                ) : (
-                  <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
-                    Nada pra ajustar
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <span className={`text-[10px] uppercase tracking-wider font-bold ${
+                        excAjuste.length > 0
+                          ? "text-rose-700 dark:text-rose-400"
+                          : "text-gray-400 dark:text-gray-600"
+                      }`}>
+                        ✏️ Ajuste de batida
+                      </span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
+                        ({excAjuste.length})
+                      </span>
+                    </div>
+                    {excAjuste.length > 0 ? (
+                      <ol className="space-y-1.5">
+                        {renderDedupList(excAjuste, "ajuste")}
+                      </ol>
+                    ) : (
+                      <div className="text-[11px] text-gray-400 dark:text-gray-600 italic py-1">
+                        Nada pra ajustar
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-          </div>
-          );
-          // Helper inline pra renderizar lista de exc — evita duplicar JSX
-          function renderExcList(listaExc: ExceptionRecord[]) {
-            return listaExc.map((e, i) => {
+            );
+
+            // Helper inline pra renderizar lista deduplicada com botão por
+            // linha apropriado à categoria.
+            function renderDedupList(
+              listaDedup: DedupExc[],
+              categoria: "alinhamento" | "ajuste",
+            ) {
+              return listaDedup.map((d, i) => {
+                const e = d.first;
                 const meta = RULES_META[e.ruleId];
                 const sev = SEVERITY_INFO[e.severity];
-                const key = `${grupo.empregadoId}_${e.date}_${e.ruleId}`;
-                const ap = apontamentosPorChave.get(key);
-                const status = ap?.status;
-                const pendente = status === "pendente";
-                const enviado = status === "enviado";
-                const ciencia = status === "ciencia";
+                const ap = apontamentosPorChave.get(`${grupo.empregadoId}_${e.date}_${e.ruleId}`);
+                const statusAp = statusEfetivoApontamento(e.ruleId);
+                const isCiencia = statusAp === "ciencia";
+                const isFalsoPositivo = statusAp === "nao_e_inconformidade";
+                const isCorrigidoSolides = statusAp === "corrigido_solides";
+                const isTerminal = isStatusTerminal(statusAp);
+                // Tooltip detalhado quando count > 1 — lista detail/description
+                const tooltipDetalhes = d.count > 1
+                  ? d.all
+                      .map((x, idx) => `${idx + 1}. ${x.detail || x.description}`)
+                      .join("\n")
+                  : undefined;
                 return (
                   <li
                     key={`${e.ruleId}_${i}`}
                     className={`flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 rounded-md px-1.5 py-1 ${
-                      ciencia
-                        ? "bg-emerald-50 dark:bg-emerald-900/20 border-l-2 border-emerald-400 dark:border-emerald-600"
-                        : enviado
-                          ? "bg-sky-50 dark:bg-sky-900/20 border-l-2 border-sky-400 dark:border-sky-600"
-                          : ""
+                      isTerminal
+                        ? "bg-emerald-50/40 dark:bg-emerald-900/20 border-l-2 border-emerald-400 dark:border-emerald-600"
+                        : ""
                     }`}
                   >
-                    {podeAnotar && !enviado && !ciencia ? (
-                      <input
-                        type="checkbox"
-                        checked={pendente}
-                        onChange={() => onToggleEnviar(e)}
-                        className="mt-1 accent-indigo-600"
-                        title={
-                          pendente
-                            ? "Marcado pra enviar via WhatsApp — clique pra remover"
-                            : "Marcar pra enviar pro empregado via WhatsApp"
-                        }
-                      />
-                    ) : (
-                      <span className="w-4 mt-0.5" />
-                    )}
                     <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5">
                       {i + 1}.
                     </span>
@@ -2180,63 +2370,100 @@ function ColaboradorBlock({
                     >
                       {meta.icon} {meta.label}
                     </span>
+                    {d.count > 1 && (
+                      <span
+                        className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold whitespace-nowrap shrink-0 mt-0.5"
+                        title={tooltipDetalhes || `${d.count} ocorrências dessa regra no dia`}
+                      >
+                        × {d.count}
+                      </span>
+                    )}
                     <span
                       className={`flex-1 min-w-0 ${
-                        pendente ? "font-medium text-gray-900 dark:text-gray-100" : ""
+                        !isTerminal ? "font-medium text-gray-900 dark:text-gray-100" : ""
                       }`}
+                      title={tooltipDetalhes}
                     >
                       {e.description}
                       {e.detail && (
                         <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
                       )}
-                      {/* Indicador inline de status */}
-                      {enviado && ap?.enviadoEm && (
+                      {/* Indicador de status terminal */}
+                      {isCiencia && (
                         <span
                           className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold whitespace-nowrap"
-                          title={`Avisado via WhatsApp em ${fmtDataHora(ap.enviadoEm)} — no prazo de correção`}
+                          title={`Ciência dada${ap?.cienciaPorNome ? ` por ${ap.cienciaPorNome}` : ""}`}
                         >
-                          📨 Avisado em {fmtDataHora(ap.enviadoEm)}
+                          ✓ ciente
                         </span>
                       )}
-                      {ciencia && (
+                      {isFalsoPositivo && (
                         <span
-                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300 font-semibold whitespace-nowrap"
-                          title={`Ciência registrada por ${ap?.cienciaPorNome || "?"} em ${ap?.cienciaEm ? fmtDataHora(ap.cienciaEm) : "?"} — não enviável`}
+                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 font-semibold whitespace-nowrap"
+                          title="Marcado como falso positivo"
                         >
-                          👁 Ciência · {ap?.cienciaPorNome}
+                          ✓ falso positivo
+                        </span>
+                      )}
+                      {isCorrigidoSolides && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold whitespace-nowrap"
+                          title="Corrigido no Sólides — sumiu na próxima atualização"
+                        >
+                          ✅ corrigido na Sólides
                         </span>
                       )}
                     </span>
                     {/* Ações por linha */}
-                    {/* "📋 Resolver na escala" só pra ausência/presença divergente
-                        (faltaSemAjuste, marcacaoForaDaEscala). Abre MotivoAjusteModal
-                        que pergunta motivo e aplica na escala praticada. */}
-                    {podeAnotar && !ciencia && onResolverNaEscala
+                    {podeAnotar && !isTerminal && (
+                      categoria === "alinhamento" ? (
+                        <button
+                          type="button"
+                          onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap mt-0.5"
+                          title="Dar ciência — registra o alinhamento (presencial)"
+                        >
+                          👁 Dar ciência
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap mt-0.5"
+                          title="Marcar como falso positivo — não é inconformidade"
+                        >
+                          ✗ Não é inconformidade
+                        </button>
+                      )
+                    )}
+                    {podeAnotar && isTerminal && (
+                      <button
+                        type="button"
+                        onClick={() => void onReabrirApontamento(e)}
+                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5"
+                        title="Reabrir — volta o apontamento pra aberto"
+                      >
+                        ↩ reabrir
+                      </button>
+                    )}
+                    {/* "📋 Resolver na escala" só pra ausência/presença divergente */}
+                    {podeAnotar && !isTerminal && onResolverNaEscala
                       && (e.ruleId === "faltaSemAjuste" || e.ruleId === "marcacaoForaDaEscala") && (
                       <button
                         type="button"
                         onClick={() => onResolverNaEscala(e)}
                         className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap mt-0.5 font-medium"
-                        title="Resolver na escala — abre seletor de motivo (falta, férias, atestado, etc) e aplica na escala praticada"
+                        title="Resolver na escala — abre seletor de motivo e aplica na escala praticada"
                       >
                         📋 Resolver na escala
-                      </button>
-                    )}
-                    {podeAnotar && (enviado || ciencia) && (
-                      <button
-                        type="button"
-                        onClick={() => onReabrir(e)}
-                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5"
-                        title="Reabrir — volta pra pendente, remove o registro de envio/ciência"
-                      >
-                        ↩ reabrir
                       </button>
                     )}
                   </li>
                 );
               });
-          }
-        })}
+            }
+          });
+        })()}
       </div>
 
       {/* Log do tratamento — timeline interna do que foi feito com o empregado

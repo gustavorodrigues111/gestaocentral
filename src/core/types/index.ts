@@ -2194,6 +2194,11 @@ export type RelatorioSnapshot = {
   exceptions: unknown[];  // ExceptionRecord[]
   unmatched: unknown[];   // UnmatchedEntry[]
   diasAnalisados: number;
+  // Mapa de dias efetivamente analisados POR EMPREGADO (cpf só dígitos → lista
+  // de YYYY-MM-DD). Permite a UI de Inconformidades renderizar "✓ Sem
+  // inconformidade" pros dias que foram avaliados mas não geraram exceção.
+  // Opcional pra retrocompatibilidade — caches antigos não têm esse campo.
+  diasAnalisadosPorCpf?: Record<string, string[]>;
 };
 
 export type ExcecaoStatusSemana = {

@@ -35,6 +35,10 @@ export type GenerateReportResult = {
   exceptions: ExceptionRecord[];
   unmatched: UnmatchedEntry[]; // marcações da Sólides sem empregado correspondente
   diasAnalisados: number;
+  // Mapa cpf (só dígitos) → lista de YYYY-MM-DD analisados pra esse empregado.
+  // Permite a UI mostrar "dia sem inconformidade" em vez de esconder dias
+  // analisados mas sem exception.
+  diasAnalisadosPorCpf: Record<string, string[]>;
 };
 
 // "2026-05-10" + n → "2026-05-1X" (lida com virada de mês/ano via Date local)
@@ -82,6 +86,7 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
   const exceptions: ExceptionRecord[] = [];
   const matchedSolidesIds = new Set<number>();
   let diasAnalisados = 0;
+  const diasAnalisadosPorCpf: Record<string, string[]> = {};
 
   // ── 1) Processa cada empregado do Planejamento ──
   for (const emp of empregados) {
@@ -141,6 +146,11 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       };
       exceptions.push(...runAllRules(ctx));
       diasAnalisados += 1;
+      if (cpf) {
+        const arr = diasAnalisadosPorCpf[cpf] || [];
+        arr.push(date);
+        diasAnalisadosPorCpf[cpf] = arr;
+      }
     }
   }
 
@@ -167,5 +177,5 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       a.ruleId.localeCompare(b.ruleId),
   );
 
-  return { exceptions, unmatched, diasAnalisados };
+  return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf };
 }
