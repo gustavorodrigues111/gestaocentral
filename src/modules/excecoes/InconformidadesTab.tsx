@@ -1682,6 +1682,34 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         ajustesAplicadosPorEmpId = aplicarRes.ajustesAplicados;
         debugInfo.ajustesAplicados = adjRes.count;
         debugInfo.sampleProbeAdj = adjRes.sampleProbe;
+        // DEBUG: log focado em empregados específicos pra investigar
+        // por que ajustes (atestado, óbito) não estão sendo aplicados.
+        // CPFs de interesse passados via filtro: Larissa, Joyce, etc.
+        const cpfsFoco = ["08972703206"]; // Larissa Fabiele
+        for (const cpfFoco of cpfsFoco) {
+          const empFoco = empregados.find(e => onlyDigits(e.cpf) === cpfFoco);
+          if (!empFoco) continue;
+          const sidFoco = sidByEmpId[empFoco.id];
+          const ajsFoco = sidFoco ? adjRes.adjustments[String(sidFoco)] : undefined;
+          const ajsAplicadosFoco = aplicarRes.ajustesAplicados[empFoco.id];
+          const escalaFoco = escalaPorEmpregado[empFoco.id];
+          // eslint-disable-next-line no-console
+          console.log(`[DEBUG ajuste foco] ${empFoco.nome}`, {
+            empId: empFoco.id,
+            sidFoco,
+            qtdAjustesAPI: ajsFoco?.length || 0,
+            ajustesNaAPI: ajsFoco?.map(a => ({
+              tipo: a.type || a.reason,
+              status: a.status,
+              startDate: a.startDate,
+              endDate: a.endDate,
+            })),
+            ajustesAplicados: ajsAplicadosFoco,
+            escalaJanela: escalaFoco && Object.keys(escalaFoco).sort().reduce((acc: Record<string, unknown>, k) => {
+              acc[k] = escalaFoco[k]; return acc;
+            }, {}),
+          });
+        }
       } catch (e) {
         console.warn("Sólides adjustments falhou:", e);
       }
