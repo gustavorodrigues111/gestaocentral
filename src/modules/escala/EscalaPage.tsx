@@ -1185,6 +1185,39 @@ function Grade({
     setSelecionadas(new Set());
   }
 
+  // Ressincronização: limpa todos os overrides do mês pra um empregado na
+  // versão visualizada. Usado quando o cadastro do empregado é corrigido
+  // depois da prevista já estar pintada — em vez de selecionar 30 dias e
+  // clicar reverter, faz tudo de uma vez.
+  const [ressincSaving, setRessincSaving] = useState<string | null>(null);
+  async function ressincronizarEmpregado(empId: string, nome: string) {
+    // Conta quantos dias têm override pra essa versão
+    const versaoMap = versao === "prevista" ? escala?.prevista?.[empId] : escala?.real?.[empId];
+    const diasComOverride: string[] = [];
+    for (let d = 1; d <= dias; d++) {
+      const ymd = `${ano}-${pad2(mes)}-${pad2(d)}`;
+      if (versaoMap && versaoMap[ymd] !== undefined) diasComOverride.push(ymd);
+    }
+    if (diasComOverride.length === 0) {
+      alert(`Nada pra ressincronizar — ${nome} não tem overrides nessa versão.`);
+      return;
+    }
+    const ok = window.confirm(
+      `Ressincronizar ${diasComOverride.length} dia(s) de ${nome} com o cadastro?\n\n` +
+      `Os overrides da ${versao === "prevista" ? "prevista" : "praticada"} desse empregado neste mês serão apagados ` +
+      `— os dias voltam a ser calculados pelo horário cadastrado.`,
+    );
+    if (!ok) return;
+    setRessincSaving(empId);
+    try {
+      for (const ymd of diasComOverride) {
+        await onSetStatus(empId, ymd, null, null);
+      }
+    } finally {
+      setRessincSaving(null);
+    }
+  }
+
   const hojeYmd = (() => {
     const d = new Date();
     return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -1241,14 +1274,29 @@ function Grade({
                   </td>
                 </tr>
               )}
-              <tr className="border-t border-gray-100 dark:border-gray-800">
+              <tr className="border-t border-gray-100 dark:border-gray-800 group">
                 <td className="px-2 py-1.5 sticky left-0 bg-white dark:bg-gray-900 z-10 border-r border-gray-100 dark:border-gray-800 w-[140px] min-w-[140px] max-w-[140px]">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <span className={`inline-block w-2 h-2 rounded-full shrink-0 ${dot}`} />
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{e.nome}</div>
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{cargo?.nome || "—"}</div>
                     </div>
+                    {podeEditar && (
+                      <button
+                        type="button"
+                        onClick={() => ressincronizarEmpregado(e.id, e.nome)}
+                        disabled={ressincSaving === e.id}
+                        title={`Ressincronizar todos os dias de ${e.nome} com o cadastro (limpa overrides da ${versao === "prevista" ? "prevista" : "praticada"})`}
+                        className="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50 disabled:cursor-wait"
+                      >
+                        {ressincSaving === e.id ? (
+                          <span className="text-[10px] animate-spin">↻</span>
+                        ) : (
+                          <span className="text-sm">↻</span>
+                        )}
+                      </button>
+                    )}
                   </div>
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
