@@ -3135,47 +3135,177 @@ function ColaboradorBlock({
                 return (
                   <li
                     key={`${e.ruleId}_${i}`}
-                    className={`flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 rounded-md px-1.5 py-1 ${
+                    className={`flex flex-col gap-1 text-sm text-gray-700 dark:text-gray-300 rounded-md px-1.5 py-1.5 ${
                       isTerminal
                         ? "bg-emerald-50/40 dark:bg-emerald-900/20 border-l-2 border-emerald-400 dark:border-emerald-600"
                         : ""
                     }`}
                   >
-                    <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none mt-0.5">
-                      {i + 1}.
-                    </span>
-                    <span
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap shrink-0 mt-0.5 ${sev.badge}`}
-                      title={meta.descricaoRegra}
-                    >
-                      {meta.icon} {meta.label}
-                    </span>
-                    {d.count > 1 && (
-                      <span
-                        className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold whitespace-nowrap shrink-0 mt-0.5"
-                        title={tooltipDetalhes || `${d.count} ocorrências dessa regra no dia`}
-                      >
-                        × {d.count}
-                      </span>
-                    )}
-                    <span
-                      className={`flex-1 min-w-0 ${
-                        !isTerminal ? "font-medium text-gray-900 dark:text-gray-100" : ""
-                      }`}
+                    {/* Linha 1: número + chip + status badges + ações (alinhadas à direita) */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <span className="text-gray-400 dark:text-gray-500 tabular-nums select-none">
+                          {i + 1}.
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap shrink-0 ${sev.badge}`}
+                          title={meta.descricaoRegra}
+                        >
+                          {meta.icon} {meta.label}
+                        </span>
+                        {d.count > 1 && (
+                          <span
+                            className="inline-flex items-center px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 text-[10px] font-bold whitespace-nowrap shrink-0"
+                            title={tooltipDetalhes || `${d.count} ocorrências dessa regra no dia`}
+                          >
+                            × {d.count}
+                          </span>
+                        )}
+                        {isCiencia && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold whitespace-nowrap"
+                            title={`Ciência dada${ap?.cienciaPorNome ? ` por ${ap.cienciaPorNome}` : ""}`}
+                          >
+                            ✓ ciente
+                          </span>
+                        )}
+                        {isFalsoPositivo && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 font-semibold whitespace-nowrap"
+                            title="Marcado como falso positivo"
+                          >
+                            ✓ falso positivo
+                          </span>
+                        )}
+                        {isCorrigidoSolides && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold whitespace-nowrap"
+                            title="Corrigido no Sólides — sumiu na próxima atualização"
+                          >
+                            ✅ corrigido na Sólides
+                          </span>
+                        )}
+                        {isAguardandoAjuste && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 font-semibold whitespace-nowrap"
+                            title="Lote enviado — esperando o empregado ajustar na Sólides. Quando ele ajustar e a próxima atualização detectar que sumiu, vira 'Corrigido no Sólides' automaticamente."
+                          >
+                            📦 aguardando ajuste
+                          </span>
+                        )}
+                      </div>
+                      {/* Wrapper das ações — alinhado à direita do header */}
+                      <div className="flex items-center gap-1 shrink-0 ml-auto flex-wrap">
+                        {(() => {
+                          const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
+                          const salvando = salvandoApontamento.has(lockKey);
+                          if (podeAnotar && !isTerminal && !isAguardandoAjuste) {
+                            if (categoria === "alinhamento") {
+                              return (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={salvando}
+                                    onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
+                                    className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                    title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
+                                  >
+                                    {salvando ? "⏳ salvando…" : "👁 Dar ciência"}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={salvando}
+                                    onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                                    className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                    title={
+                                      e.ruleId === "atrasoEntrada"
+                                        ? "Não foi atraso — combinado/justificado previamente. Não conta na Trilha."
+                                        : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
+                                    }
+                                  >
+                                    {salvando ? "⏳" : `✗ ${e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}`}
+                                  </button>
+                                </>
+                              );
+                            }
+                            // Ajuste de batida: 2 botões — Lote (toggle) + falso positivo
+                            return (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={salvando}
+                                  onClick={() => onToggleLote(e)}
+                                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-md text-white whitespace-nowrap disabled:opacity-50 ${
+                                    estaNoLote
+                                      ? "bg-gray-500 hover:bg-gray-600"
+                                      : "bg-amber-600 hover:bg-amber-700"
+                                  }`}
+                                  title={
+                                    estaNoLote
+                                      ? "Tirar este apontamento do lote de solicitação de ajuste deste empregado."
+                                      : "Adicionar ao lote de solicitação de ajuste deste empregado."
+                                  }
+                                >
+                                  {estaNoLote ? "↩ Tirar do lote" : "📦 + Lote"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={salvando}
+                                  onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                                  className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                  title="Marcar como falso positivo — não é inconformidade."
+                                >
+                                  {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
+                                </button>
+                              </>
+                            );
+                          }
+                          return null;
+                        })()}
+                        {podeAnotar && isAguardandoAjuste && (
+                          <button
+                            type="button"
+                            disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
+                            onClick={() => void onReabrirApontamento(e)}
+                            className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                            title="Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"
+                          >
+                            ↩ desmarcar
+                          </button>
+                        )}
+                        {podeAnotar && isTerminal && (
+                          <button
+                            type="button"
+                            disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
+                            onClick={() => void onReabrirApontamento(e)}
+                            className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                            title="Reabrir — volta o apontamento pra aberto"
+                          >
+                            ↩ reabrir
+                          </button>
+                        )}
+                        {/* "📋 Resolver na escala" só pra ausência/presença divergente */}
+                        {podeAnotar && !isTerminal && onResolverNaEscala
+                          && (e.ruleId === "faltaSemAjuste" || e.ruleId === "marcacaoForaDaEscala") && (
+                          <button
+                            type="button"
+                            onClick={() => onResolverNaEscala(e)}
+                            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap font-medium"
+                            title="Resolver na escala — abre seletor de motivo e aplica na escala praticada"
+                          >
+                            📋 Resolver na escala
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    {/* Linha 2: descrição em fonte menor, alinhada com o conteúdo (após o "N.") */}
+                    <div
+                      className="text-xs text-gray-500 dark:text-gray-400 pl-5 leading-snug"
                       title={tooltipDetalhes}
                     >
                       {e.description}
                       {(() => {
                         if (!e.detail) return null;
-                        // Suprime detail redundante com o header de batidas.
-                        // Caches antigos (sem `e.batidas`) ainda mostram o
-                        // detail inteiro — incluindo o resumo de batidas que
-                        // antes ficava lá. Caches novos só têm detail quando
-                        // ele agrega contexto extra à regra (ex: "escala = folga"
-                        // em marcacaoForaDaEscala) — esse aparece normalmente.
-                        // Heurística: se batidasDoDia está preenchido E o detail
-                        // começa com 🕐 (formato legado), considera redundante.
-                        // Idem se for igual ao próprio campo batidas.
                         if (batidasDoDia) {
                           if (e.detail === batidasDoDia) return null;
                           if (e.detail.startsWith("🕐")) return null;
@@ -3185,141 +3315,7 @@ function ColaboradorBlock({
                           <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
                         );
                       })()}
-                      {/* Indicador de status terminal */}
-                      {isCiencia && (
-                        <span
-                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold whitespace-nowrap"
-                          title={`Ciência dada${ap?.cienciaPorNome ? ` por ${ap.cienciaPorNome}` : ""}`}
-                        >
-                          ✓ ciente
-                        </span>
-                      )}
-                      {isFalsoPositivo && (
-                        <span
-                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-200 font-semibold whitespace-nowrap"
-                          title="Marcado como falso positivo"
-                        >
-                          ✓ falso positivo
-                        </span>
-                      )}
-                      {isCorrigidoSolides && (
-                        <span
-                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold whitespace-nowrap"
-                          title="Corrigido no Sólides — sumiu na próxima atualização"
-                        >
-                          ✅ corrigido na Sólides
-                        </span>
-                      )}
-                      {isAguardandoAjuste && (
-                        <span
-                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 font-semibold whitespace-nowrap"
-                          title="Lote enviado — esperando o empregado ajustar na Sólides. Quando ele ajustar e a próxima atualização detectar que sumiu, vira 'Corrigido no Sólides' automaticamente."
-                        >
-                          📦 aguardando ajuste
-                        </span>
-                      )}
-                    </span>
-                    {/* Ações por linha */}
-                    {(() => {
-                      const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
-                      const salvando = salvandoApontamento.has(lockKey);
-                      if (podeAnotar && !isTerminal && !isAguardandoAjuste) {
-                        if (categoria === "alinhamento") {
-                          return (
-                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                              <button
-                                type="button"
-                                disabled={salvando}
-                                onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
-                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
-                                title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
-                              >
-                                {salvando ? "⏳ salvando…" : "👁 Dar ciência"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={salvando}
-                                onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
-                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
-                                title={
-                                  e.ruleId === "atrasoEntrada"
-                                    ? "Não foi atraso — combinado/justificado previamente. Não conta na Trilha."
-                                    : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
-                                }
-                              >
-                                {salvando ? "⏳" : `✗ ${e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}`}
-                              </button>
-                            </div>
-                          );
-                        }
-                        // Ajuste de batida: 2 botões — Lote (toggle) + falso positivo
-                        return (
-                          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                            <button
-                              type="button"
-                              disabled={salvando}
-                              onClick={() => onToggleLote(e)}
-                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md text-white whitespace-nowrap disabled:opacity-50 ${
-                                estaNoLote
-                                  ? "bg-gray-500 hover:bg-gray-600"
-                                  : "bg-amber-600 hover:bg-amber-700"
-                              }`}
-                              title={
-                                estaNoLote
-                                  ? "Tirar este apontamento do lote de solicitação de ajuste deste empregado."
-                                  : "Adicionar ao lote de solicitação de ajuste deste empregado."
-                              }
-                            >
-                              {estaNoLote ? "↩ Tirar do lote" : "📦 + Lote"}
-                            </button>
-                            <button
-                              type="button"
-                              disabled={salvando}
-                              onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
-                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
-                              title="Marcar como falso positivo — não é inconformidade."
-                            >
-                              {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
-                            </button>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })()}
-                    {podeAnotar && isAguardandoAjuste && (
-                      <button
-                        type="button"
-                        disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
-                        onClick={() => void onReabrirApontamento(e)}
-                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
-                        title="Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"
-                      >
-                        ↩ desmarcar
-                      </button>
-                    )}
-                    {podeAnotar && isTerminal && (
-                      <button
-                        type="button"
-                        disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
-                        onClick={() => void onReabrirApontamento(e)}
-                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
-                        title="Reabrir — volta o apontamento pra aberto"
-                      >
-                        ↩ reabrir
-                      </button>
-                    )}
-                    {/* "📋 Resolver na escala" só pra ausência/presença divergente */}
-                    {podeAnotar && !isTerminal && onResolverNaEscala
-                      && (e.ruleId === "faltaSemAjuste" || e.ruleId === "marcacaoForaDaEscala") && (
-                      <button
-                        type="button"
-                        onClick={() => onResolverNaEscala(e)}
-                        className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap mt-0.5 font-medium"
-                        title="Resolver na escala — abre seletor de motivo e aplica na escala praticada"
-                      >
-                        📋 Resolver na escala
-                      </button>
-                    )}
+                    </div>
                   </li>
                 );
               });
