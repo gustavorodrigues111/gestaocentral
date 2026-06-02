@@ -8,6 +8,7 @@
 import type { jsPDF as JsPDFType } from "jspdf";
 import type { LoteRascunhoDoc } from "../../core/excecoes/loteRascunho";
 import { montarMensagemLoteAjuste } from "../../core/excecoes/loteAjusteWhats";
+import { RULES_META } from "../../core/excecoes/rules";
 import { pad2 } from "../../core/utils/date";
 
 const TXT_DARK: [number, number, number] = [31, 41, 55];
@@ -31,11 +32,25 @@ export type LotePDFEmpregado = {
   lote?: LoteRascunhoDoc;
 };
 
+export type EmpresaResolveItem = {
+  empregadoId: string;
+  empregadoNome: string;
+  cpf?: string;
+  date: string;
+  ruleId: string;
+  description: string;
+  detail?: string;
+  batidas?: string;
+};
+
 export type GerarLotesPDFParams = {
   ano: number;
   mes: number;        // 1..12
   restaurantNome: string;
   empregados: LotePDFEmpregado[];
+  // Apontamentos marcados como "empresa vai resolver na Sólides" — listados
+  // numa seção compacta no fim do PDF pra quem for resolver direto.
+  empresaResolve?: EmpresaResolveItem[];
 };
 
 // Substitui caracteres não suportados pelo Helvetica embutido do jsPDF
@@ -88,7 +103,7 @@ const NOMES_MES = [
 ];
 
 export async function gerarLotesPDF({
-  ano, mes, restaurantNome, empregados,
+  ano, mes, restaurantNome, empregados, empresaResolve = [],
 }: GerarLotesPDFParams): Promise<JsPDFType> {
   const [{ jsPDF }] = await Promise.all([
     import("jspdf"),
@@ -243,6 +258,116 @@ export async function gerarLotesPDF({
     doc.setFontSize(10);
     doc.setTextColor(...TXT_MUTED);
     doc.text("Nenhum lote em aberto.", MARGIN_X, yCursor + 5);
+  }
+
+  // ── Seção: Empresa vai resolver na Sólides ──────────────────────────
+  // Lista compacta agrupada por empregado, pra quem for entrar na Sólides
+  // e ajustar direto. Vai em PÁGINA NOVA pra separar visualmente.
+  if (empresaResolve.length > 0) {
+    doc.addPage();
+    yCursor = MARGIN_TOP;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(15);
+    doc.setTextColor(...TXT_DARK);
+    doc.text(
+      sanitize("Empresa vai resolver na Solides"),
+      MARGIN_X, yCursor,
+    );
+    yCursor += 6;
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.setTextColor(...TXT_MUTED);
+    doc.text(
+      sanitize(
+        "Apontamentos que a empresa marcou pra ajustar direto na Solides " +
+        "(nao foram enviados ao empregado). Use esta lista pra fazer os " +
+        "ajustes em lote no painel da Solides.",
+      ),
+      MARGIN_X, yCursor,
+      { maxWidth: pageW - 2 * MARGIN_X },
+    );
+    yCursor += 8;
+
+    doc.setDrawColor(229, 231, 235);
+    doc.line(MARGIN_X, yCursor, pageW - MARGIN_X, yCursor);
+    yCursor += 5;
+
+    // Agrupa por empregado
+    const porEmp = new Map<string, EmpresaResolveItem[]>();
+    for (const it of empresaResolve) {
+      const arr = porEmp.get(it.empregadoId) || [];
+      arr.push(it);
+      porEmp.set(it.empregadoId, arr);
+    }
+    const empsOrdenados = Array.from(porEmp.entries())
+      .map(([id, itens]) => ({ id, nome: itens[0].empregadoNome, cpf: itens[0].cpf, itens }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+
+    for (const e of empsOrdenados) {
+      ensureSpace(4);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(...TXT_DARK);
+      doc.text(sanitize(e.nome), MARGIN_X, yCursor);
+      yCursor += 5;
+
+      if (e.cpf) {
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(9);
+        doc.setTextColor(...TXT_MUTED);
+        doc.text(`CPF ${fmtCpf(e.cpf)}`, MARGIN_X, yCursor);
+        yCursor += 4;
+      }
+      yCursor += 1;
+
+      // Ordena itens por data ASC
+      const itens = [...e.itens].sort((a, b) => a.date.localeCompare(b.date));
+      const LINE_H = 4.5;
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(10);
+      doc.setTextColor(...TXT_DARK);
+
+      for (const it of itens) {
+        ensureSpace(3, LINE_H);
+        const [y, m, d] = it.date.split("-");
+        const dataBr = `${d}/${m}/${y}`;
+        const ruleMeta = RULES_META[it.ruleId as keyof typeof RULES_META];
+        const label = sanitize(ruleMeta?.label || it.ruleId);
+        const linha1 = sanitize(`- ${dataBr}  ${label}`);
+        doc.text(linha1, MARGIN_X, yCursor);
+        yCursor += LINE_H;
+
+        if (it.batidas) {
+          doc.setFontSize(9);
+          doc.setTextColor(...TXT_MUTED);
+          const linha2 = sanitize(`   Batidas: ${it.batidas}`);
+          const wrapped = doc.splitTextToSize(linha2, pageW - 2 * MARGIN_X - 4) as string[];
+          for (const w of wrapped) {
+            ensureSpace(1, LINE_H);
+            doc.text(w, MARGIN_X, yCursor);
+            yCursor += LINE_H;
+          }
+          doc.setFontSize(10);
+          doc.setTextColor(...TXT_DARK);
+        }
+        if (it.detail || it.description) {
+          doc.setFontSize(9);
+          doc.setTextColor(...TXT_MUTED);
+          const linha3 = sanitize(`   ${it.detail || it.description}`);
+          const wrapped = doc.splitTextToSize(linha3, pageW - 2 * MARGIN_X - 4) as string[];
+          for (const w of wrapped) {
+            ensureSpace(1, LINE_H);
+            doc.text(w, MARGIN_X, yCursor);
+            yCursor += LINE_H;
+          }
+          doc.setFontSize(10);
+          doc.setTextColor(...TXT_DARK);
+        }
+      }
+      yCursor += 5;
+    }
   }
 
   return doc;

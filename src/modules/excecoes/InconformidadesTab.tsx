@@ -1087,8 +1087,43 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         });
       }
       empregadosPdf.sort((a, b) => a.nome.localeCompare(b.nome));
-      if (empregadosPdf.length === 0) {
-        alert("Nenhum lote com apontamentos resolvidos no relatório atual.");
+
+      // Apontamentos marcados como "empresa vai resolver" no mês ativo.
+      // Varre o map de status × exceptions do displayedResult.
+      const empresaResolveItens: Array<{
+        empregadoId: string;
+        empregadoNome: string;
+        cpf?: string;
+        date: string;
+        ruleId: string;
+        description: string;
+        detail?: string;
+        batidas?: string;
+      }> = [];
+      if (displayedResult) {
+        for (const exc of displayedResult.exceptions) {
+          const cpfD = (exc.cpf || "").replace(/\D/g, "");
+          const empId = empIdByCpf.get(cpfD);
+          if (!empId) continue;
+          const k = apontamentoKey(empId, exc.date, exc.ruleId);
+          const st = statusApontamentoMap.get(k)?.status;
+          if (st !== "empresa_ajustara") continue;
+          const emp = empregados.find((e) => e.id === empId);
+          empresaResolveItens.push({
+            empregadoId: empId,
+            empregadoNome: emp?.nome || exc.employeeName,
+            cpf: emp?.cpf || exc.cpf,
+            date: exc.date,
+            ruleId: exc.ruleId,
+            description: exc.description,
+            detail: exc.detail,
+            batidas: exc.batidas,
+          });
+        }
+      }
+
+      if (empregadosPdf.length === 0 && empresaResolveItens.length === 0) {
+        alert("Nenhum lote nem item marcado para empresa resolver.");
         return;
       }
       const docPdf = await gerarLotesPDF({
@@ -1096,6 +1131,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         mes: anoMes.mes,
         restaurantNome: activeRestaurant.nome,
         empregados: empregadosPdf,
+        empresaResolve: empresaResolveItens,
       });
       // Em vez de baixar direto, gera blob URL e abre preview modal.
       const blob = docPdf.output("blob");
@@ -2067,25 +2103,32 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                 </button>
               );
             })}
-            {/* Botão de PDF — consolida todos os lotes abertos. Desabilita
-                quando não há nenhum lote no restaurante. */}
-            <button
-              type="button"
-              onClick={() => void gerarPdfLotes()}
-              disabled={lotesDocs.size === 0 || gerandoPdf}
-              className={`ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap ${
-                lotesDocs.size === 0 || gerandoPdf
-                  ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
-                  : "bg-rose-600 text-white hover:bg-rose-700 shadow-sm"
-              }`}
-              title={
-                lotesDocs.size === 0
-                  ? "Sem nenhum lote aberto no restaurante"
-                  : "Gera PDF com a lista de pedidos de ajuste em aberto de todos os empregados"
-              }
-            >
-              {gerandoPdf ? "⏳ Gerando…" : "📄 Gerar PDF dos lotes"}
-            </button>
+            {/* Botão de PDF — consolida todos os lotes abertos +
+                apontamentos marcados como "empresa resolverá". */}
+            {(() => {
+              const temEmpresaAjustara = Array.from(statusApontamentoMap.values())
+                .some(d => d.status === "empresa_ajustara");
+              const podeGerar = lotesDocs.size > 0 || temEmpresaAjustara;
+              return (
+                <button
+                  type="button"
+                  onClick={() => void gerarPdfLotes()}
+                  disabled={!podeGerar || gerandoPdf}
+                  className={`ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap ${
+                    !podeGerar || gerandoPdf
+                      ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                      : "bg-rose-600 text-white hover:bg-rose-700 shadow-sm"
+                  }`}
+                  title={
+                    !podeGerar
+                      ? "Sem nenhum lote aberto e nenhum item marcado como 'empresa resolverá'"
+                      : "Gera PDF com pedidos pro empregado + lista pra empresa resolver direto na Sólides"
+                  }
+                >
+                  {gerandoPdf ? "⏳ Gerando…" : "📄 Gerar PDF"}
+                </button>
+              );
+            })()}
           </div>
 
           {/* ── Filtro de empregados — só aparece quando 1+ área filtrada.
@@ -2561,7 +2604,11 @@ function computarSummary(
         const s = doc?.status ?? (diaLegadoTerminal ? "ciencia" : "aberto");
         if (!isStatusTerminal(s)) {
           temPendente = true;
-          if (s === "aguardando_ajuste") temAlgumAguardando = true;
+          // "aguardando" no chip do empregado agrega 2 estados não-terminais
+          // mas "em movimento": aguardando_ajuste (empregado vai resolver) +
+          // empresa_ajustara (empresa vai resolver). Ambos contam como
+          // progresso já feito pelo líder — só falta confirmar na Sólides.
+          if (s === "aguardando_ajuste" || s === "empresa_ajustara") temAlgumAguardando = true;
           else temNaoAguardandoEntreOsPendentes = true;
         }
       }
@@ -3325,6 +3372,7 @@ function ColaboradorBlock({
                 const isFalsoPositivo = statusAp === "nao_e_inconformidade";
                 const isCorrigidoSolides = statusAp === "corrigido_solides";
                 const isAguardandoAjuste = statusAp === "aguardando_ajuste";
+                const isEmpresaAjustara = statusAp === "empresa_ajustara";
                 const isTerminal = isStatusTerminal(statusAp);
                 const lockKeyAtual = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
                 const estaNoLote = !!loteDoEmpregado?.apontamentoChaves?.includes(lockKeyAtual);
@@ -3395,13 +3443,21 @@ function ColaboradorBlock({
                             📦 aguardando ajuste
                           </span>
                         )}
+                        {isEmpresaAjustara && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 font-semibold whitespace-nowrap"
+                            title="A empresa vai resolver este ponto direto na Sólides (não foi solicitado ao empregado). Quando o ajuste aparecer no próximo report, vira 'Corrigido no Sólides' automaticamente."
+                          >
+                            🏢 empresa resolverá
+                          </span>
+                        )}
                       </div>
                       {/* Wrapper das ações — alinhado à direita do header */}
                       <div className="flex items-center gap-1 shrink-0 ml-auto flex-wrap">
                         {(() => {
                           const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
                           const salvando = salvandoApontamento.has(lockKey);
-                          if (podeAnotar && !isTerminal && !isAguardandoAjuste) {
+                          if (podeAnotar && !isTerminal && !isAguardandoAjuste && !isEmpresaAjustara) {
                             if (categoria === "alinhamento") {
                               return (
                                 <>
@@ -3430,7 +3486,7 @@ function ColaboradorBlock({
                                 </>
                               );
                             }
-                            // Ajuste de batida: 2 botões — Lote (toggle) + falso positivo
+                            // Ajuste de batida: 3 botões — Lote (toggle) + Empresa resolve + falso positivo
                             return (
                               <>
                                 <button
@@ -3453,6 +3509,15 @@ function ColaboradorBlock({
                                 <button
                                   type="button"
                                   disabled={salvando}
+                                  onClick={() => void onAplicarStatusApontamento(e, "empresa_ajustara")}
+                                  className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                  title="A empresa vai resolver direto na Sólides — não vai pro empregado. Aparece no PDF na seção 'Empresa resolverá'."
+                                >
+                                  {salvando ? "⏳" : "🏢 Empresa resolve"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={salvando}
                                   onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
                                   className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
                                   title="Marcar como falso positivo — não é inconformidade."
@@ -3464,13 +3529,15 @@ function ColaboradorBlock({
                           }
                           return null;
                         })()}
-                        {podeAnotar && isAguardandoAjuste && (
+                        {podeAnotar && (isAguardandoAjuste || isEmpresaAjustara) && (
                           <button
                             type="button"
                             disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
                             onClick={() => void onReabrirApontamento(e)}
                             className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
-                            title="Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"
+                            title={isEmpresaAjustara
+                              ? "Desmarcar — sai do estado 'empresa resolverá' e volta a aberto"
+                              : "Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"}
                           >
                             ↩ desmarcar
                           </button>
