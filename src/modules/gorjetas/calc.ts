@@ -176,7 +176,11 @@ export function calcularDivisaoDia(
       it.valor = Math.round(it.pontos * valorPonto * 100) / 100;
       totalDistribuido += it.valor;
     }
-    totalDistribuido = Math.round(totalDistribuido * 100) / 100;
+    // Distribui os centavos restantes (método do maior resto): empregados
+    // com mais pontos recebem +0,01 antes, até zerar o resto. Garante que
+    // totalDistribuido === valorLiquido. Resolve o sumidouro de centavos
+    // que ficava por dia.
+    totalDistribuido = distribuirRestoEntreItens(itens, valorLiquido, totalDistribuido);
     return {
       itens,
       totalPontos,
@@ -212,10 +216,14 @@ export function calcularDivisaoDia(
 
     totalPontosGeral += pontosArea;
     const valorPonto = Math.floor((valorArea / pontosArea) * 100) / 100;
+    let totalDistribuidoArea = 0;
     for (const it of itensArea) {
       it.valor = Math.round(it.pontos * valorPonto * 100) / 100;
-      totalDistribuido += it.valor;
+      totalDistribuidoArea += it.valor;
     }
+    // Maior resto dentro da área (cada área tem sua cota e seu resto)
+    totalDistribuidoArea = distribuirRestoEntreItens(itensArea, valorArea, totalDistribuidoArea);
+    totalDistribuido += totalDistribuidoArea;
   }
   totalDistribuido = Math.round(totalDistribuido * 100) / 100;
 
@@ -226,6 +234,34 @@ export function calcularDivisaoDia(
     totalDistribuido,
     resto: Math.round((valorLiquido - totalDistribuido) * 100) / 100,
   };
+}
+
+// Distribui os centavos restantes entre os elegíveis. Método do maior resto:
+// quem tem mais pontos recebe +0,01 primeiro (em caso de empate, ordem
+// original = a do array, que segue ordem da escala). Se sobrar mais centavos
+// que itens (cenário raro), reinicia a lista. Modifica `itens` no lugar e
+// retorna o novo totalDistribuido arredondado em centavos.
+function distribuirRestoEntreItens(
+  itens: DivisaoItem[],
+  valorLiquido: number,
+  totalDistribuido: number,
+): number {
+  let restoCentavos = Math.round((valorLiquido - totalDistribuido) * 100);
+  if (restoCentavos <= 0 || itens.length === 0) {
+    return Math.round(totalDistribuido * 100) / 100;
+  }
+  // Cópia indexada pra ordenar por pontos preservando ordem em empate
+  const ordem = itens
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => b.it.pontos - a.it.pontos || a.i - b.i);
+  let idx = 0;
+  while (restoCentavos > 0) {
+    ordem[idx % ordem.length].it.valor =
+      Math.round((ordem[idx % ordem.length].it.valor + 0.01) * 100) / 100;
+    restoCentavos--;
+    idx++;
+  }
+  return Math.round(itens.reduce((s, it) => s + it.valor, 0) * 100) / 100;
 }
 
 export function calcularValorLiquido(valorBruto: number, taxRate: number): number {
