@@ -13,6 +13,7 @@ import { VincularAdmissaoModal } from "./VincularAdmissaoModal";
 import { horarioBadgeProps, statusHorarioEmpregado } from "./horarioStatus";
 import type { Area, Cargo, Empregado, Pessoa } from "../../core/types";
 import { AREAS, TIPO_VINCULO_LABEL } from "../../core/types";
+import { fmtBR } from "../../core/utils/date";
 
 type FiltroStatus = "ativas" | "inativas" | "todas";
 type FiltroEquipe = "todos" | "equipe" | "naoEquipe";
@@ -214,7 +215,11 @@ export function PessoasList({ restaurantId }: Props) {
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2 flex-wrap">
                     <span>{p.nome}</span>
-                    {p.ativa === false && <span className="text-xs text-gray-400">(inativa)</span>}
+                    {p.ativa === false && (
+                      <span className="text-xs text-gray-400">
+                        (inativa{emp?.demitidoEm ? ` · demitido em ${fmtBR(emp.demitidoEm)}` : ""})
+                      </span>
+                    )}
                     {p.isMaster && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold">Master</span>}
                     {emp && cargo && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold">
