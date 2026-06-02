@@ -121,25 +121,51 @@ export function aplicarAjustesNaEscala(
   escala: Record<string, Record<string, ScheduleStatus>>,
 ): { aplicados: number } {
   let aplicados = 0;
+  // DEBUG temporário — investigar por que ajustes Sólides não estão sendo
+  // reconhecidos (atestado, óbito, inversão de folga, etc).
+  const debugSamples: unknown[] = [];
+  let totalAjustes = 0;
+  let rejeitadosStatus = 0;
+  let rejeitadosFaltaNJ = 0;
+  let rejeitadosDataInvalida = 0;
+  let rejeitadosForaRange = 0;
   for (const [empId, sid] of Object.entries(solidesIdByEmpId)) {
     const ajs = adjustments[String(sid)];
     if (!Array.isArray(ajs) || ajs.length === 0) continue;
+    totalAjustes += ajs.length;
     const perDate = escala[empId];
     if (!perDate) continue;
     for (const aj of ajs) {
-      if (aj.status !== "APROVADO") continue;
-      if (eFaltaNaoJustificada(razaoDoAjuste(aj))) continue;
+      // Coleta sample dos primeiros 5 ajustes brutos pra inspeção
+      if (debugSamples.length < 5) {
+        debugSamples.push({ empId, sid, raw: aj });
+      }
+      if (aj.status !== "APROVADO") { rejeitadosStatus++; continue; }
+      if (eFaltaNaoJustificada(razaoDoAjuste(aj))) { rejeitadosFaltaNJ++; continue; }
       const a = parseAdjustmentDate(aj.startDate);
       const b = parseAdjustmentDate(aj.endDate);
-      if (!a || !b) continue;
+      if (!a || !b) { rejeitadosDataInvalida++; continue; }
       const dias = expandirRange(a, b);
+      let aplicouAlgum = false;
       for (const d of dias) {
         if (perDate[d] !== undefined) {
           perDate[d] = "folga";
           aplicados += 1;
+          aplicouAlgum = true;
         }
       }
+      if (!aplicouAlgum) rejeitadosForaRange++;
     }
   }
+  // eslint-disable-next-line no-console
+  console.log("[DEBUG aplicarAjustes]", {
+    totalAjustes,
+    aplicados,
+    rejeitadosStatus,
+    rejeitadosFaltaNJ,
+    rejeitadosDataInvalida,
+    rejeitadosForaRange,
+    samples: debugSamples,
+  });
   return { aplicados };
 }
