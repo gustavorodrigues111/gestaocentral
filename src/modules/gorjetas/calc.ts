@@ -192,8 +192,13 @@ export function calcularDivisaoDia(
 
   // Modo "area_points":
   // a. calcula % efetivo por área (com N empregados registrados ativos)
-  // b. distribui o líquido entre áreas
-  // c. dentro de cada área, divide por pontos
+  // b. classifica áreas com pct>0 em "com gente" e "órfã" (pct mas sem
+  //    elegível no dia — folga/falta de todos da área). O pct das órfãs é
+  //    redistribuído pras com gente proporcionalmente aos pcts originais
+  //    delas. Princípio de negócio: se Limpeza (2,5%) não tem ninguém no dia,
+  //    esses 2,5% "voltam" pra Cozinha+Salão+Bar conforme as %s deles. Sem
+  //    isso, o valor da área órfã virava buraco e não era distribuído.
+  // c. dentro de cada área com gente, divide por pontos
   const cargoMapForCount = Object.fromEntries(
     cargos.map(c => [c.id, { area: c.area, tipoVinculo: c.tipoVinculo }])
   );
@@ -203,29 +208,56 @@ export function calcularDivisaoDia(
   });
   const finalPct = computeAreaPercentages(splitVersion?.percentages, empregadosPorArea);
 
-  let totalDistribuido = 0;
-  let totalPontosGeral = 0;
+  // Classifica áreas em "com gente" e "órfã"
+  const areasComGente: { area: Area; pct: number; itens: DivisaoItem[]; pontos: number }[] = [];
+  let pctOrfaoTotal = 0;
   for (const area of AREAS) {
     const pctArea = finalPct[area] || 0;
-    const valorArea = Math.round((valorLiquido * pctArea / 100) * 100) / 100;
-    if (valorArea <= 0) continue;
-
+    if (pctArea <= 0) continue;
     const itensArea = itens.filter(i => i.area === area);
     const pontosArea = itensArea.reduce((s, i) => s + i.pontos, 0);
-    if (pontosArea <= 0) continue;
+    if (pontosArea <= 0) {
+      pctOrfaoTotal += pctArea;
+      continue;
+    }
+    areasComGente.push({ area, pct: pctArea, itens: itensArea, pontos: pontosArea });
+  }
 
-    totalPontosGeral += pontosArea;
-    const valorPonto = Math.floor((valorArea / pontosArea) * 100) / 100;
+  if (areasComGente.length === 0) {
+    // Sem ninguém em nenhuma área com pct>0 → todo valor vira resto
+    return { itens, totalPontos: 0, valorPonto: 0, totalDistribuido: 0, resto: valorLiquido };
+  }
+
+  const somaPctComGente = areasComGente.reduce((s, a) => s + a.pct, 0);
+
+  let totalDistribuido = 0;
+  let totalPontosGeral = 0;
+  for (const a of areasComGente) {
+    // pctEfetivo = pct original + porção redistribuída do órfão (proporcional
+    // ao peso original dessa área entre as áreas com gente). Sem órfão,
+    // pctEfetivo === a.pct.
+    const pctEfetivo = pctOrfaoTotal > 0
+      ? a.pct + (a.pct / somaPctComGente) * pctOrfaoTotal
+      : a.pct;
+    const valorArea = Math.round((valorLiquido * pctEfetivo / 100) * 100) / 100;
+
+    totalPontosGeral += a.pontos;
+    const valorPonto = Math.floor((valorArea / a.pontos) * 100) / 100;
     let totalDistribuidoArea = 0;
-    for (const it of itensArea) {
+    for (const it of a.itens) {
       it.valor = Math.round(it.pontos * valorPonto * 100) / 100;
       totalDistribuidoArea += it.valor;
     }
-    // Maior resto dentro da área (cada área tem sua cota e seu resto)
-    totalDistribuidoArea = distribuirRestoEntreItens(itensArea, valorArea, totalDistribuidoArea);
+    totalDistribuidoArea = distribuirRestoEntreItens(a.itens, valorArea, totalDistribuidoArea);
     totalDistribuido += totalDistribuidoArea;
   }
   totalDistribuido = Math.round(totalDistribuido * 100) / 100;
+
+  // Resíduo entre áreas (arredondamento dos valorArea de cada área não soma
+  // exato com valorLiquido). Distribui os centavos finais entre TODOS os
+  // itens em ordem global de pontos. Garante totalDistribuido === valorLiquido
+  // sempre.
+  totalDistribuido = distribuirRestoEntreItens(itens, valorLiquido, totalDistribuido);
 
   return {
     itens,

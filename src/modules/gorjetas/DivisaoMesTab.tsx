@@ -215,10 +215,6 @@ export function DivisaoMesTab({
   const discrepanciaDetalhe = useMemo(() => {
     const diasSemDistribuicao: { date: string; valor: number }[] = [];
     let arredondamentoCentavos = 0;
-    // DEBUG: vamos capturar a contribuição de cada gorjeta pro leak
-    const debugLog: { date: string; bruto: number; tax: number; liquido: number; distribuido: number; diff: number; itensCount: number; publicada: boolean }[] = [];
-    let somaLiquido = 0;
-    let somaDistribuido = 0;
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
       const taxRate = (g.publicada && g.divisaoSnapshot)
@@ -240,36 +236,12 @@ export function DivisaoMesTab({
         itensCount = r.itens.length;
       }
       const resto = valorLiquido - totalDistribuido;
-      somaLiquido += valorLiquido;
-      somaDistribuido += totalDistribuido;
-      if (Math.abs(resto) > 0.001 || itensCount === 0) {
-        debugLog.push({
-          date: g.date,
-          bruto: g.valorBruto,
-          tax: taxRate,
-          liquido: valorLiquido,
-          distribuido: totalDistribuido,
-          diff: Math.round(resto * 100) / 100,
-          itensCount,
-          publicada: !!g.publicada,
-        });
-      }
       if (itensCount === 0 && valorLiquido > 0.005) {
         diasSemDistribuicao.push({ date: g.date, valor: Math.round(valorLiquido * 100) / 100 });
       } else if (resto > 0.005) {
         arredondamentoCentavos += resto;
       }
     }
-    // eslint-disable-next-line no-console
-    console.log("[DEBUG discrepancia gorjetas]", {
-      somaLiquido: Math.round(somaLiquido * 100) / 100,
-      somaDistribuido: Math.round(somaDistribuido * 100) / 100,
-      diff: Math.round((somaLiquido - somaDistribuido) * 100) / 100,
-      arredondamentoCentavos: Math.round(arredondamentoCentavos * 100) / 100,
-      qtdComDiff: debugLog.length,
-      // mostra todos os dias com leak — quero ver tudo
-      detalhes: debugLog,
-    });
     diasSemDistribuicao.sort((a, b) => a.date.localeCompare(b.date));
     const totalSemDistribuicao = diasSemDistribuicao.reduce((s, d) => s + d.valor, 0);
     return {
