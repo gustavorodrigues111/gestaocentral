@@ -39,6 +39,10 @@ export type GenerateReportResult = {
   // Permite a UI mostrar "dia sem inconformidade" em vez de esconder dias
   // analisados mas sem exception.
   diasAnalisadosPorCpf: Record<string, string[]>;
+  // Escala EFETIVA (depois de aplicar ajustes Sólides) por CPF (só dígitos) →
+  // data → status. Inclui só empregados que batem ponto. Usado pela UI de
+  // Inconformidades pra listar todos os dias do mês com estado visual correto.
+  escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>>;
 };
 
 // "2026-05-10" + n → "2026-05-1X" (lida com virada de mês/ano via Date local)
@@ -87,6 +91,11 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
   const matchedSolidesIds = new Set<number>();
   let diasAnalisados = 0;
   const diasAnalisadosPorCpf: Record<string, string[]> = {};
+  // Escala efetiva por CPF — preenchida só pra empregados que batem ponto.
+  // Cada mapa por data é a escala JÁ COM os ajustes Sólides aplicados (folga/
+  // férias/atestado/abono colapsam em "folga" — perda de informação aceitável
+  // pra v1 dessa visão; refinar depois preservando razão original).
+  const escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>> = {};
 
   // ── 1) Processa cada empregado do Planejamento ──
   for (const emp of empregados) {
@@ -98,6 +107,20 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
 
     const cpf = onlyDigits(emp.cpf);
     const escalaEmp = escalaPorEmpregado[emp.id] || {};
+
+    // Snapshot da escala efetiva pra esse empregado, restrita ao range do
+    // relatório. Mesmo que ele não tenha datas pra analisar abaixo (sem
+    // marcação e sem dia de trabalho previsto no range), o snapshot ainda
+    // permite renderizar folgas/férias/etc na UI.
+    if (cpf) {
+      const perDateFiltrado: Record<string, ScheduleStatus> = {};
+      for (const [d, st] of Object.entries(escalaEmp)) {
+        if (d >= startDate && d <= endDate) perDateFiltrado[d] = st;
+      }
+      if (Object.keys(perDateFiltrado).length > 0) {
+        escalaEfetivaPorCpf[cpf] = perDateFiltrado;
+      }
+    }
 
     const solidesId = cpf ? solidesIdPorCpf.get(cpf) : undefined;
     const metricsByDate = solidesId != null ? metricsPorSolidesId.get(solidesId) : undefined;
@@ -177,5 +200,5 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       a.ruleId.localeCompare(b.ruleId),
   );
 
-  return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf };
+  return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf, escalaEfetivaPorCpf };
 }

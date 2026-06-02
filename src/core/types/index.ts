@@ -2199,6 +2199,12 @@ export type RelatorioSnapshot = {
   // inconformidade" pros dias que foram avaliados mas não geraram exceção.
   // Opcional pra retrocompatibilidade — caches antigos não têm esse campo.
   diasAnalisadosPorCpf?: Record<string, string[]>;
+  // Snapshot da escala EFETIVA (depois de aplicar ajustes Sólides) por CPF →
+  // data → status. Permite a UI listar todos os dias do mês por empregado com
+  // estado visual correto (trabalho/folga/ajuste aprovado/etc), não só dias
+  // com exception. Inclui só empregados que batem ponto. Opcional pra
+  // retrocompat — caches antigos não têm esse campo e a UI cai no modo antigo.
+  escalaEfetivaPorCpf?: Record<string, Record<string, ScheduleStatus>>;
 };
 
 export type ExcecaoStatusSemana = {

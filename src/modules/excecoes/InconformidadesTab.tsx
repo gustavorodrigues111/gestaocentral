@@ -898,6 +898,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     // Usa Set por cpf pra deduplicar quando 2 semanas se sobrepõem no mesmo
     // dia (não devia acontecer, mas é defensivo).
     const diasAnalisadosPorCpfSet = new Map<string, Set<string>>();
+    // Agrega escala efetiva por CPF + data, merging entre semanas. Cache mais
+    // RECENTE (geradoEm maior) ganha quando há conflito no mesmo dia — isso
+    // garante que regenerar uma semana reflete o estado novo.
+    const escalaEfetivaPorCpfAcc = new Map<string, Map<string, { st: ScheduleStatus; geradoEm: string }>>();
     cachesDoMes.forEach(c => {
       const cache = c.relatorioCache;
       if (!cache) return;
@@ -924,16 +928,37 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         }
         diasAnalisadosPorCpfSet.set(cpf, set);
       }
+      const efetivaPorCpf = (cache.escalaEfetivaPorCpf || {}) as Record<string, Record<string, ScheduleStatus>>;
+      const geradoEm = cache.geradoEm || "";
+      for (const [cpf, perDate] of Object.entries(efetivaPorCpf)) {
+        let m = escalaEfetivaPorCpfAcc.get(cpf);
+        if (!m) {
+          m = new Map();
+          escalaEfetivaPorCpfAcc.set(cpf, m);
+        }
+        for (const [d, st] of Object.entries(perDate)) {
+          if (!(d || "").startsWith(mesPrefix)) continue;
+          const prev = m.get(d);
+          if (!prev || geradoEm > prev.geradoEm) m.set(d, { st, geradoEm });
+        }
+      }
     });
     const diasAnalisadosPorCpf: Record<string, string[]> = {};
     for (const [cpf, set] of diasAnalisadosPorCpfSet) {
       diasAnalisadosPorCpf[cpf] = Array.from(set).sort();
+    }
+    const escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>> = {};
+    for (const [cpf, m] of escalaEfetivaPorCpfAcc) {
+      const perDate: Record<string, ScheduleStatus> = {};
+      for (const [d, { st }] of m) perDate[d] = st;
+      escalaEfetivaPorCpf[cpf] = perDate;
     }
     return {
       exceptions,
       unmatched: Array.from(unmatchedMap.values()),
       diasAnalisados,
       diasAnalisadosPorCpf,
+      escalaEfetivaPorCpf,
     };
   }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
 
@@ -1295,6 +1320,11 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             unmatched: report.unmatched,
             diasAnalisados: report.diasAnalisados,
             diasAnalisadosPorCpf: report.diasAnalisadosPorCpf,
+            // Escala efetiva pós-ajustes — usado pela UI pra listar todos os
+            // dias do mês por empregado, não só os com exception. Caches
+            // antigos sem esse campo caem no modo legado (só dias com exc +
+            // dias verdes via diasAnalisadosPorCpf).
+            escalaEfetivaPorCpf: report.escalaEfetivaPorCpf,
           },
           me || undefined,
         );
@@ -1447,6 +1477,67 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       return true;
     });
   }, [displayedResult, filtroAreas, filtroEmpregados, areaByEmpId, empIdByCpf]);
+
+  // Base de empregados pra listar como "blocos de empregado" — só os que
+  // batem ponto, dentro dos filtros de área/empregado. Memoizada porque
+  // alimenta a montagem de DayRows (potencial N × M).
+  const basePessoas = useMemo(() => {
+    const cargoById = new Map<string, Cargo>();
+    for (const c of cargos) cargoById.set(c.id, c);
+    return empregados
+      .filter((emp) => {
+        const cargo = cargoById.get(emp.cargoId);
+        // Só lista os que batem ponto (helper já considera tipoVinculo +
+        // override individual + override de cargo).
+        if (!empregadoBatePonto(emp, cargo)) return false;
+        if (filtroAreas.size > 0) {
+          const area = areaByEmpId.get(emp.id);
+          if (area == null || !filtroAreas.has(area)) return false;
+        }
+        if (filtroEmpregados.size > 0) {
+          if (!filtroEmpregados.has(emp.id)) return false;
+        }
+        return true;
+      })
+      .map((emp) => ({ id: emp.id, nome: emp.nome, cpf: emp.cpf || "" }));
+  }, [empregados, cargos, filtroAreas, filtroEmpregados, areaByEmpId]);
+
+  // Dias do mês ativo até hoje (sem futuro), filtrados pelas semanas
+  // selecionadas se houver. Compartilhado entre todos os blocos.
+  const diasDoMes = useMemo(() => {
+    const todos = diasDoMesAteHoje(anoMes.ano, anoMes.mes, todayYmd());
+    if (semanasFiltro.size === 0) return todos;
+    return todos.filter((d) =>
+      semanasMes.some(
+        (w) => semanasFiltro.has(w.index) && w.weekStart <= d && w.weekEnd >= d,
+      ),
+    );
+  }, [anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
+
+  // Grupos calculados — memoizado pra evitar refazer o trabalho a cada toggle
+  // de expansão. Depende de tudo que alimenta render.
+  const grupos = useMemo(() => {
+    if (!displayedResult) return [];
+    return agruparPorColabDate(
+      excecoesFiltradas,
+      empIdByCpf,
+      basePessoas,
+      displayedResult.escalaEfetivaPorCpf || {},
+      diasDoMes,
+      apontamentosPorChave,
+      statusApontamentoMap,
+      statusDiaMap,
+    );
+  }, [
+    displayedResult,
+    excecoesFiltradas,
+    empIdByCpf,
+    basePessoas,
+    diasDoMes,
+    apontamentosPorChave,
+    statusApontamentoMap,
+    statusDiaMap,
+  ]);
 
   return (
     <div>
@@ -1760,22 +1851,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           )}
 
           {/* ── Lista agrupada por colaborador → data ── */}
-          {displayedResult.exceptions.length === 0 ? (
+          {grupos.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="text-4xl mb-3">✅</div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">
-                Nenhuma exceção no período
+                Nenhum empregado no período
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                Marcações e escala bateram sem não-conformidades.
+                Atualize o relatório ou ajuste os filtros.
               </p>
             </div>
           ) : (
             <div className="space-y-4">
-              {agruparPorColabDate(excecoesFiltradas, empIdByCpf).map((grupo) => {
+              {grupos.map((grupo) => {
                 // Dias analisados do empregado dentro do filtro (mês ou
                 // semanas selecionadas). Vem do cache; serve pra mostrar
                 // "✓ Sem inconformidade" em dias avaliados sem exception.
+                // Só usado no modo legado (sem escalaEfetivaPorCpf).
                 const cpfD = (grupo.cpf || "").replace(/\D/g, "");
                 const diasAnalisados = (
                   displayedResult?.diasAnalisadosPorCpf?.[cpfD] || []
@@ -1904,6 +1996,28 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 }
 
 // ─── Agrupamento Colaborador → Data → exceções ─────────────────────────────
+// Linha individual de dia do empregado — discriminated union pra render lidar
+// com cada estado visual sem ambiguidade.
+type DayRow =
+  | { date: string; tipo: "trabalho_ok" }
+  | { date: string; tipo: "trabalho_incon"; exceptions: ExceptionRecord[] }
+  | { date: string; tipo: "folga" }
+  // ferias/atestado/abono/falta_j — hoje todos colapsam em "folga" no
+  // aplicarAjustesNaEscala, então essa linha vira "Ajuste aprovado" genérico.
+  // Refinar depois preservando razão original (#TODO).
+  | { date: string; tipo: "ajuste_aprovado" }
+  | { date: string; tipo: "compensado" }       // status "comp"
+  | { date: string; tipo: "trabalho_comp" }    // status "comp_trab"
+  | { date: string; tipo: "desconhecido" };
+
+type DaySummary = {
+  trabalho: number;       // trabalho_ok + trabalho_comp
+  folga: number;          // folga + compensado
+  ajusteAprovado: number; // ajuste_aprovado
+  inconformidades: number;
+  pendentes: number;      // dias incon com algum apontamento NÃO terminal
+};
+
 type GrupoColab = {
   key: string;
   empregadoId: string;
@@ -1911,7 +2025,15 @@ type GrupoColab = {
   cpf: string;
   totalExc: number;
   totalGraves: number;
+  // Compat antigo — render usa só pra cache de exception por data
   porData: { date: string; exc: ExceptionRecord[] }[];
+  // NOVO: lista completa de dias do mês até hoje (vazia em modo legado, quando
+  // o cache não traz escalaEfetivaPorCpf).
+  dias: DayRow[];
+  summary: DaySummary;
+  // Indica se a visualização completa está disponível pra esse empregado.
+  // false ⇒ render cai no modo legado (só dias com exception + dias verdes).
+  vistaCompleta: boolean;
 };
 
 // F6 — Detecção retroativa: pra cada exception de faltaSemAjuste/
@@ -1986,49 +2108,244 @@ async function detectarAjustesManuaisRetroativos(input: {
   }
 }
 
+// Lista todos os dias do mês ativo até hoje (YYYY-MM-DD). Sem futuro.
+function diasDoMesAteHoje(ano: number, mes: number, hojeYmd: string): string[] {
+  const out: string[] = [];
+  const ultimoDia = new Date(ano, mes, 0).getDate(); // mes 1-indexed, dia 0 = último do mês anterior → trick
+  for (let d = 1; d <= ultimoDia; d++) {
+    const ymd = `${ano}-${pad2(mes)}-${pad2(d)}`;
+    if (ymd > hojeYmd) break;
+    out.push(ymd);
+  }
+  return out;
+}
+
+// Monta lista de DayRow pra UM empregado dado seu CPF + estado da escala
+// efetiva + exceptions já agrupadas por data.
+function montarDiasDoEmpregado(
+  cpf: string,
+  empId: string,
+  escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>>,
+  exceptionsByEmpDate: Map<string /* empId_date */, ExceptionRecord[]>,
+  exceptionsByCpfDate: Map<string /* cpf_date */, ExceptionRecord[]>,
+  diasMes: string[],
+): DayRow[] {
+  const escala = escalaEfetivaPorCpf[cpf] || {};
+  const rows: DayRow[] = [];
+  for (const date of diasMes) {
+    // Tenta resolver exceções 1º por empId (chave estável) e fallback por cpf
+    // (modo "Mês todo" pode ter exception sem empId quando o CPF não casou).
+    const exc =
+      (empId ? exceptionsByEmpDate.get(`${empId}_${date}`) : undefined) ||
+      exceptionsByCpfDate.get(`${cpf}_${date}`) ||
+      [];
+    const st = escala[date];
+    if (exc.length > 0) {
+      rows.push({ date, tipo: "trabalho_incon", exceptions: exc });
+      continue;
+    }
+    if (st === "trabalho" || st === "freela") {
+      rows.push({ date, tipo: "trabalho_ok" });
+    } else if (st === "folga") {
+      // Hoje aplicarAjustesNaEscala colapsa ferias/atestado/abono/falta_j
+      // em "folga" — não dá pra distinguir aqui. Mostra como folga simples
+      // por enquanto. (Pra v2: preservar razão e diferenciar.)
+      rows.push({ date, tipo: "folga" });
+    } else if (st === "ferias" || st === "falta_j") {
+      rows.push({ date, tipo: "ajuste_aprovado" });
+    } else if (st === "comp") {
+      rows.push({ date, tipo: "compensado" });
+    } else if (st === "comp_trab") {
+      rows.push({ date, tipo: "trabalho_comp" });
+    } else if (st === "falta_i") {
+      // Falta não-justificada sem exception é raro (geralmente vira
+      // "faltaSemAjuste" no relatório). Trata como desconhecido pra não
+      // mostrar verde indevidamente.
+      rows.push({ date, tipo: "desconhecido" });
+    } else {
+      rows.push({ date, tipo: "desconhecido" });
+    }
+  }
+  return rows;
+}
+
+function computarSummary(
+  dias: DayRow[],
+  empId: string,
+  apontamentosPorChave: Map<string, ApontamentoFuncionario>,
+  statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>,
+  statusDiaMap?: Map<string, PontoDiaStatusDoc>,
+): DaySummary {
+  let trabalho = 0, folga = 0, ajusteAprovado = 0, inconformidades = 0, pendentes = 0;
+  for (const r of dias) {
+    if (r.tipo === "trabalho_ok" || r.tipo === "trabalho_comp") trabalho++;
+    else if (r.tipo === "folga" || r.tipo === "compensado") folga++;
+    else if (r.tipo === "ajuste_aprovado") ajusteAprovado++;
+    else if (r.tipo === "trabalho_incon") {
+      inconformidades++;
+      // "Pendente" = algum apontamento NÃO-terminal nesse dia.
+      const diaLegado = statusDiaMap?.get(`${empId}_${r.date}`);
+      const diaLegadoTerminal =
+        diaLegado?.status === "tratado" || diaLegado?.status === "corrigido_solides";
+      const dedupRules = new Set(r.exceptions.map(e => e.ruleId));
+      let temPendente = false;
+      for (const ruleId of dedupRules) {
+        const doc = statusApontamentoMap.get(apontamentoKey(empId, r.date, ruleId));
+        const s = doc?.status ?? (diaLegadoTerminal ? "ciencia" : "aberto");
+        if (!isStatusTerminal(s)) { temPendente = true; break; }
+      }
+      // Em modo legado (sem doc): também considera pendente se não há
+      // sinal terminal explícito — assim o badge vermelho aparece pra
+      // chamar atenção.
+      void apontamentosPorChave;
+      if (temPendente) pendentes++;
+    }
+  }
+  return { trabalho, folga, ajusteAprovado, inconformidades, pendentes };
+}
+
 // `empIdByCpf` resolve o ID do Planejamento (string) — exc.employeeId é o
 // ID da Sólides (number), inadequado pra ancorar apontamentos.
+//
+// V2: agora recebe TODA a base de empregados que batem ponto (após filtros de
+// área/empregado), o snapshot da escala efetiva + a lista de dias do mês ativo
+// até hoje. Empregados sem exception aparecem na lista quando há vista
+// completa disponível. Empregados sem escalaEfetiva → fallback antigo (só
+// dias com exception + verdes via diasAnalisadosPorCpf).
 function agruparPorColabDate(
   rows: ExceptionRecord[],
   empIdByCpf: Map<string, string>,
+  basePessoas: Array<{ id: string; nome: string; cpf: string }>,
+  escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>>,
+  diasMes: string[],
+  apontamentosPorChave: Map<string, ApontamentoFuncionario>,
+  statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>,
+  statusDiaMap?: Map<string, PontoDiaStatusDoc>,
 ): GrupoColab[] {
+  // Indexa exceptions por (empId, date) e (cpf, date) pra resolução rápida.
+  const exceptionsByEmpDate = new Map<string, ExceptionRecord[]>();
+  const exceptionsByCpfDate = new Map<string, ExceptionRecord[]>();
+  // Acumulador de "empregado avulso" — caiu no relatório mas não está em
+  // basePessoas (CPF não casou no Planejamento). Mantido pra não esconder.
   type Acc = {
     empregadoId: string;
     nome: string;
     cpf: string;
     porData: Map<string, ExceptionRecord[]>;
   };
-  const map = new Map<string, Acc>();
+  const avulsoMap = new Map<string, Acc>();
+  const cpfsDaBase = new Set(basePessoas.map(p => (p.cpf || "").replace(/\D/g, "")));
   for (const e of rows) {
     const cpfD = (e.cpf || "").replace(/\D/g, "");
     const empId = empIdByCpf.get(cpfD) ?? "";
-    // Chave normalizada: prefere CPF puro (estável entre semanas),
-    // fallback pra empregadoId Sólides + nome. Antes era
-    // `${employeeId}_${cpf}` que duplicava quando CPF vinha formatado
-    // diferente ou employeeId era 0 em uma das semanas (modo "Mês todo").
-    const k = cpfD || `s_${e.employeeId}_${e.employeeName}`;
-    let g = map.get(k);
-    if (!g) {
-      g = { empregadoId: empId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
-      map.set(k, g);
+    if (empId) {
+      const k = `${empId}_${e.date}`;
+      const arr = exceptionsByEmpDate.get(k) ?? [];
+      arr.push(e);
+      exceptionsByEmpDate.set(k, arr);
     }
-    const arr = g.porData.get(e.date) ?? [];
-    arr.push(e);
-    g.porData.set(e.date, arr);
+    if (cpfD) {
+      const k = `${cpfD}_${e.date}`;
+      const arr = exceptionsByCpfDate.get(k) ?? [];
+      arr.push(e);
+      exceptionsByCpfDate.set(k, arr);
+    }
+    // Se o empregado não está na basePessoas (ex.: cargo não bate ponto +
+    // alguma marcação espúria), garante um grupo "avulso" pra ele aparecer
+    // como antes.
+    if (!cpfD || !cpfsDaBase.has(cpfD)) {
+      const k = cpfD || `s_${e.employeeId}_${e.employeeName}`;
+      let g = avulsoMap.get(k);
+      if (!g) {
+        g = { empregadoId: empId, nome: e.employeeName, cpf: e.cpf, porData: new Map() };
+        avulsoMap.set(k, g);
+      }
+      const arr = g.porData.get(e.date) ?? [];
+      arr.push(e);
+      g.porData.set(e.date, arr);
+    }
   }
-  return Array.from(map.entries())
-    .map<GrupoColab>(([key, g]) => {
-      const porData = Array.from(g.porData.entries())
+
+  const out: GrupoColab[] = [];
+
+  // 1) Empregados da base (batem ponto + passaram filtros)
+  for (const p of basePessoas) {
+    const cpfD = (p.cpf || "").replace(/\D/g, "");
+    const temEscala = !!escalaEfetivaPorCpf[cpfD] && Object.keys(escalaEfetivaPorCpf[cpfD]).length > 0;
+    // Sem cache de escala: cai no modo legado — só renderiza se tem exception.
+    if (!temEscala) {
+      const excDoEmp = rows.filter(e => (e.cpf || "").replace(/\D/g, "") === cpfD);
+      if (excDoEmp.length === 0) continue;
+      const porDataMap = new Map<string, ExceptionRecord[]>();
+      for (const e of excDoEmp) {
+        const arr = porDataMap.get(e.date) ?? [];
+        arr.push(e);
+        porDataMap.set(e.date, arr);
+      }
+      const porData = Array.from(porDataMap.entries())
         .map(([date, exc]) => ({ date, exc }))
         .sort((a, b) => a.date.localeCompare(b.date));
       const total = porData.reduce((s, d) => s + d.exc.length, 0);
-      const graves = porData.reduce(
-        (s, d) => s + d.exc.filter((e) => e.severity === "grave").length,
-        0,
-      );
-      return { key, empregadoId: g.empregadoId, nome: g.nome, cpf: g.cpf, totalExc: total, totalGraves: graves, porData };
-    })
-    .sort((a, b) => a.nome.localeCompare(b.nome));
+      const graves = porData.reduce((s, d) => s + d.exc.filter(e => e.severity === "grave").length, 0);
+      out.push({
+        key: cpfD || p.id,
+        empregadoId: p.id,
+        nome: p.nome,
+        cpf: p.cpf,
+        totalExc: total,
+        totalGraves: graves,
+        porData,
+        dias: [],
+        summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0 },
+        vistaCompleta: false,
+      });
+      continue;
+    }
+    // Vista completa: monta TODOS os dias do mês até hoje
+    const dias = montarDiasDoEmpregado(cpfD, p.id, escalaEfetivaPorCpf, exceptionsByEmpDate, exceptionsByCpfDate, diasMes);
+    const summary = computarSummary(dias, p.id, apontamentosPorChave, statusApontamentoMap, statusDiaMap);
+    // porData (compat) — só dias com exception
+    const porData = dias
+      .filter((r): r is Extract<DayRow, { tipo: "trabalho_incon" }> => r.tipo === "trabalho_incon")
+      .map(r => ({ date: r.date, exc: r.exceptions }));
+    const totalExc = porData.reduce((s, d) => s + d.exc.length, 0);
+    const totalGraves = porData.reduce((s, d) => s + d.exc.filter(e => e.severity === "grave").length, 0);
+    out.push({
+      key: cpfD || p.id,
+      empregadoId: p.id,
+      nome: p.nome,
+      cpf: p.cpf,
+      totalExc,
+      totalGraves,
+      porData,
+      dias,
+      summary,
+      vistaCompleta: true,
+    });
+  }
+
+  // 2) Avulsos (não estão na base, mas têm exception) — render no modo legado.
+  for (const [key, g] of avulsoMap) {
+    const porData = Array.from(g.porData.entries())
+      .map(([date, exc]) => ({ date, exc }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    const total = porData.reduce((s, d) => s + d.exc.length, 0);
+    const graves = porData.reduce((s, d) => s + d.exc.filter(e => e.severity === "grave").length, 0);
+    out.push({
+      key,
+      empregadoId: g.empregadoId,
+      nome: g.nome,
+      cpf: g.cpf,
+      totalExc: total,
+      totalGraves: graves,
+      porData,
+      dias: [],
+      summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0 },
+      vistaCompleta: false,
+    });
+  }
+
+  return out.sort((a, b) => a.nome.localeCompare(b.nome));
 }
 
 function fmtCpf(d: string): string {
@@ -2109,13 +2426,33 @@ function ColaboradorBlock({
           </div>
         </div>
         <div className="flex items-center gap-2 text-[11px] flex-wrap" onClick={(e) => e.stopPropagation()}>
-          <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
-            {grupo.totalExc} exc.
-          </span>
-          {grupo.totalGraves > 0 && (
-            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-semibold">
-              {grupo.totalGraves} grave(s)
+          {grupo.vistaCompleta ? (
+            <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-semibold tabular-nums">
+              {grupo.summary.trabalho} trab · {grupo.summary.folga} folga · {grupo.summary.ajusteAprovado} ajuste
+              {grupo.summary.inconformidades > 0 && (
+                <>
+                  {" · "}
+                  <span className={grupo.summary.pendentes > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-emerald-700 dark:text-emerald-400"}>
+                    {grupo.summary.pendentes > 0 ? "⚠ " : "✓ "}
+                    {grupo.summary.inconformidades} incon.
+                    {grupo.summary.inconformidades > 0 && (
+                      <> ({grupo.summary.inconformidades - grupo.summary.pendentes}/{grupo.summary.inconformidades} tratadas)</>
+                    )}
+                  </span>
+                </>
+              )}
             </span>
+          ) : (
+            <>
+              <span className="px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 font-semibold">
+                {grupo.totalExc} exc.
+              </span>
+              {grupo.totalGraves > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300 font-semibold">
+                  {grupo.totalGraves} grave(s)
+                </span>
+              )}
+            </>
           )}
           {podeAnotar && (
             <button
@@ -2173,22 +2510,46 @@ function ColaboradorBlock({
       {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
         {(() => {
-          // Junta dias com exception + dias só analisados (verdes).
-          const datasComExc = new Set(grupo.porData.map(g => g.date));
-          const datasVerdes = (diasAnalisados || []).filter(d => !datasComExc.has(d));
-          const todasAsLinhas: Array<
+          // Modo NOVO (vista completa): renderiza grupo.dias (TODOS os dias
+          // do mês até hoje, com estados distintos).
+          // Modo LEGADO: mistura exception + dias analisados verdes — usado
+          // pra caches antigos sem escalaEfetivaPorCpf e pra empregados
+          // avulsos (sem cadastro no Planejamento).
+          type Linha =
             | { kind: "exc"; date: string; exc: ExceptionRecord[] }
-            | { kind: "verde"; date: string }
-          > = [
-            ...grupo.porData.map(g => ({ kind: "exc" as const, date: g.date, exc: g.exc })),
-            ...datasVerdes.map(d => ({ kind: "verde" as const, date: d })),
-          ].sort((a, b) => a.date.localeCompare(b.date));
+            | { kind: "verde"; date: string }                      // legado
+            | { kind: "trabalho_ok"; date: string }                // novo
+            | { kind: "folga"; date: string }                      // novo
+            | { kind: "ajuste_aprovado"; date: string }            // novo
+            | { kind: "compensado"; date: string }                 // novo
+            | { kind: "trabalho_comp"; date: string }              // novo
+            | { kind: "desconhecido"; date: string };              // novo
+
+          let todasAsLinhas: Linha[];
+          if (grupo.vistaCompleta) {
+            todasAsLinhas = grupo.dias.map<Linha>((r) => {
+              if (r.tipo === "trabalho_incon") return { kind: "exc", date: r.date, exc: r.exceptions };
+              if (r.tipo === "trabalho_ok") return { kind: "trabalho_ok", date: r.date };
+              if (r.tipo === "folga") return { kind: "folga", date: r.date };
+              if (r.tipo === "ajuste_aprovado") return { kind: "ajuste_aprovado", date: r.date };
+              if (r.tipo === "compensado") return { kind: "compensado", date: r.date };
+              if (r.tipo === "trabalho_comp") return { kind: "trabalho_comp", date: r.date };
+              return { kind: "desconhecido", date: r.date };
+            });
+          } else {
+            const datasComExc = new Set(grupo.porData.map(g => g.date));
+            const datasVerdes = (diasAnalisados || []).filter(d => !datasComExc.has(d));
+            todasAsLinhas = [
+              ...grupo.porData.map<Linha>(g => ({ kind: "exc", date: g.date, exc: g.exc })),
+              ...datasVerdes.map<Linha>(d => ({ kind: "verde", date: d })),
+            ].sort((a, b) => a.date.localeCompare(b.date));
+          }
           return todasAsLinhas.map((linha) => {
-            if (linha.kind === "verde") {
+            if (linha.kind === "verde" || linha.kind === "trabalho_ok") {
               return (
                 <div
                   key={linha.date}
-                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 rounded-lg flex items-center gap-2 text-sm"
+                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm"
                 >
                   <span className="text-emerald-700 dark:text-emerald-400">✓</span>
                   <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
@@ -2198,7 +2559,84 @@ function ColaboradorBlock({
                     · {diaDaSemana(linha.date)}
                   </span>
                   <span className="text-emerald-700 dark:text-emerald-400 text-xs ml-1">
-                    Sem inconformidade
+                    {linha.kind === "verde" ? "Sem inconformidade" : "Trabalhou normal"}
+                  </span>
+                </div>
+              );
+            }
+            if (linha.kind === "trabalho_comp") {
+              return (
+                <div
+                  key={linha.date}
+                  className="px-4 py-2 bg-emerald-50/30 dark:bg-emerald-900/10 flex items-center gap-2 text-sm"
+                >
+                  <span className="text-emerald-700 dark:text-emerald-400">✓</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+                    {fmtDataBr(linha.date)}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400 capitalize text-[11px]">
+                    · {diaDaSemana(linha.date)}
+                  </span>
+                  <span className="text-emerald-700 dark:text-emerald-400 text-xs ml-1">
+                    Trabalhou (compensado)
+                  </span>
+                </div>
+              );
+            }
+            if (linha.kind === "folga" || linha.kind === "compensado") {
+              return (
+                <div
+                  key={linha.date}
+                  className="px-4 py-2 bg-gray-50/60 dark:bg-gray-800/30 flex items-center gap-2 text-sm"
+                >
+                  <span className="text-gray-500 dark:text-gray-400">💤</span>
+                  <span className="font-medium text-gray-600 dark:text-gray-300 tabular-nums">
+                    {fmtDataBr(linha.date)}
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-500 capitalize text-[11px]">
+                    · {diaDaSemana(linha.date)}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400 text-xs ml-1">
+                    {linha.kind === "folga" ? "Folga programada" : "Compensado"}
+                  </span>
+                </div>
+              );
+            }
+            if (linha.kind === "ajuste_aprovado") {
+              return (
+                <div
+                  key={linha.date}
+                  className="px-4 py-2 bg-sky-50/40 dark:bg-sky-900/20 flex items-center gap-2 text-sm"
+                  title="Férias / atestado / abono / falta justificada — todos colapsam em 'Ajuste aprovado' por enquanto. Refinaremos em versão futura."
+                >
+                  <span className="text-sky-700 dark:text-sky-400">🏖</span>
+                  <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
+                    {fmtDataBr(linha.date)}
+                  </span>
+                  <span className="text-gray-500 dark:text-gray-400 capitalize text-[11px]">
+                    · {diaDaSemana(linha.date)}
+                  </span>
+                  <span className="text-sky-700 dark:text-sky-400 text-xs ml-1">
+                    Ajuste aprovado
+                  </span>
+                </div>
+              );
+            }
+            if (linha.kind === "desconhecido") {
+              return (
+                <div
+                  key={linha.date}
+                  className="px-4 py-2 flex items-center gap-2 text-sm opacity-50"
+                >
+                  <span className="text-gray-400 dark:text-gray-600">—</span>
+                  <span className="font-medium text-gray-500 dark:text-gray-400 tabular-nums">
+                    {fmtDataBr(linha.date)}
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-500 capitalize text-[11px]">
+                    · {diaDaSemana(linha.date)}
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-500 text-xs ml-1 italic">
+                    Sem dados
                   </span>
                 </div>
               );
