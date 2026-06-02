@@ -10,7 +10,7 @@ import type { Cargo, Empregado, ScheduleStatus } from "../types";
 import { empregadoBatePonto } from "../types";
 import type { DayContext, DayMetrics, ExceptionRecord, SolidesPunch } from "./types";
 import { computeDayMetrics, emptyDayMetrics, groupByEmployeeDay, onlyDigits } from "./dayMetrics";
-import { runAllRules } from "./rules";
+import { RULES_META, runAllRules } from "./rules";
 
 export type GenerateReportInput = {
   punches: SolidesPunch[];
@@ -167,7 +167,13 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
         consecutiveWorkDays,
         ...(horarioPrevisto ? { horarioPrevisto } : {}),
       };
-      exceptions.push(...runAllRules(ctx));
+      const excecoesDoDia = runAllRules(ctx);
+      // ── Pós-processamento por (cpf, date): unifica entradaProvavelFaltante
+      // + pontoAberto em batidasImpares quando o nº de batidas é ímpar.
+      // São sintomas da mesma causa raiz (faltou bater 1) — não devem virar 2
+      // cards/mensagens separadas pro líder.
+      const excecoesFinais = unificarBatidasImpares(excecoesDoDia, ctx);
+      exceptions.push(...excecoesFinais);
       diasAnalisados += 1;
       if (cpf) {
         const arr = diasAnalisadosPorCpf[cpf] || [];
@@ -201,4 +207,142 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
   );
 
   return { exceptions, unmatched, diasAnalisados, diasAnalisadosPorCpf, escalaEfetivaPorCpf };
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+//  Pós-processamento: unificação de batidas ímpares
+// ────────────────────────────────────────────────────────────────────────────
+//
+// Quando o dia tem nº ímpar de batidas (Sólides interpreta como E1→S1→E2 sem
+// saída, ou E1 sozinho, etc), o motor de regras dispara DUAS regras como
+// problemas separados: entradaProvavelFaltante (1ª batida tarde demais) e/ou
+// pontoAberto (último bloco sem saída). Mas são sintomas da mesma causa raiz
+// — falta UMA batida. Aqui substituímos as duas pela regra unificada
+// `batidasImpares`, com uma única descrição contendo todas as batidas e a
+// hipótese mais provável de qual ponta faltou.
+
+// epoch ms (UTC) → "HH:MM" em BRT (UTC-3, sem horário de verão).
+function fmtHoraBrt(ms: number | undefined | null): string {
+  if (typeof ms !== "number" || ms <= 0) return "—";
+  const d = new Date(ms);
+  const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+  const brtMin = (utcMin - 180 + 1440) % 1440;
+  const h = Math.floor(brtMin / 60);
+  const m = brtMin % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+// minutos → "8h30" (com sinal pra negativos)
+function fmtHm(min: number): string {
+  const sign = min < 0 ? "-" : "";
+  const abs = Math.abs(min);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  if (h === 0) return `${sign}${m}min`;
+  return `${sign}${h}h${String(m).padStart(2, "0")}`;
+}
+
+// "HH:MM" → minutos desde 00:00. null se inválido.
+function parseHHMM(s: string | undefined | null): number | null {
+  if (!s) return null;
+  const [h, m] = s.split(":").map(Number);
+  if (Number.isNaN(h) || Number.isNaN(m)) return null;
+  return h * 60 + m;
+}
+
+// Extrai todas as batidas individuais (entrada e saída) dos blocos do dia,
+// em ordem cronológica. Bloco aberto contribui só com 1 batida (a entrada).
+function batidasIndividuais(blocks: SolidesPunch[]): number[] {
+  const out: number[] = [];
+  for (const b of blocks) {
+    if (typeof b.dateIn === "number" && b.dateIn > 0) out.push(b.dateIn);
+    if (typeof b.dateOut === "number" && b.dateOut > b.dateIn) out.push(b.dateOut);
+  }
+  return out.sort((a, b) => a - b);
+}
+
+function unificarBatidasImpares(
+  excecoesDoDia: ExceptionRecord[],
+  ctx: DayContext,
+): ExceptionRecord[] {
+  // Sem batidas → nada pra unificar (regra trata só dias com marcação ímpar)
+  const batidas = batidasIndividuais(ctx.metrics.blocks);
+  if (batidas.length === 0) return excecoesDoDia;
+  if (batidas.length % 2 === 0) return excecoesDoDia;
+
+  // Só substitui se as regras "componentes" tiverem disparado. Se o nº é
+  // ímpar mas nenhuma das duas regras disparou, mantém comportamento atual
+  // (improvável, mas defensivo).
+  const temPontoAberto = excecoesDoDia.some((e) => e.ruleId === "pontoAberto");
+  const temEntradaProvFalt = excecoesDoDia.some(
+    (e) => e.ruleId === "entradaProvavelFaltante",
+  );
+  if (!temPontoAberto && !temEntradaProvFalt) return excecoesDoDia;
+
+  // Remove os apontamentos que viraram sintomas da regra unificada
+  const restantes = excecoesDoDia.filter(
+    (e) => e.ruleId !== "pontoAberto" && e.ruleId !== "entradaProvavelFaltante",
+  );
+
+  // Monta descrição e hipóteses
+  const listaHoras = batidas.map((ms) => fmtHoraBrt(ms)).join(" · ");
+  const esperado = batidas.length + 1; // próximo par
+  const partes: string[] = [];
+  partes.push(
+    `${batidas.length} batidas registradas (esperado ${esperado}): ${listaHoras}.`,
+  );
+
+  const previsto = ctx.horarioPrevisto;
+  const previstoInMin = parseHHMM(previsto?.in);
+  const primeiraMs = batidas[0];
+  const primeiraBrtMin = (() => {
+    if (typeof primeiraMs !== "number") return null;
+    const d = new Date(primeiraMs);
+    const utcMin = d.getUTCHours() * 60 + d.getUTCMinutes();
+    return (utcMin - 180 + 1440) % 1440;
+  })();
+
+  // Hipótese A: 1ª batida MUITO depois do previsto (>60min) → faltou entrada
+  // inicial. Hipótese B: último bloco aberto (hasOpenPunch) → faltou saída
+  // final. Em muitos casos, ambas se aplicam — o líder confirma com o
+  // empregado qual ponta faltou.
+  const hipoteseA =
+    previstoInMin != null &&
+    primeiraBrtMin != null &&
+    primeiraBrtMin - previstoInMin > 60;
+  const hipoteseB = ctx.metrics.hasOpenPunch;
+
+  if (previsto && hipoteseA && hipoteseB) {
+    const diff = (primeiraBrtMin as number) - previstoInMin;
+    partes.push(
+      `Provavelmente faltou a entrada inicial (1ª batida ${fmtHm(diff)} depois do previsto ${previsto.in}) ou a saída final (último bloco não fechou).`,
+    );
+  } else if (previsto && hipoteseA) {
+    const diff = (primeiraBrtMin as number) - previstoInMin;
+    partes.push(
+      `Provavelmente faltou a entrada inicial (1ª batida ${fmtHm(diff)} depois do previsto ${previsto.in}).`,
+    );
+  } else if (hipoteseB) {
+    partes.push("Provavelmente faltou a saída final (último bloco não fechou).");
+  } else if (!previsto) {
+    // Sem horário previsto: sem heurística — só lista as batidas
+    partes.push("Confirme com o empregado qual batida faltou.");
+  } else {
+    // Tem previsto mas nem A nem B → genérico
+    partes.push("Confirme com o empregado qual batida faltou.");
+  }
+
+  const meta = RULES_META.batidasImpares;
+  const novoApontamento: ExceptionRecord = {
+    ruleId: "batidasImpares",
+    severity: meta.severity,
+    date: ctx.metrics.date,
+    employeeId: ctx.metrics.employeeId,
+    cpf: ctx.metrics.cpf,
+    employeeName: ctx.metrics.employeeName,
+    description: partes.join(" "),
+    detail: `🕐 ${listaHoras}`,
+  };
+  restantes.push(novoApontamento);
+  return restantes;
 }

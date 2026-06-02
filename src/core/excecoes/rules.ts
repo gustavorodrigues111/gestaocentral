@@ -93,6 +93,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "🚧",
     descricaoRegra: "Primeira batida do dia muito depois do horário previsto (>3h). Provavelmente o empregado esqueceu de bater a entrada inicial e o sistema confundiu a batida seguinte com 'entrada'.",
   },
+  batidasImpares: {
+    id: "batidasImpares",
+    label: "Batida faltando",
+    severity: "aviso",
+    icon: "🚧",
+    descricaoRegra: "Quantidade ímpar de batidas no dia — uma batida (entrada ou saída) está faltando.",
+  },
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
