@@ -145,7 +145,17 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (isLast) break;
       page += 1;
     }
-    type Raw = { id?: unknown; name?: unknown; externalId?: unknown };
+    // A Sólides pode usar diferentes nomes de campo pro "nome do cargo".
+    // Visto: name, description, nome, jobRoleName, roleName. Tenta nessa ordem.
+    function extractName(r: Record<string, unknown>): string {
+      const candidates = ["name", "description", "nome", "jobRoleName", "roleName", "title"];
+      for (const k of candidates) {
+        const v = r[k];
+        if (typeof v === "string" && v.trim()) return v.trim();
+      }
+      return "";
+    }
+    type Raw = Record<string, unknown> & { id?: unknown; externalId?: unknown };
     const items = itemsRaw
       .map((e) => {
         const r = e as Raw;
@@ -153,12 +163,18 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         if (!Number.isFinite(id)) return null;
         return {
           id,
-          name: typeof r.name === "string" ? r.name : "",
+          name: extractName(r),
           externalId: r.externalId == null ? undefined : String(r.externalId),
         };
       })
       .filter((x): x is { id: number; name: string; externalId?: string } => x !== null);
-    res.status(200).json({ items });
+    // Debug: expõe as chaves do primeiro item raw pra UI mostrar quando os
+    // nomes vierem vazios. Útil pra identificar se a Sólides usa outro
+    // campo (description, nome, etc).
+    const sampleKeys = itemsRaw.length > 0 && itemsRaw[0] && typeof itemsRaw[0] === "object"
+      ? Object.keys(itemsRaw[0] as object)
+      : [];
+    res.status(200).json({ items, _sampleKeys: sampleKeys, _sampleRaw: itemsRaw[0] || null });
   } catch (e) {
     if (e instanceof HttpError) {
       res.status(e.status).json({ error: e.message });
