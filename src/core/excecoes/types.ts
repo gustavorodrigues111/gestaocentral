@@ -122,12 +122,14 @@ export type PontoApontamentoStatus =
   | "aberto"               // sem ação tomada
   | "ciencia"              // líder deu ciência (alinhamento presencial — usado em apontamentos de categoria "alinhamento")
   | "nao_e_inconformidade" // marcado como falso positivo (usado em "ajuste")
+  | "aguardando_ajuste"    // apontamento no lote enviado, esperando correção na Sólides (NÃO é terminal — ainda pendente)
   | "corrigido_solides";   // sumiu no próximo report (preenchido automaticamente)
 
 export const PONTO_APONTAMENTO_STATUS_LABEL: Record<PontoApontamentoStatus, string> = {
   aberto:                 "Aberto",
   ciencia:                "Ciência dada",
   nao_e_inconformidade:   "Não é inconformidade",
+  aguardando_ajuste:      "Aguardando ajuste",
   corrigido_solides:      "Corrigido no Sólides",
 };
 

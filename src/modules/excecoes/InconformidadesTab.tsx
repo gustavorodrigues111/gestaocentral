@@ -44,6 +44,7 @@ import {
   salvarRelatorioCache,
 } from "../../core/excecoes/statusSemana";
 import { montarMensagemAjustes, whatsLink } from "../../core/excecoes/whatsapp";
+import { montarMensagemLoteAjuste, montarLinkWhats } from "../../core/excecoes/loteAjusteWhats";
 import type { ExcecaoStatusSemana } from "../../core/types";
 import {
   generateExceptionsReport,
@@ -918,6 +919,173 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Conjunto de apontamentos atualmente sendo salvos (lockKey).
   // Usado pra disabled + texto "salvando…" no botão.
   const [salvandoApontamento, setSalvandoApontamento] = useState<Set<string>>(new Set());
+
+  // ─── Lote de solicitação de ajuste (rascunho local) ──────────────────────
+  // Map empregadoId → Set de lockKeys (apontamentoKey) que estão no lote
+  // rascunho daquele empregado. Não persiste — se sair da tela, esvazia.
+  // Conforme o líder adiciona apontamentos com "+ Lote", aparece o bloco
+  // amarelo no card do empregado pra enviar tudo via WhatsApp ou registrar
+  // como alinhado presencialmente. Os apontamentos viram "aguardando_ajuste"
+  // (não-terminal) até a Sólides sincronizar e detectar que sumiram.
+  const [lotesRascunho, setLotesRascunho] = useState<Map<string, Set<string>>>(new Map());
+
+  function adicionarAoLote(empregadoId: string, lockKey: string) {
+    setLotesRascunho((prev) => {
+      const next = new Map(prev);
+      const set = new Set(next.get(empregadoId) || []);
+      set.add(lockKey);
+      next.set(empregadoId, set);
+      return next;
+    });
+  }
+
+  function removerDoLote(empregadoId: string, lockKey: string) {
+    setLotesRascunho((prev) => {
+      const next = new Map(prev);
+      const set = new Set(next.get(empregadoId) || []);
+      set.delete(lockKey);
+      if (set.size === 0) next.delete(empregadoId);
+      else next.set(empregadoId, set);
+      return next;
+    });
+  }
+
+  function cancelarLote(empregadoId: string) {
+    setLotesRascunho((prev) => {
+      const next = new Map(prev);
+      next.delete(empregadoId);
+      return next;
+    });
+  }
+
+  // Toggle: se já está no lote, tira; senão, adiciona. Usado pelo botão
+  // "📦 + Lote" / "↩ Tirar do lote" da coluna direita.
+  function toggleLote(empregadoId: string, exc: ExceptionRecord) {
+    const lockKey = apontamentoKey(empregadoId, exc.date, exc.ruleId);
+    const atual = lotesRascunho.get(empregadoId);
+    if (atual && atual.has(lockKey)) {
+      removerDoLote(empregadoId, lockKey);
+    } else {
+      adicionarAoLote(empregadoId, lockKey);
+    }
+  }
+
+  // Resolve os apontamentos do lote de um empregado em ExceptionRecord[],
+  // consultando displayedResult.exceptions. Filtra pra garantir 1 por
+  // (data, ruleId) — mesmo se vierem duplicados, agregamos um só.
+  function resolverApontamentosDoLote(empregadoId: string): ExceptionRecord[] {
+    const set = lotesRascunho.get(empregadoId);
+    if (!set || set.size === 0 || !displayedResult) return [];
+    const vistos = new Set<string>();
+    const out: ExceptionRecord[] = [];
+    for (const exc of displayedResult.exceptions) {
+      const cpfD = (exc.cpf || "").replace(/\D/g, "");
+      const empId = empIdByCpf.get(cpfD);
+      if (empId !== empregadoId) continue;
+      const key = apontamentoKey(empregadoId, exc.date, exc.ruleId);
+      if (!set.has(key)) continue;
+      if (vistos.has(key)) continue;
+      vistos.add(key);
+      out.push(exc);
+    }
+    out.sort((a, b) => a.date.localeCompare(b.date));
+    return out;
+  }
+
+  // Marca em paralelo todos os apontamentos do lote como "aguardando_ajuste".
+  // Update otimista no statusApontamentoMap local pra a UI virar antes do
+  // listener confirmar. Em caso de erro, mantém o lote local pro usuário
+  // tentar de novo.
+  async function marcarLoteAguardandoAjuste(
+    empregadoId: string,
+    apontamentos: ExceptionRecord[],
+  ): Promise<boolean> {
+    if (!me) {
+      alert("Sem usuário logado — recarrega a página e tenta de novo.");
+      return false;
+    }
+    try {
+      await Promise.all(
+        apontamentos.map((e) =>
+          setStatusApontamento({
+            restaurantId: rid,
+            empregadoId,
+            data: e.date,
+            ruleId: e.ruleId,
+            novoStatus: "aguardando_ajuste",
+            por: { id: me.id, nome: me.nome },
+          }),
+        ),
+      );
+      // Update otimista: já marca no map local pra UI virar antes do
+      // listener real-time chegar.
+      setStatusApontamentoMap((prev) => {
+        const next = new Map(prev);
+        for (const e of apontamentos) {
+          const k = apontamentoKey(empregadoId, e.date, e.ruleId);
+          next.set(k, {
+            id: `${rid}_${empregadoId}_${e.date}_${e.ruleId}`,
+            restaurantId: rid,
+            empregadoId,
+            data: e.date,
+            ruleId: e.ruleId,
+            status: "aguardando_ajuste",
+            atualizadoEm: new Date().toISOString(),
+            atualizadoPor: me.id,
+            atualizadoPorNome: me.nome,
+          });
+        }
+        return next;
+      });
+      return true;
+    } catch (e) {
+      console.error("[ponto] marcarLoteAguardandoAjuste falhou:", e);
+      alert("Falha ao marcar lote: " + (e instanceof Error ? e.message : String(e)));
+      return false;
+    }
+  }
+
+  async function enviarLoteWhats(empregadoId: string) {
+    const apontamentos = resolverApontamentosDoLote(empregadoId);
+    if (apontamentos.length === 0) {
+      alert("Lote vazio.");
+      return;
+    }
+    const empregado = empregados.find((e) => e.id === empregadoId);
+    const empregadoNome = empregado?.nome || apontamentos[0].employeeName || "";
+    const whatsapp = whatsByEmpId.get(empregadoId);
+    if (!whatsapp) {
+      alert(`${empregadoNome} não tem WhatsApp cadastrado em Pessoas.`);
+      return;
+    }
+    const msg = montarMensagemLoteAjuste({
+      empregadoNome,
+      restNome: activeRestaurant.nome,
+      apontamentos: apontamentos.map((a) => ({
+        date: a.date,
+        ruleId: a.ruleId,
+        description: a.description,
+        detail: a.detail,
+      })),
+    });
+    const link = montarLinkWhats(whatsapp, msg);
+    window.open(link, "_blank");
+    const ok = await marcarLoteAguardandoAjuste(empregadoId, apontamentos);
+    if (ok) cancelarLote(empregadoId);
+  }
+
+  async function enviarLotePresencial(empregadoId: string) {
+    const apontamentos = resolverApontamentosDoLote(empregadoId);
+    if (apontamentos.length === 0) {
+      alert("Lote vazio.");
+      return;
+    }
+    const empregado = empregados.find((e) => e.id === empregadoId);
+    const empregadoNome = empregado?.nome || apontamentos[0].employeeName || "esse empregado";
+    if (!window.confirm(`Marcar lote como alinhado presencialmente com ${empregadoNome}?`)) return;
+    const ok = await marcarLoteAguardandoAjuste(empregadoId, apontamentos);
+    if (ok) cancelarLote(empregadoId);
+  }
 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
@@ -1977,6 +2145,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                     data: e.date,
                     ruleId: e.ruleId,
                   })}
+                  loteDoEmpregado={lotesRascunho.get(grupo.empregadoId)}
+                  loteApontamentos={resolverApontamentosDoLote(grupo.empregadoId)}
+                  onToggleLote={(exc) => toggleLote(grupo.empregadoId, exc)}
+                  onEnviarLoteWhats={() => enviarLoteWhats(grupo.empregadoId)}
+                  onEnviarLotePresencial={() => enviarLotePresencial(grupo.empregadoId)}
+                  onCancelarLote={() => cancelarLote(grupo.empregadoId)}
                 />
                 );
               })}
@@ -2071,6 +2245,7 @@ type DaySummary = {
   ajusteAprovado: number; // ajuste_aprovado
   inconformidades: number;
   pendentes: number;      // dias incon com algum apontamento NÃO terminal
+  aguardando: number;     // dias incon com TODOS os apontamentos não-terminais em "aguardando_ajuste" (subset de pendentes)
 };
 
 type GrupoColab = {
@@ -2231,7 +2406,7 @@ function computarSummary(
   statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>,
   statusDiaMap?: Map<string, PontoDiaStatusDoc>,
 ): DaySummary {
-  let trabalho = 0, folga = 0, ajusteAprovado = 0, inconformidades = 0, pendentes = 0;
+  let trabalho = 0, folga = 0, ajusteAprovado = 0, inconformidades = 0, pendentes = 0, aguardando = 0;
   for (const r of dias) {
     if (r.tipo === "trabalho_ok" || r.tipo === "trabalho_comp") trabalho++;
     else if (r.tipo === "folga" || r.tipo === "compensado") folga++;
@@ -2244,19 +2419,25 @@ function computarSummary(
         diaLegado?.status === "tratado" || diaLegado?.status === "corrigido_solides";
       const dedupRules = new Set(r.exceptions.map(e => e.ruleId));
       let temPendente = false;
+      let temNaoAguardandoEntreOsPendentes = false;
+      let temAlgumAguardando = false;
       for (const ruleId of dedupRules) {
         const doc = statusApontamentoMap.get(apontamentoKey(empId, r.date, ruleId));
         const s = doc?.status ?? (diaLegadoTerminal ? "ciencia" : "aberto");
-        if (!isStatusTerminal(s)) { temPendente = true; break; }
+        if (!isStatusTerminal(s)) {
+          temPendente = true;
+          if (s === "aguardando_ajuste") temAlgumAguardando = true;
+          else temNaoAguardandoEntreOsPendentes = true;
+        }
       }
-      // Em modo legado (sem doc): também considera pendente se não há
-      // sinal terminal explícito — assim o badge vermelho aparece pra
-      // chamar atenção.
       void apontamentosPorChave;
       if (temPendente) pendentes++;
+      // "Aguardando" no resumo do dia = tem ao menos 1 aguardando E não
+      // tem outros pendentes não-aguardando. Senão, conta só em pendentes.
+      if (temAlgumAguardando && !temNaoAguardandoEntreOsPendentes) aguardando++;
     }
   }
-  return { trabalho, folga, ajusteAprovado, inconformidades, pendentes };
+  return { trabalho, folga, ajusteAprovado, inconformidades, pendentes, aguardando };
 }
 
 // `empIdByCpf` resolve o ID do Planejamento (string) — exc.employeeId é o
@@ -2351,7 +2532,7 @@ function agruparPorColabDate(
         totalGraves: graves,
         porData,
         dias: [],
-        summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0 },
+        summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0, aguardando: 0 },
         vistaCompleta: false,
       });
       continue;
@@ -2395,7 +2576,7 @@ function agruparPorColabDate(
       totalGraves: graves,
       porData,
       dias: [],
-      summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0 },
+      summary: { trabalho: 0, folga: 0, ajusteAprovado: 0, inconformidades: total, pendentes: 0, aguardando: 0 },
       vistaCompleta: false,
     });
   }
@@ -2441,6 +2622,12 @@ function ColaboradorBlock({
   salvandoApontamento,
   onAplicarStatusApontamento,
   onReabrirApontamento,
+  loteDoEmpregado,
+  loteApontamentos,
+  onToggleLote,
+  onEnviarLoteWhats,
+  onEnviarLotePresencial,
+  onCancelarLote,
 }: {
   grupo: GrupoColab;
   diasAnalisados: string[];
@@ -2463,6 +2650,12 @@ function ColaboradorBlock({
     novoStatus: PontoApontamentoStatus,
   ) => Promise<void> | void;
   onReabrirApontamento: (exc: ExceptionRecord) => Promise<void> | void;
+  loteDoEmpregado?: Set<string>;
+  loteApontamentos: ExceptionRecord[];
+  onToggleLote: (exc: ExceptionRecord) => void;
+  onEnviarLoteWhats: () => void;
+  onEnviarLotePresencial: () => void;
+  onCancelarLote: () => void;
 }) {
   const [expandido, setExpandido] = useState(false);
   return (
@@ -2492,9 +2685,14 @@ function ColaboradorBlock({
                   <span className={grupo.summary.pendentes > 0 ? "text-rose-700 dark:text-rose-400 font-bold" : "text-emerald-700 dark:text-emerald-400"}>
                     {grupo.summary.pendentes > 0 ? "⚠ " : "✓ "}
                     {grupo.summary.inconformidades} incon.
-                    {grupo.summary.inconformidades > 0 && (
-                      <> ({grupo.summary.inconformidades - grupo.summary.pendentes}/{grupo.summary.inconformidades} tratadas)</>
-                    )}
+                    {grupo.summary.inconformidades > 0 && (() => {
+                      const tratadas = grupo.summary.inconformidades - grupo.summary.pendentes;
+                      const aguardando = grupo.summary.aguardando;
+                      if (aguardando > 0) {
+                        return <> ({tratadas} tratadas · {aguardando} aguardando)</>;
+                      }
+                      return <> ({tratadas}/{grupo.summary.inconformidades} tratadas)</>;
+                    })()}
                   </span>
                 </>
               )}
@@ -2563,6 +2761,66 @@ function ColaboradorBlock({
           )}
         </div>
       </header>
+
+      {/* Bloco de Lote de ajustes em rascunho — sempre visível (mesmo com
+          o card colapsado) pra o líder não esquecer de enviar. */}
+      {loteDoEmpregado && loteDoEmpregado.size > 0 && (
+        <div className="mx-4 mt-3 mb-2 p-3 rounded-lg border-2 border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20">
+          <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+            <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
+              📦 Lote de ajustes — {loteDoEmpregado.size} apontamento(s)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onEnviarLoteWhats}
+                disabled={!temWhatsapp}
+                className={`text-[11px] font-semibold px-3 py-1 rounded-md text-white whitespace-nowrap ${
+                  temWhatsapp
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed"
+                }`}
+                title={
+                  temWhatsapp
+                    ? "Abre o WhatsApp com a mensagem do lote e marca cada apontamento como aguardando ajuste"
+                    : "Sem WhatsApp cadastrado em Pessoas pra este empregado"
+                }
+              >
+                📱 Enviar por WhatsApp
+              </button>
+              <button
+                type="button"
+                onClick={onEnviarLotePresencial}
+                className="text-[11px] font-semibold px-3 py-1 rounded-md bg-sky-600 text-white hover:bg-sky-700 whitespace-nowrap"
+                title="Registrar como alinhado presencialmente (sem enviar WhatsApp)"
+              >
+                🗣 Alinhei presencialmente
+              </button>
+              <button
+                type="button"
+                onClick={onCancelarLote}
+                className="text-[11px] text-gray-600 dark:text-gray-400 hover:underline px-2 py-1 whitespace-nowrap"
+                title="Esvazia o lote local sem alterar status dos apontamentos"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+          <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5 ml-1">
+            {loteApontamentos.map((a) => {
+              const meta = RULES_META[a.ruleId];
+              const label = meta?.label || a.ruleId;
+              const det = a.detail || a.description;
+              return (
+                <li key={`${a.date}_${a.ruleId}`} className="tabular-nums">
+                  · {fmtDataBr(a.date)} · {label}
+                  {det ? ` · ${det}` : ""}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -2847,7 +3105,10 @@ function ColaboradorBlock({
                 const isCiencia = statusAp === "ciencia";
                 const isFalsoPositivo = statusAp === "nao_e_inconformidade";
                 const isCorrigidoSolides = statusAp === "corrigido_solides";
+                const isAguardandoAjuste = statusAp === "aguardando_ajuste";
                 const isTerminal = isStatusTerminal(statusAp);
+                const lockKeyAtual = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
+                const estaNoLote = !!loteDoEmpregado?.has(lockKeyAtual);
                 // Tooltip detalhado quando count > 1 — lista detail/description
                 const tooltipDetalhes = d.count > 1
                   ? d.all
@@ -2915,12 +3176,20 @@ function ColaboradorBlock({
                           ✅ corrigido na Sólides
                         </span>
                       )}
+                      {isAguardandoAjuste && (
+                        <span
+                          className="ml-2 inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 font-semibold whitespace-nowrap"
+                          title="Lote enviado — esperando o empregado ajustar na Sólides. Quando ele ajustar e a próxima atualização detectar que sumiu, vira 'Corrigido no Sólides' automaticamente."
+                        >
+                          📦 aguardando ajuste
+                        </span>
+                      )}
                     </span>
                     {/* Ações por linha */}
                     {(() => {
                       const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
                       const salvando = salvandoApontamento.has(lockKey);
-                      if (podeAnotar && !isTerminal) {
+                      if (podeAnotar && !isTerminal && !isAguardandoAjuste) {
                         if (categoria === "alinhamento") {
                           return (
                             <div className="flex items-center gap-1 mt-0.5 flex-wrap">
@@ -2949,20 +3218,51 @@ function ColaboradorBlock({
                             </div>
                           );
                         }
+                        // Ajuste de batida: 2 botões — Lote (toggle) + falso positivo
                         return (
-                          <button
-                            type="button"
-                            disabled={salvando}
-                            onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
-                            title="Marcar como falso positivo — não é inconformidade"
-                          >
-                            {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
-                          </button>
+                          <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                            <button
+                              type="button"
+                              disabled={salvando}
+                              onClick={() => onToggleLote(e)}
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md text-white whitespace-nowrap disabled:opacity-50 ${
+                                estaNoLote
+                                  ? "bg-gray-500 hover:bg-gray-600"
+                                  : "bg-amber-600 hover:bg-amber-700"
+                              }`}
+                              title={
+                                estaNoLote
+                                  ? "Tirar este apontamento do lote de solicitação de ajuste deste empregado."
+                                  : "Adicionar ao lote de solicitação de ajuste deste empregado."
+                              }
+                            >
+                              {estaNoLote ? "↩ Tirar do lote" : "📦 + Lote"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={salvando}
+                              onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                              className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                              title="Marcar como falso positivo — não é inconformidade."
+                            >
+                              {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
+                            </button>
+                          </div>
                         );
                       }
                       return null;
                     })()}
+                    {podeAnotar && isAguardandoAjuste && (
+                      <button
+                        type="button"
+                        disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
+                        onClick={() => void onReabrirApontamento(e)}
+                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
+                        title="Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"
+                      >
+                        ↩ desmarcar
+                      </button>
+                    )}
                     {podeAnotar && isTerminal && (
                       <button
                         type="button"

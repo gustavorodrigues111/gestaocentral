@@ -89,6 +89,16 @@ export function apontamentoKey(empId: string, date: string, ruleId: string): str
 }
 
 // Status terminais — não-pendentes. Default "aberto" = pendente.
+// IMPORTANTE: "aguardando_ajuste" NÃO é terminal — o apontamento continua
+// pendente (o empregado ainda tem que agir, ajustando na Sólides). Só vira
+// terminal quando o report seguinte detectar que sumiu (auto-virou
+// "corrigido_solides") ou se o líder voltar manualmente.
 export function isStatusTerminal(s: PontoApontamentoStatus | undefined | null): boolean {
   return s === "ciencia" || s === "nao_e_inconformidade" || s === "corrigido_solides";
+}
+
+// Apontamento "ativo": ainda precisa de ação OU está esperando empregado.
+// Inclui aberto + aguardando_ajuste. Útil pra mostrar contadores.
+export function isStatusPendente(s: PontoApontamentoStatus | undefined | null): boolean {
+  return !s || s === "aberto" || s === "aguardando_ajuste";
 }
