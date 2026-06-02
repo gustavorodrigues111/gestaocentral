@@ -3019,11 +3019,27 @@ function ColaboradorBlock({
       {loteDoEmpregado && (loteDoEmpregado.apontamentoChaves?.length || 0) > 0 && (() => {
         const jaEnviado = !!loteDoEmpregado.enviadoEm;
         const reenvios = loteDoEmpregado.reenvios || [];
+        // Particiona em 2 grupos pra mostrar separados no box.
+        const itensEmpresa: ExceptionRecord[] = [];
+        const itensEmpregado: ExceptionRecord[] = [];
+        for (const a of loteApontamentos) {
+          const stApon = statusApontamentoMap.get(
+            apontamentoKey(grupo.empregadoId, a.date, a.ruleId),
+          )?.status;
+          if (stApon === "empresa_ajustara") itensEmpresa.push(a);
+          else itensEmpregado.push(a);
+        }
+        const totalLote = loteDoEmpregado.apontamentoChaves.length;
         return (
         <div className="mx-4 mt-3 mb-2 p-3 rounded-lg border-2 border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
             <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              📦 Lote de ajustes — {loteDoEmpregado.apontamentoChaves.length} apontamento(s)
+              📦 Lote de ajustes — {totalLote} apontamento(s)
+              {itensEmpresa.length > 0 && itensEmpregado.length > 0 && (
+                <span className="ml-1 font-normal text-[11px] text-amber-800/80 dark:text-amber-300/80">
+                  ({itensEmpregado.length} pro empregado · {itensEmpresa.length} pra empresa)
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5">
               <button
@@ -3082,33 +3098,48 @@ function ColaboradorBlock({
               ))}
             </div>
           )}
-          <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5 ml-1">
-            {loteApontamentos.map((a) => {
-              const meta = RULES_META[a.ruleId];
-              const label = meta?.label || a.ruleId;
-              const det = a.detail || a.description;
-              const stApon = statusApontamentoMap.get(
-                apontamentoKey(grupo.empregadoId, a.date, a.ruleId),
-              )?.status;
-              const ehEmpresa = stApon === "empresa_ajustara";
-              return (
-                <li key={`${a.date}_${a.ruleId}`} className="tabular-nums flex items-start gap-1">
-                  <span
-                    className={`shrink-0 ${ehEmpresa ? "text-indigo-700 dark:text-indigo-300" : "text-amber-700 dark:text-amber-300"}`}
-                    title={ehEmpresa
-                      ? "Empresa vai resolver direto na Sólides (não vai na mensagem do WhatsApp)"
-                      : "Vai pro empregado ajustar"}
-                  >
-                    {ehEmpresa ? "🏢" : "📦"}
-                  </span>
-                  <span>
-                    {fmtDataBr(a.date)} · {label}
-                    {det ? ` · ${det}` : ""}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+          {/* Seção: Empregado vai ajustar (vai pra mensagem WhatsApp) */}
+          {itensEmpregado.length > 0 && (
+            <div className="mb-2">
+              <div className="text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-1 flex items-center gap-1">
+                📦 Empregado vai ajustar ({itensEmpregado.length})
+              </div>
+              <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5 ml-4">
+                {itensEmpregado.map((a) => {
+                  const meta = RULES_META[a.ruleId];
+                  const label = meta?.label || a.ruleId;
+                  const det = a.detail || a.description;
+                  return (
+                    <li key={`emp_${a.date}_${a.ruleId}`} className="tabular-nums">
+                      · {fmtDataBr(a.date)} · {label}
+                      {det ? ` · ${det}` : ""}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {/* Seção: Empresa vai resolver na Sólides (não vai na mensagem) */}
+          {itensEmpresa.length > 0 && (
+            <div>
+              <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-800 dark:text-indigo-300 mb-1 flex items-center gap-1">
+                🏢 Empresa vai resolver na Sólides ({itensEmpresa.length})
+              </div>
+              <ul className="text-xs text-indigo-900 dark:text-indigo-200 space-y-0.5 ml-4">
+                {itensEmpresa.map((a) => {
+                  const meta = RULES_META[a.ruleId];
+                  const label = meta?.label || a.ruleId;
+                  const det = a.detail || a.description;
+                  return (
+                    <li key={`emp_resolve_${a.date}_${a.ruleId}`} className="tabular-nums">
+                      · {fmtDataBr(a.date)} · {label}
+                      {det ? ` · ${det}` : ""}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
         </div>
         );
       })()}
