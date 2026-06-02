@@ -9,6 +9,16 @@ import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+// `demitidoEm` é o PRIMEIRO dia FORA. Pra exibir, mostra o último dia
+// trabalhado (= demitidoEm − 1) que casa com o que o gestor lançou como
+// "data efetiva" da demissão.
+function fmtDataSaida(demitidoEm: string): string {
+  const [y, m, d] = demitidoEm.split("-").map(Number);
+  if (!y || !m || !d) return demitidoEm;
+  const dt = new Date(y, m - 1, d - 1);
+  return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+}
+
 type Props = {
   ano: number;
   mes: number;
@@ -40,6 +50,7 @@ type LinhaEmpregado = {
   liquido: number;
   diasComRecebimento: number;
   dias: DiaEmpregado[];   // detalhamento por dia pro drill-down
+  demitidoEm?: string | null;   // YYYY-MM-DD (primeiro dia FORA) — badge no PDF/UI
 };
 
 export function DivisaoMesTab({
@@ -133,13 +144,16 @@ export function DivisaoMesTab({
       }
     }
 
-    // Arredonda totais pra centavos e ordena dias asc
+    // Arredonda totais pra centavos e ordena dias asc.
+    // Captura demitidoEm do empregado pra render do badge.
+    const empById = Object.fromEntries(empregados.map(e => [e.id, e]));
     let resultado = Object.values(acc).map(l => ({
       ...l,
       bruto: Math.round(l.bruto * 100) / 100,
       retencao: Math.round(l.retencao * 100) / 100,
       liquido: Math.round(l.liquido * 100) / 100,
       dias: [...l.dias].sort((a, b) => a.date.localeCompare(b.date)),
+      demitidoEm: empById[l.empregadoId]?.demitidoEm || null,
     }));
     // Filtro por unidade de PRODUÇÃO: aplica DEPOIS do cálculo.
     // Mostra TODOS os empregados ativos com unidadePadraoId = produção,
@@ -169,6 +183,7 @@ export function DivisaoMesTab({
           liquido: 0,
           diasComRecebimento: 0,
           dias: [],
+          demitidoEm: e.demitidoEm || null,
         });
       }
       // Filtra: mantém só empregados da unidade selecionada
@@ -375,7 +390,14 @@ export function DivisaoMesTab({
               >
                 <span className="text-gray-400 text-xs">{isExpanded ? "▼" : "▶"}</span>
                 <div className="min-w-0">
-                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
+                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">
+                    <span className="truncate">{l.nome}</span>
+                    {l.demitidoEm && (
+                      <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide shrink-0">
+                        Demitido em {fmtDataSaida(l.demitidoEm)}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-[10px] text-gray-500 flex items-center gap-1.5">
                     <span>{l.cargoNome}</span>
                     {unidadeNomePorEmp[l.empregadoId] && (
@@ -403,7 +425,14 @@ export function DivisaoMesTab({
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <span className="text-gray-400 text-xs shrink-0">{isExpanded ? "▼" : "▶"}</span>
                     <div className="min-w-0">
-                      <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate">{l.nome}</div>
+                      <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate flex items-center gap-1.5 flex-wrap">
+                        <span className="truncate">{l.nome}</span>
+                        {l.demitidoEm && (
+                          <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+                            Demitido em {fmtDataSaida(l.demitidoEm)}
+                          </span>
+                        )}
+                      </div>
                       <div className="text-[11px] text-gray-500 truncate flex items-center gap-1.5">
                         <span>{l.cargoNome}</span>
                         {unidadeNomePorEmp[l.empregadoId] && (
@@ -524,6 +553,7 @@ export function DivisaoMesTab({
             retencao: l.retencao,
             liquido: l.liquido,
             diasComRecebimento: l.diasComRecebimento,
+            demitidoEm: l.demitidoEm,
           }))}
           empregados={empregados}
           unidades={unidades}

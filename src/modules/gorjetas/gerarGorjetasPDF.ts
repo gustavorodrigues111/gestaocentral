@@ -22,7 +22,17 @@ export type GorjetasPDFLinha = {
   retencao: number;
   liquido: number;
   diasComRecebimento: number;
+  demitidoEm?: string | null;   // YYYY-MM-DD (primeiro dia FORA) — vira badge na linha
 };
+
+// `demitidoEm` é o primeiro dia FORA. Pra exibir, mostra o último dia
+// trabalhado (= demitidoEm − 1).
+function fmtDataSaida(demitidoEm: string): string {
+  const [y, m, d] = demitidoEm.split("-").map(Number);
+  if (!y || !m || !d) return demitidoEm;
+  const dt = new Date(y, m - 1, d - 1);
+  return `${String(dt.getDate()).padStart(2, "0")}/${String(dt.getMonth() + 1).padStart(2, "0")}/${dt.getFullYear()}`;
+}
 
 export type GorjetasPDFParams = {
   ano: number;
@@ -130,8 +140,14 @@ export async function gerarGorjetasPDF({
       } as any]);
       areaPrev = l.area;
     }
+    // Demitido: célula multi-linha — nome + "Demitido em DD/MM/AAAA" em
+    // segunda linha. autoTable suporta \n e quebra naturalmente.
+    const nomeCel = l.demitidoEm
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? { content: `${l.nome}\nDemitido em ${fmtDataSaida(l.demitidoEm)}`, styles: { textColor: [127, 29, 29] } } as any
+      : l.nome;
     body.push([
-      l.nome,
+      nomeCel,
       l.cargoNome,
       l.diasComRecebimento,
       fmtBR(l.bruto),
