@@ -1656,11 +1656,24 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           if (e.cpf) sidByCpfMap.set(e.cpf, e.id);
         }
         const sidByEmpId: Record<string, number> = {};
+        const naoMapeados: { id: string; nome: string; cpf: string }[] = [];
         for (const emp of empregados) {
           const c = onlyDigits(emp.cpf);
           const sid = c ? sidByCpfMap.get(c) : undefined;
-          if (sid != null) sidByEmpId[emp.id] = sid;
+          if (sid != null) {
+            sidByEmpId[emp.id] = sid;
+          } else {
+            naoMapeados.push({ id: emp.id, nome: emp.nome, cpf: c });
+          }
         }
+        // eslint-disable-next-line no-console
+        console.log("[DEBUG sidByEmpId mapping]", {
+          totalEmpregadosPlanejamento: empregados.length,
+          totalEmpregadosSolides: adjRes.employees.length,
+          totalMapeados: Object.keys(sidByEmpId).length,
+          naoMapeados,
+          sampleSolidesEmployees: adjRes.employees.slice(0, 10),
+        });
         aplicarAjustesNaEscala(adjRes.adjustments, sidByEmpId, escalaPorEmpregado);
         debugInfo.ajustesAplicados = adjRes.count;
         debugInfo.sampleProbeAdj = adjRes.sampleProbe;
