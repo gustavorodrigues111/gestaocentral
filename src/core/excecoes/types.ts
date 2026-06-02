@@ -115,6 +115,12 @@ export type ExceptionRecord = {
   employeeName: string;
   description: string; // texto pronto pra exibir
   detail?: string; // contexto extra opcional
+  // Snapshot das batidas do dia em formato legível
+  // Ex: "E1 11:39 → S1 17:11 · E2 17:59 → S2 22:51". Vazio quando o dia não
+  // tem nenhuma marcação (regras de falta etc). Preenchido pelo motor de
+  // regras quando ctx.metrics.blocks.length > 0. Permite a UI mostrar as
+  // batidas UMA vez no header do dia em vez de repetir em cada apontamento.
+  batidas?: string;
 };
 
 // Status por APONTAMENTO individual (empregado × data × ruleId).

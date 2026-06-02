@@ -138,7 +138,7 @@ function fmtHora(ms: number | undefined | null): string {
 
 // Formata todas as batidas do dia: "E1 08:00 → S1 12:00 · E2 13:00 → S2 17:30".
 // Bloco sem saída fica como "aberto".
-function fmtBlocosDoDia(blocks: SolidesPunch[]): string {
+export function formatarBatidas(blocks: SolidesPunch[]): string {
   if (!blocks || blocks.length === 0) return "sem batidas";
   return blocks
     .map((b, i) => {
@@ -149,9 +149,10 @@ function fmtBlocosDoDia(blocks: SolidesPunch[]): string {
     .join(" · ");
 }
 
-// Helper pra montar um ExceptionRecord a partir do contexto. Sempre inclui o
-// resumo dos blocos do dia no `detail` (concatenado ao detail específico da
-// regra, se houver) pra facilitar a análise do líder.
+// Helper pra montar um ExceptionRecord a partir do contexto. O resumo dos
+// blocos do dia vai num campo dedicado `batidas` (UI mostra UMA vez no header
+// do dia, não repetido em cada apontamento). `detail` fica reservado pro
+// contexto específico da regra (ex: "escala = folga" em marcacaoForaDaEscala).
 function mk(
   ruleId: ExceptionRuleId,
   ctx: DayContext,
@@ -159,9 +160,9 @@ function mk(
   detail?: string,
 ): ExceptionRecord {
   const meta = RULES_META[ruleId];
-  const batidas = fmtBlocosDoDia(ctx.metrics.blocks);
-  const detailFinal = detail ? `${detail} · 🕐 ${batidas}` : `🕐 ${batidas}`;
-  return {
+  const blocks = ctx.metrics.blocks;
+  const batidas = blocks && blocks.length > 0 ? formatarBatidas(blocks) : undefined;
+  const rec: ExceptionRecord = {
     ruleId,
     severity: meta.severity,
     date: ctx.metrics.date,
@@ -169,8 +170,10 @@ function mk(
     cpf: ctx.metrics.cpf,
     employeeName: ctx.metrics.employeeName,
     description,
-    detail: detailFinal,
   };
+  if (detail) rec.detail = detail;
+  if (batidas) rec.batidas = batidas;
+  return rec;
 }
 
 type Rule = (ctx: DayContext) => ExceptionRecord | null;

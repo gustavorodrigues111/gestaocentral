@@ -10,7 +10,7 @@ import type { Cargo, Empregado, ScheduleStatus } from "../types";
 import { empregadoBatePonto } from "../types";
 import type { DayContext, DayMetrics, ExceptionRecord, SolidesPunch } from "./types";
 import { computeDayMetrics, emptyDayMetrics, groupByEmployeeDay, onlyDigits } from "./dayMetrics";
-import { RULES_META, runAllRules } from "./rules";
+import { RULES_META, formatarBatidas, runAllRules } from "./rules";
 
 export type GenerateReportInput = {
   punches: SolidesPunch[];
@@ -333,6 +333,10 @@ function unificarBatidasImpares(
   }
 
   const meta = RULES_META.batidasImpares;
+  const batidasFmt =
+    ctx.metrics.blocks && ctx.metrics.blocks.length > 0
+      ? formatarBatidas(ctx.metrics.blocks)
+      : undefined;
   const novoApontamento: ExceptionRecord = {
     ruleId: "batidasImpares",
     severity: meta.severity,
@@ -342,6 +346,7 @@ function unificarBatidasImpares(
     employeeName: ctx.metrics.employeeName,
     description: partes.join(" "),
     detail: `🕐 ${listaHoras}`,
+    ...(batidasFmt ? { batidas: batidasFmt } : {}),
   };
   restantes.push(novoApontamento);
   return restantes;

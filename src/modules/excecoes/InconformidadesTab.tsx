@@ -1066,6 +1066,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         ruleId: a.ruleId,
         description: a.description,
         detail: a.detail,
+        batidas: a.batidas,
       })),
     });
     const link = montarLinkWhats(whatsapp, msg);
@@ -2957,6 +2958,12 @@ function ColaboradorBlock({
               );
             }
             const { date, exc } = linha;
+            // Batidas do dia: vêm preenchidas pelo motor de regras (campo
+            // novo `batidas`). Pegamos da primeira exception do dia que
+            // tenha o campo. Caches antigos não têm o campo → fallback é
+            // `undefined` e o header simplesmente não mostra (o `detail`
+            // antigo continua aparecendo em cada linha por retrocompat).
+            const batidasDoDia = exc.find((e) => e.batidas)?.batidas;
             // ── Dedupe: agrupa por ruleId (mesma regra no mesmo dia) ──
             type DedupExc = {
               ruleId: ExceptionRecord["ruleId"];
@@ -3028,6 +3035,16 @@ function ColaboradorBlock({
                     </span>
                   )}
                 </div>
+                {/* Batidas do dia — UMA vez no header. Cada linha de problema
+                    abaixo fica enxuta (sem repetir batidas). Caches antigos
+                    sem o campo `batidas` simplesmente não renderizam isso e
+                    seguem mostrando o detail antigo em cada linha. */}
+                {batidasDoDia && (
+                  <div className="mb-3 px-3 py-1.5 rounded-md bg-gray-50 dark:bg-gray-800/40 border-l-4 border-l-indigo-500 text-xs">
+                    <span className="text-gray-500 dark:text-gray-400 mr-2">📍 Batidas:</span>
+                    <span className="font-mono text-gray-700 dark:text-gray-300">{batidasDoDia}</span>
+                  </div>
+                )}
                 {/* Conteúdo: SEMPRE 2 colunas (Alinhamento × Ajuste) lado a lado. */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
                   {/* Coluna Alinhamento */}
@@ -3148,9 +3165,26 @@ function ColaboradorBlock({
                       title={tooltipDetalhes}
                     >
                       {e.description}
-                      {e.detail && (
-                        <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
-                      )}
+                      {(() => {
+                        if (!e.detail) return null;
+                        // Suprime detail redundante com o header de batidas.
+                        // Caches antigos (sem `e.batidas`) ainda mostram o
+                        // detail inteiro — incluindo o resumo de batidas que
+                        // antes ficava lá. Caches novos só têm detail quando
+                        // ele agrega contexto extra à regra (ex: "escala = folga"
+                        // em marcacaoForaDaEscala) — esse aparece normalmente.
+                        // Heurística: se batidasDoDia está preenchido E o detail
+                        // começa com 🕐 (formato legado), considera redundante.
+                        // Idem se for igual ao próprio campo batidas.
+                        if (batidasDoDia) {
+                          if (e.detail === batidasDoDia) return null;
+                          if (e.detail.startsWith("🕐")) return null;
+                          if (e.batidas && e.detail.includes(e.batidas)) return null;
+                        }
+                        return (
+                          <span className="text-gray-400 dark:text-gray-500"> · {e.detail}</span>
+                        );
+                      })()}
                       {/* Indicador de status terminal */}
                       {isCiencia && (
                         <span
