@@ -118,6 +118,17 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     // em cada dia onde a expectativa diverge.
     const empIsAlternating = !!emp.workSchedules?.some((w) => w.type === "alternating");
 
+    // Período de vínculo do empregado. Datas FORA desse range não geram
+    // inconformidade — empregado ainda não tinha sido admitido (ou já foi
+    // demitido). Evita "falta sem ajuste" pros dias anteriores à admissão.
+    const admissao = emp.admissaoAtual || null;
+    const demissao = emp.demitidoEm || null;
+    function dentroDoVinculo(date: string): boolean {
+      if (admissao && date < admissao) return false;
+      if (demissao && date > demissao) return false;
+      return true;
+    }
+
     // Snapshot da escala efetiva pra esse empregado, restrita ao range do
     // relatório. Mesmo que ele não tenha datas pra analisar abaixo (sem
     // marcação e sem dia de trabalho previsto no range), o snapshot ainda
@@ -125,7 +136,7 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     if (cpf) {
       const perDateFiltrado: Record<string, ScheduleStatus> = {};
       for (const [d, st] of Object.entries(escalaEmp)) {
-        if (d >= startDate && d <= endDate) perDateFiltrado[d] = st;
+        if (d >= startDate && d <= endDate && dentroDoVinculo(d)) perDateFiltrado[d] = st;
       }
       if (Object.keys(perDateFiltrado).length > 0) {
         escalaEfetivaPorCpf[cpf] = perDateFiltrado;
@@ -137,14 +148,15 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     if (solidesId != null) matchedSolidesIds.add(solidesId);
 
     // Datas a analisar: união de dias COM marcação + dias escalados como "trabalho"
+    // FILTRADAS pelo período de vínculo (admissão..demissão).
     const datas = new Set<string>();
     if (metricsByDate) {
       for (const d of metricsByDate.keys()) {
-        if (d >= startDate && d <= endDate) datas.add(d);
+        if (d >= startDate && d <= endDate && dentroDoVinculo(d)) datas.add(d);
       }
     }
     for (const [d, st] of Object.entries(escalaEmp)) {
-      if (d >= startDate && d <= endDate && st === "trabalho") datas.add(d);
+      if (d >= startDate && d <= endDate && st === "trabalho" && dentroDoVinculo(d)) datas.add(d);
     }
     // Pra empregados alternating: também analisar dias onde a Sólides
     // espera trabalho (mesmo que plan = folga). Senão o dia de "folga
@@ -152,7 +164,7 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     if (empIsAlternating && cpf) {
       const horariosEmp = horariosPrevistos?.[emp.id] || {};
       for (const d of Object.keys(horariosEmp)) {
-        if (d >= startDate && d <= endDate) datas.add(d);
+        if (d >= startDate && d <= endDate && dentroDoVinculo(d)) datas.add(d);
       }
     }
     if (datas.size === 0) continue;

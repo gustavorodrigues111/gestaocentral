@@ -1873,7 +1873,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         }
         return true;
       })
-      .map((emp) => ({ id: emp.id, nome: emp.nome, cpf: emp.cpf || "" }));
+      .map((emp) => ({
+        id: emp.id,
+        nome: emp.nome,
+        cpf: emp.cpf || "",
+        admissao: emp.admissaoAtual || null,
+        demissao: emp.demitidoEm || null,
+      }));
   }, [empregados, cargos, filtroAreas, filtroEmpregados, areaByEmpId]);
 
   // Dias do mês ativo até hoje (sem futuro), filtrados pelas semanas
@@ -2576,10 +2582,16 @@ function montarDiasDoEmpregado(
   exceptionsByEmpDate: Map<string /* empId_date */, ExceptionRecord[]>,
   exceptionsByCpfDate: Map<string /* cpf_date */, ExceptionRecord[]>,
   diasMes: string[],
+  vinculo?: { admissao?: string | null; demissao?: string | null },
 ): DayRow[] {
   const escala = escalaEfetivaPorCpf[cpf] || {};
   const rows: DayRow[] = [];
+  const admissao = vinculo?.admissao || null;
+  const demissao = vinculo?.demissao || null;
   for (const date of diasMes) {
+    // Pula dias fora do período de vínculo — não eram empregados da gente.
+    if (admissao && date < admissao) continue;
+    if (demissao && date > demissao) continue;
     // Tenta resolver exceções 1º por empId (chave estável) e fallback por cpf
     // (modo "Mês todo" pode ter exception sem empId quando o CPF não casou).
     const exc =
@@ -2672,7 +2684,7 @@ function computarSummary(
 function agruparPorColabDate(
   rows: ExceptionRecord[],
   empIdByCpf: Map<string, string>,
-  basePessoas: Array<{ id: string; nome: string; cpf: string }>,
+  basePessoas: Array<{ id: string; nome: string; cpf: string; admissao?: string | null; demissao?: string | null }>,
   escalaEfetivaPorCpf: Record<string, Record<string, ScheduleStatus>>,
   diasMes: string[],
   apontamentosPorChave: Map<string, ApontamentoFuncionario>,
@@ -2795,8 +2807,12 @@ function agruparPorColabDate(
       });
       continue;
     }
-    // Vista completa: monta TODOS os dias do mês até hoje
-    const dias = montarDiasDoEmpregado(cpfD, p.id, escalaEfetivaPorCpf, exceptionsByEmpDate, exceptionsByCpfDate, diasMes);
+    // Vista completa: monta TODOS os dias do mês até hoje. Pula dias antes
+    // da admissão ou depois da demissão.
+    const dias = montarDiasDoEmpregado(
+      cpfD, p.id, escalaEfetivaPorCpf, exceptionsByEmpDate, exceptionsByCpfDate, diasMes,
+      { admissao: p.admissao, demissao: p.demissao },
+    );
     const summary = computarSummary(dias, p.id, apontamentosPorChave, statusApontamentoMap, statusDiaMap);
     // porData (compat) — só dias com exception
     const porData = dias
