@@ -632,6 +632,17 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       next.set(lockKey, otimista);
       return next;
     });
+    // Se o novo status é terminal (ciência, falso positivo, corrigido)
+    // e o apontamento estava no lote, tira automaticamente — o apontamento
+    // foi resolvido, não faz sentido continuar no box amarelo.
+    // Status 'empresa_ajustara' NÃO é terminal mas tem fluxo próprio (entra
+    // no lote como item de empresa). Pular ele aqui evita loop.
+    if (isStatusTerminal(input.novoStatus)) {
+      const chavesLote = loteChavesDo(input.empregadoId);
+      if (chavesLote.has(lockKey)) {
+        removerDoLote(input.empregadoId, lockKey);
+      }
+    }
     try {
       await setStatusApontamento({
         restaurantId: rid,
