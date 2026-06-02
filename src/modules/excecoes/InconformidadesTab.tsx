@@ -811,11 +811,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const todosTerminais = statusPorEx.every((x) => isStatusTerminal(x.status));
     if (!todosTerminais) return;
 
-    // Categoria por rule: precisa ter ao menos 1 alinhamento (não puro ajuste).
-    const temAlinhamento = exDoDia.some(
-      (e) => REGRA_CATEGORIA_DEFAULT[e.ruleId] === "alinhamento",
+    // Categoria por rule: precisa ter ao menos 1 alinhamento REAL (ciência
+    // dada). Apontamentos marcados como "nao_e_inconformidade" (falso
+    // positivo / combinado / justificado) NÃO contam — não gera Trilha
+    // se todos foram dispensados como falsos positivos.
+    const temAlinhamentoReal = statusPorEx.some((x) =>
+      REGRA_CATEGORIA_DEFAULT[x.rule] === "alinhamento" && x.status === "ciencia",
     );
-    if (!temAlinhamento) return;
+    if (!temAlinhamentoReal) return;
 
     // Gera 1 evento por dia na Trilha (idempotente).
     try {
@@ -2862,14 +2865,28 @@ function ColaboradorBlock({
                     {/* Ações por linha */}
                     {podeAnotar && !isTerminal && (
                       categoria === "alinhamento" ? (
-                        <button
-                          type="button"
-                          onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap mt-0.5"
-                          title="Dar ciência — registra o alinhamento (presencial)"
-                        >
-                          👁 Dar ciência
-                        </button>
+                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap"
+                            title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
+                          >
+                            👁 Dar ciência
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap"
+                            title={
+                              e.ruleId === "atrasoEntrada"
+                                ? "Não foi atraso — combinado/justificado previamente. Não conta na Trilha."
+                                : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
+                            }
+                          >
+                            ✗ {e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}
+                          </button>
+                        </div>
                       ) : (
                         <button
                           type="button"
