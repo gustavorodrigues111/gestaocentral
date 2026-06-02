@@ -1,7 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
-import { calcularDivisaoDia } from "./calc";
+import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
 import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
@@ -105,14 +105,20 @@ export function DivisaoMesTab({
         : (splitVersion?.taxRate ?? 0);
       const fator = 1 - taxRate / 100;
 
-      // Usa snapshot se gorjeta publicada (congelada); senão recalcula live
+      // Usa snapshot se gorjeta publicada (congelada); senão recalcula live.
+      // ATENÇÃO: `liquido` precisa estar arredondado em centavos antes de
+      // entrar no calcularDivisaoDia. Sem arredondar, sobram frações de
+      // centavo na conta que nem são distribuíveis nem somam ao bruto.
       let itens: DivisaoItem[];
       if (g.publicada && g.divisaoSnapshot) {
         itens = g.divisaoSnapshot;
       } else {
-        const liquido = g.valorBruto * fator;
+        const liquido = calcularValorLiquido(g.valorBruto, taxRate);
         const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
         itens = r.itens;
+        // Marca o fator como inverso do arredondamento real — pra na
+        // agregação por empregado, brutoEmp / liquidoEmp baterem certinho
+        // sem reabrir buraco. (calcularValorLiquido já arredondou.)
       }
 
       for (const it of itens) {
@@ -214,7 +220,6 @@ export function DivisaoMesTab({
       const taxRate = (g.publicada && g.divisaoSnapshot)
         ? (g.taxRate || 0)
         : (splitVersion?.taxRate ?? 0);
-      const fator = 1 - taxRate / 100;
       let valorLiquido: number;
       let totalDistribuido: number;
       let itensCount: number;
@@ -223,7 +228,9 @@ export function DivisaoMesTab({
         totalDistribuido = g.divisaoSnapshot.reduce((s, it) => s + it.valor, 0);
         itensCount = g.divisaoSnapshot.length;
       } else {
-        valorLiquido = g.valorBruto * fator;
+        // Arredonda em centavos antes de calcular pra ficar consistente
+        // com o que `linhas` usa (e evitar fração de centavo perdida).
+        valorLiquido = calcularValorLiquido(g.valorBruto, taxRate);
         const r = calcularDivisaoDia(g.date, valorLiquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
         totalDistribuido = r.totalDistribuido;
         itensCount = r.itens.length;
@@ -262,7 +269,9 @@ export function DivisaoMesTab({
       if (g.publicada && g.divisaoSnapshot) return s + (g.valorLiquido || 0);
       const sv = getActiveSplitVersion(splitVersions, g.date);
       const tax = sv?.taxRate ?? 0;
-      return s + (g.valorBruto || 0) * (1 - tax / 100);
+      // Arredonda em centavos por dia antes de somar — pra bater com a
+      // soma distribuída (que é sempre arredondada).
+      return s + calcularValorLiquido(g.valorBruto || 0, tax);
     }, 0);
     const retencao = bruto - liquido;
     const distribuido = linhas.reduce((s, l) => s + l.liquido, 0);
