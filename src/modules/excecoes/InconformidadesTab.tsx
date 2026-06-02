@@ -2472,7 +2472,44 @@ function agruparPorColabDate(
   };
   const avulsoMap = new Map<string, Acc>();
   const cpfsDaBase = new Set(basePessoas.map(p => (p.cpf || "").replace(/\D/g, "")));
+
+  // Supressão de regras derivadas quando há `batidasImpares` ATIVO no dia.
+  //
+  // Quando o dia tem batida ímpar (ex.: 3 batidas com a 1ª às 10:25), as regras
+  // derivadas das batidas (atraso, intervalo, jornada, interjornada, bloco
+  // suspeito) ficam ambíguas — não dá pra afirmar "atrasou 2h25" se talvez a
+  // 1ª batida seja uma volta de intervalo. O líder primeiro alinha as batidas;
+  // depois que o empregado corrigir na Sólides (status `corrigido_solides`)
+  // OU o líder marcar como `nao_e_inconformidade` (assumindo as batidas como
+  // corretas), as regras derivadas reaparecem.
+  const REGRAS_DERIVADAS_DE_BLOCOS: ReadonlySet<ExceptionRecord["ruleId"]> = new Set([
+    "atrasoEntrada",
+    "intervaloMenorQueLegal",
+    "interjornadaCurta",
+    "jornadaAcimaDe10h",
+    "blocoSuspeito",
+  ]);
+  const diasComBatidasImparesAtivas = new Set<string>();
   for (const e of rows) {
+    if (e.ruleId !== "batidasImpares") continue;
+    const cpfD = (e.cpf || "").replace(/\D/g, "");
+    const empId = empIdByCpf.get(cpfD) ?? "";
+    if (!empId) continue;
+    const doc = statusApontamentoMap.get(apontamentoKey(empId, e.date, "batidasImpares"));
+    const s = doc?.status ?? "aberto";
+    if (s !== "nao_e_inconformidade" && s !== "corrigido_solides") {
+      diasComBatidasImparesAtivas.add(`${empId}_${e.date}`);
+    }
+  }
+  const rowsFiltradas = rows.filter(e => {
+    if (!REGRAS_DERIVADAS_DE_BLOCOS.has(e.ruleId)) return true;
+    const cpfD = (e.cpf || "").replace(/\D/g, "");
+    const empId = empIdByCpf.get(cpfD) ?? "";
+    if (!empId) return true;
+    return !diasComBatidasImparesAtivas.has(`${empId}_${e.date}`);
+  });
+
+  for (const e of rowsFiltradas) {
     const cpfD = (e.cpf || "").replace(/\D/g, "");
     const empId = empIdByCpf.get(cpfD) ?? "";
     if (empId) {
@@ -2511,7 +2548,7 @@ function agruparPorColabDate(
     const temEscala = !!escalaEfetivaPorCpf[cpfD] && Object.keys(escalaEfetivaPorCpf[cpfD]).length > 0;
     // Sem cache de escala: cai no modo legado — só renderiza se tem exception.
     if (!temEscala) {
-      const excDoEmp = rows.filter(e => (e.cpf || "").replace(/\D/g, "") === cpfD);
+      const excDoEmp = rowsFiltradas.filter(e => (e.cpf || "").replace(/\D/g, "") === cpfD);
       if (excDoEmp.length === 0) continue;
       const porDataMap = new Map<string, ExceptionRecord[]>();
       for (const e of excDoEmp) {
