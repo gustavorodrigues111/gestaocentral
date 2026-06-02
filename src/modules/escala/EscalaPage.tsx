@@ -17,6 +17,7 @@ import {
 import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
 import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
 import { InversaoDomingoModal } from "./InversaoDomingoModal";
@@ -1301,6 +1302,13 @@ function Grade({
                 </td>
                 {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
                   const d = `${ano}-${pad2(mes)}-${pad2(dia)}`;
+                  // Empregado precisa estar dentro de algum período de
+                  // atividade nesse dia. Fora dele (antes da admissão ou
+                  // a partir de demitidoEm), a célula fica vazia mesmo se
+                  // tem override antigo no Firestore — o override é
+                  // mascarado, não apagado, então reativar a contratação
+                  // recupera a escala pintada de antes.
+                  const ativoNoDia = empregadoAtivoEm(e, d);
                   // Na PRATICADA, célula sem entry específica cai pra prevista
                   // como fallback. Isso cobre:
                   //   - Prevista aberta (praticada espelha prevista)
@@ -1309,9 +1317,9 @@ function Grade({
                   //     (dias intocados continuam vindo da prevista)
                   const realCell = escala?.real?.[e.id]?.[d];
                   const previstaCell = escala?.prevista?.[e.id]?.[d];
-                  const override = versao === "real"
+                  const override = !ativoNoDia ? undefined : (versao === "real"
                     ? (realCell ?? previstaCell)
-                    : previstaCell;
+                    : previstaCell);
                   const derived = derivados[e.id]?.[d];
                   const isToday = d === hojeYmd;
                   const cellKey = `${e.id}|${d}`;
@@ -1338,7 +1346,20 @@ function Grade({
                   const ocultaPorFiltro = !!(
                     filtroUnidadeId && status === "trabalho" && unidadeIdDoDia !== filtroUnidadeId
                   );
-                  const swap = swapsPorCelula[`${e.id}|${d}`];
+                  const swap = ativoNoDia ? swapsPorCelula[`${e.id}|${d}`] : undefined;
+                  // Dias fora do período (pré-admissão/pós-demissão): célula
+                  // listrada cinza, sem click pra editar.
+                  if (!ativoNoDia) {
+                    return (
+                      <td
+                        key={dia}
+                        className={`p-0 text-center relative bg-gray-100 dark:bg-gray-800/40 ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""}`}
+                        title="Fora do período de atividade do empregado (pré-admissão ou pós-demissão)"
+                      >
+                        <div className="w-full h-7 flex items-center justify-center text-[10px] text-gray-400 dark:text-gray-600 select-none">·</div>
+                      </td>
+                    );
+                  }
                   return (
                     <td key={dia} className={`p-0 text-center relative ${isToday ? "ring-1 ring-indigo-400 ring-inset" : ""} ${ocultaPorFiltro ? "opacity-25" : ""}`}>
                       <Celula
@@ -1993,14 +2014,24 @@ function GradeMobile({
                   const escDoDia = escalaDoIso(iso);
                   const realCell = escDoDia?.real?.[e.id]?.[iso];
                   const previstaCell = escDoDia?.prevista?.[e.id]?.[iso];
-                  const override = versao === "real"
+                  const ativoNoDia = empregadoAtivoEm(e, iso);
+                  const override = !ativoNoDia ? undefined : (versao === "real"
                     ? (realCell ?? previstaCell)
-                    : previstaCell;
+                    : previstaCell);
                   const derived = derivados[e.id]?.[iso];
                   const status = override ?? derived?.status;
                   const isImplicito = !override && derived?.fonte === "implicito";
                   const info = status ? STATUS_INFO[status] : null;
-                  const swap = swapsPorCelula[`${e.id}|${iso}`];
+                  const swap = ativoNoDia ? swapsPorCelula[`${e.id}|${iso}`] : undefined;
+                  if (!ativoNoDia) {
+                    return (
+                      <div
+                        key={iso}
+                        className="aspect-square w-full max-w-[44px] mx-auto rounded bg-gray-100 dark:bg-gray-800/40 flex items-center justify-center text-[10px] text-gray-400 dark:text-gray-600"
+                        title="Fora do período de atividade do empregado"
+                      >·</div>
+                    );
+                  }
                   // Dia fora do mês majoritário: visualmente mais opaco, mas
                   // continua clicável (abre picker). O auto-switch do useEffect
                   // já troca de mês quando 4+ dias da semana caem no outro.

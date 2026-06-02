@@ -121,11 +121,12 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     // Período de vínculo do empregado. Datas FORA desse range não geram
     // inconformidade — empregado ainda não tinha sido admitido (ou já foi
     // demitido). Evita "falta sem ajuste" pros dias anteriores à admissão.
+    // demitidoEm é o PRIMEIRO dia FORA — então comparar com >= (não >).
     const admissao = emp.admissaoAtual || null;
     const demissao = emp.demitidoEm || null;
     function dentroDoVinculo(date: string): boolean {
       if (admissao && date < admissao) return false;
-      if (demissao && date > demissao) return false;
+      if (demissao && date >= demissao) return false;
       return true;
     }
 
