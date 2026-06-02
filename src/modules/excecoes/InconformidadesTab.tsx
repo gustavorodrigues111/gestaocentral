@@ -765,7 +765,16 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     ruleId: string;
     novoStatus: PontoApontamentoStatus;
   }) {
-    if (!me) return;
+    if (!me) {
+      alert("Sem usuário logado — recarrega a página e tenta de novo.");
+      return;
+    }
+    if (!input.empregadoId) {
+      alert("Empregado sem id no Planejamento (provavelmente o CPF não casa com o cadastro). Confira na aba Compatibilidade.");
+      return;
+    }
+    const lockKey = apontamentoKey(input.empregadoId, input.data, input.ruleId);
+    setSalvandoApontamento((prev) => new Set(prev).add(lockKey));
     try {
       await setStatusApontamento({
         restaurantId: rid,
@@ -775,9 +784,33 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         novoStatus: input.novoStatus,
         por: { id: me.id, nome: me.nome },
       });
+      // Atualização otimista: já marca no map local pra UI virar antes do
+      // listener real-time chegar. Listener confirma depois.
+      setStatusApontamentoMap((prev) => {
+        const next = new Map(prev);
+        next.set(lockKey, {
+          id: `${rid}_${input.empregadoId}_${input.data}_${input.ruleId}`,
+          restaurantId: rid,
+          empregadoId: input.empregadoId,
+          data: input.data,
+          ruleId: input.ruleId,
+          status: input.novoStatus,
+          atualizadoEm: new Date().toISOString(),
+          atualizadoPor: me.id,
+          atualizadoPorNome: me.nome,
+        });
+        return next;
+      });
     } catch (e) {
+      console.error("[ponto] setStatusApontamento falhou:", e);
       alert("Falha ao atualizar status: " + (e instanceof Error ? e.message : String(e)));
       return;
+    } finally {
+      setSalvandoApontamento((prev) => {
+        const next = new Set(prev);
+        next.delete(lockKey);
+        return next;
+      });
     }
 
     // Pós-write: verifica se o dia inteiro ficou terminal. Como o listener
@@ -854,6 +887,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     ruleId: string;
   }) {
     if (!me) return;
+    const lockKey = apontamentoKey(input.empregadoId, input.data, input.ruleId);
+    setSalvandoApontamento((prev) => new Set(prev).add(lockKey));
     try {
       await setStatusApontamento({
         restaurantId: rid,
@@ -863,10 +898,26 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         novoStatus: "aberto",
         por: { id: me.id, nome: me.nome },
       });
+      setStatusApontamentoMap((prev) => {
+        const next = new Map(prev);
+        next.delete(lockKey);
+        return next;
+      });
     } catch (e) {
+      console.error("[ponto] reabrir apontamento falhou:", e);
       alert("Falha ao reabrir: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSalvandoApontamento((prev) => {
+        const next = new Set(prev);
+        next.delete(lockKey);
+        return next;
+      });
     }
   }
+
+  // Conjunto de apontamentos atualmente sendo salvos (lockKey).
+  // Usado pra disabled + texto "salvando…" no botão.
+  const [salvandoApontamento, setSalvandoApontamento] = useState<Set<string>>(new Set());
 
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
@@ -1912,6 +1963,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   }}
                   statusDiaMap={statusDiaMap}
                   statusApontamentoMap={statusApontamentoMap}
+                  salvandoApontamento={salvandoApontamento}
                   onAplicarStatusApontamento={(e, novo) => aplicarStatusApontamento({
                     empregadoId: grupo.empregadoId,
                     empregadoNome: grupo.nome,
@@ -2386,6 +2438,7 @@ function ColaboradorBlock({
   onResolverNaEscala,
   statusDiaMap,
   statusApontamentoMap,
+  salvandoApontamento,
   onAplicarStatusApontamento,
   onReabrirApontamento,
 }: {
@@ -2404,6 +2457,7 @@ function ColaboradorBlock({
   onResolverNaEscala?: (exc: ExceptionRecord) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
   statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>;
+  salvandoApontamento: Set<string>;
   onAplicarStatusApontamento: (
     exc: ExceptionRecord,
     novoStatus: PontoApontamentoStatus,
@@ -2863,46 +2917,58 @@ function ColaboradorBlock({
                       )}
                     </span>
                     {/* Ações por linha */}
-                    {podeAnotar && !isTerminal && (
-                      categoria === "alinhamento" ? (
-                        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                    {(() => {
+                      const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
+                      const salvando = salvandoApontamento.has(lockKey);
+                      if (podeAnotar && !isTerminal) {
+                        if (categoria === "alinhamento") {
+                          return (
+                            <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                              <button
+                                type="button"
+                                disabled={salvando}
+                                onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
+                              >
+                                {salvando ? "⏳ salvando…" : "👁 Dar ciência"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={salvando}
+                                onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
+                                title={
+                                  e.ruleId === "atrasoEntrada"
+                                    ? "Não foi atraso — combinado/justificado previamente. Não conta na Trilha."
+                                    : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
+                                }
+                              >
+                                {salvando ? "⏳" : `✗ ${e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}`}
+                              </button>
+                            </div>
+                          );
+                        }
+                        return (
                           <button
                             type="button"
-                            onClick={() => void onAplicarStatusApontamento(e, "ciencia")}
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap"
-                            title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
-                          >
-                            👁 Dar ciência
-                          </button>
-                          <button
-                            type="button"
+                            disabled={salvando}
                             onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
-                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap"
-                            title={
-                              e.ruleId === "atrasoEntrada"
-                                ? "Não foi atraso — combinado/justificado previamente. Não conta na Trilha."
-                                : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
-                            }
+                            className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
+                            title="Marcar como falso positivo — não é inconformidade"
                           >
-                            ✗ {e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}
+                            {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => void onAplicarStatusApontamento(e, "nao_e_inconformidade")}
-                          className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap mt-0.5"
-                          title="Marcar como falso positivo — não é inconformidade"
-                        >
-                          ✗ Não é inconformidade
-                        </button>
-                      )
-                    )}
+                        );
+                      }
+                      return null;
+                    })()}
                     {podeAnotar && isTerminal && (
                       <button
                         type="button"
+                        disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
                         onClick={() => void onReabrirApontamento(e)}
-                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5"
+                        className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap mt-0.5 disabled:opacity-50 disabled:cursor-wait"
                         title="Reabrir — volta o apontamento pra aberto"
                       >
                         ↩ reabrir
