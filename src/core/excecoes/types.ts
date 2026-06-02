@@ -60,7 +60,8 @@ export type ExceptionRuleId =
   | "blocoSuspeito"
   | "atrasoEntrada"
   | "entradaProvavelFaltante"
-  | "batidasImpares";
+  | "batidasImpares"
+  | "divergenciaSolidesEscala";
 
 // Categoria do apontamento na UI:
 //   alinhamento  — comportamento a ser alinhado verbalmente com o empregado
@@ -87,6 +88,7 @@ export const REGRA_CATEGORIA_DEFAULT: Record<ExceptionRuleId, ApontamentoCategor
   entradaProvavelFaltante: "ajuste",
   blocoSuspeito:           "ajuste",
   batidasImpares:          "ajuste",
+  divergenciaSolidesEscala: "ajuste",
 };
 
 // Status do DIA (empregado × data) — independente dos apontamentos

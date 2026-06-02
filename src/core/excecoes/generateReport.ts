@@ -112,6 +112,11 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
 
     const cpf = onlyDigits(emp.cpf);
     const escalaEmp = escalaPorEmpregado[emp.id] || {};
+    // Detecta se o empregado tem escala alternada (semana A/B). A Sólides
+    // não suporta nativamente — vai sempre cadastrar uma das semanas.
+    // Pra esses empregados, geramos um apontamento extra "Sólides ≠ Planejamento"
+    // em cada dia onde a expectativa diverge.
+    const empIsAlternating = !!emp.workSchedules?.some((w) => w.type === "alternating");
 
     // Snapshot da escala efetiva pra esse empregado, restrita ao range do
     // relatório. Mesmo que ele não tenha datas pra analisar abaixo (sem
@@ -140,6 +145,15 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
     }
     for (const [d, st] of Object.entries(escalaEmp)) {
       if (d >= startDate && d <= endDate && st === "trabalho") datas.add(d);
+    }
+    // Pra empregados alternating: também analisar dias onde a Sólides
+    // espera trabalho (mesmo que plan = folga). Senão o dia de "folga
+    // semana B" que a Sólides cobra como falta nunca seria visitado.
+    if (empIsAlternating && cpf) {
+      const horariosEmp = horariosPrevistos?.[emp.id] || {};
+      for (const d of Object.keys(horariosEmp)) {
+        if (d >= startDate && d <= endDate) datas.add(d);
+      }
     }
     if (datas.size === 0) continue;
 
@@ -178,6 +192,48 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       // São sintomas da mesma causa raiz (faltou bater 1) — não devem virar 2
       // cards/mensagens separadas pro líder.
       const excecoesFinais = unificarBatidasImpares(excecoesDoDia, ctx);
+
+      // ── Divergência Sólides x Planejamento (escala alternada) ──
+      // Pra empregado alternating, se a expectativa Sólides ≠ Planejamento
+      // naquele dia, emite um apontamento extra. Os outros apontamentos
+      // (atraso, batida faltando) continuam normalmente — esse é um apontamento
+      // PARALELO, pra alertar que a Sólides vai cobrar errado naquele dia.
+      if (empIsAlternating && cpf) {
+        const planTrabalho = (escalaEmp[date] || "") === "trabalho";
+        const solTrabalho = !!horariosPrevistos?.[emp.id]?.[date];
+        if (planTrabalho !== solTrabalho) {
+          const [, , dia] = date.split("-");
+          void dia;
+          const dow = new Date(date + "T12:00:00").getDay();
+          const diaSemana = ["domingo","segunda","terça","quarta","quinta","sexta","sábado"][dow];
+          const dataBr = (() => {
+            const [y, m, d] = date.split("-");
+            return `${d}/${m}/${y}`;
+          })();
+          const description = planTrabalho
+            ? `Trabalho previsto pelo Planejamento (escala alternada), mas Sólides cadastrada como folga em ${diaSemana}. → Lançar como dia útil regular na Sólides.`
+            : `Folga pelo Planejamento (escala alternada), mas Sólides cadastrada como dia útil em ${diaSemana}. → Lançar folga programada na Sólides.`;
+          const detail = planTrabalho
+            ? `Plan=trabalho · Sólides=folga · ${dataBr}`
+            : `Plan=folga · Sólides=trabalho · ${dataBr}`;
+          const batidasFmt =
+            ctx.metrics.blocks && ctx.metrics.blocks.length > 0
+              ? formatarBatidas(ctx.metrics.blocks)
+              : undefined;
+          excecoesFinais.push({
+            ruleId: "divergenciaSolidesEscala",
+            severity: "aviso",
+            date,
+            employeeId: ctx.metrics.employeeId,
+            cpf,
+            employeeName: emp.nome,
+            description,
+            detail,
+            ...(batidasFmt ? { batidas: batidasFmt } : {}),
+          });
+        }
+      }
+
       exceptions.push(...excecoesFinais);
       diasAnalisados += 1;
       if (cpf) {

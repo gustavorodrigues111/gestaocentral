@@ -100,6 +100,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "🚧",
     descricaoRegra: "Quantidade ímpar de batidas no dia — uma batida (entrada ou saída) está faltando.",
   },
+  divergenciaSolidesEscala: {
+    id: "divergenciaSolidesEscala",
+    label: "Sólides ≠ Planejamento",
+    severity: "aviso",
+    icon: "🏢",
+    descricaoRegra: "A escala da Sólides difere do Planejamento naquele dia (típico em empregados com escala alternada A/B — a Sólides só aceita uma semana fixa). Empregado cumpriu o combinado no Planejamento, mas a Sólides vai cobrar errado — ajuste manual lá.",
+  },
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
