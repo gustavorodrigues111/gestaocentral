@@ -12,11 +12,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import {
-  collection, deleteDoc, doc, onSnapshot, query, setDoc, where,
+  arrayRemove, arrayUnion, collection, deleteDoc, doc, onSnapshot, query, setDoc, where,
 } from "firebase/firestore";
 import type { Unsubscribe } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { sanitizeForFirestore } from "../firebase/sanitize";
 
 const COL = "excecoesLoteRascunho";
 
@@ -34,32 +33,51 @@ export function loteDocId(rid: string, empregadoId: string): string {
   return `${rid}_${empregadoId}`;
 }
 
-export async function salvarLoteRascunho(input: {
+// Adiciona UMA chave ao lote. Usa arrayUnion atômico do Firestore — múltiplos
+// adds concorrentes em qualquer ordem produzem o mesmo array final.
+// setDoc com merge:true cria o doc se não existir; senão só faz patch.
+export async function adicionarAoLoteRascunhoFirestore(input: {
   restaurantId: string;
   empregadoId: string;
-  apontamentoChaves: string[];
+  apontamentoChave: string;
   por: { id: string; nome: string };
 }): Promise<void> {
   const id = loteDocId(input.restaurantId, input.empregadoId);
-  // Lote vazio → deleta o doc (não polui Firestore com lista vazia)
-  if (input.apontamentoChaves.length === 0) {
-    try {
-      await deleteDoc(doc(db, COL, id));
-    } catch {
-      // ignora: pode não existir
-    }
-    return;
-  }
-  const novo: LoteRascunhoDoc = {
-    id,
-    restaurantId: input.restaurantId,
-    empregadoId: input.empregadoId,
-    apontamentoChaves: input.apontamentoChaves,
-    atualizadoEm: new Date().toISOString(),
-    atualizadoPor: input.por.id,
-    atualizadoPorNome: input.por.nome,
-  };
-  await setDoc(doc(db, COL, id), sanitizeForFirestore(novo));
+  await setDoc(
+    doc(db, COL, id),
+    {
+      id,
+      restaurantId: input.restaurantId,
+      empregadoId: input.empregadoId,
+      apontamentoChaves: arrayUnion(input.apontamentoChave),
+      atualizadoEm: new Date().toISOString(),
+      atualizadoPor: input.por.id,
+      atualizadoPorNome: input.por.nome,
+    },
+    { merge: true },
+  );
+}
+
+// Remove UMA chave do lote — arrayRemove atômico. Se o array ficar vazio,
+// o doc continua existindo com apontamentoChaves: [] (UI trata como "sem
+// lote"). Pra deletar de vez, usar limparLoteRascunho.
+export async function removerDoLoteRascunhoFirestore(input: {
+  restaurantId: string;
+  empregadoId: string;
+  apontamentoChave: string;
+  por: { id: string; nome: string };
+}): Promise<void> {
+  const id = loteDocId(input.restaurantId, input.empregadoId);
+  await setDoc(
+    doc(db, COL, id),
+    {
+      apontamentoChaves: arrayRemove(input.apontamentoChave),
+      atualizadoEm: new Date().toISOString(),
+      atualizadoPor: input.por.id,
+      atualizadoPorNome: input.por.nome,
+    },
+    { merge: true },
+  );
 }
 
 export async function limparLoteRascunho(input: {

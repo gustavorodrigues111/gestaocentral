@@ -68,7 +68,8 @@ import {
 } from "../../core/excecoes/statusApontamento";
 import {
   ouvirLotesRascunhoDoRestaurante,
-  salvarLoteRascunho,
+  adicionarAoLoteRascunhoFirestore,
+  removerDoLoteRascunhoFirestore,
   limparLoteRascunho,
 } from "../../core/excecoes/loteRascunho";
 import { MotivoAjusteModal } from "./MotivoAjusteModal";
@@ -608,6 +609,27 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
     const lockKey = apontamentoKey(input.empregadoId, input.data, input.ruleId);
     setSalvandoApontamento((prev) => new Set(prev).add(lockKey));
+    // Captura o doc anterior pra poder REVERTER caso o write Firestore falhe.
+    const docAnterior = statusApontamentoMap.get(lockKey);
+    // Atualização otimista PRIMEIRO — UI vira na hora. Quando o write
+    // Firestore confirmar, o listener real-time entrega o doc real (igual ao
+    // otimista), sem flash visual. Se o write falhar, revertemos abaixo.
+    const otimista: PontoApontamentoStatusDoc = {
+      id: `${rid}_${input.empregadoId}_${input.data}_${input.ruleId}`,
+      restaurantId: rid,
+      empregadoId: input.empregadoId,
+      data: input.data,
+      ruleId: input.ruleId,
+      status: input.novoStatus,
+      atualizadoEm: new Date().toISOString(),
+      atualizadoPor: me.id,
+      atualizadoPorNome: me.nome,
+    };
+    setStatusApontamentoMap((prev) => {
+      const next = new Map(prev);
+      next.set(lockKey, otimista);
+      return next;
+    });
     try {
       await setStatusApontamento({
         restaurantId: rid,
@@ -617,25 +639,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         novoStatus: input.novoStatus,
         por: { id: me.id, nome: me.nome },
       });
-      // Atualização otimista: já marca no map local pra UI virar antes do
-      // listener real-time chegar. Listener confirma depois.
-      setStatusApontamentoMap((prev) => {
-        const next = new Map(prev);
-        next.set(lockKey, {
-          id: `${rid}_${input.empregadoId}_${input.data}_${input.ruleId}`,
-          restaurantId: rid,
-          empregadoId: input.empregadoId,
-          data: input.data,
-          ruleId: input.ruleId,
-          status: input.novoStatus,
-          atualizadoEm: new Date().toISOString(),
-          atualizadoPor: me.id,
-          atualizadoPorNome: me.nome,
-        });
-        return next;
-      });
     } catch (e) {
       console.error("[ponto] setStatusApontamento falhou:", e);
+      // Reverte o otimismo — restaura o doc anterior (ou remove se não havia).
+      setStatusApontamentoMap((prev) => {
+        const next = new Map(prev);
+        if (docAnterior) next.set(lockKey, docAnterior);
+        else next.delete(lockKey);
+        return next;
+      });
       alert("Falha ao atualizar status: " + (e instanceof Error ? e.message : String(e)));
       return;
     } finally {
@@ -722,6 +734,13 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     if (!me) return;
     const lockKey = apontamentoKey(input.empregadoId, input.data, input.ruleId);
     setSalvandoApontamento((prev) => new Set(prev).add(lockKey));
+    // Otimismo PRIMEIRO — captura doc anterior pra reverter em caso de erro.
+    const docAnterior = statusApontamentoMap.get(lockKey);
+    setStatusApontamentoMap((prev) => {
+      const next = new Map(prev);
+      next.delete(lockKey);
+      return next;
+    });
     try {
       await setStatusApontamento({
         restaurantId: rid,
@@ -731,13 +750,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         novoStatus: "aberto",
         por: { id: me.id, nome: me.nome },
       });
-      setStatusApontamentoMap((prev) => {
-        const next = new Map(prev);
-        next.delete(lockKey);
-        return next;
-      });
     } catch (e) {
       console.error("[ponto] reabrir apontamento falhou:", e);
+      if (docAnterior) {
+        setStatusApontamentoMap((prev) => {
+          const next = new Map(prev);
+          next.set(lockKey, docAnterior);
+          return next;
+        });
+      }
       alert("Falha ao reabrir: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setSalvandoApontamento((prev) => {
@@ -777,47 +798,42 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     return unsub;
   }, [rid]);
 
-  // Helper: persiste o estado novo do lote no Firestore (sem otimismo extra —
-  // o caller já mudou setLotesRascunho). Lote vazio → deleta o doc.
-  async function persistirLote(empregadoId: string, chaves: Set<string>) {
-    if (!me) return;
-    try {
-      await salvarLoteRascunho({
-        restaurantId: rid,
-        empregadoId,
-        apontamentoChaves: Array.from(chaves),
-        por: { id: me.id, nome: me.nome },
-      });
-    } catch (e) {
-      console.warn("[ponto] persistir lote falhou:", e);
-    }
-  }
-
   function adicionarAoLote(empregadoId: string, lockKey: string) {
-    let chavesFinal: Set<string> | null = null;
+    // Otimismo no client + arrayUnion no Firestore (atômico, sem race entre
+    // clicks rápidos). Se o write falhar, o listener real-time corrige
+    // eventualmente; em caso de falha grave logamos pro console.
     setLotesRascunho((prev) => {
       const next = new Map(prev);
       const set = new Set(next.get(empregadoId) || []);
       set.add(lockKey);
       next.set(empregadoId, set);
-      chavesFinal = set;
       return next;
     });
-    if (chavesFinal) void persistirLote(empregadoId, chavesFinal);
+    if (!me) return;
+    void adicionarAoLoteRascunhoFirestore({
+      restaurantId: rid,
+      empregadoId,
+      apontamentoChave: lockKey,
+      por: { id: me.id, nome: me.nome },
+    }).catch((e) => console.warn("[ponto] add ao lote falhou:", e));
   }
 
   function removerDoLote(empregadoId: string, lockKey: string) {
-    let chavesFinal: Set<string> | null = null;
     setLotesRascunho((prev) => {
       const next = new Map(prev);
       const set = new Set(next.get(empregadoId) || []);
       set.delete(lockKey);
       if (set.size === 0) next.delete(empregadoId);
       else next.set(empregadoId, set);
-      chavesFinal = set;
       return next;
     });
-    if (chavesFinal) void persistirLote(empregadoId, chavesFinal);
+    if (!me) return;
+    void removerDoLoteRascunhoFirestore({
+      restaurantId: rid,
+      empregadoId,
+      apontamentoChave: lockKey,
+      por: { id: me.id, nome: me.nome },
+    }).catch((e) => console.warn("[ponto] remove do lote falhou:", e));
   }
 
   function cancelarLote(empregadoId: string) {
@@ -2616,23 +2632,27 @@ function ColaboradorBlock({
         <div className="flex items-center gap-2 text-[11px] flex-wrap" onClick={(e) => e.stopPropagation()}>
           {grupo.vistaCompleta ? (() => {
             // Cor do chip de inconformidades baseado no progresso:
-            //  - rosa:    nenhuma tratada ainda (todas pendentes)
-            //  - âmbar:   parcialmente tratado
-            //  - verde:   todas tratadas
+            //  - verde:   todas tratadas (terminal)
+            //  - âmbar:   parcialmente tratado OU tudo no lote (aguardando)
+            //  - rosa:    nada feito (zero tratadas, zero aguardando)
             // Quando não há inconformidades, mostra só o resumo cinza.
-            const tratadas = grupo.summary.inconformidades - grupo.summary.pendentes;
-            const pendentes = grupo.summary.pendentes;
+            // `aguardando` ⊆ `pendentes` no summary — apontamentos no lote
+            // contam como pendentes E aguardando.
             const total = grupo.summary.inconformidades;
+            const pendentes = grupo.summary.pendentes;
+            const aguardando = grupo.summary.aguardando;
+            const tratadas = total - pendentes;
             let chipCls = "text-gray-700 dark:text-gray-200";
             let chipIcon = "";
             if (total > 0) {
               if (pendentes === 0) {
                 chipCls = "text-emerald-700 dark:text-emerald-400 font-bold";
                 chipIcon = "✓ ";
-              } else if (tratadas === 0) {
+              } else if (tratadas === 0 && aguardando === 0) {
                 chipCls = "text-rose-700 dark:text-rose-400 font-bold";
                 chipIcon = "⚠ ";
               } else {
+                // Tem progresso (tratado ou aguardando) — âmbar.
                 chipCls = "text-amber-700 dark:text-amber-400 font-bold";
                 chipIcon = "◐ ";
               }
@@ -2647,13 +2667,16 @@ function ColaboradorBlock({
                     {" · "}
                     <span className={chipCls}>
                       {chipIcon}
-                      {total} incon.
+                      {total} inconformidades:
                       {(() => {
-                        const aguardando = grupo.summary.aguardando;
-                        if (aguardando > 0) {
-                          return <> ({tratadas} tratadas · {aguardando} aguardando)</>;
-                        }
-                        return <> ({tratadas}/{total} tratadas)</>;
+                        // Decompõe em "X tratadas · Y aguardando · Z pendentes".
+                        // Omite partes com 0. "Aguardando" só aparece quando há.
+                        const pendentesNaoAguardando = pendentes - aguardando;
+                        const partes: string[] = [];
+                        partes.push(`${tratadas} tratadas`);
+                        if (aguardando > 0) partes.push(`${aguardando} aguardando`);
+                        if (pendentesNaoAguardando > 0) partes.push(`${pendentesNaoAguardando} pendentes`);
+                        return <> {partes.join(" · ")}</>;
                       })()}
                     </span>
                   </>
