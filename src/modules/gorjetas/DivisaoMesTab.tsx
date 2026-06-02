@@ -4,6 +4,7 @@ import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, U
 import { calcularDivisaoDia } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
+import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -206,6 +207,7 @@ export function DivisaoMesTab({
   }, [gorjetasFiltradas, linhas, splitVersions, tipoUnidadeFiltro]);
 
   const [exportando, setExportando] = useState(false);
+  const [pdfModalOpen, setPdfModalOpen] = useState(false);
   async function exportar() {
     if (linhas.length === 0) return;
     setExportando(true);
@@ -310,10 +312,15 @@ export function DivisaoMesTab({
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {linhas.length} empregado(s) {tipoUnidadeFiltro === "producao" ? "nesta unidade" : "com recebimento"} · {gorjetasFiltradas.length} lançamento(s)
         </p>
-        {/* Exportar XLSX — só desktop */}
-        <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando} className="hidden md:inline-flex">
-          {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
-        </Button>
+        {/* Botões de export — só desktop */}
+        <div className="hidden md:flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={() => setPdfModalOpen(true)} disabled={linhas.length === 0}>
+            📄 Gerar PDF
+          </Button>
+          <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
+            {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
+          </Button>
+        </div>
       </div>
 
       {/* Aviso quando filtro=produção e ninguém recebeu — explica que o cargo
@@ -501,6 +508,36 @@ export function DivisaoMesTab({
             <li>Cargo com semGorjeta=true presente na escala</li>
           </ul>
         </div>
+      )}
+
+      {pdfModalOpen && (
+        <ExportarGorjetasPDFModal
+          ano={ano}
+          mes={mes}
+          restaurantNome={restaurantNome}
+          linhas={linhas.map(l => ({
+            empregadoId: l.empregadoId,
+            nome: l.nome,
+            cargoNome: l.cargoNome,
+            area: l.area,
+            bruto: l.bruto,
+            retencao: l.retencao,
+            liquido: l.liquido,
+            diasComRecebimento: l.diasComRecebimento,
+          }))}
+          empregados={empregados}
+          unidades={unidades}
+          usaMultiUnidades={usaMultiUnidades}
+          totaisGlobais={{
+            bruto: totais.bruto,
+            retencao: totais.retencao,
+            liquido: totais.liquido,
+            distribuido: totais.distribuido,
+          }}
+          diasLancados={gorjetasFiltradas.length}
+          unidadeInicial={filtroUnidadeId}
+          onClose={() => setPdfModalOpen(false)}
+        />
       )}
     </div>
   );
