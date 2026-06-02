@@ -6,7 +6,7 @@
 //  Recebe rid + activeRestaurant da page-shell (RegistrosPontoPage).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -2396,9 +2396,32 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                 Atualize o relatório ou ajuste os filtros.
               </p>
             </div>
-          ) : (
+          ) : (() => {
+            // Função pra classificar — pendente = tem inconformidade com algo
+            // ainda não-terminal. Tudo tratado = inconformidades == 0 OU todas
+            // tratadas. Empregados sem vistaCompleta entram em pendentes se
+            // têm exception.
+            const isPendente = (g: GrupoColab): boolean => {
+              if (!g.vistaCompleta) return g.totalExc > 0;
+              return g.summary.inconformidades > 0 && g.summary.pendentes > 0;
+            };
+            const gruposPendentes = grupos.filter(isPendente);
+            const gruposTratados = grupos.filter((g) => !isPendente(g));
+            const totalPendentes = gruposPendentes.length;
+            const totalTratados = gruposTratados.length;
+            // Ordenadas: pendentes primeiro, tratados depois.
+            const gruposOrdenados = [...gruposPendentes, ...gruposTratados];
+            const indexPrimeiroTratado = gruposPendentes.length;
+            return (
             <div className="space-y-4">
-              {grupos.map((grupo) => {
+              {totalPendentes > 0 && (
+                <div className="text-[11px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400 -mb-2 px-1">
+                  ⚠ Pendentes — {totalPendentes} empregado{totalPendentes === 1 ? "" : "s"}
+                </div>
+              )}
+              {gruposOrdenados.map((grupo, idx) => {
+                const tudoTratadoNoGrupo = !isPendente(grupo);
+                const inserirSeparador = idx === indexPrimeiroTratado && totalPendentes > 0;
                 // Dias analisados do empregado dentro do filtro (mês ou
                 // semanas selecionadas). Vem do cache; serve pra mostrar
                 // "✓ Sem inconformidade" em dias avaliados sem exception.
@@ -2417,9 +2440,15 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   );
                 });
                 return (
+                <React.Fragment key={grupo.key}>
+                  {inserirSeparador && (
+                    <div className="text-[11px] uppercase tracking-wider font-bold text-emerald-700 dark:text-emerald-400 px-1 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+                      ✓ Tudo tratado — {totalTratados} empregado{totalTratados === 1 ? "" : "s"}
+                    </div>
+                  )}
                 <ColaboradorBlock
-                  key={grupo.key}
                   grupo={grupo}
+                  tudoTratado={tudoTratadoNoGrupo}
                   diasAnalisados={diasAnalisados}
                   podeAnotar={!semanaConferida}
                   temWhatsapp={!!whatsByEmpId.get(grupo.empregadoId)}
@@ -2464,10 +2493,12 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   onEnviarLotePresencial={() => enviarLotePresencial(grupo.empregadoId)}
                   onCancelarLote={() => cancelarLote(grupo.empregadoId)}
                 />
+                </React.Fragment>
                 );
               })}
             </div>
-          )}
+            );
+          })()}
         </>
       )}
 
@@ -3008,6 +3039,7 @@ function diaDaSemana(ymd: string): string {
 
 function ColaboradorBlock({
   grupo,
+  tudoTratado,
   diasAnalisados,
   podeAnotar,
   temWhatsapp,
@@ -3032,6 +3064,7 @@ function ColaboradorBlock({
   onCancelarLote,
 }: {
   grupo: GrupoColab;
+  tudoTratado: boolean;
   diasAnalisados: string[];
   podeAnotar: boolean;
   temWhatsapp: boolean;
@@ -3073,9 +3106,17 @@ function ColaboradorBlock({
     return m;
   }, [notas]);
   return (
-    <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+    <section className={`border rounded-xl overflow-hidden transition-colors ${
+      tudoTratado
+        ? "bg-emerald-50/50 dark:bg-emerald-900/15 border-emerald-200 dark:border-emerald-800/60"
+        : "bg-amber-50/30 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800/40"
+    }`}>
       <header
-        className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2 cursor-pointer"
+        className={`px-4 py-2.5 border-b flex items-center justify-between flex-wrap gap-2 cursor-pointer ${
+          tudoTratado
+            ? "bg-emerald-100/60 dark:bg-emerald-900/30 border-emerald-200 dark:border-emerald-800/60"
+            : "bg-amber-100/60 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800/40"
+        }`}
         onClick={() => setExpandido((v) => !v)}
       >
         <div className="min-w-0 flex items-center gap-2">
