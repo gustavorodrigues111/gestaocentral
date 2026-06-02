@@ -6,7 +6,7 @@
 //  Recebe rid + activeRestaurant da page-shell (RegistrosPontoPage).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -71,6 +71,8 @@ import {
   adicionarAoLoteRascunhoFirestore,
   removerDoLoteRascunhoFirestore,
   limparLoteRascunho,
+  registrarEnvioLote,
+  type LoteRascunhoDoc,
 } from "../../core/excecoes/loteRascunho";
 import { MotivoAjusteModal } from "./MotivoAjusteModal";
 
@@ -774,26 +776,31 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const [salvandoApontamento, setSalvandoApontamento] = useState<Set<string>>(new Set());
 
   // ─── Lote de solicitação de ajuste (rascunho persistido) ─────────────────
-  // Map empregadoId → Set de lockKeys (apontamentoKey) que estão no lote
-  // rascunho daquele empregado. Sincronizado em tempo real com Firestore
-  // (/excecoesLoteRascunho/{rid}_{empregadoId}) — o líder pode fechar a aba,
-  // continuar depois, ou montar lotes em paralelo pra vários empregados e
-  // enviar tudo de uma vez.
+  // Map empregadoId → doc completo do lote (chaves + metadados de envio).
+  // Sincronizado em tempo real com Firestore (/excecoesLoteRascunho/{rid}_{empId}).
+  // O líder pode fechar a aba, continuar depois, ou montar lotes pra vários
+  // empregados e enviar tudo de uma vez. Quando envia (whatsapp/presencial),
+  // grava enviadoEm — o box continua visível com botão "Reenviar".
   // Update otimista: a UI muda imediatamente; a escrita Firestore roda em
   // background. Se falhar, próximo snapshot do listener corrige.
-  const [lotesRascunho, setLotesRascunho] = useState<Map<string, Set<string>>>(new Map());
+  const [lotesDocs, setLotesDocs] = useState<Map<string, LoteRascunhoDoc>>(new Map());
+
+  // Helper: chaves do lote dum empregado (Set, ou Set vazio).
+  const loteChavesDo = useCallback((empregadoId: string): Set<string> => {
+    return new Set(lotesDocs.get(empregadoId)?.apontamentoChaves || []);
+  }, [lotesDocs]);
 
   // Hidrata o map a partir do Firestore (real-time). Cada doc da coleção
   // /excecoesLoteRascunho vira uma entry no map.
   useEffect(() => {
     if (!rid) return;
     const unsub = ouvirLotesRascunhoDoRestaurante(rid, (docs) => {
-      const next = new Map<string, Set<string>>();
+      const next = new Map<string, LoteRascunhoDoc>();
       for (const d of docs) {
         if (!d.empregadoId) continue;
-        next.set(d.empregadoId, new Set(d.apontamentoChaves || []));
+        next.set(d.empregadoId, d);
       }
-      setLotesRascunho(next);
+      setLotesDocs(next);
     });
     return unsub;
   }, [rid]);
@@ -802,42 +809,68 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     // Otimismo no client + arrayUnion no Firestore (atômico, sem race entre
     // clicks rápidos). Se o write falhar, o listener real-time corrige
     // eventualmente; em caso de falha grave logamos pro console.
-    setLotesRascunho((prev) => {
+    if (!me) return;
+    const meSnap = me;
+    setLotesDocs((prev) => {
       const next = new Map(prev);
-      const set = new Set(next.get(empregadoId) || []);
-      set.add(lockKey);
-      next.set(empregadoId, set);
+      const existing = next.get(empregadoId);
+      const chaves = new Set(existing?.apontamentoChaves || []);
+      chaves.add(lockKey);
+      next.set(empregadoId, {
+        id: existing?.id || `${rid}_${empregadoId}`,
+        restaurantId: rid,
+        empregadoId,
+        apontamentoChaves: Array.from(chaves),
+        atualizadoEm: new Date().toISOString(),
+        atualizadoPor: meSnap.id,
+        atualizadoPorNome: meSnap.nome,
+        // Preserva metadados de envio anteriores
+        ...(existing?.enviadoEm ? {
+          enviadoEm: existing.enviadoEm,
+          enviadoTipo: existing.enviadoTipo,
+          enviadoPor: existing.enviadoPor,
+          enviadoPorNome: existing.enviadoPorNome,
+        } : {}),
+        ...(existing?.reenvios ? { reenvios: existing.reenvios } : {}),
+      });
       return next;
     });
-    if (!me) return;
     void adicionarAoLoteRascunhoFirestore({
       restaurantId: rid,
       empregadoId,
       apontamentoChave: lockKey,
-      por: { id: me.id, nome: me.nome },
+      por: { id: meSnap.id, nome: meSnap.nome },
     }).catch((e) => console.warn("[ponto] add ao lote falhou:", e));
   }
 
   function removerDoLote(empregadoId: string, lockKey: string) {
-    setLotesRascunho((prev) => {
+    if (!me) return;
+    const meSnap = me;
+    setLotesDocs((prev) => {
       const next = new Map(prev);
-      const set = new Set(next.get(empregadoId) || []);
-      set.delete(lockKey);
-      if (set.size === 0) next.delete(empregadoId);
-      else next.set(empregadoId, set);
+      const existing = next.get(empregadoId);
+      if (!existing) return prev;
+      const chaves = new Set(existing.apontamentoChaves || []);
+      chaves.delete(lockKey);
+      next.set(empregadoId, {
+        ...existing,
+        apontamentoChaves: Array.from(chaves),
+        atualizadoEm: new Date().toISOString(),
+        atualizadoPor: meSnap.id,
+        atualizadoPorNome: meSnap.nome,
+      });
       return next;
     });
-    if (!me) return;
     void removerDoLoteRascunhoFirestore({
       restaurantId: rid,
       empregadoId,
       apontamentoChave: lockKey,
-      por: { id: me.id, nome: me.nome },
+      por: { id: meSnap.id, nome: meSnap.nome },
     }).catch((e) => console.warn("[ponto] remove do lote falhou:", e));
   }
 
   function cancelarLote(empregadoId: string) {
-    setLotesRascunho((prev) => {
+    setLotesDocs((prev) => {
       const next = new Map(prev);
       next.delete(empregadoId);
       return next;
@@ -849,8 +882,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // "📦 + Lote" / "↩ Tirar do lote" da coluna direita.
   function toggleLote(empregadoId: string, exc: ExceptionRecord) {
     const lockKey = apontamentoKey(empregadoId, exc.date, exc.ruleId);
-    const atual = lotesRascunho.get(empregadoId);
-    if (atual && atual.has(lockKey)) {
+    const chaves = loteChavesDo(empregadoId);
+    if (chaves.has(lockKey)) {
       removerDoLote(empregadoId, lockKey);
     } else {
       adicionarAoLote(empregadoId, lockKey);
@@ -861,8 +894,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // consultando displayedResult.exceptions. Filtra pra garantir 1 por
   // (data, ruleId) — mesmo se vierem duplicados, agregamos um só.
   function resolverApontamentosDoLote(empregadoId: string): ExceptionRecord[] {
-    const set = lotesRascunho.get(empregadoId);
-    if (!set || set.size === 0 || !displayedResult) return [];
+    const set = loteChavesDo(empregadoId);
+    if (set.size === 0 || !displayedResult) return [];
     const vistos = new Set<string>();
     const out: ExceptionRecord[] = [];
     for (const exc of displayedResult.exceptions) {
@@ -932,6 +965,54 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // Registra um envio do lote no Firestore (1º envio → enviadoEm; subsequentes
+  // → append em reenvios). Atualiza o state local otimisticamente.
+  async function registrarEnvioLocal(empregadoId: string, tipo: "whatsapp" | "presencial") {
+    if (!me) return;
+    const meSnap = me;
+    const agoraIso = new Date().toISOString();
+    let jaTinhaEnvio = false;
+    setLotesDocs((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(empregadoId);
+      if (!existing) return prev;
+      jaTinhaEnvio = !!existing.enviadoEm;
+      if (jaTinhaEnvio) {
+        const reenvios = existing.reenvios || [];
+        next.set(empregadoId, {
+          ...existing,
+          reenvios: [...reenvios, { em: agoraIso, tipo, por: meSnap.id, porNome: meSnap.nome }],
+          atualizadoEm: agoraIso,
+          atualizadoPor: meSnap.id,
+          atualizadoPorNome: meSnap.nome,
+        });
+      } else {
+        next.set(empregadoId, {
+          ...existing,
+          enviadoEm: agoraIso,
+          enviadoTipo: tipo,
+          enviadoPor: meSnap.id,
+          enviadoPorNome: meSnap.nome,
+          atualizadoEm: agoraIso,
+          atualizadoPor: meSnap.id,
+          atualizadoPorNome: meSnap.nome,
+        });
+      }
+      return next;
+    });
+    try {
+      await registrarEnvioLote({
+        restaurantId: rid,
+        empregadoId,
+        tipo,
+        por: { id: meSnap.id, nome: meSnap.nome },
+        jaTinhaEnvio,
+      });
+    } catch (e) {
+      console.warn("[ponto] registrar envio do lote falhou:", e);
+    }
+  }
+
   async function enviarLoteWhats(empregadoId: string) {
     const apontamentos = resolverApontamentosDoLote(empregadoId);
     if (apontamentos.length === 0) {
@@ -959,7 +1040,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const link = montarLinkWhats(whatsapp, msg);
     window.open(link, "_blank");
     const ok = await marcarLoteAguardandoAjuste(empregadoId, apontamentos);
-    if (ok) cancelarLote(empregadoId);
+    if (ok) await registrarEnvioLocal(empregadoId, "whatsapp");
   }
 
   async function enviarLotePresencial(empregadoId: string) {
@@ -972,7 +1053,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const empregadoNome = empregado?.nome || apontamentos[0].employeeName || "esse empregado";
     if (!window.confirm(`Marcar lote como alinhado presencialmente com ${empregadoNome}?`)) return;
     const ok = await marcarLoteAguardandoAjuste(empregadoId, apontamentos);
-    if (ok) cancelarLote(empregadoId);
+    if (ok) await registrarEnvioLocal(empregadoId, "presencial");
   }
 
   const [loading, setLoading] = useState(false);
@@ -2055,7 +2136,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                     data: e.date,
                     ruleId: e.ruleId,
                   })}
-                  loteDoEmpregado={lotesRascunho.get(grupo.empregadoId)}
+                  loteDoEmpregado={lotesDocs.get(grupo.empregadoId)}
                   loteApontamentos={resolverApontamentosDoLote(grupo.empregadoId)}
                   onToggleLote={(exc) => toggleLote(grupo.empregadoId, exc)}
                   onEnviarLoteWhats={() => enviarLoteWhats(grupo.empregadoId)}
@@ -2591,7 +2672,7 @@ function ColaboradorBlock({
     novoStatus: PontoApontamentoStatus,
   ) => Promise<void> | void;
   onReabrirApontamento: (exc: ExceptionRecord) => Promise<void> | void;
-  loteDoEmpregado?: Set<string>;
+  loteDoEmpregado?: LoteRascunhoDoc;
   loteApontamentos: ExceptionRecord[];
   onToggleLote: (exc: ExceptionRecord) => void;
   onEnviarLoteWhats: () => void;
@@ -2698,13 +2779,19 @@ function ColaboradorBlock({
         </div>
       </header>
 
-      {/* Bloco de Lote de ajustes em rascunho — sempre visível (mesmo com
-          o card colapsado) pra o líder não esquecer de enviar. */}
-      {loteDoEmpregado && loteDoEmpregado.size > 0 && (
+      {/* Bloco de Lote de ajustes — sempre visível (mesmo com o card
+          colapsado) pra o líder não esquecer de enviar. Quando enviado,
+          continua aparecendo com botão "Reenviar" + log do(s) envio(s);
+          some só com clique em "Cancelar" ou quando todos os apontamentos
+          do lote forem corrigidos no Sólides. */}
+      {loteDoEmpregado && (loteDoEmpregado.apontamentoChaves?.length || 0) > 0 && (() => {
+        const jaEnviado = !!loteDoEmpregado.enviadoEm;
+        const reenvios = loteDoEmpregado.reenvios || [];
+        return (
         <div className="mx-4 mt-3 mb-2 p-3 rounded-lg border-2 border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
             <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              📦 Lote de ajustes — {loteDoEmpregado.size} apontamento(s)
+              📦 Lote de ajustes — {loteDoEmpregado.apontamentoChaves.length} apontamento(s)
             </div>
             <div className="flex items-center gap-1.5">
               <button
@@ -2718,30 +2805,51 @@ function ColaboradorBlock({
                 }`}
                 title={
                   temWhatsapp
-                    ? "Abre o WhatsApp com a mensagem do lote e marca cada apontamento como aguardando ajuste"
+                    ? jaEnviado
+                      ? "Reabrir o WhatsApp com a mensagem do lote — registra como reenvio"
+                      : "Abre o WhatsApp com a mensagem do lote e marca cada apontamento como aguardando ajuste"
                     : "Sem WhatsApp cadastrado em Pessoas pra este empregado"
                 }
               >
-                📱 Enviar por WhatsApp
+                {jaEnviado ? "🔁 Reenviar WhatsApp" : "📱 Enviar por WhatsApp"}
               </button>
               <button
                 type="button"
                 onClick={onEnviarLotePresencial}
                 className="text-[11px] font-semibold px-3 py-1 rounded-md bg-sky-600 text-white hover:bg-sky-700 whitespace-nowrap"
-                title="Registrar como alinhado presencialmente (sem enviar WhatsApp)"
+                title={jaEnviado
+                  ? "Registrar nova conversa presencial sobre o lote (reenvio)"
+                  : "Registrar como alinhado presencialmente (sem enviar WhatsApp)"}
               >
-                🗣 Alinhei presencialmente
+                {jaEnviado ? "🔁 Reforçar presencialmente" : "🗣 Alinhei presencialmente"}
               </button>
               <button
                 type="button"
                 onClick={onCancelarLote}
                 className="text-[11px] text-gray-600 dark:text-gray-400 hover:underline px-2 py-1 whitespace-nowrap"
-                title="Esvazia o lote local sem alterar status dos apontamentos"
+                title="Esvazia o lote (apaga o histórico de envios). Os apontamentos continuam com seus status atuais."
               >
                 Cancelar
               </button>
             </div>
           </div>
+          {/* Log dos envios — só aparece após o 1º envio */}
+          {jaEnviado && (
+            <div className="mb-2 text-[10.5px] text-amber-800 dark:text-amber-300 leading-snug">
+              <div>
+                ✓ Enviado em {fmtDataHora(loteDoEmpregado.enviadoEm!)}
+                {loteDoEmpregado.enviadoTipo === "presencial" ? " (presencial)" : " (WhatsApp)"}
+                {loteDoEmpregado.enviadoPorNome ? ` · ${loteDoEmpregado.enviadoPorNome}` : ""}
+              </div>
+              {reenvios.map((r, i) => (
+                <div key={`${r.em}_${i}`}>
+                  ↻ Reenviado em {fmtDataHora(r.em)}
+                  {r.tipo === "presencial" ? " (presencial)" : " (WhatsApp)"}
+                  {r.porNome ? ` · ${r.porNome}` : ""}
+                </div>
+              ))}
+            </div>
+          )}
           <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5 ml-1">
             {loteApontamentos.map((a) => {
               const meta = RULES_META[a.ruleId];
@@ -2756,7 +2864,8 @@ function ColaboradorBlock({
             })}
           </ul>
         </div>
-      )}
+        );
+      })()}
 
       {expandido && (<>
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -3074,7 +3183,7 @@ function ColaboradorBlock({
                 const isAguardandoAjuste = statusAp === "aguardando_ajuste";
                 const isTerminal = isStatusTerminal(statusAp);
                 const lockKeyAtual = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
-                const estaNoLote = !!loteDoEmpregado?.has(lockKeyAtual);
+                const estaNoLote = !!loteDoEmpregado?.apontamentoChaves?.includes(lockKeyAtual);
                 // Tooltip detalhado quando count > 1 — lista detail/description
                 const tooltipDetalhes = d.count > 1
                   ? d.all
