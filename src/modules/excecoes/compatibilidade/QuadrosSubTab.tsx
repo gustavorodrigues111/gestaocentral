@@ -136,7 +136,13 @@ export function QuadrosSubTab({ rid }: Props) {
     if (!rid) return;
     const u1 = onSnapshot(
       query(collection(db, "empregados"), where("restaurantId", "==", rid)),
-      (snap) => setEmpregados(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)),
+      (snap) => {
+        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado);
+        // Filtra empregados ATIVOS: demitidos não precisam comparar quadros
+        // (já saíram, sem ponto a apurar). Inclui também os sem flag
+        // estaAtivo (cadastros antigos sem o campo — assumindo ativo).
+        setEmpregados(all.filter((e) => e.estaAtivo !== false));
+      },
     );
     const u2 = onSnapshot(collection(db, "cargos"), (snap) => {
       setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo));
