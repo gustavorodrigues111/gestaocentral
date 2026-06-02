@@ -1767,6 +1767,123 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // Atualiza UM dia de UM empregado. Bem mais rápido que mês inteiro —
+  // só faz fetch de punches do dia (1 página, sub-segundo) + quadro Sólides
+  // do empregado (1 call). Mergea no cache da semana correspondente sem
+  // tocar nos outros dias/empregados. Útil depois de o empregado corrigir
+  // um ponto na Sólides — o líder valida em 1-2s em vez de 10-20s.
+  // Set de keys "refresh:<empId>_<date>" em salvandoApontamento pra UI.
+  async function atualizarUmDia(empregadoId: string, date: string) {
+    if (!rid || !me) return;
+    const lockKey = `refresh:${empregadoId}_${date}`;
+    setSalvandoApontamento((prev) => new Set(prev).add(lockKey));
+    try {
+      const wk = semanaInfoParaData(date);
+      if (!wk) {
+        alert("Sem semana correspondente pra essa data.");
+        return;
+      }
+      const cacheSemana = todosStatusDoRest.find((s) => s.weekStart === wk.weekStart);
+      const cache = cacheSemana?.relatorioCache;
+      if (!cache) {
+        alert("Sem cache da semana — gere o relatório do mês primeiro (botão 🔄 Atualizar).");
+        return;
+      }
+      const emp = empregados.find((e) => e.id === empregadoId);
+      if (!emp) {
+        alert("Empregado não encontrado.");
+        return;
+      }
+      const cpfD = onlyDigits(emp.cpf || "");
+      if (!cpfD) {
+        alert("Empregado sem CPF — não dá pra casar com Sólides.");
+        return;
+      }
+
+      const shortCode = activeRestaurant?.shortCode || "";
+      // 1) Punches só desse dia (1 página)
+      const { punches } = await fetchPunches(date, date, shortCode);
+      const punchesDoEmp = punches.filter((p) => {
+        const cpfPunch = onlyDigits(p.employee?.cpf || "");
+        return cpfPunch === cpfD;
+      });
+
+      // 2) Escala efetiva DESSE dia — pega do cache atual (Plan já foi
+      // computado quando o mês foi gerado; só re-aplicar se a escala mudou,
+      // mas isso é caso raro pra "atualizar este dia").
+      const efetivaCache = (cache.escalaEfetivaPorCpf || {}) as Record<string, Record<string, ScheduleStatus>>;
+      const stDoDia = efetivaCache[cpfD]?.[date];
+      const escalaInput: Record<string, Record<string, ScheduleStatus>> = {};
+      if (stDoDia) escalaInput[emp.id] = { [date]: stDoDia };
+      // 3) Horário previsto Sólides (re-fetch fresco pra esse dia)
+      const horariosInput: Record<string, Record<string, { in: string; out: string }>> = {};
+      try {
+        const schedRes = await fetchSolidesSchedules([date], shortCode);
+        const sidByCpf = new Map<string, number>();
+        for (const e of schedRes.employees) {
+          if (e.cpf) sidByCpf.set(onlyDigits(e.cpf), e.id);
+        }
+        const sid = sidByCpf.get(cpfD);
+        if (sid != null) {
+          const sched = schedRes.schedules[String(sid)];
+          if (sched) {
+            const dow = new Date(date + "T12:00:00").getDay();
+            const d = sched.byDay[dow];
+            if (d?.active) {
+              horariosInput[emp.id] = { [date]: { in: d.in, out: d.out } };
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[ponto] fetchSolidesSchedules pro dia falhou (seguindo sem):", e);
+      }
+
+      // 4) Roda o motor de regras só pra esse dia/empregado
+      const result = generateExceptionsReport({
+        punches: punchesDoEmp,
+        empregados: [emp],
+        cargos,
+        escalaPorEmpregado: escalaInput,
+        horariosPrevistos: horariosInput,
+        startDate: date,
+        endDate: date,
+      });
+
+      // 5) Merge no cache da semana — substitui só (cpf, date)
+      const exceptionsCache = (cache.exceptions || []) as ExceptionRecord[];
+      const filtradas = exceptionsCache.filter(
+        (e) => !(onlyDigits(e.cpf || "") === cpfD && e.date === date),
+      );
+      const novasExceptions = [...filtradas, ...result.exceptions];
+
+      // Atualiza batidasPorCpfData
+      const batidasCacheNovo: Record<string, Record<string, string>> = {
+        ...((cache.batidasPorCpfData || {}) as Record<string, Record<string, string>>),
+      };
+      batidasCacheNovo[cpfD] = { ...(batidasCacheNovo[cpfD] || {}) };
+      const batidasNova = result.batidasPorCpfData[cpfD]?.[date];
+      if (batidasNova) batidasCacheNovo[cpfD][date] = batidasNova;
+      else delete batidasCacheNovo[cpfD][date];
+
+      await salvarRelatorioCache(rid, wk.weekStart, wk.weekEnd, {
+        ...cache,
+        geradoEm: new Date().toISOString(),
+        exceptions: novasExceptions,
+        batidasPorCpfData: batidasCacheNovo,
+      }, me);
+      await recarregarCaches();
+    } catch (e) {
+      console.error("[ponto] atualizarUmDia falhou:", e);
+      alert("Falha ao atualizar este dia: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSalvandoApontamento((prev) => {
+        const next = new Set(prev);
+        next.delete(lockKey);
+        return next;
+      });
+    }
+  }
+
   // Atualiza pela Sólides TODAS as semanas do mês ativo, em sequência.
   // Usado quando o usuário está em "Mês todo" e clica "🔄 Atualizar" —
   // antes esse botão regenerava só a 1ª semana (fallback de semanaAtiva).
@@ -2331,6 +2448,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   loteApontamentos={resolverApontamentosDoLote(grupo.empregadoId)}
                   onToggleLote={(exc) => toggleLote(grupo.empregadoId, exc)}
                   onMarcarEmpresaResolve={(exc) => marcarEmpresaResolve(grupo.empregadoId, exc)}
+                  onAtualizarDia={(date) => atualizarUmDia(grupo.empregadoId, date)}
                   onEnviarLoteWhats={() => enviarLoteWhats(grupo.empregadoId)}
                   onEnviarLotePresencial={() => enviarLotePresencial(grupo.empregadoId)}
                   onCancelarLote={() => cancelarLote(grupo.empregadoId)}
@@ -2897,6 +3015,7 @@ function ColaboradorBlock({
   loteApontamentos,
   onToggleLote,
   onMarcarEmpresaResolve,
+  onAtualizarDia,
   onEnviarLoteWhats,
   onEnviarLotePresencial,
   onCancelarLote,
@@ -2923,6 +3042,7 @@ function ColaboradorBlock({
   loteApontamentos: ExceptionRecord[];
   onToggleLote: (exc: ExceptionRecord) => void;
   onMarcarEmpresaResolve: (exc: ExceptionRecord) => Promise<void> | void;
+  onAtualizarDia: (date: string) => Promise<void> | void;
   onEnviarLoteWhats: () => void;
   onEnviarLotePresencial: () => void;
   onCancelarLote: () => void;
@@ -3364,7 +3484,7 @@ function ColaboradorBlock({
                     : "border-l-amber-500"
                 }`}
               >
-                {/* Header do dia: data · dia · contador agregado (sem botão de ação) */}
+                {/* Header do dia: data · dia · contador agregado + botão de atualizar */}
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
                   <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">
                     {fmtDataBr(date)}
@@ -3385,6 +3505,21 @@ function ColaboradorBlock({
                       {tratados} de {total} tratados
                     </span>
                   )}
+                  {(() => {
+                    const refreshKey = `refresh:${grupo.empregadoId}_${date}`;
+                    const carregando = salvandoApontamento.has(refreshKey);
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => void onAtualizarDia(date)}
+                        disabled={carregando}
+                        className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/60 disabled:opacity-50 disabled:cursor-wait whitespace-nowrap"
+                        title="Re-puxa só esse dia desse empregado da Sólides (rápido, sub-segundo). Útil depois que o empregado corrigiu uma batida pra você conferir."
+                      >
+                        {carregando ? "⏳ atualizando…" : "🔄 atualizar este dia"}
+                      </button>
+                    );
+                  })()}
                 </div>
                 {/* Batidas do dia — UMA vez no header. Cada linha de problema
                     abaixo fica enxuta (sem repetir batidas). Caches antigos
