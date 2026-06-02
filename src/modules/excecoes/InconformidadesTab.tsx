@@ -1441,6 +1441,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             // antigos sem esse campo caem no modo legado (só dias com exc +
             // dias verdes via diasAnalisadosPorCpf).
             escalaEfetivaPorCpf: report.escalaEfetivaPorCpf,
+            // Batidas formatadas por CPF → data, mesmo nos dias sem
+            // inconformidade. UI usa pra mostrar "Trabalhou normal · 📍 E1 ... S2 ...".
+            batidasPorCpfData: report.batidasPorCpfData,
           },
           me || undefined,
         );
