@@ -65,6 +65,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "❓",
     descricaoRegra: "Dia escalado como trabalho, sem marcação e sem motivo de ajuste.",
   },
+  faltaJustificadaSolides: {
+    id: "faltaJustificadaSolides",
+    label: "Justificado no Sólides",
+    severity: "info",
+    icon: "✓",
+    descricaoRegra: "Dia escalado como trabalho, sem marcação, MAS o Sólides tem um ajuste aprovado (atestado, óbito, inversão de folga, etc). Não é inconformidade — só dê ciência.",
+  },
   marcacaoForaDaEscala: {
     id: "marcacaoForaDaEscala",
     label: "Marcação fora da escala",
@@ -257,6 +264,25 @@ const ruleFaltaSemAjuste: Rule = (ctx) => {
   return null;
 };
 
+// 6b) Justificado no Sólides — dia originalmente previsto pra trabalho que
+// virou folga por causa de um ajuste APROVADO no Sólides (atestado, óbito,
+// inversão de folga, etc). aplicarAjustesNaEscala() já marca o dia como
+// folga, mas o usuário quer VER essa linha pra confirmar "vi e tá certo"
+// em vez dela simplesmente sumir. Esta regra dispara quando o sinal
+// `ajusteSolidesAplicado` está presente E o status anterior era "trabalho".
+const ruleFaltaJustificadaSolides: Rule = (ctx) => {
+  const ajuste = ctx.ajusteSolidesAplicado;
+  if (!ajuste) return null;
+  if (ajuste.statusAnterior !== "trabalho") return null;
+  if (ctx.metrics.blocks.length > 0) return null; // bateu ponto = não é falta justificada
+  return mk(
+    "faltaJustificadaSolides",
+    ctx,
+    `Ajuste no Sólides: ${ajuste.tipo}.`,
+    `Previsto era trabalho; o Sólides registrou ${ajuste.tipo.toLowerCase()} — não bateu ponto.`,
+  );
+};
+
 // 7) Marcação fora da escala — dia não escalado pra trabalho, com punch, sem ajuste
 const ruleMarcacaoForaDaEscala: Rule = (ctx) => {
   const { blocks, hasAdjustment } = ctx.metrics;
@@ -358,6 +384,7 @@ export const ALL_RULES: Rule[] = [
   ruleSetePlusDiasSemFolga,
   rulePontoAberto,
   ruleFaltaSemAjuste,
+  ruleFaltaJustificadaSolides,
   ruleMarcacaoForaDaEscala,
   ruleBlocoSuspeito,
   ruleAtrasoEntrada,

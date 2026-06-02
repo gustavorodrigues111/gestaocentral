@@ -1637,6 +1637,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // dias da escala oficial pra "folga" — evita falsos positivos de "Falta
       // sem ajuste" em dias em que o RH justificou ausência. Falta NÃO
       // justificada é deixada como "trabalho" pra a regra continuar disparando.
+      // Captura o índice {empId: {date: {tipo, statusAnterior}}} pra
+      // alimentar a regra `faltaJustificadaSolides` (mostra "✓ Justificado"
+      // em vez do dia simplesmente sumir do relatório).
+      let ajustesAplicadosPorEmpId: Awaited<ReturnType<typeof aplicarAjustesNaEscala>>["ajustesAplicados"] = {};
       try {
         const [y1, m1, d1] = sd.split("-").map(Number);
         const [y2, m2, d2] = ed.split("-").map(Number);
@@ -1674,7 +1678,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           naoMapeados,
           sampleSolidesEmployees: adjRes.employees.slice(0, 10),
         });
-        aplicarAjustesNaEscala(adjRes.adjustments, sidByEmpId, escalaPorEmpregado);
+        const aplicarRes = aplicarAjustesNaEscala(adjRes.adjustments, sidByEmpId, escalaPorEmpregado);
+        ajustesAplicadosPorEmpId = aplicarRes.ajustesAplicados;
         debugInfo.ajustesAplicados = adjRes.count;
         debugInfo.sampleProbeAdj = adjRes.sampleProbe;
       } catch (e) {
@@ -1694,6 +1699,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         cargos,
         escalaPorEmpregado,
         horariosPrevistos,
+        ajustesAplicadosPorEmpId,
         startDate: sd,
         endDate: ed,
       });

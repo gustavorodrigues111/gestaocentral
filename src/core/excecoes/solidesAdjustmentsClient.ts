@@ -112,6 +112,18 @@ function eFaltaNaoJustificada(reason: string): boolean {
   return /FALTA\s+N[ÃA]O\s+JUSTIFICADA/i.test(reason || "");
 }
 
+// Resultado da aplicação dos ajustes Sólides. Além do contador, captura
+// pra cada (empId × date) o TIPO do ajuste que tornou aquele dia "folga".
+// Isso é o sinal usado pela regra `faltaJustificadaSolides` em rules.ts
+// pra distinguir uma folga "natural" (escala) de uma folga "justificada
+// por atestado/óbito/inversão" — última merece chip verde "✓ Justificado"
+// na UI da Inconformidades em vez de simplesmente não aparecer.
+export type AjusteAplicadoInfo = {
+  tipo: string;                  // ex: "ATESTADO MÉDICO", "FOLGA", "FÉRIAS"
+  statusAnterior: ScheduleStatus | null; // status que o dia tinha ANTES (pra distinguir trabalho→folga vs folga→folga)
+};
+export type AjustesAplicadosMap = Record<string, Record<string, AjusteAplicadoInfo>>;
+
 // Aplica os ajustes sobre a escala vinda do quadro de horários. Pra cada
 // ajuste APROVADO que não seja "falta não justificada", marca o range
 // completo como "folga".
@@ -119,8 +131,9 @@ export function aplicarAjustesNaEscala(
   adjustments: Record<string, SolidesAdjustment[]>,
   solidesIdByEmpId: Record<string, number>, // empregadoId Planejamento → sid Sólides
   escala: Record<string, Record<string, ScheduleStatus>>,
-): { aplicados: number } {
+): { aplicados: number; ajustesAplicados: AjustesAplicadosMap } {
   let aplicados = 0;
+  const ajustesAplicados: AjustesAplicadosMap = {};
   let totalAjustes = 0;
   let rejeitadosStatus = 0;
   let rejeitadosFaltaNJ = 0;
@@ -160,12 +173,19 @@ export function aplicarAjustesNaEscala(
       }
       const dias = expandirRange(a, b);
       let aplicouAlgum = false;
+      const tipoAjuste = razaoDoAjuste(aj);
       for (const d of dias) {
         if (perDate[d] !== undefined) {
+          // Captura o status original ANTES de virar folga — usado pra
+          // distinguir "previsto trabalho virou folga" (vale chip justificado)
+          // vs "previsto folga continuou folga" (não vira inconformidade)
+          const statusAnterior = perDate[d];
           perDate[d] = "folga";
           aplicados += 1;
           byEmp[empId].aplicados++;
           aplicouAlgum = true;
+          if (!ajustesAplicados[empId]) ajustesAplicados[empId] = {};
+          ajustesAplicados[empId][d] = { tipo: tipoAjuste, statusAnterior };
         }
       }
       if (!aplicouAlgum) {
@@ -192,5 +212,5 @@ export function aplicarAjustesNaEscala(
     samplesAplicados,
     samplesRejForaRange,
   });
-  return { aplicados };
+  return { aplicados, ajustesAplicados };
 }

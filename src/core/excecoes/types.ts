@@ -56,6 +56,7 @@ export type ExceptionRuleId =
   | "setePlusDiasSemFolga"
   | "pontoAberto"
   | "faltaSemAjuste"
+  | "faltaJustificadaSolides"
   | "marcacaoForaDaEscala"
   | "blocoSuspeito"
   | "atrasoEntrada"
@@ -85,6 +86,7 @@ export const REGRA_CATEGORIA_DEFAULT: Record<ExceptionRuleId, ApontamentoCategor
   marcacaoForaDaEscala:    "alinhamento",
   pontoAberto:             "ajuste",
   faltaSemAjuste:          "ajuste",
+  faltaJustificadaSolides: "alinhamento",
   entradaProvavelFaltante: "ajuste",
   blocoSuspeito:           "ajuste",
   batidasImpares:          "ajuste",
@@ -154,4 +156,12 @@ export type DayContext = {
   // Horário previsto NA SÓLIDES (cadastro do quadro do empregado). Não confundir
   // com escala prevista do Planejamento.app. Usado pra regra de atraso.
   horarioPrevisto?: { in: string; out: string };
+  // Ajuste Sólides APROVADO aplicado neste dia (atestado, óbito, inversão,
+  // férias, etc). Preenchido quando aplicarAjustesNaEscala() marcou o dia
+  // como folga. Habilita a regra `faltaJustificadaSolides` a sinalizar
+  // "✓ Justificado" em vez de simplesmente sumir.
+  ajusteSolidesAplicado?: {
+    tipo: string;                    // ex: "ATESTADO MÉDICO"
+    statusAnterior: ScheduleStatus | null; // o que o dia era antes do ajuste
+  };
 };

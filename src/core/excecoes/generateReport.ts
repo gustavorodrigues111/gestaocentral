@@ -21,6 +21,11 @@ export type GenerateReportInput = {
   // empregadoId → (date → horário previsto NA SÓLIDES — opcional). Quando
   // presente, alimenta a regra de atraso (firstIn real vs in previsto).
   horariosPrevistos?: Record<string, Record<string, { in: string; out: string }>>;
+  // empregadoId → (date → ajuste Sólides aplicado naquele dia). Vem do
+  // resultado de aplicarAjustesNaEscala(). Alimenta a regra
+  // `faltaJustificadaSolides` — distingue "folga via ajuste aprovado"
+  // de "folga natural".
+  ajustesAplicadosPorEmpId?: Record<string, Record<string, { tipo: string; statusAnterior: ScheduleStatus | null }>>;
   startDate: string; // YYYY-MM-DD
   endDate: string; // YYYY-MM-DD
 };
@@ -60,7 +65,7 @@ function addDays(ymd: string, n: number): string {
 }
 
 export function generateExceptionsReport(input: GenerateReportInput): GenerateReportResult {
-  const { punches, empregados, cargos, escalaPorEmpregado, horariosPrevistos, startDate, endDate } = input;
+  const { punches, empregados, cargos, escalaPorEmpregado, horariosPrevistos, ajustesAplicadosPorEmpId, startDate, endDate } = input;
   // Mapa pra resolver cargo do empregado em O(1) — usado na filtragem
   // "bate ponto" abaixo.
   const cargoById = new Map<string, Cargo>();
@@ -192,12 +197,14 @@ export function generateExceptionsReport(input: GenerateReportInput): GenerateRe
       const prevDayLastOut = prevMetrics?.lastOut ?? null;
 
       const horarioPrevisto = horariosPrevistos?.[emp.id]?.[date];
+      const ajusteSolidesAplicado = ajustesAplicadosPorEmpId?.[emp.id]?.[date];
       const ctx: DayContext = {
         metrics,
         escalaStatus: escalaEmp[date] ?? null,
         prevDayLastOut,
         consecutiveWorkDays,
         ...(horarioPrevisto ? { horarioPrevisto } : {}),
+        ...(ajusteSolidesAplicado ? { ajusteSolidesAplicado } : {}),
       };
       const excecoesDoDia = runAllRules(ctx);
       // ── Pós-processamento por (cpf, date): unifica entradaProvavelFaltante
