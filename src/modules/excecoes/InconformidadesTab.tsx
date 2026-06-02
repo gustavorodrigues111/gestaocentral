@@ -1046,7 +1046,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Gera PDF consolidado de TODOS os lotes em aberto (qualquer empregado
   // do restaurante). Compõe a lista a partir do state local atual + dos
   // ExceptionRecord do displayedResult pra resolver os apontamentos.
+  // Mostra um preview ANTES de baixar — o líder confere o conteúdo antes
+  // de imprimir/distribuir.
   const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [previewPdf, setPreviewPdf] = useState<{ url: string; filename: string } | null>(null);
   async function gerarPdfLotes() {
     if (lotesDocs.size === 0) {
       alert("Nenhum lote aberto.");
@@ -1094,14 +1097,34 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         restaurantNome: activeRestaurant.nome,
         empregados: empregadosPdf,
       });
-      const fname = `pedidos-ajuste-${activeRestaurant.nome.toLowerCase().replace(/\s+/g, "-")}-${anoMes.ano}-${pad2(anoMes.mes)}.pdf`;
-      docPdf.save(fname);
+      // Em vez de baixar direto, gera blob URL e abre preview modal.
+      const blob = docPdf.output("blob");
+      const url = URL.createObjectURL(blob);
+      const filename = `pedidos-ajuste-${activeRestaurant.nome.toLowerCase().replace(/\s+/g, "-")}-${anoMes.ano}-${pad2(anoMes.mes)}.pdf`;
+      // Revoga URL anterior se houver (evita memory leak)
+      if (previewPdf?.url) URL.revokeObjectURL(previewPdf.url);
+      setPreviewPdf({ url, filename });
     } catch (e) {
       console.error("[ponto] gerar PDF dos lotes falhou:", e);
       alert("Falha ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
     } finally {
       setGerandoPdf(false);
     }
+  }
+
+  function fecharPreviewPdf() {
+    if (previewPdf?.url) URL.revokeObjectURL(previewPdf.url);
+    setPreviewPdf(null);
+  }
+
+  function baixarPreviewPdf() {
+    if (!previewPdf) return;
+    const a = document.createElement("a");
+    a.href = previewPdf.url;
+    a.download = previewPdf.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
   }
 
   async function enviarLotePresencial(empregadoId: string) {
@@ -2241,6 +2264,46 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             O sistema busca as marcações de ponto na Sólides, cruza com a escala prevista e lista as
             não-conformidades.
           </p>
+        </div>
+      )}
+      {/* Modal de preview do PDF — abre antes de baixar, pra o líder
+          conferir o conteúdo. Esc / clique fora / botão Fechar = cancela. */}
+      {previewPdf && (
+        <div
+          className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={fecharPreviewPdf}
+        >
+          <div
+            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-5xl h-[90vh] flex flex-col overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
+              <div className="font-bold text-gray-900 dark:text-gray-100 truncate">
+                📄 Preview — {previewPdf.filename}
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={baixarPreviewPdf}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  📥 Baixar PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={fecharPreviewPdf}
+                  className="text-xs font-semibold px-3 py-1.5 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+            <iframe
+              src={previewPdf.url}
+              title="Preview PDF"
+              className="flex-1 w-full border-0 bg-gray-100 dark:bg-gray-950"
+            />
+          </div>
         </div>
       )}
       {resolverNaEscala && me && (

@@ -1,15 +1,13 @@
-// Gera PDF consolidado de TODOS os lotes de ajuste pendentes — uma seção
-// por empregado, com a tabela de apontamentos (data + regra + detalhe +
-// batidas) e o status de envio do lote (enviado em / reenviado em).
-// jsPDF + autoTable lazy-loaded (mesmo padrão de gerarVTPDF/gerarVRPDF).
+// Gera PDF consolidado de TODOS os lotes de ajuste pendentes — formato
+// texto (igual à mensagem que vai pelo WhatsApp), uma seção por empregado.
+// Pensado pra imprimir e usar como apoio em conversas presenciais.
 //
-// Uso típico: o líder cliciuma vez por dia o botão "Gerar PDF" pra ter um
-// resumo impresso/PDF dos pedidos abertos, pra cobrar pessoalmente quem
-// não respondeu.
+// jsPDF + helvetica não suporta UTF-8 emoji/setas — `sanitize()` substitui
+// caracteres problemáticos por equivalentes ASCII.
 
 import type { jsPDF as JsPDFType } from "jspdf";
 import type { LoteRascunhoDoc } from "../../core/excecoes/loteRascunho";
-import { RULES_META } from "../../core/excecoes/rules";
+import { montarMensagemLoteAjuste } from "../../core/excecoes/loteAjusteWhats";
 import { pad2 } from "../../core/utils/date";
 
 const TXT_DARK: [number, number, number] = [31, 41, 55];
@@ -40,9 +38,33 @@ export type GerarLotesPDFParams = {
   empregados: LotePDFEmpregado[];
 };
 
-function fmtData(ymd: string): string {
-  const [y, m, d] = ymd.split("-");
-  return `${d}/${m}/${y}`;
+// Substitui caracteres não suportados pelo Helvetica embutido do jsPDF
+// (que só roda WinAnsi). Sem isso, vira "Ø=ÝP" ou similar no PDF.
+function sanitize(s: string): string {
+  if (!s) return "";
+  return s
+    .replace(/→/g, "->")
+    .replace(/←/g, "<-")
+    .replace(/·/g, "*")
+    .replace(/…/g, "...")
+    .replace(/✓/g, "OK")
+    .replace(/↻/g, "[re]")
+    // Emojis comuns que aparecem nas mensagens
+    .replace(/🕐/g, "")
+    .replace(/📦/g, "")
+    .replace(/📱/g, "")
+    .replace(/🗣/g, "")
+    .replace(/⏳/g, "")
+    .replace(/⚠/g, "")
+    .replace(/◐/g, "")
+    .replace(/💬/g, "")
+    .replace(/✗/g, "x")
+    .replace(/👁/g, "")
+    // Fallback: remove qualquer caractere fora do range Latin-1
+    // (jsPDF Helvetica é WinAnsi/Latin-1)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[^\x00-\xFF]/g, "")
+    .trim();
 }
 
 function fmtCpf(d: string | undefined): string {
@@ -61,144 +83,159 @@ function fmtDataHoraIso(iso: string): string {
 }
 
 const NOMES_MES = [
-  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Janeiro", "Fevereiro", "Marco", "Abril", "Maio", "Junho",
   "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
 ];
 
 export async function gerarLotesPDF({
   ano, mes, restaurantNome, empregados,
 }: GerarLotesPDFParams): Promise<JsPDFType> {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([
+  const [{ jsPDF }] = await Promise.all([
     import("jspdf"),
-    import("jspdf-autotable"),
   ]);
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const MARGIN_X = 12;
+  const pageH = doc.internal.pageSize.getHeight();
+  const MARGIN_X = 14;
+  const MARGIN_TOP = 14;
+  const MARGIN_BOTTOM = 14;
+
+  let yCursor = MARGIN_TOP;
+
+  function ensureSpace(linhasNecessarias: number, lineHeightMm = 4) {
+    if (yCursor + linhasNecessarias * lineHeightMm > pageH - MARGIN_BOTTOM) {
+      doc.addPage();
+      yCursor = MARGIN_TOP;
+    }
+  }
 
   // ── Cabeçalho ──────────────────────────────────────────────────────────
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(...TXT_DARK);
-  doc.text(`Pedidos de ajuste em aberto — ${NOMES_MES[mes - 1]}/${ano}`, MARGIN_X, 14);
+  doc.text(
+    sanitize(`Pedidos de ajuste em aberto — ${NOMES_MES[mes - 1]}/${ano}`),
+    MARGIN_X,
+    yCursor,
+  );
+  yCursor += 5.5;
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(...TXT_MUTED);
-  doc.text(restaurantNome, MARGIN_X, 19);
+  doc.text(sanitize(restaurantNome), MARGIN_X, yCursor);
 
   const agora = new Date();
   const stamp =
     `Gerado em ${pad2(agora.getDate())}/${pad2(agora.getMonth() + 1)}/${agora.getFullYear()} ` +
     `${pad2(agora.getHours())}:${pad2(agora.getMinutes())}`;
-  doc.setFontSize(8);
-  doc.text(stamp, pageW - MARGIN_X, 14, { align: "right" });
+  doc.text(stamp, pageW - MARGIN_X, yCursor, { align: "right" });
+  yCursor += 5;
 
   const totalApontamentos = empregados.reduce((s, e) => s + e.apontamentos.length, 0);
   doc.setFontSize(9);
   doc.text(
-    `${empregados.length} empregado(s) · ${totalApontamentos} apontamento(s) pendente(s)`,
-    pageW - MARGIN_X, 19, { align: "right" },
+    `${empregados.length} empregado(s) · ${totalApontamentos} apontamento(s) pendente(s)`.replace(/·/g, "*"),
+    MARGIN_X, yCursor,
   );
+  yCursor += 7;
 
-  let yCursor = 28;
+  // Linha divisória
+  doc.setDrawColor(229, 231, 235);
+  doc.line(MARGIN_X, yCursor, pageW - MARGIN_X, yCursor);
+  yCursor += 6;
 
   // ── Uma seção por empregado ───────────────────────────────────────────
   for (let i = 0; i < empregados.length; i++) {
     const emp = empregados[i];
 
-    // Quebra de página se restar pouco espaço (cabeçalho + 1-2 linhas).
-    if (yCursor > 250) {
-      doc.addPage();
-      yCursor = 18;
-    }
-
-    // Nome + CPF
+    // Nome
+    ensureSpace(4);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFontSize(13);
     doc.setTextColor(...TXT_DARK);
-    doc.text(emp.nome, MARGIN_X, yCursor);
+    doc.text(sanitize(emp.nome), MARGIN_X, yCursor);
+    yCursor += 5;
+
+    // CPF
     if (emp.cpf) {
       doc.setFont("helvetica", "normal");
       doc.setFontSize(9);
       doc.setTextColor(...TXT_MUTED);
-      doc.text(`CPF ${fmtCpf(emp.cpf)}`, MARGIN_X, yCursor + 4.5);
+      doc.text(`CPF ${fmtCpf(emp.cpf)}`, MARGIN_X, yCursor);
+      yCursor += 4;
     }
-    yCursor += emp.cpf ? 8 : 5;
 
-    // Status do envio do lote
+    // Status do envio
     if (emp.lote?.enviadoEm) {
       doc.setFont("helvetica", "normal");
-      doc.setFontSize(8.5);
+      doc.setFontSize(9);
       doc.setTextColor(...COR_AMBAR);
       const tipo = emp.lote.enviadoTipo === "presencial" ? "presencial" : "WhatsApp";
       doc.text(
-        `Enviado em ${fmtDataHoraIso(emp.lote.enviadoEm)} (${tipo})`,
+        sanitize(`Enviado em ${fmtDataHoraIso(emp.lote.enviadoEm)} (${tipo})`),
         MARGIN_X, yCursor,
       );
       yCursor += 4;
       for (const r of emp.lote.reenvios || []) {
         const t = r.tipo === "presencial" ? "presencial" : "WhatsApp";
         doc.text(
-          `Reenviado em ${fmtDataHoraIso(r.em)} (${t})`,
+          sanitize(`[reenviado] ${fmtDataHoraIso(r.em)} (${t})`),
           MARGIN_X, yCursor,
         );
         yCursor += 4;
       }
     } else if (emp.lote) {
       doc.setFont("helvetica", "italic");
-      doc.setFontSize(8.5);
+      doc.setFontSize(9);
       doc.setTextColor(...TXT_MUTED);
-      doc.text("Ainda não enviado", MARGIN_X, yCursor);
+      doc.text("Ainda nao enviado", MARGIN_X, yCursor);
       yCursor += 4;
     }
     yCursor += 1;
 
-    // Tabela de apontamentos
-    autoTable(doc, {
-      startY: yCursor,
-      margin: { left: MARGIN_X, right: MARGIN_X },
-      head: [["Data", "Regra", "Detalhe", "Batidas"]],
-      body: emp.apontamentos.map((a) => {
-        const label = RULES_META[a.ruleId as keyof typeof RULES_META]?.label || a.ruleId;
-        return [
-          fmtData(a.date),
-          label,
-          a.detail || a.description || "",
-          a.batidas || "—",
-        ];
-      }),
-      theme: "plain",
-      styles: {
-        font: "helvetica",
-        fontSize: 8.5,
-        cellPadding: { top: 1.5, right: 2, bottom: 1.5, left: 2 },
-        textColor: TXT_DARK,
-        lineColor: [229, 231, 235],
-        lineWidth: 0.1,
-      },
-      headStyles: {
-        fontStyle: "bold",
-        fillColor: [254, 243, 199],   // amber-100
-        textColor: [120, 53, 15],     // amber-900
-        lineColor: [252, 211, 77],
-        lineWidth: 0.2,
-      },
-      columnStyles: {
-        0: { cellWidth: 22 },
-        1: { cellWidth: 38 },
-        2: { cellWidth: "auto" },
-        3: { cellWidth: 56 },
-      },
-      didDrawPage: () => {
-        // Mantém a margem em páginas extras
-      },
+    // ── Mensagem em formato WhatsApp ─────────────────────────────────
+    // Usa a MESMA função que monta a mensagem real do WhatsApp pra garantir
+    // que o conteúdo do PDF é idêntico ao que o empregado recebe.
+    const msg = montarMensagemLoteAjuste({
+      empregadoNome: emp.nome,
+      restNome: restaurantNome,
+      apontamentos: emp.apontamentos,
     });
+    const linhasMsg = msg.split("\n").map(sanitize);
 
-    // Posiciona o cursor após a tabela
-    const lastY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY;
-    yCursor = (typeof lastY === "number" ? lastY : yCursor) + 8;
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.setTextColor(...TXT_DARK);
+
+    // Wrap manual por largura disponível
+    const maxWidth = pageW - 2 * MARGIN_X;
+    const LINE_H = 4.5;
+    for (const linha of linhasMsg) {
+      if (linha.length === 0) {
+        // linha em branco — espaçamento simples
+        ensureSpace(1, LINE_H);
+        yCursor += LINE_H * 0.6;
+        continue;
+      }
+      // splitTextToSize quebra automaticamente
+      const wrapped = doc.splitTextToSize(linha, maxWidth) as string[];
+      for (const w of wrapped) {
+        ensureSpace(1, LINE_H);
+        doc.text(w, MARGIN_X, yCursor);
+        yCursor += LINE_H;
+      }
+    }
+
+    yCursor += 4;
+    // Linha divisória entre empregados (exceto última)
+    if (i < empregados.length - 1) {
+      ensureSpace(2);
+      doc.setDrawColor(229, 231, 235);
+      doc.line(MARGIN_X, yCursor, pageW - MARGIN_X, yCursor);
+      yCursor += 6;
+    }
   }
 
   if (empregados.length === 0) {
