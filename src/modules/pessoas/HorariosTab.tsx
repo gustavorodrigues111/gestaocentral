@@ -36,9 +36,21 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
   const unidadesAtivas = (restaurant?.unidades || []).filter(u => u.ativa);
   const mostraUnidade = unidadesAtivas.length > 1;
 
+  // Override otimista do array de workSchedules — usado pra apagar/criar
+  // versões sem precisar fechar e reabrir o modal pra ver o resultado.
+  // Quando null, lê direto da prop (o pai pode ter atualizado).
+  const [wsOverride, setWsOverride] = useState<typeof empregado.workSchedules | null>(null);
+  const workSchedules = wsOverride ?? empregado.workSchedules;
+
+  // Sempre que a prop mudar (refresh externo), descarta o override pra
+  // refletir o estado novo do Firestore.
+  useEffect(() => {
+    setWsOverride(null);
+  }, [empregado.workSchedules]);
+
   const vigenteHoje = useMemo(
-    () => getActiveWorkSchedule(empregado.workSchedules, todayYmd()),
-    [empregado.workSchedules],
+    () => getActiveWorkSchedule(workSchedules, todayYmd()),
+    [workSchedules],
   );
 
   // ── State ──
@@ -427,13 +439,13 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
       </div>
 
       {/* Histórico */}
-      {empregado.workSchedules && empregado.workSchedules.length > 0 && (
+      {workSchedules && workSchedules.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
           <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
-            Histórico ({empregado.workSchedules.length} versão{empregado.workSchedules.length > 1 ? "ões" : ""})
+            Histórico ({workSchedules.length} versão{workSchedules.length > 1 ? "ões" : ""})
           </div>
           <div className="space-y-1 text-xs">
-            {[...empregado.workSchedules]
+            {[...workSchedules]
               .sort((a, b) => b.validFrom.localeCompare(a.validFrom))
               .map((ws, i) => (
                 <div key={i} className="flex items-center justify-between bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1 gap-2">
@@ -451,8 +463,11 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                     onClick={async () => {
                       if (!me) return;
                       if (!confirm(`Apagar a versão de horário a partir de ${ws.validFrom}?\n\nIsso volta o quadro vigente pra versão anterior (se houver). Ação irreversível.`)) return;
+                      const listaAntes = workSchedules || [];
+                      const lista = listaAntes.filter(s => s.validFrom !== ws.validFrom);
+                      // Otimista: atualiza UI já — o item some imediatamente.
+                      setWsOverride(lista);
                       try {
-                        const lista = (empregado.workSchedules || []).filter(s => s.validFrom !== ws.validFrom);
                         await updateDoc(doc(db, "empregados", empregado.id), {
                           workSchedules: sanitizeForFirestore(lista),
                         });
@@ -462,13 +477,15 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                           restaurantId,
                           acao: "alterado",
                           diff: {
-                            workSchedules: { antes: empregado.workSchedules?.length || 0, depois: lista.length },
+                            workSchedules: { antes: listaAntes.length, depois: lista.length },
                             removidoValidFrom: { antes: ws.validFrom, depois: null },
                           },
                           motivo: `Versão apagada: ${ws.validFrom}`,
                           registradoPor: me.id,
                         });
                       } catch (e) {
+                        // Reverte otimismo em caso de falha
+                        setWsOverride(listaAntes);
                         alert("Erro ao apagar: " + (e instanceof Error ? e.message : "?"));
                       }
                     }}
