@@ -5,6 +5,8 @@ import { calcularDivisaoDia } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
 import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
+import { recalcularSnapshotGorjeta } from "./publicar";
+import { useAuth } from "../../core/auth/AuthContext";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -269,6 +271,54 @@ export function DivisaoMesTab({
 
   const [exportando, setExportando] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
+  const [recalculando, setRecalculando] = useState(false);
+  const { pessoa: me } = useAuth();
+
+  // Recalcula o divisaoSnapshot das gorjetas publicadas do mês com o
+  // algoritmo atual (corrige a discrepância histórica de centavos perdidos
+  // por floor diário). Não muda metadados de publicação — só atualiza
+  // o snapshot pra refletir o algoritmo mais recente.
+  async function recalcularSnapshotsDoMes() {
+    const publicadas = gorjetas.filter(g => g.publicada && g.divisaoSnapshot);
+    if (publicadas.length === 0) {
+      alert("Sem gorjetas publicadas neste mês pra recalcular.");
+      return;
+    }
+    const diff = totais.liquido - totais.distribuido;
+    const ok = window.confirm(
+      `Recalcular a divisão de ${publicadas.length} gorjeta(s) publicada(s) do mês?\n\n` +
+      `Vai aplicar o algoritmo de distribuição de centavos (zerar a diferença de ${fmtBR(Math.abs(diff))}).\n\n` +
+      `Cada empregado pode receber +R$ 0,01 a +R$ 0,15 a mais no total do mês. ` +
+      `Os snapshots publicados são sobrescritos, mas data e autor da publicação ficam.\n\n` +
+      `Recomendado APENAS pra mês ainda não pago.`,
+    );
+    if (!ok) return;
+    setRecalculando(true);
+    let ok_count = 0;
+    let erros = 0;
+    try {
+      for (const g of publicadas) {
+        try {
+          await recalcularSnapshotGorjeta({
+            gorjeta: g, empregados, cargos, escala, splitVersions, unidades,
+            publicadoPorId: me?.id || "",
+            publicadoPorNome: me?.nome || "",
+          });
+          ok_count++;
+        } catch (e) {
+          erros++;
+          console.warn("Falha no recálculo de", g.id, e);
+        }
+      }
+      alert(
+        `✓ Recalculado: ${ok_count} gorjeta(s)` +
+        (erros > 0 ? `\n⚠ Falharam: ${erros}` : ""),
+      );
+    } finally {
+      setRecalculando(false);
+    }
+  }
+
   async function exportar() {
     if (linhas.length === 0) return;
     setExportando(true);
@@ -576,8 +626,19 @@ export function DivisaoMesTab({
           Detalha as 2 causas reais com valores específicos pra investigação. */}
       {Math.abs(totais.liquido - totais.distribuido) > 0.05 && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200">
-          <div className="font-bold text-amber-900 dark:text-amber-100 mb-2">
-            ⚠ Diferença de <span className="tabular-nums">{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</span> entre o líquido do mês e a soma distribuída
+          <div className="font-bold text-amber-900 dark:text-amber-100 mb-2 flex items-center justify-between gap-3 flex-wrap">
+            <span>⚠ Diferença de <span className="tabular-nums">{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</span> entre o líquido do mês e a soma distribuída</span>
+            {discrepanciaDetalhe.arredondamentoCentavos > 0.005 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={recalcularSnapshotsDoMes}
+                disabled={recalculando}
+                className="shrink-0"
+              >
+                {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+              </Button>
+            )}
           </div>
 
           {discrepanciaDetalhe.arredondamentoCentavos > 0.005 && (

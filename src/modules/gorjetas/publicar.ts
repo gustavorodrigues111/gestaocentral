@@ -67,6 +67,41 @@ export async function publicarGorjeta(p: PublicarParams): Promise<void> {
   }));
 }
 
+// Recalcula APENAS o divisaoSnapshot de uma gorjeta já publicada, sem mexer
+// nos metadados de publicação (publicadaEm/Por). Útil pra propagar uma
+// melhoria de algoritmo (ex: distribuição do resto centavo a centavo) sobre
+// snapshots antigos sem reescrever o histórico de quem publicou e quando.
+export async function recalcularSnapshotGorjeta(p: PublicarParams): Promise<void> {
+  const { gorjeta, empregados, cargos, escala, splitVersions, unidades } = p;
+  if (!gorjeta.publicada) {
+    throw new Error("Gorjeta não publicada — use publicarGorjeta.");
+  }
+  const sv = getActiveSplitVersion(splitVersions, gorjeta.date);
+  if (!sv) {
+    throw new Error(
+      `Não há regra de divisão vigente em ${gorjeta.date}. Cadastre uma regra ` +
+      `antes de recalcular.`,
+    );
+  }
+  const liquido = calcularValorLiquido(gorjeta.valorBruto, sv.taxRate);
+  const result = calcularDivisaoDia(
+    gorjeta.date,
+    liquido,
+    empregados,
+    cargos,
+    escala,
+    sv,
+    gorjeta.unidadeId || null,
+    unidades,
+  );
+  await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
+    divisaoSnapshot: result.itens,
+    taxRate: sv.taxRate,
+    valorLiquido: liquido,
+    updatedAt: new Date().toISOString(),
+  }));
+}
+
 export async function despublicarGorjeta(gorjeta: Gorjeta): Promise<void> {
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
