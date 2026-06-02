@@ -121,51 +121,76 @@ export function aplicarAjustesNaEscala(
   escala: Record<string, Record<string, ScheduleStatus>>,
 ): { aplicados: number } {
   let aplicados = 0;
-  // DEBUG temporário — investigar por que ajustes Sólides não estão sendo
-  // reconhecidos (atestado, óbito, inversão de folga, etc).
-  const debugSamples: unknown[] = [];
   let totalAjustes = 0;
   let rejeitadosStatus = 0;
   let rejeitadosFaltaNJ = 0;
   let rejeitadosDataInvalida = 0;
   let rejeitadosForaRange = 0;
+  // DEBUG: contagem por empregado + samples separados aplicado/rejeitado
+  const byEmp: Record<string, { sid: number; total: number; aplicados: number; rejeitados: number }> = {};
+  const samplesAplicados: unknown[] = [];
+  const samplesRejForaRange: unknown[] = [];
+  // Janela do range visualizado (1ª data do 1º empregado) — usado pra log
+  let janelaSample: { primeiro: string; ultimo: string } | null = null;
   for (const [empId, sid] of Object.entries(solidesIdByEmpId)) {
     const ajs = adjustments[String(sid)];
     if (!Array.isArray(ajs) || ajs.length === 0) continue;
     totalAjustes += ajs.length;
+    byEmp[empId] = { sid, total: ajs.length, aplicados: 0, rejeitados: 0 };
     const perDate = escala[empId];
     if (!perDate) continue;
+    if (!janelaSample) {
+      const keys = Object.keys(perDate).sort();
+      janelaSample = { primeiro: keys[0] || "?", ultimo: keys[keys.length - 1] || "?" };
+    }
     for (const aj of ajs) {
-      // Coleta sample dos primeiros 5 ajustes brutos pra inspeção
-      if (debugSamples.length < 5) {
-        debugSamples.push({ empId, sid, raw: aj });
+      if (aj.status !== "APROVADO") {
+        rejeitadosStatus++; byEmp[empId].rejeitados++;
+        continue;
       }
-      if (aj.status !== "APROVADO") { rejeitadosStatus++; continue; }
-      if (eFaltaNaoJustificada(razaoDoAjuste(aj))) { rejeitadosFaltaNJ++; continue; }
+      if (eFaltaNaoJustificada(razaoDoAjuste(aj))) {
+        rejeitadosFaltaNJ++; byEmp[empId].rejeitados++;
+        continue;
+      }
       const a = parseAdjustmentDate(aj.startDate);
       const b = parseAdjustmentDate(aj.endDate);
-      if (!a || !b) { rejeitadosDataInvalida++; continue; }
+      if (!a || !b) {
+        rejeitadosDataInvalida++; byEmp[empId].rejeitados++;
+        continue;
+      }
       const dias = expandirRange(a, b);
       let aplicouAlgum = false;
       for (const d of dias) {
         if (perDate[d] !== undefined) {
           perDate[d] = "folga";
           aplicados += 1;
+          byEmp[empId].aplicados++;
           aplicouAlgum = true;
         }
       }
-      if (!aplicouAlgum) rejeitadosForaRange++;
+      if (!aplicouAlgum) {
+        rejeitadosForaRange++;
+        byEmp[empId].rejeitados++;
+        if (samplesRejForaRange.length < 5) {
+          samplesRejForaRange.push({ empId, sid, dataParsed: { a, b }, raw: aj });
+        }
+      } else if (samplesAplicados.length < 5) {
+        samplesAplicados.push({ empId, sid, dataParsed: { a, b }, raw: aj });
+      }
     }
   }
   // eslint-disable-next-line no-console
-  console.log("[DEBUG aplicarAjustes]", {
+  console.log("[DEBUG aplicarAjustes v2]", {
     totalAjustes,
     aplicados,
     rejeitadosStatus,
     rejeitadosFaltaNJ,
     rejeitadosDataInvalida,
     rejeitadosForaRange,
-    samples: debugSamples,
+    janelaSample,
+    byEmp,
+    samplesAplicados,
+    samplesRejForaRange,
   });
   return { aplicados };
 }
