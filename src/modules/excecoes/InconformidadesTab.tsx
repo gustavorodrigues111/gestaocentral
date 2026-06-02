@@ -1043,6 +1043,67 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     if (ok) await registrarEnvioLocal(empregadoId, "whatsapp");
   }
 
+  // Gera PDF consolidado de TODOS os lotes em aberto (qualquer empregado
+  // do restaurante). Compõe a lista a partir do state local atual + dos
+  // ExceptionRecord do displayedResult pra resolver os apontamentos.
+  const [gerandoPdf, setGerandoPdf] = useState(false);
+  async function gerarPdfLotes() {
+    if (lotesDocs.size === 0) {
+      alert("Nenhum lote aberto.");
+      return;
+    }
+    setGerandoPdf(true);
+    try {
+      const { gerarLotesPDF } = await import("./gerarLotesPDF");
+      const empregadosPdf = [] as Array<{
+        empregadoId: string;
+        nome: string;
+        cpf?: string;
+        apontamentos: { date: string; ruleId: string; description: string; detail?: string; batidas?: string }[];
+        lote?: LoteRascunhoDoc;
+      }>;
+      for (const [empregadoId, loteDoc] of lotesDocs) {
+        if ((loteDoc.apontamentoChaves?.length || 0) === 0) continue;
+        const apontamentos = resolverApontamentosDoLote(empregadoId);
+        if (apontamentos.length === 0) continue;
+        const emp = empregados.find((e) => e.id === empregadoId);
+        const nome = emp?.nome || apontamentos[0].employeeName || "—";
+        const cpf = emp?.cpf || apontamentos[0].cpf;
+        empregadosPdf.push({
+          empregadoId,
+          nome,
+          cpf,
+          apontamentos: apontamentos.map((a) => ({
+            date: a.date,
+            ruleId: a.ruleId,
+            description: a.description,
+            detail: a.detail,
+            batidas: a.batidas,
+          })),
+          lote: loteDoc,
+        });
+      }
+      empregadosPdf.sort((a, b) => a.nome.localeCompare(b.nome));
+      if (empregadosPdf.length === 0) {
+        alert("Nenhum lote com apontamentos resolvidos no relatório atual.");
+        return;
+      }
+      const docPdf = await gerarLotesPDF({
+        ano: anoMes.ano,
+        mes: anoMes.mes,
+        restaurantNome: activeRestaurant.nome,
+        empregados: empregadosPdf,
+      });
+      const fname = `pedidos-ajuste-${activeRestaurant.nome.toLowerCase().replace(/\s+/g, "-")}-${anoMes.ano}-${pad2(anoMes.mes)}.pdf`;
+      docPdf.save(fname);
+    } catch (e) {
+      console.error("[ponto] gerar PDF dos lotes falhou:", e);
+      alert("Falha ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setGerandoPdf(false);
+    }
+  }
+
   async function enviarLotePresencial(empregadoId: string) {
     const apontamentos = resolverApontamentosDoLote(empregadoId);
     if (apontamentos.length === 0) {
@@ -1944,7 +2005,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           )}
 
           {/* ── Filtro de áreas (multi-select). 1º botão "Todas" limpa o
-              set; demais são toggles cumulativos. ── */}
+              set; demais são toggles cumulativos. Botão de PDF alinhado
+              à direita. ── */}
           <div className="flex flex-wrap items-center gap-1.5 mb-3">
             <button
               type="button"
@@ -1982,6 +2044,25 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                 </button>
               );
             })}
+            {/* Botão de PDF — consolida todos os lotes abertos. Desabilita
+                quando não há nenhum lote no restaurante. */}
+            <button
+              type="button"
+              onClick={() => void gerarPdfLotes()}
+              disabled={lotesDocs.size === 0 || gerandoPdf}
+              className={`ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-full transition-colors whitespace-nowrap ${
+                lotesDocs.size === 0 || gerandoPdf
+                  ? "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600 cursor-not-allowed"
+                  : "bg-rose-600 text-white hover:bg-rose-700 shadow-sm"
+              }`}
+              title={
+                lotesDocs.size === 0
+                  ? "Sem nenhum lote aberto no restaurante"
+                  : "Gera PDF com a lista de pedidos de ajuste em aberto de todos os empregados"
+              }
+            >
+              {gerandoPdf ? "⏳ Gerando…" : "📄 Gerar PDF dos lotes"}
+            </button>
           </div>
 
           {/* ── Filtro de empregados — só aparece quando 1+ área filtrada.
