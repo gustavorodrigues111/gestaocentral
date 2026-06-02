@@ -890,6 +890,27 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // "🏢 Empresa resolve": adiciona ao lote E marca status como
+  // empresa_ajustara. Aparece no box amarelo igual aos do empregado mas
+  // com badge diferente; quando envia o lote pelo WhatsApp, é filtrado da
+  // mensagem (a empresa resolve direto na Sólides — não vai pro empregado).
+  async function marcarEmpresaResolve(empregadoId: string, exc: ExceptionRecord) {
+    if (!me) {
+      alert("Sem usuário logado.");
+      return;
+    }
+    const lockKey = apontamentoKey(empregadoId, exc.date, exc.ruleId);
+    const jaNoLote = loteChavesDo(empregadoId).has(lockKey);
+    if (!jaNoLote) adicionarAoLote(empregadoId, lockKey);
+    await aplicarStatusApontamento({
+      empregadoId,
+      empregadoNome: exc.employeeName,
+      data: exc.date,
+      ruleId: exc.ruleId,
+      novoStatus: "empresa_ajustara",
+    });
+  }
+
   // Resolve os apontamentos do lote de um empregado em ExceptionRecord[],
   // consultando displayedResult.exceptions. Filtra pra garantir 1 por
   // (data, ruleId) — mesmo se vierem duplicados, agregamos um só.
@@ -913,6 +934,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   }
 
   // Marca em paralelo todos os apontamentos do lote como "aguardando_ajuste".
+  // PULA apontamentos já em "empresa_ajustara" (esses não vão pro empregado
+  // e o status fica como está — empresa vai resolver na Sólides).
   // Update otimista no statusApontamentoMap local pra a UI virar antes do
   // listener confirmar. Em caso de erro, mantém o lote local pro usuário
   // tentar de novo.
@@ -924,9 +947,14 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Sem usuário logado — recarrega a página e tenta de novo.");
       return false;
     }
+    const paraMarcar = apontamentos.filter((e) => {
+      const k = apontamentoKey(empregadoId, e.date, e.ruleId);
+      return statusApontamentoMap.get(k)?.status !== "empresa_ajustara";
+    });
+    if (paraMarcar.length === 0) return true;
     try {
       await Promise.all(
-        apontamentos.map((e) =>
+        paraMarcar.map((e) =>
           setStatusApontamento({
             restaurantId: rid,
             empregadoId,
@@ -941,7 +969,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // listener real-time chegar.
       setStatusApontamentoMap((prev) => {
         const next = new Map(prev);
-        for (const e of apontamentos) {
+        for (const e of paraMarcar) {
           const k = apontamentoKey(empregadoId, e.date, e.ruleId);
           next.set(k, {
             id: `${rid}_${empregadoId}_${e.date}_${e.ruleId}`,
@@ -1019,8 +1047,18 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       alert("Lote vazio.");
       return;
     }
+    // Filtra fora os marcados como 'empresa_ajustara' — esses não vão pro
+    // empregado (empresa resolve direto na Sólides).
+    const paraEmpregado = apontamentos.filter((a) => {
+      const k = apontamentoKey(empregadoId, a.date, a.ruleId);
+      return statusApontamentoMap.get(k)?.status !== "empresa_ajustara";
+    });
+    if (paraEmpregado.length === 0) {
+      alert("Todos os itens do lote estão marcados como 'empresa resolve' — nada pra enviar pro empregado.");
+      return;
+    }
     const empregado = empregados.find((e) => e.id === empregadoId);
-    const empregadoNome = empregado?.nome || apontamentos[0].employeeName || "";
+    const empregadoNome = empregado?.nome || paraEmpregado[0].employeeName || "";
     const whatsapp = whatsByEmpId.get(empregadoId);
     if (!whatsapp) {
       alert(`${empregadoNome} não tem WhatsApp cadastrado em Pessoas.`);
@@ -1029,7 +1067,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     const msg = montarMensagemLoteAjuste({
       empregadoNome,
       restNome: activeRestaurant.nome,
-      apontamentos: apontamentos.map((a) => ({
+      apontamentos: paraEmpregado.map((a) => ({
         date: a.date,
         ruleId: a.ruleId,
         description: a.description,
@@ -1039,7 +1077,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     });
     const link = montarLinkWhats(whatsapp, msg);
     window.open(link, "_blank");
-    const ok = await marcarLoteAguardandoAjuste(empregadoId, apontamentos);
+    const ok = await marcarLoteAguardandoAjuste(empregadoId, paraEmpregado);
     if (ok) await registrarEnvioLocal(empregadoId, "whatsapp");
   }
 
@@ -2286,6 +2324,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   loteDoEmpregado={lotesDocs.get(grupo.empregadoId)}
                   loteApontamentos={resolverApontamentosDoLote(grupo.empregadoId)}
                   onToggleLote={(exc) => toggleLote(grupo.empregadoId, exc)}
+                  onMarcarEmpresaResolve={(exc) => marcarEmpresaResolve(grupo.empregadoId, exc)}
                   onEnviarLoteWhats={() => enviarLoteWhats(grupo.empregadoId)}
                   onEnviarLotePresencial={() => enviarLotePresencial(grupo.empregadoId)}
                   onCancelarLote={() => cancelarLote(grupo.empregadoId)}
@@ -2841,6 +2880,7 @@ function ColaboradorBlock({
   loteDoEmpregado,
   loteApontamentos,
   onToggleLote,
+  onMarcarEmpresaResolve,
   onEnviarLoteWhats,
   onEnviarLotePresencial,
   onCancelarLote,
@@ -2866,6 +2906,7 @@ function ColaboradorBlock({
   loteDoEmpregado?: LoteRascunhoDoc;
   loteApontamentos: ExceptionRecord[];
   onToggleLote: (exc: ExceptionRecord) => void;
+  onMarcarEmpresaResolve: (exc: ExceptionRecord) => Promise<void> | void;
   onEnviarLoteWhats: () => void;
   onEnviarLotePresencial: () => void;
   onCancelarLote: () => void;
@@ -3046,10 +3087,24 @@ function ColaboradorBlock({
               const meta = RULES_META[a.ruleId];
               const label = meta?.label || a.ruleId;
               const det = a.detail || a.description;
+              const stApon = statusApontamentoMap.get(
+                apontamentoKey(grupo.empregadoId, a.date, a.ruleId),
+              )?.status;
+              const ehEmpresa = stApon === "empresa_ajustara";
               return (
-                <li key={`${a.date}_${a.ruleId}`} className="tabular-nums">
-                  · {fmtDataBr(a.date)} · {label}
-                  {det ? ` · ${det}` : ""}
+                <li key={`${a.date}_${a.ruleId}`} className="tabular-nums flex items-start gap-1">
+                  <span
+                    className={`shrink-0 ${ehEmpresa ? "text-indigo-700 dark:text-indigo-300" : "text-amber-700 dark:text-amber-300"}`}
+                    title={ehEmpresa
+                      ? "Empresa vai resolver direto na Sólides (não vai na mensagem do WhatsApp)"
+                      : "Vai pro empregado ajustar"}
+                  >
+                    {ehEmpresa ? "🏢" : "📦"}
+                  </span>
+                  <span>
+                    {fmtDataBr(a.date)} · {label}
+                    {det ? ` · ${det}` : ""}
+                  </span>
                 </li>
               );
             })}
@@ -3509,9 +3564,9 @@ function ColaboradorBlock({
                                 <button
                                   type="button"
                                   disabled={salvando}
-                                  onClick={() => void onAplicarStatusApontamento(e, "empresa_ajustara")}
+                                  onClick={() => void onMarcarEmpresaResolve(e)}
                                   className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
-                                  title="A empresa vai resolver direto na Sólides — não vai pro empregado. Aparece no PDF na seção 'Empresa resolverá'."
+                                  title="A empresa vai resolver direto na Sólides — entra no box amarelo do lote (mas é filtrado da mensagem do WhatsApp do empregado)."
                                 >
                                   {salvando ? "⏳" : "🏢 Empresa resolve"}
                                 </button>
@@ -3533,10 +3588,16 @@ function ColaboradorBlock({
                           <button
                             type="button"
                             disabled={salvandoApontamento.has(apontamentoKey(grupo.empregadoId, e.date, e.ruleId))}
-                            onClick={() => void onReabrirApontamento(e)}
+                            onClick={() => {
+                              // Empresa_ajustara: tira do lote E desmarca o status.
+                              if (isEmpresaAjustara && estaNoLote) {
+                                onToggleLote(e);
+                              }
+                              void onReabrirApontamento(e);
+                            }}
                             className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
                             title={isEmpresaAjustara
-                              ? "Desmarcar — sai do estado 'empresa resolverá' e volta a aberto"
+                              ? "Desmarcar — sai do lote e volta o status a aberto"
                               : "Desmarcar — volta o apontamento pra aberto (sai do estado aguardando ajuste)"}
                           >
                             ↩ desmarcar
