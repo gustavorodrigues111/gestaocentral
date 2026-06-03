@@ -371,9 +371,20 @@ export type EscalaMes = {
   // Marcadores de ATRASO (não mudam status — célula continua "trabalho",
   // mas ganha ícone 🕐). Detectados automaticamente pela regra
   // `atrasoEntrada` do módulo de Ponto (> 10min após previsto).
+  // [legacy] Substituído por `apontamentos[].tipo === "atraso"`. Render
+  // continua suportando ambos durante a transição — escrita nova vai no
+  // schema novo.
   atrasos?: {
     [empregadoId: string]: {
       [date: string]: AtrasoEscalaMeta;
+    };
+  };
+  // Apontamentos gerais na praticada (atraso, jornada longa, intrajornada
+  // curta, trabalho em folga, batida extra). Array por dia — suporta
+  // múltiplos no mesmo dia (ex: atraso + jornada longa).
+  apontamentos?: {
+    [empregadoId: string]: {
+      [date: string]: ApontamentoEscalaMeta[];
     };
   };
 
@@ -470,6 +481,48 @@ export type AtrasoEscalaMeta = {
   realizado?: string;                // HH:MM efetivo
   detectadoEm: string;               // ISO — quando o relatório detectou
   eventoTrilhaId?: string;           // link com EventoTrilha criado
+};
+
+// Apontamento na escala praticada — generalização do schema `atrasos` pra
+// cobrir todos os fatos da apuração (atrasos, jornada > 10h, intrajornada
+// curta, trabalho em folga, batidas extras). NÃO muda o status do dia
+// (continua "trabalho", "folga" etc) — só adiciona um marcador com tooltip
+// na grade. Ao fechar a praticada, cada apontamento aplicado vira evento
+// na Trilha do Empregado.
+export type ApontamentoTipoEscala =
+  | "atraso"              // chegou tarde da entrada prevista
+  | "jornada_longa"       // jornada total > 10h (CLT Art. 59)
+  | "intrajornada_curta"  // intervalo < 55min com jornada > 6h (CLT Art. 71)
+  | "trabalhou_folga"     // bateu ponto em dia de folga programada
+  | "batida_extra"        // mais batidas do que o esperado (sobrou no dia)
+  ;
+
+export const APONTAMENTO_TIPO_LABEL: Record<ApontamentoTipoEscala, string> = {
+  atraso:              "Atraso",
+  jornada_longa:       "Jornada longa",
+  intrajornada_curta:  "Intrajornada curta",
+  trabalhou_folga:     "Trabalho em folga",
+  batida_extra:        "Batida extra",
+};
+
+export const APONTAMENTO_TIPO_ICON: Record<ApontamentoTipoEscala, string> = {
+  atraso:              "⏰",
+  jornada_longa:       "⏱",
+  intrajornada_curta:  "🍽",
+  trabalhou_folga:     "⚠",
+  batida_extra:        "📍",
+};
+
+export type ApontamentoEscalaMeta = {
+  tipo: ApontamentoTipoEscala;
+  detalhe: string;                   // texto pronto pro tooltip
+  minutos?: number;                  // ex: 18 (atraso), 720 (12h de jornada)
+  previsto?: string;                 // HH:MM previsto (atraso)
+  realizado?: string;                // HH:MM efetivo
+  detectadoEm: string;               // ISO
+  aplicadoPor?: string;              // pessoaId que aplicou
+  aplicadoPorNome?: string;
+  eventoTrilhaId?: string;           // link com EventoTrilha (gerado ao fechar praticada)
 };
 
 // Status derivado do lifecycle pra UI
