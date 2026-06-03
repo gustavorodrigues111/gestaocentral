@@ -31,6 +31,7 @@ import {
   fetchSolidesSchedules,
 } from "../../core/excecoes/solidesScheduleClient";
 import { fetchSolidesAdjustments, aplicarAjustesNaEscala } from "../../core/excecoes/solidesAdjustmentsClient";
+import { fetchSolidesLeaves, aplicarAfastamentosNaEscala } from "../../core/excecoes/solidesLeavesClient";
 import { onlyDigits } from "../../core/excecoes/dayMetrics";
 import { semanasDoMes, type SemanaInfo } from "../../core/excecoes/semanas";
 import {
@@ -1682,6 +1683,35 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         ajustesAplicadosPorEmpId = aplicarRes.ajustesAplicados;
         debugInfo.ajustesAplicados = adjRes.count;
         debugInfo.sampleProbeAdj = adjRes.sampleProbe;
+
+        // 2º caminho: afastamentos lançados pelo módulo "Afastamento" (UI
+        // nova da Sólides — atestado óbito, licença, etc). Tem API separada
+        // com tokens próprios (env SOLIDES_TIMEOFFWORK_TOKENS). Falha
+        // silenciosa se não configurado — o fluxo dos ajustes antigos
+        // continua funcionando.
+        try {
+          const leavesRes = await fetchSolidesLeaves(shortCode);
+          if (leavesRes.error) {
+            console.warn("Sólides leaves não configurado/erro:", leavesRes.error);
+          } else if (leavesRes.leaves.length > 0) {
+            const aplicarLeaves = aplicarAfastamentosNaEscala(
+              leavesRes.leaves, sidByEmpId, escalaPorEmpregado,
+            );
+            // Merge: afastamentos sobrepõem ajustes do mesmo dia (raro)
+            for (const [empId, perDate] of Object.entries(aplicarLeaves.ajustesAplicados)) {
+              if (!ajustesAplicadosPorEmpId[empId]) ajustesAplicadosPorEmpId[empId] = {};
+              Object.assign(ajustesAplicadosPorEmpId[empId], perDate);
+            }
+            // eslint-disable-next-line no-console
+            console.log("[DEBUG afastamentos]", {
+              total: leavesRes.count,
+              aplicados: aplicarLeaves.aplicados,
+              sampleProbe: leavesRes.sampleProbe,
+            });
+          }
+        } catch (e) {
+          console.warn("Sólides leaves falhou (seguindo sem afastamentos):", e);
+        }
         // DEBUG: log focado em empregados específicos pra investigar
         // por que ajustes (atestado, óbito) não estão sendo aplicados.
         // CPFs de interesse passados via filtro: Larissa, Joyce, etc.
