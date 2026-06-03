@@ -72,7 +72,12 @@ async function fetchPage(
   status: string,
   tokens: Tokens,
 ): Promise<{ data: unknown; httpStatus: number; bodyPreview: string }> {
-  const url = `${TIMEOFFWORK_API}?size=${size}&total=${size}&page=${page}&status=${encodeURIComponent(status)}`;
+  // Se status vazio ou "ALL", omite o filtro — pega tudo e o cliente filtra.
+  // O status real da timeoffwork não é "APROVADO" (parece ser CIENTE/SINCRONIZADO).
+  const statusParam = status && status !== "ALL"
+    ? `&status=${encodeURIComponent(status)}`
+    : "";
+  const url = `${TIMEOFFWORK_API}?size=${size}&total=${size}&page=${page}${statusParam}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
@@ -112,8 +117,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     return;
   }
   const restaurantKey = String(req.query.restaurant ?? "").trim();
-  // Note: status default = APROVADO (afastamento já sincronizado/aprovado)
-  const status = (String(req.query.status ?? "APROVADO").trim() || "APROVADO");
+  // Default ALL = busca afastamentos em todos os status (timeoffwork tem
+  // chips visuais "ciente/sincronizado/em análise/em desacordo" — a API
+  // não aceita "APROVADO" como o /v2/adjustments aceita).
+  const status = String(req.query.status ?? "ALL").trim() || "ALL";
 
   const tokensResult = resolveTokens(restaurantKey);
   if ("error" in tokensResult) {

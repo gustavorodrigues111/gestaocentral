@@ -43,7 +43,7 @@ export type FetchLeavesResult = {
 };
 
 export async function fetchSolidesLeaves(restaurantKey: string): Promise<FetchLeavesResult> {
-  const params = new URLSearchParams({ status: "APROVADO" });
+  const params = new URLSearchParams({ status: "ALL" });
   if (restaurantKey) params.set("restaurant", restaurantKey);
   const resp = await fetch(`/api/solides-leaves?${params.toString()}`);
   const text = await resp.text();
