@@ -68,10 +68,9 @@ export function calcularDivisaoDia(
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const itens: DivisaoItem[] = [];
 
-  // Unidades de produção (pra cargos com recebeProducao=true)
-  const idsUnidadesProducao = new Set(
-    (unidades || []).filter(u => u.tipo === "producao" && u.ativa).map(u => u.id)
-  );
+  // Mantém referência da lista de unidades pra eventual extensão futura,
+  // mas a regra atual de cargo recebeProducao não exige unidade específica.
+  void unidades;
   const isMultiUnidades = !!gorjetaUnidadeId;
 
   const [yStr, mStr] = date.split("-");
@@ -127,13 +126,11 @@ export function calcularDivisaoDia(
     const trabalhou = !!status && STATUS_RECEBE[status];
 
     if (cargo.recebeProducao) {
-      if (isMultiUnidades) {
-        // Multi: precisa ter trabalhado em alguma unidade de PRODUÇÃO no dia
-        if (!trabalhou) continue;
-        const unidadeDoDia = resolverUnidade(e);
-        if (!unidadeDoDia || !idsUnidadesProducao.has(unidadeDoDia)) continue;
-      }
-      // Single-unit: comportamento antigo — recebe TODO dia (independente da escala)
+      // Cargo "recebe produção" = recebe gorjeta de TODAS as unidades de
+      // atendimento, independente da unidade onde o empregado está lotado
+      // ou onde trabalhou no dia. Em multi-unidade exige só que tenha
+      // trabalhado; em single-unit recebe TODO dia (comportamento antigo).
+      if (isMultiUnidades && !trabalhou) continue;
       motivo = "producao";
     } else {
       // Cargo normal: precisa ter trabalhado
