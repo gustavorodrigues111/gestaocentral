@@ -27,7 +27,6 @@ import type {
   Pessoa,
 } from "../../core/types";
 import { subscribeToolsByRestaurant, deleteTool } from "./repository";
-import { seedLobozo } from "./seed";
 import { FerramentaEditorModal } from "./FerramentaEditorModal";
 
 const CATEGORIAS_ORDEM: FerramentaCategoria[] = [
@@ -47,20 +46,13 @@ const METODO_BADGE_CLASS: Record<FerramentaMetodoAcesso, string> = {
 
 export function FerramentasCredenciaisPage() {
   const { pessoa: me } = useAuth();
-  const { activeId: rid, activeRestaurant } = useRestaurant();
-  // Seed Lobozó é específico do Lobozó (a planilha-blueprint do briefing).
-  // Pra outros restaurantes, o gestor cria do zero ou usaremos seeds próprios
-  // quando existirem.
-  const isLobozo = !!activeRestaurant && (
-    /lobo[zó]/i.test(activeRestaurant.nome) || activeRestaurant.shortCode === "LOB"
-  );
+  const { activeId: rid } = useRestaurant();
   const [tools, setTools] = useState<Tool[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [catFiltro, setCatFiltro] = useState<FerramentaCategoria | "todas">("todas");
   const [editando, setEditando] = useState<Tool | "nova" | null>(null);
-  const [seedando, setSeedando] = useState(false);
 
   // Modos: "minhas" (usuário) vs "gerenciar" (admin). Usuário sem
   // permissão de gerenciar fica preso em "minhas".
@@ -119,20 +111,6 @@ export function FerramentasCredenciaisPage() {
     return m;
   }, [toolsVisiveis]);
 
-  async function handleSeed() {
-    if (!rid || !me?.id) return;
-    if (!confirm("Carregar seed do Lobozó (8 ferramentas)? Idempotente — não duplica.")) return;
-    setSeedando(true);
-    try {
-      const r = await seedLobozo(rid, me.id);
-      alert(`✓ ${r.criadas} criadas, ${r.jaExistiam} já existiam.`);
-    } catch (e) {
-      alert("Erro no seed: " + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setSeedando(false);
-    }
-  }
-
   async function handleDelete(t: Tool) {
     if (!confirm(`Excluir "${t.nome}"? Permanente.`)) return;
     await deleteTool(t.id);
@@ -169,14 +147,7 @@ export function FerramentasCredenciaisPage() {
               >Gerenciar</button>
             </div>
             {modo === "gerenciar" && (
-              <>
-                {isLobozo && (
-                  <Button size="sm" variant="secondary" onClick={handleSeed} disabled={seedando}>
-                    {seedando ? "..." : "📦 Seed Lobozó"}
-                  </Button>
-                )}
-                <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
-              </>
+              <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
             )}
           </div>
         )}
