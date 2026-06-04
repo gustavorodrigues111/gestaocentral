@@ -253,6 +253,33 @@ export async function concluirProcesso(
     console.warn("[demissao] falha ao desativar exames:", e);
   }
 
+  // Revoga acessos a ferramentas (remove pessoaId de usuariosAutorizados
+  // em todas as tools do restaurante). Senhas compartilhadas/ocultas
+  // precisam ser ROTACIONADAS no Bitwarden pelo gestor — geramos uma
+  // tarefa de checklist se houver.
+  if (proc.pessoaId) {
+    try {
+      const { collection, query, where, getDocs } = await import("firebase/firestore");
+      const { revogarAcessosDaPessoa } = await import("../ferramentasCredenciais/repository");
+      const snap = await getDocs(query(
+        collection(db, "tools"),
+        where("restaurantId", "==", proc.restaurantId),
+      ));
+      const todasTools = snap.docs.map(d => ({ id: d.id, ...d.data() })) as Parameters<typeof revogarAcessosDaPessoa>[2];
+      const r = await revogarAcessosDaPessoa(proc.restaurantId, proc.pessoaId, todasTools);
+      if (r.removidaDe.length > 0) {
+        console.log(`[demissao] ferramentas revogadas: ${r.removidaDe.join(", ")}`);
+      }
+      if (r.aRotacionar.length > 0) {
+        console.warn(
+          `[demissao] AÇÃO MANUAL — rotacionar senhas no Bitwarden de: ${r.aRotacionar.map(t => t.nome).join(", ")}`,
+        );
+      }
+    } catch (e) {
+      console.warn("[demissao] falha ao revogar ferramentas:", e);
+    }
+  }
+
   // Evento de trilha
   try {
     const { registrarDemissao } = await import("../trilha/autoEventos");
