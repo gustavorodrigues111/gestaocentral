@@ -496,6 +496,17 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "atribuir", label: "Atribuir perfil a pessoas", sensivel: true },
     ],
   },
+  {
+    id: "ferramentasCredenciais",
+    icon: "🔑",
+    label: "Ferramentas e Credenciais",
+    desc: "Catálogo de acessos a sistemas externos (iFood, Lalamove, BEES, etc). A permissão pra ENXERGAR cada ferramenta é granular por usuário — quem está no array usuariosAutorizados da ferramenta. Esta permissão só abre o módulo.",
+    area: "gestao",
+    acoes: [
+      { id: "acessar",   label: "Acessar 'Minhas Ferramentas' (vê as ferramentas atribuídas a você)" },
+      { id: "gerenciar", label: "Gerenciar todas as ferramentas e quem tem acesso (master)", sensivel: true },
+    ],
+  },
 ];
 
 // ─── HELPERS ──────────────────────────────────────────────────────────────

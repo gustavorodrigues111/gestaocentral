@@ -48,6 +48,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Cadastros ────────────────────────────────────────────────────
   { id: "pessoas",     area: "dp", subarea: "Cadastros",               label: "Pessoas",         icon: "👤", status: "ativo", desc: "Pessoas, empregados, cargos e templates de permissão" },
+  { id: "ferramentasCredenciais", area: "dp", subarea: "Cadastros",    label: "Ferramentas e Credenciais", icon: "🔑", status: "ativo", etapa: "beta", desc: "Catálogo de acessos a sistemas externos (iFood, Lalamove, fornecedores). Atribuição granular por usuário. Não armazena senhas — só link pro Bitwarden.", dependsOn: ["pessoas"] },
 
   // ── Ciclo de Vida do Empregado ───────────────────────────────────
   { id: "admissao",    area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Admissão",    icon: "🪪", status: "ativo", etapa: "beta",               desc: "Processo de admissão: formulário compartilhável + kanban", dependsOn: ["pessoas"] },

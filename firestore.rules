@@ -197,6 +197,11 @@ service cloud.firestore {
     match /examesEmpregado/{id}     { allow read, write: if authed(); allow delete: if isMaster(); }
     // Processos de Demissão (Fase 8) — auth-only por enquanto. Sensível.
     match /processosDemissao/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
+    // Ferramentas e Credenciais — catálogo de acessos a sistemas externos.
+    // App NÃO guarda senha (só metadado + link Bitwarden). Leitura auth-only;
+    // filtragem por usuariosAutorizados é client-side. Escrita = qualquer auth
+    // (refinar pra master/canAcao em fase futura). Delete só master.
+    match /tools/{id}               { allow read, write: if authed(); allow delete: if isMaster(); }
     // Reservas: doc PRINCIPAL contém só metadados sem PII (data, horario,
     // pessoas, salaoId, status, clienteId). PII (nome/telefone/email/
     // observações/ocasião) vive em /reservasPII com read auth-only.

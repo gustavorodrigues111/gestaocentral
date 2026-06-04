@@ -56,7 +56,11 @@ export type ModuleId =
   // Exames médicos do empregado (Fase 7)
   | "exames"
   // Processo de Demissão (Fase 8)
-  | "demissao";
+  | "demissao"
+  // Ferramentas e Credenciais — catálogo de acessos a sistemas externos
+  // (iFood, Lalamove, BEES etc). Não armazena senhas, só metadado + link
+  // pro Bitwarden.
+  | "ferramentasCredenciais";
 
 // ─── PERMISSÕES ───
 
@@ -4127,4 +4131,76 @@ export type TermoUniformesConfig = {
   elaboradoEm?: string;                // texto livre tipo "Junho/2025"
   atualizadoEm: string;
   atualizadoPor: string;
+};
+
+// ─── Ferramentas e Credenciais ──────────────────────────────────────────────
+// Catálogo de acessos a sistemas externos (iFood, Lalamove, BEES etc).
+// Princípio: NÃO armazena senha — só metadado + link pro Bitwarden.
+// Permissão é granular: usuário vê uma ferramenta só se estiver em
+// `usuariosAutorizados`. Master vê tudo.
+
+export type FerramentaMetodoAcesso =
+  | "login_proprio"        // cada um tem o próprio login (sem cofre)
+  | "senha_compartilhada"  // login único compartilhado (link Bitwarden)
+  | "senha_oculta"         // compartilhada com autofill sem revelar (link Bitwarden)
+  | "fisico"               // cadeado, chave, combinação (mostra local)
+  | "restrito"             // só master — fala com responsável
+  | "delegado_sso"         // SSO/federated (sem senha)
+  | "dormente";            // conta sem uso (visível só pra master)
+
+export type FerramentaCategoria =
+  | "delivery"
+  | "fornecedores"
+  | "operacao"
+  | "financeiro"
+  | "rh"
+  | "infra"
+  | "identidade"
+  | "restrito";
+
+export const FERRAMENTA_CATEGORIA_LABEL: Record<FerramentaCategoria, string> = {
+  delivery:      "Delivery & entregas",
+  fornecedores:  "Fornecedores",
+  operacao:      "Operação da casa",
+  financeiro:    "Financeiro",
+  rh:            "RH / Pessoas",
+  infra:         "Infraestrutura",
+  identidade:    "Identidade / SSO",
+  restrito:      "Acesso restrito",
+};
+
+export const FERRAMENTA_METODO_LABEL: Record<FerramentaMetodoAcesso, string> = {
+  login_proprio:        "Login próprio",
+  senha_compartilhada:  "Compartilhada",
+  senha_oculta:         "Senha oculta",
+  fisico:               "Físico",
+  restrito:             "Restrito",
+  delegado_sso:         "SSO",
+  dormente:             "Dormente",
+};
+
+export type Tool = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  icone: string;                       // nome do ícone Tabler sem prefixo (ex: "motorbike")
+  necessidade: string;                 // "pra que serve" em 1 linha
+  tags: string[];                      // palavras-chave pra busca
+  categoria: FerramentaCategoria;
+  metodoAcesso: FerramentaMetodoAcesso;
+  // Granularidade de permissão por usuário. Só quem tá no array vê a tool.
+  // Master vê tudo independente disso.
+  usuariosAutorizados: string[];
+  // Dados específicos por método (todos opcionais — front renderiza só o
+  // que faz sentido pro método)
+  bitwardenItemUrl?: string | null;    // senha_compartilhada / senha_oculta
+  bitwardenCollection?: string | null; // referência humana
+  localFisico?: string | null;         // metodoAcesso = fisico
+  instrucoesAcesso?: string | null;    // login_proprio: como solicitar
+  responsavel?: string | null;         // pessoaId — pra metodoAcesso = restrito
+  status: "ativo" | "dormente";
+  criadoEm: string;                    // ISO
+  criadoPor: string;                   // pessoaId
+  atualizadoEm?: string;
+  atualizadoPor?: string;
 };
