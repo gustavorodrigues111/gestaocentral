@@ -76,7 +76,7 @@ export function FerramentaEditorModal({ tool, rid, pessoaId, pessoas, onClose }:
       const tags = tagsStr.split(",").map(s => s.trim()).filter(Boolean);
       const data = {
         nome: nome.trim(),
-        icone: icone.trim() || "tool",
+        icone: icone.trim() || "🔧",
         necessidade: necessidade.trim(),
         tags,
         categoria,
@@ -108,19 +108,41 @@ export function FerramentaEditorModal({ tool, rid, pessoaId, pessoas, onClose }:
   return (
     <Modal title={isNova ? "Nova ferramenta" : `Editar ${tool?.nome}`} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Nome *"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="iFood"
-          />
-          <Input
-            label="Ícone (slug Tabler)"
-            value={icone}
-            onChange={(e) => setIcone(e.target.value)}
-            placeholder="device-mobile"
-          />
+        <Input
+          label="Nome *"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="iFood"
+        />
+        <div>
+          <label className={labelCls}>Emoji</label>
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-2xl shrink-0">
+              {icone || "🔧"}
+            </div>
+            <input
+              value={icone}
+              onChange={(e) => setIcone(e.target.value)}
+              maxLength={4}
+              placeholder="📱"
+              className={selectCls + " flex-1"}
+            />
+          </div>
+          <div className="flex flex-wrap gap-1 mt-2">
+            {[
+              "📱","🛒","🍔","🍷","🍺","🍱","🚗","🛵","✈️","🏠","🔑","🔒",
+              "📋","📅","✅","📝","📊","💰","💸","💳","🧾","📨","📧","📞",
+              "🛠️","🔧","⚙️","💡","🎯","🏛️","🏦","📦","🧰","🍽️","🗂️","📍",
+            ].map(e => (
+              <button
+                key={e}
+                type="button"
+                onClick={() => setIcone(e)}
+                className="text-xl w-9 h-9 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition"
+                title={e}
+              >{e}</button>
+            ))}
+          </div>
         </div>
 
         <div>

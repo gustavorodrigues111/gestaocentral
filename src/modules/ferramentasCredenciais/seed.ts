@@ -18,7 +18,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "ifood",
     nome: "iFood",
-    icone: "device-mobile",
+    icone: "📱",
     necessidade: "Receber e gerenciar pedidos de delivery",
     tags: ["ifood","pedido","delivery","entrega"],
     categoria: "delivery",
@@ -28,7 +28,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "lalamove",
     nome: "Lalamove",
-    icone: "motorbike",
+    icone: "🛵",
     necessidade: "Chamar motoboy para entrega avulsa",
     tags: ["motoboy","entregador","chamar","entrega"],
     categoria: "delivery",
@@ -38,7 +38,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "bees-ambev",
     nome: "BEES / Ambev",
-    icone: "bottle",
+    icone: "🍺",
     necessidade: "Fazer pedido de bebidas Ambev",
     tags: ["bebida","cerveja","ambev","fornecedor","pedido"],
     categoria: "fornecedores",
@@ -48,7 +48,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "heishop-heineken",
     nome: "Heishop / Heineken",
-    icone: "bottle",
+    icone: "🍺",
     necessidade: "Fazer pedido de bebidas Heineken",
     tags: ["bebida","heineken","fornecedor","pedido"],
     categoria: "fornecedores",
@@ -57,7 +57,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "get-in",
     nome: "GET IN",
-    icone: "calendar-event",
+    icone: "📅",
     necessidade: "Gerenciar reservas de mesa",
     tags: ["reserva","mesa","salao","cliente"],
     categoria: "operacao",
@@ -67,7 +67,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "email-checklists",
     nome: "Email Checklists",
-    icone: "checklist",
+    icone: "📧",
     necessidade: "Caixa de e-mail dos checklists da operação",
     tags: ["checklist","operacao","conferencia","email"],
     categoria: "operacao",
@@ -76,7 +76,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "caixa-madeira",
     nome: "Caixa de Madeira",
-    icone: "box",
+    icone: "📦",
     necessidade: "Guardar valores e itens da casa",
     tags: ["valores","dinheiro","cadeado","guardar"],
     categoria: "operacao",
@@ -86,7 +86,7 @@ const SEED_LOBOZO: SeedItem[] = [
   {
     slug: "sp-regula",
     nome: "SP Regula",
-    icone: "building-bank",
+    icone: "🏛️",
     necessidade: "Licenças e alvarás da prefeitura",
     tags: ["licenca","prefeitura","alvara","fiscal"],
     categoria: "restrito",

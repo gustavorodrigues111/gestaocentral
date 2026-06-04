@@ -295,9 +295,7 @@ function ToolCard({
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
       <div className="flex items-start gap-3 flex-wrap">
         <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-lg shrink-0">
-          {/* Usa emoji simples baseado no nome do ícone (fallback). Tabler icons
-              via classe `ti ti-X` exigem font carregada — pulamos pra não pesar. */}
-          🔧
+          {tool.icone || "🔧"}
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap mb-0.5">
