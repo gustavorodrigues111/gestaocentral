@@ -28,6 +28,7 @@ import type {
 } from "../../core/types";
 import { subscribeToolsByRestaurant, deleteTool } from "./repository";
 import { FerramentaEditorModal } from "./FerramentaEditorModal";
+import { ImportarCsvModal } from "./ImportarCsvModal";
 
 const CATEGORIAS_ORDEM: FerramentaCategoria[] = [
   "delivery", "fornecedores", "operacao", "financeiro", "rh", "infra", "identidade", "restrito",
@@ -53,6 +54,7 @@ export function FerramentasCredenciaisPage() {
   const [busca, setBusca] = useState("");
   const [catFiltro, setCatFiltro] = useState<FerramentaCategoria | "todas">("todas");
   const [editando, setEditando] = useState<Tool | "nova" | null>(null);
+  const [importandoCsv, setImportandoCsv] = useState(false);
 
   // Modos: "minhas" (usuário) vs "gerenciar" (admin). Usuário sem
   // permissão de gerenciar fica preso em "minhas".
@@ -147,7 +149,12 @@ export function FerramentasCredenciaisPage() {
               >Gerenciar</button>
             </div>
             {modo === "gerenciar" && (
-              <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
+              <>
+                <Button size="sm" variant="secondary" onClick={() => setImportandoCsv(true)}>
+                  📤 Importar CSV
+                </Button>
+                <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
+              </>
             )}
           </div>
         )}
@@ -225,6 +232,14 @@ export function FerramentasCredenciaisPage() {
           pessoaId={me.id}
           pessoas={pessoas}
           onClose={() => setEditando(null)}
+        />
+      )}
+
+      {importandoCsv && rid && me && (
+        <ImportarCsvModal
+          rid={rid}
+          pessoaId={me.id}
+          onClose={() => setImportandoCsv(false)}
         />
       )}
     </div>
