@@ -47,7 +47,13 @@ const METODO_BADGE_CLASS: Record<FerramentaMetodoAcesso, string> = {
 
 export function FerramentasCredenciaisPage() {
   const { pessoa: me } = useAuth();
-  const { activeId: rid } = useRestaurant();
+  const { activeId: rid, activeRestaurant } = useRestaurant();
+  // Seed Lobozó é específico do Lobozó (a planilha-blueprint do briefing).
+  // Pra outros restaurantes, o gestor cria do zero ou usaremos seeds próprios
+  // quando existirem.
+  const isLobozo = !!activeRestaurant && (
+    /lobo[zó]/i.test(activeRestaurant.nome) || activeRestaurant.shortCode === "LOB"
+  );
   const [tools, setTools] = useState<Tool[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,9 +170,11 @@ export function FerramentasCredenciaisPage() {
             </div>
             {modo === "gerenciar" && (
               <>
-                <Button size="sm" variant="secondary" onClick={handleSeed} disabled={seedando}>
-                  {seedando ? "..." : "📦 Seed Lobozó"}
-                </Button>
+                {isLobozo && (
+                  <Button size="sm" variant="secondary" onClick={handleSeed} disabled={seedando}>
+                    {seedando ? "..." : "📦 Seed Lobozó"}
+                  </Button>
+                )}
                 <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
               </>
             )}
