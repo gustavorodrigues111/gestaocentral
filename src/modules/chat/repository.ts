@@ -20,7 +20,7 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Conversation, ChatMessage, ContatoExterno, LinhaWhatsapp,
+  Conversation, ChatMessage, ContatoChat, LinhaWhatsapp,
   ChatCanal, ConversationTipo,
 } from "../../core/types";
 
@@ -93,12 +93,13 @@ export async function createConversation(
   }
 
   const conv: Conversation = {
+    arquivado: false,
+    ...data,
+    // Campos que sobrescrevem o spread — sempre vêm do servidor / param.
     id,
     criadoEm: now,
     atualizadoEm: now,
-    criadoPor: pessoaIdCriador,
-    arquivado: false,
-    ...data,
+    criadoPor: data.criadoPor || pessoaIdCriador,
   };
   await setDoc(doc(db, "conversations", id), sanitizeForFirestore(conv));
   return id;
@@ -221,10 +222,10 @@ export async function hardDeleteMessage(messageId: string): Promise<void> {
 
 export function subscribeContatosExternos(
   restaurantId: string | null,
-  onUpdate: (contatos: ContatoExterno[]) => void,
+  onUpdate: (contatos: ContatoChat[]) => void,
 ): () => void {
   // Mesma lógica do subscribeConversations: stream rid específico + globais.
-  let mergeBuffer = { rid: [] as ContatoExterno[], transversal: [] as ContatoExterno[] };
+  let mergeBuffer = { rid: [] as ContatoChat[], transversal: [] as ContatoChat[] };
 
   function emit() {
     const all = [...mergeBuffer.rid, ...mergeBuffer.transversal];
@@ -236,7 +237,7 @@ export function subscribeContatosExternos(
     ? onSnapshot(
         query(collection(db, "contatosExternos"), where("restaurantId", "==", restaurantId)),
         (snap) => {
-          mergeBuffer.rid = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContatoExterno, "id">) }));
+          mergeBuffer.rid = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContatoChat, "id">) }));
           emit();
         },
       )
@@ -245,7 +246,7 @@ export function subscribeContatosExternos(
   const unsubTransversal = onSnapshot(
     query(collection(db, "contatosExternos"), where("restaurantId", "==", null)),
     (snap) => {
-      mergeBuffer.transversal = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContatoExterno, "id">) }));
+      mergeBuffer.transversal = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<ContatoChat, "id">) }));
       emit();
     },
   );
@@ -256,20 +257,20 @@ export function subscribeContatosExternos(
   };
 }
 
-export async function createContatoExterno(
-  data: Omit<ContatoExterno, "id" | "criadoEm" | "criadoPor">,
+export async function createContatoChat(
+  data: Omit<ContatoChat, "id" | "criadoEm" | "criadoPor">,
   pessoaId: string,
 ): Promise<string> {
   const now = new Date().toISOString();
   const id = `cext_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const contato: ContatoExterno = { id, criadoEm: now, criadoPor: pessoaId, ...data };
+  const contato: ContatoChat = { id, criadoEm: now, criadoPor: pessoaId, ...data };
   await setDoc(doc(db, "contatosExternos", id), sanitizeForFirestore(contato));
   return id;
 }
 
-export async function updateContatoExterno(
+export async function updateContatoChat(
   contatoId: string,
-  patch: Partial<ContatoExterno>,
+  patch: Partial<ContatoChat>,
   pessoaId: string,
 ): Promise<void> {
   await updateDoc(doc(db, "contatosExternos", contatoId), sanitizeForFirestore({
@@ -281,14 +282,14 @@ export async function updateContatoExterno(
 
 /** Busca contato por número WhatsApp (usado pelo webhook do gateway pra
  *  vincular mensagem recebida ao contato cadastrado). */
-export async function findContatoExternoByNumero(
+export async function findContatoChatByNumero(
   numero: string,
-): Promise<ContatoExterno | null> {
+): Promise<ContatoChat | null> {
   const q = query(collection(db, "contatosExternos"), where("numeroWhatsapp", "==", numero));
   const snap = await getDocs(q);
   if (snap.empty) return null;
   const d = snap.docs[0];
-  return { id: d.id, ...(d.data() as Omit<ContatoExterno, "id">) };
+  return { id: d.id, ...(d.data() as Omit<ContatoChat, "id">) };
 }
 
 // ─── Linhas WhatsApp ──────────────────────────────────────────────────────

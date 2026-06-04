@@ -4262,7 +4262,7 @@ export const CONVERSATION_TIPO_LABEL: Record<ConversationTipo, string> = {
 
 // Categoria do contato externo — usada pra filtrar quais externos cada
 // linha WhatsApp aceita receber/enviar.
-export type ContatoExternoCategoria =
+export type ContatoChatCategoria =
   | "contabilidade"
   | "fornecedor"
   | "banco"
@@ -4271,7 +4271,7 @@ export type ContatoExternoCategoria =
   | "orgao_publico"
   | "outro";
 
-export const CONTATO_EXTERNO_CATEGORIA_LABEL: Record<ContatoExternoCategoria, string> = {
+export const CONTATO_CHAT_CATEGORIA_LABEL: Record<ContatoChatCategoria, string> = {
   contabilidade: "Contabilidade",
   fornecedor:    "Fornecedor",
   banco:         "Banco",
@@ -4405,8 +4405,10 @@ export type ChatMessageAnexo = {
   thumbnail?: string;
 };
 
-// ── ContatoExterno ────────────────────────────────────────────────────────
-export type ContatoExterno = {
+// ── ContatoChat ──────────────────────────────────────────────────────────
+// Renomeado de `ContatoExterno` (que já existia no módulo Demissão como
+// stakeholder de clínica/contabilidade) pra evitar colisão de nomes.
+export type ContatoChat = {
   id: string;
   // null = global (atende todos os restaurantes). Senão é exclusivo do rid.
   restaurantId: string | null;
@@ -4415,7 +4417,7 @@ export type ContatoExterno = {
   empresa?: string;
   numeroWhatsapp: string;       // E.164 sem "+" (ex: "5511999999999")
   email?: string | null;
-  categoria: ContatoExternoCategoria;
+  categoria: ContatoChatCategoria;
   notas?: string;
 
   // ── Opt-in WhatsApp (LGPD + Meta) ──
@@ -4465,7 +4467,7 @@ export type LinhaWhatsapp = {
   // Categorias de ContatoExterno que essa linha aceita.
   // Ex: linha "fin" aceita ["banco", "contabilidade", "fornecedor"];
   //     linha "dp" aceita ["contabilidade", "orgao_publico"].
-  categoriasExternasAceitas: ContatoExternoCategoria[];
+  categoriasExternasAceitas: ContatoChatCategoria[];
 
   // Recebe/envia pra empregados (pessoas internas)?
   aceitaEmpregados: boolean;

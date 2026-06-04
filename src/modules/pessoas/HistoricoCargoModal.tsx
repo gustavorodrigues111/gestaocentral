@@ -392,7 +392,6 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
                 const versoes = [...h.versoes].sort(
                   (a, b) => b.inicio.localeCompare(a.inicio),
                 );
-                const vigenteIdx = versoes.findIndex(v => !v.fim);
                 return (
                   <div key={campo} className="rounded-lg border border-gray-200 dark:border-gray-800">
                     <div className="px-3 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800">
