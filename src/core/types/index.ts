@@ -60,7 +60,11 @@ export type ModuleId =
   // Ferramentas e Credenciais — catálogo de acessos a sistemas externos
   // (iFood, Lalamove, BEES etc). Não armazena senhas, só metadado + link
   // pro Bitwarden.
-  | "ferramentasCredenciais";
+  | "ferramentasCredenciais"
+  // Chat — comunicação unificada (interno + WhatsApp externo).
+  // Migra Comunicados, Fale com DP e notificações in-app pra mesma timeline.
+  // WhatsApp via gateway plugável (Evolution / UAZAPI / Cloud API) em C4.
+  | "chat";
 
 // ─── PERMISSÕES ───
 
@@ -4204,3 +4208,313 @@ export type Tool = {
   atualizadoEm?: string;
   atualizadoPor?: string;
 };
+
+// ════════════════════════════════════════════════════════════════════════════
+//  CHAT — comunicação unificada (interno + WhatsApp externo)
+//
+//  Visão geral:
+//   - /conversations         — uma conversa por "thread"
+//   - /chatMessages          — top-level (não subcoleção). Indexed por
+//                              conversationId. Mais simples pras rules atuais
+//                              e alinha com o pattern do resto do projeto.
+//   - /contatosExternos      — contatos fora do quadro (banco, contador,
+//                              fornecedor). Têm número WhatsApp + opt-in.
+//   - /linhasWhatsapp        — número de WhatsApp configurado (DP, FIN,
+//                              Compras, ou 1 por restaurante). Define quem
+//                              opera e quais categorias de externos recebe.
+//
+//  Canal:
+//   - "in_app"       — só dentro do planejamento.app (chat interno)
+//   - "whatsapp"     — vai/vem do WhatsApp via gateway (Evolution/UAZAPI/...)
+//   - "email"        — futuro (alertas + caixa controlada)
+//   - "sistema"      — mensagem automática (notificação de tarefa, etc)
+//
+//  Em C1 só schema + rules. UI vem em C2, admin de linhas em C3, integração
+//  com gateway em C4, migração Comunicados/Fale com DP em C5.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type ChatCanal = "in_app" | "whatsapp" | "email" | "sistema";
+
+export const CHAT_CANAL_LABEL: Record<ChatCanal, string> = {
+  in_app:   "Chat interno",
+  whatsapp: "WhatsApp",
+  email:    "E-mail",
+  sistema:  "Sistema",
+};
+
+// Tipo da conversa — define UX e regras de exibição.
+export type ConversationTipo =
+  | "direta"          // 1-pra-1 entre 2 pessoas internas
+  | "grupo"           // múltiplas pessoas internas
+  | "externa"         // interno ↔ contato externo (geralmente via WhatsApp)
+  | "broadcast"       // 1-pra-N (substitui Comunicados em C5)
+  | "dp_anonimo"      // Fale com DP, autor opcionalmente anônimo (C5)
+  | "sistema_pessoa"; // alertas automáticos do sistema pra uma pessoa
+
+export const CONVERSATION_TIPO_LABEL: Record<ConversationTipo, string> = {
+  direta:         "Direta",
+  grupo:          "Grupo",
+  externa:        "Externa (WhatsApp)",
+  broadcast:      "Comunicado",
+  dp_anonimo:     "Fale com DP",
+  sistema_pessoa: "Sistema",
+};
+
+// Categoria do contato externo — usada pra filtrar quais externos cada
+// linha WhatsApp aceita receber/enviar.
+export type ContatoExternoCategoria =
+  | "contabilidade"
+  | "fornecedor"
+  | "banco"
+  | "advogado"
+  | "manutencao"
+  | "orgao_publico"
+  | "outro";
+
+export const CONTATO_EXTERNO_CATEGORIA_LABEL: Record<ContatoExternoCategoria, string> = {
+  contabilidade: "Contabilidade",
+  fornecedor:    "Fornecedor",
+  banco:         "Banco",
+  advogado:      "Advogado",
+  manutencao:    "Manutenção / técnico",
+  orgao_publico: "Órgão público",
+  outro:         "Outro",
+};
+
+// Status de uma mensagem WhatsApp (espelho do que o gateway reporta).
+export type ChatWhatsappStatus =
+  | "pending"    // ainda não saiu do nosso lado
+  | "sent"       // gateway recebeu, mandou pra Meta
+  | "delivered"  // chegou no aparelho do destinatário
+  | "read"       // lido (✓✓ azul)
+  | "failed";    // erro no envio
+
+export const CHAT_WHATSAPP_STATUS_LABEL: Record<ChatWhatsappStatus, string> = {
+  pending:   "Enviando…",
+  sent:      "Enviada",
+  delivered: "Entregue",
+  read:      "Lida",
+  failed:    "Falhou",
+};
+
+// Origem do device que enviou (só faz sentido pra canal whatsapp).
+// "celular" = enviada do celular físico, "web" = do WhatsApp Web,
+// "sistema" = enviada pelo planejamento.app (via gateway).
+export type ChatWhatsappOrigem = "celular" | "web" | "sistema" | "desconhecido";
+
+// ── Conversation ──────────────────────────────────────────────────────────
+export type Conversation = {
+  id: string;
+  // null = transversal (DP, FIN, Compras não pertencem a 1 restaurante)
+  restaurantId: string | null;
+  // null = puramente interna. Senão, id da linha WhatsApp atrelada
+  // (ex: "dp", "fin", "compras", "rest_<rid>")
+  linhaId: string | null;
+  tipo: ConversationTipo;
+  titulo?: string;            // pra grupos / broadcasts (em diretas vem do
+                              // nome do outro participante)
+  // Pessoas internas (pessoaId). Pode ter operadores da linha + dialogantes.
+  participantes: string[];
+  // Snapshot pra exibir nomes sem N reads. Atualizado quando muda lista.
+  participantesNomes?: { [pessoaId: string]: string };
+  // Contatos externos (contatoExternoId). Em conversa "externa" geralmente é 1.
+  participantesExternos?: string[];
+  // Quais canais podem ser usados nessa conversa. Em "direta" interna
+  // geralmente só ["in_app"]; em "externa" geralmente ["whatsapp"];
+  // em conversa unificada, ambos.
+  canaisAtivos: ChatCanal[];
+  // Operadores da linha — denormalizado pra rules futuras saberem quem
+  // pode ler sem precisar buscar /linhasWhatsapp. Atualiza junto.
+  operadoresDaLinha?: string[];
+
+  // Origem (se foi gerada por outro módulo)
+  origemModulo?: "comunicados" | "fale_com_dp" | "tarefas" | "sistema" | "manual";
+  origemRefId?: string;
+
+  // Last-message snapshot pra lista lateral sem buscar /chatMessages.
+  ultimaMensagem?: {
+    texto: string;        // truncado em ~120 chars
+    autorId: string;
+    autorNome: string;
+    em: string;           // ISO
+    canal: ChatCanal;
+  };
+
+  // Contador de não-lidas por pessoa. Reset quando ela abre a conversa.
+  naoLidoPor?: { [pessoaId: string]: number };
+
+  // Anonimato (Fale com DP). Quando true, autor não é mostrado pros
+  // operadores DP — só pra master e pra própria pessoa.
+  flagAnonimo?: boolean;
+
+  // ── WhatsApp ──
+  // Janela 24h Meta (só faz sentido se gateway = Cloud API). Em Evolution/
+  // UAZAPI ignora — mensagem livre sempre permitida.
+  whatsappJanelaAbertaAte?: string | null;
+  // Número E.164 do contato externo (cache pra envio rápido).
+  whatsappContatoNumero?: string;
+
+  arquivado?: boolean;
+  criadoEm: string;
+  criadoPor: string;          // pessoaId ou "sistema"
+  atualizadoEm: string;
+};
+
+// ── ChatMessage ───────────────────────────────────────────────────────────
+export type ChatMessage = {
+  id: string;
+  conversationId: string;
+  restaurantId: string | null;
+
+  // Quem mandou. "pessoa" = pessoaId, "externo" = contatoExternoId,
+  // "sistema" = id "sistema".
+  autorTipo: "pessoa" | "externo" | "sistema";
+  autorId: string;
+  autorNome: string;            // snapshot pra render sem joins
+
+  texto: string;
+  // Anexos (Drive Picker em C4+). Em C2 só texto.
+  anexos?: ChatMessageAnexo[];
+
+  canal: ChatCanal;
+  // Em WhatsApp, direção da mensagem (recebida = do contato pro app,
+  // enviada = do app pro contato).
+  direcao?: "enviada" | "recebida";
+
+  // ── WhatsApp specifics ──
+  whatsappMessageId?: string;   // wamid (Meta) ou id interno do gateway
+  whatsappStatus?: ChatWhatsappStatus;
+  whatsappStatusEm?: string;
+  whatsappOrigem?: ChatWhatsappOrigem;  // celular/web/sistema
+  whatsappTemplateUsado?: string;       // só Cloud API (nome do template)
+
+  // Lidas por quem (pessoa). Não-presença = não-lido.
+  lidoPor?: { [pessoaId: string]: string };  // pessoaId → ISO
+
+  enviadoEm: string;
+  editadoEm?: string | null;
+  removidoEm?: string | null;   // soft delete
+  removidoPor?: string;
+};
+
+export type ChatMessageAnexo = {
+  nome: string;
+  url: string;                  // Drive URL ou storage URL
+  tipo: "image" | "video" | "audio" | "document" | "outro";
+  tamanho?: number;             // bytes (se conhecido)
+  thumbnail?: string;
+};
+
+// ── ContatoExterno ────────────────────────────────────────────────────────
+export type ContatoExterno = {
+  id: string;
+  // null = global (atende todos os restaurantes). Senão é exclusivo do rid.
+  restaurantId: string | null;
+
+  nome: string;
+  empresa?: string;
+  numeroWhatsapp: string;       // E.164 sem "+" (ex: "5511999999999")
+  email?: string | null;
+  categoria: ContatoExternoCategoria;
+  notas?: string;
+
+  // ── Opt-in WhatsApp (LGPD + Meta) ──
+  // Marca o consentimento explícito pra receber mensagens. Sem isto
+  // preenchido, /api/wa-send se recusa a enviar.
+  optInWhatsappEm?: string | null;
+  optInWhatsappFonte?: string | null;   // ex: "Contrato § 7 — drive://..."
+  // Revogação. Quando setado, bloqueia envios mesmo com optInWhatsappEm.
+  optOutWhatsappEm?: string | null;
+
+  // Linhas onde esse contato é aceito (ids de /linhasWhatsapp).
+  ativosNasLinhas: string[];
+
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+};
+
+// ── LinhaWhatsapp ─────────────────────────────────────────────────────────
+// Configura cada número WhatsApp do app. Plano inicial:
+//   - 3 transversais: "dp", "fin", "compras"
+//   - 3 por restaurante: "rest_<rid>" (1 por casa)
+export type LinhaWhatsapp = {
+  id: string;
+  // null = transversal (DP, FIN, Compras). Senão, "rest_<rid>".
+  restaurantId: string | null;
+  label: string;                // "DP", "Financeiro", "Compras", "Lobozó"
+  icone: string;                // emoji
+  numeroWhatsapp: string;       // E.164 sem "+"
+  descricao?: string;
+
+  // ── Gateway (preenchido em C4) ──
+  // Tipo do gateway que opera essa linha. Plugável — adapter decide
+  // como envia / recebe.
+  gateway?: "evolution" | "uazapi" | "zapi" | "cloud_api" | "manual";
+  gatewayInstanceId?: string;   // id da instância no gateway
+  gatewayStatus?: "conectado" | "desconectado" | "qr_pendente" | "erro";
+  gatewayStatusEm?: string;
+
+  // ── Operação ──
+  // Pessoas que podem ATENDER/RESPONDER nessa linha (admin + operadores).
+  operadores: string[];         // pessoaIds
+  // Master sempre vê — não precisa estar listado aqui.
+
+  // Categorias de ContatoExterno que essa linha aceita.
+  // Ex: linha "fin" aceita ["banco", "contabilidade", "fornecedor"];
+  //     linha "dp" aceita ["contabilidade", "orgao_publico"].
+  categoriasExternasAceitas: ContatoExternoCategoria[];
+
+  // Recebe/envia pra empregados (pessoas internas)?
+  aceitaEmpregados: boolean;
+
+  // ── Cloud API only ──
+  // Templates aprovados pela Meta (cache local pra UI). Atualiza
+  // periodicamente do gateway. Ignorado em Evolution/UAZAPI.
+  templatesAprovados?: ChatWhatsappTemplate[];
+
+  ativa: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+};
+
+// Template Cloud API — só preenchido quando gateway = "cloud_api".
+export type ChatWhatsappTemplate = {
+  nome: string;
+  categoria: "utility" | "marketing" | "authentication";
+  idioma: string;               // "pt_BR"
+  body: string;                 // com placeholders {{1}}, {{2}}, etc
+  status: "approved" | "pending" | "rejected";
+  atualizadoEm: string;
+};
+
+// ── Helpers de exibição ───────────────────────────────────────────────────
+
+/**
+ * Decide se a conversa precisa ser tratada como "WhatsApp ativa" (tem
+ * canal whatsapp na lista de canaisAtivos).
+ */
+export function isConversaWhatsapp(c: Pick<Conversation, "canaisAtivos">): boolean {
+  return Array.isArray(c.canaisAtivos) && c.canaisAtivos.includes("whatsapp");
+}
+
+/**
+ * Pessoa pode ver essa conversa? Lógica client-side (rules são auth-only
+ * por enquanto — Fase futura aperta). Master vê tudo.
+ */
+export function podeVerConversa(
+  c: Pick<Conversation, "participantes" | "operadoresDaLinha" | "tipo" | "flagAnonimo">,
+  pessoaId: string,
+  isMaster: boolean,
+): boolean {
+  if (isMaster) return true;
+  if (c.participantes?.includes(pessoaId)) return true;
+  if (c.operadoresDaLinha?.includes(pessoaId)) return true;
+  // Broadcasts: qualquer pessoa ativa lê (filtro em UI). Mas defensivo aqui
+  // só libera quem é participante (campo deve listar todo o público alvo).
+  return false;
+}

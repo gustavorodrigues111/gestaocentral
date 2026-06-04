@@ -431,6 +431,48 @@ service cloud.firestore {
       allow update, delete: if authed();
     }
 
+    // ── Chat — comunicação unificada (interno + WhatsApp externo) ──────
+    //
+    // Fase 1 (atual): read/write auth-only. Filtragem por participante /
+    // operador da linha / master é feita CLIENT-SIDE (helper podeVerConversa).
+    // Operações via webhook do gateway são executadas pela serverless com
+    // Admin SDK, bypassando estas rules — daí não precisam ser tightened
+    // aqui.
+    //
+    // Fase futura (Chat C6): apertar com função chatPodeLer() que cheque
+    // request.auth.uid contra participantes/operadoresDaLinha do doc.
+    //
+    // - conversations: master cria/edita/apaga; outros podem participar.
+    //   Soft-delete via campo `arquivado` na UI; delete só master.
+    // - chatMessages: append-only do ponto de vista do usuário. Edição
+    //   marca `editadoEm`; remoção marca `removidoEm` (soft). Delete real
+    //   só master.
+    // - contatosExternos: master + admin podem editar; delete só master.
+    //   Senha NÃO mora aqui (só metadado + opt-in).
+    // - linhasWhatsapp: configuração estrutural — só master.
+    match /conversations/{id} {
+      allow read:   if authed();
+      allow create: if authed();
+      allow update: if authed();
+      allow delete: if isMaster();
+    }
+    match /chatMessages/{id} {
+      allow read:   if authed();
+      allow create: if authed();
+      allow update: if authed();
+      allow delete: if isMaster();
+    }
+    match /contatosExternos/{id} {
+      allow read:   if authed();
+      allow create: if authed();
+      allow update: if authed();
+      allow delete: if isMaster();
+    }
+    match /linhasWhatsapp/{id} {
+      allow read:   if authed();
+      allow create, update, delete: if isMaster();
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;

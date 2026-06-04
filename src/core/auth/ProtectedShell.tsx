@@ -48,6 +48,7 @@ import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
 import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais/FerramentasCredenciaisPage";
+import { ChatPage } from "../../modules/chat/ChatPage";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -91,6 +92,7 @@ function ModuleRouter() {
     case "exames":        return <ExamesPage key={k} />;
     case "demissao":      return <DemissaoPage key={k} />;
     case "ferramentasCredenciais": return <FerramentasCredenciaisPage key={k} />;
+    case "chat":          return <ChatPage key={k} />;
     default:              return <ModulePlaceholder key={k} />;
   }
 }
