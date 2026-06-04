@@ -14,6 +14,7 @@ import {
 import type { Area, Cargo, Empregado, TipoVinculo } from "../../core/types";
 import { defaultBatePontoPorVinculo } from "../../core/types";
 import { ImportCargosModal } from "./ImportCargosModal";
+import { HistoricoCargoModal } from "./HistoricoCargoModal";
 
 type Props = { restaurantId: string };
 
@@ -23,6 +24,7 @@ export function CargosTab({ restaurantId }: Props) {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Cargo | "new" | null>(null);
+  const [showHistory, setShowHistory] = useState<Cargo | null>(null);
   const [filtroAtivos, setFiltroAtivos] = useState<"ativos" | "inativos" | "todos">("ativos");
   const [importing, setImporting] = useState(false);
   const podeConfig = canConfigurar(me, restaurantId, "pessoas");
@@ -147,6 +149,7 @@ export function CargosTab({ restaurantId }: Props) {
                       empregadosAtivos={empregadosAtivosPorCargo[c.id]?.length || 0}
                       podeConfig={podeConfig}
                       onEdit={() => setEditing(c)}
+                      onShowHistory={() => setShowHistory(c)}
                     />
                   ))}
                 </div>
@@ -172,18 +175,27 @@ export function CargosTab({ restaurantId }: Props) {
           onClose={() => setImporting(false)}
         />
       )}
+
+      {showHistory && (
+        <HistoricoCargoModal
+          cargo={showHistory}
+          restaurantId={restaurantId}
+          onClose={() => setShowHistory(null)}
+        />
+      )}
     </div>
   );
 }
 
 function CargoRow({
-  cargo, isFirst, empregadosAtivos, podeConfig, onEdit,
+  cargo, isFirst, empregadosAtivos, podeConfig, onEdit, onShowHistory,
 }: {
   cargo: Cargo;
   isFirst: boolean;
   empregadosAtivos: number;
   podeConfig: boolean;
   onEdit: () => void;
+  onShowHistory: () => void;
 }) {
   return (
     <div className={`flex items-center justify-between gap-3 px-4 py-3 ${isFirst ? "" : "border-t border-gray-100 dark:border-gray-800"} ${!cargo.ativo ? "opacity-60" : ""}`}>
@@ -203,9 +215,14 @@ function CargoRow({
           )}
         </div>
       </div>
-      {podeConfig && (
-        <Button variant="secondary" size="sm" onClick={onEdit}>Editar</Button>
-      )}
+      <div className="flex items-center gap-2 shrink-0">
+        <Button variant="secondary" size="sm" onClick={onShowHistory} title="Histórico de alterações deste cargo">
+          📜 Histórico
+        </Button>
+        {podeConfig && (
+          <Button variant="secondary" size="sm" onClick={onEdit}>Editar</Button>
+        )}
+      </div>
     </div>
   );
 }
