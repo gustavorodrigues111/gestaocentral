@@ -4,6 +4,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { canAcao } from "../../core/auth/permissions";
 import type { Cargo, Empregado } from "../../core/types";
 import { MinhaEscalaTab } from "./MinhaEscalaTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
@@ -49,15 +50,24 @@ export function PortalPage() {
     return () => unsub();
   }, [rid]);
 
-  // Toggles do portal por restaurante (default true se não definido)
-  const portalConfig = restaurant?.portalEmpregado || {};
-  const verEscala      = portalConfig.escala !== false;
-  const verGorjetas    = portalConfig.gorjetas !== false;
-  const verComunicados = portalConfig.comunicados !== false;
+  // Quais seções a pessoa pode ver. Decidido pelo perfil de acesso (módulo
+  // "portalEmpregado" do ActionCatalog). Empregado sem perfil não vê nenhuma.
+  // O toggle legado restaurant.portalEmpregado foi DESCONTINUADO — tudo via
+  // perfil agora (briefing v2: pessoa nasce sem acessos, perfil concede).
+  const verEscala      = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMinhaEscala"));
+  const verHorarios    = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMeusHorarios"));
+  const verGorjetas    = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMinhaGorjeta"));
+  // Comunicados será migrado pro módulo Chat (C5). Por enquanto sem ação
+  // própria no catálogo — fica sempre visível pra quem tem acessar (todo
+  // empregado lê comunicados gerais).
+  const podeAcessarPortal = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "acessar"));
+  const verComunicados = podeAcessarPortal;
 
-  // Tabs disponíveis (filtradas pela config)
+  // Tabs disponíveis (filtradas pelas permissões). Minha Escala e Meus
+  // Horários ficam na mesma tab (são views relacionadas — quem só tem
+  // horários cai na sub-aba "Horários" dentro de Minha Escala).
   const tabsDisponiveis: { id: Tab; label: string; icon: string }[] = [
-    ...(verEscala      ? [{ id: "escala" as const,      label: "Minha escala",     icon: "📅" }] : []),
+    ...((verEscala || verHorarios) ? [{ id: "escala" as const, label: "Minha escala", icon: "📅" }] : []),
     ...(verGorjetas    ? [{ id: "gorjetas" as const,    label: "Minhas gorjetas",  icon: "💸" }] : []),
     ...(verComunicados ? [{ id: "comunicados" as const, label: "Comunicados",      icon: "📣" }] : []),
   ];
@@ -76,6 +86,23 @@ export function PortalPage() {
   if (loading) {
     return <div className="text-sm text-gray-500">Carregando...</div>;
   }
+  // 1º gate: sem perfil que conceda "acessar", bloqueia antes de ler dados
+  if (!podeAcessarPortal) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <p className="text-gray-700 dark:text-gray-300 font-medium">
+          Sem acesso ao Portal do Empregado
+        </p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+          Seu perfil de acesso não inclui o Portal do Empregado neste restaurante.
+          Peça pro administrador atribuir o perfil <strong>Portal do Empregado</strong> pra você.
+        </p>
+      </div>
+    );
+  }
+  // 2º gate: tem perfil, mas não está cadastrado como empregado (sem vínculo
+  // operacional — as views de escala/gorjeta dependem do empregadoId)
   if (!empregado) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
@@ -89,16 +116,19 @@ export function PortalPage() {
       </div>
     );
   }
-
+  // 3º gate: tem acesso ao portal, é equipe, mas o perfil não habilita
+  // nenhuma sub-seção. Caso raro — só se master criou um perfil custom
+  // que tem "acessar" mas tira todas as views.
   if (tabsDisponiveis.length === 0) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
-          Portal desabilitado
+          Portal sem seções liberadas
         </p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-          Nenhuma seção do portal está habilitada pra este restaurante. Peça pro DP ativar.
+          Seu perfil concede acesso ao portal, mas nenhuma seção (escala,
+          horários, gorjeta…) está habilitada. Peça pro admin revisar.
         </p>
       </div>
     );

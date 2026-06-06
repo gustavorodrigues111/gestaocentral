@@ -413,11 +413,6 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "gestao",
     acoes: [
       { id: "verProprias",       label: "Ver suas tarefas (Minhas Tarefas)" },
-      { id: "verGrupoDP",        label: "Ver tarefas do grupo DP" },
-      { id: "verGrupoFin",       label: "Ver tarefas do grupo Financeiro" },
-      { id: "verGrupoDir",       label: "Ver tarefas do grupo Diretoria" },
-      { id: "verGrupoOps",       label: "Ver tarefas do grupo Operação" },
-      { id: "verEscritorio",     label: "Ver tarefas de todo o escritório" },
       { id: "criar",             label: "Criar tarefa avulsa" },
       { id: "editarProprias",    label: "Editar suas tarefas (responsável/co-resp)" },
       { id: "editarTodas",       label: "Editar qualquer tarefa visível" },
@@ -494,6 +489,27 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "editar",   label: "Editar perfil existente", sensivel: true },
       { id: "excluir",  label: "Excluir perfil", sensivel: true },
       { id: "atribuir", label: "Atribuir perfil a pessoas", sensivel: true },
+    ],
+  },
+  {
+    id: "portalEmpregado",
+    icon: "👤",
+    label: "Portal do Empregado",
+    desc: "Área pessoal do empregado (acessível em /portal/:rid). Cada ação habilita uma seção. Empregado nasce sem nenhuma — o perfil 'Portal do Empregado' libera o básico (escala, horários, gorjeta).",
+    area: "time",
+    acoes: [
+      // ── Ativas ──
+      { id: "acessar",         label: "Acessar o Portal do Empregado (entrar na tela)" },
+      { id: "verMinhaEscala",  label: "Ver Minha Escala (turnos do mês)" },
+      { id: "verMeusHorarios", label: "Ver Meus Horários (jornada de trabalho cadastrada)" },
+      { id: "verMinhaGorjeta", label: "Ver Minha Gorjeta (extrato mensal)" },
+      // ── Reservadas pro futuro (sem UI ainda, mas já no catálogo pra o
+      //    master poder decidir desde já em perfis customizados) ──
+      { id: "verMinhaFolhaPonto", label: "Ver Minha Folha de Ponto (em breve)" },
+      { id: "verMeusUniformes",   label: "Ver Meus Uniformes & EPIs (em breve)" },
+      { id: "verMeusExames",      label: "Ver Meus Exames Médicos (em breve)", sensivel: true },
+      { id: "verMeuVT",           label: "Ver Meu Vale Transporte (em breve)" },
+      { id: "acessarFaleComDP",   label: "Acessar Fale com DP (em breve)", sensivel: true },
     ],
   },
   {

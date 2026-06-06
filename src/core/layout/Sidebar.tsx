@@ -5,7 +5,7 @@ import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
-import { canUse } from "../auth/permissions";
+import { canUse, canAcao } from "../auth/permissions";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -129,7 +129,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </NavLink>
           )}
 
-          {souEquipe && rid && (
+          {souEquipe && rid && canAcao(pessoa, rid, "portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
               onClick={onClose}

@@ -64,7 +64,13 @@ export type ModuleId =
   // Chat — comunicação unificada (interno + WhatsApp externo).
   // Migra Comunicados, Fale com DP e notificações in-app pra mesma timeline.
   // WhatsApp via gateway plugável (Evolution / UAZAPI / Cloud API) em C4.
-  | "chat";
+  | "chat"
+  // Portal do Empregado — área pessoal do empregado (minha escala, meus
+  // horários, minha gorjeta, futuro: minha folha de ponto, meus uniformes,
+  // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
+  // o link "Meu Portal" separado); existe só pra o sistema de perfis decidir
+  // o que cada empregado vê dentro da PortalPage.
+  | "portalEmpregado";
 
 // ─── PERMISSÕES ───
 
@@ -625,6 +631,11 @@ export type Restaurant = {
   unidades?: Unidade[];
 
   // Portal do Empregado: o que aparece pra empregado registrado deste restaurante
+  //
+  // @deprecated Substituído pelo sistema de Perfis de Acesso (ActionCatalog
+  // module "portalEmpregado"). Cada empregado recebe um perfil que define
+  // se vê escala/horários/gorjeta/etc. Mantido aqui só pra compat com docs
+  // antigos no Firestore — código de leitura foi removido.
   portalEmpregado?: {
     escala?: boolean;          // default true
     gorjetas?: boolean;        // default true

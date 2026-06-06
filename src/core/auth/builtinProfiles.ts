@@ -140,8 +140,33 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
   },
 };
 
+// Portal do Empregado — perfil mínimo pra empregado de fábrica. Só dá
+// acesso à área pessoal (/portal/:rid) com as seções básicas. Master
+// atribui esse perfil a empregado novo; pra dar mais acessos, sobrepõe
+// com um perfil customizado.
+export const BUILTIN_PORTAL_EMPREGADO: AccessProfile = {
+  id: "_builtin_portal_empregado",
+  nome: "Portal do Empregado",
+  descricao: "Acesso pessoal básico — vê só a própria escala, horários e gorjeta. Não enxerga nada do restante do sistema.",
+  builtin: true,
+  restaurantId: null,                 // disponível em qualquer restaurante
+  criadoEm: "2026-06-06T00:00:00.000Z",
+  permissions: {
+    portalEmpregado: {
+      acessar: true,
+      verMinhaEscala: true,
+      verMeusHorarios: true,
+      verMinhaGorjeta: true,
+      // Futuras (verMinhaFolhaPonto, verMeusUniformes, verMeusExames,
+      // verMeuVT, acessarFaleComDP) ficam DESLIGADAS por default — master
+      // habilita por restaurante quando a UI dessas seções existir.
+    },
+  },
+};
+
 export const BUILTIN_PROFILES: AccessProfile[] = [
   BUILTIN_GERENTE_RESTAURANTE,
+  BUILTIN_PORTAL_EMPREGADO,
 ];
 
 /** Lookup rápido pra resolver perfis built-in por id. */
