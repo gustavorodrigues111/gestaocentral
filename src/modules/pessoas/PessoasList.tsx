@@ -4,6 +4,8 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { statusAcesso, passaFiltroAcesso, type FiltroAcesso } from "./accessStatus";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -33,6 +35,10 @@ export function PessoasList({ restaurantId }: Props) {
   const [filtroStatus, setFiltroStatus] = useState<FiltroStatus>("ativas");
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
   const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
+  const [filtroAcesso, setFiltroAcesso] = useState<FiltroAcesso>("todos");
+  // Perfis carregados pra calcular badges de acesso (resolução de perfil
+  // custom funciona com a lista mergeada built-in + Firestore).
+  const { perfis } = useAccessProfiles();
   const [editing, setEditing] = useState<Pessoa | "new" | null>(null);
   // Fluxo de vínculo: "chooser" abre o seletor; "admissao" puxa de uma admissão
   // pronta; "existente" vincula pessoa já cadastrada em outro restaurante.
@@ -107,6 +113,12 @@ export function PessoasList({ restaurantId }: Props) {
         if (!cargo || cargo.area !== filtroArea) return false;
       }
 
+      // Filtro de acesso (Pronto/Com pendência/Nunca logou)
+      if (filtroAcesso !== "todos") {
+        const badge = statusAcesso(p, restaurantId, empPorPessoa[p.id], perfis);
+        if (!passaFiltroAcesso(badge, filtroAcesso)) return false;
+      }
+
       if (!search.trim()) return true;
       const s = search.toLowerCase();
       // CPF: compara só os dígitos (aceita digitar com ou sem pontos/traço).
@@ -117,7 +129,7 @@ export function PessoasList({ restaurantId }: Props) {
           || (p.email || "").toLowerCase().includes(s)
           || (sDigits.length > 0 && (p.cpf || "").replace(/\D/g, "").includes(sDigits));
     }).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
-  }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, search]);
+  }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, filtroAcesso, perfis, restaurantId, search]);
 
   return (
     <div>
@@ -162,6 +174,16 @@ export function PessoasList({ restaurantId }: Props) {
           </FilterChip>
         ))}
 
+        <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Acesso:</span>
+        {(["todos", "comPendencia", "pronto", "nuncaLogou"] as FiltroAcesso[]).map(f => (
+          <FilterChip key={f} active={filtroAcesso === f} onClick={() => setFiltroAcesso(f)}>
+            {f === "todos" ? "Todos"
+              : f === "comPendencia" ? "🟡 Com pendência"
+              : f === "pronto" ? "🟢 Pronto"
+              : "🆕 Nunca logou"}
+          </FilterChip>
+        ))}
+
         {/* Filtro de área — só aparece quando filtrando por Equipe */}
         {filtroEquipe === "equipe" && (
           <>
@@ -197,6 +219,7 @@ export function PessoasList({ restaurantId }: Props) {
           {filtered.map((p, i) => {
             const emp = empPorPessoa[p.id];
             const cargo = emp ? cargoMap[emp.cargoId] : null;
+            const acessoBadge = statusAcesso(p, restaurantId, emp, perfis);
             return (
               <button
                 key={p.id}
@@ -220,7 +243,12 @@ export function PessoasList({ restaurantId }: Props) {
                         (inativa{emp?.demitidoEm ? ` · demitido em ${fmtBR(emp.demitidoEm)}` : ""})
                       </span>
                     )}
-                    {p.isMaster && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 font-bold">Master</span>}
+                    <span
+                      className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${acessoBadge.classes}`}
+                      title={acessoBadge.tooltip}
+                    >
+                      {acessoBadge.label}
+                    </span>
                     {emp && cargo && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold">
                         👥 {cargo.nome}

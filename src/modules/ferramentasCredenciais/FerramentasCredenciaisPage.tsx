@@ -14,7 +14,7 @@ import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canAcao } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import {
   FERRAMENTA_CATEGORIA_LABEL,
@@ -48,6 +48,8 @@ const METODO_BADGE_CLASS: Record<FerramentaMetodoAcesso, string> = {
 export function FerramentasCredenciaisPage() {
   const { pessoa: me } = useAuth();
   const { activeId: rid } = useRestaurant();
+  // useCanAcao resolve perfis built-in + custom corretamente.
+  const { can } = useCanAcao(rid || "");
   const [tools, setTools] = useState<Tool[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,7 +60,7 @@ export function FerramentasCredenciaisPage() {
 
   // Modos: "minhas" (usuário) vs "gerenciar" (admin). Usuário sem
   // permissão de gerenciar fica preso em "minhas".
-  const podeGerenciar = !!me?.isMaster || !!(me && rid && canAcao(me, rid, "ferramentasCredenciais", "gerenciar"));
+  const podeGerenciar = !!me?.isMaster || !!(me && rid && can("ferramentasCredenciais", "gerenciar"));
   const [modo, setModo] = useState<"minhas" | "gerenciar">("minhas");
 
   useEffect(() => {

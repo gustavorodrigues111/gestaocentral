@@ -5,7 +5,8 @@ import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
-import { canUse, canAcao } from "../auth/permissions";
+import { canUse } from "../auth/permissions";
+import { useCanAcao } from "../auth/useCanAcao";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -14,6 +15,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
+  // useCanAcao já lê perfis built-in + custom do Firestore — usa esse hook
+  // em vez de canAcao() solto pra perfis custom funcionarem.
+  const { can: canAcaoRid } = useCanAcao(rid || "");
 
   // Seções (grupos) colapsáveis — accordion. Persiste no localStorage.
   const [colapsadas, setColapsadas] = useState<Set<string>>(() => {
@@ -129,7 +133,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </NavLink>
           )}
 
-          {souEquipe && rid && canAcao(pessoa, rid, "portalEmpregado", "acessar") && (
+          {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
               onClick={onClose}

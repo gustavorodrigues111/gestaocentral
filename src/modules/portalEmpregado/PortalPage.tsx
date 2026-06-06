@@ -4,7 +4,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canAcao } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import type { Cargo, Empregado } from "../../core/types";
 import { MinhaEscalaTab } from "./MinhaEscalaTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
@@ -18,6 +18,8 @@ export function PortalPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
+  // useCanAcao resolve perfis built-in + custom corretamente.
+  const { can } = useCanAcao(rid);
 
   const [empregado, setEmpregado] = useState<Empregado | null>(null);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -54,13 +56,13 @@ export function PortalPage() {
   // "portalEmpregado" do ActionCatalog). Empregado sem perfil não vê nenhuma.
   // O toggle legado restaurant.portalEmpregado foi DESCONTINUADO — tudo via
   // perfil agora (briefing v2: pessoa nasce sem acessos, perfil concede).
-  const verEscala      = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMinhaEscala"));
-  const verHorarios    = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMeusHorarios"));
-  const verGorjetas    = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "verMinhaGorjeta"));
+  const verEscala      = !!(pessoa && rid && can("portalEmpregado", "verMinhaEscala"));
+  const verHorarios    = !!(pessoa && rid && can("portalEmpregado", "verMeusHorarios"));
+  const verGorjetas    = !!(pessoa && rid && can("portalEmpregado", "verMinhaGorjeta"));
   // Comunicados será migrado pro módulo Chat (C5). Por enquanto sem ação
   // própria no catálogo — fica sempre visível pra quem tem acessar (todo
   // empregado lê comunicados gerais).
-  const podeAcessarPortal = !!(pessoa && rid && canAcao(pessoa, rid, "portalEmpregado", "acessar"));
+  const podeAcessarPortal = !!(pessoa && rid && can("portalEmpregado", "acessar"));
   const verComunicados = podeAcessarPortal;
 
   // Tabs disponíveis (filtradas pelas permissões). Minha Escala e Meus
