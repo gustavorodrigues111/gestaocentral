@@ -145,7 +145,6 @@ export function PortalPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {restaurant.nome}
           {cargo && <> · {cargo.nome} ({cargo.area})</>}
-          {empregado.admissaoAtual && <> · admitido em {empregado.admissaoAtual}</>}
         </p>
       </div>
 
