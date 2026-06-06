@@ -100,6 +100,11 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
         </div>
       </div>
 
+      {/* Banner de status da escala — informa ao empregado se a prevista
+          ainda é só projeção do horário cadastrado, foi oficializada pela
+          gestão, ou se o mês inteiro já foi fechado como praticada. */}
+      <StatusEscalaBanner escala={escala} />
+
       {/* Stats */}
       <div className="grid grid-cols-4 gap-2">
         <Mini label="Trabalho" value={stats.trabalho} variant="ok" />
@@ -178,6 +183,57 @@ function CalendarGrid({
     );
   }
   return <div className="grid grid-cols-7 gap-1">{cells}</div>;
+}
+
+// ─── Banner de status da escala ──────────────────────────────────────────
+// Mostra ao empregado em que fase está a escala do mês selecionado:
+//   • Praticada fechada → azul, "Mês finalizado" (read-only, é o registro final)
+//   • Prevista fechada → verde, "Escala prevista oficial — aprovada pela gestão"
+//   • Sem nada fechado → amarelo, "Baseada no seu horário cadastrado, ainda
+//     pode mudar até a gestão aprovar"
+function StatusEscalaBanner({ escala }: { escala: EscalaMes | null }) {
+  if (escala?.fechadoEm) {
+    return (
+      <div className="rounded-lg border border-sky-200 dark:border-sky-800/40 bg-sky-50 dark:bg-sky-900/20 p-3 flex items-start gap-2">
+        <span className="text-base shrink-0">🔒</span>
+        <div className="text-xs text-sky-900 dark:text-sky-200">
+          <p className="font-bold">Mês finalizado</p>
+          <p className="mt-0.5">
+            A escala praticada foi fechada pela gestão. Este é o registro
+            final do mês — usado pra cálculo de gorjeta, VT e folha.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  if (escala?.previstaFechadaEm) {
+    return (
+      <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 p-3 flex items-start gap-2">
+        <span className="text-base shrink-0">✅</span>
+        <div className="text-xs text-emerald-900 dark:text-emerald-200">
+          <p className="font-bold">Escala prevista oficial</p>
+          <p className="mt-0.5">
+            A gestão fechou esta escala como prevista oficial do mês. Pode
+            haver pequenos ajustes pontuais durante o mês (registrados na
+            praticada), mas a estrutura está aprovada.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-2">
+      <span className="text-base shrink-0">⏳</span>
+      <div className="text-xs text-amber-900 dark:text-amber-200">
+        <p className="font-bold">Ainda não é a escala prevista oficial</p>
+        <p className="mt-0.5">
+          O que você vê aqui é puxado do seu horário cadastrado — é uma
+          previsão. Quando a gestão fechar a prevista do mês, um banner
+          verde aparece aqui confirmando.
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function Mini({ label, value, variant }: { label: string; value: number; variant?: "ok" | "warn" | "info" }) {
