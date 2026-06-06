@@ -229,6 +229,11 @@ export function PessoasList({ restaurantId }: Props) {
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                   i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""
                 } ${p.ativa === false ? "opacity-60" : ""} ${
+                  // Pessoas que são equipe (têm doc /empregados) ficam com
+                  // fundo levemente esverdeado pra varredura rápida da lista
+                  // — distingue de "só usuário do sistema" sem cargo.
+                  emp ? "bg-emerald-50/40 dark:bg-emerald-900/10" : ""
+                } ${
                   podeConfig ? "hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" : "cursor-default"
                 }`}
               >
