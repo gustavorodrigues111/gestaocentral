@@ -8,11 +8,25 @@
 // Desktop (sm+): expande na lateral, mostra "você é X (master)" inline.
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
 export function ImpersonationBanner() {
   const { isImpersonating, pessoa, pessoaReal, stopImpersonate } = useAuth();
+  const navigate = useNavigate();
   const [expandido, setExpandido] = useState(false);
+
+  // Sai da impersonação e volta pra URL onde o master estava antes de
+  // iniciar. Se não tinha URL salva (ex: master abriu a aba já em modo
+  // impersonação por algum motivo), cai na home como fallback.
+  function handleSair() {
+    const returnTo = stopImpersonate();
+    if (returnTo) {
+      navigate(returnTo);
+    } else {
+      navigate("/");
+    }
+  }
 
   if (!isImpersonating || !pessoa || !pessoaReal) return null;
 
@@ -50,7 +64,7 @@ export function ImpersonationBanner() {
 
         <button
           type="button"
-          onClick={stopImpersonate}
+          onClick={handleSair}
           className="text-[11px] sm:text-sm font-semibold px-2 sm:px-3 py-1 rounded bg-white/90 text-amber-700 hover:bg-white shrink-0"
         >
           <span className="sm:hidden">✕</span>

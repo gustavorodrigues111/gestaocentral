@@ -33,14 +33,24 @@ type AuthState = {
    * fazer tudo. UI fica view-only por convenção (mostra banner avisando).
    */
   startImpersonate: (pessoaId: string) => void;
-  /** Sai do modo "ver como" e volta a ser ele mesmo. */
-  stopImpersonate: () => void;
+  /**
+   * Sai do modo "ver como" e volta a ser ele mesmo.
+   * Retorna a URL onde o master estava ANTES de iniciar a impersonação,
+   * ou null se não tinha. O caller pode usar pra fazer navigate() de
+   * volta — útil pra restaurar contexto em vez de cair na home/portal
+   * da pessoa impersonada.
+   */
+  stopImpersonate: () => string | null;
 };
 
 const AuthCtx = createContext<AuthState | null>(null);
 
 const POLL_INTERVAL_MS = 30_000;  // 30s — detecta inativação
 const IMPERSONATE_KEY = "impersonate_pessoa_id";
+// URL onde o master estava antes de iniciar "visualizar como". Usada
+// pra voltar pra mesma tela quando ele clica em Sair — em vez de cair
+// na URL atual (que pode ser a tela exclusiva da pessoa impersonada).
+const IMPERSONATE_RETURN_TO_KEY = "impersonate_return_to";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [fbUser, setFbUser] = useState<FirebaseUser | null>(null);
@@ -123,10 +133,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => { cancelado = true; };
   }, [impersonatedId, pessoaReal?.isMaster]);
 
-  function stopImpersonateInternal() {
+  /**
+   * Para a impersonação e retorna a URL de origem (onde o master estava
+   * antes de iniciar). Se não havia URL salva, retorna null.
+   */
+  function stopImpersonateInternal(): string | null {
+    let returnTo: string | null = null;
+    try {
+      returnTo = sessionStorage.getItem(IMPERSONATE_RETURN_TO_KEY);
+      sessionStorage.removeItem(IMPERSONATE_RETURN_TO_KEY);
+      sessionStorage.removeItem(IMPERSONATE_KEY);
+    } catch { /* noop */ }
     setImpersonatedId(null);
     setPessoaImpersonada(null);
-    try { sessionStorage.removeItem(IMPERSONATE_KEY); } catch { /* noop */ }
+    return returnTo;
   }
 
   const startImpersonate = useCallback((pessoaId: string) => {
@@ -138,12 +158,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.warn("startImpersonate: ignorado — você não pode impersonar a si mesmo");
       return;
     }
-    try { sessionStorage.setItem(IMPERSONATE_KEY, pessoaId); } catch { /* noop */ }
+    try {
+      sessionStorage.setItem(IMPERSONATE_KEY, pessoaId);
+      // Captura a URL atual pra restaurar depois (com query + hash).
+      // Usa window.location porque AuthContext não tem acesso ao
+      // useLocation do router (nível superior).
+      if (typeof window !== "undefined") {
+        const loc = window.location;
+        sessionStorage.setItem(
+          IMPERSONATE_RETURN_TO_KEY,
+          `${loc.pathname}${loc.search}${loc.hash}`,
+        );
+      }
+    } catch { /* noop */ }
     setImpersonatedId(pessoaId);
   }, [pessoaReal]);
 
-  const stopImpersonate = useCallback(() => {
-    stopImpersonateInternal();
+  const stopImpersonate = useCallback((): string | null => {
+    return stopImpersonateInternal();
   }, []);
 
   // ── Auth state listener (1 vez) ───────────────────────────────────────────
