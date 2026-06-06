@@ -4,6 +4,7 @@ import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
+import { useCanAcao } from "../auth/useCanAcao";
 import { Button } from "../ui/Button";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
@@ -16,12 +17,23 @@ export function HomePage() {
   const [params] = useSearchParams();
   const forcarCatalogo = params.get("catalogo") === "1";
   const isMaster = !!pessoa?.isMaster;
+  const ridAtivo = activeRestaurant?.id || "";
+  // useCanAcao já resolve perfis custom + built-ins. Usado pra decidir fallback
+  // de landing — empregado-puro vai pro Portal do Empregado em vez do Gestor.
+  const { can } = useCanAcao(ridAtivo);
 
-  // Default: tela inicial é Tarefas. Pra ver o catálogo de módulos use ?catalogo=1.
+  // Landing dinâmica baseada em permissão:
+  //   1. Tem tarefas → Gestor de Tarefas (default histórico)
+  //   2. Senão, tem portalEmpregado.acessar → Portal do Empregado
+  //   3. Senão, fica no catálogo de módulos (esta página)
   if (activeRestaurant && pessoa && !forcarCatalogo) {
     const podeTarefas = isMaster || canUse(pessoa, activeRestaurant.id, "tarefas");
     if (podeTarefas) {
       return <Navigate to={`/r/${activeRestaurant.id}/tarefas`} replace />;
+    }
+    const podePortal = can("portalEmpregado", "acessar");
+    if (podePortal) {
+      return <Navigate to={`/portal/${activeRestaurant.id}`} replace />;
     }
   }
 

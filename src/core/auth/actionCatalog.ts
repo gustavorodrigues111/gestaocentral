@@ -503,6 +503,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "verMinhaEscala",  label: "Ver Minha Escala (turnos do mês)" },
       { id: "verMeusHorarios", label: "Ver Meus Horários (jornada de trabalho cadastrada)" },
       { id: "verMinhaGorjeta", label: "Ver Minha Gorjeta (extrato mensal)" },
+      { id: "verComunicados",  label: "Ver Comunicados (avisos da gestão)" },
       // ── Reservadas pro futuro (sem UI ainda, mas já no catálogo pra o
       //    master poder decidir desde já em perfis customizados) ──
       { id: "verMinhaFolhaPonto", label: "Ver Minha Folha de Ponto (em breve)" },

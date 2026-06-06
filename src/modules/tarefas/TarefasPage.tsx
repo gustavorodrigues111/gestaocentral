@@ -5,8 +5,10 @@
 // independente do restaurante selecionado no topo.
 
 import { useEffect, useState, useMemo } from "react";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
@@ -59,7 +61,11 @@ type ViewMode = "calendario" | "lista" | "kanban";
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
-  const { restaurants } = useRestaurant();
+  const { restaurants, activeId: ridAtivo } = useRestaurant();
+  // Gate de acesso: pessoa sem permissão "tarefas.verProprias" cai pra
+  // HomePage (que pode redirecionar pro Portal do Empregado se aplicável).
+  // Master sempre passa. Hook precisa rodar — usamos no JSX, não early-return.
+  const { can: canAcaoRid } = useCanAcao(ridAtivo || "");
 
   // ── "Ver como…" (master only) ────────────────────────────────────────
   // Master pode visualizar o Gestor de Tarefas com a permissão de outra
@@ -208,6 +214,14 @@ export function TarefasPage() {
     () => subprojetos.filter(s => idsProjetosVisiveis.has(s.projetoId)),
     [subprojetos, idsProjetosVisiveis],
   );
+
+  // Gate de acesso: sem permissão "tarefas.verProprias" cai pra HomePage,
+  // que vai redirecionar pro Portal do Empregado se aplicável. Master sempre
+  // passa (bypass do isMaster real, antes da impersonação).
+  const temAcessoTarefas = isMaster || (ridAtivo && canAcaoRid("tarefas", "verProprias"));
+  if (!temAcessoTarefas && ridAtivo) {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">

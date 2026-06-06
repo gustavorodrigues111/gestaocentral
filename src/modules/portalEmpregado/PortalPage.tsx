@@ -59,11 +59,8 @@ export function PortalPage() {
   const verEscala      = !!(pessoa && rid && can("portalEmpregado", "verMinhaEscala"));
   const verHorarios    = !!(pessoa && rid && can("portalEmpregado", "verMeusHorarios"));
   const verGorjetas    = !!(pessoa && rid && can("portalEmpregado", "verMinhaGorjeta"));
-  // Comunicados será migrado pro módulo Chat (C5). Por enquanto sem ação
-  // própria no catálogo — fica sempre visível pra quem tem acessar (todo
-  // empregado lê comunicados gerais).
+  const verComunicados = !!(pessoa && rid && can("portalEmpregado", "verComunicados"));
   const podeAcessarPortal = !!(pessoa && rid && can("portalEmpregado", "acessar"));
-  const verComunicados = podeAcessarPortal;
 
   // Tabs disponíveis (filtradas pelas permissões). Minha Escala e Meus
   // Horários ficam na mesma tab (são views relacionadas — quem só tem

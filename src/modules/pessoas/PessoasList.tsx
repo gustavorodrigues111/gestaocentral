@@ -115,8 +115,8 @@ export function PessoasList({ restaurantId }: Props) {
 
       // Filtro de acesso (Pronto/Com pendência/Nunca logou)
       if (filtroAcesso !== "todos") {
-        const badge = statusAcesso(p, restaurantId, empPorPessoa[p.id], perfis);
-        if (!passaFiltroAcesso(badge, filtroAcesso)) return false;
+        const badges = statusAcesso(p, restaurantId, empPorPessoa[p.id], perfis);
+        if (!passaFiltroAcesso(badges, filtroAcesso)) return false;
       }
 
       if (!search.trim()) return true;
@@ -219,7 +219,7 @@ export function PessoasList({ restaurantId }: Props) {
           {filtered.map((p, i) => {
             const emp = empPorPessoa[p.id];
             const cargo = emp ? cargoMap[emp.cargoId] : null;
-            const acessoBadge = statusAcesso(p, restaurantId, emp, perfis);
+            const acessoBadges = statusAcesso(p, restaurantId, emp, perfis);
             return (
               <button
                 key={p.id}
@@ -243,12 +243,15 @@ export function PessoasList({ restaurantId }: Props) {
                         (inativa{emp?.demitidoEm ? ` · demitido em ${fmtBR(emp.demitidoEm)}` : ""})
                       </span>
                     )}
-                    <span
-                      className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${acessoBadge.classes}`}
-                      title={acessoBadge.tooltip}
-                    >
-                      {acessoBadge.label}
-                    </span>
+                    {acessoBadges.map(b => (
+                      <span
+                        key={b.status}
+                        className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${b.classes}`}
+                        title={b.tooltip}
+                      >
+                        {b.label}
+                      </span>
+                    ))}
                     {emp && cargo && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold">
                         👥 {cargo.nome}
