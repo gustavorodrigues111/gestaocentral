@@ -283,6 +283,23 @@ export function DivisaoMesTab({
   const [recalculando, setRecalculando] = useState(false);
   const { pessoa: me } = useAuth();
 
+  // ── Detecção de snapshot defasado ────────────────────────────────────────
+  // Quando a escala muda DEPOIS de uma gorjeta ter sido publicada, o snapshot
+  // da divisão fica congelado no estado anterior (proteção contra alterar
+  // pagamento já feito). Mas a UI deve avisar pro usuário decidir se quer
+  // recalcular — senão a divisão fica desatualizada silenciosamente.
+  const publicadasNoMes = useMemo(
+    () => gorjetas.filter(g => g.publicada && g.publicadaEm),
+    [gorjetas],
+  );
+  const escalaDesatualizada = useMemo(() => {
+    if (!escala?.updatedAt || publicadasNoMes.length === 0) return false;
+    // Se a escala foi atualizada APÓS qualquer publicação do mês,
+    // alguma divisão pode estar desatualizada.
+    const escalaTs = escala.updatedAt;
+    return publicadasNoMes.some(g => (g.publicadaEm || "") < escalaTs);
+  }, [escala?.updatedAt, publicadasNoMes]);
+
   // Recalcula o divisaoSnapshot das gorjetas publicadas do mês com o
   // algoritmo atual (corrige a discrepância histórica de centavos perdidos
   // por floor diário). Não muda metadados de publicação — só atualiza
@@ -293,14 +310,25 @@ export function DivisaoMesTab({
       alert("Sem gorjetas publicadas neste mês pra recalcular.");
       return;
     }
+    // Mensagem adaptativa: se escala mudou (caso mais sério), avisa que
+    // valores podem mudar SIGNIFICATIVAMENTE — não só centavos.
     const diff = totais.liquido - totais.distribuido;
-    const ok = window.confirm(
-      `Recalcular a divisão de ${publicadas.length} gorjeta(s) publicada(s) do mês?\n\n` +
-      `Vai aplicar o algoritmo de distribuição de centavos (zerar a diferença de ${fmtBR(Math.abs(diff))}).\n\n` +
-      `Cada empregado pode receber +R$ 0,01 a +R$ 0,15 a mais no total do mês. ` +
-      `Os snapshots publicados são sobrescritos, mas data e autor da publicação ficam.\n\n` +
-      `Recomendado APENAS pra mês ainda não pago.`,
-    );
+    const msg = escalaDesatualizada
+      ? `Recalcular a divisão de ${publicadas.length} gorjeta(s) publicada(s) do mês?\n\n` +
+        `A escala foi alterada após a publicação. Os valores serão recalculados ` +
+        `com a escala atual — empregados que ganharam faltas/freelas/folgas perdem ` +
+        `dias, e o pool é redistribuído entre quem continua elegível.\n\n` +
+        `⚠ Os snapshots publicados serão sobrescritos. Data e autor originais ` +
+        `da publicação ficam preservados.\n\n` +
+        `⚠ Se o mês JÁ FOI PAGO, vai dar diferença com o que foi efetivamente ` +
+        `transferido. Recomendado só pra mês ainda não pago.`
+      : `Recalcular a divisão de ${publicadas.length} gorjeta(s) publicada(s) do mês?\n\n` +
+        `Vai aplicar o algoritmo de distribuição de centavos (zerar a diferença ` +
+        `de ${fmtBR(Math.abs(diff))}).\n\n` +
+        `Cada empregado pode receber +R$ 0,01 a +R$ 0,15 a mais no total do mês. ` +
+        `Os snapshots publicados são sobrescritos, mas data e autor da publicação ficam.\n\n` +
+        `Recomendado APENAS pra mês ainda não pago.`;
+    const ok = window.confirm(msg);
     if (!ok) return;
     setRecalculando(true);
     let ok_count = 0;
@@ -417,6 +445,37 @@ export function DivisaoMesTab({
       {/* Filtro de unidade vive no header da GorjetasPage (pills compartilhados
           entre tabs Lançamentos e Divisão do mês). */}
 
+      {/* Banner: escala foi alterada após publicação — snapshot defasado.
+          Sticky no topo pra ficar visível mesmo com a tabela grande rolada. */}
+      {escalaDesatualizada && (
+        <div className="sticky top-0 z-10 rounded-lg bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-300 dark:border-rose-700 p-3 shadow-md">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-2 flex-1 min-w-0">
+              <span className="text-xl shrink-0">⚠</span>
+              <div className="text-sm">
+                <p className="font-bold text-rose-900 dark:text-rose-100">
+                  A escala foi alterada após esta divisão ser publicada
+                </p>
+                <p className="text-xs text-rose-800 dark:text-rose-200 mt-0.5">
+                  Os valores mostrados podem estar desatualizados. Recalcule pra
+                  refletir a escala atual — empregados com faltas/freelas perdem
+                  dias e o pool é redistribuído.
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={recalcularSnapshotsDoMes}
+              disabled={recalculando}
+              className="shrink-0"
+            >
+              {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Cards de totais.
           Desktop: 3 colunas. Mobile: Bruto sozinho na 1ª linha (cabe valor grande);
           Retenção + Líquido dividem a 2ª linha. */}
@@ -434,6 +493,17 @@ export function DivisaoMesTab({
         </p>
         {/* Botões de export — só desktop */}
         <div className="hidden md:flex items-center gap-2">
+          {publicadasNoMes.length > 0 && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={recalcularSnapshotsDoMes}
+              disabled={recalculando}
+              title="Recalcula as gorjetas publicadas com a escala atual. Use depois de alterar a praticada."
+            >
+              {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+            </Button>
+          )}
           <Button variant="secondary" size="sm" onClick={() => setPdfModalOpen(true)} disabled={linhas.length === 0}>
             📄 Gerar PDF
           </Button>

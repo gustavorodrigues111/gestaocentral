@@ -7,10 +7,11 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import type { Cargo, Empregado } from "../../core/types";
 import { MinhaEscalaTab } from "./MinhaEscalaTab";
+import { MeusHorariosTab } from "./MeusHorariosTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
 import { ComunicadosTab } from "./ComunicadosTab";
 
-type Tab = "escala" | "gorjetas" | "comunicados";
+type Tab = "escala" | "horarios" | "gorjetas" | "comunicados";
 
 export function PortalPage() {
   const { pessoa } = useAuth();
@@ -62,11 +63,11 @@ export function PortalPage() {
   const verComunicados = !!(pessoa && rid && can("portalEmpregado", "verComunicados"));
   const podeAcessarPortal = !!(pessoa && rid && can("portalEmpregado", "acessar"));
 
-  // Tabs disponíveis (filtradas pelas permissões). Minha Escala e Meus
-  // Horários ficam na mesma tab (são views relacionadas — quem só tem
-  // horários cai na sub-aba "Horários" dentro de Minha Escala).
+  // Tabs disponíveis (filtradas pelas permissões). Cada seção do portal
+  // tem ação própria no actionCatalog — master ativa/desativa por perfil.
   const tabsDisponiveis: { id: Tab; label: string; icon: string }[] = [
-    ...((verEscala || verHorarios) ? [{ id: "escala" as const, label: "Minha escala", icon: "📅" }] : []),
+    ...(verEscala      ? [{ id: "escala" as const,      label: "Minha escala",     icon: "📅" }] : []),
+    ...(verHorarios    ? [{ id: "horarios" as const,    label: "Meus horários",    icon: "🕐" }] : []),
     ...(verGorjetas    ? [{ id: "gorjetas" as const,    label: "Minhas gorjetas",  icon: "💸" }] : []),
     ...(verComunicados ? [{ id: "comunicados" as const, label: "Comunicados",      icon: "📣" }] : []),
   ];
@@ -166,6 +167,7 @@ export function PortalPage() {
       </div>
 
       {tab === "escala"      && verEscala      && <MinhaEscalaTab     empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
+      {tab === "horarios"    && verHorarios    && <MeusHorariosTab    empregado={empregado} cargo={cargo || null} />}
       {tab === "gorjetas"    && verGorjetas    && <MinhasGorjetasTab  empregado={empregado} restaurantId={rid} />}
       {tab === "comunicados" && verComunicados && <ComunicadosTab empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
     </div>
