@@ -6,6 +6,16 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { statusAcesso, passaFiltroAcesso, type FiltroAcesso } from "./accessStatus";
+import {
+  resolverVinculo,
+  VINCULOS_LOGICOS,
+  VINCULO_LOGICO_LABEL,
+  VINCULO_LOGICO_ICONE,
+  VINCULO_LOGICO_CLASSES,
+  type VinculoLogico,
+} from "../../core/vinculos/comportamento";
+
+type FiltroVinculo = "todos" | VinculoLogico | "semVinculo";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -36,6 +46,7 @@ export function PessoasList({ restaurantId }: Props) {
   const [filtroEquipe, setFiltroEquipe] = useState<FiltroEquipe>("todos");
   const [filtroArea, setFiltroArea] = useState<FiltroArea>("todas");
   const [filtroAcesso, setFiltroAcesso] = useState<FiltroAcesso>("todos");
+  const [filtroVinculo, setFiltroVinculo] = useState<FiltroVinculo>("todos");
   // Perfis carregados pra calcular badges de acesso (resolução de perfil
   // custom funciona com a lista mergeada built-in + Firestore).
   const { perfis } = useAccessProfiles();
@@ -115,8 +126,20 @@ export function PessoasList({ restaurantId }: Props) {
 
       // Filtro de acesso (Pronto/Com pendência/Nunca logou)
       if (filtroAcesso !== "todos") {
-        const badges = statusAcesso(p, restaurantId, empPorPessoa[p.id], perfis);
+        const badges = statusAcesso(p, restaurantId, empPorPessoa[p.id], perfis, empPorPessoa[p.id] ? cargoMap[empPorPessoa[p.id].cargoId] : null);
         if (!passaFiltroAcesso(badges, filtroAcesso)) return false;
+      }
+
+      // Filtro de vínculo lógico
+      if (filtroVinculo !== "todos") {
+        const emp = empPorPessoa[p.id];
+        const cargo = emp ? cargoMap[emp.cargoId] : null;
+        const vinc = resolverVinculo(p, restaurantId, emp, cargo);
+        if (filtroVinculo === "semVinculo") {
+          if (vinc !== null) return false;
+        } else if (vinc !== filtroVinculo) {
+          return false;
+        }
       }
 
       if (!search.trim()) return true;
@@ -129,7 +152,7 @@ export function PessoasList({ restaurantId }: Props) {
           || (p.email || "").toLowerCase().includes(s)
           || (sDigits.length > 0 && (p.cpf || "").replace(/\D/g, "").includes(sDigits));
     }).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
-  }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, filtroAcesso, perfis, restaurantId, search]);
+  }, [pessoas, empPorPessoa, cargoMap, filtroStatus, filtroEquipe, filtroArea, filtroAcesso, filtroVinculo, perfis, restaurantId, search]);
 
   return (
     <div>
@@ -184,6 +207,19 @@ export function PessoasList({ restaurantId }: Props) {
           </FilterChip>
         ))}
 
+        <span className="ml-3 text-[11px] font-bold uppercase tracking-wider text-gray-500 mr-1">Vínculo:</span>
+        <FilterChip active={filtroVinculo === "todos"} onClick={() => setFiltroVinculo("todos")}>
+          Todos
+        </FilterChip>
+        {VINCULOS_LOGICOS.map(v => (
+          <FilterChip key={v} active={filtroVinculo === v} onClick={() => setFiltroVinculo(v)}>
+            {VINCULO_LOGICO_ICONE[v]} {VINCULO_LOGICO_LABEL[v]}
+          </FilterChip>
+        ))}
+        <FilterChip active={filtroVinculo === "semVinculo"} onClick={() => setFiltroVinculo("semVinculo")}>
+          ⚠ Sem vínculo
+        </FilterChip>
+
         {/* Filtro de área — só aparece quando filtrando por Equipe */}
         {filtroEquipe === "equipe" && (
           <>
@@ -219,7 +255,8 @@ export function PessoasList({ restaurantId }: Props) {
           {filtered.map((p, i) => {
             const emp = empPorPessoa[p.id];
             const cargo = emp ? cargoMap[emp.cargoId] : null;
-            const acessoBadges = statusAcesso(p, restaurantId, emp, perfis);
+            const acessoBadges = statusAcesso(p, restaurantId, emp, perfis, cargo);
+            const vinculo = resolverVinculo(p, restaurantId, emp, cargo);
             return (
               <button
                 key={p.id}
@@ -246,6 +283,14 @@ export function PessoasList({ restaurantId }: Props) {
                     {p.ativa === false && (
                       <span className="text-xs text-gray-400">
                         (inativa{emp?.demitidoEm ? ` · demitido em ${fmtBR(emp.demitidoEm)}` : ""})
+                      </span>
+                    )}
+                    {vinculo && (
+                      <span
+                        className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold ${VINCULO_LOGICO_CLASSES[vinculo]}`}
+                        title={`Vínculo: ${VINCULO_LOGICO_LABEL[vinculo]}`}
+                      >
+                        {VINCULO_LOGICO_ICONE[vinculo]} {VINCULO_LOGICO_LABEL[vinculo].split(" ")[0]}
                       </span>
                     )}
                     {acessoBadges.map(b => (

@@ -16,8 +16,9 @@
 //    8. Pronto              [terminal — único; só quando nenhum dos somáveis acima]
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { AccessProfile, Empregado, Pessoa } from "../../core/types";
+import type { AccessProfile, Cargo, Empregado, Pessoa } from "../../core/types";
 import { resolverPerfil } from "../../core/auth/permissions";
+import { resolverVinculo } from "../../core/vinculos/comportamento";
 
 export type AccessStatus =
   | "inativa"
@@ -26,6 +27,7 @@ export type AccessStatus =
   | "falta_cpf"
   | "precisa_perfil"
   | "precisa_empregado"
+  | "precisa_vinculo"
   | "nunca_logou"
   | "pronto";
 
@@ -90,6 +92,12 @@ const BADGE_NUNCA_LOGOU: AccessBadge = {
   tooltip: "Tudo configurado, mas a pessoa nunca acessou o sistema. Manda o link de acesso ou peça pra entrar.",
   classes: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
 };
+const BADGE_PRECISA_VINCULO: AccessBadge = {
+  status: "precisa_vinculo",
+  label: "Precisa de vínculo",
+  tooltip: "Vínculo (CLT, Estagiário, Freela, Prestador Adm ou Diretoria) não definido neste restaurante. Define no editor da pessoa.",
+  classes: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-900/40 dark:text-fuchsia-300",
+};
 
 /**
  * Resolve o(s) status de acesso da pessoa. Sempre retorna pelo menos 1 badge.
@@ -102,6 +110,7 @@ export function statusAcesso(
   restaurantId: string,
   empregado: Empregado | null | undefined,
   perfis: AccessProfile[],
+  cargo?: Cargo | null,
 ): AccessBadge[] {
   // Estados terminais — curto-circuitam
   if (p.ativa === false) return [BADGE_INATIVA];
@@ -126,6 +135,10 @@ export function statusAcesso(
     if (perfilLiberaPortal && !empregado) badges.push(BADGE_PRECISA_EMPREGADO);
   }
 
+  // Soma: sem vínculo definido — admin precisa atribuir
+  const vinc = resolverVinculo(p, restaurantId, empregado, cargo ?? null);
+  if (!vinc) badges.push(BADGE_PRECISA_VINCULO);
+
   // Soma: nunca logou (info, não bloqueia)
   // `uidVinculado` é campo runtime salvo no doc do Firestore mas não tipado
   // em Pessoa (cast). Setado uma vez no 1º login pelo AuthContext.
@@ -142,7 +155,7 @@ export function statusAcesso(
 export type FiltroAcesso = "todos" | "comPendencia" | "pronto" | "nuncaLogou";
 
 const STATUS_PENDENCIA: AccessStatus[] = [
-  "falta_email", "falta_cpf", "precisa_perfil", "precisa_empregado",
+  "falta_email", "falta_cpf", "precisa_perfil", "precisa_empregado", "precisa_vinculo",
 ];
 
 export function passaFiltroAcesso(badges: AccessBadge[], filtro: FiltroAcesso): boolean {

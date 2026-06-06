@@ -740,6 +740,33 @@ export type Pessoa = {
   // o sistema antigo vai sendo aposentado.
   profileIds?: { [restaurantId: string]: string };
 
+  // ── Vínculo lógico por restaurante (sistema novo, em transição) ─────────
+  // Map restaurantId → vínculo lógico (clt | estagiario | freela |
+  // prestadorAdm | diretoria). Define o comportamento da pessoa NAQUELE
+  // restaurante (entra na escala? bate ponto? recebe gorjeta? etc) via
+  // COMPORTAMENTO_POR_VINCULO em src/core/vinculos/comportamento.ts.
+  //
+  // null/ausente = vínculo não definido. Helper resolverVinculo() tenta
+  // inferir de empregado.cargo.tipoVinculo (legacy) ou pessoa.isMaster
+  // como fallback. Idealmente o admin preenche explicitamente.
+  vinculos?: { [restaurantId: string]: "clt" | "estagiario" | "freela" | "prestadorAdm" | "diretoria" };
+
+  // ── Toggles "depende da pessoa" (sistema de vínculos) ───────────────────
+  // Pra atributos marcados como "pess" na matriz COMPORTAMENTO_POR_VINCULO,
+  // o admin marca caso a caso. Por restaurante porque vínculo é por rid.
+  // Ex: Freela "recebeVT" é "pess" — admin marca pessoaToggles[rid].recebeVT = true
+  // se esse freela específico ganha VT.
+  pessoaToggles?: {
+    [restaurantId: string]: {
+      apareceNaEscalaMensal?: boolean;
+      temHorarioCadastrado?: boolean;
+      recebeGorjeta?: boolean;
+      recebeVT?: boolean;
+      recebeVR?: boolean;
+      temCargoAssociado?: boolean;
+    };
+  };
+
   // "Convite simplificado": quando a pessoa é vinculada a um restaurante novo,
   // o rid entra aqui pra virar um badge "📨 Você foi adicionada a X" no header
   // dela. Ela vê, clica em "ok, vi", e o rid sai dessa lista.

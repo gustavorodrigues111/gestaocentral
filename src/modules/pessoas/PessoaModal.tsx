@@ -17,6 +17,16 @@ import { logAudit } from "../../core/audit/versionedChange";
 import type { Cargo, Empregado, Pessoa, Restaurant } from "../../core/types";
 import { TIPO_VINCULO_LABEL } from "../../core/types";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import {
+  VINCULOS_LOGICOS,
+  VINCULO_LOGICO_LABEL,
+  VINCULO_LOGICO_ICONE,
+  ATRIBUTO_LABEL,
+  atributosDependeDaPessoa,
+  resolverVinculo,
+  type VinculoLogico,
+  type AtributoVinculo,
+} from "../../core/vinculos/comportamento";
 import { Link, useNavigate } from "react-router-dom";
 
 type Tab = "identidade" | "vinculos";
@@ -338,6 +348,12 @@ function TabIdentidade({
           antiga (checkboxes ver/configurar) que foi removida. */}
       {!isNew && pessoa && (
         <PerfilAcessoSection pessoa={pessoa} restaurantId={restaurantId} />
+      )}
+
+      {/* Vínculo lógico por restaurante + toggles "depende da pessoa".
+          Define comportamento da pessoa: escala, gorjeta, ponto, benefícios. */}
+      {!isNew && pessoa && !pessoa.isMaster && (
+        <VinculoSection pessoa={pessoa} restaurantId={restaurantId} />
       )}
 
       {!isNew && (
@@ -791,6 +807,167 @@ function PerfilAcessoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaur
         Atribuir um perfil substitui o sistema antigo (ver/configurar) por
         ações granulares. Telas que ainda não foram migradas continuam usando
         as permissões antigas mesmo com perfil atribuído — transição gradual.
+      </p>
+    </div>
+  );
+}
+
+// ─── VinculoSection ──────────────────────────────────────────────────────
+// Dropdown pra definir o Vínculo Lógico da pessoa neste restaurante (CLT,
+// Estagiário, Freela, Prestador Adm, Diretoria). Define o comportamento da
+// pessoa (entra na escala? bate ponto? recebe gorjeta? VT? VR?) via matriz
+// COMPORTAMENTO_POR_VINCULO em src/core/vinculos/comportamento.ts.
+//
+// Atributos marcados como "pess" (depende da pessoa) viram toggles aqui —
+// admin marca caso a caso (ex: este freela específico recebe VT).
+//
+// Carrega o empregado + cargo da pessoa pra resolver vínculo de fallback
+// (cargo legacy) quando ela ainda não tem vinculos[rid] explícito.
+function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: string }) {
+  const [empregado, setEmpregado] = useState<Empregado | null>(null);
+  const [cargo, setCargo] = useState<Cargo | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  // Carrega empregado da pessoa neste restaurante (pra fallback do vínculo)
+  useEffect(() => {
+    let cancelado = false;
+    (async () => {
+      try {
+        const q = query(
+          collection(db, "empregados"),
+          where("pessoaId", "==", pessoa.id),
+          where("restaurantId", "==", restaurantId),
+          limit(1),
+        );
+        const snap = await getDocs(q);
+        if (cancelado) return;
+        const emp = snap.docs[0]
+          ? ({ id: snap.docs[0].id, ...(snap.docs[0].data() as Omit<Empregado, "id">) })
+          : null;
+        setEmpregado(emp);
+        if (emp?.cargoId) {
+          const cargoSnap = await getDoc(doc(db, "cargos", emp.cargoId));
+          if (cancelado) return;
+          setCargo(cargoSnap.exists()
+            ? ({ id: cargoSnap.id, ...(cargoSnap.data() as Omit<Cargo, "id">) })
+            : null);
+        } else {
+          setCargo(null);
+        }
+      } catch {
+        // silencia — exibimos a UI mesmo sem dados de fallback
+      }
+    })();
+    return () => { cancelado = true; };
+  }, [pessoa.id, restaurantId]);
+
+  const vinculoExplicito = pessoa.vinculos?.[restaurantId] || null;
+  const vinculoResolvido = resolverVinculo(pessoa, restaurantId, empregado, cargo);
+  const atributosPess = vinculoResolvido ? atributosDependeDaPessoa(vinculoResolvido) : [];
+  const toggles = pessoa.pessoaToggles?.[restaurantId] || {};
+
+  async function alterarVinculo(novo: VinculoLogico | "") {
+    setSalvando(true);
+    setErro("");
+    try {
+      const vinculos = { ...(pessoa.vinculos || {}) };
+      if (novo) vinculos[restaurantId] = novo;
+      else delete vinculos[restaurantId];
+      await updateDoc(doc(db, "pessoas", pessoa.id), {
+        vinculos,
+        atualizadoEm: new Date().toISOString(),
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function alterarToggle(atributo: AtributoVinculo, valor: boolean) {
+    setSalvando(true);
+    setErro("");
+    try {
+      const pessoaToggles = { ...(pessoa.pessoaToggles || {}) };
+      const ridToggles = { ...(pessoaToggles[restaurantId] || {}) };
+      // Só atributos persistidos em pessoaToggles (subset do AtributoVinculo)
+      const persistedKeys: AtributoVinculo[] = [
+        "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
+        "recebeVT", "recebeVR", "temCargoAssociado",
+      ];
+      if (!persistedKeys.includes(atributo)) return;
+      (ridToggles as Record<string, boolean>)[atributo] = valor;
+      pessoaToggles[restaurantId] = ridToggles;
+      await updateDoc(doc(db, "pessoas", pessoa.id), {
+        pessoaToggles,
+        atualizadoEm: new Date().toISOString(),
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao salvar");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  const persistedKeys = new Set<AtributoVinculo>([
+    "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
+    "recebeVT", "recebeVR", "temCargoAssociado",
+  ]);
+  const atributosPessPersistiveis = atributosPess.filter(a => persistedKeys.has(a));
+
+  return (
+    <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/40 dark:bg-fuchsia-900/10 p-3 space-y-2">
+      <div className="flex items-baseline justify-between gap-2 flex-wrap">
+        <div className="text-xs font-bold uppercase tracking-wider text-fuchsia-700 dark:text-fuchsia-300">
+          🤝 Vínculo neste restaurante
+        </div>
+        {!vinculoExplicito && vinculoResolvido && (
+          <div className="text-[11px] text-fuchsia-600 dark:text-fuchsia-400">
+            Inferido do cargo · grave explícito pra travar
+          </div>
+        )}
+      </div>
+      <select
+        value={vinculoExplicito || ""}
+        onChange={(e) => alterarVinculo(e.target.value as VinculoLogico | "")}
+        disabled={salvando}
+        className="w-full border border-fuchsia-300 dark:border-fuchsia-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-fuchsia-500"
+      >
+        <option value="">— Sem vínculo definido —</option>
+        {VINCULOS_LOGICOS.map(v => (
+          <option key={v} value={v}>
+            {VINCULO_LOGICO_ICONE[v]} {VINCULO_LOGICO_LABEL[v]}
+          </option>
+        ))}
+      </select>
+      {vinculoResolvido && atributosPessPersistiveis.length > 0 && (
+        <div className="border-t border-fuchsia-200 dark:border-fuchsia-800 pt-2 space-y-1">
+          <div className="text-[11px] text-fuchsia-700 dark:text-fuchsia-300 mb-1">
+            Pra <strong>{VINCULO_LOGICO_LABEL[vinculoResolvido]}</strong>, os atributos abaixo
+            dependem da pessoa — marca caso a caso:
+          </div>
+          {atributosPessPersistiveis.map(atributo => {
+            const valor = (toggles as Record<string, boolean | undefined>)[atributo] === true;
+            return (
+              <label key={atributo} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-fuchsia-100/50 dark:hover:bg-fuchsia-900/20 rounded px-2 py-1">
+                <input
+                  type="checkbox"
+                  checked={valor}
+                  onChange={(e) => alterarToggle(atributo, e.target.checked)}
+                  disabled={salvando}
+                  className="rounded border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-600 focus:ring-fuchsia-500"
+                />
+                <span className="text-gray-700 dark:text-gray-300">{ATRIBUTO_LABEL[atributo]}</span>
+              </label>
+            );
+          })}
+        </div>
+      )}
+      {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+      <p className="text-[11px] text-gray-600 dark:text-gray-400">
+        O vínculo define como a pessoa se comporta neste restaurante — escala, gorjeta, ponto,
+        benefícios. Pode variar entre restaurantes (Freela aqui, CLT em outro).
       </p>
     </div>
   );
