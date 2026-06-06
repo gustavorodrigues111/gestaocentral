@@ -55,6 +55,11 @@ const BADGE_PRONTO: AccessBadge = {
   tooltip: "Pessoa tem login, perfil atribuído e já acessou o sistema.",
   classes: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
 };
+// Pendências distintas usam tons distintos pra varredura rápida:
+// - amber  → email (login crítico)
+// - orange → CPF (identidade)
+// - yellow → perfil (autorização)
+// - rose   → empregado (vínculo operacional)
 const BADGE_FALTA_EMAIL: AccessBadge = {
   status: "falta_email",
   label: "Falta email",
@@ -65,19 +70,19 @@ const BADGE_FALTA_CPF: AccessBadge = {
   status: "falta_cpf",
   label: "Falta CPF",
   tooltip: "Sem CPF, identidade incompleta (necessária pra Sólides e auditoria).",
-  classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  classes: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
 };
 const BADGE_PRECISA_PERFIL: AccessBadge = {
   status: "precisa_perfil",
   label: "Precisa de perfil",
   tooltip: "Pessoa vai logar mas vê tela vazia — sem perfil de acesso atribuído neste restaurante.",
-  classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  classes: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300",
 };
 const BADGE_PRECISA_EMPREGADO: AccessBadge = {
   status: "precisa_empregado",
   label: "Precisa empregado",
   tooltip: "Perfil dá acesso ao Portal do Empregado mas a pessoa não está cadastrada como empregada deste restaurante.",
-  classes: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  classes: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
 };
 const BADGE_NUNCA_LOGOU: AccessBadge = {
   status: "nunca_logou",
