@@ -11,7 +11,7 @@ import {
   VALORES_DIARIA, VALORES_HORA,
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
-import { gerarLotePDF } from "./gerarLotePDF";
+import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 
 type Props = {
   restaurantId: string;
@@ -725,22 +725,12 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
 }) {
   const { pessoa: me } = useAuth();
   const [salvando, setSalvando] = useState(false);
-  const [gerandoPdf, setGerandoPdf] = useState(false);
+  const [previewAberto, setPreviewAberto] = useState(false);
 
-  async function exportarPDF() {
-    if (!restaurant) return;
-    setGerandoPdf(true);
-    try {
-      const shiftsDoLote = shifts.filter((s) => lote.shiftIds.includes(s.id));
-      const doc = await gerarLotePDF({ lote, shifts: shiftsDoLote, restaurant });
-      doc.save(`${lote.numero}.pdf`);
-    } catch (e) {
-      console.error("[exportarPDF pendente]", e);
-      alert(`Erro ao gerar PDF: ${e instanceof Error ? e.message : String(e)}`);
-    } finally {
-      setGerandoPdf(false);
-    }
-  }
+  const shiftsDoLote = useMemo(
+    () => shifts.filter((s) => lote.shiftIds.includes(s.id)),
+    [shifts, lote.shiftIds],
+  );
 
   async function marcarPago() {
     if (!me) return;
@@ -786,16 +776,24 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={exportarPDF}
-            disabled={gerandoPdf || !restaurant}
+            onClick={() => setPreviewAberto(true)}
+            disabled={!restaurant}
             className="text-[11px] text-indigo-700 dark:text-indigo-400 hover:underline disabled:opacity-50"
-            title="Baixar PDF do lote pra conferir antes de pagar"
+            title="Pré-visualizar PDF do lote antes de baixar"
           >
-            {gerandoPdf ? "Gerando…" : "📄 PDF"}
+            📄 PDF
           </button>
           <button type="button" onClick={cancelar} disabled={salvando} className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Cancelar</button>
           <button type="button" onClick={marcarPago} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
         </div>
+      )}
+      {previewAberto && restaurant && (
+        <LotePDFPreviewModal
+          lote={lote}
+          shifts={shiftsDoLote}
+          restaurant={restaurant}
+          onClose={() => setPreviewAberto(false)}
+        />
       )}
     </div>
   );

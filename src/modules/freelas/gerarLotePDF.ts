@@ -112,7 +112,7 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
     .sort((a, b) => a.nomeSnapshot.localeCompare(b.nomeSnapshot) || a.date.localeCompare(b.date))
     .map((s) => [
       s.nomeSnapshot,
-      s.date,
+      fmtDateBR(s.date),
       s.area || "—",
       s.entrada && s.saida ? `${s.entrada}–${s.saida}` : "—",
       fmtHoras(s.horas || 0),
@@ -144,4 +144,12 @@ function fmtDate(iso: string): string {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   });
+}
+
+// Data do turno vem como "YYYY-MM-DD" — converter sem instanciar Date
+// pra não cair em fuso (Date parsing UTC dá um dia a menos no Brasil).
+function fmtDateBR(iso: string): string {
+  if (!iso) return "—";
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso;
 }

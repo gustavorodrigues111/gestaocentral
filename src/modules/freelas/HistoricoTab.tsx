@@ -4,7 +4,7 @@ import type {
   FreelaPagamento, FreelaShift, Restaurant,
 } from "../../core/types";
 import { fmtBR, fmtHoras } from "./helpers";
-import { gerarLotePDF } from "./gerarLotePDF";
+import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 
 type Props = {
   shifts: FreelaShift[];
@@ -130,24 +130,11 @@ function LoteCard({
   lote, shifts, restaurant,
 }: { lote: FreelaPagamento; shifts: FreelaShift[]; restaurant: Restaurant }) {
   const [aberto, setAberto] = useState(false);
-  const [gerando, setGerando] = useState(false);
+  const [previewAberto, setPreviewAberto] = useState(false);
   const shiftsDoLote = useMemo(
     () => shifts.filter((s) => lote.shiftIds.includes(s.id)),
     [shifts, lote.shiftIds],
   );
-
-  async function exportarPDF() {
-    setGerando(true);
-    try {
-      const doc = await gerarLotePDF({ lote, shifts: shiftsDoLote, restaurant });
-      doc.save(`${lote.numero}.pdf`);
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao gerar PDF.");
-    } finally {
-      setGerando(false);
-    }
-  }
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
@@ -172,8 +159,8 @@ function LoteCard({
           <Button size="sm" variant="secondary" onClick={() => setAberto((v) => !v)}>
             {aberto ? "Recolher" : "Detalhes"}
           </Button>
-          <Button size="sm" onClick={exportarPDF} disabled={gerando}>
-            {gerando ? "Gerando…" : "📄 PDF"}
+          <Button size="sm" onClick={() => setPreviewAberto(true)}>
+            📄 PDF
           </Button>
         </div>
       </div>
@@ -202,6 +189,14 @@ function LoteCard({
             </tbody>
           </table>
         </div>
+      )}
+      {previewAberto && (
+        <LotePDFPreviewModal
+          lote={lote}
+          shifts={shiftsDoLote}
+          restaurant={restaurant}
+          onClose={() => setPreviewAberto(false)}
+        />
       )}
     </div>
   );
