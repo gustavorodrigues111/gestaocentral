@@ -42,9 +42,12 @@ export function LotePDFPreviewModal({ lote, shifts, restaurant, onClose }: Props
 
   function baixar() {
     if (!url) return;
+    // Data BR com "-" (não "/") pra não quebrar o nome de arquivo.
+    const d = new Date();
+    const dataBR = `${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}-${d.getFullYear()}`;
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${lote.numero}.pdf`;
+    a.download = `LOTE DE FREELAS ${restaurant.nome} ${dataBR}.pdf`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

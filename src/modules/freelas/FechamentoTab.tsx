@@ -752,8 +752,8 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
     finally { setSalvando(false); }
   }
 
-  async function cancelar() {
-    if (!confirm(`Cancelar lote ${lote.numero}? Turnos voltam pra "Em fechamento".`)) return;
+  async function reabrirTurnos() {
+    if (!confirm(`Reabrir os turnos do lote ${lote.numero}? Eles voltam pra "Em fechamento" e o lote é desfeito.`)) return;
     setSalvando(true);
     try {
       const batch = writeBatch(db);
@@ -763,7 +763,7 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
       }
       batch.delete(doc(db, "freelaPagamentos", lote.id));
       await batch.commit();
-    } catch (e) { console.error(e); alert("Erro ao cancelar lote."); }
+    } catch (e) { console.error(e); alert("Erro ao reabrir turnos."); }
     finally { setSalvando(false); }
   }
 
@@ -783,7 +783,7 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
           >
             📄 PDF
           </button>
-          <button type="button" onClick={cancelar} disabled={salvando} className="text-[11px] text-red-600 hover:underline disabled:opacity-50">Cancelar</button>
+          <button type="button" onClick={reabrirTurnos} disabled={salvando} className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50">↩ Reabrir turnos</button>
           <button type="button" onClick={marcarPago} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
         </div>
       )}
