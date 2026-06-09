@@ -2312,6 +2312,11 @@ export type RelatorioSnapshot = {
   // (ex: "E1 09:26 → S1 11:20 · E2 12:19 → S2 16:41"). Inclui todos os dias
   // com punches, mesmo os "Trabalhou normal". Opcional pra retrocompat.
   batidasPorCpfData?: Record<string, Record<string, string>>;
+  // CPFs (só dígitos) que ainda constam no quadro do Sólides nesta geração.
+  // Usado pra detectar demitidos-no-Planejamento que seguem ativos no Sólides
+  // (apontamento `ativoNoSolidesAposDemissao`). Opcional pra retrocompat —
+  // caches antigos não têm e o alerta simplesmente não aparece até regenerar.
+  cpfsAtivosNoSolides?: string[];
 };
 
 export type ExcecaoStatusSemana = {

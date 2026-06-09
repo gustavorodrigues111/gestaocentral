@@ -1345,6 +1345,23 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     };
   }, [todosStatusDoRest, anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
 
+  // CPFs que ainda constam no quadro do Sólides — do cache MAIS RECENTE do mês
+  // (max geradoEm). Não fazemos união entre semanas de propósito: queremos o
+  // retrato mais novo do Sólides pra que, ao demitir lá e reatualizar, o
+  // alerta suma. Caches antigos sem o campo são ignorados.
+  const cpfsAtivosNoSolidesMes = useMemo<Set<string>>(() => {
+    const mesPrefix = `${anoMes.ano}-${pad2(anoMes.mes)}-`;
+    let melhor: { geradoEm: string; cpfs: string[] } | null = null;
+    for (const s of todosStatusDoRest) {
+      const cache = s.relatorioCache;
+      if (!cache?.cpfsAtivosNoSolides) continue;
+      if (!((s.weekStart || "").startsWith(mesPrefix) || (s.weekEnd || "").startsWith(mesPrefix))) continue;
+      const geradoEm = cache.geradoEm || "";
+      if (!melhor || geradoEm > melhor.geradoEm) melhor = { geradoEm, cpfs: cache.cpfsAtivosNoSolides };
+    }
+    return new Set((melhor?.cpfs || []).map((c) => (c || "").replace(/\D/g, "")));
+  }, [todosStatusDoRest, anoMes.ano, anoMes.mes]);
+
   // Última atualização agregada do mês ativo — pega o MAX(geradoEm) dos
   // caches cujo weekStart/weekEnd cai no mês visualizado. Alimenta o badge
   // "Última atualização: DD/MM/AAAA HH:mm" exibido logo abaixo dos chips.
@@ -1543,6 +1560,10 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       // do mês — usado como template recorrente pro range todo.
       let escalaPorEmpregado: Record<string, Record<string, import("../../core/types").ScheduleStatus>> = {};
       let horariosPrevistos: Record<string, Record<string, { in: string; out: string }>> = {};
+      // CPFs (só dígitos) que ainda têm quadro ATIVO no Sólides nesta geração.
+      // Alimenta o apontamento `ativoNoSolidesAposDemissao` (demitido no
+      // Planejamento mas ainda no Sólides). Salvo no cache da semana.
+      let cpfsAtivosNoSolides: string[] = [];
       const debugInfo: EscalaDebugInfo = {};
       // Acumula cobertura Sólides — banner sumiu junto com a noção de semana
       // ativa, mas mantemos a coleta no caso de querermos exibir agregado
@@ -1560,6 +1581,11 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         for (const e of schedRes.employees) {
           if (e.cpf) sidByCpf.set(e.cpf, e.id);
         }
+        // Quem ainda consta no QUADRO do Sólides = tem schedule não-nulo.
+        // (sid sem schedule = bug da API / quadro não atribuído — não conta.)
+        cpfsAtivosNoSolides = schedRes.employees
+          .filter((e) => e.cpf && schedRes.schedules[String(e.id)] != null)
+          .map((e) => onlyDigits(e.cpf));
         const empIdByCpf = new Map<string, string>();
         for (const e of empregados) {
           if (e.cpf) empIdByCpf.set(onlyDigits(e.cpf), e.id);
@@ -1787,6 +1813,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             // Batidas formatadas por CPF → data, mesmo nos dias sem
             // inconformidade. UI usa pra mostrar "Trabalhou normal · 📍 E1 ... S2 ...".
             batidasPorCpfData: report.batidasPorCpfData,
+            // Roster do quadro Sólides desta geração — alimenta o alerta de
+            // demitido-ainda-no-Sólides no merge mensal (displayedResult).
+            cpfsAtivosNoSolides,
           },
           me || undefined,
         );
@@ -2099,12 +2128,44 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     );
   }, [anoMes.ano, anoMes.mes, semanasFiltro, semanasMes]);
 
+  // Injeta os apontamentos sintéticos de "demitido ainda no Sólides".
+  // É um alerta administrativo permanente (não tem batida/dia próprio), então
+  // ancoramos numa data visível: a própria data de demissão quando ela cai no
+  // mês (a vista completa mantém o dia da demissão), senão o último dia visível
+  // (modo legado renderiza pela data do apontamento). Some sozinho quando o CPF
+  // sai do quadro do Sólides (não entra mais em cpfsAtivosNoSolidesMes).
+  const excecoesComDemitidos = useMemo<ExceptionRecord[]>(() => {
+    const base = excecoesFiltradas;
+    if (cpfsAtivosNoSolidesMes.size === 0 || basePessoas.length === 0) return base;
+    const hoje = todayYmd();
+    const monthStart = `${anoMes.ano}-${pad2(anoMes.mes)}-01`;
+    const ultimoVisivel = diasDoMes.length ? diasDoMes[diasDoMes.length - 1] : hoje;
+    const extras: ExceptionRecord[] = [];
+    for (const p of basePessoas) {
+      if (!p.demissao || p.demissao > hoje) continue; // só quem já saiu
+      const cpfD = (p.cpf || "").replace(/\D/g, "");
+      if (!cpfD || !cpfsAtivosNoSolidesMes.has(cpfD)) continue;
+      const anchor =
+        p.demissao >= monthStart && p.demissao <= ultimoVisivel ? p.demissao : ultimoVisivel;
+      extras.push({
+        ruleId: "ativoNoSolidesAposDemissao",
+        severity: "grave",
+        date: anchor,
+        employeeId: 0,
+        cpf: p.cpf,
+        employeeName: p.nome,
+        description: `Demitido no Planejamento em ${fmtDataBr(p.demissao)}, mas ainda consta no quadro do Sólides — desligar lá (continua contando/cobrando).`,
+      });
+    }
+    return extras.length ? [...base, ...extras] : base;
+  }, [excecoesFiltradas, basePessoas, cpfsAtivosNoSolidesMes, diasDoMes, anoMes.ano, anoMes.mes]);
+
   // Grupos calculados — memoizado pra evitar refazer o trabalho a cada toggle
   // de expansão. Depende de tudo que alimenta render.
   const grupos = useMemo(() => {
     if (!displayedResult) return [];
     return agruparPorColabDate(
-      excecoesFiltradas,
+      excecoesComDemitidos,
       empIdByCpf,
       basePessoas,
       displayedResult.escalaEfetivaPorCpf || {},
@@ -2115,7 +2176,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
     );
   }, [
     displayedResult,
-    excecoesFiltradas,
+    excecoesComDemitidos,
     empIdByCpf,
     basePessoas,
     diasDoMes,
@@ -3837,6 +3898,9 @@ function ColaboradorBlock({
                       {/* Wrapper das ações — alinhado à direita do header */}
                       <div className="flex items-center gap-1 shrink-0 ml-auto flex-wrap">
                         {(() => {
+                          // Alerta administrativo só-leitura: sem botões. Some
+                          // sozinho quando a pessoa sai do quadro do Sólides.
+                          if (e.ruleId === "ativoNoSolidesAposDemissao") return null;
                           const lockKey = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
                           const salvando = salvandoApontamento.has(lockKey);
                           if (podeAnotar && !isTerminal && !isAguardandoAjuste && !isEmpresaAjustara) {

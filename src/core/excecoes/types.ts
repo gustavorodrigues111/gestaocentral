@@ -62,7 +62,8 @@ export type ExceptionRuleId =
   | "atrasoEntrada"
   | "entradaProvavelFaltante"
   | "batidasImpares"
-  | "divergenciaSolidesEscala";
+  | "divergenciaSolidesEscala"
+  | "ativoNoSolidesAposDemissao";
 
 // Categoria do apontamento na UI:
 //   alinhamento  — comportamento a ser alinhado verbalmente com o empregado
@@ -91,6 +92,10 @@ export const REGRA_CATEGORIA_DEFAULT: Record<ExceptionRuleId, ApontamentoCategor
   blocoSuspeito:           "ajuste",
   batidasImpares:          "ajuste",
   divergenciaSolidesEscala: "ajuste",
+  // Alerta administrativo (não é comportamento do empregado). Fica na coluna
+  // de alinhamento, mas a UI suprime os botões — é só-leitura e some sozinho
+  // quando a pessoa deixa de constar no quadro do Sólides.
+  ativoNoSolidesAposDemissao: "alinhamento",
 };
 
 // Status do DIA (empregado × data) — independente dos apontamentos

@@ -114,6 +114,13 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     icon: "🏢",
     descricaoRegra: "A escala da Sólides difere do Planejamento naquele dia (típico em empregados com escala alternada A/B — a Sólides só aceita uma semana fixa). Empregado cumpriu o combinado no Planejamento, mas a Sólides vai cobrar errado — ajuste manual lá.",
   },
+  ativoNoSolidesAposDemissao: {
+    id: "ativoNoSolidesAposDemissao",
+    label: "Demitido ainda no Sólides",
+    severity: "grave",
+    icon: "🚫",
+    descricaoRegra: "Pessoa demitida no Planejamento que ainda consta no quadro do Sólides — precisa ser desligada lá, senão continua contando/cobrando. Alerta some sozinho quando o CPF deixar de aparecer no quadro.",
+  },
 };
 
 const MIN_INTERJORNADA = 11 * 60; // 660 min
