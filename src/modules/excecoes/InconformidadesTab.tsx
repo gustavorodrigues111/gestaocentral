@@ -3742,6 +3742,13 @@ function ColaboradorBlock({
                 const isTerminal = isStatusTerminal(statusAp);
                 const lockKeyAtual = apontamentoKey(grupo.empregadoId, e.date, e.ruleId);
                 const estaNoLote = !!loteDoEmpregado?.apontamentoChaves?.includes(lockKeyAtual);
+                // Autor + data/hora da última ação de status (ciência, falso
+                // positivo, corrigido, empresa resolverá…). Fonte primária: doc
+                // de status por apontamento; fallback pro registro de ciência
+                // gravado no próprio apontamento (fluxo legado).
+                const statusDocAtual = statusApontamentoMap.get(lockKeyAtual);
+                const autorAcao = statusDocAtual?.atualizadoPorNome ?? (isCiencia ? ap?.cienciaPorNome : undefined);
+                const quandoAcao = statusDocAtual?.atualizadoEm ?? (isCiencia ? ap?.cienciaEm : undefined);
                 // Tooltip detalhado quando count > 1 — lista detail/description
                 const tooltipDetalhes = d.count > 1
                   ? d.all
@@ -3815,6 +3822,15 @@ function ColaboradorBlock({
                             title="A empresa vai resolver este ponto direto na Sólides (não foi solicitado ao empregado). Quando o ajuste aparecer no próximo report, vira 'Corrigido no Sólides' automaticamente."
                           >
                             🏢 empresa resolverá
+                          </span>
+                        )}
+                        {/* Quem registrou a ação + quando (inline, sempre visível) */}
+                        {(isTerminal || isAguardandoAjuste || isEmpresaAjustara) && autorAcao && (
+                          <span
+                            className="text-[10px] text-gray-400 dark:text-gray-500 whitespace-nowrap"
+                            title="Quem registrou esta ação e quando"
+                          >
+                            · {autorAcao}{quandoAcao ? ` · ${fmtDataHora(quandoAcao)}` : ""}
                           </span>
                         )}
                       </div>
