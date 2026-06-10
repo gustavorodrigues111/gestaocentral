@@ -7,7 +7,7 @@ import { AREAS, type Area, type Empregado, type FreelaShift, type Pessoa } from 
 import { todayYmd } from "../../core/utils/date";
 import { NovoTurnoModal } from "./NovoTurnoModal";
 import { HorarioModal } from "./HorarioModal";
-import { calcHoras, fmtHoras } from "./helpers";
+import { calcHoras, fmtHoras, intervaloTotalDoShift } from "./helpers";
 
 type Props = {
   restaurantId: string;
@@ -241,10 +241,12 @@ function fmtDataCurta(ymd: string): string {
 
 function horarioTexto(s: FreelaShift): string {
   const estado = inferirEstado(s);
-  if (estado === "agendado") return s.entrada ? `prevista ${s.entrada}` : "—";
-  if (estado === "aberto")   return `iniciou ${s.entrada}`;
-  const h = calcHoras(s.entrada, s.saida, s.intervalo);
-  const inter = s.intervalo ? ` (${s.intervalo}min)` : "";
+  const interTot = intervaloTotalDoShift(s);
+  const interHint = interTot ? ` · ⏸️ ${interTot}min` : "";
+  if (estado === "agendado") return (s.entrada ? `prevista ${s.entrada}` : "—") + interHint;
+  if (estado === "aberto")   return `iniciou ${s.entrada}${interHint}`;
+  const h = calcHoras(s.entrada, s.saida, interTot);
+  const inter = interTot ? ` (${interTot}min)` : "";
   return `${s.entrada}→${s.saida}${inter} ${fmtHoras(h)}`;
 }
 
@@ -323,7 +325,7 @@ function RowMobile({ shift, podeOperar }: { shift: FreelaShift; podeOperar: bool
 // ── Ações da linha (botões + modais) ──────────────────────────────────────
 function RowAcoes({ shift, podeOperar }: { shift: FreelaShift; podeOperar: boolean }) {
   const { pessoa: me } = useAuth();
-  const [horarioMode, setHorarioMode] = useState<"iniciar" | "fechar" | "editar" | "lancar" | null>(null);
+  const [horarioMode, setHorarioMode] = useState<"iniciar" | "fechar" | "editar" | "lancar" | "intervalo" | null>(null);
   const [saving, setSaving] = useState(false);
   const estado = inferirEstado(shift);
 
@@ -363,6 +365,9 @@ function RowAcoes({ shift, podeOperar }: { shift: FreelaShift; podeOperar: boole
         )}
         {estado === "aberto" && (
           <Button size="sm" onClick={() => setHorarioMode("fechar")} disabled={saving}>🔴 Fechar</Button>
+        )}
+        {(estado === "aberto" || estado === "agendado") && (
+          <Button size="sm" variant="secondary" onClick={() => setHorarioMode("intervalo")} disabled={saving}>⏸️ Intervalo</Button>
         )}
         {estado === "fechado_ops" && (
           <Button size="sm" variant="secondary" onClick={() => setHorarioMode("editar")} disabled={saving}>✏️ Editar</Button>

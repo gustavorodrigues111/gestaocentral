@@ -1,7 +1,20 @@
-import type { Empregado, FreelaShift, Pessoa } from "../../core/types";
+import type { Empregado, FreelaIntervalo, FreelaShift, Pessoa } from "../../core/types";
 
 export function onlyDigits(s: string | undefined | null): string {
   return (s || "").replace(/\D/g, "");
+}
+
+// Soma (em minutos) de uma lista de intervalos.
+export function somaIntervalos(intervalos?: FreelaIntervalo[]): number {
+  if (!intervalos || intervalos.length === 0) return 0;
+  return intervalos.reduce((s, i) => s + (Number(i.min) || 0), 0);
+}
+
+// Total de intervalo (minutos) de um shift, preferindo a lista detalhada
+// `intervalos` e caindo no campo legado `intervalo` pra docs antigos.
+export function intervaloTotalDoShift(s: Pick<FreelaShift, "intervalo" | "intervalos">): number {
+  if (s.intervalos && s.intervalos.length > 0) return somaIntervalos(s.intervalos);
+  return Number(s.intervalo) || 0;
 }
 
 // Calcula horas totais decimais a partir de entrada/saída/intervalo.

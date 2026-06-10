@@ -2080,6 +2080,15 @@ export const FREELA_SHIFT_STATUS_LABEL: Record<FreelaShiftStatus, string> = {
   nao_compareceu: "Não compareceu",
 };
 
+// Um intervalo (pausa/refeição) dentro de um turno de freela. Duração em
+// minutos (sempre múltiplo do passo do stepper). `planejado` marca os que
+// foram pré-programados no agendamento — é só dica visual; conta igual no
+// desconto de horas.
+export type FreelaIntervalo = {
+  min: number;
+  planejado?: boolean;
+};
+
 export type FreelaShift = {
   id: string;
   restaurantId: string;
@@ -2101,7 +2110,12 @@ export type FreelaShift = {
   // Lançamento (preenchido a partir de "aberto")
   entrada?: string;                // "HH:MM"
   saida?: string;                  // "HH:MM" (pode ser do dia seguinte)
-  intervalo?: number;              // minutos
+  // Intervalo: `intervalo` (legado) é sempre a SOMA, em minutos, de todos os
+  // intervalos — alimenta calcHoras sem mudança. `intervalos` é o detalhamento
+  // (vários intervalos por turno, lançáveis desde a abertura). Quando
+  // `intervalos` existe, `intervalo === soma(intervalos.min)`.
+  intervalo?: number;              // minutos (TOTAL — soma de `intervalos`)
+  intervalos?: FreelaIntervalo[];  // detalhamento (pode ter mais de um)
   horas?: number;                  // total decimal de horas trabalhadas
   valorTipo?: "hora" | "diaria";   // como é cobrado
   valorUnit?: number;              // R$ por hora OU diária fixa

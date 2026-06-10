@@ -4,11 +4,11 @@ import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
-import type { FreelaShift } from "../../core/types";
-import { calcHoras, calcTotal, fmtHoras } from "./helpers";
-import { IntervaloStepper } from "./IntervaloStepper";
+import type { FreelaIntervalo, FreelaShift } from "../../core/types";
+import { calcHoras, calcTotal, fmtHoras, somaIntervalos } from "./helpers";
+import { IntervalosEditor } from "./IntervalosEditor";
 
-type Mode = "iniciar" | "fechar" | "editar" | "lancar";
+type Mode = "iniciar" | "fechar" | "editar" | "lancar" | "intervalo";
 
 type Props = {
   shift: FreelaShift;
@@ -18,17 +18,19 @@ type Props = {
 };
 
 const TITULOS: Record<Mode, string> = {
-  iniciar: "🟢 Iniciar turno",
-  fechar:  "🔴 Fechar turno",
-  editar:  "✏️ Editar horário",
-  lancar:  "🟢 Lançar turno",
+  iniciar:   "🟢 Iniciar turno",
+  fechar:    "🔴 Fechar turno",
+  editar:    "✏️ Editar horário",
+  lancar:    "🟢 Lançar turno",
+  intervalo: "⏸️ Intervalos do turno",
 };
 
 const BOTOES: Record<Mode, string> = {
-  iniciar: "Iniciar",
-  fechar:  "Fechar turno",
-  editar:  "Salvar",
-  lancar:  "Lançar",
+  iniciar:   "Iniciar",
+  fechar:    "Fechar turno",
+  editar:    "Salvar",
+  lancar:    "Lançar",
+  intervalo: "Salvar intervalos",
 };
 
 // Modal único de horário. Modos:
@@ -40,11 +42,18 @@ const BOTOES: Record<Mode, string> = {
 export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
   const [entrada, setEntrada]     = useState(shift.entrada || "");
   const [saida, setSaida]         = useState(shift.saida || "");
-  const [intervalo, setIntervalo] = useState<number>(shift.intervalo || 0);
+  const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>(
+    shift.intervalos && shift.intervalos.length > 0
+      ? shift.intervalos
+      : shift.intervalo
+        ? [{ min: shift.intervalo }]
+        : [],
+  );
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const horas = calcHoras(entrada, saida, intervalo);
+  const intervaloTotal = somaIntervalos(intervalos);
+  const horas = calcHoras(entrada, saida, intervaloTotal);
 
   const horarioValido = (h: string) => /^\d{2}:\d{2}$/.test(h);
 
@@ -69,17 +78,22 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
       // Firestore não aceita `undefined` em valores — omite campos vazios.
       // Pra LIMPAR campos no doc (ex: ao reabrir um fechamento), use deleteField.
       const updates: Record<string, unknown> = {
-        intervalo,
+        intervalo: intervaloTotal,
+        intervalos,
         horas,
         updatedAt: new Date().toISOString(),
       };
-      if (entrada) updates.entrada = entrada;
-      if (saida) updates.saida = saida;
-      if (shift.valorUnit) updates.totalCalc = total;
-      // Flip de status agendado → aberto quando registra entrada
-      if (shift.status === "agendado" && entrada) {
-        updates.status = "aberto";
+      // No modo "intervalo" não tocamos nos horários nem no status — é só
+      // edição da lista de intervalos (turno segue agendado/aberto como estava).
+      if (mode !== "intervalo") {
+        if (entrada) updates.entrada = entrada;
+        if (saida) updates.saida = saida;
+        // Flip de status agendado → aberto quando registra entrada
+        if (shift.status === "agendado" && entrada) {
+          updates.status = "aberto";
+        }
       }
+      if (shift.valorUnit) updates.totalCalc = total;
       await updateDoc(doc(db, "freelaShifts", shift.id), updates);
       onSaved();
     } catch (e) {
@@ -107,6 +121,14 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
           </div>
         )}
 
+        {mode === "intervalo" && (
+          <div className="text-xs text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
+            ⏸️ Lance os intervalos do turno mesmo antes de fechar.
+            {shift.entrada && <> Turno iniciou às <strong>{shift.entrada}</strong>.</>}
+            {!shift.saida && <> As horas são recalculadas quando você fechar o turno.</>}
+          </div>
+        )}
+
         {/* Entrada */}
         {(mode === "iniciar" || mode === "editar" || mode === "lancar") && (
           <div className="flex flex-col gap-1">
@@ -127,18 +149,18 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
           </div>
         )}
 
-        {/* Intervalo */}
-        {(mode === "fechar" || mode === "editar" || mode === "lancar") && (
+        {/* Intervalo(s) */}
+        {(mode === "fechar" || mode === "editar" || mode === "lancar" || mode === "intervalo") && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              Intervalo (refeição, pausa)
+              Intervalo (refeição, pausa) — pode ter mais de um
             </label>
-            <IntervaloStepper value={intervalo} onChange={setIntervalo} />
+            <IntervalosEditor value={intervalos} onChange={setIntervalos} />
           </div>
         )}
 
         {/* Total calculado — quando tem entrada+saída */}
-        {(mode === "fechar" || mode === "editar" || mode === "lancar") && horas > 0 && (
+        {(mode === "fechar" || mode === "editar" || mode === "lancar" || mode === "intervalo") && horas > 0 && (
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2">
             <div className="text-[11px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-400">
               Horas trabalhadas

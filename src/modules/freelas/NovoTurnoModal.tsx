@@ -8,10 +8,11 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
-import { AREAS, type Area, type Empregado, type Pessoa } from "../../core/types";
-import { onlyDigits, resolverPixWhats } from "./helpers";
+import { AREAS, type Area, type Empregado, type FreelaIntervalo, type Pessoa } from "../../core/types";
+import { onlyDigits, resolverPixWhats, somaIntervalos } from "./helpers";
 import { SeletorSemana } from "./SeletorSemana";
 import { CadastroPorCpf } from "./CadastroPorCpf";
+import { IntervalosEditor } from "./IntervalosEditor";
 
 type Props = {
   restaurantId: string;
@@ -35,6 +36,7 @@ export function NovoTurnoModal({
   const [date, setDate] = useState(initialDate || todayYmd());
   const [area, setArea] = useState<Area | "">("");
   const [entrada, setEntrada] = useState("");
+  const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>([]);
   const [obs, setObs] = useState("");
 
   const [escolhaTipo, setEscolhaTipo] = useState<EscolhaTipo>(null);
@@ -112,6 +114,7 @@ export function NovoTurnoModal({
         scheduledDate: date,
         area,
         ...(entrada ? { entrada } : {}),
+        ...(intervalos.length ? { intervalos, intervalo: somaIntervalos(intervalos) } : {}),
         status: statusAlvo,
         lotePagamentoId: null,
         ...(obs.trim() ? { observacao: obs.trim() } : {}),
@@ -295,6 +298,14 @@ export function NovoTurnoModal({
             {isFutura ? "Hora de início (opcional)" : "Hora de início *"}
           </label>
           <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+        </div>
+
+        {/* ─── Intervalo planejado ─── */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+            Intervalo planejado (opcional)
+          </label>
+          <IntervalosEditor value={intervalos} onChange={setIntervalos} planejadoDefault />
         </div>
 
         {/* ─── Observação ─── */}
