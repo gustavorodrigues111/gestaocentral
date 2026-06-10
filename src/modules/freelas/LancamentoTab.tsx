@@ -243,7 +243,11 @@ function horarioTexto(s: FreelaShift): string {
   const estado = inferirEstado(s);
   const interTot = intervaloTotalDoShift(s);
   const interHint = interTot ? ` · ⏸️ ${interTot}min` : "";
-  if (estado === "agendado") return (s.entrada ? `prevista ${s.entrada}` : "—") + interHint;
+  if (estado === "agendado") {
+    const fim = s.saidaPrevista ? ` → ${s.saidaPrevista}` : "";
+    const base = (s.entrada || s.saidaPrevista) ? `prevista ${s.entrada || "?"}${fim}` : "—";
+    return base + interHint;
+  }
   if (estado === "aberto")   return `iniciou ${s.entrada}${interHint}`;
   const h = calcHoras(s.entrada, s.saida, interTot);
   const inter = interTot ? ` (${interTot}min)` : "";

@@ -118,6 +118,11 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
             agora.<br />
             Preencha <strong>entrada + saída</strong> se o turno já aconteceu
             (vai direto pra fechado).
+            {shift.saidaPrevista && (
+              <div className="mt-1 text-blue-700 dark:text-blue-300">
+                🕒 Saída prevista no agendamento: <strong>{shift.saidaPrevista}</strong>
+              </div>
+            )}
           </div>
         )}
 

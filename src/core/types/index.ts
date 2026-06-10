@@ -2107,6 +2107,11 @@ export type FreelaShift = {
   scheduledDate?: string;          // YYYY-MM-DD — data originalmente agendada (== date se não trocou)
   area?: Area;                     // área de atuação naquele turno
 
+  // Planejamento (preenchido no agendamento). `entrada` num turno agendado já
+  // funciona como início previsto; `saidaPrevista` é o fim previsto — só pra
+  // exibição/sugestão, NÃO vira a saída real automaticamente.
+  saidaPrevista?: string;          // "HH:MM" — fim previsto (agendamento)
+
   // Lançamento (preenchido a partir de "aberto")
   entrada?: string;                // "HH:MM"
   saida?: string;                  // "HH:MM" (pode ser do dia seguinte)

@@ -94,6 +94,15 @@ const ACOES_SELF_SERVICE: Record<string, Set<string>> = {
   reunioes: new Set(["verPropria"]),
 };
 
+// Ações de ESCRITA puramente OPERACIONAIS — abrem a tela OPERACIONAL do módulo
+// (canVer) mas NÃO a tela de gestão/config (canConfigurar). Ex.: lançar turno /
+// programar / cadastrar freela é tarefa do líder de área; NÃO deve liberar o
+// Fechamento (valores, lotes). Só as ações sensíveis de DP (atribuirValor,
+// fecharLote, acessarDados, verRelatoriosLote) abrem o Fechamento.
+const ACOES_OPERACIONAIS: Record<string, Set<string>> = {
+  freelas: new Set(["lancarTurnos", "criarVaga", "atribuir", "avaliar"]),
+};
+
 function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions {
   const out: RestaurantPermissions = {};
   for (const [moduleId, acoes] of Object.entries(perms)) {
@@ -110,8 +119,13 @@ function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions 
 
     // ver = qualquer ação NÃO-self-service habilitada
     const hasVer = true;
-    // configurar = qualquer ação "de escrita" habilitada
-    const hasConfigurar = ativasNaoSelf.some(([aid]) => !ACOES_LEITURA.has(aid));
+    // configurar = qualquer ação "de escrita" habilitada, EXCETO as puramente
+    // operacionais (essas dão só `ver`). Assim "Lançar turnos do freela" abre
+    // Lançamentos mas não o Fechamento.
+    const opsDoModulo = ACOES_OPERACIONAIS[moduleId];
+    const hasConfigurar = ativasNaoSelf.some(
+      ([aid]) => !ACOES_LEITURA.has(aid) && !opsDoModulo?.has(aid),
+    );
     out[moduleId] = { ver: hasVer, configurar: hasConfigurar };
   }
   return out;

@@ -36,6 +36,7 @@ export function NovoTurnoModal({
   const [date, setDate] = useState(initialDate || todayYmd());
   const [area, setArea] = useState<Area | "">("");
   const [entrada, setEntrada] = useState("");
+  const [saidaPrevista, setSaidaPrevista] = useState("");
   const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>([]);
   const [obs, setObs] = useState("");
 
@@ -114,6 +115,7 @@ export function NovoTurnoModal({
         scheduledDate: date,
         area,
         ...(entrada ? { entrada } : {}),
+        ...(saidaPrevista ? { saidaPrevista } : {}),
         ...(intervalos.length ? { intervalos, intervalo: somaIntervalos(intervalos) } : {}),
         status: statusAlvo,
         lotePagamentoId: null,
@@ -292,12 +294,20 @@ export function NovoTurnoModal({
           </select>
         </div>
 
-        {/* ─── Hora de início ─── */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-            {isFutura ? "Hora de início (opcional)" : "Hora de início *"}
-          </label>
-          <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+        {/* ─── Horário previsto: início + saída ─── */}
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+              {isFutura ? "Início previsto (opcional)" : "Hora de início *"}
+            </label>
+            <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+              Saída prevista (opcional)
+            </label>
+            <TimeInput value={saidaPrevista} onChange={setSaidaPrevista} placeholder="HH:MM" />
+          </div>
         </div>
 
         {/* ─── Intervalo planejado ─── */}
