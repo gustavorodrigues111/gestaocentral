@@ -140,27 +140,44 @@ function useGoogleConn(): Conn {
   return { gsiReady, token, calendars, carregando, erro, conectar, invalidar };
 }
 
-// ─── Preferências de agenda (Firestore, sincroniza entre dispositivos) ──────
+// ─── Preferências de agenda (cor + visibilidade) ────────────────────────────
+// Persiste no localStorage (sempre funciona, por dispositivo) E sincroniza no
+// Firestore quando as regras permitem (cross-device). Se a regra não estiver
+// deployada, a escrita no Firestore falha silenciosamente — o localStorage
+// segura a persistência mesmo assim.
 type AgendaPref = { cor?: string; oculta?: boolean };
+const PREFS_KEY = "plannerAgendaPrefs";
+function lerPrefsLocais(): Record<string, AgendaPref> {
+  try { return JSON.parse(localStorage.getItem(PREFS_KEY) || "{}"); } catch { return {}; }
+}
 function usePlannerSettings(uid: string | undefined) {
-  const [prefs, setPrefs] = useState<Record<string, AgendaPref>>({});
+  const [prefs, setPrefs] = useState<Record<string, AgendaPref>>(lerPrefsLocais);
+
+  // Firestore é a verdade QUANDO existe (sync entre dispositivos). Sem permissão
+  // (regra não deployada) → erro silencioso, mantém o localStorage.
   useEffect(() => {
     if (!uid) return;
     const unsub = onSnapshot(
       doc(db, "plannerSettings", uid),
       (snap) => {
         const d = snap.data() as { agendas?: Record<string, AgendaPref> } | undefined;
-        setPrefs(d?.agendas || {});
+        if (d?.agendas) {
+          setPrefs(d.agendas);
+          try { localStorage.setItem(PREFS_KEY, JSON.stringify(d.agendas)); } catch { /* noop */ }
+        }
       },
-      () => setPrefs({}),
+      () => { /* sem permissão: fica no localStorage */ },
     );
     return () => unsub();
   }, [uid]);
 
   const setPref = useCallback((calId: string, patch: AgendaPref) => {
-    if (!uid) return;
-    setPrefs((p) => ({ ...p, [calId]: { ...p[calId], ...patch } })); // otimista
-    void setDoc(doc(db, "plannerSettings", uid), { agendas: { [calId]: patch } }, { merge: true });
+    setPrefs((p) => {
+      const next = { ...p, [calId]: { ...p[calId], ...patch } };
+      try { localStorage.setItem(PREFS_KEY, JSON.stringify(next)); } catch { /* noop */ }
+      return next;
+    });
+    if (uid) void setDoc(doc(db, "plannerSettings", uid), { agendas: { [calId]: patch } }, { merge: true }).catch(() => { /* noop */ });
   }, [uid]);
 
   return { prefs, setPref };
