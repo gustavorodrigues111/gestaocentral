@@ -15,10 +15,11 @@ type Props = {
   empregados: Empregado[];
   pessoas: Pessoa[];
   podeOperar: boolean;
-  // "Planejar turnos" vem do header da página (FreelasPage). Abre o modal de
-  // planejamento. "Abrir turno avulso" é interno (zona Turnos do dia).
+  // "Planejar turnos" e "Abrir turno" vêm do header da página (FreelasPage).
   showNovo?: boolean;
   onCloseNovo?: () => void;
+  showAvulso?: boolean;
+  onCloseAvulso?: () => void;
 };
 
 // Conceito FIXO (planejar ≠ executar):
@@ -35,15 +36,20 @@ function zonaDoShift(s: FreelaShift, hoje: string): Zona {
 export function LancamentoTab({
   restaurantId, shifts, empregados, pessoas, podeOperar,
   showNovo: showNovoExt, onCloseNovo,
+  showAvulso: showAvulsoExt, onCloseAvulso,
 }: Props) {
   const hoje = todayYmd();
-  const [showAvulso, setShowAvulso] = useState(false);
   const [showPlanejarLocal, setShowPlanejarLocal] = useState(false);
+  const [showAvulsoLocal, setShowAvulsoLocal] = useState(false);
   const [realizadosOpen, setRealizadosOpen] = useState(false);
 
   const usaExterno = showNovoExt !== undefined;
   const showPlanejar = usaExterno ? !!showNovoExt : showPlanejarLocal;
   const fecharPlanejar = () => { if (usaExterno) onCloseNovo?.(); else setShowPlanejarLocal(false); };
+
+  const usaExternoAvulso = showAvulsoExt !== undefined;
+  const showAvulso = usaExternoAvulso ? !!showAvulsoExt : showAvulsoLocal;
+  const fecharAvulso = () => { if (usaExternoAvulso) onCloseAvulso?.(); else setShowAvulsoLocal(false); };
 
   const ordenarData = (a: FreelaShift, b: FreelaShift) =>
     a.date.localeCompare(b.date) || a.nomeSnapshot.localeCompare(b.nomeSnapshot);
@@ -62,18 +68,11 @@ export function LancamentoTab({
     <div className="space-y-5">
       {/* ── Zona 1: Turnos do dia ─────────────────────────────────────────── */}
       <section>
-        <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-          <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">🟢 Turnos do dia</h3>
-          {podeOperar && (
-            <Button size="sm" variant="secondary" onClick={() => setShowAvulso(true)}>
-              + Abrir turno avulso
-            </Button>
-          )}
-        </div>
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2">🟢 Turnos do dia</h3>
         {turnosDoDia.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
             Nenhum turno pra abrir ou fechar hoje.
-            {podeOperar && <> Use <strong>+ Abrir turno avulso</strong> ou planeje turnos.</>}
+            {podeOperar && <> Use <strong>Abrir turno</strong> (no topo) ou planeje turnos.</>}
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
@@ -131,8 +130,8 @@ export function LancamentoTab({
           restaurantId={restaurantId}
           empregados={empregados}
           pessoas={pessoas}
-          onClose={() => setShowAvulso(false)}
-          onSaved={() => setShowAvulso(false)}
+          onClose={fecharAvulso}
+          onSaved={fecharAvulso}
         />
       )}
     </div>

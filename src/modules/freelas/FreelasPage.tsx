@@ -51,7 +51,8 @@ export function FreelasPage() {
 
   const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
-  const [showNovoTurno, setShowNovoTurno] = useState(false);
+  const [showNovoTurno, setShowNovoTurno] = useState(false);   // planejar
+  const [showAvulsoTurno, setShowAvulsoTurno] = useState(false); // abrir agora
   const [showImportLote, setShowImportLote] = useState(false);
 
   // Se a aba atual sumir (mudou permissão), pula pra primeira disponível
@@ -114,32 +115,38 @@ export function FreelasPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎒 Freelas</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Cadastro, agendamento, lançamento e pagamento de freelas.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {podeOperar && tab === "lancamentos" && (
-            <Button onClick={() => setShowNovoTurno(true)}>
-              📋 Planejar turnos
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎒 Freelas</h1>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Cadastro, agendamento, lançamento e pagamento de freelas.
+        </p>
+
+        {podeOperar && tab === "lancamentos" && (
+          <div className="mt-3 space-y-2 max-w-md">
+            {/* Ações principais: Planejar + Abrir lado a lado */}
+            <div className="grid grid-cols-2 gap-2">
+              <Button className="w-full" onClick={() => setShowNovoTurno(true)}>📋 Planejar turno</Button>
+              <Button className="w-full" onClick={() => setShowAvulsoTurno(true)}>🟢 Abrir turno</Button>
+            </div>
+            {/* Cadastro: largura cheia, mais fino */}
+            <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowCadastro(true)}>
+              + Cadastrar novo freela
             </Button>
-          )}
-          {podeOperar && (
-            <Button variant="secondary" onClick={() => setShowCadastro(true)}>
-              + Cadastrar freela
+            {/* PROVISÓRIO — importação em lote (master). */}
+            {isMaster && (
+              <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowImportLote(true)}>
+                🧪 Importar lote
+              </Button>
+            )}
+          </div>
+        )}
+        {podeOperar && tab !== "lancamentos" && (
+          <div className="mt-3 max-w-md">
+            <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowCadastro(true)}>
+              + Cadastrar novo freela
             </Button>
-          )}
-          {/* PROVISÓRIO — botão de importação em lote pra master.
-              Remover quando não precisar mais. Ver ImportLoteFreelasModal. */}
-          {isMaster && tab === "lancamentos" && (
-            <Button variant="secondary" size="sm" onClick={() => setShowImportLote(true)}>
-              🧪 Importar lote
-            </Button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
@@ -186,6 +193,8 @@ export function FreelasPage() {
           podeOperar={podeOperar}
           showNovo={showNovoTurno}
           onCloseNovo={() => setShowNovoTurno(false)}
+          showAvulso={showAvulsoTurno}
+          onCloseAvulso={() => setShowAvulsoTurno(false)}
         />
       )}
       {tab === "fechamento" && podeDp && (
