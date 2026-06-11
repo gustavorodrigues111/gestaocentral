@@ -534,10 +534,14 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
                     const ini = ev.start.getHours() + ev.start.getMinutes() / 60;
                     let fim = ev.end.getHours() + ev.end.getMinutes() / 60;
                     if (fim <= ini) fim = ini + 0.5;
+                    const altura = Math.max(16, (fim - ini) * PX - 3);
+                    const linhas = Math.max(1, Math.floor((altura - 6) / 11)); // qtd de linhas que cabe inteira
                     return (
                       <div key={ev.id} className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
-                        style={{ background: ev.color, top: (ini - h0) * PX, height: Math.max(16, (fim - ini) * PX - 3) }} title={ev.title}>
-                        <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
+                        style={{ background: ev.color, top: (ini - h0) * PX, height: altura }} title={ev.title}>
+                        <div style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
+                          <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
+                        </div>
                       </div>
                     );
                   })}
