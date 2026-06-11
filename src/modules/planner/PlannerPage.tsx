@@ -12,12 +12,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 
-// URL da Cloud Function de OAuth (2ª gen / Cloud Run).
-const PLANNER_AUTH_URL = "https://plannergoogleauth-s3uds5p7vq-rj.a.run.app";
+// Conexão Google direto do navegador (Google Identity Services). Sem servidor,
+// sem service account — o browser pega o access token e fala com a Calendar API.
+const GOOGLE_CLIENT_ID = "777358299957-ojakrj15eaefgr8s6vmsrnj9p5nm8aca.apps.googleusercontent.com";
+const CAL_SCOPE = "https://www.googleapis.com/auth/calendar";
+const GSI_SRC = "https://accounts.google.com/gsi/client";
 
 // ─── Domínio (mock — vai virar espelho do Firestore na fase backend) ────────
 type Perfil = "projeto" | "rotina" | "pessoal" | "viagem";
@@ -105,52 +106,139 @@ export function PlannerPage() {
   );
 }
 
-// ─── Barra de conexão Google ────────────────────────────────────────────────
-function GoogleConnectBar() {
-  const { fbUser } = useAuth();
-  const [status, setStatus] = useState<{ connected?: boolean; email?: string | null } | null>(null);
+// ─── Conexão Google (Google Identity Services, no browser) ──────────────────
+type GsiTokenResponse = { access_token?: string; error?: string };
+type GsiTokenClient = { requestAccessToken: (o?: { prompt?: string }) => void };
+type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: string };
 
+// Acessa o GIS sem poluir o tipo global Window.
+function gsiOauth() {
+  return (window as unknown as {
+    google?: { accounts?: { oauth2?: {
+      initTokenClient: (cfg: { client_id: string; scope: string; callback: (r: GsiTokenResponse) => void }) => GsiTokenClient;
+    } } };
+  }).google?.accounts?.oauth2;
+}
+
+function useGsiReady() {
+  const [ready, setReady] = useState(!!gsiOauth());
   useEffect(() => {
-    if (!fbUser) return;
-    const unsub = onSnapshot(
-      doc(db, "plannerStatus", fbUser.uid),
-      (snap) => setStatus(snap.exists() ? (snap.data() as { connected?: boolean; email?: string | null }) : { connected: false }),
-      () => setStatus({ connected: false }),
-    );
-    return () => unsub();
-  }, [fbUser]);
+    if (gsiOauth()) { setReady(true); return; }
+    let s = document.querySelector<HTMLScriptElement>(`script[src="${GSI_SRC}"]`);
+    const onLoad = () => setReady(!!gsiOauth());
+    if (!s) {
+      s = document.createElement("script");
+      s.src = GSI_SRC; s.async = true; s.defer = true;
+      document.head.appendChild(s);
+    }
+    s.addEventListener("load", onLoad);
+    return () => s?.removeEventListener("load", onLoad);
+  }, []);
+  return ready;
+}
 
-  async function conectar() {
-    if (!fbUser) return;
-    const token = await fbUser.getIdToken();
-    window.location.href = `${PLANNER_AUTH_URL}?idToken=${encodeURIComponent(token)}`;
+function GoogleConnectBar() {
+  const gsiReady = useGsiReady();
+  const tokenClientRef = useRef<GsiTokenClient | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [calendars, setCalendars] = useState<GCal[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+  const [carregando, setCarregando] = useState(false);
+
+  async function carregarCalendarios(accessToken: string) {
+    setCarregando(true);
+    try {
+      const res = await fetch(
+        "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader",
+        { headers: { Authorization: `Bearer ${accessToken}` } },
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json() as { items?: Array<{ id: string; summary?: string; primary?: boolean; backgroundColor?: string }> };
+      setCalendars((data.items || []).map((c) => ({
+        id: c.id, summary: c.summary || c.id, primary: c.primary, backgroundColor: c.backgroundColor,
+      })));
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro lendo agendas.");
+    } finally {
+      setCarregando(false);
+    }
   }
 
-  const connected = !!status?.connected;
+  function client(): GsiTokenClient | null {
+    const oauth2 = gsiOauth();
+    if (!oauth2) return null;
+    if (!tokenClientRef.current) {
+      tokenClientRef.current = oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: CAL_SCOPE,
+        callback: (resp) => {
+          if (resp.error || !resp.access_token) { setErro(resp.error || "Falha ao conectar."); return; }
+          setErro(null);
+          setToken(resp.access_token);
+          localStorage.setItem("plannerGoogleConnected", "1");
+          void carregarCalendarios(resp.access_token);
+        },
+      });
+    }
+    return tokenClientRef.current;
+  }
+
+  function conectar(silencioso: boolean) {
+    const tc = client();
+    if (!tc) return;
+    tc.requestAccessToken({ prompt: silencioso ? "" : "consent" });
+  }
+
+  // Reconecta silencioso se já tinha conectado antes (sessão Google ativa).
+  useEffect(() => {
+    if (gsiReady && !token && localStorage.getItem("plannerGoogleConnected") === "1") {
+      conectar(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gsiReady]);
+
+  const connected = !!token;
   return (
-    <div className={`mb-4 rounded-xl border p-3 flex items-center justify-between gap-3 flex-wrap ${
+    <div className={`mb-4 rounded-xl border p-3 ${
       connected
         ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15"
         : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
     }`}>
-      <div className="text-sm">
-        {connected ? (
-          <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-            ✓ Google conectado{status?.email ? ` · ${status.email}` : ""}
-          </span>
-        ) : (
-          <span className="text-gray-600 dark:text-gray-300">
-            Conecte sua conta Google pra sincronizar a agenda de verdade.
-          </span>
-        )}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-sm">
+          {connected ? (
+            <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+              ✓ Google conectado{calendars.length ? ` · ${calendars.length} agenda(s)` : ""}
+            </span>
+          ) : (
+            <span className="text-gray-600 dark:text-gray-300">
+              Conecte sua conta Google pra ver sua agenda de verdade.
+            </span>
+          )}
+          {erro && <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">⚠️ {erro}</div>}
+        </div>
+        <button
+          type="button"
+          onClick={() => conectar(false)}
+          disabled={!gsiReady || carregando}
+          className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
+        >
+          {carregando ? "Carregando…" : connected ? "Reconectar" : "🔗 Conectar Google"}
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={conectar}
-        className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white"
-      >
-        {connected ? "Reconectar" : "🔗 Conectar Google"}
-      </button>
+      {connected && calendars.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {calendars.map((c) => (
+            <span
+              key={c.id}
+              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/70 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+            >
+              <span className="w-2 h-2 rounded-full" style={{ background: c.backgroundColor || "#9aa" }} />
+              {c.summary}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

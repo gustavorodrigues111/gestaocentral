@@ -473,26 +473,6 @@ service cloud.firestore {
       allow create, update, delete: if isMaster();
     }
 
-    // ── Planner (PESSOAL — single-user) ──────────────────────────────────
-    // Módulo privado do dono. Tokens Google e estado de OAuth NUNCA chegam ao
-    // cliente (só via Admin SDK nas Cloud Functions).
-    function isPlannerOwner() {
-      return authed() && request.auth.uid == 'Z7SQHCz4koNbLfiRCh7Hb7PpOau2';
-    }
-    // Status de conexão — só o dono lê; escrita só via Functions.
-    match /plannerStatus/{uid} {
-      allow read:  if isPlannerOwner() && uid == request.auth.uid;
-      allow write: if false;
-    }
-    // refresh_token — nunca pelo cliente.
-    match /plannerPrivate/{uid} {
-      allow read, write: if false;
-    }
-    // Nonce anti-CSRF do fluxo OAuth — só Functions.
-    match /plannerOAuthState/{id} {
-      allow read, write: if false;
-    }
-
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
