@@ -107,7 +107,7 @@ export function PlannerPage() {
 }
 
 // ─── Conexão Google (Google Identity Services, no browser) ──────────────────
-type GsiTokenResponse = { access_token?: string; error?: string };
+type GsiTokenResponse = { access_token?: string; expires_in?: number; error?: string };
 type GsiTokenClient = { requestAccessToken: (o?: { prompt?: string }) => void };
 type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: string };
 
@@ -137,6 +137,22 @@ function useGsiReady() {
   return ready;
 }
 
+const TOKEN_KEY = "plannerGoogleToken";
+
+function salvarToken(access: string, expiresInSec: number) {
+  // 60s de folga pra não usar token quase expirando.
+  const expiresAt = Date.now() + Math.max(0, expiresInSec - 60) * 1000;
+  localStorage.setItem(TOKEN_KEY, JSON.stringify({ access, expiresAt }));
+}
+function tokenValidoSalvo(): string | null {
+  try {
+    const raw = localStorage.getItem(TOKEN_KEY);
+    if (!raw) return null;
+    const { access, expiresAt } = JSON.parse(raw) as { access?: string; expiresAt?: number };
+    return access && expiresAt && expiresAt > Date.now() ? access : null;
+  } catch { return null; }
+}
+
 function GoogleConnectBar() {
   const gsiReady = useGsiReady();
   const tokenClientRef = useRef<GsiTokenClient | null>(null);
@@ -145,6 +161,12 @@ function GoogleConnectBar() {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
+  function limpar() {
+    localStorage.removeItem(TOKEN_KEY);
+    setToken(null);
+    setCalendars([]);
+  }
+
   async function carregarCalendarios(accessToken: string) {
     setCarregando(true);
     try {
@@ -152,6 +174,7 @@ function GoogleConnectBar() {
         "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader",
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
+      if (res.status === 401) { limpar(); return; } // token expirou/revogado
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { items?: Array<{ id: string; summary?: string; primary?: boolean; backgroundColor?: string }> };
       setCalendars((data.items || []).map((c) => ({
@@ -164,9 +187,9 @@ function GoogleConnectBar() {
     }
   }
 
-  function client(): GsiTokenClient | null {
+  function conectar() {
     const oauth2 = gsiOauth();
-    if (!oauth2) return null;
+    if (!oauth2) return;
     if (!tokenClientRef.current) {
       tokenClientRef.current = oauth2.initTokenClient({
         client_id: GOOGLE_CLIENT_ID,
@@ -175,27 +198,20 @@ function GoogleConnectBar() {
           if (resp.error || !resp.access_token) { setErro(resp.error || "Falha ao conectar."); return; }
           setErro(null);
           setToken(resp.access_token);
-          localStorage.setItem("plannerGoogleConnected", "1");
+          salvarToken(resp.access_token, resp.expires_in || 3600);
           void carregarCalendarios(resp.access_token);
         },
       });
     }
-    return tokenClientRef.current;
+    tokenClientRef.current.requestAccessToken({ prompt: "" });
   }
 
-  function conectar(silencioso: boolean) {
-    const tc = client();
-    if (!tc) return;
-    tc.requestAccessToken({ prompt: silencioso ? "" : "consent" });
-  }
-
-  // Reconecta silencioso se já tinha conectado antes (sessão Google ativa).
+  // Restaura do localStorage no mount — sobrevive a navegar e voltar (sem popup).
   useEffect(() => {
-    if (gsiReady && !token && localStorage.getItem("plannerGoogleConnected") === "1") {
-      conectar(true);
-    }
+    const t = tokenValidoSalvo();
+    if (t) { setToken(t); void carregarCalendarios(t); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gsiReady]);
+  }, []);
 
   const connected = !!token;
   return (
@@ -219,7 +235,7 @@ function GoogleConnectBar() {
         </div>
         <button
           type="button"
-          onClick={() => conectar(false)}
+          onClick={conectar}
           disabled={!gsiReady || carregando}
           className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
         >
