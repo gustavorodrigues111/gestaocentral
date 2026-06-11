@@ -473,6 +473,12 @@ service cloud.firestore {
       allow create, update, delete: if isMaster();
     }
 
+    // ── Planner (pessoal) — preferências de agenda (cor + visibilidade) ──
+    // Dado NÃO sensível; só o próprio dono lê/escreve o seu doc.
+    match /plannerSettings/{uid} {
+      allow read, write: if authed() && request.auth.uid == uid;
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
