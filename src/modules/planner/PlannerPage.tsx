@@ -12,7 +12,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useRef, useState } from "react";
+import { doc, onSnapshot } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+
+// URL da Cloud Function de OAuth (1ª gen → URL previsível).
+const PLANNER_AUTH_URL =
+  "https://southamerica-east1-gestaocentral-85b13.cloudfunctions.net/plannerGoogleAuth";
 
 // ─── Domínio (mock — vai virar espelho do Firestore na fase backend) ────────
 type Perfil = "projeto" | "rotina" | "pessoal" | "viagem";
@@ -66,6 +72,9 @@ export function PlannerPage() {
         </div>
       </div>
 
+      {/* Conexão Google */}
+      <GoogleConnectBar />
+
       {/* Faixa "Para revisar" (recolhível) */}
       <ReviewBand open={reviewOpen} onToggle={() => setReviewOpen((v) => !v)} />
 
@@ -93,6 +102,56 @@ export function PlannerPage() {
       {alvo === "ano"    && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
       {alvo === "crono"  && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
+    </div>
+  );
+}
+
+// ─── Barra de conexão Google ────────────────────────────────────────────────
+function GoogleConnectBar() {
+  const { fbUser } = useAuth();
+  const [status, setStatus] = useState<{ connected?: boolean; email?: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!fbUser) return;
+    const unsub = onSnapshot(
+      doc(db, "plannerStatus", fbUser.uid),
+      (snap) => setStatus(snap.exists() ? (snap.data() as { connected?: boolean; email?: string | null }) : { connected: false }),
+      () => setStatus({ connected: false }),
+    );
+    return () => unsub();
+  }, [fbUser]);
+
+  async function conectar() {
+    if (!fbUser) return;
+    const token = await fbUser.getIdToken();
+    window.location.href = `${PLANNER_AUTH_URL}?idToken=${encodeURIComponent(token)}`;
+  }
+
+  const connected = !!status?.connected;
+  return (
+    <div className={`mb-4 rounded-xl border p-3 flex items-center justify-between gap-3 flex-wrap ${
+      connected
+        ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15"
+        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+    }`}>
+      <div className="text-sm">
+        {connected ? (
+          <span className="text-emerald-700 dark:text-emerald-400 font-medium">
+            ✓ Google conectado{status?.email ? ` · ${status.email}` : ""}
+          </span>
+        ) : (
+          <span className="text-gray-600 dark:text-gray-300">
+            Conecte sua conta Google pra sincronizar a agenda de verdade.
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        onClick={conectar}
+        className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white"
+      >
+        {connected ? "Reconectar" : "🔗 Conectar Google"}
+      </button>
     </div>
   );
 }

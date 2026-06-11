@@ -1,0 +1,19 @@
+{
+  "name": "gestaocentral-functions",
+  "description": "Cloud Functions — Planner (Google Calendar) e afins",
+  "engines": { "node": "20" },
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "tsc",
+    "deploy": "firebase deploy --only functions"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^5.1.1",
+    "googleapis": "^144.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4"
+  },
+  "private": true
+}
