@@ -17,16 +17,6 @@
 export function ChatPage() {
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="text-4xl">💬</div>
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Chat</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Comunicação unificada — interno + WhatsApp externo
-          </p>
-        </div>
-      </div>
-
       <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-4 mb-6">
         <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
           🚧 Em desenvolvimento (Fase C1 de 5)

@@ -311,13 +311,6 @@ export function VRPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🍱 Vale Refeição</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
-        </div>
-      </div>
-
       {/* Navegação de mês */}
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div className="flex items-center gap-2">

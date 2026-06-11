@@ -77,12 +77,7 @@ export function PerfisAcessoPage() {
   return (
     <div className="max-w-4xl mx-auto space-y-4">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold">🛡️ Perfis de Acesso</h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
-            Defina o que cada perfil pode fazer. Atribua perfis às pessoas em Pessoas.
-          </p>
-        </div>
+        <div />
         <Button onClick={() => setEditing("new")}>+ Novo perfil</Button>
       </div>
 

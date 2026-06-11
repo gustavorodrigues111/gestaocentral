@@ -240,7 +240,6 @@ export function GorjetasPage() {
     <div className="max-w-6xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">💸 Gorjetas</h1>
           {/* Filtro de unidades. Multi-unidades → pills (Todas + cada uma).
               Single-unidade → 1 pill com o nome do restaurante (sempre ativa). */}
           <div className="flex items-center gap-1.5 flex-wrap">

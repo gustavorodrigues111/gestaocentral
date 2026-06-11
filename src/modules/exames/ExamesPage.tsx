@@ -116,12 +116,6 @@ export function ExamesPage() {
   return (
     <div className="max-w-7xl mx-auto p-4">
       <header className="flex items-center justify-between mb-4 gap-2">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">🩺 Exames Médicos</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Gestão de exames periódicos dos empregados — {atrasados.length > 0 && <span className="text-red-600 font-medium">{atrasados.length} atrasado(s) · </span>}{contagens["30"]} próximos 30 dias
-          </p>
-        </div>
         <div className="flex gap-2">
           {pessoa?.isMaster && (
             <Button size="sm" variant="ghost" onClick={rodarGerador} disabled={gerando} title="Cria tarefas-pai pros exames cuja janela de antecedência chegou">

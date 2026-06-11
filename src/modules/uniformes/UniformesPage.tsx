@@ -106,15 +106,6 @@ export function UniformesPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-          🦺 Uniformes & EPIs
-        </h1>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {activeRestaurant.nome} · catálogo, estoque, entregas e termos
-        </p>
-      </div>
-
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {TABS_DEF.map((t) => {
           const active = tab === t.id;

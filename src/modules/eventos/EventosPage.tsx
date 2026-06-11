@@ -60,20 +60,6 @@ export function EventosPage() {
 
   return (
     <div className="max-w-6xl mx-auto py-4 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            🎉 Eventos
-            <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
-              em desenvolvimento
-            </span>
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Captação, propostas e BEO de eventos privados.
-          </p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800">
         <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban<TabBadge count={novosLeads} /></TabButton>

@@ -46,10 +46,7 @@ export function PessoasPage() {
   return (
     <div className="max-w-5xl">
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">👤 Pessoas</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{activeRestaurant.nome}</p>
-        </div>
+        <div />
         {/* PROVISÓRIO — botão master pra importar horários em lote (migração
             do AppTip pro Planejamento). Remover quando não precisar mais. */}
         {isMaster && (

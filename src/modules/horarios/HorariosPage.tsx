@@ -55,13 +55,6 @@ export function HorariosPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🕒 Horários</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {restaurant.nome} · horário semanal, datas especiais e janelas de reserva no mesmo lugar.
-        </p>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([

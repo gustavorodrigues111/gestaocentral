@@ -62,20 +62,6 @@ export function SitesPage() {
 
   return (
     <div className="max-w-6xl mx-auto py-4 space-y-4">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            🌐 Sites
-            <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-              beta
-            </span>
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Site público de {activeRestaurant.nome}: história, horário, cardápio, formulários.
-          </p>
-        </div>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>

@@ -138,17 +138,6 @@ export function PortalPage() {
 
   return (
     <div className="max-w-5xl">
-      {/* Cabeçalho personalizado */}
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-          👤 {empregado.nome.split(" ")[0]}
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {restaurant.nome}
-          {cargo && <> · {cargo.nome} ({cargo.area})</>}
-        </p>
-      </div>
-
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 overflow-x-auto">
         {tabsDisponiveis.map(t => (

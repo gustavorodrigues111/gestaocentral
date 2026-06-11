@@ -128,14 +128,6 @@ export function FerramentasCredenciaisPage() {
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-            🔑 Ferramentas e Credenciais
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-            Catálogo de acessos a sistemas externos. Senhas ficam no Bitwarden.
-          </p>
-        </div>
         {podeGerenciar && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden text-xs">

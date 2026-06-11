@@ -18,6 +18,8 @@ function moduloDoPath(pathname: string): { icon: string; label: string; desc?: s
   if (m) {
     const mod = MODULES.find((x) => x.id === m[1]);
     if (mod) return { icon: mod.icon, label: mod.label, desc: mod.desc };
+    // módulos fora do catálogo MODULES (rotas especiais):
+    if (m[1] === "configuracoes") return { icon: "⚙️", label: "Configurações", desc: "Configurações do restaurante" };
   }
   return null;
 }

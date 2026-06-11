@@ -116,11 +116,6 @@ export function FreelasPage() {
   return (
     <div className="max-w-6xl">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🎒 Freelas</h1>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Cadastro, agendamento, lançamento e pagamento de freelas.
-        </p>
-
         {podeOperar && tab === "lancamentos" && (
           <div className="mt-3 space-y-2 max-w-md">
             {/* Ações principais: Planejar + Abrir lado a lado */}

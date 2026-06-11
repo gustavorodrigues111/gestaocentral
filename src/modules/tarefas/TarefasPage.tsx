@@ -226,13 +226,7 @@ export function TarefasPage() {
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">
       <header className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <h1 className="text-lg sm:text-2xl font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap leading-tight">
-          🗂️ <span className="hidden sm:inline">Gestor de </span>Tarefas
-        </h1>
-        <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 flex-1 hidden md:block">
-          Caixa por usuário · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} pendentes
-        </p>
-        <div className="flex-1 md:hidden" />
+        <div className="flex-1" />
         <Button
           onClick={() => setNovaAberta({})}
           className="whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"

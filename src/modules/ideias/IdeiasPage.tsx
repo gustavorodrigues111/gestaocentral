@@ -123,10 +123,7 @@ export function IdeiasPage() {
   return (
     <div className="max-w-4xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">💡 Banco de Ideias</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{restaurant.nome}</p>
-        </div>
+        <div />
         {podeSubmeter && (
           <Button onClick={() => setEditing("new")}>+ Nova ideia</Button>
         )}
