@@ -11,7 +11,7 @@
 //  Padrão de abertura: Calendário → Semana.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 
 // ─── Domínio (mock — vai virar espelho do Firestore na fase backend) ────────
@@ -77,7 +77,7 @@ export function PlannerPage() {
           <NavBtn ativo={vista === "crono"}      onClick={() => setVista("crono")}>📈 Cronograma</NavBtn>
         </div>
         {vista === "calendario" && (
-          <div className="inline-flex gap-0.5 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-0.5 rounded-lg">
+          <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 rounded-xl">
             <PerBtn ativo={periodo === "semana"} onClick={() => setPeriodo("semana")}>📆 Semana</PerBtn>
             <PerBtn ativo={periodo === "mes"}    onClick={() => setPeriodo("mes")}>🗓 Mês</PerBtn>
             <PerBtn ativo={periodo === "tri"}    onClick={() => setPeriodo("tri")}>📊 Trimestre</PerBtn>
@@ -118,7 +118,7 @@ function PerBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11.5px] font-semibold whitespace-nowrap transition-colors ${
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
         ativo
           ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
           : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -198,7 +198,7 @@ function EmBreve({ titulo, desc }: { titulo: string; desc: string }) {
 type EvSemana = { ini: number; fim: number; titulo: string; agenda: string };
 const DIAS_SEMANA: [string, number][] = [["Seg", 8], ["Ter", 9], ["Qua", 10], ["Qui", 11], ["Sex", 12], ["Sáb", 13], ["Dom", 14]];
 const HOJE_IDX = 3;
-const H0 = 7, H1 = 23, PX = 44;
+const H0 = 0, H1 = 23, PX = 44; // dia inteiro — voos/compromissos em qualquer hora
 const EVENTOS_SEMANA: Record<number, EvSemana[]> = {
   0: [{ ini: 9, fim: 10, titulo: "Alinhamento operação", agenda: "rotina" }, { ini: 15, fim: 16.5, titulo: "Visita obra Puba SP", agenda: "puba" }],
   1: [{ ini: 11, fim: 12, titulo: "Reunião SCI · folha", agenda: "rotina" }],
@@ -217,75 +217,95 @@ function fmtHora(h: number): string {
 }
 
 function SemanaView() {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Abre mostrando ~7h (mas dá pra rolar pra cima até 0h — voo de madrugada etc).
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 7 * PX;
+  }, []);
+
   const totH = (H1 - H0 + 1) * PX;
   const horas: number[] = [];
   for (let h = H0; h <= H1; h++) horas.push(h);
 
+  // Cada linha (header, dia-todo, horas) usa a MESMA estrutura
+  // [gutter 46px][grade de 7 colunas] e TODAS vivem no mesmo container de
+  // rolagem — assim a barra de scroll desloca as 3 igualmente e as colunas
+  // ficam alinhadas. Header + dia-todo ficam `sticky` no topo.
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Semana · 8–14 jun</h2>
-        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">grade de horas · linha vermelha = agora</span>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">grade de horas (0h–23h) · linha vermelha = agora</span>
       </div>
 
-      {/* Cabeçalho dos dias */}
-      <div className="grid border border-gray-200 dark:border-gray-800 rounded-t-xl overflow-hidden bg-white dark:bg-gray-900" style={{ gridTemplateColumns: "46px repeat(7,1fr)" }}>
-        <div className="py-2" />
-        {DIAS_SEMANA.map(([dn, dd], i) => (
-          <div key={i} className={`py-2 px-1.5 text-center border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
-            <div className="text-[9.5px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">{dn}</div>
-            <div className={`text-[15px] font-semibold ${i === HOJE_IDX ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>{dd}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Faixa dia-todo (locks/pins) */}
-      <div className="grid border-x border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" style={{ gridTemplateColumns: "46px repeat(7,1fr)" }}>
-        <div className="grid place-items-center text-[8px] uppercase tracking-wider text-gray-400 border-r border-gray-200 dark:border-gray-800">dia<br />todo</div>
-        {DIAS_SEMANA.map((_, i) => (
-          <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px]">
-            {(ALLDAY_SEMANA[i] || []).map((a, j) => (
-              <div key={j} className={`text-[9.5px] px-1.5 py-0.5 rounded truncate ${a.tipo === "lock" ? "bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800" : "text-indigo-600 border border-dashed border-indigo-400"}`}>
-                {a.txt}
+      <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
+        <div ref={scrollRef} className="max-h-[600px] overflow-y-auto">
+          {/* Cabeçalho + dia-todo: grudados no topo, dentro do mesmo scroll */}
+          <div className="sticky top-0 z-20 bg-white dark:bg-gray-900">
+            {/* Header dos dias */}
+            <div className="flex border-b border-gray-200 dark:border-gray-800">
+              <div className="w-[46px] flex-none" />
+              <div className="grid grid-cols-7 flex-1">
+                {DIAS_SEMANA.map(([dn, dd], i) => (
+                  <div key={i} className={`py-2 px-1.5 text-center border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
+                    <div className="text-[9.5px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">{dn}</div>
+                    <div className={`text-[15px] font-semibold ${i === HOJE_IDX ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>{dd}</div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
+            {/* Dia-todo (locks/pins) */}
+            <div className="flex border-b border-gray-200 dark:border-gray-800">
+              <div className="w-[46px] flex-none grid place-items-center text-[8px] uppercase tracking-wider text-gray-400 border-r border-gray-200 dark:border-gray-800">dia<br />todo</div>
+              <div className="grid grid-cols-7 flex-1">
+                {DIAS_SEMANA.map((_, i) => (
+                  <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px]">
+                    {(ALLDAY_SEMANA[i] || []).map((a, j) => (
+                      <div key={j} className={`text-[9.5px] px-1.5 py-0.5 rounded truncate ${a.tipo === "lock" ? "bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800" : "text-indigo-600 border border-dashed border-indigo-400"}`}>
+                        {a.txt}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        ))}
-      </div>
 
-      {/* Grade de horas */}
-      <div className="flex border border-gray-200 dark:border-gray-800 rounded-b-xl overflow-hidden bg-white dark:bg-gray-900 max-h-[560px] overflow-y-auto">
-        <div className="w-[46px] flex-none border-r border-gray-200 dark:border-gray-800">
-          {horas.map((h, idx) => (
-            <div key={h} className={`h-[44px] text-[9.5px] text-gray-400 text-right pr-1.5 pt-0.5 ${idx > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>{h}h</div>
-          ))}
-        </div>
-        <div className="grid flex-1" style={{ gridTemplateColumns: "repeat(7,1fr)" }}>
-          {DIAS_SEMANA.map((_, i) => (
-            <div
-              key={i}
-              className={`relative border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50/40 dark:bg-indigo-900/10" : ""}`}
-              style={{
-                height: totH,
-                backgroundImage: "repeating-linear-gradient(to bottom,transparent,transparent 43px,rgba(0,0,0,.06) 43px,rgba(0,0,0,.06) 44px)",
-              }}
-            >
-              {(EVENTOS_SEMANA[i] || []).map((e, j) => (
+          {/* Grade de horas */}
+          <div className="flex">
+            <div className="w-[46px] flex-none border-r border-gray-200 dark:border-gray-800">
+              {horas.map((h, idx) => (
+                <div key={h} className={`h-[44px] text-[9.5px] text-gray-400 text-right pr-1.5 pt-0.5 ${idx > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>{h}h</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 flex-1">
+              {DIAS_SEMANA.map((_, i) => (
                 <div
-                  key={j}
-                  className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
-                  style={{ background: corAgenda(e.agenda), top: (e.ini - H0) * PX, height: (e.fim - e.ini) * PX - 3 }}
+                  key={i}
+                  className={`relative border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50/40 dark:bg-indigo-900/10" : ""}`}
+                  style={{
+                    height: totH,
+                    backgroundImage: "repeating-linear-gradient(to bottom,transparent,transparent 43px,rgba(0,0,0,.06) 43px,rgba(0,0,0,.06) 44px)",
+                  }}
                 >
-                  <span className="font-bold text-[9px] opacity-90">{fmtHora(e.ini)}</span> {e.titulo}
+                  {(EVENTOS_SEMANA[i] || []).map((e, j) => (
+                    <div
+                      key={j}
+                      className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
+                      style={{ background: corAgenda(e.agenda), top: (e.ini - H0) * PX, height: (e.fim - e.ini) * PX - 3 }}
+                    >
+                      <span className="font-bold text-[9px] opacity-90">{fmtHora(e.ini)}</span> {e.titulo}
+                    </div>
+                  ))}
+                  {i === HOJE_IDX && (
+                    <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (15 - H0) * PX }}>
+                      <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-rose-500" />
+                    </div>
+                  )}
                 </div>
               ))}
-              {i === HOJE_IDX && (
-                <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (15 - H0) * PX }}>
-                  <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-rose-500" />
-                </div>
-              )}
             </div>
-          ))}
+          </div>
         </div>
       </div>
     </section>
