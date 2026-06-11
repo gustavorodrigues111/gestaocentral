@@ -13,6 +13,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Modal } from "../../core/ui/Modal";
+import { Button } from "../../core/ui/Button";
+import { Input } from "../../core/ui/Input";
+import { TimeInput } from "../../core/ui/TimeInput";
 
 const GOOGLE_CLIENT_ID = "777358299957-ojakrj15eaefgr8s6vmsrnj9p5nm8aca.apps.googleusercontent.com";
 const CAL_SCOPE = "https://www.googleapis.com/auth/calendar";
@@ -25,10 +29,10 @@ type Periodo = "semana" | "mes" | "tri" | "ano";
 // ─── Google Identity Services (token no browser) ────────────────────────────
 type GsiTokenResponse = { access_token?: string; expires_in?: number; error?: string };
 type GsiTokenClient = { requestAccessToken: (o?: { prompt?: string }) => void };
-type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: string };
+type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: string; accessRole?: string };
 
 // Agenda "efetiva" = agenda do Google + preferências do usuário aplicadas.
-type Agenda = { id: string; summary: string; cor: string; oculta: boolean };
+type Agenda = { id: string; summary: string; cor: string; oculta: boolean; gravavel: boolean };
 
 function gsiOauth() {
   return (window as unknown as {
@@ -98,9 +102,9 @@ function useGoogleConn(): Conn {
       );
       if (res.status === 401) { invalidar(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { items?: Array<{ id: string; summary?: string; primary?: boolean; backgroundColor?: string }> };
+      const data = await res.json() as { items?: Array<{ id: string; summary?: string; primary?: boolean; backgroundColor?: string; accessRole?: string }> };
       setCalendars((data.items || []).map((c) => ({
-        id: c.id, summary: c.summary || c.id, primary: c.primary, backgroundColor: c.backgroundColor,
+        id: c.id, summary: c.summary || c.id, primary: c.primary, backgroundColor: c.backgroundColor, accessRole: c.accessRole,
       })));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro lendo agendas.");
@@ -195,7 +199,7 @@ async function listEvents(
   }));
   return out;
 }
-function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date) {
+function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date, refresh: number) {
   const [eventos, setEventos] = useState<PEvent[]>([]);
   const [carregando, setCarregando] = useState(false);
   const minISO = timeMin.toISOString();
@@ -211,9 +215,33 @@ function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date)
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn.token, chave, minISO, maxISO]);
+  }, [conn.token, chave, minISO, maxISO, refresh]);
 
   return { eventos, carregando };
+}
+
+// Cria um evento (ou pin) via events.insert.
+async function criarEvento(token: string, calId: string, ev: {
+  titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean;
+}): Promise<void> {
+  const body: Record<string, unknown> = { summary: ev.titulo };
+  if (ev.allDay) {
+    body.start = { date: ymd(ev.inicio) };
+    body.end = { date: ymd(addDays(ev.inicio, 1)) };
+  } else {
+    body.start = { dateTime: ev.inicio.toISOString() };
+    body.end = { dateTime: ev.fim.toISOString() };
+  }
+  if (ev.pin) {
+    body.transparency = "transparent"; // pin não bloqueia tempo
+    body.extendedProperties = { private: { kind: "pin" } };
+  }
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Falha ao criar (HTTP ${res.status})`);
 }
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
@@ -235,6 +263,8 @@ export function PlannerPage() {
   const [vista, setVista] = useState<TipoVista>("calendario");
   const [periodo, setPeriodo] = useState<Periodo>("semana");
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const [criar, setCriar] = useState<null | "evento" | "pin">(null);
 
   if (!pessoa?.isMaster) {
     return (
@@ -252,8 +282,10 @@ export function PlannerPage() {
     summary: c.summary,
     cor: prefs[c.id]?.cor || c.backgroundColor || "#6a5ae0",
     oculta: prefs[c.id]?.oculta ?? false,
+    gravavel: c.accessRole === "owner" || c.accessRole === "writer",
   }));
   const visiveis = agendas.filter((a) => !a.oculta);
+  const gravaveis = agendas.filter((a) => a.gravavel);
   const alvo: TipoVista | Periodo = vista === "calendario" ? periodo : vista;
 
   return (
@@ -281,14 +313,32 @@ export function PlannerPage() {
             <PerBtn ativo={periodo === "ano"} onClick={() => setPeriodo("ano")}>📅 Ano</PerBtn>
           </div>
         )}
+        {conn.token && (
+          <div className="flex items-center gap-2 ml-auto">
+            <button type="button" onClick={() => setCriar("evento")} disabled={gravaveis.length === 0}
+              className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">+ Evento</button>
+            <button type="button" onClick={() => setCriar("pin")} disabled={gravaveis.length === 0}
+              className="text-xs font-semibold px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-100">📌 Pin</button>
+          </div>
+        )}
       </div>
 
-      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} />}
-      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} />}
+      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} />}
+      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} />}
       {alvo === "tri" && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres." />}
       {alvo === "ano" && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
       {alvo === "crono" && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
+
+      {criar && conn.token && (
+        <CriarEventoModal
+          modo={criar}
+          token={conn.token}
+          agendas={gravaveis}
+          onClose={() => setCriar(null)}
+          onCreated={() => { setCriar(null); setRefresh((r) => r + 1); }}
+        />
+      )}
     </div>
   );
 }
@@ -397,25 +447,17 @@ function PrecisaConectar() {
 }
 
 // ─── Visão SEMANA ───────────────────────────────────────────────────────────
-const H0 = 0, H1 = 23, PX = 44;
-function SemanaView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+const PX = 44;
+function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; refresh: number }) {
   const weekStart = startOfWeek(new Date());
   const weekEnd = addDays(weekStart, 7);
-  const { eventos, carregando } = useEventos(conn, agendas, weekStart, weekEnd);
+  const { eventos, carregando } = useEventos(conn, agendas, weekStart, weekEnd, refresh);
   const hoje = new Date();
   const hojeIdx = (hoje.getDay() + 6) % 7;
-
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, hoje.getHours() - 1) * PX;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   if (!conn.token) return <PrecisaConectar />;
 
   const dias = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
-  const totH = (H1 - H0 + 1) * PX;
-  const horas = Array.from({ length: H1 - H0 + 1 }, (_, i) => H0 + i);
   const timadosPorDia: PEvent[][] = dias.map(() => []);
   const alldayPorDia: PEvent[][] = dias.map(() => []);
   for (const ev of eventos) {
@@ -427,6 +469,22 @@ function SemanaView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
     }
   }
 
+  // Faixa de horário DINÂMICA: só o intervalo com evento (+ "agora").
+  const timados = timadosPorDia.flat();
+  let h0 = 7, h1 = 22; // default quando não há evento timado
+  if (timados.length) {
+    const minH = Math.min(...timados.map((e) => e.start.getHours() + e.start.getMinutes() / 60));
+    const maxH = Math.max(...timados.map((e) => e.end.getHours() + e.end.getMinutes() / 60));
+    h0 = Math.floor(minH);
+    h1 = Math.min(23, Math.ceil(maxH));
+  }
+  h0 = Math.max(0, Math.min(h0, hoje.getHours()));        // inclui a hora atual
+  h1 = Math.min(23, Math.max(h1, hoje.getHours() + 1));
+  if (h1 <= h0) h1 = Math.min(23, h0 + 1);
+
+  const totH = (h1 - h0 + 1) * PX;
+  const horas = Array.from({ length: h1 - h0 + 1 }, (_, i) => h0 + i);
+
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
@@ -436,7 +494,7 @@ function SemanaView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
         <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "linha vermelha = agora"}</span>
       </div>
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-        <div ref={scrollRef} className="max-h-[600px] overflow-y-auto">
+        <div className="max-h-[600px] overflow-y-auto">
           <div className="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <div className="flex border-b border-gray-200 dark:border-gray-800">
               <div className="w-[46px] flex-none" />
@@ -478,13 +536,13 @@ function SemanaView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
                     if (fim <= ini) fim = ini + 0.5;
                     return (
                       <div key={ev.id} className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
-                        style={{ background: ev.color, top: (ini - H0) * PX, height: Math.max(16, (fim - ini) * PX - 3) }} title={ev.title}>
+                        style={{ background: ev.color, top: (ini - h0) * PX, height: Math.max(16, (fim - ini) * PX - 3) }} title={ev.title}>
                         <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
                       </div>
                     );
                   })}
                   {i === hojeIdx && (
-                    <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (hoje.getHours() + hoje.getMinutes() / 60 - H0) * PX }}>
+                    <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (hoje.getHours() + hoje.getMinutes() / 60 - h0) * PX }}>
                       <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-rose-500" />
                     </div>
                   )}
@@ -499,12 +557,12 @@ function SemanaView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
 }
 
 // ─── Visão MÊS ──────────────────────────────────────────────────────────────
-function MesView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
+function MesView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; refresh: number }) {
   const hoje = new Date();
   const monthStart = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
   const gridStart = startOfWeek(monthStart);
   const gridEnd = addDays(gridStart, 42);
-  const { eventos, carregando } = useEventos(conn, agendas, gridStart, gridEnd);
+  const { eventos, carregando } = useEventos(conn, agendas, gridStart, gridEnd, refresh);
 
   if (!conn.token) return <PrecisaConectar />;
 
@@ -544,5 +602,82 @@ function MesView({ conn, agendas }: { conn: Conn; agendas: Agenda[] }) {
         })}
       </div>
     </section>
+  );
+}
+
+// ─── Modal: criar evento / pin ──────────────────────────────────────────────
+function CriarEventoModal({ modo, token, agendas, onClose, onCreated }: {
+  modo: "evento" | "pin";
+  token: string;
+  agendas: Agenda[];
+  onClose: () => void;
+  onCreated: () => void;
+}) {
+  const isPin = modo === "pin";
+  const [titulo, setTitulo] = useState("");
+  const [calId, setCalId] = useState(agendas[0]?.id || "");
+  const [data, setData] = useState(ymd(new Date()));
+  const [inicio, setInicio] = useState("09:00");
+  const [fim, setFim] = useState("10:00");
+  const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  async function salvar() {
+    setErro("");
+    if (!titulo.trim()) { setErro("Dê um título."); return; }
+    if (!calId) { setErro("Escolha uma agenda."); return; }
+    setSalvando(true);
+    try {
+      const [y, m, d] = data.split("-").map(Number);
+      if (isPin) {
+        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: true, inicio: new Date(y, m - 1, d), fim: new Date(y, m - 1, d), pin: true });
+      } else {
+        const [hi, mi] = inicio.split(":").map(Number);
+        const [hf, mf] = fim.split(":").map(Number);
+        const ini = new Date(y, m - 1, d, hi || 0, mi || 0);
+        let f = new Date(y, m - 1, d, hf || 0, mf || 0);
+        if (f <= ini) f = new Date(ini.getTime() + 30 * 60000);
+        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: false, inicio: ini, fim: f });
+      }
+      onCreated();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao criar.");
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal title={isPin ? "📌 Novo pin" : "Novo evento"} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
+          placeholder={isPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Agenda *</label>
+          <select value={calId} onChange={(e) => setCalId(e.target.value)}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            {agendas.map((a) => (<option key={a.id} value={a.id}>{a.summary}</option>))}
+          </select>
+        </div>
+        <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        {!isPin && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início *</label>
+              <TimeInput value={inicio} onChange={setInicio} placeholder="HH:MM" />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim *</label>
+              <TimeInput value={fim} onChange={setFim} placeholder="HH:MM" />
+            </div>
+          </div>
+        )}
+        {isPin && <p className="text-[11px] text-gray-500 dark:text-gray-400">📌 Pin é um marcador do dia — não bloqueia horário.</p>}
+        {erro && <div className="text-xs text-red-600 dark:text-red-400">{erro}</div>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
+          <Button onClick={salvar} disabled={salvando}>{salvando ? "Criando…" : isPin ? "Criar pin" : "Criar evento"}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
