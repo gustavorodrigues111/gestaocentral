@@ -188,7 +188,7 @@ function usePlannerSettings(uid: string | undefined) {
 }
 
 // ─── Eventos (events.list por agenda) ───────────────────────────────────────
-type PEvent = { id: string; color: string; title: string; start: Date; end: Date; allDay: boolean };
+type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean };
 async function listEvents(
   token: string,
   agendas: Agenda[],
@@ -215,7 +215,7 @@ async function listEvents(
       const allDay = !!ev.start.date;
       const start = allDay ? parseDateOnly(ev.start.date!) : new Date(ev.start.dateTime!);
       const end = allDay ? parseDateOnly(ev.end?.date || ev.start.date!) : new Date(ev.end?.dateTime || ev.start.dateTime!);
-      out.push({ id: ev.id, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay });
+      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay });
     }
   }));
   return out;
@@ -264,6 +264,31 @@ async function criarEvento(token: string, calId: string, ev: {
   });
   if (!res.ok) throw new Error(`Falha ao criar (HTTP ${res.status})`);
 }
+async function editarEvento(token: string, calId: string, eventId: string, ev: {
+  titulo: string; allDay: boolean; inicio: Date; fim: Date;
+}): Promise<void> {
+  const body: Record<string, unknown> = { summary: ev.titulo };
+  if (ev.allDay) {
+    body.start = { date: ymd(ev.inicio) };
+    body.end = { date: ymd(addDays(ev.inicio, 1)) };
+  } else {
+    body.start = { dateTime: ev.inicio.toISOString() };
+    body.end = { dateTime: ev.fim.toISOString() };
+  }
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Falha ao salvar (HTTP ${res.status})`);
+}
+async function excluirEvento(token: string, calId: string, eventId: string): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 410) throw new Error(`Falha ao excluir (HTTP ${res.status})`);
+}
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -273,6 +298,7 @@ function startOfDay(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 
 function startOfWeek(d: Date): Date { const x = startOfDay(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x; }
 function parseDateOnly(s: string): Date { const [y, m, dd] = s.split("-").map(Number); return new Date(y, m - 1, dd); }
 function fmtHora(d: Date): string { const h = d.getHours(), m = d.getMinutes(); return m ? `${h}h${pad2(m)}` : `${h}h`; }
+function hhmm(d: Date): string { return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
 const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -285,6 +311,8 @@ export function PlannerPage() {
   const [periodo, setPeriodo] = useState<Periodo>("semana");
   const [refresh, setRefresh] = useState(0);
   const [criar, setCriar] = useState<null | "evento" | "pin">(null);
+  const [editando, setEditando] = useState<PEvent | null>(null);
+  const [refDate, setRefDate] = useState(() => new Date());
 
   if (!pessoa?.isMaster) {
     return (
@@ -339,8 +367,8 @@ export function PlannerPage() {
         )}
       </div>
 
-      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} />}
-      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} />}
+      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
+      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
       {alvo === "tri" && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres." />}
       {alvo === "ano" && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
@@ -349,14 +377,38 @@ export function PlannerPage() {
       {conn.token && agendas.length > 0 && <AgendasManager agendas={agendas} setPref={setPref} />}
 
       {criar && conn.token && (
-        <CriarEventoModal
+        <EventoModal
           modo={criar}
           token={conn.token}
           agendas={gravaveis}
           onClose={() => setCriar(null)}
-          onCreated={() => { setCriar(null); setRefresh((r) => r + 1); }}
+          onDone={() => { setCriar(null); setRefresh((r) => r + 1); }}
         />
       )}
+      {editando && conn.token && (
+        <EventoModal
+          modo="editar"
+          token={conn.token}
+          agendas={gravaveis}
+          evento={editando}
+          onClose={() => setEditando(null)}
+          onDone={() => { setEditando(null); setRefresh((r) => r + 1); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Navegação ◀ Hoje ▶ ─────────────────────────────────────────────────────
+function NavBtns({ onPrev, onHoje, onNext }: { onPrev: () => void; onHoje: () => void; onNext: () => void }) {
+  return (
+    <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <button type="button" onClick={onPrev} title="Anterior"
+        className="px-2.5 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300">◀</button>
+      <button type="button" onClick={onHoje}
+        className="px-2.5 py-1.5 text-xs font-semibold border-x border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">Hoje</button>
+      <button type="button" onClick={onNext} title="Próximo"
+        className="px-2.5 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300">▶</button>
     </div>
   );
 }
@@ -490,12 +542,16 @@ function PrecisaConectar() {
 
 // ─── Visão SEMANA ───────────────────────────────────────────────────────────
 const PX = 44;
-function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; refresh: number }) {
-  const weekStart = startOfWeek(new Date());
+function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+}) {
+  const weekStart = startOfWeek(refDate);
   const weekEnd = addDays(weekStart, 7);
   const { eventos, carregando } = useEventos(conn, agendas, weekStart, weekEnd, refresh);
   const hoje = new Date();
-  const hojeIdx = (hoje.getDay() + 6) % 7;
+  const mostraHoje = hoje >= weekStart && hoje < weekEnd;
+  const hojeIdx = mostraHoje ? (hoje.getDay() + 6) % 7 : -1;
 
   if (!conn.token) return <PrecisaConectar />;
 
@@ -520,8 +576,10 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
     h0 = Math.floor(minH);
     h1 = Math.min(23, Math.ceil(maxH));
   }
-  h0 = Math.max(0, Math.min(h0, hoje.getHours()));        // inclui a hora atual
-  h1 = Math.min(23, Math.max(h1, hoje.getHours() + 1));
+  if (mostraHoje) {                                       // inclui a hora atual só na semana de hoje
+    h0 = Math.max(0, Math.min(h0, hoje.getHours()));
+    h1 = Math.min(23, Math.max(h1, hoje.getHours() + 1));
+  }
   if (h1 <= h0) h1 = Math.min(23, h0 + 1);
 
   const totH = (h1 - h0 + 1) * PX;
@@ -529,10 +587,17 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
 
   return (
     <section>
-      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          Semana · {weekStart.getDate()}–{addDays(weekStart, 6).getDate()} {MESES[addDays(weekStart, 6).getMonth()].slice(0, 3)}
-        </h2>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns
+            onPrev={() => setRefDate(addDays(weekStart, -7))}
+            onHoje={() => setRefDate(new Date())}
+            onNext={() => setRefDate(addDays(weekStart, 7))}
+          />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Semana · {weekStart.getDate()}–{addDays(weekStart, 6).getDate()} {MESES[addDays(weekStart, 6).getMonth()].slice(0, 3)}
+          </h2>
+        </div>
         <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "linha vermelha = agora"}</span>
       </div>
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
@@ -555,7 +620,9 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
                 {dias.map((_, i) => (
                   <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px] space-y-0.5">
                     {alldayPorDia[i].map((ev) => (
-                      <div key={ev.id} className="text-[9.5px] px-1.5 py-0.5 rounded truncate text-white" style={{ background: ev.color }} title={ev.title}>{ev.title}</div>
+                      <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
+                        className="block w-full text-left text-[9.5px] px-1.5 py-0.5 rounded truncate text-white cursor-pointer hover:opacity-90"
+                        style={{ background: ev.color }} title={ev.title}>{ev.title}</button>
                     ))}
                   </div>
                 ))}
@@ -579,12 +646,13 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
                     const altura = Math.max(16, (fim - ini) * PX - 3);
                     const linhas = Math.max(1, Math.floor((altura - 6) / 11)); // qtd de linhas que cabe inteira
                     return (
-                      <div key={ev.id} className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
+                      <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
+                        className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left cursor-pointer hover:brightness-95"
                         style={{ background: ev.color, top: (ini - h0) * PX, height: altura }} title={ev.title}>
                         <div style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
                           <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
                         </div>
-                      </div>
+                      </button>
                     );
                   })}
                   {i === hojeIdx && (
@@ -603,12 +671,16 @@ function SemanaView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[];
 }
 
 // ─── Visão MÊS ──────────────────────────────────────────────────────────────
-function MesView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; refresh: number }) {
+function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+}) {
   const hoje = new Date();
-  const monthStart = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const monthStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
   const gridStart = startOfWeek(monthStart);
   const gridEnd = addDays(gridStart, 42);
   const { eventos, carregando } = useEventos(conn, agendas, gridStart, gridEnd, refresh);
+  const [diaAberto, setDiaAberto] = useState<Date | null>(null);
 
   if (!conn.token) return <PrecisaConectar />;
 
@@ -619,21 +691,30 @@ function MesView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; re
     if (ev.allDay) { for (let d = startOfDay(ev.start); d < startOfDay(ev.end); d = addDays(d, 1)) push(ymd(d), ev); }
     else push(ymd(ev.start), ev);
   }
+  const evsDoDia = (d: Date) => (porDia.get(ymd(d)) || []).sort((a, b) => Number(a.allDay) - Number(b.allDay) || a.start.getTime() - b.start.getTime());
 
   return (
     <section>
-      <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">{MESES[hoje.getMonth()]} {hoje.getFullYear()}</h2>
-        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "sua agenda do mês"}</span>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns
+            onPrev={() => setRefDate(new Date(refDate.getFullYear(), refDate.getMonth() - 1, 1))}
+            onHoje={() => setRefDate(new Date())}
+            onNext={() => setRefDate(new Date(refDate.getFullYear(), refDate.getMonth() + 1, 1))}
+          />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">{MESES[monthStart.getMonth()]} {monthStart.getFullYear()}</h2>
+        </div>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "clique num dia pra ver o detalhe"}</span>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
         {DOW.map((d) => (<div key={d} className="text-[9.5px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold px-1 pb-0.5">{d}</div>))}
         {celulas.map((d, i) => {
-          const noMes = d.getMonth() === hoje.getMonth();
+          const noMes = d.getMonth() === monthStart.getMonth();
           const isHoje = ymd(d) === ymd(hoje);
-          const evs = (porDia.get(ymd(d)) || []).sort((a, b) => Number(a.allDay) - Number(b.allDay) || a.start.getTime() - b.start.getTime());
+          const evs = evsDoDia(d);
           return (
-            <div key={i} className={`min-h-[92px] rounded-xl border p-1.5 relative ${
+            <button key={i} type="button" onClick={() => setDiaAberto(d)}
+              className={`min-h-[92px] rounded-xl border p-1.5 relative text-left cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${
               noMes ? "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800" : "bg-transparent border-dashed border-gray-200 dark:border-gray-800 opacity-50"
             } ${isHoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800 border-indigo-400" : ""}`}>
               <div className={`text-[12.5px] font-semibold ${isHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400"}`}>{d.getDate()}</div>
@@ -643,69 +724,151 @@ function MesView({ conn, agendas, refresh }: { conn: Conn; agendas: Agenda[]; re
                 </div>
               ))}
               {evs.length > 3 && <div className="mt-1 text-[10px] text-gray-400 px-1.5">+{evs.length - 3}</div>}
-            </div>
+            </button>
           );
         })}
       </div>
+      {diaAberto && (
+        <DiaPopup
+          dia={diaAberto}
+          eventos={evsDoDia(diaAberto)}
+          onClose={() => setDiaAberto(null)}
+          onEventClick={(ev) => { setDiaAberto(null); onEventClick(ev); }}
+        />
+      )}
     </section>
   );
 }
 
-// ─── Modal: criar evento / pin ──────────────────────────────────────────────
-function CriarEventoModal({ modo, token, agendas, onClose, onCreated }: {
-  modo: "evento" | "pin";
+// ─── Popup do dia (mês → clique no dia) ─────────────────────────────────────
+function DiaPopup({ dia, eventos, onClose, onEventClick }: {
+  dia: Date; eventos: PEvent[]; onClose: () => void; onEventClick: (ev: PEvent) => void;
+}) {
+  return (
+    <Modal title={`${DOW[(dia.getDay() + 6) % 7]} · ${dia.getDate()} de ${MESES[dia.getMonth()]}`} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-2">
+        {eventos.length === 0 && <p className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">Nenhum evento nesse dia.</p>}
+        {eventos.map((ev) => (
+          <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
+            className="w-full flex items-start gap-2 text-left p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+            <span className="w-2.5 h-2.5 rounded-full mt-1 flex-none" style={{ background: ev.color }} />
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{ev.title}</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}{ev.gravavel ? "" : " · só leitura"}
+              </div>
+            </div>
+            <span className="text-[11px] text-indigo-500 dark:text-indigo-400 flex-none">✏️</span>
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Modal: criar / editar / excluir evento ou pin ──────────────────────────
+function EventoModal({ modo, token, agendas, evento, onClose, onDone }: {
+  modo: "evento" | "pin" | "editar";
   token: string;
   agendas: Agenda[];
+  evento?: PEvent;
   onClose: () => void;
-  onCreated: () => void;
+  onDone: () => void;
 }) {
+  const isEdit = modo === "editar";
   const isPin = modo === "pin";
-  const [titulo, setTitulo] = useState("");
-  const [calId, setCalId] = useState(agendas[0]?.id || "");
-  const [data, setData] = useState(ymd(new Date()));
-  const [inicio, setInicio] = useState("09:00");
-  const [fim, setFim] = useState("10:00");
+  // No modo edição, o horário vem do evento; senão começa em branco/agora.
+  const [titulo, setTitulo] = useState(evento?.title || "");
+  const [calId, setCalId] = useState(evento?.calendarId || agendas[0]?.id || "");
+  const [data, setData] = useState(ymd(evento?.start || new Date()));
+  const [semHora] = useState(isPin || (isEdit && !!evento?.allDay));
+  const [inicio, setInicio] = useState(evento && !evento.allDay ? hhmm(evento.start) : "09:00");
+  const [fim, setFim] = useState(evento && !evento.allDay ? hhmm(evento.end) : "10:00");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+
+  // Evento de agenda só-leitura: não dá pra editar por aqui.
+  if (isEdit && evento && !evento.gravavel) {
+    return (
+      <Modal title={evento.title} onClose={onClose} maxWidth="max-w-md">
+        <div className="space-y-3 text-sm">
+          <p className="text-gray-700 dark:text-gray-200">
+            {evento.allDay ? "Dia todo" : `${fmtHora(evento.start)}–${fmtHora(evento.end)}`}
+          </p>
+          <p className="text-[12px] text-gray-500 dark:text-gray-400">Esta agenda é só leitura — não dá pra editar ou excluir o evento por aqui.</p>
+          <div className="flex justify-end pt-1"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+        </div>
+      </Modal>
+    );
+  }
 
   async function salvar() {
     setErro("");
     if (!titulo.trim()) { setErro("Dê um título."); return; }
-    if (!calId) { setErro("Escolha uma agenda."); return; }
+    if (!isEdit && !calId) { setErro("Escolha uma agenda."); return; }
     setSalvando(true);
     try {
       const [y, m, d] = data.split("-").map(Number);
-      if (isPin) {
-        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: true, inicio: new Date(y, m - 1, d), fim: new Date(y, m - 1, d), pin: true });
+      let ini: Date, f: Date;
+      if (semHora) {
+        ini = new Date(y, m - 1, d);
+        f = new Date(y, m - 1, d);
       } else {
         const [hi, mi] = inicio.split(":").map(Number);
         const [hf, mf] = fim.split(":").map(Number);
-        const ini = new Date(y, m - 1, d, hi || 0, mi || 0);
-        let f = new Date(y, m - 1, d, hf || 0, mf || 0);
+        ini = new Date(y, m - 1, d, hi || 0, mi || 0);
+        f = new Date(y, m - 1, d, hf || 0, mf || 0);
         if (f <= ini) f = new Date(ini.getTime() + 30 * 60000);
-        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: false, inicio: ini, fim: f });
       }
-      onCreated();
+      if (isEdit && evento) {
+        await editarEvento(token, evento.calendarId, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f });
+      } else {
+        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, pin: isPin });
+      }
+      onDone();
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao criar.");
+      setErro(e instanceof Error ? e.message : "Erro ao salvar.");
       setSalvando(false);
     }
   }
 
+  async function excluir() {
+    if (!evento) return;
+    if (!window.confirm("Excluir este evento? Ele será removido do Google Calendar.")) return;
+    setErro("");
+    setSalvando(true);
+    try {
+      await excluirEvento(token, evento.calendarId, evento.id);
+      onDone();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao excluir.");
+      setSalvando(false);
+    }
+  }
+
+  const tituloModal = isEdit ? "Editar evento" : isPin ? "📌 Novo pin" : "Novo evento";
+  // No modo edição, o nome da agenda pode não estar em `agendas` (gravaveis) —
+  // mostra um fallback legível.
+  const agendaNome = agendas.find((a) => a.id === calId)?.summary || evento?.calendarId || "";
+
   return (
-    <Modal title={isPin ? "📌 Novo pin" : "Novo evento"} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={tituloModal} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
           placeholder={isPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Agenda *</label>
-          <select value={calId} onChange={(e) => setCalId(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-            {agendas.map((a) => (<option key={a.id} value={a.id}>{a.summary}</option>))}
-          </select>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Agenda{isEdit ? "" : " *"}</label>
+          {isEdit ? (
+            <div className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 truncate">{agendaNome}</div>
+          ) : (
+            <select value={calId} onChange={(e) => setCalId(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+              {agendas.map((a) => (<option key={a.id} value={a.id}>{a.summary}</option>))}
+            </select>
+          )}
         </div>
         <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} />
-        {!isPin && (
+        {!semHora && (
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início *</label>
@@ -717,11 +880,16 @@ function CriarEventoModal({ modo, token, agendas, onClose, onCreated }: {
             </div>
           </div>
         )}
-        {isPin && <p className="text-[11px] text-gray-500 dark:text-gray-400">📌 Pin é um marcador do dia — não bloqueia horário.</p>}
+        {semHora && !isEdit && <p className="text-[11px] text-gray-500 dark:text-gray-400">📌 Pin é um marcador do dia — não bloqueia horário.</p>}
         {erro && <div className="text-xs text-red-600 dark:text-red-400">{erro}</div>}
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando}>{salvando ? "Criando…" : isPin ? "Criar pin" : "Criar evento"}</Button>
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {isEdit
+            ? <Button variant="danger" onClick={excluir} disabled={salvando}>Excluir</Button>
+            : <span />}
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
+            <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : isEdit ? "Salvar" : isPin ? "Criar pin" : "Criar evento"}</Button>
+          </div>
         </div>
       </div>
     </Modal>
