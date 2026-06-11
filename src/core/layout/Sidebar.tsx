@@ -133,6 +133,25 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </NavLink>
           )}
 
+          {/* Planner — pessoal do dono (master). Link de topo "Meu dia",
+              fora do escopo de restaurante. */}
+          {pessoa?.isMaster && (
+            <NavLink
+              to="/planner"
+              onClick={onClose}
+              className={({ isActive }) => `
+                flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
+                ${isActive
+                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
+              `}
+            >
+              <span>🗓</span>
+              <span className="flex-1">Planner</span>
+              <span className="text-[9px] text-gray-400">pessoal</span>
+            </NavLink>
+          )}
+
           {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
