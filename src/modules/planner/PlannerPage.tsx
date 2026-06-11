@@ -1,117 +1,34 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Planner — planejamento pessoal do Gustavo (single-user).
 //
-//  ⚠️ MÓDULO PESSOAL: só monta pro master (gate abaixo). Fora do escopo de
-//  restaurante (rota de topo /planner). Backend Google Calendar NÃO conectado
-//  ainda — esta é a casca front-end (F1, metade front) com DADOS MOCK.
+//  ⚠️ MÓDULO PESSOAL: só monta pro master (gate). Fora do escopo de restaurante
+//  (rota de topo /planner).
 //
-//  Navegação em 2 níveis (briefing §6):
-//    Nível 1 — tipo de visão: Calendário · Kanban · Cronograma
-//    Nível 2 — período (só em Calendário): Semana · Mês · Trimestre · Ano
-//  Padrão de abertura: Calendário → Semana.
+//  Conexão Google = direto do navegador (Google Identity Services). O browser
+//  pega um access token e fala com a Calendar API. As views Semana/Mês mostram
+//  os EVENTOS REAIS da sua agenda. (Org policies do Workspace bloqueiam o
+//  caminho server-side — ver memory/project_planner_backend.md.)
+//
+//  Navegação em 2 níveis: Calendário (Semana·Mês·Trimestre·Ano) / Kanban /
+//  Cronograma. Padrão: Calendário → Semana.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 
-// Conexão Google direto do navegador (Google Identity Services). Sem servidor,
-// sem service account — o browser pega o access token e fala com a Calendar API.
 const GOOGLE_CLIENT_ID = "777358299957-ojakrj15eaefgr8s6vmsrnj9p5nm8aca.apps.googleusercontent.com";
 const CAL_SCOPE = "https://www.googleapis.com/auth/calendar";
 const GSI_SRC = "https://accounts.google.com/gsi/client";
-
-// ─── Domínio (mock — vai virar espelho do Firestore na fase backend) ────────
-type Perfil = "projeto" | "rotina" | "pessoal" | "viagem";
-type Agenda = { id: string; nome: string; perfil: Perfil; cor: string };
-
-const AGENDAS: Agenda[] = [
-  { id: "puba",    nome: "Inauguração Puba SP",  perfil: "projeto", cor: "#ff8a4c" },
-  { id: "lobozo",  nome: "Seis Anos de Lobozó",  perfil: "projeto", cor: "#f5b73d" },
-  { id: "rotina",  nome: "Rotinas Escritório",   perfil: "rotina",  cor: "#4c7ef3" },
-  { id: "viagem",  nome: "Viagens",              perfil: "viagem",  cor: "#27ae8f" },
-  { id: "pessoal", nome: "Pessoal",              perfil: "pessoal", cor: "#6a5ae0" },
-];
-const corAgenda = (id: string): string => AGENDAS.find((a) => a.id === id)?.cor || "#9aa";
+const TOKEN_KEY = "plannerGoogleToken";
 
 type TipoVista = "calendario" | "kanban" | "crono";
 type Periodo = "semana" | "mes" | "tri" | "ano";
 
-// ─── Página ─────────────────────────────────────────────────────────────────
-export function PlannerPage() {
-  const { pessoa } = useAuth();
-
-  // Gate single-user. Por ora via isMaster; o gate estrito por uid + regras
-  // Firestore entra junto com o backend Google (fase F1-backend).
-  if (!pessoa?.isMaster) {
-    return (
-      <div className="max-w-md mx-auto py-16 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="font-medium text-gray-700 dark:text-gray-200">Planner é pessoal</p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Este módulo é privado do dono da conta.
-        </p>
-      </div>
-    );
-  }
-
-  const [vista, setVista] = useState<TipoVista>("calendario");
-  const [periodo, setPeriodo] = useState<Periodo>("semana");
-  const [reviewOpen, setReviewOpen] = useState(false);
-
-  const alvo: TipoVista | Periodo = vista === "calendario" ? periodo : vista;
-
-  return (
-    <div className="max-w-6xl">
-      {/* Cabeçalho */}
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🗓 Planner</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            Pessoal · espelhado no Google · <span className="italic">backend ainda não conectado (mock)</span>
-          </p>
-        </div>
-      </div>
-
-      {/* Conexão Google */}
-      <GoogleConnectBar />
-
-      {/* Faixa "Para revisar" (recolhível) */}
-      <ReviewBand open={reviewOpen} onToggle={() => setReviewOpen((v) => !v)} />
-
-      {/* Navegação: tipo de visão + período */}
-      <div className="flex items-center gap-3 flex-wrap mb-3">
-        <div className="inline-flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-1 rounded-xl">
-          <NavBtn ativo={vista === "calendario"} onClick={() => setVista("calendario")}>🗓 Calendário</NavBtn>
-          <NavBtn ativo={vista === "kanban"}     onClick={() => setVista("kanban")}>🗂 Kanban</NavBtn>
-          <NavBtn ativo={vista === "crono"}      onClick={() => setVista("crono")}>📈 Cronograma</NavBtn>
-        </div>
-        {vista === "calendario" && (
-          <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 rounded-xl">
-            <PerBtn ativo={periodo === "semana"} onClick={() => setPeriodo("semana")}>📆 Semana</PerBtn>
-            <PerBtn ativo={periodo === "mes"}    onClick={() => setPeriodo("mes")}>🗓 Mês</PerBtn>
-            <PerBtn ativo={periodo === "tri"}    onClick={() => setPeriodo("tri")}>📊 Trimestre</PerBtn>
-            <PerBtn ativo={periodo === "ano"}    onClick={() => setPeriodo("ano")}>📅 Ano</PerBtn>
-          </div>
-        )}
-      </div>
-
-      {/* Conteúdo */}
-      {alvo === "semana" && <SemanaView />}
-      {alvo === "mes"    && <MesView />}
-      {alvo === "tri"    && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres em verde." />}
-      {alvo === "ano"    && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
-      {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
-      {alvo === "crono"  && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
-    </div>
-  );
-}
-
-// ─── Conexão Google (Google Identity Services, no browser) ──────────────────
+// ─── Google Identity Services (token no browser) ────────────────────────────
 type GsiTokenResponse = { access_token?: string; expires_in?: number; error?: string };
 type GsiTokenClient = { requestAccessToken: (o?: { prompt?: string }) => void };
 type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: string };
 
-// Acessa o GIS sem poluir o tipo global Window.
 function gsiOauth() {
   return (window as unknown as {
     google?: { accounts?: { oauth2?: {
@@ -119,7 +36,6 @@ function gsiOauth() {
     } } };
   }).google?.accounts?.oauth2;
 }
-
 function useGsiReady() {
   const [ready, setReady] = useState(!!gsiOauth());
   useEffect(() => {
@@ -136,11 +52,7 @@ function useGsiReady() {
   }, []);
   return ready;
 }
-
-const TOKEN_KEY = "plannerGoogleToken";
-
 function salvarToken(access: string, expiresInSec: number) {
-  // 60s de folga pra não usar token quase expirando.
   const expiresAt = Date.now() + Math.max(0, expiresInSec - 60) * 1000;
   localStorage.setItem(TOKEN_KEY, JSON.stringify({ access, expiresAt }));
 }
@@ -153,7 +65,17 @@ function tokenValidoSalvo(): string | null {
   } catch { return null; }
 }
 
-function GoogleConnectBar() {
+// Hook de conexão — UMA instância no PlannerPage, compartilhada com as views.
+type Conn = {
+  gsiReady: boolean;
+  token: string | null;
+  calendars: GCal[];
+  carregando: boolean;
+  erro: string | null;
+  conectar: () => void;
+  invalidar: () => void; // chamado em 401
+};
+function useGoogleConn(): Conn {
   const gsiReady = useGsiReady();
   const tokenClientRef = useRef<GsiTokenClient | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -161,20 +83,20 @@ function GoogleConnectBar() {
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
-  function limpar() {
+  const invalidar = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY);
     setToken(null);
     setCalendars([]);
-  }
+  }, []);
 
-  async function carregarCalendarios(accessToken: string) {
+  const carregarCalendarios = useCallback(async (accessToken: string) => {
     setCarregando(true);
     try {
       const res = await fetch(
         "https://www.googleapis.com/calendar/v3/users/me/calendarList?minAccessRole=reader",
         { headers: { Authorization: `Bearer ${accessToken}` } },
       );
-      if (res.status === 401) { limpar(); return; } // token expirou/revogado
+      if (res.status === 401) { invalidar(); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { items?: Array<{ id: string; summary?: string; primary?: boolean; backgroundColor?: string }> };
       setCalendars((data.items || []).map((c) => ({
@@ -185,9 +107,9 @@ function GoogleConnectBar() {
     } finally {
       setCarregando(false);
     }
-  }
+  }, [invalidar]);
 
-  function conectar() {
+  const conectar = useCallback(() => {
     const oauth2 = gsiOauth();
     if (!oauth2) return;
     if (!tokenClientRef.current) {
@@ -204,16 +126,162 @@ function GoogleConnectBar() {
       });
     }
     tokenClientRef.current.requestAccessToken({ prompt: "" });
-  }
+  }, [carregarCalendarios]);
 
-  // Restaura do localStorage no mount — sobrevive a navegar e voltar (sem popup).
+  // Restaura do localStorage no mount (sobrevive a navegar e voltar).
   useEffect(() => {
     const t = tokenValidoSalvo();
     if (t) { setToken(t); void carregarCalendarios(t); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [carregarCalendarios]);
 
-  const connected = !!token;
+  return { gsiReady, token, calendars, carregando, erro, conectar, invalidar };
+}
+
+// ─── Eventos (events.list por agenda) ───────────────────────────────────────
+type PEvent = {
+  id: string;
+  color: string;
+  title: string;
+  start: Date;
+  end: Date;
+  allDay: boolean;
+};
+async function listEvents(
+  token: string,
+  calendars: GCal[],
+  timeMin: Date,
+  timeMax: Date,
+  onUnauthorized: () => void,
+): Promise<PEvent[]> {
+  const out: PEvent[] = [];
+  await Promise.all(calendars.map(async (cal) => {
+    const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(cal.id)}/events`);
+    url.searchParams.set("timeMin", timeMin.toISOString());
+    url.searchParams.set("timeMax", timeMax.toISOString());
+    url.searchParams.set("singleEvents", "true");
+    url.searchParams.set("orderBy", "startTime");
+    url.searchParams.set("maxResults", "250");
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status === 401) { onUnauthorized(); return; }
+    if (!res.ok) return;
+    const data = await res.json() as {
+      items?: Array<{
+        id: string; summary?: string; status?: string;
+        start?: { date?: string; dateTime?: string };
+        end?: { date?: string; dateTime?: string };
+      }>;
+    };
+    for (const ev of (data.items || [])) {
+      if (ev.status === "cancelled" || !ev.start) continue;
+      const allDay = !!ev.start.date;
+      const start = allDay ? parseDateOnly(ev.start.date!) : new Date(ev.start.dateTime!);
+      const end = allDay
+        ? parseDateOnly(ev.end?.date || ev.start.date!)
+        : new Date(ev.end?.dateTime || ev.start.dateTime!);
+      out.push({
+        id: ev.id,
+        color: cal.backgroundColor || "#6a5ae0",
+        title: ev.summary || "(sem título)",
+        start, end, allDay,
+      });
+    }
+  }));
+  return out;
+}
+
+// ─── Datas ──────────────────────────────────────────────────────────────────
+const pad2 = (n: number) => String(n).padStart(2, "0");
+function ymd(d: Date): string { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`; }
+function addDays(d: Date, n: number): Date { const x = new Date(d); x.setDate(x.getDate() + n); return x; }
+function startOfDay(d: Date): Date { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
+function startOfWeek(d: Date): Date { const x = startOfDay(d); const wd = (x.getDay() + 6) % 7; x.setDate(x.getDate() - wd); return x; }
+function parseDateOnly(s: string): Date { const [y, m, dd] = s.split("-").map(Number); return new Date(y, m - 1, dd); }
+function fmtHora(d: Date): string { const h = d.getHours(), m = d.getMinutes(); return m ? `${h}h${pad2(m)}` : `${h}h`; }
+const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+// ─── Página ─────────────────────────────────────────────────────────────────
+export function PlannerPage() {
+  const { pessoa } = useAuth();
+  const conn = useGoogleConn();
+  const [vista, setVista] = useState<TipoVista>("calendario");
+  const [periodo, setPeriodo] = useState<Periodo>("semana");
+  const [reviewOpen, setReviewOpen] = useState(false);
+
+  if (!pessoa?.isMaster) {
+    return (
+      <div className="max-w-md mx-auto py-16 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <p className="font-medium text-gray-700 dark:text-gray-200">Planner é pessoal</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Este módulo é privado do dono da conta.</p>
+      </div>
+    );
+  }
+
+  const alvo: TipoVista | Periodo = vista === "calendario" ? periodo : vista;
+
+  return (
+    <div className="max-w-6xl">
+      <div className="mb-4">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🗓 Planner</h1>
+        <p className="text-xs text-gray-500 dark:text-gray-400">Pessoal · sua agenda do Google</p>
+      </div>
+
+      <GoogleConnectBar conn={conn} />
+
+      <ReviewBand open={reviewOpen} onToggle={() => setReviewOpen((v) => !v)} />
+
+      <div className="flex items-center gap-3 flex-wrap mb-3">
+        <div className="inline-flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-1 rounded-xl">
+          <NavBtn ativo={vista === "calendario"} onClick={() => setVista("calendario")}>🗓 Calendário</NavBtn>
+          <NavBtn ativo={vista === "kanban"} onClick={() => setVista("kanban")}>🗂 Kanban</NavBtn>
+          <NavBtn ativo={vista === "crono"} onClick={() => setVista("crono")}>📈 Cronograma</NavBtn>
+        </div>
+        {vista === "calendario" && (
+          <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 rounded-xl">
+            <PerBtn ativo={periodo === "semana"} onClick={() => setPeriodo("semana")}>📆 Semana</PerBtn>
+            <PerBtn ativo={periodo === "mes"} onClick={() => setPeriodo("mes")}>🗓 Mês</PerBtn>
+            <PerBtn ativo={periodo === "tri"} onClick={() => setPeriodo("tri")}>📊 Trimestre</PerBtn>
+            <PerBtn ativo={periodo === "ano"} onClick={() => setPeriodo("ano")}>📅 Ano</PerBtn>
+          </div>
+        )}
+      </div>
+
+      {alvo === "semana" && <SemanaView conn={conn} />}
+      {alvo === "mes" && <MesView conn={conn} />}
+      {alvo === "tri" && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres." />}
+      {alvo === "ano" && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
+      {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
+      {alvo === "crono" && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
+    </div>
+  );
+}
+
+// ─── Hook de eventos por intervalo (usado pelas views) ──────────────────────
+function useEventos(conn: Conn, timeMin: Date, timeMax: Date) {
+  const [eventos, setEventos] = useState<PEvent[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const minISO = timeMin.toISOString();
+  const maxISO = timeMax.toISOString();
+  const calIds = conn.calendars.map((c) => c.id).join(",");
+
+  useEffect(() => {
+    if (!conn.token || conn.calendars.length === 0) { setEventos([]); return; }
+    let vivo = true;
+    setCarregando(true);
+    listEvents(conn.token, conn.calendars, new Date(minISO), new Date(maxISO), conn.invalidar)
+      .then((evs) => { if (vivo) setEventos(evs); })
+      .finally(() => { if (vivo) setCarregando(false); });
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conn.token, calIds, minISO, maxISO]);
+
+  return { eventos, carregando };
+}
+
+// ─── Barra de conexão (presentational) ──────────────────────────────────────
+function GoogleConnectBar({ conn }: { conn: Conn }) {
+  const connected = !!conn.token;
   return (
     <div className={`mb-4 rounded-xl border p-3 ${
       connected
@@ -224,31 +292,26 @@ function GoogleConnectBar() {
         <div className="text-sm">
           {connected ? (
             <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-              ✓ Google conectado{calendars.length ? ` · ${calendars.length} agenda(s)` : ""}
+              ✓ Google conectado{conn.calendars.length ? ` · ${conn.calendars.length} agenda(s)` : ""}
             </span>
           ) : (
-            <span className="text-gray-600 dark:text-gray-300">
-              Conecte sua conta Google pra ver sua agenda de verdade.
-            </span>
+            <span className="text-gray-600 dark:text-gray-300">Conecte sua conta Google pra ver sua agenda de verdade.</span>
           )}
-          {erro && <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">⚠️ {erro}</div>}
+          {conn.erro && <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">⚠️ {conn.erro}</div>}
         </div>
         <button
           type="button"
-          onClick={conectar}
-          disabled={!gsiReady || carregando}
+          onClick={conn.conectar}
+          disabled={!conn.gsiReady || conn.carregando}
           className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
         >
-          {carregando ? "Carregando…" : connected ? "Reconectar" : "🔗 Conectar Google"}
+          {conn.carregando ? "Carregando…" : connected ? "Reconectar" : "🔗 Conectar Google"}
         </button>
       </div>
-      {connected && calendars.length > 0 && (
+      {connected && conn.calendars.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {calendars.map((c) => (
-            <span
-              key={c.id}
-              className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/70 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
-            >
+          {conn.calendars.map((c) => (
+            <span key={c.id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-white/70 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">
               <span className="w-2 h-2 rounded-full" style={{ background: c.backgroundColor || "#9aa" }} />
               {c.summary}
             </span>
@@ -259,173 +322,128 @@ function GoogleConnectBar() {
   );
 }
 
-// ─── Navegação (botões) ─────────────────────────────────────────────────────
+// ─── Navegação ──────────────────────────────────────────────────────────────
 function NavBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <button type="button" onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-        ativo
-          ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-          : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-      }`}
-    >
-      {children}
-    </button>
+        ativo ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+      }`}>{children}</button>
   );
 }
 function PerBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
+    <button type="button" onClick={onClick}
       className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-        ativo
-          ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-          : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-      }`}
-    >
-      {children}
-    </button>
+        ativo ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      }`}>{children}</button>
   );
 }
 
-// ─── Faixa "Para revisar" ───────────────────────────────────────────────────
+// ─── Faixa "Para revisar" (placeholder — detector/automações vêm depois) ────
 function ReviewBand({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1.5 mb-4">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400"
-      >
-        📥 Para revisar · 2
-        {!open && <span className="font-normal text-gray-400">janela 26–30 jun · e-mail de fornecedor</span>}
+      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
+        📥 Para revisar
+        <span className="font-normal text-gray-400">detector de janelas e automações — em breve</span>
         <span className={`ml-auto transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
       </button>
       {open && (
-        <div className="space-y-1 px-1 pb-1">
-          <ReviewItem
-            lead="🟢" leadCls="bg-emerald-100 dark:bg-emerald-900/40"
-            titulo="Janela de 5 dias livres — 26 a 30 jun"
-            sub="sem compromissos firmes · respeitando blocos protegidos"
-            acoes={<><MiniBtn tom="go">Virar viagem</MiniBtn><MiniBtn tom="no">Dispensar</MiniBtn></>}
-          />
-          <ReviewItem
-            lead="✉️" leadCls="bg-indigo-100 dark:bg-indigo-900/40"
-            titulo="E-mail de fornecedor → criar pin “Jantar c/ fornecedor”?"
-            sub="detectado pela automação · Gmail"
-            acoes={<><MiniBtn tom="ok">Aprovar</MiniBtn><MiniBtn tom="no">Descartar</MiniBtn></>}
-          />
+        <div className="px-3 pb-2 text-[12px] text-gray-500 dark:text-gray-400">
+          Aqui vão aparecer janelas livres detectadas e itens capturados por automação (Gmail) pra você aprovar. Ainda não ligado.
         </div>
       )}
     </div>
   );
 }
-function ReviewItem({ lead, leadCls, titulo, sub, acoes }: { lead: string; leadCls: string; titulo: string; sub: string; acoes: React.ReactNode }) {
-  return (
-    <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg">
-      <div className={`w-8 h-8 rounded-lg grid place-items-center text-base flex-none ${leadCls}`}>{lead}</div>
-      <div className="flex-1 min-w-0">
-        <div className="font-semibold text-sm text-gray-800 dark:text-gray-100">{titulo}</div>
-        <div className="text-[11px] text-gray-500 dark:text-gray-400">{sub}</div>
-      </div>
-      <div className="flex gap-1.5 flex-none">{acoes}</div>
-    </div>
-  );
-}
-function MiniBtn({ tom, children }: { tom: "go" | "ok" | "no"; children: React.ReactNode }) {
-  const cls = tom === "go"
-    ? "bg-indigo-600 text-white"
-    : tom === "ok"
-      ? "bg-emerald-600 text-white"
-      : "bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400";
-  return <button type="button" className={`rounded-lg px-2.5 py-1.5 text-[11.5px] font-semibold ${cls}`}>{children}</button>;
-}
 
-// ─── Placeholder das visões ainda não portadas ──────────────────────────────
 function EmBreve({ titulo, desc }: { titulo: string; desc: string }) {
   return (
     <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
       <div className="text-3xl mb-2">🚧</div>
       <div className="font-semibold text-gray-700 dark:text-gray-200">{titulo}</div>
       <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-md mx-auto">{desc}</div>
-      <div className="text-[11px] text-gray-400 mt-3">Próxima etapa do scaffold.</div>
+      <div className="text-[11px] text-gray-400 mt-3">Próxima etapa.</div>
     </div>
   );
 }
 
-// ─── Visão SEMANA (grade de horas) ──────────────────────────────────────────
-type EvSemana = { ini: number; fim: number; titulo: string; agenda: string };
-const DIAS_SEMANA: [string, number][] = [["Seg", 8], ["Ter", 9], ["Qua", 10], ["Qui", 11], ["Sex", 12], ["Sáb", 13], ["Dom", 14]];
-const HOJE_IDX = 3;
-const H0 = 0, H1 = 23, PX = 44; // dia inteiro — voos/compromissos em qualquer hora
-const EVENTOS_SEMANA: Record<number, EvSemana[]> = {
-  0: [{ ini: 9, fim: 10, titulo: "Alinhamento operação", agenda: "rotina" }, { ini: 15, fim: 16.5, titulo: "Visita obra Puba SP", agenda: "puba" }],
-  1: [{ ini: 11, fim: 12, titulo: "Reunião SCI · folha", agenda: "rotina" }],
-  2: [{ ini: 18, fim: 23, titulo: "Serviço Sororoca", agenda: "lobozo" }],
-  3: [{ ini: 10, fim: 11, titulo: "Café com Marcelo", agenda: "pessoal" }, { ini: 16, fim: 17, titulo: "Call AppTip", agenda: "puba" }],
-  4: [{ ini: 9, fim: 10.5, titulo: "Proposta Quibebe — André", agenda: "puba" }],
-  5: [], 6: [],
-};
-const ALLDAY_SEMANA: Record<number, { txt: string; tipo: "lock" | "pin" }[]> = {
-  5: [{ txt: "🔒 Barco — Ubatuba", tipo: "lock" }],
-};
-
-function fmtHora(h: number): string {
-  const hh = Math.floor(h), mm = Math.round((h - hh) * 60);
-  return mm ? `${hh}h${String(mm).padStart(2, "0")}` : `${hh}h`;
+function PrecisaConectar() {
+  return (
+    <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
+      🔗 Conecte sua conta Google (acima) pra ver seus eventos aqui.
+    </div>
+  );
 }
 
-function SemanaView() {
+// ─── Visão SEMANA (grade de horas, eventos reais) ───────────────────────────
+const H0 = 0, H1 = 23, PX = 44;
+function SemanaView({ conn }: { conn: Conn }) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  // Abre mostrando ~7h (mas dá pra rolar pra cima até 0h — voo de madrugada etc).
+  const weekStart = startOfWeek(new Date());
+  const weekEnd = addDays(weekStart, 7);
+  const { eventos, carregando } = useEventos(conn, weekStart, weekEnd);
+  const hoje = new Date();
+  const hojeIdx = (hoje.getDay() + 6) % 7;
+
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 7 * PX;
+    if (scrollRef.current) scrollRef.current.scrollTop = Math.max(0, (hoje.getHours() - 1)) * PX;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const totH = (H1 - H0 + 1) * PX;
-  const horas: number[] = [];
-  for (let h = H0; h <= H1; h++) horas.push(h);
+  if (!conn.token) return <PrecisaConectar />;
 
-  // Cada linha (header, dia-todo, horas) usa a MESMA estrutura
-  // [gutter 46px][grade de 7 colunas] e TODAS vivem no mesmo container de
-  // rolagem — assim a barra de scroll desloca as 3 igualmente e as colunas
-  // ficam alinhadas. Header + dia-todo ficam `sticky` no topo.
+  const dias = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const totH = (H1 - H0 + 1) * PX;
+  const horas = Array.from({ length: H1 - H0 + 1 }, (_, i) => H0 + i);
+
+  // separa por dia: timados (na grade) e dia-todo (na faixa de cima)
+  const timadosPorDia: PEvent[][] = dias.map(() => []);
+  const alldayPorDia: PEvent[][] = dias.map(() => []);
+  for (const ev of eventos) {
+    if (ev.allDay) {
+      // all-day end é exclusivo; marca cada dia coberto dentro da semana
+      for (let i = 0; i < 7; i++) {
+        const d = dias[i];
+        if (d >= startOfDay(ev.start) && d < startOfDay(ev.end)) alldayPorDia[i].push(ev);
+      }
+    } else {
+      const idx = dias.findIndex((d) => ymd(d) === ymd(ev.start));
+      if (idx >= 0) timadosPorDia[idx].push(ev);
+    }
+  }
+
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Semana · 8–14 jun</h2>
-        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">grade de horas (0h–23h) · linha vermelha = agora</span>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          Semana · {weekStart.getDate()}–{addDays(weekStart, 6).getDate()} {MESES[addDays(weekStart, 6).getMonth()].slice(0, 3)}
+        </h2>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "linha vermelha = agora"}</span>
       </div>
 
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
         <div ref={scrollRef} className="max-h-[600px] overflow-y-auto">
-          {/* Cabeçalho + dia-todo: grudados no topo, dentro do mesmo scroll */}
           <div className="sticky top-0 z-20 bg-white dark:bg-gray-900">
-            {/* Header dos dias */}
             <div className="flex border-b border-gray-200 dark:border-gray-800">
               <div className="w-[46px] flex-none" />
               <div className="grid grid-cols-7 flex-1">
-                {DIAS_SEMANA.map(([dn, dd], i) => (
-                  <div key={i} className={`py-2 px-1.5 text-center border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
-                    <div className="text-[9.5px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">{dn}</div>
-                    <div className={`text-[15px] font-semibold ${i === HOJE_IDX ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>{dd}</div>
+                {dias.map((d, i) => (
+                  <div key={i} className={`py-2 px-1.5 text-center border-l border-gray-200 dark:border-gray-800 ${i === hojeIdx ? "bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
+                    <div className="text-[9.5px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">{DOW[i]}</div>
+                    <div className={`text-[15px] font-semibold ${i === hojeIdx ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>{d.getDate()}</div>
                   </div>
                 ))}
               </div>
             </div>
-            {/* Dia-todo (locks/pins) */}
             <div className="flex border-b border-gray-200 dark:border-gray-800">
               <div className="w-[46px] flex-none grid place-items-center text-[8px] uppercase tracking-wider text-gray-400 border-r border-gray-200 dark:border-gray-800">dia<br />todo</div>
               <div className="grid grid-cols-7 flex-1">
-                {DIAS_SEMANA.map((_, i) => (
-                  <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px]">
-                    {(ALLDAY_SEMANA[i] || []).map((a, j) => (
-                      <div key={j} className={`text-[9.5px] px-1.5 py-0.5 rounded truncate ${a.tipo === "lock" ? "bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800" : "text-indigo-600 border border-dashed border-indigo-400"}`}>
-                        {a.txt}
-                      </div>
+                {dias.map((_, i) => (
+                  <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px] space-y-0.5">
+                    {alldayPorDia[i].map((ev) => (
+                      <div key={ev.id} className="text-[9.5px] px-1.5 py-0.5 rounded truncate text-white" style={{ background: ev.color }} title={ev.title}>{ev.title}</div>
                     ))}
                   </div>
                 ))}
@@ -433,7 +451,6 @@ function SemanaView() {
             </div>
           </div>
 
-          {/* Grade de horas */}
           <div className="flex">
             <div className="w-[46px] flex-none border-r border-gray-200 dark:border-gray-800">
               {horas.map((h, idx) => (
@@ -441,26 +458,24 @@ function SemanaView() {
               ))}
             </div>
             <div className="grid grid-cols-7 flex-1">
-              {DIAS_SEMANA.map((_, i) => (
-                <div
-                  key={i}
-                  className={`relative border-l border-gray-200 dark:border-gray-800 ${i === HOJE_IDX ? "bg-indigo-50/40 dark:bg-indigo-900/10" : ""}`}
-                  style={{
-                    height: totH,
-                    backgroundImage: "repeating-linear-gradient(to bottom,transparent,transparent 43px,rgba(0,0,0,.06) 43px,rgba(0,0,0,.06) 44px)",
-                  }}
-                >
-                  {(EVENTOS_SEMANA[i] || []).map((e, j) => (
-                    <div
-                      key={j}
-                      className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm"
-                      style={{ background: corAgenda(e.agenda), top: (e.ini - H0) * PX, height: (e.fim - e.ini) * PX - 3 }}
-                    >
-                      <span className="font-bold text-[9px] opacity-90">{fmtHora(e.ini)}</span> {e.titulo}
-                    </div>
-                  ))}
-                  {i === HOJE_IDX && (
-                    <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (15 - H0) * PX }}>
+              {dias.map((_, i) => (
+                <div key={i}
+                  className={`relative border-l border-gray-200 dark:border-gray-800 ${i === hojeIdx ? "bg-indigo-50/40 dark:bg-indigo-900/10" : ""}`}
+                  style={{ height: totH, backgroundImage: "repeating-linear-gradient(to bottom,transparent,transparent 43px,rgba(0,0,0,.06) 43px,rgba(0,0,0,.06) 44px)" }}>
+                  {timadosPorDia[i].map((ev) => {
+                    const ini = ev.start.getHours() + ev.start.getMinutes() / 60;
+                    let fim = ev.end.getHours() + ev.end.getMinutes() / 60;
+                    if (fim <= ini) fim = ini + 0.5;
+                    const top = (ini - H0) * PX;
+                    const height = Math.max(16, (fim - ini) * PX - 3);
+                    return (
+                      <div key={ev.id} className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm" style={{ background: ev.color, top, height }} title={ev.title}>
+                        <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
+                      </div>
+                    );
+                  })}
+                  {i === hojeIdx && (
+                    <div className="absolute left-0 right-0 h-0.5 bg-rose-500 z-10" style={{ top: (hoje.getHours() + hoje.getMinutes() / 60 - H0) * PX }}>
                       <div className="absolute -left-1 -top-[3px] w-2 h-2 rounded-full bg-rose-500" />
                     </div>
                   )}
@@ -474,57 +489,52 @@ function SemanaView() {
   );
 }
 
-// ─── Visão MÊS ──────────────────────────────────────────────────────────────
-type EvMes = { txt: string; cor?: string; hora?: string; tipo?: "dim" | "pin" | "lock" };
-const EVENTOS_MES: Record<number, EvMes[]> = {
-  13: [{ txt: "Barco — Ubatuba", tipo: "lock" }],
-  15: [{ txt: "Seis Anos de Lobozó", cor: corAgenda("lobozo"), hora: "19h" }],
-  17: [{ txt: "Proposta Quibebe", cor: corAgenda("puba"), hora: "09h" }],
-  19: [{ txt: "Reunião SCI · folha", cor: corAgenda("rotina"), hora: "11h" }],
-  21: [{ txt: "Aluguel", tipo: "dim" }],
-  24: [{ txt: "Eu e a Má", cor: corAgenda("pessoal"), hora: "08h" }],
-  25: [{ txt: "Lançamento AppTip", tipo: "pin" }],
-};
-const JANELA_MES = new Set([26, 27, 28, 29, 30]);
-const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+// ─── Visão MÊS (eventos reais) ──────────────────────────────────────────────
+function MesView({ conn }: { conn: Conn }) {
+  const hoje = new Date();
+  const monthStart = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+  const gridStart = startOfWeek(monthStart);
+  const gridEnd = addDays(gridStart, 42); // 6 semanas
+  const { eventos, carregando } = useEventos(conn, gridStart, gridEnd);
 
-function MesView() {
-  // junho/2026 começa numa segunda (1 jun = seg). 30 dias. Grade 5×7=35.
-  const celulas: ({ dia: number } | null)[] = [];
-  for (let i = 0; i < 35; i++) celulas.push(i < 30 ? { dia: i + 1 } : null);
+  if (!conn.token) return <PrecisaConectar />;
+
+  const celulas = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+  // eventos por dia (YYYY-MM-DD do início; all-day cobre cada dia)
+  const porDia = new Map<string, PEvent[]>();
+  for (const ev of eventos) {
+    if (ev.allDay) {
+      for (let d = startOfDay(ev.start); d < startOfDay(ev.end); d = addDays(d, 1)) {
+        const k = ymd(d); (porDia.get(k) || porDia.set(k, []).get(k)!).push(ev);
+      }
+    } else {
+      const k = ymd(ev.start); (porDia.get(k) || porDia.set(k, []).get(k)!).push(ev);
+    }
+  }
 
   return (
     <section>
       <div className="flex items-baseline justify-between mb-3 flex-wrap gap-2">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Junho 2026</h2>
-        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">verde = janela livre · 📌 pin · 🔒 protegido</span>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">{MESES[hoje.getMonth()]} {hoje.getFullYear()}</h2>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "sua agenda do mês"}</span>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
-        {DOW.map((d) => (
-          <div key={d} className="text-[9.5px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold px-1 pb-0.5">{d}</div>
-        ))}
-        {celulas.map((c, i) => {
-          if (!c) return <div key={i} className="min-h-[92px] rounded-xl border border-dashed border-gray-200 dark:border-gray-800 opacity-40" />;
-          const win = JANELA_MES.has(c.dia);
-          const hoje = c.dia === 11;
+        {DOW.map((d) => (<div key={d} className="text-[9.5px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold px-1 pb-0.5">{d}</div>))}
+        {celulas.map((d, i) => {
+          const noMes = d.getMonth() === hoje.getMonth();
+          const isHoje = ymd(d) === ymd(hoje);
+          const evs = (porDia.get(ymd(d)) || []).sort((a, b) => Number(a.allDay) - Number(b.allDay) || a.start.getTime() - b.start.getTime());
           return (
-            <div
-              key={i}
-              className={`min-h-[92px] rounded-xl border p-1.5 relative ${
-                win
-                  ? "bg-emerald-50 border-emerald-200 dark:bg-emerald-900/20 dark:border-emerald-800"
-                  : "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800"
-              } ${hoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800 border-indigo-400" : ""}`}
-            >
-              <div className="text-[12.5px] font-semibold text-gray-500 dark:text-gray-400">{c.dia}</div>
-              {win && <span className="absolute right-1.5 top-1.5 text-[8px] uppercase tracking-wide text-emerald-600 font-bold">janela</span>}
-              {(EVENTOS_MES[c.dia] || []).map((e, j) => {
-                const label = e.hora ? `${e.hora} ${e.txt}` : e.txt;
-                if (e.tipo === "dim") return <div key={j} className="mt-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 truncate">{label}</div>;
-                if (e.tipo === "pin") return <div key={j} className="mt-1 text-[10px] px-1.5 py-0.5 rounded bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 border border-dashed border-indigo-400 truncate">📌 {label}</div>;
-                if (e.tipo === "lock") return <div key={j} className="mt-1 text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200 dark:bg-rose-900/20 dark:text-rose-300 dark:border-rose-800 truncate">{label}</div>;
-                return <div key={j} className="mt-1 text-[10px] px-1.5 py-0.5 rounded text-white truncate" style={{ background: e.cor }}>{label}</div>;
-              })}
+            <div key={i} className={`min-h-[92px] rounded-xl border p-1.5 relative ${
+              noMes ? "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800" : "bg-transparent border-dashed border-gray-200 dark:border-gray-800 opacity-50"
+            } ${isHoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800 border-indigo-400" : ""}`}>
+              <div className={`text-[12.5px] font-semibold ${isHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400"}`}>{d.getDate()}</div>
+              {evs.slice(0, 3).map((ev) => (
+                <div key={ev.id} className="mt-1 text-[10px] px-1.5 py-0.5 rounded text-white truncate" style={{ background: ev.color }} title={ev.title}>
+                  {ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
+                </div>
+              ))}
+              {evs.length > 3 && <div className="mt-1 text-[10px] text-gray-400 px-1.5">+{evs.length - 3}</div>}
             </div>
           );
         })}
