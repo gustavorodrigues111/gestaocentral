@@ -16,6 +16,13 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
 
+  // Nome+descrição do módulo atual no header (piloto: Planner). Generalizar
+  // pros outros módulos depois que validar (lookup por rota → MODULES).
+  const moduloInfo: { icon: string; label: string; desc: string } | null =
+    location.pathname === "/planner"
+      ? { icon: "🗓", label: "Planner", desc: "Pessoal · sua agenda do Google" }
+      : null;
+
   function changeRestaurant(newRid: string) {
     setActiveId(newRid);
     // Se está em /r/{oldRid}/{moduleId}, navega pro mesmo módulo no novo restaurante.
@@ -35,28 +42,31 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         </span>
       </div>
 
-      {/* Seletor de restaurante — escondido quando entrou via subdomain */}
+      {/* Seletor de restaurante — escondido quando entrou via subdomain.
+          O "criar novo restaurante" (só master) virou opção do seletor. */}
       {!subdomainLocked && restaurants.length > 0 && (
         <select
           value={activeRestaurant?.id || ""}
-          onChange={(e) => changeRestaurant(e.target.value)}
+          onChange={(e) => {
+            if (e.target.value === "__novo__") setShowNewRest(true);
+            else changeRestaurant(e.target.value);
+          }}
           className="ml-1 sm:ml-4 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer max-w-[120px] sm:max-w-none truncate min-w-0"
         >
           {restaurants.map(r => (
             <option key={r.id} value={r.id}>{r.nome}</option>
           ))}
+          {isMaster && <option value="__novo__">＋ Criar novo restaurante…</option>}
         </select>
       )}
 
-      {/* "+ Restaurante" — só desktop */}
-      {!subdomainLocked && isMaster && (
-        <button
-          onClick={() => setShowNewRest(true)}
-          title="Novo restaurante"
-          className="hidden sm:inline-flex px-2 py-1 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex-shrink-0"
-        >
-          + Restaurante
-        </button>
+      {/* Nome + descrição do módulo atual (piloto: Planner) — ocupa o espaço
+          vazio do header pra liberar a primeira linha do conteúdo. */}
+      {moduloInfo && (
+        <div className="hidden md:flex items-baseline gap-2 min-w-0 ml-3 px-3 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-900/20">
+          <span className="text-sm font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">{moduloInfo.icon} {moduloInfo.label}</span>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{moduloInfo.desc}</span>
+        </div>
       )}
 
       <div className="flex-1 min-w-0" />

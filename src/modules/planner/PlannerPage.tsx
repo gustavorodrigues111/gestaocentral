@@ -310,15 +310,7 @@ export function PlannerPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🗓 Planner</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Pessoal · sua agenda do Google</p>
-        </div>
-        <StatusGoogle conn={conn} />
-      </div>
-
-      <div className="flex items-center gap-2 flex-wrap mb-3">
+      <div className="flex items-center gap-2 flex-wrap mb-3 pt-1">
         <Dropdown label={VISTA_LABEL[vista]}>
           {(close) => VISTAS.map((v) => (
             <MenuItem key={v} ativo={v === vista} onClick={() => { setVista(v); close(); }}>{VISTA_LABEL[v]}</MenuItem>
@@ -331,6 +323,7 @@ export function PlannerPage() {
             ))}
           </Dropdown>
         )}
+        <StatusGoogle conn={conn} />
         {conn.token && (
           <div className="ml-auto flex items-center gap-2">
             <RevisarButton count={0} />
@@ -372,7 +365,7 @@ export function PlannerPage() {
 function StatusGoogle({ conn }: { conn: Conn }) {
   const connected = !!conn.token;
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-start gap-1">
       <button
         type="button"
         onClick={conn.conectar}
