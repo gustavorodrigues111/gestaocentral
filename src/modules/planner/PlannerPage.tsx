@@ -16,9 +16,8 @@ import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 
-// URL da Cloud Function de OAuth (1ª gen → URL previsível).
-const PLANNER_AUTH_URL =
-  "https://southamerica-east1-gestaocentral-85b13.cloudfunctions.net/plannerGoogleAuth";
+// URL da Cloud Function de OAuth (2ª gen / Cloud Run).
+const PLANNER_AUTH_URL = "https://plannergoogleauth-s3uds5p7vq-rj.a.run.app";
 
 // ─── Domínio (mock — vai virar espelho do Firestore na fase backend) ────────
 type Perfil = "projeto" | "rotina" | "pessoal" | "viagem";
