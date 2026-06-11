@@ -2107,14 +2107,19 @@ export type FreelaShift = {
   scheduledDate?: string;          // YYYY-MM-DD — data originalmente agendada (== date se não trocou)
   area?: Area;                     // área de atuação naquele turno
 
-  // Planejamento (preenchido no agendamento). `entrada` num turno agendado já
-  // funciona como início previsto; `saidaPrevista` é o fim previsto — só pra
-  // exibição/sugestão, NÃO vira a saída real automaticamente.
-  saidaPrevista?: string;          // "HH:MM" — fim previsto (agendamento)
+  // ─── PLANEJADO (definido no "Planejar turnos") ───────────────────────────
+  // O que se PRETENDE. Nunca é tocado pelo Abrir/Fechar — é só plano. O fluxo
+  // de execução (Abrir confirma entrada; Fechar confirma saída+intervalos)
+  // pré-preenche a partir destes, mas grava nos campos REAIS abaixo.
+  entradaPrevista?: string;        // "HH:MM" — chegada prevista
+  saidaPrevista?: string;          // "HH:MM" — saída prevista
+  intervalosPrevistos?: FreelaIntervalo[]; // intervalos previstos
 
-  // Lançamento (preenchido a partir de "aberto")
-  entrada?: string;                // "HH:MM"
-  saida?: string;                  // "HH:MM" (pode ser do dia seguinte)
+  // ─── REALIZADO (definido SÓ por botão) ───────────────────────────────────
+  // entrada = confirmada no "Abrir turno"; saida + intervalos = confirmados no
+  // "Fechar turno".
+  entrada?: string;                // "HH:MM" — chegada REAL (Abrir)
+  saida?: string;                  // "HH:MM" — saída REAL (Fechar; pode virar o dia)
   // Intervalo: `intervalo` (legado) é sempre a SOMA, em minutos, de todos os
   // intervalos — alimenta calcHoras sem mudança. `intervalos` é o detalhamento
   // (vários intervalos por turno, lançáveis desde a abertura). Quando

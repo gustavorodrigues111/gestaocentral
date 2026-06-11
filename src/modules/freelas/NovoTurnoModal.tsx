@@ -9,7 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
 import { AREAS, type Area, type Empregado, type FreelaIntervalo, type Pessoa } from "../../core/types";
-import { onlyDigits, resolverPixWhats, somaIntervalos } from "./helpers";
+import { onlyDigits, resolverPixWhats } from "./helpers";
 import { SeletorSemana } from "./SeletorSemana";
 import { CadastroPorCpf } from "./CadastroPorCpf";
 import { IntervalosEditor } from "./IntervalosEditor";
@@ -19,6 +19,10 @@ type Props = {
   empregados: Empregado[];
   pessoas: Pessoa[];
   initialDate?: string;
+  // "planejar" (default) → cria turno PLANEJADO (status agendado), grava só os
+  // campos previstos. "avulso" → abre um turno agora (status aberto, hoje),
+  // grava a entrada REAL — sem planejamento.
+  modo?: "planejar" | "avulso";
   onClose: () => void;
   onSaved: () => void;
 };
@@ -30,10 +34,12 @@ type SelecionadoFreela = { tipo: "freela"; pessoa: Pessoa };
 type Selecionado = SelecionadoEmp | SelecionadoFreela | null;
 
 export function NovoTurnoModal({
-  restaurantId, empregados, pessoas, initialDate, onClose, onSaved,
+  restaurantId, empregados, pessoas, initialDate, modo = "planejar", onClose, onSaved,
 }: Props) {
   const { pessoa: me } = useAuth();
-  const [date, setDate] = useState(initialDate || todayYmd());
+  const isAvulso = modo === "avulso";
+  // Avulso é sempre hoje (abrir agora). Planejar pode ser hoje ou futuro.
+  const [date, setDate] = useState(isAvulso ? todayYmd() : (initialDate || todayYmd()));
   const [area, setArea] = useState<Area | "">("");
   const [entrada, setEntrada] = useState("");
   const [saidaPrevista, setSaidaPrevista] = useState("");
@@ -47,8 +53,9 @@ export function NovoTurnoModal({
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const isFutura = date > todayYmd();
-  const statusAlvo: "agendado" | "aberto" = isFutura ? "agendado" : "aberto";
+  // Estado-alvo: planejar sempre cria PLANEJADO (status agendado), mesmo pra
+  // hoje (abrir é ação por botão). Avulso já abre o turno.
+  const statusAlvo: "agendado" | "aberto" = isAvulso ? "aberto" : "agendado";
 
   // Empregados ativos do restaurante
   const empregadosAtivos = useMemo(
@@ -88,8 +95,8 @@ export function NovoTurnoModal({
     if (!selecionado) { setErr("Selecione um freela."); return; }
     if (!date) { setErr("Data obrigatória."); return; }
     if (!area) { setErr("Área obrigatória."); return; }
-    if (!isFutura && !entrada) {
-      setErr("Hora de início é obrigatória pra turno que já começou.");
+    if (isAvulso && !entrada) {
+      setErr("Confirme a hora de entrada (chegada) pra abrir o turno.");
       return;
     }
 
@@ -114,9 +121,14 @@ export function NovoTurnoModal({
         date,
         scheduledDate: date,
         area,
-        ...(entrada ? { entrada } : {}),
-        ...(saidaPrevista ? { saidaPrevista } : {}),
-        ...(intervalos.length ? { intervalos, intervalo: somaIntervalos(intervalos) } : {}),
+        ...(isAvulso
+          ? { entrada } // entrada REAL — abre o turno na hora
+          : {
+              // Planejado: grava só os PREVISTOS (nunca os campos reais).
+              ...(entrada ? { entradaPrevista: entrada } : {}),
+              ...(saidaPrevista ? { saidaPrevista } : {}),
+              ...(intervalos.length ? { intervalosPrevistos: intervalos } : {}),
+            }),
         status: statusAlvo,
         lotePagamentoId: null,
         ...(obs.trim() ? { observacao: obs.trim() } : {}),
@@ -142,18 +154,24 @@ export function NovoTurnoModal({
 
   return (
     <Modal
-      title={isFutura ? "📅 Agendar turno de freela" : "📝 Lançar turno de freela"}
+      title={isAvulso ? "🟢 Abrir turno avulso" : "📋 Planejar turno de freela"}
       onClose={onClose}
       maxWidth="max-w-lg"
     >
       <div className="space-y-4">
-        {/* ─── Data: seletor de semana ─── */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-            Data *
-          </label>
-          <SeletorSemana value={date} onChange={setDate} />
-        </div>
+        {/* ─── Data ─── (avulso é sempre hoje) */}
+        {isAvulso ? (
+          <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded p-2">
+            🟢 Abrindo um turno <strong>agora</strong> (hoje), sem planejamento prévio.
+          </div>
+        ) : (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+              Data *
+            </label>
+            <SeletorSemana value={date} onChange={setDate} />
+          </div>
+        )}
 
         {/* ─── Quem é o freela: 2 abas sempre visíveis (alternáveis) ─── */}
         <div className="flex flex-col gap-2">
@@ -294,29 +312,42 @@ export function NovoTurnoModal({
           </select>
         </div>
 
-        {/* ─── Horário previsto: início + saída ─── */}
-        <div className="grid grid-cols-2 gap-2">
+        {/* ─── Horário ─── */}
+        {isAvulso ? (
+          // Avulso: confirma só a ENTRADA real (chegada). Saída/intervalos
+          // ficam pro fechamento.
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              {isFutura ? "Início previsto (opcional)" : "Hora de início *"}
+              Hora de entrada (chegada) *
             </label>
             <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+            <p className="text-[10px] text-gray-400 dark:text-gray-500">Saída e intervalos são confirmados no fechamento.</p>
           </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              Saída prevista (opcional)
-            </label>
-            <TimeInput value={saidaPrevista} onChange={setSaidaPrevista} placeholder="HH:MM" />
-          </div>
-        </div>
-
-        {/* ─── Intervalo planejado ─── */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-            Intervalo planejado (opcional)
-          </label>
-          <IntervalosEditor value={intervalos} onChange={setIntervalos} planejadoDefault />
-        </div>
+        ) : (
+          // Planejar: tudo PREVISTO (opcional). Vira sugestão na hora de abrir/fechar.
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                  Início previsto (opcional)
+                </label>
+                <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                  Saída prevista (opcional)
+                </label>
+                <TimeInput value={saidaPrevista} onChange={setSaidaPrevista} placeholder="HH:MM" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                Intervalos previstos (opcional)
+              </label>
+              <IntervalosEditor value={intervalos} onChange={setIntervalos} planejadoDefault />
+            </div>
+          </>
+        )}
 
         {/* ─── Observação ─── */}
         <div className="flex flex-col gap-1">
@@ -345,7 +376,7 @@ export function NovoTurnoModal({
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving || !selecionado}>
-            {saving ? "Salvando…" : (isFutura ? "Agendar" : "Lançar")}
+            {saving ? "Salvando…" : (isAvulso ? "🟢 Abrir turno" : "📋 Planejar")}
           </Button>
         </div>
       </div>

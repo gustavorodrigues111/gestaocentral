@@ -124,7 +124,7 @@ export function FreelasPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {podeOperar && tab === "lancamentos" && (
             <Button onClick={() => setShowNovoTurno(true)}>
-              + Novo turno
+              📋 Planejar turnos
             </Button>
           )}
           {podeOperar && (
