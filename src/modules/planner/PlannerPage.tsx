@@ -25,6 +25,10 @@ const TOKEN_KEY = "plannerGoogleToken";
 
 type TipoVista = "calendario" | "kanban" | "crono";
 type Periodo = "semana" | "mes" | "tri" | "ano";
+const VISTAS: TipoVista[] = ["calendario", "kanban", "crono"];
+const PERIODOS: Periodo[] = ["semana", "mes", "tri", "ano"];
+const VISTA_LABEL: Record<TipoVista, string> = { calendario: "🗓 Calendário", kanban: "🗂 Kanban", crono: "📈 Cronograma" };
+const PERIODO_LABEL: Record<Periodo, string> = { semana: "📆 Semana", mes: "🗓 Mês", tri: "📊 Trimestre", ano: "📅 Ano" };
 
 // ─── Google Identity Services (token no browser) ────────────────────────────
 type GsiTokenResponse = { access_token?: string; expires_in?: number; error?: string };
@@ -279,7 +283,6 @@ export function PlannerPage() {
   const { prefs, setPref } = usePlannerSettings(fbUser?.uid);
   const [vista, setVista] = useState<TipoVista>("calendario");
   const [periodo, setPeriodo] = useState<Periodo>("semana");
-  const [reviewOpen, setReviewOpen] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [criar, setCriar] = useState<null | "evento" | "pin">(null);
 
@@ -315,28 +318,30 @@ export function PlannerPage() {
         <StatusGoogle conn={conn} />
       </div>
 
-      <ReviewBand open={reviewOpen} onToggle={() => setReviewOpen((v) => !v)} />
-
-      <div className="flex items-center gap-3 flex-wrap mb-3">
-        <div className="inline-flex gap-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-1 rounded-xl">
-          <NavBtn ativo={vista === "calendario"} onClick={() => setVista("calendario")}>🗓 Calendário</NavBtn>
-          <NavBtn ativo={vista === "kanban"} onClick={() => setVista("kanban")}>🗂 Kanban</NavBtn>
-          <NavBtn ativo={vista === "crono"} onClick={() => setVista("crono")}>📈 Cronograma</NavBtn>
-        </div>
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <Dropdown label={VISTA_LABEL[vista]}>
+          {(close) => VISTAS.map((v) => (
+            <MenuItem key={v} ativo={v === vista} onClick={() => { setVista(v); close(); }}>{VISTA_LABEL[v]}</MenuItem>
+          ))}
+        </Dropdown>
         {vista === "calendario" && (
-          <div className="inline-flex gap-1 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-1 rounded-xl">
-            <PerBtn ativo={periodo === "semana"} onClick={() => setPeriodo("semana")}>📆 Semana</PerBtn>
-            <PerBtn ativo={periodo === "mes"} onClick={() => setPeriodo("mes")}>🗓 Mês</PerBtn>
-            <PerBtn ativo={periodo === "tri"} onClick={() => setPeriodo("tri")}>📊 Trimestre</PerBtn>
-            <PerBtn ativo={periodo === "ano"} onClick={() => setPeriodo("ano")}>📅 Ano</PerBtn>
-          </div>
+          <Dropdown label={PERIODO_LABEL[periodo]}>
+            {(close) => PERIODOS.map((p) => (
+              <MenuItem key={p} ativo={p === periodo} onClick={() => { setPeriodo(p); close(); }}>{PERIODO_LABEL[p]}</MenuItem>
+            ))}
+          </Dropdown>
         )}
         {conn.token && (
-          <div className="flex items-center gap-2 ml-auto">
-            <button type="button" onClick={() => setCriar("evento")} disabled={gravaveis.length === 0}
-              className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">+ Evento</button>
-            <button type="button" onClick={() => setCriar("pin")} disabled={gravaveis.length === 0}
-              className="text-xs font-semibold px-3 py-2 rounded-lg bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-100">📌 Pin</button>
+          <div className="ml-auto flex items-center gap-2">
+            <RevisarButton count={0} />
+            <Dropdown label="+ Novo" primary disabled={gravaveis.length === 0}>
+              {(close) => (
+                <>
+                  <MenuItem onClick={() => { setCriar("evento"); close(); }}>📅 Evento</MenuItem>
+                  <MenuItem onClick={() => { setCriar("pin"); close(); }}>📌 Pin</MenuItem>
+                </>
+              )}
+            </Dropdown>
           </div>
         )}
       </div>
@@ -413,37 +418,63 @@ function AgendasManager({ agendas, setPref }: { agendas: Agenda[]; setPref: (id:
   );
 }
 
-// ─── Navegação ──────────────────────────────────────────────────────────────
-function NavBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+// ─── Dropdown genérico (seletor / menu) ─────────────────────────────────────
+function Dropdown({ label, primary, tone, disabled, children }: {
+  label: React.ReactNode;
+  primary?: boolean;
+  tone?: "green" | "amber";
+  disabled?: boolean;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+  const cls = primary
+    ? "bg-indigo-600 hover:bg-indigo-700 text-white border border-indigo-600"
+    : tone === "amber"
+      ? "bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300"
+      : tone === "green"
+        ? "bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-300"
+        : "bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800";
+  const align = primary || tone ? "right-0" : "left-0";
   return (
-    <button type="button" onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-        ativo ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
-      }`}>{children}</button>
-  );
-}
-function PerBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
-        ativo ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
-      }`}>{children}</button>
-  );
-}
-
-function ReviewBand({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-1.5 mb-4">
-      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2 px-2.5 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400">
-        📥 Para revisar <span className="font-normal text-gray-400">detector de janelas e automações — em breve</span>
-        <span className={`ml-auto transition-transform ${open ? "" : "-rotate-90"}`}>▾</span>
+    <div ref={ref} className="relative">
+      <button type="button" disabled={disabled} onClick={() => setOpen((o) => !o)}
+        className={`inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-2 rounded-lg disabled:opacity-50 ${cls}`}>
+        {label} <span className="text-[9px] opacity-70">▾</span>
       </button>
       {open && (
-        <div className="px-3 pb-2 text-[12px] text-gray-500 dark:text-gray-400">
-          Aqui vão aparecer janelas livres detectadas e itens capturados por automação (Gmail) pra você aprovar. Ainda não ligado.
+        <div className={`absolute ${align} z-30 mt-1 min-w-[150px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1`}>
+          {children(() => setOpen(false))}
         </div>
       )}
     </div>
+  );
+}
+function MenuItem({ ativo, onClick, children }: { ativo?: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`w-full text-left text-xs px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap ${
+        ativo ? "font-semibold text-indigo-700 dark:text-indigo-300" : "text-gray-700 dark:text-gray-200"
+      }`}>{children}</button>
+  );
+}
+// Botão "Revisar" — verde quando vazio, amarelo quando tem novidade.
+function RevisarButton({ count }: { count: number }) {
+  return (
+    <Dropdown tone={count ? "amber" : "green"}
+      label={<><span className={`w-2 h-2 rounded-full ${count ? "bg-amber-500" : "bg-emerald-500"}`} /> {count ? `${count} pra revisar` : "Revisar"}</>}>
+      {() => (
+        <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 w-56">
+          {count ? "Clique nos itens pra aprovar ou descartar." : "Nada a revisar ainda. Aqui vão aparecer janelas livres detectadas e itens de automação (em breve)."}
+        </div>
+      )}
+    </Dropdown>
   );
 }
 function EmBreve({ titulo, desc }: { titulo: string; desc: string }) {
