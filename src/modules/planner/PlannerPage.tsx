@@ -289,6 +289,25 @@ async function excluirEvento(token: string, calId: string, eventId: string): Pro
   });
   if (!res.ok && res.status !== 410) throw new Error(`Falha ao excluir (HTTP ${res.status})`);
 }
+// Move um evento (drag-and-drop): PATCH só de início/fim, sem tocar no título.
+async function moverEvento(token: string, calId: string, eventId: string, ev: {
+  allDay: boolean; inicio: Date; fim: Date;
+}): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (ev.allDay) {
+    body.start = { date: ymd(ev.inicio) };
+    body.end = { date: ymd(addDays(ev.inicio, 1)) };
+  } else {
+    body.start = { dateTime: ev.inicio.toISOString() };
+    body.end = { dateTime: ev.fim.toISOString() };
+  }
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Falha ao mover (HTTP ${res.status})`);
+}
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
 const pad2 = (n: number) => String(n).padStart(2, "0");
@@ -299,6 +318,10 @@ function startOfWeek(d: Date): Date { const x = startOfDay(d); const wd = (x.get
 function parseDateOnly(s: string): Date { const [y, m, dd] = s.split("-").map(Number); return new Date(y, m - 1, dd); }
 function fmtHora(d: Date): string { const h = d.getHours(), m = d.getMinutes(); return m ? `${h}h${pad2(m)}` : `${h}h`; }
 function hhmm(d: Date): string { return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+// Combina a DATA de `dia` com a HORA de `ref` (usado no drag do mês p/ eventos timados).
+function comHoraDe(dia: Date, ref: Date): Date {
+  return new Date(dia.getFullYear(), dia.getMonth(), dia.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
+}
 const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -367,8 +390,8 @@ export function PlannerPage() {
         )}
       </div>
 
-      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
-      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
+      {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
+      {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
       {alvo === "tri" && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres." />}
       {alvo === "ano" && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
@@ -542,9 +565,9 @@ function PrecisaConectar() {
 
 // ─── Visão SEMANA ───────────────────────────────────────────────────────────
 const PX = 44;
-function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, onRefresh }: {
   conn: Conn; agendas: Agenda[]; refresh: number;
-  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void; onRefresh: () => void;
 }) {
   const weekStart = startOfWeek(refDate);
   const weekEnd = addDays(weekStart, 7);
@@ -553,7 +576,14 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick 
   const mostraHoje = hoje >= weekStart && hoje < weekEnd;
   const hojeIdx = mostraHoje ? (hoje.getDay() + 6) % 7 : -1;
 
+  // Drag-and-drop dos eventos timados (hora + dia).
+  const gridRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ ev: PEvent; origCol: number; startX: number; startY: number; moved: boolean; target: { start: Date; end: Date } | null } | null>(null);
+  const suppressClick = useRef(false);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+
   if (!conn.token) return <PrecisaConectar />;
+  const token = conn.token;
 
   const dias = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const timadosPorDia: PEvent[][] = dias.map(() => []);
@@ -584,6 +614,46 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick 
 
   const totH = (h1 - h0 + 1) * PX;
   const horas = Array.from({ length: h1 - h0 + 1 }, (_, i) => h0 + i);
+
+  function startDrag(e: React.PointerEvent, ev: PEvent, origCol: number) {
+    if (!ev.gravavel || e.button !== 0) return;
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
+    dragRef.current = { ev, origCol, startX: e.clientX, startY: e.clientY, moved: false, target: null };
+  }
+  function moveDrag(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    d.moved = true;
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const colW = rect.width / 7;
+    let col = Math.floor((e.clientX - rect.left) / colW);
+    col = Math.max(0, Math.min(6, col));
+    const quartos = Math.round((dy / PX) * 4);            // passos de 15 min
+    const novoIni = new Date(d.ev.start.getTime() + (col - d.origCol) * 86400000 + quartos * 15 * 60000);
+    const dur = d.ev.end.getTime() - d.ev.start.getTime();
+    const novoFim = new Date(novoIni.getTime() + dur);
+    d.target = { start: novoIni, end: novoFim };
+    setGhost({ x: e.clientX, y: e.clientY, label: `${DOW[col]} · ${fmtHora(novoIni)}–${fmtHora(novoFim)}` });
+  }
+  async function endDrag(e: React.PointerEvent, ev: PEvent) {
+    const d = dragRef.current;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    setGhost(null);
+    dragRef.current = null;
+    if (!d || !d.moved || !d.target) return;              // não moveu → onClick abre o modal
+    suppressClick.current = true;                          // moveu → engole o clique seguinte
+    const { start, end } = d.target;
+    try { await moverEvento(token, ev.calendarId, ev.id, { allDay: false, inicio: start, fim: end }); }
+    catch { /* recarrega pra refletir o estado real */ }
+    onRefresh();
+  }
+  function clickEvento(ev: PEvent) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    onEventClick(ev);
+  }
 
   return (
     <section>
@@ -635,7 +705,7 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick 
                 <div key={h} className={`h-[44px] text-[9.5px] text-gray-400 text-right pr-1.5 pt-0.5 ${idx > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>{h}h</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 flex-1">
+            <div ref={gridRef} className="grid grid-cols-7 flex-1">
               {dias.map((_, i) => (
                 <div key={i} className={`relative border-l border-gray-200 dark:border-gray-800 ${i === hojeIdx ? "bg-indigo-50/40 dark:bg-indigo-900/10" : ""}`}
                   style={{ height: totH, backgroundImage: "repeating-linear-gradient(to bottom,transparent,transparent 43px,rgba(0,0,0,.06) 43px,rgba(0,0,0,.06) 44px)" }}>
@@ -646,9 +716,13 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick 
                     const altura = Math.max(16, (fim - ini) * PX - 3);
                     const linhas = Math.max(1, Math.floor((altura - 6) / 11)); // qtd de linhas que cabe inteira
                     return (
-                      <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
-                        className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left cursor-pointer hover:brightness-95"
-                        style={{ background: ev.color, top: (ini - h0) * PX, height: altura }} title={ev.title}>
+                      <button key={ev.id} type="button"
+                        onPointerDown={(e) => startDrag(e, ev, i)}
+                        onPointerMove={moveDrag}
+                        onPointerUp={(e) => endDrag(e, ev)}
+                        onClick={() => clickEvento(ev)}
+                        className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left hover:brightness-95 touch-none select-none"
+                        style={{ background: ev.color, top: (ini - h0) * PX, height: altura, cursor: ev.gravavel ? "grab" : "pointer" }} title={ev.gravavel ? "Clique pra editar · arraste pra mover" : ev.title}>
                         <div style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
                           <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
                         </div>
@@ -666,14 +740,18 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick 
           </div>
         </div>
       </div>
+      {ghost && (
+        <div className="fixed z-[80] pointer-events-none px-2 py-1 rounded-md bg-gray-900/90 text-white text-[11px] font-semibold shadow-lg -translate-x-1/2"
+          style={{ left: ghost.x, top: ghost.y - 34 }}>{ghost.label}</div>
+      )}
     </section>
   );
 }
 
 // ─── Visão MÊS ──────────────────────────────────────────────────────────────
-function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, onRefresh }: {
   conn: Conn; agendas: Agenda[]; refresh: number;
-  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void; onRefresh: () => void;
 }) {
   const hoje = new Date();
   const monthStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
@@ -682,7 +760,14 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
   const { eventos, carregando } = useEventos(conn, agendas, gridStart, gridEnd, refresh);
   const [diaAberto, setDiaAberto] = useState<Date | null>(null);
 
+  // Drag-and-drop das pílulas entre dias.
+  const dragRef = useRef<{ ev: PEvent; origYmd: string; startX: number; startY: number; moved: boolean; targetYmd: string | null } | null>(null);
+  const suppressClick = useRef(false);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [overYmd, setOverYmd] = useState<string | null>(null);
+
   if (!conn.token) return <PrecisaConectar />;
+  const token = conn.token;
 
   const celulas = Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
   const porDia = new Map<string, PEvent[]>();
@@ -692,6 +777,53 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
     else push(ymd(ev.start), ev);
   }
   const evsDoDia = (d: Date) => (porDia.get(ymd(d)) || []).sort((a, b) => Number(a.allDay) - Number(b.allDay) || a.start.getTime() - b.start.getTime());
+
+  function targetYmdFrom(x: number, y: number): string | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return (el?.closest("[data-date]") as HTMLElement | null)?.getAttribute("data-date") || null;
+  }
+  function startDragMes(e: React.PointerEvent, ev: PEvent, dia: Date) {
+    if (!ev.gravavel || e.button !== 0) return;
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
+    dragRef.current = { ev, origYmd: ymd(dia), startX: e.clientX, startY: e.clientY, moved: false, targetYmd: null };
+  }
+  function moveDragMes(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
+    if (!d.moved && Math.hypot(dx, dy) < 5) return;
+    d.moved = true;
+    const ty = targetYmdFrom(e.clientX, e.clientY);
+    d.targetYmd = ty;
+    setOverYmd(ty);
+    if (ty) {
+      const dt = parseDateOnly(ty);
+      setGhost({ x: e.clientX, y: e.clientY, label: `→ ${dt.getDate()} ${MESES[dt.getMonth()].slice(0, 3)}` });
+    } else {
+      setGhost({ x: e.clientX, y: e.clientY, label: "solte sobre um dia" });
+    }
+  }
+  async function endDragMes(e: React.PointerEvent, ev: PEvent) {
+    const d = dragRef.current;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    setGhost(null);
+    setOverYmd(null);
+    dragRef.current = null;
+    if (!d || !d.moved) return;                                  // não moveu → onClick abre o modal
+    suppressClick.current = true;                                // moveu → engole o clique seguinte
+    if (!d.targetYmd || d.targetYmd === d.origYmd) return;       // soltou fora ou no mesmo dia
+    const dt = parseDateOnly(d.targetYmd);
+    const dur = ev.end.getTime() - ev.start.getTime();
+    const novoIni = ev.allDay ? dt : comHoraDe(dt, ev.start);
+    const novoFim = ev.allDay ? dt : new Date(novoIni.getTime() + dur);
+    try { await moverEvento(token, ev.calendarId, ev.id, { allDay: ev.allDay, inicio: novoIni, fim: novoFim }); }
+    catch { /* recarrega pra refletir o estado real */ }
+    onRefresh();
+  }
+  function clickPill(ev: PEvent) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    onEventClick(ev);
+  }
 
   return (
     <section>
@@ -704,27 +836,35 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
           />
           <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 capitalize">{MESES[monthStart.getMonth()]} {monthStart.getFullYear()}</h2>
         </div>
-        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "clique num dia pra ver o detalhe"}</span>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "clique no dia · arraste eventos entre dias"}</span>
       </div>
       <div className="grid grid-cols-7 gap-1.5">
         {DOW.map((d) => (<div key={d} className="text-[9.5px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold px-1 pb-0.5">{d}</div>))}
         {celulas.map((d, i) => {
           const noMes = d.getMonth() === monthStart.getMonth();
           const isHoje = ymd(d) === ymd(hoje);
+          const isOver = overYmd === ymd(d);
           const evs = evsDoDia(d);
           return (
-            <button key={i} type="button" onClick={() => setDiaAberto(d)}
+            <div key={i} data-date={ymd(d)} onClick={() => setDiaAberto(d)}
               className={`min-h-[92px] rounded-xl border p-1.5 relative text-left cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${
               noMes ? "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800" : "bg-transparent border-dashed border-gray-200 dark:border-gray-800 opacity-50"
-            } ${isHoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800 border-indigo-400" : ""}`}>
+            } ${isHoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800 border-indigo-400" : ""} ${isOver ? "ring-2 ring-indigo-400 border-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/30" : ""}`}>
               <div className={`text-[12.5px] font-semibold ${isHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400"}`}>{d.getDate()}</div>
               {evs.slice(0, 3).map((ev) => (
-                <div key={ev.id} className="mt-1 text-[10px] px-1.5 py-0.5 rounded text-white truncate" style={{ background: ev.color }} title={ev.title}>
+                <div key={ev.id}
+                  onPointerDown={(e) => startDragMes(e, ev, d)}
+                  onPointerMove={moveDragMes}
+                  onPointerUp={(e) => endDragMes(e, ev)}
+                  onClick={(e) => { e.stopPropagation(); clickPill(ev); }}
+                  className="mt-1 text-[10px] px-1.5 py-0.5 rounded text-white truncate touch-none select-none hover:brightness-95"
+                  style={{ background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+                  title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
                   {ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
                 </div>
               ))}
               {evs.length > 3 && <div className="mt-1 text-[10px] text-gray-400 px-1.5">+{evs.length - 3}</div>}
-            </button>
+            </div>
           );
         })}
       </div>
@@ -735,6 +875,10 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
           onClose={() => setDiaAberto(null)}
           onEventClick={(ev) => { setDiaAberto(null); onEventClick(ev); }}
         />
+      )}
+      {ghost && (
+        <div className="fixed z-[80] pointer-events-none px-2 py-1 rounded-md bg-gray-900/90 text-white text-[11px] font-semibold shadow-lg -translate-x-1/2"
+          style={{ left: ghost.x, top: ghost.y - 34 }}>{ghost.label}</div>
       )}
     </section>
   );
