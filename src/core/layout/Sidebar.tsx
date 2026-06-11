@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
@@ -8,13 +8,25 @@ import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
 import { useCanAcao } from "../auth/useCanAcao";
 import { ModuleBadge } from "../ui/ModuleBadge";
+import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { pessoa } = useAuth();
-  const { activeRestaurant } = useRestaurant();
+  const { restaurants, activeRestaurant, setActiveId, subdomainLocked } = useRestaurant();
   const rid = activeRestaurant?.id;
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [showNewRest, setShowNewRest] = useState(false);
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
+
+  function changeRestaurant(newRid: string) {
+    if (newRid === "__novo__") { setShowNewRest(true); return; }
+    setActiveId(newRid);
+    // Se está em /r/{oldRid}/{moduleId}, vai pro mesmo módulo no novo restaurante.
+    const m = location.pathname.match(/^\/r\/[^/]+\/(.+)$/);
+    if (m) navigate(`/r/${newRid}/${m[1]}`);
+  }
   // useCanAcao já lê perfis built-in + custom do Firestore — usa esse hook
   // em vez de canAcao() solto pra perfis custom funcionarem.
   const { can: canAcaoRid } = useCanAcao(rid || "");
@@ -104,11 +116,30 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       <aside className={`
         fixed md:static inset-y-0 left-0 z-40
         w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800
-        flex flex-col overflow-y-auto
+        flex flex-col
         transform transition-transform md:transform-none
         ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
       `}>
-        <nav className="flex-1 p-3 space-y-4">
+        {/* Topo FIXO: marca + seletor de restaurante (rola só os módulos abaixo) */}
+        <div className="flex-none px-3 pt-3 pb-2.5 border-b border-gray-100 dark:border-gray-800">
+          <div className="px-1 mb-2 font-bold text-[15px] text-gray-900 dark:text-gray-100 select-none">
+            <span className="text-indigo-600 dark:text-indigo-400">⚡</span> planejamento<span className="text-gray-400 dark:text-gray-500">.app</span>
+          </div>
+          {!subdomainLocked && restaurants.length > 0 ? (
+            <select
+              value={activeRestaurant?.id || ""}
+              onChange={(e) => changeRestaurant(e.target.value)}
+              className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer truncate"
+            >
+              {restaurants.map((r) => (<option key={r.id} value={r.id}>{r.nome}</option>))}
+              {pessoa?.isMaster && <option value="__novo__">＋ Criar novo restaurante…</option>}
+            </select>
+          ) : (
+            activeRestaurant && <div className="px-1 text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">{activeRestaurant.nome}</div>
+          )}
+        </div>
+
+        <nav className="flex-1 overflow-y-auto p-3 space-y-4">
           {/* Tarefas é a tela inicial — link de topo, fora dos agrupamentos.
               Só aparece pra quem tem permissão no módulo "tarefas". */}
           {visibleModule("tarefas") && (
@@ -251,6 +282,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </NavLink>
           </div>
         </nav>
+
+        {showNewRest && (
+          <NewRestaurantModal onClose={() => setShowNewRest(false)} onCreated={(id) => setActiveId(id)} />
+        )}
       </aside>
     </>
   );

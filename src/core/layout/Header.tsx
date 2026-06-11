@@ -1,34 +1,32 @@
 import { useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
-import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
+import { MODULES } from "../../config/modules";
 import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
+
+// Nome + descrição do módulo atual a partir da rota — mostrado no header
+// (o "Planejamento.app" e o seletor de restaurante vivem na sidebar agora).
+function moduloDoPath(pathname: string): { icon: string; label: string; desc?: string } | null {
+  if (pathname === "/planner") return { icon: "🗓", label: "Planner", desc: "Pessoal · sua agenda do Google" };
+  if (pathname === "/arquitetura") return { icon: "🏗️", label: "Arquitetura", desc: "Mapa de módulos do sistema" };
+  if (pathname === "/perfis") return { icon: "🛡️", label: "Perfis de Acesso", desc: "Permissões por perfil" };
+  if (pathname.startsWith("/portal/")) return { icon: "👤", label: "Meu Portal" };
+  const m = pathname.match(/^\/r\/[^/]+\/(.+)$/);
+  if (m) {
+    const mod = MODULES.find((x) => x.id === m[1]);
+    if (mod) return { icon: mod.icon, label: mod.label, desc: mod.desc };
+  }
+  return null;
+}
 
 export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
   const { fbUser, pessoa, signOut } = useAuth();
-  const { restaurants, activeRestaurant, setActiveId, subdomainLocked } = useRestaurant();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showNewRest, setShowNewRest] = useState(false);
-  const isMaster = !!pessoa?.isMaster;
-  const navigate = useNavigate();
   const location = useLocation();
-
-  // Nome+descrição do módulo atual no header (piloto: Planner). Generalizar
-  // pros outros módulos depois que validar (lookup por rota → MODULES).
-  const moduloInfo: { icon: string; label: string; desc: string } | null =
-    location.pathname === "/planner"
-      ? { icon: "🗓", label: "Planner", desc: "Pessoal · sua agenda do Google" }
-      : null;
-
-  function changeRestaurant(newRid: string) {
-    setActiveId(newRid);
-    // Se está em /r/{oldRid}/{moduleId}, navega pro mesmo módulo no novo restaurante.
-    const m = location.pathname.match(/^\/r\/[^/]+\/(.+)$/);
-    if (m) navigate(`/r/${newRid}/${m[1]}`);
-  }
+  const modulo = moduloDoPath(location.pathname);
 
   return (
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 [overflow-x:clip] relative z-30">
@@ -36,38 +34,16 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         ☰
       </button>
 
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
-          {subdomainLocked && activeRestaurant ? activeRestaurant.nome : "Planejamento"}
-        </span>
+      <div className="flex items-baseline gap-2 min-w-0">
+        {modulo ? (
+          <>
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate whitespace-nowrap">{modulo.icon} {modulo.label}</span>
+            {modulo.desc && <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 truncate">{modulo.desc}</span>}
+          </>
+        ) : (
+          <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">Início</span>
+        )}
       </div>
-
-      {/* Seletor de restaurante — escondido quando entrou via subdomain.
-          O "criar novo restaurante" (só master) virou opção do seletor. */}
-      {!subdomainLocked && restaurants.length > 0 && (
-        <select
-          value={activeRestaurant?.id || ""}
-          onChange={(e) => {
-            if (e.target.value === "__novo__") setShowNewRest(true);
-            else changeRestaurant(e.target.value);
-          }}
-          className="ml-1 sm:ml-4 px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer max-w-[120px] sm:max-w-none truncate min-w-0"
-        >
-          {restaurants.map(r => (
-            <option key={r.id} value={r.id}>{r.nome}</option>
-          ))}
-          {isMaster && <option value="__novo__">＋ Criar novo restaurante…</option>}
-        </select>
-      )}
-
-      {/* Nome + descrição do módulo atual (piloto: Planner) — ocupa o espaço
-          vazio do header pra liberar a primeira linha do conteúdo. */}
-      {moduloInfo && (
-        <div className="hidden md:flex items-baseline gap-2 min-w-0 ml-3 px-3 py-1 rounded-lg bg-indigo-50/70 dark:bg-indigo-900/20">
-          <span className="text-sm font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">{moduloInfo.icon} {moduloInfo.label}</span>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{moduloInfo.desc}</span>
-        </div>
-      )}
 
       <div className="flex-1 min-w-0" />
 
@@ -150,12 +126,6 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
         )}
       </div>
 
-      {showNewRest && (
-        <NewRestaurantModal
-          onClose={() => setShowNewRest(false)}
-          onCreated={(id) => setActiveId(id)}
-        />
-      )}
     </header>
   );
 }
