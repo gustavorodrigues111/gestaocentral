@@ -290,12 +290,13 @@ export function PlannerPage() {
 
   return (
     <div className="max-w-6xl">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🗓 Planner</h1>
-        <p className="text-xs text-gray-500 dark:text-gray-400">Pessoal · sua agenda do Google</p>
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-1">🗓 Planner</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Pessoal · sua agenda do Google</p>
+        </div>
+        <StatusGoogle conn={conn} />
       </div>
-
-      <GoogleConnectBar conn={conn} agendas={agendas} setPref={setPref} />
 
       <ReviewBand open={reviewOpen} onToggle={() => setReviewOpen((v) => !v)} />
 
@@ -330,6 +331,8 @@ export function PlannerPage() {
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
       {alvo === "crono" && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
 
+      {conn.token && agendas.length > 0 && <AgendasManager agendas={agendas} setPref={setPref} />}
+
       {criar && conn.token && (
         <CriarEventoModal
           modo={criar}
@@ -343,54 +346,52 @@ export function PlannerPage() {
   );
 }
 
-// ─── Barra de conexão + gerenciador de agendas ──────────────────────────────
-function GoogleConnectBar({ conn, agendas, setPref }: { conn: Conn; agendas: Agenda[]; setPref: (id: string, p: AgendaPref) => void }) {
+// ─── Status discreto da conexão (no header) ─────────────────────────────────
+function StatusGoogle({ conn }: { conn: Conn }) {
   const connected = !!conn.token;
+  return (
+    <div className="flex flex-col items-end gap-1">
+      <button
+        type="button"
+        onClick={conn.conectar}
+        disabled={!conn.gsiReady || conn.carregando}
+        title={connected ? "Google conectado — clique pra reconectar" : "Clique para conectar sua conta Google"}
+        className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap"
+      >
+        <span className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-500" : "bg-rose-500"}`} />
+        {conn.carregando ? "conectando…" : connected ? "Conectado" : "Clique para conectar"}
+      </button>
+      {conn.erro && <span className="text-[10px] text-rose-600 dark:text-rose-400">⚠️ {conn.erro}</span>}
+    </div>
+  );
+}
+
+// ─── Gerenciador de agendas (abaixo do calendário): cor + visibilidade ──────
+function AgendasManager({ agendas, setPref }: { agendas: Agenda[]; setPref: (id: string, p: AgendaPref) => void }) {
   const visiveis = agendas.filter((a) => !a.oculta).length;
   return (
-    <div className={`mb-4 rounded-xl border p-3 ${
-      connected ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-    }`}>
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm">
-          {connected ? (
-            <span className="text-emerald-700 dark:text-emerald-400 font-medium">
-              ✓ Google conectado{agendas.length ? ` · ${visiveis}/${agendas.length} agenda(s)` : ""}
-            </span>
-          ) : (
-            <span className="text-gray-600 dark:text-gray-300">Conecte sua conta Google pra ver sua agenda de verdade.</span>
-          )}
-          {conn.erro && <div className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">⚠️ {conn.erro}</div>}
-        </div>
-        <button type="button" onClick={conn.conectar} disabled={!conn.gsiReady || conn.carregando}
-          className="text-xs font-semibold px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
-          {conn.carregando ? "Carregando…" : connected ? "Reconectar" : "🔗 Conectar Google"}
-        </button>
+    <div className="mt-6 border-t border-gray-200 dark:border-gray-800 pt-4">
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">
+        Agendas ({visiveis}/{agendas.length}) · cor e visibilidade
       </div>
-
-      {connected && agendas.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {agendas.map((a) => (
-            <div key={a.id}
-              className={`inline-flex items-center gap-1.5 text-[11px] pl-1 pr-2 py-1 rounded-full border ${
-                a.oculta ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 opacity-60" : "border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/50"
-              }`}>
-              {/* swatch de cor — clicável (input color escondido) */}
-              <label className="relative w-4 h-4 rounded-full cursor-pointer border border-black/10" style={{ background: a.cor }} title="Mudar cor">
-                <input type="color" value={a.cor} onChange={(e) => setPref(a.id, { cor: e.target.value })}
-                  className="absolute inset-0 opacity-0 cursor-pointer" />
-              </label>
-              <span className={`${a.oculta ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"} max-w-[160px] truncate`}>{a.summary}</span>
-              {/* mostrar/ocultar */}
-              <button type="button" onClick={() => setPref(a.id, { oculta: !a.oculta })}
-                title={a.oculta ? "Mostrar no Planner" : "Ocultar do Planner"}
-                className="text-[12px] leading-none hover:opacity-70">
-                {a.oculta ? "🙈" : "👁️"}
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap gap-1.5">
+        {agendas.map((a) => (
+          <div key={a.id}
+            className={`inline-flex items-center gap-1.5 text-[11px] pl-1 pr-2 py-1 rounded-full border ${
+              a.oculta ? "border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 opacity-60" : "border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/50"
+            }`}>
+            <label className="relative w-4 h-4 rounded-full cursor-pointer border border-black/10" style={{ background: a.cor }} title="Mudar cor">
+              <input type="color" value={a.cor} onChange={(e) => setPref(a.id, { cor: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer" />
+            </label>
+            <span className={`${a.oculta ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"} max-w-[180px] truncate`}>{a.summary}</span>
+            <button type="button" onClick={() => setPref(a.id, { oculta: !a.oculta })}
+              title={a.oculta ? "Mostrar no Planner" : "Ocultar do Planner"}
+              className="text-[12px] leading-none hover:opacity-70">
+              {a.oculta ? "🙈" : "👁️"}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
