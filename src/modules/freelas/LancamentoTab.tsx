@@ -150,7 +150,10 @@ function textoHorario(s: FreelaShift, zona: Zona): string {
     const base = (s.entradaPrevista || s.saidaPrevista) ? `prevista ${s.entradaPrevista || "?"}${fim}` : "sem horário previsto";
     return base + (prevInt ? ` · ⏸️ ${prevInt}min` : "");
   }
-  if (zona === "fechar") return `entrou ${s.entrada || "?"}`;
+  if (zona === "fechar") {
+    const tot = intervaloTotalDoShift(s);
+    return `entrou ${s.entrada || "?"}` + (tot ? ` · ⏸️ ${tot}min` : "");
+  }
   // realizado
   const tot = intervaloTotalDoShift(s);
   const h = calcHoras(s.entrada, s.saida, tot);
@@ -168,7 +171,7 @@ const ZONA_BADGE: Record<Zona, { txt: string; cls: string }> = {
 // ── Linha de turno (display + ações por zona) ───────────────────────────────
 function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: string; podeOperar: boolean }) {
   const { pessoa: me } = useAuth();
-  const [modalMode, setModalMode] = useState<"abrir" | "fechar" | "editar" | null>(null);
+  const [modalMode, setModalMode] = useState<"abrir" | "fechar" | "editar" | "intervalo" | null>(null);
   const [saving, setSaving] = useState(false);
   const zona = zonaDoShift(shift, hoje);
   const badge = ZONA_BADGE[zona];
@@ -212,7 +215,10 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
             <Button size="sm" onClick={() => setModalMode("abrir")} disabled={saving}>🟢 Abrir turno</Button>
           )}
           {zona === "fechar" && (
-            <Button size="sm" onClick={() => setModalMode("fechar")} disabled={saving}>🔴 Fechar turno</Button>
+            <>
+              <Button size="sm" variant="secondary" onClick={() => setModalMode("intervalo")} disabled={saving}>⏸️ Intervalo</Button>
+              <Button size="sm" onClick={() => setModalMode("fechar")} disabled={saving}>🔴 Fechar turno</Button>
+            </>
           )}
           {zona === "realizado" && (
             <Button size="sm" variant="secondary" onClick={() => setModalMode("editar")} disabled={saving}>✏️ Editar</Button>

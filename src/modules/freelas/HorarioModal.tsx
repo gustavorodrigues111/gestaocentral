@@ -9,12 +9,13 @@ import { calcHoras, calcTotal, fmtHoras, somaIntervalos } from "./helpers";
 import { IntervalosEditor } from "./IntervalosEditor";
 
 // Execução do turno por BOTÃO (conceito fixo, separado do planejamento):
-//   abrir  → confirma a ENTRADA real (chegada). Vira aberto.
-//   fechar → confirma SAÍDA real + INTERVALOS realizados. Vira realizado.
-//   editar → corrige um turno já realizado (entrada + saída + intervalos).
+//   abrir     → confirma a ENTRADA real (chegada). Vira aberto.
+//   intervalo → registra/atualiza as PAUSAS sem fechar. Turno segue aberto.
+//   fechar    → confirma SAÍDA real + INTERVALOS realizados. Vira realizado.
+//   editar    → corrige um turno já realizado (entrada + saída + intervalos).
 // Os campos previstos (entradaPrevista/saidaPrevista/intervalosPrevistos) só
 // PRÉ-PREENCHEM os reais — nunca são gravados aqui.
-type Mode = "abrir" | "fechar" | "editar";
+type Mode = "abrir" | "fechar" | "editar" | "intervalo";
 
 type Props = {
   shift: FreelaShift;
@@ -24,14 +25,16 @@ type Props = {
 };
 
 const TITULOS: Record<Mode, string> = {
-  abrir:  "🟢 Abrir turno",
-  fechar: "🔴 Fechar turno",
-  editar: "✏️ Editar turno",
+  abrir:     "🟢 Abrir turno",
+  fechar:    "🔴 Fechar turno",
+  editar:    "✏️ Editar turno",
+  intervalo: "⏸️ Registrar intervalo",
 };
 const BOTOES: Record<Mode, string> = {
-  abrir:  "Abrir turno",
-  fechar: "Fechar turno",
-  editar: "Salvar",
+  abrir:     "Abrir turno",
+  fechar:    "Fechar turno",
+  editar:    "Salvar",
+  intervalo: "Salvar intervalo",
 };
 
 export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
@@ -60,6 +63,8 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
       if (!horarioValido(entrada)) { setErr("Confirme a hora de entrada — use HH:MM."); return; }
     } else if (mode === "fechar") {
       if (!horarioValido(saida)) { setErr("Confirme a hora de saída — use HH:MM."); return; }
+    } else if (mode === "intervalo") {
+      // Só registra a(s) pausa(s) — não exige saída. Turno segue aberto.
     } else {
       if (entrada && !horarioValido(entrada)) { setErr("Hora de entrada inválida."); return; }
       if (saida && !horarioValido(saida)) { setErr("Hora de saída inválida."); return; }
@@ -75,6 +80,10 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         // Só registra a chegada e abre. Não toca saída/intervalos.
         updates.entrada = entrada;
         updates.status = "aberto";
+      } else if (mode === "intervalo") {
+        // Salva só as pausas — turno continua aberto, sem saída/horas.
+        updates.intervalos = intervalos;
+        updates.intervalo = intervaloTotal;
       } else {
         // fechar / editar: grava saída + intervalos reais + horas.
         if (entrada) updates.entrada = entrada;
@@ -109,6 +118,11 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
             Confirme a saída e os intervalos realizados pra fechar.
           </div>
         )}
+        {mode === "intervalo" && (
+          <div className="text-xs text-gray-700 dark:text-gray-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded p-2">
+            ⏸️ Registre os intervalos agora. O turno continua <strong>aberto</strong> — você fecha depois com a hora de saída.
+          </div>
+        )}
 
         {/* Entrada — abrir e editar */}
         {(mode === "abrir" || mode === "editar") && (
@@ -130,8 +144,8 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
           </div>
         )}
 
-        {/* Intervalos realizados — fechar e editar */}
-        {(mode === "fechar" || mode === "editar") && (
+        {/* Intervalos realizados — fechar, editar e intervalo */}
+        {(mode === "fechar" || mode === "editar" || mode === "intervalo") && (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
               Intervalos realizados — pode ter mais de um
