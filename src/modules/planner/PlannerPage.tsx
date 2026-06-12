@@ -38,6 +38,11 @@ type GCal = { id: string; summary: string; primary?: boolean; backgroundColor?: 
 // Agenda "efetiva" = agenda do Google + preferências do usuário aplicadas.
 type Agenda = { id: string; summary: string; cor: string; oculta: boolean; gravavel: boolean };
 
+// Tinta translúcida a partir da cor (hex #rrggbb) — sombreado dos cards.
+function corTint(hex: string, aa: string): string {
+  return /^#[0-9a-fA-F]{6}$/.test(hex) ? `${hex}${aa}` : hex;
+}
+
 function gsiOauth() {
   return (window as unknown as {
     google?: { accounts?: { oauth2?: {
@@ -1521,14 +1526,23 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                     onPointerMove={moveDragK}
                     onPointerUp={(e) => endDragK(e, ev)}
                     onClick={() => clickCard(ev)}
-                    className="rounded-lg bg-white dark:bg-gray-800 border-l-4 border border-gray-200 dark:border-gray-700 px-2 py-1.5 shadow-sm touch-none select-none hover:brightness-95"
-                    style={{ borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+                    className={`rounded-lg px-2 py-1.5 touch-none select-none hover:brightness-[0.97] ${ev.pin ? "border border-dashed" : "border border-l-4 shadow-sm"}`}
+                    style={ev.pin
+                      ? { background: corTint(ev.color, "14"), borderColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
+                      : { background: corTint(ev.color, "24"), borderColor: corTint(ev.color, "55"), borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
                     title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
-                    <div className="text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
-                    <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
-                      {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
-                      {ev.modalidade === "online" ? " · 💻" : ev.modalidade === "presencial" || ev.local ? " · 📍" : ""}{ev.recorrente ? " · 🔁" : ""}
-                    </div>
+                    {ev.pin ? (
+                      <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-wider font-bold mb-0.5" style={{ color: ev.color }}>
+                        📌 Pin{ev.recorrente ? " · 🔁" : ""}
+                      </div>
+                    ) : null}
+                    <div className="text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words">{ev.title}</div>
+                    {!ev.pin && (
+                      <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
+                        {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
+                        {ev.modalidade === "online" ? " · 💻" : ev.modalidade === "presencial" || ev.local ? " · 📍" : ""}{ev.recorrente ? " · 🔁" : ""}
+                      </div>
+                    )}
                     {ev.local && <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate" title={ev.local}>📍 {ev.local}</div>}
                   </div>
                 ))}
