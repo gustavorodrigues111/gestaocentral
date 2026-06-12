@@ -466,7 +466,7 @@ async function editarEstaEFuturas(token: string, evento: PEvent, dados: DadosEve
   const origUntil = rruleGetUntil(rule);
   const novaRule = origUntil ? rruleComUntil(rule, origUntil) : rruleComUntil(rule);
   const privMaster = (master.extendedProperties as { private?: Record<string, string> } | undefined)?.private;
-  await criarEvento(token, destinoCal || cal, { titulo: dados.titulo, allDay: dados.allDay, inicio: dados.inicio, fim: dados.fim, modalidade: dados.modalidade, local: dados.local, privExistente: privMaster, recorrencia: [novaRule] });
+  await criarEvento(token, destinoCal || cal, { titulo: dados.titulo, allDay: dados.allDay, inicio: dados.inicio, fim: dados.fim, pin: evento.pin, modalidade: dados.modalidade, local: dados.local, privExistente: privMaster, recorrencia: [novaRule] });
 }
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -1704,7 +1704,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
         }
       } else {
         let recorrencia: string[] | undefined;
-        if (!ehPin && repetir) {
+        if (repetir) {   // vale pra evento E pin (pin = all-day recorrente)
           if (repetir === "CUSTOM") {
             const byday = Array.from(new Set([codeDoDia(ini), ...cByday]));   // dia de início sempre incluso
             recorrencia = montaRRuleCustom({ intervalo: cIntervalo, unidade: cUnidade, byday, mensalModo: cMensal, fim: cFim, ate: until ? parseDateOnly(until) : undefined, count: cCount }, semHora, ini);
@@ -1805,7 +1805,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
             </div>
           </div>
         )}
-        {!isEdit && !ehPin && (() => {
+        {!isEdit && (() => {
           const dObj = parseDateOnly(data);
           const startCode = codeDoDia(dObj);
           const bydayEff = Array.from(new Set([startCode, ...cByday]));
