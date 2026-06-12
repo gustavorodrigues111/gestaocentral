@@ -201,7 +201,7 @@ function usePlannerSettings(uid: string | undefined) {
 }
 
 // ─── Eventos (events.list por agenda) ───────────────────────────────────────
-type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean; local?: string; modalidade?: "presencial" | "online"; priv?: Record<string, string> };
+type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean; recurringId?: string; local?: string; modalidade?: "presencial" | "online"; priv?: Record<string, string> };
 async function listEvents(
   token: string,
   agendas: Agenda[],
@@ -233,7 +233,7 @@ async function listEvents(
       const pin = priv?.kind === "pin";
       const mod = priv?.modalidade;
       const modalidade = mod === "presencial" || mod === "online" ? mod : undefined;
-      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId, local: ev.location || undefined, modalidade, priv });
+      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId, recurringId: ev.recurringEventId, local: ev.location || undefined, modalidade, priv });
     }
   }));
   return out;
@@ -260,7 +260,7 @@ function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date,
 }
 
 type Modalidade = "presencial" | "online";
-type DadosEvento = { titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean; modalidade?: Modalidade | ""; local?: string; privExistente?: Record<string, string> };
+type DadosEvento = { titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean; modalidade?: Modalidade | ""; local?: string; privExistente?: Record<string, string>; recorrencia?: string[] };
 // Modalidade/endereço só valem pra eventos COM HORÁRIO (timados). Pra pin e
 // dia-todo: NÃO toca em location nem extendedProperties — assim não apaga o
 // marcador `kind=pin` nem o endereço de um all-day. Preserva as chaves private
@@ -287,6 +287,7 @@ async function criarEvento(token: string, calId: string, ev: DadosEvento): Promi
     body.extendedProperties = { private: { kind: "pin" } };
   }
   aplicaModalidade(body, ev);
+  if (ev.recorrencia?.length) body.recurrence = ev.recorrencia;
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -366,6 +367,91 @@ function comHoraDe(dia: Date, ref: Date): Date {
 function ceilQuarter(d: Date): Date { const x = new Date(d); x.setSeconds(0, 0); x.setMinutes(Math.ceil(x.getMinutes() / 15) * 15); return x; }
 function fmtDur(min: number): string { const h = Math.floor(min / 60), m = min % 60; return h ? (m ? `${h}h${pad2(m)}` : `${h}h`) : `${m}min`; }
 const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
+
+// ─── Recorrência (RRULE) ────────────────────────────────────────────────────
+type Freq = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+// Monta RRULE pra criação. `ate` = data (inclusive) opcional de término.
+function montaRRule(freq: Freq, allDay: boolean, ate?: Date): string[] {
+  let r = `RRULE:FREQ=${freq}`;
+  if (ate) {
+    r += allDay
+      ? `;UNTIL=${ate.getFullYear()}${pad2(ate.getMonth() + 1)}${pad2(ate.getDate())}`
+      : `;UNTIL=${ate.getUTCFullYear()}${pad2(ate.getUTCMonth() + 1)}${pad2(ate.getUTCDate())}T235959Z`;
+  }
+  return [r];
+}
+// Token UNTIL pra terminar a série JUSTO ANTES de `d` (corte "esta e as futuras").
+function untilAntesDe(d: Date, allDay: boolean): string {
+  if (allDay) { const x = addDays(startOfDay(d), -1); return `${x.getFullYear()}${pad2(x.getMonth() + 1)}${pad2(x.getDate())}`; }
+  const u = new Date(d.getTime() - 1000);
+  return `${u.getUTCFullYear()}${pad2(u.getUTCMonth() + 1)}${pad2(u.getUTCDate())}T${pad2(u.getUTCHours())}${pad2(u.getUTCMinutes())}${pad2(u.getUTCSeconds())}Z`;
+}
+function rrulePrincipal(recurrence?: string[]): string | null {
+  return recurrence?.find((r) => /^RRULE:/i.test(r)) || null;
+}
+// Remove UNTIL/COUNT e (opcional) aplica novo UNTIL.
+function rruleComUntil(rrule: string, until?: string): string {
+  const partes = rrule.replace(/^RRULE:/i, "").split(";").filter((p) => p && !/^UNTIL=/i.test(p) && !/^COUNT=/i.test(p));
+  if (until) partes.push(`UNTIL=${until}`);
+  return "RRULE:" + partes.join(";");
+}
+function rruleGetUntil(rrule: string): string | null {
+  const m = rrule.match(/UNTIL=([0-9TZ]+)/i);
+  return m ? m[1] : null;
+}
+// GET cru de um evento (precisa do mestre pra editar série / cortar futuras).
+async function getEventoRaw(token: string, calId: string, eventId: string): Promise<Record<string, unknown>> {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) throw new Error(`Falha ao ler o evento (HTTP ${res.status})`);
+  return res.json();
+}
+async function patchEventoRaw(token: string, calId: string, eventId: string, body: Record<string, unknown>): Promise<void> {
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Falha ao salvar a série (HTTP ${res.status})`);
+}
+// Edita a SÉRIE TODA (evento-mestre). Aplica título/modalidade/endereço e, em
+// eventos timados, o novo HORÁRIO (mantendo a data do mestre). Pode trocar de
+// agenda (move o mestre inteiro).
+async function editarSerieToda(token: string, evento: PEvent, dados: DadosEvento, destinoCal: string): Promise<void> {
+  const masterId = evento.recurringId!;
+  let cal = evento.calendarId;
+  if (destinoCal && destinoCal !== cal) { await moverParaAgenda(token, cal, masterId, destinoCal); cal = destinoCal; }
+  const master = await getEventoRaw(token, cal, masterId);
+  const body: Record<string, unknown> = { summary: dados.titulo };
+  const ms = master.start as { dateTime?: string } | undefined;
+  if (!dados.allDay && ms?.dateTime) {
+    const base = new Date(ms.dateTime);
+    const novoIni = new Date(base.getFullYear(), base.getMonth(), base.getDate(), dados.inicio.getHours(), dados.inicio.getMinutes(), 0, 0);
+    const novoFim = new Date(novoIni.getTime() + (dados.fim.getTime() - dados.inicio.getTime()));
+    body.start = { dateTime: novoIni.toISOString() };
+    body.end = { dateTime: novoFim.toISOString() };
+  }
+  const privMaster = (master.extendedProperties as { private?: Record<string, string> } | undefined)?.private;
+  aplicaModalidade(body, { ...dados, privExistente: privMaster });
+  await patchEventoRaw(token, cal, masterId, body);
+}
+// Corta a série no dia desta ocorrência e cria uma NOVA série (com as edições)
+// a partir daqui. Preserva o término original (UNTIL) se houver.
+async function editarEstaEFuturas(token: string, evento: PEvent, dados: DadosEvento, destinoCal: string): Promise<void> {
+  const masterId = evento.recurringId!;
+  const cal = evento.calendarId;
+  const master = await getEventoRaw(token, cal, masterId);
+  const rule = rrulePrincipal(master.recurrence as string[] | undefined);
+  if (!rule) throw new Error("Série sem regra de recorrência.");
+  // 1. Trunca o mestre pra terminar antes do corte (o mais cedo entre a
+  //    ocorrência clicada e a nova data escolhida — evita sobreposição).
+  const corte = dados.inicio.getTime() < evento.start.getTime() ? dados.inicio : evento.start;
+  await patchEventoRaw(token, cal, masterId, { recurrence: [rruleComUntil(rule, untilAntesDe(corte, evento.allDay))] });
+  // 2. Cria a nova série a partir desta data, com as edições.
+  const origUntil = rruleGetUntil(rule);
+  const novaRule = origUntil ? rruleComUntil(rule, origUntil) : rruleComUntil(rule);
+  const privMaster = (master.extendedProperties as { private?: Record<string, string> } | undefined)?.private;
+  await criarEvento(token, destinoCal || cal, { titulo: dados.titulo, allDay: dados.allDay, inicio: dados.inicio, fim: dados.fim, modalidade: dados.modalidade, local: dados.local, privExistente: privMaster, recorrencia: [novaRule] });
+}
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 // ─── Janelas livres (Revisar) ───────────────────────────────────────────────
@@ -1533,9 +1619,14 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
   // Modalidade: infere "presencial" de eventos que já têm endereço (location do Google).
   const [modalidade, setModalidade] = useState<"" | "presencial" | "online">(evento?.modalidade || (evento?.local ? "presencial" : ""));
   const [endereco, setEndereco] = useState(evento?.local || "");
+  // Recorrência: criar (repetir/until) e editar (escopo da série).
+  const [repetir, setRepetir] = useState<"" | Freq>("");
+  const [until, setUntil] = useState("");
+  const [escopo, setEscopo] = useState<"ocorrencia" | "futuras" | "serie">("ocorrencia");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const semHora = ehPin || (isEdit && !!evento?.allDay);
+  const recorrente = !!evento?.recorrente;
   const seg = (active: boolean) => `flex-1 text-xs font-semibold px-2 py-1.5 rounded-md transition-colors ${active ? "bg-white dark:bg-gray-900 shadow text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`;
 
   // Evento de agenda só-leitura: não dá pra editar por aqui.
@@ -1573,15 +1664,24 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
       }
       const mod = semHora ? "" : modalidade;
       const loc = mod === "presencial" ? endereco.trim() : "";
+      const dados: DadosEvento = { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, modalidade: mod, local: loc };
       if (isEdit && evento) {
-        // Trocou de agenda? Move primeiro (events.move), depois aplica o resto.
         const destino = calId || evento.calendarId;
-        if (destino !== evento.calendarId) {
-          await moverParaAgenda(token, evento.calendarId, evento.id, destino);
+        if (!recorrente) {
+          // Evento normal: pode trocar de agenda (move) e edita.
+          if (destino !== evento.calendarId) await moverParaAgenda(token, evento.calendarId, evento.id, destino);
+          await editarEvento(token, destino, evento.id, { ...dados, privExistente: evento.priv });
+        } else if (escopo === "serie") {
+          await editarSerieToda(token, evento, dados, destino);
+        } else if (escopo === "futuras") {
+          await editarEstaEFuturas(token, evento, dados, destino);
+        } else {
+          // Só esta ocorrência (recorrente não troca de agenda).
+          await editarEvento(token, evento.calendarId, evento.id, { ...dados, privExistente: evento.priv });
         }
-        await editarEvento(token, destino, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, modalidade: mod, local: loc, privExistente: evento.priv });
       } else {
-        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, pin: ehPin, modalidade: mod, local: loc });
+        const recorrencia = !ehPin && repetir ? montaRRule(repetir, semHora, until ? parseDateOnly(until) : undefined) : undefined;
+        await criarEvento(token, calId, { ...dados, pin: ehPin, recorrencia });
       }
       onDone();
     } catch (e) {
@@ -1592,11 +1692,26 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
 
   async function excluir() {
     if (!evento) return;
-    if (!window.confirm("Excluir este evento? Ele será removido do Google Calendar.")) return;
+    const msg = recorrente
+      ? (escopo === "serie" ? "Excluir a SÉRIE TODA? Remove todas as ocorrências."
+        : escopo === "futuras" ? "Excluir ESTA e as próximas ocorrências?"
+        : "Excluir só ESTA ocorrência?")
+      : "Excluir este evento? Ele será removido do Google Calendar.";
+    if (!window.confirm(msg)) return;
     setErro("");
     setSalvando(true);
     try {
-      await excluirEvento(token, evento.calendarId, evento.id);
+      if (!recorrente || escopo === "ocorrencia") {
+        await excluirEvento(token, evento.calendarId, evento.id);
+      } else if (escopo === "serie") {
+        await excluirEvento(token, evento.calendarId, evento.recurringId!);
+      } else {
+        // Futuras: trunca o mestre pra terminar antes desta ocorrência.
+        const master = await getEventoRaw(token, evento.calendarId, evento.recurringId!);
+        const rule = rrulePrincipal(master.recurrence as string[] | undefined);
+        if (!rule) throw new Error("Série sem regra de recorrência.");
+        await patchEventoRaw(token, evento.calendarId, evento.recurringId!, { recurrence: [rruleComUntil(rule, untilAntesDe(evento.start, evento.allDay))] });
+      }
       onDone();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao excluir.");
@@ -1620,16 +1735,24 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
         )}
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
           placeholder={ehPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
-        {evento?.recorrente && (
-          <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
-            🔁 Evento recorrente — as alterações valem só pra <strong>esta ocorrência</strong>.
+        {recorrente && (
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">🔁 Evento recorrente — aplicar a:</label>
+            <div className="flex gap-1 p-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+              <button type="button" onClick={() => setEscopo("ocorrencia")} className={seg(escopo === "ocorrencia")}>Esta</button>
+              <button type="button" onClick={() => setEscopo("futuras")} className={seg(escopo === "futuras")}>Esta e futuras</button>
+              <button type="button" onClick={() => setEscopo("serie")} className={seg(escopo === "serie")}>Toda a série</button>
+            </div>
+            <p className="text-[10.5px] text-gray-400 dark:text-gray-500">
+              {escopo === "ocorrencia" ? "Muda só este dia (não troca de agenda)." : escopo === "futuras" ? "Muda deste dia em diante (cria uma série nova)." : "Muda todas as ocorrências. Horário e agenda valem pra série."}
+            </p>
           </div>
         )}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Agenda{isEdit ? "" : " *"}</label>
-          {/* Em edição, se a agenda atual não está na lista gravável (caso raro)
-              ou se é recorrente, trava com texto; senão deixa trocar de agenda. */}
-          {isEdit && (evento?.recorrente || !agendas.some((a) => a.id === calId)) ? (
+          {/* Trava a troca de agenda quando: agenda fora da lista gravável, OU
+              recorrente editando só "esta ocorrência" (não dá pra mover 1 instância). */}
+          {isEdit && ((recorrente && escopo === "ocorrencia") || !agendas.some((a) => a.id === calId)) ? (
             <div className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 truncate">{agendaNome}</div>
           ) : (
             <select value={calId} onChange={(e) => setCalId(e.target.value)}
@@ -1649,6 +1772,25 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim *</label>
               <TimeInput value={fim} onChange={setFim} placeholder="HH:MM" />
             </div>
+          </div>
+        )}
+        {!isEdit && !ehPin && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Repetir</label>
+            <div className="grid grid-cols-2 gap-2">
+              <select value={repetir} onChange={(e) => setRepetir(e.target.value as "" | Freq)}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                <option value="">Não repete</option>
+                <option value="DAILY">Todo dia</option>
+                <option value="WEEKLY">Toda semana</option>
+                <option value="MONTHLY">Todo mês</option>
+                <option value="YEARLY">Todo ano</option>
+              </select>
+              {repetir && (
+                <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} placeholder="até (opcional)" />
+              )}
+            </div>
+            {repetir && <p className="text-[10.5px] text-gray-400 dark:text-gray-500">Sem data fim = repete indefinidamente.</p>}
           </div>
         )}
         {!semHora && (
