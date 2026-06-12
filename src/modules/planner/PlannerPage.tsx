@@ -336,8 +336,47 @@ function hhmm(d: Date): string { return `${pad2(d.getHours())}:${pad2(d.getMinut
 function comHoraDe(dia: Date, ref: Date): Date {
   return new Date(dia.getFullYear(), dia.getMonth(), dia.getDate(), ref.getHours(), ref.getMinutes(), 0, 0);
 }
+function ceilQuarter(d: Date): Date { const x = new Date(d); x.setSeconds(0, 0); x.setMinutes(Math.ceil(x.getMinutes() / 15) * 15); return x; }
+function fmtDur(min: number): string { const h = Math.floor(min / 60), m = min % 60; return h ? (m ? `${h}h${pad2(m)}` : `${h}h`) : `${m}min`; }
 const DOW = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+
+// ─── Janelas livres (Revisar) ───────────────────────────────────────────────
+// Procura espaços vazios na agenda nos próximos 7 dias, dentro do horário útil
+// (08–20h), ignorando eventos de dia-todo e pins (que não bloqueiam tempo).
+type Janela = { start: Date; end: Date };
+const REVISAR_H0 = 8, REVISAR_H1 = 20, REVISAR_MIN_GAP = 45;   // minutos
+function useJanelasLivres(conn: Conn, agendas: Agenda[], refresh: number): Janela[] {
+  const ini = startOfDay(new Date());
+  const fim = addDays(ini, 7);
+  const { eventos } = useEventos(conn, agendas, ini, fim, refresh);
+  const agoraMs = Date.now();
+  const janelas: Janela[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dia = addDays(ini, i);
+    let winStart = new Date(dia); winStart.setHours(REVISAR_H0, 0, 0, 0);
+    const winEnd = new Date(dia); winEnd.setHours(REVISAR_H1, 0, 0, 0);
+    if (winStart.getTime() < agoraMs) winStart = ceilQuarter(new Date(Math.max(agoraMs, winStart.getTime())));
+    if (winStart >= winEnd) continue;
+    const ocupados = eventos
+      .filter((e) => !e.allDay && !e.pin && e.end > winStart && e.start < winEnd)
+      .map((e) => ({ s: Math.max(e.start.getTime(), winStart.getTime()), e: Math.min(e.end.getTime(), winEnd.getTime()) }))
+      .sort((a, b) => a.s - b.s);
+    const merged: { s: number; e: number }[] = [];
+    for (const b of ocupados) {
+      const last = merged[merged.length - 1];
+      if (last && b.s <= last.e) last.e = Math.max(last.e, b.e);
+      else merged.push({ ...b });
+    }
+    let cursor = winStart.getTime();
+    for (const b of merged) {
+      if (b.s - cursor >= REVISAR_MIN_GAP * 60000) janelas.push({ start: new Date(cursor), end: new Date(b.s) });
+      cursor = Math.max(cursor, b.e);
+    }
+    if (winEnd.getTime() - cursor >= REVISAR_MIN_GAP * 60000) janelas.push({ start: new Date(cursor), end: winEnd });
+  }
+  return janelas;
+}
 
 // ─── Página ─────────────────────────────────────────────────────────────────
 export function PlannerPage() {
@@ -348,8 +387,22 @@ export function PlannerPage() {
   const [periodo, setPeriodo] = useState<Periodo>("semana");
   const [refresh, setRefresh] = useState(0);
   const [criar, setCriar] = useState<null | "evento" | "pin">(null);
+  const [criarEm, setCriarEm] = useState<{ data: string; inicio: string; fim: string } | null>(null);
   const [editando, setEditando] = useState<PEvent | null>(null);
   const [refDate, setRefDate] = useState(() => new Date());
+
+  // Agendas com preferências aplicadas. Computado ANTES do gate pra alimentar
+  // o hook de janelas livres (hooks não podem vir depois de um return).
+  const agendas: Agenda[] = conn.calendars.map((c) => ({
+    id: c.id,
+    summary: c.summary,
+    cor: prefs[c.id]?.cor || c.backgroundColor || "#6a5ae0",
+    oculta: prefs[c.id]?.oculta ?? false,
+    gravavel: c.accessRole === "owner" || c.accessRole === "writer",
+  }));
+  const visiveis = agendas.filter((a) => !a.oculta);
+  const gravaveis = agendas.filter((a) => a.gravavel);
+  const janelas = useJanelasLivres(conn, visiveis, refresh);
 
   if (!pessoa?.isMaster) {
     return (
@@ -361,17 +414,9 @@ export function PlannerPage() {
     );
   }
 
-  // Agendas com preferências aplicadas.
-  const agendas: Agenda[] = conn.calendars.map((c) => ({
-    id: c.id,
-    summary: c.summary,
-    cor: prefs[c.id]?.cor || c.backgroundColor || "#6a5ae0",
-    oculta: prefs[c.id]?.oculta ?? false,
-    gravavel: c.accessRole === "owner" || c.accessRole === "writer",
-  }));
-  const visiveis = agendas.filter((a) => !a.oculta);
-  const gravaveis = agendas.filter((a) => a.gravavel);
   const alvo: TipoVista | Periodo = vista === "calendario" ? periodo : vista;
+  // Abre o "novo evento" já preenchido num horário (usado pelas janelas livres).
+  const abrirCriarEm = (inicio: Date, fim: Date) => setCriarEm({ data: ymd(inicio), inicio: hhmm(inicio), fim: hhmm(fim) });
 
   return (
     <div className="max-w-6xl">
@@ -391,7 +436,7 @@ export function PlannerPage() {
         <StatusGoogle conn={conn} />
         {conn.token && (
           <div className="ml-auto flex items-center gap-2">
-            <RevisarButton count={0} />
+            <RevisarButton janelas={janelas} podeCriar={gravaveis.length > 0} onCriar={abrirCriarEm} />
             <Dropdown label="+ Novo" primary disabled={gravaveis.length === 0}>
               {(close) => (
                 <>
@@ -408,8 +453,8 @@ export function PlannerPage() {
       {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
       {alvo === "tri" && <TrimestreView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
       {alvo === "ano" && <AnoView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
-      {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
-      {alvo === "crono" && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
+      {alvo === "kanban" && <KanbanView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
+      {alvo === "crono" && <CronogramaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
 
       {conn.token && agendas.length > 0 && <AgendasManager agendas={agendas} setPref={setPref} />}
 
@@ -430,6 +475,16 @@ export function PlannerPage() {
           evento={editando}
           onClose={() => setEditando(null)}
           onDone={() => { setEditando(null); setRefresh((r) => r + 1); }}
+        />
+      )}
+      {criarEm && conn.token && (
+        <EventoModal
+          modo="evento"
+          token={conn.token}
+          agendas={gravaveis}
+          inicial={criarEm}
+          onClose={() => setCriarEm(null)}
+          onDone={() => { setCriarEm(null); setRefresh((r) => r + 1); }}
         />
       )}
     </div>
@@ -547,26 +602,39 @@ function MenuItem({ ativo, onClick, children }: { ativo?: boolean; onClick: () =
   );
 }
 // Botão "Revisar" — verde quando vazio, amarelo quando tem novidade.
-function RevisarButton({ count }: { count: number }) {
+function RevisarButton({ janelas, podeCriar, onCriar }: {
+  janelas: Janela[];
+  podeCriar: boolean;
+  onCriar: (inicio: Date, fim: Date) => void;
+}) {
+  const n = janelas.length;
+  const hojeYmd = ymd(new Date());
+  const amanhaYmd = ymd(addDays(new Date(), 1));
+  const rotuloDia = (d: Date) => ymd(d) === hojeYmd ? "Hoje" : ymd(d) === amanhaYmd ? "Amanhã" : `${DOW[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
   return (
-    <Dropdown tone={count ? "amber" : "green"}
-      label={<><span className={`w-2 h-2 rounded-full ${count ? "bg-amber-500" : "bg-emerald-500"}`} /> {count ? `${count} pra revisar` : "Revisar"}</>}>
-      {() => (
-        <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 w-56">
-          {count ? "Clique nos itens pra aprovar ou descartar." : "Nada a revisar ainda. Aqui vão aparecer janelas livres detectadas e itens de automação (em breve)."}
+    <Dropdown tone={n ? "amber" : "green"}
+      label={<><span className={`w-2 h-2 rounded-full ${n ? "bg-amber-500" : "bg-emerald-500"}`} /> {n ? `${n} janela${n > 1 ? "s" : ""} livre${n > 1 ? "s" : ""}` : "Revisar"}</>}>
+      {(close) => (
+        <div className="w-64 max-h-[320px] overflow-y-auto">
+          <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+            {n ? `Espaços livres nos próximos 7 dias (${REVISAR_H0}–${REVISAR_H1}h).${podeCriar ? " Clique pra agendar." : ""}` : `Sem janelas livres de ${REVISAR_MIN_GAP}min+ no horário útil dos próximos 7 dias.`}
+          </div>
+          {janelas.map((j, i) => {
+            const dur = Math.round((j.end.getTime() - j.start.getTime()) / 60000);
+            return (
+              <button key={i} type="button" disabled={!podeCriar}
+                onClick={() => { onCriar(j.start, j.end); close(); }}
+                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-default flex items-center justify-between gap-2 border-b border-gray-50 dark:border-gray-800/60">
+                <span className="text-gray-700 dark:text-gray-200">
+                  <span className="font-semibold">{rotuloDia(j.start)}</span> · {fmtHora(j.start)}–{fmtHora(j.end)}
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">{fmtDur(dur)}</span>
+              </button>
+            );
+          })}
         </div>
       )}
     </Dropdown>
-  );
-}
-function EmBreve({ titulo, desc }: { titulo: string; desc: string }) {
-  return (
-    <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
-      <div className="text-3xl mb-2">🚧</div>
-      <div className="font-semibold text-gray-700 dark:text-gray-200">{titulo}</div>
-      <div className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-md mx-auto">{desc}</div>
-      <div className="text-[11px] text-gray-400 mt-3">Próxima etapa.</div>
-    </div>
   );
 }
 function PrecisaConectar() {
@@ -1137,24 +1205,219 @@ function AnoView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
   );
 }
 
+// ─── Visão KANBAN (board: colunas = dias da semana, arrasta pra reagendar) ──
+function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, onRefresh }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void; onRefresh: () => void;
+}) {
+  const hoje = new Date();
+  const weekStart = startOfWeek(refDate);
+  const weekEnd = addDays(weekStart, 7);
+  const { eventos, carregando } = useEventos(conn, agendas, weekStart, weekEnd, refresh);
+  const dragRef = useRef<{ ev: PEvent; origYmd: string; startX: number; startY: number; moved: boolean; targetYmd: string | null } | null>(null);
+  const suppressClick = useRef(false);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const [overYmd, setOverYmd] = useState<string | null>(null);
+
+  if (!conn.token) return <PrecisaConectar />;
+  const token = conn.token;
+
+  const dias = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  const porDia = mapaPorDia(eventos);
+  const evsDoDia = (d: Date) => (porDia.get(ymd(d)) || []).sort(ordenaDia);
+
+  function targetYmdFrom(x: number, y: number): string | null {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return (el?.closest("[data-date]") as HTMLElement | null)?.getAttribute("data-date") || null;
+  }
+  function startDragK(e: React.PointerEvent, ev: PEvent, dia: Date) {
+    suppressClick.current = false;
+    if (!ev.gravavel || e.button !== 0) return;
+    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
+    dragRef.current = { ev, origYmd: ymd(dia), startX: e.clientX, startY: e.clientY, moved: false, targetYmd: null };
+  }
+  function moveDragK(e: React.PointerEvent) {
+    const d = dragRef.current;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) < 5) return;
+    d.moved = true;
+    const ty = targetYmdFrom(e.clientX, e.clientY);
+    d.targetYmd = ty;
+    setOverYmd(ty);
+    const dt = ty ? parseDateOnly(ty) : null;
+    setGhost({ x: e.clientX, y: e.clientY, label: dt ? `→ ${DOW[(dt.getDay() + 6) % 7]} ${dt.getDate()}/${dt.getMonth() + 1}` : "solte numa coluna" });
+  }
+  async function endDragK(e: React.PointerEvent, ev: PEvent) {
+    const d = dragRef.current;
+    try { (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId); } catch { /* noop */ }
+    setGhost(null); setOverYmd(null); dragRef.current = null;
+    if (!d || !d.moved) return;
+    suppressClick.current = true;
+    if (!d.targetYmd || d.targetYmd === d.origYmd) return;
+    const dt = parseDateOnly(d.targetYmd);
+    const dur = ev.end.getTime() - ev.start.getTime();
+    const nDias = Math.max(1, Math.round((startOfDay(ev.end).getTime() - startOfDay(ev.start).getTime()) / 86400000));
+    const novoIni = ev.allDay ? dt : comHoraDe(dt, ev.start);
+    const novoFim = ev.allDay ? addDays(dt, nDias) : new Date(novoIni.getTime() + dur);
+    try { await moverEvento(token, ev.calendarId, ev.id, { allDay: ev.allDay, inicio: novoIni, fim: novoFim }); }
+    catch { /* recarrega */ }
+    onRefresh();
+  }
+  function clickCard(ev: PEvent) {
+    if (suppressClick.current) { suppressClick.current = false; return; }
+    onEventClick(ev);
+  }
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns onPrev={() => setRefDate(addDays(weekStart, -7))} onHoje={() => setRefDate(new Date())} onNext={() => setRefDate(addDays(weekStart, 7))} />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Semana · {weekStart.getDate()}–{addDays(weekStart, 6).getDate()} {MESES[addDays(weekStart, 6).getMonth()].slice(0, 3)}
+          </h2>
+        </div>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "arraste um card pra outro dia"}</span>
+      </div>
+      <div className="flex gap-2 overflow-x-auto pb-2">
+        {dias.map((d, i) => {
+          const isHoje = ymd(d) === ymd(hoje);
+          const isOver = overYmd === ymd(d);
+          const evs = evsDoDia(d);
+          return (
+            <div key={i} data-date={ymd(d)}
+              className={`flex-none w-[180px] rounded-xl border p-2 ${
+                isOver ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/30" : "border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40"
+              } ${isHoje ? "ring-2 ring-indigo-200 dark:ring-indigo-800" : ""}`}>
+              <div className={`flex items-baseline justify-between mb-2 px-0.5 ${isHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-600 dark:text-gray-300"}`}>
+                <span className="text-[10px] uppercase tracking-wider font-bold">{DOW[i]}</span>
+                <span className="text-[13px] font-semibold">{d.getDate()}/{d.getMonth() + 1}</span>
+              </div>
+              <div className="space-y-1.5 min-h-[40px]">
+                {evs.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600 italic px-1 py-2 text-center">—</div>}
+                {evs.map((ev) => (
+                  <div key={ev.id}
+                    onPointerDown={(e) => startDragK(e, ev, d)}
+                    onPointerMove={moveDragK}
+                    onPointerUp={(e) => endDragK(e, ev)}
+                    onClick={() => clickCard(ev)}
+                    className="rounded-lg bg-white dark:bg-gray-800 border-l-4 border border-gray-200 dark:border-gray-700 px-2 py-1.5 shadow-sm touch-none select-none hover:brightness-95"
+                    style={{ borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+                    title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
+                    <div className="text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
+                    <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}{ev.recorrente ? " · 🔁" : ""}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {ghost && (
+        <div className="fixed z-[80] pointer-events-none px-2 py-1 rounded-md bg-gray-900/90 text-white text-[11px] font-semibold shadow-lg -translate-x-1/2"
+          style={{ left: ghost.x, top: ghost.y - 34 }}>{ghost.label}</div>
+      )}
+    </section>
+  );
+}
+
+// ─── Visão CRONOGRAMA (raias por agenda × dias da semana) ───────────────────
+function CronogramaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+}) {
+  const hoje = new Date();
+  const weekStart = startOfWeek(refDate);
+  const weekEnd = addDays(weekStart, 7);
+  const { eventos, carregando } = useEventos(conn, agendas, weekStart, weekEnd, refresh);
+
+  if (!conn.token) return <PrecisaConectar />;
+
+  const dias = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
+  // Eventos de uma agenda num dia (timado no dia OU all-day cobrindo o dia).
+  const noDia = (ev: PEvent, d: Date) => ev.allDay
+    ? (d >= startOfDay(ev.start) && d < startOfDay(ev.end))
+    : ymd(ev.start) === ymd(d);
+  // Só mostra raias de agendas que têm algum evento na semana (evita poluir).
+  const comEvento = agendas.filter((a) => eventos.some((e) => e.calendarId === a.id));
+  const lanes = comEvento.length ? comEvento : agendas;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns onPrev={() => setRefDate(addDays(weekStart, -7))} onHoje={() => setRefDate(new Date())} onNext={() => setRefDate(addDays(weekStart, 7))} />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            Cronograma · {weekStart.getDate()}–{addDays(weekStart, 6).getDate()} {MESES[addDays(weekStart, 6).getMonth()].slice(0, 3)}
+          </h2>
+        </div>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "raias por agenda"}</span>
+      </div>
+      <div className="overflow-x-auto border border-gray-200 dark:border-gray-800 rounded-xl">
+        <div className="min-w-[720px]">
+          {/* Cabeçalho de dias */}
+          <div className="flex border-b border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40">
+            <div className="w-[140px] flex-none px-2 py-2 text-[10px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">Agenda</div>
+            <div className="grid grid-cols-7 flex-1">
+              {dias.map((d, i) => (
+                <div key={i} className={`px-1 py-2 text-center border-l border-gray-200 dark:border-gray-800 ${ymd(d) === ymd(hoje) ? "bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
+                  <div className="text-[9px] uppercase tracking-wider font-bold text-gray-400 dark:text-gray-500">{DOW[i]}</div>
+                  <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">{d.getDate()}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+          {lanes.map((a) => (
+            <div key={a.id} className="flex border-b border-gray-100 dark:border-gray-800/60 last:border-b-0">
+              <div className="w-[140px] flex-none px-2 py-2 flex items-center gap-1.5 min-w-0">
+                <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ background: a.cor }} />
+                <span className="text-[11px] text-gray-700 dark:text-gray-200 truncate" title={a.summary}>{a.summary}</span>
+              </div>
+              <div className="grid grid-cols-7 flex-1">
+                {dias.map((d, i) => {
+                  const evs = eventos.filter((e) => e.calendarId === a.id && noDia(e, d)).sort(ordenaDia);
+                  return (
+                    <div key={i} className={`px-1 py-1.5 border-l border-gray-100 dark:border-gray-800/60 space-y-1 min-h-[40px] ${ymd(d) === ymd(hoje) ? "bg-indigo-50/30 dark:bg-indigo-900/10" : ""}`}>
+                      {evs.map((ev) => (
+                        <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
+                          className="block w-full text-left rounded px-1.5 py-1 text-[9.5px] leading-tight text-white truncate hover:brightness-95"
+                          style={{ background: ev.color }} title={`${ev.title}${ev.allDay ? "" : ` · ${fmtHora(ev.start)}–${fmtHora(ev.end)}`}`}>
+                          {ev.pin ? "📌 " : ev.allDay ? "" : <span className="font-bold opacity-90">{fmtHora(ev.start)} </span>}{ev.title}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ─── Modal: criar / editar / excluir evento ou pin ──────────────────────────
-function EventoModal({ modo, token, agendas, evento, onClose, onDone }: {
+function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }: {
   modo: "evento" | "pin" | "editar";
   token: string;
   agendas: Agenda[];
   evento?: PEvent;
+  inicial?: { data: string; inicio: string; fim: string };   // pré-preenche um slot (janelas livres)
   onClose: () => void;
   onDone: () => void;
 }) {
   const isEdit = modo === "editar";
   const isPin = modo === "pin";
-  // No modo edição, o horário vem do evento; senão começa em branco/agora.
+  // No modo edição, o horário vem do evento; senão do `inicial` (slot) ou agora.
   const [titulo, setTitulo] = useState(evento?.title || "");
   const [calId, setCalId] = useState(evento?.calendarId || agendas[0]?.id || "");
-  const [data, setData] = useState(ymd(evento?.start || new Date()));
+  const [data, setData] = useState(evento ? ymd(evento.start) : (inicial?.data || ymd(new Date())));
   const [semHora] = useState(isPin || (isEdit && !!evento?.allDay));
-  const [inicio, setInicio] = useState(evento && !evento.allDay ? hhmm(evento.start) : "09:00");
-  const [fim, setFim] = useState(evento && !evento.allDay ? hhmm(evento.end) : "10:00");
+  const [inicio, setInicio] = useState(evento && !evento.allDay ? hhmm(evento.start) : (inicial?.inicio || "09:00"));
+  const [fim, setFim] = useState(evento && !evento.allDay ? hhmm(evento.end) : (inicial?.fim || "10:00"));
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
 
