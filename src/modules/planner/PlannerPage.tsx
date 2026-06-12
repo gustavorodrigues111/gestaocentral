@@ -405,6 +405,40 @@ function useJanelasLivres(conn: Conn, agendas: Agenda[], refresh: number): Janel
   return janelas;
 }
 
+// ─── Janelas de viagem ──────────────────────────────────────────────────────
+// Sequências de dias livres pra viajar, nos próximos 60 dias. O que TRAVA a
+// viagem: evento presencial OU evento de dia-todo (bloqueio/feriado/férias).
+// O que NÃO trava: online (faz de qualquer lugar), pin (só marcador) e eventos
+// timados sem classificação. Mostra os trechos com ≥ nDias livres seguidos.
+type JanelaViagem = { start: Date; end: Date; dias: number };
+const VIAGEM_HORIZONTE = 60;
+function useJanelasViagem(conn: Conn, agendas: Agenda[], refresh: number, nDias: number): JanelaViagem[] {
+  const ini = startOfDay(new Date());
+  const fim = addDays(ini, VIAGEM_HORIZONTE);
+  const { eventos } = useEventos(conn, agendas, ini, fim, refresh, 2500);
+  const bloqueado = (d: Date) => eventos.some((e) => {
+    if (e.pin) return false;
+    if (e.allDay) return d >= startOfDay(e.start) && d < startOfDay(e.end);
+    if (e.modalidade === "presencial") return ymd(e.start) === ymd(d);
+    return false;
+  });
+  const runs: JanelaViagem[] = [];
+  let runStart: Date | null = null;
+  const fechar = (fimExcl: Date) => {
+    if (!runStart) return;
+    const len = Math.round((startOfDay(fimExcl).getTime() - runStart.getTime()) / 86400000);
+    if (len >= nDias) runs.push({ start: runStart, end: addDays(fimExcl, -1), dias: len });
+    runStart = null;
+  };
+  for (let i = 0; i < VIAGEM_HORIZONTE; i++) {
+    const d = addDays(ini, i);
+    if (!bloqueado(d)) { if (!runStart) runStart = d; }
+    else fechar(d);
+  }
+  fechar(fim);   // fecha um trecho que chega até o fim do horizonte
+  return runs;
+}
+
 // ─── Página ─────────────────────────────────────────────────────────────────
 export function PlannerPage() {
   const { pessoa, fbUser } = useAuth();
@@ -429,7 +463,6 @@ export function PlannerPage() {
   }));
   const visiveis = agendas.filter((a) => !a.oculta);
   const gravaveis = agendas.filter((a) => a.gravavel);
-  const janelas = useJanelasLivres(conn, visiveis, refresh);
 
   if (!pessoa?.isMaster) {
     return (
@@ -444,6 +477,8 @@ export function PlannerPage() {
   const alvo: TipoVista | Periodo = vista === "calendario" ? periodo : vista;
   // Abre o "novo evento" já preenchido num horário (usado pelas janelas livres).
   const abrirCriarEm = (inicio: Date, fim: Date) => setCriarEm({ data: ymd(inicio), inicio: hhmm(inicio), fim: hhmm(fim) });
+  // Janela de viagem: leva o calendário pro mês daquela data pra reorganizar.
+  const irPara = (dia: Date) => { setRefDate(dia); setVista("calendario"); setPeriodo("mes"); };
 
   return (
     <div className="max-w-6xl">
@@ -463,7 +498,7 @@ export function PlannerPage() {
         <StatusGoogle conn={conn} />
         {conn.token && (
           <div className="ml-auto flex items-center gap-2">
-            <RevisarButton janelas={janelas} podeCriar={gravaveis.length > 0} onCriar={abrirCriarEm} />
+            <RevisarButton conn={conn} agendas={visiveis} refresh={refresh} podeCriar={gravaveis.length > 0} onCriar={abrirCriarEm} onIr={irPara} />
             <Dropdown label="+ Novo" primary disabled={gravaveis.length === 0}>
               {(close) => (
                 <>
@@ -628,37 +663,77 @@ function MenuItem({ ativo, onClick, children }: { ativo?: boolean; onClick: () =
       }`}>{children}</button>
   );
 }
-// Botão "Revisar" — verde quando vazio, amarelo quando tem novidade.
-function RevisarButton({ janelas, podeCriar, onCriar }: {
-  janelas: Janela[];
+// Botão "Janelas" — tipos de janela (Reuniões / Viagem; extensível pra mais).
+function RevisarButton({ conn, agendas, refresh, podeCriar, onCriar, onIr }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
   podeCriar: boolean;
-  onCriar: (inicio: Date, fim: Date) => void;
+  onCriar: (inicio: Date, fim: Date) => void;   // clicar numa janela de reunião → criar evento no slot
+  onIr: (dia: Date) => void;                     // clicar numa janela de viagem → ir pro mês reorganizar
 }) {
-  const n = janelas.length;
+  const [tipo, setTipo] = useState<"reuniao" | "viagem">("reuniao");
+  const [nDias, setNDias] = useState(3);
+  const reuniao = useJanelasLivres(conn, agendas, refresh);
+  const viagem = useJanelasViagem(conn, agendas, refresh, nDias);
+  const n = tipo === "reuniao" ? reuniao.length : viagem.length;
+
   const hojeYmd = ymd(new Date());
   const amanhaYmd = ymd(addDays(new Date(), 1));
   const rotuloDia = (d: Date) => ymd(d) === hojeYmd ? "Hoje" : ymd(d) === amanhaYmd ? "Amanhã" : `${DOW[(d.getDay() + 6) % 7]} ${d.getDate()}/${d.getMonth() + 1}`;
+  const dm = (d: Date) => `${d.getDate()}/${d.getMonth() + 1}`;
+  const seg = (active: boolean) => `flex-1 text-[11px] font-semibold px-2 py-1.5 rounded-md transition-colors ${active ? "bg-white dark:bg-gray-900 shadow text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400 hover:text-gray-700"}`;
+
   return (
     <Dropdown tone={n ? "amber" : "green"}
-      label={<><span className={`w-2 h-2 rounded-full ${n ? "bg-amber-500" : "bg-emerald-500"}`} /> {n ? `${n} janela${n > 1 ? "s" : ""} livre${n > 1 ? "s" : ""}` : "Revisar"}</>}>
+      label={<><span className={`w-2 h-2 rounded-full ${n ? "bg-amber-500" : "bg-emerald-500"}`} /> Janelas{n ? ` · ${n}` : ""}</>}>
       {(close) => (
-        <div className="w-64 max-h-[320px] overflow-y-auto">
-          <div className="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
-            {n ? `Espaços livres nos próximos 7 dias (${REVISAR_H0}–${REVISAR_H1}h).${podeCriar ? " Clique pra agendar." : ""}` : `Sem janelas livres de ${REVISAR_MIN_GAP}min+ no horário útil dos próximos 7 dias.`}
+        <div className="w-72">
+          {/* Tipos de janela */}
+          <div className="flex gap-1 p-1 m-2 rounded-lg bg-gray-100 dark:bg-gray-800">
+            <button type="button" onClick={() => setTipo("reuniao")} className={seg(tipo === "reuniao")}>🤝 Reuniões</button>
+            <button type="button" onClick={() => setTipo("viagem")} className={seg(tipo === "viagem")}>✈️ Viagem</button>
           </div>
-          {janelas.map((j, i) => {
-            const dur = Math.round((j.end.getTime() - j.start.getTime()) / 60000);
-            return (
-              <button key={i} type="button" disabled={!podeCriar}
-                onClick={() => { onCriar(j.start, j.end); close(); }}
-                className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-default flex items-center justify-between gap-2 border-b border-gray-50 dark:border-gray-800/60">
-                <span className="text-gray-700 dark:text-gray-200">
-                  <span className="font-semibold">{rotuloDia(j.start)}</span> · {fmtHora(j.start)}–{fmtHora(j.end)}
-                </span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">{fmtDur(dur)}</span>
-              </button>
-            );
-          })}
+
+          {tipo === "reuniao" ? (
+            <div className="max-h-[300px] overflow-y-auto">
+              <div className="px-3 pb-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                {reuniao.length ? `Espaços livres (${REVISAR_H0}–${REVISAR_H1}h, 7 dias).${podeCriar ? " Clique pra agendar." : ""}` : `Sem janelas de ${REVISAR_MIN_GAP}min+ no horário útil dos próximos 7 dias.`}
+              </div>
+              {reuniao.map((j, i) => {
+                const dur = Math.round((j.end.getTime() - j.start.getTime()) / 60000);
+                return (
+                  <button key={i} type="button" disabled={!podeCriar}
+                    onClick={() => { onCriar(j.start, j.end); close(); }}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60 disabled:cursor-default flex items-center justify-between gap-2 border-t border-gray-50 dark:border-gray-800/60">
+                    <span className="text-gray-700 dark:text-gray-200"><span className="font-semibold">{rotuloDia(j.start)}</span> · {fmtHora(j.start)}–{fmtHora(j.end)}</span>
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold whitespace-nowrap">{fmtDur(dur)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="max-h-[320px] overflow-y-auto">
+              {/* Seletor de duração da viagem */}
+              <div className="flex items-center justify-between gap-2 px-3 py-2">
+                <span className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">Viagem de</span>
+                <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+                  <button type="button" onClick={() => setNDias((v) => Math.max(2, v - 1))} className="px-2.5 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" disabled={nDias <= 2}>−</button>
+                  <span className="px-2 py-1 text-xs font-bold tabular-nums text-gray-800 dark:text-gray-100 min-w-[58px] text-center">{nDias} dias</span>
+                  <button type="button" onClick={() => setNDias((v) => Math.min(14, v + 1))} className="px-2.5 py-1 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" disabled={nDias >= 14}>+</button>
+                </div>
+              </div>
+              <div className="px-3 pb-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                {viagem.length ? "Períodos livres pra viajar (60 dias). Presencial e dia-todo travam; online e pin não. Clique pra organizar." : `Nenhum período de ${nDias}+ dias livres nos próximos 60 dias.`}
+              </div>
+              {viagem.map((j, i) => (
+                <button key={i} type="button"
+                  onClick={() => { onIr(j.start); close(); }}
+                  className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-800 flex items-center justify-between gap-2 border-t border-gray-50 dark:border-gray-800/60">
+                  <span className="text-gray-700 dark:text-gray-200"><span className="font-semibold">{dm(j.start)} – {dm(j.end)}</span></span>
+                  <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold whitespace-nowrap">{j.dias} dias livres</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </Dropdown>
