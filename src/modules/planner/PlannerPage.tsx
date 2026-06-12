@@ -1865,7 +1865,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
 
   return (
     <Modal title={tituloModal} onClose={onClose} maxWidth="max-w-md">
-      <div className="space-y-3">
+      <div className="space-y-3.5">
         {!isEdit && (
           <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
             <button type="button" onClick={() => { setEhPin(false); setLembrete(""); }} className={seg(!ehPin)}>📅 Evento</button>
@@ -2038,38 +2038,41 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
           </div>
         )}
 
-        {/* Lembrete */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">🔔 Lembrete</label>
-          <select value={lembrete} onChange={(e) => setLembrete(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-            <option value="">{isEdit ? "— manter como está —" : "Padrão da agenda"}</option>
-            <option value="0">Sem lembrete</option>
-            {semHora ? (
-              <>
-                <option value="900">1 dia antes (9h)</option>
-                <option value="2340">2 dias antes (9h)</option>
-                <option value="3780">3 dias antes (9h)</option>
-                <option value="9540">1 semana antes (9h)</option>
-              </>
-            ) : (
-              <>
-                <option value="10">10 min antes</option>
-                <option value="30">30 min antes</option>
-                <option value="60">1 hora antes</option>
-                <option value="1440">1 dia antes</option>
-              </>
-            )}
-          </select>
-          <p className="text-[10.5px] text-gray-400 dark:text-gray-500">Avisa no Google (chega no celular também).</p>
-        </div>
+        {/* ── Detalhes (lembrete + nota) ───────────────────────────────── */}
+        <div className="pt-3 mt-1 border-t border-gray-200 dark:border-gray-800 space-y-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Detalhes</div>
 
-        {/* Nota */}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Nota</label>
-          <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2}
-            placeholder="Observação (ex.: valor da fatura, código de barras…)"
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 resize-y" />
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">🔔 Lembrete</label>
+            <select value={lembrete} onChange={(e) => setLembrete(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500">
+              <option value="">{isEdit ? "— manter como está —" : "Padrão da agenda"}</option>
+              <option value="0">Sem lembrete</option>
+              {semHora ? (
+                <>
+                  <option value="900">1 dia antes (9h)</option>
+                  <option value="2340">2 dias antes (9h)</option>
+                  <option value="3780">3 dias antes (9h)</option>
+                  <option value="9540">1 semana antes (9h)</option>
+                </>
+              ) : (
+                <>
+                  <option value="10">10 min antes</option>
+                  <option value="30">30 min antes</option>
+                  <option value="60">1 hora antes</option>
+                  <option value="1440">1 dia antes</option>
+                </>
+              )}
+            </select>
+            <p className="text-[10.5px] text-gray-400 dark:text-gray-500">Avisa no Google — chega no celular também.</p>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">📝 Nota</label>
+            <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3}
+              placeholder="Observação (ex.: valor da fatura, código de barras, link…)"
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 resize-y min-h-[64px] outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500" />
+          </div>
         </div>
 
         {/* Concluído (✓) — alterna o estado; aplica ao salvar */}
