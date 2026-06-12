@@ -1572,6 +1572,26 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
               {ev.local && <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate" title={ev.local}>📍 {ev.local}</div>}
             </div>
           );
+          // Pin = "etiqueta" (chip arredondado) — bem diferente do card de evento.
+          const pinChip = (ev: PEvent) => (
+            <div key={ev.id}
+              onPointerDown={(e) => startDragK(e, ev, d)}
+              onPointerMove={moveDragK}
+              onPointerUp={(e) => endDragK(e, ev)}
+              onClick={() => clickCard(ev)}
+              className={`inline-flex items-center gap-1 rounded-full border border-dashed px-2 py-[3px] text-[10px] font-semibold leading-none touch-none select-none hover:brightness-95 max-w-full ${ev.done ? "opacity-50 line-through" : ""}`}
+              style={{ background: corTint(ev.color, "1f"), borderColor: ev.color, color: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+              title={ev.gravavel ? "Pin · clique pra editar · arraste pra outro dia" : ev.title}>
+              <span>{ev.icone || "📌"}</span>
+              <span className="truncate max-w-[100px]">{ev.title}</span>
+              {ev.recorrente && <span className="opacity-70">🔁</span>}
+              {ev.gravavel && (
+                <button type="button" onClick={(e) => marcarDone(e, ev)} onPointerDown={(e) => e.stopPropagation()}
+                  title={ev.done ? "Concluído — desmarcar" : "Marcar como concluído"}
+                  className={`ml-0.5 w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] ${ev.done ? "bg-emerald-500 text-white" : "border border-current text-transparent hover:text-current"}`}>✓</button>
+              )}
+            </div>
+          );
           return (
             <div key={i} data-date={ymd(d)}
               className={`flex-none w-[180px] rounded-xl border p-2 ${
@@ -1581,8 +1601,8 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                 <span className="text-[10px] uppercase tracking-wider font-bold">{DOW[i]}</span>
                 <span className="text-[13px] font-semibold">{d.getDate()}/{d.getMonth() + 1}</span>
               </div>
-              {/* Pins primeiro, numa faixa própria no topo do dia */}
-              {pins.length > 0 && <div className="space-y-1 mb-1.5">{pins.map(card)}</div>}
+              {/* Pins primeiro, como etiquetas, numa faixa própria no topo do dia */}
+              {pins.length > 0 && <div className="flex flex-wrap gap-1 mb-1.5">{pins.map(pinChip)}</div>}
               {pins.length > 0 && <div className="border-t border-dashed border-gray-200 dark:border-gray-700 mb-1.5" />}
               <div className="space-y-1.5 min-h-[40px]">
                 {evs.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600 italic px-1 py-1 text-center">—</div>}
