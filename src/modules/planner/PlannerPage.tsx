@@ -42,6 +42,8 @@ type Agenda = { id: string; summary: string; cor: string; oculta: boolean; grava
 function corTint(hex: string, aa: string): string {
   return /^#[0-9a-fA-F]{6}$/.test(hex) ? `${hex}${aa}` : hex;
 }
+// Ícones pré-definidos pra pin (📌 = padrão/sem ícone custom). Categorias rápidas.
+const PIN_ICONES = ["📌", "💰", "🎂", "🔔", "🏋️", "💊", "🛒", "✈️", "📞", "📝"];
 
 function gsiOauth() {
   return (window as unknown as {
@@ -206,7 +208,7 @@ function usePlannerSettings(uid: string | undefined) {
 }
 
 // ─── Eventos (events.list por agenda) ───────────────────────────────────────
-type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean; recurringId?: string; local?: string; modalidade?: "presencial" | "online"; priv?: Record<string, string> };
+type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean; recurringId?: string; local?: string; modalidade?: "presencial" | "online"; priv?: Record<string, string>; done: boolean; icone?: string; descricao?: string };
 async function listEvents(
   token: string,
   agendas: Agenda[],
@@ -227,7 +229,7 @@ async function listEvents(
     if (res.status === 401) { onUnauthorized(); return; }
     if (!res.ok) return;
     const data = await res.json() as {
-      items?: Array<{ id: string; summary?: string; status?: string; location?: string; recurringEventId?: string; extendedProperties?: { private?: Record<string, string> }; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
+      items?: Array<{ id: string; summary?: string; status?: string; location?: string; description?: string; recurringEventId?: string; extendedProperties?: { private?: Record<string, string> }; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
     };
     for (const ev of (data.items || [])) {
       if (ev.status === "cancelled" || !ev.start) continue;
@@ -238,7 +240,7 @@ async function listEvents(
       const pin = priv?.kind === "pin";
       const mod = priv?.modalidade;
       const modalidade = mod === "presencial" || mod === "online" ? mod : undefined;
-      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId, recurringId: ev.recurringEventId, local: ev.location || undefined, modalidade, priv });
+      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId, recurringId: ev.recurringEventId, local: ev.location || undefined, modalidade, priv, done: priv?.done === "1", icone: priv?.icone || undefined, descricao: ev.description || undefined });
     }
   }));
   return out;
@@ -265,17 +267,30 @@ function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date,
 }
 
 type Modalidade = "presencial" | "online";
-type DadosEvento = { titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean; modalidade?: Modalidade | ""; local?: string; privExistente?: Record<string, string>; recorrencia?: string[] };
-// Modalidade/endereço só valem pra eventos COM HORÁRIO (timados). Pra pin e
-// dia-todo: NÃO toca em location nem extendedProperties — assim não apaga o
-// marcador `kind=pin` nem o endereço de um all-day. Preserva as chaves private
-// já existentes (events.patch pode substituir o mapa private inteiro).
-function aplicaModalidade(body: Record<string, unknown>, ev: DadosEvento) {
-  if (ev.pin || ev.allDay) return;
-  body.location = ev.modalidade === "presencial" ? (ev.local || "") : "";
-  // null força remoção mesmo se o patch fizer merge por chave.
-  const priv: Record<string, unknown> = { ...(ev.privExistente || {}), modalidade: ev.modalidade || null };
+type DadosEvento = {
+  titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean;
+  modalidade?: Modalidade | ""; local?: string; privExistente?: Record<string, string>;
+  recorrencia?: string[]; icone?: string; descricao?: string; lembreteMin?: number | null; done?: boolean;
+};
+// Aplica os campos extras (modalidade/endereço só em timado; ícone, marcador de
+// pin, descrição e lembrete). PRESERVA as chaves private já existentes
+// (ex.: `done`, `kind`) — events.patch pode substituir o mapa private inteiro.
+function aplicaCampos(body: Record<string, unknown>, ev: DadosEvento) {
+  const priv: Record<string, unknown> = { ...(ev.privExistente || {}) };
+  if (!ev.pin && !ev.allDay) {                          // modalidade/endereço só timado
+    body.location = ev.modalidade === "presencial" ? (ev.local || "") : "";
+    priv.modalidade = ev.modalidade || null;            // null remove
+  }
+  if (ev.pin) priv.kind = "pin";
+  if (ev.icone !== undefined) priv.icone = ev.icone || null;
+  if (ev.done !== undefined) priv.done = ev.done ? "1" : null;
   body.extendedProperties = { private: priv };
+  if (ev.descricao !== undefined) body.description = ev.descricao || "";
+  if (ev.lembreteMin !== undefined) {
+    body.reminders = ev.lembreteMin && ev.lembreteMin > 0
+      ? { useDefault: false, overrides: [{ method: "popup", minutes: ev.lembreteMin }] }
+      : { useDefault: false, overrides: [] };
+  }
 }
 // Cria um evento (ou pin) via events.insert.
 async function criarEvento(token: string, calId: string, ev: DadosEvento): Promise<void> {
@@ -287,11 +302,8 @@ async function criarEvento(token: string, calId: string, ev: DadosEvento): Promi
     body.start = { dateTime: ev.inicio.toISOString() };
     body.end = { dateTime: ev.fim.toISOString() };
   }
-  if (ev.pin) {
-    body.transparency = "transparent"; // pin não bloqueia tempo
-    body.extendedProperties = { private: { kind: "pin" } };
-  }
-  aplicaModalidade(body, ev);
+  if (ev.pin) body.transparency = "transparent";        // pin não bloqueia tempo
+  aplicaCampos(body, ev);
   if (ev.recorrencia?.length) body.recurrence = ev.recorrencia;
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
     method: "POST",
@@ -309,13 +321,22 @@ async function editarEvento(token: string, calId: string, eventId: string, ev: D
     body.start = { dateTime: ev.inicio.toISOString() };
     body.end = { dateTime: ev.fim.toISOString() };
   }
-  aplicaModalidade(body, ev);
+  aplicaCampos(body, ev);
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Falha ao salvar (HTTP ${res.status})`);
+}
+// Marca/desmarca como concluído (✓) — preserva as outras chaves private.
+async function toggleDone(token: string, calId: string, eventId: string, done: boolean, priv?: Record<string, string>): Promise<void> {
+  const next: Record<string, unknown> = { ...(priv || {}), done: done ? "1" : null };
+  await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ extendedProperties: { private: next } }),
+  });
 }
 async function excluirEvento(token: string, calId: string, eventId: string): Promise<void> {
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
@@ -465,7 +486,7 @@ async function editarSerieToda(token: string, evento: PEvent, dados: DadosEvento
     body.end = { dateTime: novoFim.toISOString() };
   }
   const privMaster = (master.extendedProperties as { private?: Record<string, string> } | undefined)?.private;
-  aplicaModalidade(body, { ...dados, privExistente: privMaster });
+  aplicaCampos(body, { ...dados, privExistente: privMaster });
   await patchEventoRaw(token, cal, masterId, body);
 }
 // Corta a série no dia desta ocorrência e cria uma NOVA série (com as edições)
@@ -484,7 +505,7 @@ async function editarEstaEFuturas(token: string, evento: PEvent, dados: DadosEve
   const origUntil = rruleGetUntil(rule);
   const novaRule = origUntil ? rruleComUntil(rule, origUntil) : rruleComUntil(rule);
   const privMaster = (master.extendedProperties as { private?: Record<string, string> } | undefined)?.private;
-  await criarEvento(token, destinoCal || cal, { titulo: dados.titulo, allDay: dados.allDay, inicio: dados.inicio, fim: dados.fim, pin: evento.pin, modalidade: dados.modalidade, local: dados.local, privExistente: privMaster, recorrencia: [novaRule] });
+  await criarEvento(token, destinoCal || cal, { ...dados, pin: evento.pin, privExistente: privMaster, recorrencia: [novaRule] });
 }
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -1023,12 +1044,12 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                         onPointerMove={moveDrag}
                         onPointerUp={(e) => endDrag(e, ev)}
                         onClick={() => clickEvento(ev)}
-                        className={`block w-full text-left text-[9.5px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"}`}
+                        className={`block w-full text-left text-[9.5px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"} ${ev.done ? "opacity-50 line-through" : ""}`}
                         style={ev.pin
                           ? { borderColor: ev.color, color: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
                           : { background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
                         title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
-                        {ev.pin ? "📌 " : ""}{ev.title}
+                        {ev.pin ? (ev.icone || "📌") + " " : ev.icone ? ev.icone + " " : ""}{ev.title}
                       </button>
                     ))}
                   </div>
@@ -1058,10 +1079,10 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                         onPointerMove={moveDrag}
                         onPointerUp={(e) => endDrag(e, ev)}
                         onClick={() => clickEvento(ev)}
-                        className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left hover:brightness-95 touch-none select-none"
+                        className={`absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left hover:brightness-95 touch-none select-none ${ev.done ? "opacity-50" : ""}`}
                         style={{ background: ev.color, top: (ini - h0) * PX, height: altura, cursor: ev.gravavel ? "grab" : "pointer" }} title={ev.gravavel ? "Clique pra editar · arraste pra mover · alça embaixo redimensiona" : ev.title}>
-                        <div style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
-                          <span className="font-bold text-[9px] opacity-90">{ev.pin ? "📌 " : ""}{fmtHora(ev.start)}</span> {ev.title}
+                        <div className={ev.done ? "line-through" : ""} style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
+                          <span className="font-bold text-[9px] opacity-90">{ev.pin ? (ev.icone || "📌") + " " : ev.icone ? ev.icone + " " : ""}{fmtHora(ev.start)}</span> {ev.title}
                         </div>
                         {ev.gravavel && altura >= 24 && (
                           <span
@@ -1209,12 +1230,12 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, on
                   onPointerMove={moveDragMes}
                   onPointerUp={(e) => endDragMes(e, ev)}
                   onClick={(e) => { e.stopPropagation(); clickPill(ev); }}
-                  className={`mt-1 text-[10px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"}`}
+                  className={`mt-1 text-[10px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"} ${ev.done ? "opacity-50 line-through" : ""}`}
                   style={ev.pin
                     ? { borderColor: ev.color, color: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
                     : { background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
                   title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
-                  {ev.pin ? "📌 " : ""}{ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
+                  {ev.pin ? (ev.icone || "📌") + " " : ev.icone ? ev.icone + " " : ""}{ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
                 </div>
               ))}
               {evs.length > 3 && <div className="mt-1 text-[10px] text-gray-400 px-1.5">+{evs.length - 3}</div>}
@@ -1249,10 +1270,11 @@ function DiaPopup({ dia, eventos, onClose, onEventClick }: {
         {eventos.map((ev) => (
           <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
             className="w-full flex items-start gap-2 text-left p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-            <span className="w-2.5 h-2.5 rounded-full mt-1 flex-none" style={{ background: ev.color }} />
+            <span className={`w-2.5 h-2.5 rounded-full mt-1 flex-none ${ev.done ? "ring-2 ring-emerald-400" : ""}`} style={{ background: ev.color }} />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
+              <div className={`text-sm font-medium text-gray-800 dark:text-gray-100 break-words ${ev.done ? "line-through opacity-60" : ""}`}>{ev.pin ? (ev.icone || "📌") + " " : ev.icone ? ev.icone + " " : ""}{ev.title}</div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                {ev.done ? "✓ concluído · " : ""}
                 {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
                 {ev.modalidade === "online" ? " · 💻 online" : ev.modalidade === "presencial" || ev.local ? " · 📍 presencial" : ""}
                 {ev.recorrente ? " · 🔁 recorrente" : ""}{ev.gravavel ? "" : " · só leitura"}
@@ -1492,6 +1514,12 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
     if (suppressClick.current) { suppressClick.current = false; return; }
     onEventClick(ev);
   }
+  async function marcarDone(e: React.MouseEvent, ev: PEvent) {
+    e.stopPropagation();
+    suppressClick.current = true;   // não abre o modal ao clicar no check
+    try { await toggleDone(token, ev.calendarId, ev.id, !ev.done, ev.priv); } catch { /* noop */ }
+    onRefresh();
+  }
 
   return (
     <section>
@@ -1526,17 +1554,24 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                     onPointerMove={moveDragK}
                     onPointerUp={(e) => endDragK(e, ev)}
                     onClick={() => clickCard(ev)}
-                    className={`rounded-lg px-2 py-1.5 touch-none select-none hover:brightness-[0.97] ${ev.pin ? "border border-dashed" : "border border-l-4 shadow-sm"}`}
+                    className={`relative rounded-lg pl-2 pr-7 py-1.5 touch-none select-none hover:brightness-[0.97] ${ev.pin ? "border border-dashed" : "border border-l-4 shadow-sm"} ${ev.done ? "opacity-55" : ""}`}
                     style={ev.pin
                       ? { background: corTint(ev.color, "14"), borderColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
                       : { background: corTint(ev.color, "24"), borderColor: corTint(ev.color, "55"), borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
                     title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
+                    {ev.gravavel && (
+                      <button type="button" onClick={(e) => marcarDone(e, ev)} onPointerDown={(e) => e.stopPropagation()}
+                        title={ev.done ? "Concluído — desmarcar" : "Marcar como concluído"}
+                        className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] border ${ev.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 dark:border-gray-600 text-transparent hover:text-gray-400 hover:border-gray-400"}`}>
+                        ✓
+                      </button>
+                    )}
                     {ev.pin ? (
                       <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-wider font-bold mb-0.5" style={{ color: ev.color }}>
-                        📌 Pin{ev.recorrente ? " · 🔁" : ""}
+                        {ev.icone || "📌"} Pin{ev.recorrente ? " · 🔁" : ""}
                       </div>
                     ) : null}
-                    <div className="text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words">{ev.title}</div>
+                    <div className={`text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words ${ev.done ? "line-through" : ""}`}>{!ev.pin && ev.icone ? `${ev.icone} ` : ""}{ev.title}</div>
                     {!ev.pin && (
                       <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
                         {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
@@ -1683,6 +1718,12 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
       .catch(() => { /* sem resumo */ });
     return () => { vivo = false; };
   }, [isEdit, evento?.recorrente, evento?.recurringId, evento?.calendarId, token]);
+  // Ícone (pin), nota e lembrete.
+  const [icone, setIcone] = useState(evento?.icone || "");
+  const [descricao, setDescricao] = useState(evento?.descricao || "");
+  // Lembrete: "" = manter como está (edição); número = minutos antes; "0" = sem lembrete.
+  const [lembrete, setLembrete] = useState<string>("");
+  const [feito, setFeito] = useState(!!evento?.done);   // concluído
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const semHora = ehPin || (isEdit && !!evento?.allDay);
@@ -1724,7 +1765,12 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
       }
       const mod = semHora ? "" : modalidade;
       const loc = mod === "presencial" ? endereco.trim() : "";
-      const dados: DadosEvento = { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, modalidade: mod, local: loc };
+      // lembrete: "" = não mexe (mantém o que já tem); senão minutos (0 = remove).
+      const lembreteMin = lembrete === "" ? undefined : Number(lembrete);
+      const dados: DadosEvento = {
+        titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, modalidade: mod, local: loc,
+        icone: ehPin ? icone : "", descricao, lembreteMin, done: isEdit ? feito : undefined,
+      };
       if (isEdit && evento) {
         const destino = calId || evento.calendarId;
         if (!recorrente) {
@@ -1796,8 +1842,8 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
       <div className="space-y-3">
         {!isEdit && (
           <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
-            <button type="button" onClick={() => setEhPin(false)} className={seg(!ehPin)}>📅 Evento</button>
-            <button type="button" onClick={() => setEhPin(true)} className={seg(ehPin)}>📌 Pin</button>
+            <button type="button" onClick={() => { setEhPin(false); setLembrete(""); }} className={seg(!ehPin)}>📅 Evento</button>
+            <button type="button" onClick={() => { setEhPin(true); setLembrete(""); }} className={seg(ehPin)}>📌 Pin</button>
           </div>
         )}
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
@@ -1947,6 +1993,67 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
           </div>
         )}
         {semHora && !isEdit && <p className="text-[11px] text-gray-500 dark:text-gray-400">📌 Pin é um marcador do dia — não bloqueia horário.</p>}
+
+        {/* Ícone / categoria — só pin */}
+        {ehPin && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Ícone</label>
+            <div className="flex flex-wrap gap-1">
+              {PIN_ICONES.map((ic) => {
+                const sel = (icone || "📌") === ic;
+                return (
+                  <button key={ic} type="button" onClick={() => setIcone(ic === "📌" ? "" : ic)}
+                    className={`w-9 h-9 rounded-lg text-lg flex items-center justify-center border ${sel ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30" : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                    {ic}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Lembrete */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">🔔 Lembrete</label>
+          <select value={lembrete} onChange={(e) => setLembrete(e.target.value)}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            <option value="">{isEdit ? "— manter como está —" : "Padrão da agenda"}</option>
+            <option value="0">Sem lembrete</option>
+            {semHora ? (
+              <>
+                <option value="900">1 dia antes (9h)</option>
+                <option value="2340">2 dias antes (9h)</option>
+                <option value="3780">3 dias antes (9h)</option>
+                <option value="9540">1 semana antes (9h)</option>
+              </>
+            ) : (
+              <>
+                <option value="10">10 min antes</option>
+                <option value="30">30 min antes</option>
+                <option value="60">1 hora antes</option>
+                <option value="1440">1 dia antes</option>
+              </>
+            )}
+          </select>
+          <p className="text-[10.5px] text-gray-400 dark:text-gray-500">Avisa no Google (chega no celular também).</p>
+        </div>
+
+        {/* Nota */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Nota</label>
+          <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2}
+            placeholder="Observação (ex.: valor da fatura, código de barras…)"
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 resize-y" />
+        </div>
+
+        {/* Concluído (✓) — alterna o estado; aplica ao salvar */}
+        {isEdit && (
+          <button type="button" disabled={salvando} onClick={() => setFeito((v) => !v)}
+            className={`w-full flex items-center justify-center gap-2 py-2 rounded-lg border text-sm font-medium ${feito ? "border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+            {feito ? "✓ Concluído (salvar pra confirmar)" : "○ Marcar como concluído"}
+          </button>
+        )}
+
         {erro && <div className="text-xs text-red-600 dark:text-red-400">{erro}</div>}
         <div className="flex items-center justify-between gap-2 pt-1">
           {isEdit
