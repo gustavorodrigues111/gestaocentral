@@ -1537,6 +1537,41 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
           const isHoje = ymd(d) === ymd(hoje);
           const isOver = overYmd === ymd(d);
           const evs = evsDoDia(d);
+          const pins = evs.filter((e) => e.pin);
+          const eventosDia = evs.filter((e) => !e.pin);
+          const card = (ev: PEvent) => (
+            <div key={ev.id}
+              onPointerDown={(e) => startDragK(e, ev, d)}
+              onPointerMove={moveDragK}
+              onPointerUp={(e) => endDragK(e, ev)}
+              onClick={() => clickCard(ev)}
+              className={`relative rounded-lg pl-2 pr-7 py-1.5 touch-none select-none hover:brightness-[0.97] ${ev.pin ? "border border-dashed" : "border border-l-4 shadow-sm"} ${ev.done ? "opacity-55" : ""}`}
+              style={ev.pin
+                ? { background: corTint(ev.color, "14"), borderColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
+                : { background: corTint(ev.color, "24"), borderColor: corTint(ev.color, "55"), borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+              title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
+              {ev.gravavel && (
+                <button type="button" onClick={(e) => marcarDone(e, ev)} onPointerDown={(e) => e.stopPropagation()}
+                  title={ev.done ? "Concluído — desmarcar" : "Marcar como concluído"}
+                  className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] border ${ev.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 dark:border-gray-600 text-transparent hover:text-gray-400 hover:border-gray-400"}`}>
+                  ✓
+                </button>
+              )}
+              {ev.pin ? (
+                <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-wider font-bold mb-0.5" style={{ color: ev.color }}>
+                  {ev.icone || "📌"} Pin{ev.recorrente ? " · 🔁" : ""}
+                </div>
+              ) : null}
+              <div className={`text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words ${ev.done ? "line-through" : ""}`}>{!ev.pin && ev.icone ? `${ev.icone} ` : ""}{ev.title}</div>
+              {!ev.pin && (
+                <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
+                  {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
+                  {ev.modalidade === "online" ? " · 💻" : ev.modalidade === "presencial" || ev.local ? " · 📍" : ""}{ev.recorrente ? " · 🔁" : ""}
+                </div>
+              )}
+              {ev.local && <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate" title={ev.local}>📍 {ev.local}</div>}
+            </div>
+          );
           return (
             <div key={i} data-date={ymd(d)}
               className={`flex-none w-[180px] rounded-xl border p-2 ${
@@ -1546,41 +1581,12 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                 <span className="text-[10px] uppercase tracking-wider font-bold">{DOW[i]}</span>
                 <span className="text-[13px] font-semibold">{d.getDate()}/{d.getMonth() + 1}</span>
               </div>
+              {/* Pins primeiro, numa faixa própria no topo do dia */}
+              {pins.length > 0 && <div className="space-y-1 mb-1.5">{pins.map(card)}</div>}
+              {pins.length > 0 && <div className="border-t border-dashed border-gray-200 dark:border-gray-700 mb-1.5" />}
               <div className="space-y-1.5 min-h-[40px]">
                 {evs.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600 italic px-1 py-1 text-center">—</div>}
-                {evs.map((ev) => (
-                  <div key={ev.id}
-                    onPointerDown={(e) => startDragK(e, ev, d)}
-                    onPointerMove={moveDragK}
-                    onPointerUp={(e) => endDragK(e, ev)}
-                    onClick={() => clickCard(ev)}
-                    className={`relative rounded-lg pl-2 pr-7 py-1.5 touch-none select-none hover:brightness-[0.97] ${ev.pin ? "border border-dashed" : "border border-l-4 shadow-sm"} ${ev.done ? "opacity-55" : ""}`}
-                    style={ev.pin
-                      ? { background: corTint(ev.color, "14"), borderColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
-                      : { background: corTint(ev.color, "24"), borderColor: corTint(ev.color, "55"), borderLeftColor: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
-                    title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
-                    {ev.gravavel && (
-                      <button type="button" onClick={(e) => marcarDone(e, ev)} onPointerDown={(e) => e.stopPropagation()}
-                        title={ev.done ? "Concluído — desmarcar" : "Marcar como concluído"}
-                        className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-[11px] border ${ev.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-gray-300 dark:border-gray-600 text-transparent hover:text-gray-400 hover:border-gray-400"}`}>
-                        ✓
-                      </button>
-                    )}
-                    {ev.pin ? (
-                      <div className="flex items-center gap-1 text-[8.5px] uppercase tracking-wider font-bold mb-0.5" style={{ color: ev.color }}>
-                        {ev.icone || "📌"} Pin{ev.recorrente ? " · 🔁" : ""}
-                      </div>
-                    ) : null}
-                    <div className={`text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words ${ev.done ? "line-through" : ""}`}>{!ev.pin && ev.icone ? `${ev.icone} ` : ""}{ev.title}</div>
-                    {!ev.pin && (
-                      <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
-                        {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
-                        {ev.modalidade === "online" ? " · 💻" : ev.modalidade === "presencial" || ev.local ? " · 📍" : ""}{ev.recorrente ? " · 🔁" : ""}
-                      </div>
-                    )}
-                    {ev.local && <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate" title={ev.local}>📍 {ev.local}</div>}
-                  </div>
-                ))}
+                {eventosDia.map(card)}
                 {onNovo && (
                   <button type="button" onClick={() => onNovo(d)}
                     className="w-full mt-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-[11px] text-gray-400 dark:text-gray-500 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 py-1.5">
