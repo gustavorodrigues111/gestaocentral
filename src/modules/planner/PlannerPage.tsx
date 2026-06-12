@@ -201,7 +201,7 @@ function usePlannerSettings(uid: string | undefined) {
 }
 
 // ─── Eventos (events.list por agenda) ───────────────────────────────────────
-type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean };
+type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean; local?: string; modalidade?: "presencial" | "online"; priv?: Record<string, string> };
 async function listEvents(
   token: string,
   agendas: Agenda[],
@@ -222,15 +222,18 @@ async function listEvents(
     if (res.status === 401) { onUnauthorized(); return; }
     if (!res.ok) return;
     const data = await res.json() as {
-      items?: Array<{ id: string; summary?: string; status?: string; recurringEventId?: string; extendedProperties?: { private?: Record<string, string> }; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
+      items?: Array<{ id: string; summary?: string; status?: string; location?: string; recurringEventId?: string; extendedProperties?: { private?: Record<string, string> }; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
     };
     for (const ev of (data.items || [])) {
       if (ev.status === "cancelled" || !ev.start) continue;
       const allDay = !!ev.start.date;
       const start = allDay ? parseDateOnly(ev.start.date!) : new Date(ev.start.dateTime!);
       const end = allDay ? parseDateOnly(ev.end?.date || ev.start.date!) : new Date(ev.end?.dateTime || ev.start.dateTime!);
-      const pin = ev.extendedProperties?.private?.kind === "pin";
-      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId });
+      const priv = ev.extendedProperties?.private;
+      const pin = priv?.kind === "pin";
+      const mod = priv?.modalidade;
+      const modalidade = mod === "presencial" || mod === "online" ? mod : undefined;
+      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId, local: ev.location || undefined, modalidade, priv });
     }
   }));
   return out;
@@ -256,10 +259,21 @@ function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date,
   return { eventos, carregando };
 }
 
+type Modalidade = "presencial" | "online";
+type DadosEvento = { titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean; modalidade?: Modalidade | ""; local?: string; privExistente?: Record<string, string> };
+// Modalidade/endereço só valem pra eventos COM HORÁRIO (timados). Pra pin e
+// dia-todo: NÃO toca em location nem extendedProperties — assim não apaga o
+// marcador `kind=pin` nem o endereço de um all-day. Preserva as chaves private
+// já existentes (events.patch pode substituir o mapa private inteiro).
+function aplicaModalidade(body: Record<string, unknown>, ev: DadosEvento) {
+  if (ev.pin || ev.allDay) return;
+  body.location = ev.modalidade === "presencial" ? (ev.local || "") : "";
+  // null força remoção mesmo se o patch fizer merge por chave.
+  const priv: Record<string, unknown> = { ...(ev.privExistente || {}), modalidade: ev.modalidade || null };
+  body.extendedProperties = { private: priv };
+}
 // Cria um evento (ou pin) via events.insert.
-async function criarEvento(token: string, calId: string, ev: {
-  titulo: string; allDay: boolean; inicio: Date; fim: Date; pin?: boolean;
-}): Promise<void> {
+async function criarEvento(token: string, calId: string, ev: DadosEvento): Promise<void> {
   const body: Record<string, unknown> = { summary: ev.titulo };
   if (ev.allDay) {
     body.start = { date: ymd(ev.inicio) };
@@ -272,6 +286,7 @@ async function criarEvento(token: string, calId: string, ev: {
     body.transparency = "transparent"; // pin não bloqueia tempo
     body.extendedProperties = { private: { kind: "pin" } };
   }
+  aplicaModalidade(body, ev);
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -279,9 +294,7 @@ async function criarEvento(token: string, calId: string, ev: {
   });
   if (!res.ok) throw new Error(`Falha ao criar (HTTP ${res.status})`);
 }
-async function editarEvento(token: string, calId: string, eventId: string, ev: {
-  titulo: string; allDay: boolean; inicio: Date; fim: Date;
-}): Promise<void> {
+async function editarEvento(token: string, calId: string, eventId: string, ev: DadosEvento): Promise<void> {
   const body: Record<string, unknown> = { summary: ev.titulo };
   if (ev.allDay) {
     body.start = { date: ymd(ev.inicio) };
@@ -290,6 +303,7 @@ async function editarEvento(token: string, calId: string, eventId: string, ev: {
     body.start = { dateTime: ev.inicio.toISOString() };
     body.end = { dateTime: ev.fim.toISOString() };
   }
+  aplicaModalidade(body, ev);
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events/${encodeURIComponent(eventId)}`, {
     method: "PATCH",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
@@ -396,7 +410,7 @@ export function PlannerPage() {
   const { pessoa, fbUser } = useAuth();
   const conn = useGoogleConn();
   const { prefs, setPref } = usePlannerSettings(fbUser?.uid);
-  const [vista, setVista] = useState<TipoVista>("calendario");
+  const [vista, setVista] = useState<TipoVista>("kanban");   // Kanban semanal é a vista padrão
   const [periodo, setPeriodo] = useState<Periodo>("semana");
   const [refresh, setRefresh] = useState(0);
   const [criar, setCriar] = useState<null | "evento" | "pin">(null);
@@ -466,7 +480,7 @@ export function PlannerPage() {
       {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
       {alvo === "tri" && <TrimestreView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
       {alvo === "ano" && <AnoView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
-      {alvo === "kanban" && <KanbanView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
+      {alvo === "kanban" && <KanbanView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} onNovo={gravaveis.length > 0 ? (dia: Date) => setCriarEm({ data: ymd(dia), inicio: "09:00", fim: "10:00" }) : undefined} />}
       {alvo === "crono" && <CronogramaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
 
       {conn.token && agendas.length > 0 && <AgendasManager agendas={agendas} setPref={setPref} />}
@@ -1045,8 +1059,10 @@ function DiaPopup({ dia, eventos, onClose, onEventClick }: {
               <div className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400">
                 {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
+                {ev.modalidade === "online" ? " · 💻 online" : ev.modalidade === "presencial" || ev.local ? " · 📍 presencial" : ""}
                 {ev.recorrente ? " · 🔁 recorrente" : ""}{ev.gravavel ? "" : " · só leitura"}
               </div>
+              {ev.local && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 break-words">📍 {ev.local}</div>}
             </div>
             <span className="text-[11px] text-indigo-500 dark:text-indigo-400 flex-none">✏️</span>
           </button>
@@ -1219,9 +1235,10 @@ function AnoView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: 
 }
 
 // ─── Visão KANBAN (board: colunas = dias da semana, arrasta pra reagendar) ──
-function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, onRefresh }: {
+function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, onRefresh, onNovo }: {
   conn: Conn; agendas: Agenda[]; refresh: number;
   refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void; onRefresh: () => void;
+  onNovo?: (dia: Date) => void;
 }) {
   const hoje = new Date();
   const weekStart = startOfWeek(refDate);
@@ -1307,7 +1324,7 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                 <span className="text-[13px] font-semibold">{d.getDate()}/{d.getMonth() + 1}</span>
               </div>
               <div className="space-y-1.5 min-h-[40px]">
-                {evs.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600 italic px-1 py-2 text-center">—</div>}
+                {evs.length === 0 && <div className="text-[10px] text-gray-300 dark:text-gray-600 italic px-1 py-1 text-center">—</div>}
                 {evs.map((ev) => (
                   <div key={ev.id}
                     onPointerDown={(e) => startDragK(e, ev, d)}
@@ -1319,10 +1336,18 @@ function KanbanView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                     title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
                     <div className="text-[11px] font-medium text-gray-800 dark:text-gray-100 leading-tight break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
                     <div className="text-[9.5px] text-gray-500 dark:text-gray-400 mt-0.5">
-                      {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}{ev.recorrente ? " · 🔁" : ""}
+                      {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
+                      {ev.modalidade === "online" ? " · 💻" : ev.modalidade === "presencial" || ev.local ? " · 📍" : ""}{ev.recorrente ? " · 🔁" : ""}
                     </div>
+                    {ev.local && <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-0.5 truncate" title={ev.local}>📍 {ev.local}</div>}
                   </div>
                 ))}
+                {onNovo && (
+                  <button type="button" onClick={() => onNovo(d)}
+                    className="w-full mt-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-[11px] text-gray-400 dark:text-gray-500 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 py-1.5">
+                    + Novo
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -1423,16 +1448,20 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
   onDone: () => void;
 }) {
   const isEdit = modo === "editar";
-  const isPin = modo === "pin";
-  // No modo edição, o horário vem do evento; senão do `inicial` (slot) ou agora.
+  // Tipo (evento/pin) é alternável na criação; na edição vem do próprio evento.
+  const [ehPin, setEhPin] = useState(modo === "pin");
   const [titulo, setTitulo] = useState(evento?.title || "");
   const [calId, setCalId] = useState(evento?.calendarId || agendas[0]?.id || "");
   const [data, setData] = useState(evento ? ymd(evento.start) : (inicial?.data || ymd(new Date())));
-  const [semHora] = useState(isPin || (isEdit && !!evento?.allDay));
   const [inicio, setInicio] = useState(evento && !evento.allDay ? hhmm(evento.start) : (inicial?.inicio || "09:00"));
   const [fim, setFim] = useState(evento && !evento.allDay ? hhmm(evento.end) : (inicial?.fim || "10:00"));
+  // Modalidade: infere "presencial" de eventos que já têm endereço (location do Google).
+  const [modalidade, setModalidade] = useState<"" | "presencial" | "online">(evento?.modalidade || (evento?.local ? "presencial" : ""));
+  const [endereco, setEndereco] = useState(evento?.local || "");
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const semHora = ehPin || (isEdit && !!evento?.allDay);
+  const seg = (active: boolean) => `flex-1 text-xs font-semibold px-2 py-1.5 rounded-md transition-colors ${active ? "bg-white dark:bg-gray-900 shadow text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"}`;
 
   // Evento de agenda só-leitura: não dá pra editar por aqui.
   if (isEdit && evento && !evento.gravavel) {
@@ -1467,15 +1496,17 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
         f = new Date(y, m - 1, d, hf || 0, mf || 0);
         if (f <= ini) f = new Date(ini.getTime() + 30 * 60000);
       }
+      const mod = semHora ? "" : modalidade;
+      const loc = mod === "presencial" ? endereco.trim() : "";
       if (isEdit && evento) {
         // Trocou de agenda? Move primeiro (events.move), depois aplica o resto.
         const destino = calId || evento.calendarId;
         if (destino !== evento.calendarId) {
           await moverParaAgenda(token, evento.calendarId, evento.id, destino);
         }
-        await editarEvento(token, destino, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f });
+        await editarEvento(token, destino, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, modalidade: mod, local: loc, privExistente: evento.priv });
       } else {
-        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, pin: isPin });
+        await criarEvento(token, calId, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, pin: ehPin, modalidade: mod, local: loc });
       }
       onDone();
     } catch (e) {
@@ -1498,7 +1529,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
     }
   }
 
-  const tituloModal = isEdit ? "Editar evento" : isPin ? "📌 Novo pin" : "Novo evento";
+  const tituloModal = isEdit ? "Editar evento" : ehPin ? "📌 Novo pin" : "Novo evento";
   // No modo edição, o nome da agenda pode não estar em `agendas` (gravaveis) —
   // mostra um fallback legível.
   const agendaNome = agendas.find((a) => a.id === calId)?.summary || evento?.calendarId || "";
@@ -1506,8 +1537,14 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
   return (
     <Modal title={tituloModal} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
+        {!isEdit && (
+          <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
+            <button type="button" onClick={() => setEhPin(false)} className={seg(!ehPin)}>📅 Evento</button>
+            <button type="button" onClick={() => setEhPin(true)} className={seg(ehPin)}>📌 Pin</button>
+          </div>
+        )}
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
-          placeholder={isPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
+          placeholder={ehPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
         {evento?.recorrente && (
           <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
             🔁 Evento recorrente — as alterações valem só pra <strong>esta ocorrência</strong>.
@@ -1539,6 +1576,21 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
             </div>
           </div>
         )}
+        {!semHora && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Modalidade</label>
+            <div className="flex gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-800">
+              <button type="button" onClick={() => setModalidade(modalidade === "presencial" ? "" : "presencial")} className={seg(modalidade === "presencial")}>📍 Presencial</button>
+              <button type="button" onClick={() => setModalidade(modalidade === "online" ? "" : "online")} className={seg(modalidade === "online")}>💻 Online</button>
+            </div>
+            {modalidade === "presencial" && (
+              <div className="pt-1">
+                <Input label="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Rua, nº, bairro, cidade…" />
+                <p className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-1">Vai pro campo de local do Google e ajuda a achar janelas pra viagem.</p>
+              </div>
+            )}
+          </div>
+        )}
         {semHora && !isEdit && <p className="text-[11px] text-gray-500 dark:text-gray-400">📌 Pin é um marcador do dia — não bloqueia horário.</p>}
         {erro && <div className="text-xs text-red-600 dark:text-red-400">{erro}</div>}
         <div className="flex items-center justify-between gap-2 pt-1">
@@ -1547,7 +1599,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
             : <span />}
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
-            <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : isEdit ? "Salvar" : isPin ? "Criar pin" : "Criar evento"}</Button>
+            <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : isEdit ? "Salvar" : ehPin ? "Criar pin" : "Criar evento"}</Button>
           </div>
         </div>
       </div>
