@@ -378,9 +378,22 @@ function untilFim(ate: Date, allDay: boolean): string {
     ? `${ate.getFullYear()}${pad2(ate.getMonth() + 1)}${pad2(ate.getDate())}`
     : `${ate.getUTCFullYear()}${pad2(ate.getUTCMonth() + 1)}${pad2(ate.getUTCDate())}T235959Z`;
 }
-// Monta RRULE simples (opções rápidas). `ate` = término opcional.
-function montaRRule(freq: Freq, allDay: boolean, ate?: Date): string[] {
-  return [`RRULE:FREQ=${freq}${ate ? `;UNTIL=${untilFim(ate, allDay)}` : ""}`];
+// Resumo legível de uma RRULE (mostrado ao editar evento recorrente).
+function rruleResumo(rrule: string): string {
+  if (!rrule) return "";
+  const get = (k: string) => (rrule.match(new RegExp(`${k}=([^;]+)`)) || [])[1] || null;
+  const freq = get("FREQ"); const intv = Number(get("INTERVAL") || "1");
+  const byday = get("BYDAY"); const count = get("COUNT"); const until = get("UNTIL");
+  const sing: Record<string, string> = { DAILY: "todo dia", WEEKLY: "toda semana", MONTHLY: "todo mês", YEARLY: "todo ano" };
+  const plur: Record<string, string> = { DAILY: "dias", WEEKLY: "semanas", MONTHLY: "meses", YEARLY: "anos" };
+  const wd: Record<string, string> = { MO: "seg", TU: "ter", WE: "qua", TH: "qui", FR: "sex", SA: "sáb", SU: "dom" };
+  let s = freq ? (intv > 1 ? `a cada ${intv} ${plur[freq]}` : sing[freq] || "recorrente") : "recorrente";
+  if (freq === "WEEKLY" && byday) s += ` (${byday.split(",").map((c) => wd[c] || c).join(", ")})`;
+  else if (freq === "MONTHLY" && byday && /^\d/.test(byday)) s += ` (na ${byday[0]}ª ${wd[byday.slice(1)] || byday.slice(1)})`;
+  if (until) s += ` · até ${until.slice(6, 8)}/${until.slice(4, 6)}/${until.slice(0, 4)}`;
+  else if (count) s += ` · por ${count} vez${Number(count) > 1 ? "es" : ""}`;
+  else s += " · indefinidamente";
+  return s;
 }
 // Recorrência personalizada (igual ao "Personalizar" do Google).
 type CustomRec = {
@@ -1646,6 +1659,16 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
   const [cMensal, setCMensal] = useState<"dia" | "semana">("dia");
   const [cFim, setCFim] = useState<"nunca" | "data" | "count">("nunca");
   const [cCount, setCCount] = useState(10);
+  // Resumo da recorrência (busca o mestre ao editar pra mostrar a regra).
+  const [resumoRec, setResumoRec] = useState("");
+  useEffect(() => {
+    if (!(isEdit && evento?.recorrente && evento.recurringId)) return;
+    let vivo = true;
+    getEventoRaw(token, evento.calendarId, evento.recurringId)
+      .then((m) => { if (vivo) setResumoRec(rruleResumo(rrulePrincipal(m.recurrence as string[] | undefined) || "")); })
+      .catch(() => { /* sem resumo */ });
+    return () => { vivo = false; };
+  }, [isEdit, evento?.recorrente, evento?.recurringId, evento?.calendarId, token]);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const semHora = ehPin || (isEdit && !!evento?.allDay);
@@ -1705,12 +1728,11 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
       } else {
         let recorrencia: string[] | undefined;
         if (repetir) {   // vale pra evento E pin (pin = all-day recorrente)
-          if (repetir === "CUSTOM") {
-            const byday = Array.from(new Set([codeDoDia(ini), ...cByday]));   // dia de início sempre incluso
-            recorrencia = montaRRuleCustom({ intervalo: cIntervalo, unidade: cUnidade, byday, mensalModo: cMensal, fim: cFim, ate: until ? parseDateOnly(until) : undefined, count: cCount }, semHora, ini);
-          } else {
-            recorrencia = montaRRule(repetir, semHora, until ? parseDateOnly(until) : undefined);
-          }
+          const ate = cFim === "data" && until ? parseDateOnly(until) : undefined;
+          const cfg: CustomRec = repetir === "CUSTOM"
+            ? { intervalo: cIntervalo, unidade: cUnidade, byday: Array.from(new Set([codeDoDia(ini), ...cByday])), mensalModo: cMensal, fim: cFim, ate, count: cCount }
+            : { intervalo: 1, unidade: repetir, byday: [], mensalModo: "dia", fim: cFim, ate, count: cCount };
+          recorrencia = montaRRuleCustom(cfg, semHora, ini);
         }
         await criarEvento(token, calId, { ...dados, pin: ehPin, recorrencia });
       }
@@ -1750,7 +1772,7 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
     }
   }
 
-  const tituloModal = isEdit ? "Editar evento" : ehPin ? "📌 Novo pin" : "Novo evento";
+  const tituloModal = isEdit ? (evento?.pin ? "Editar pin" : "Editar evento") : ehPin ? "📌 Novo pin" : "Novo evento";
   // No modo edição, o nome da agenda pode não estar em `agendas` (gravaveis) —
   // mostra um fallback legível.
   const agendaNome = agendas.find((a) => a.id === calId)?.summary || evento?.calendarId || "";
@@ -1768,7 +1790,10 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
           placeholder={ehPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
         {recorrente && (
           <div className="flex flex-col gap-1">
-            <label className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">🔁 Evento recorrente — aplicar a:</label>
+            <label className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
+              🔁 {resumoRec ? `Repete ${resumoRec}` : "Evento recorrente"}
+            </label>
+            <span className="text-[10.5px] text-gray-500 dark:text-gray-400 -mt-0.5">Aplicar a:</span>
             <div className="flex gap-1 p-1 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
               <button type="button" onClick={() => setEscopo("ocorrencia")} className={seg(escopo === "ocorrencia")}>Esta</button>
               <button type="button" onClick={() => setEscopo("futuras")} className={seg(escopo === "futuras")}>Esta e futuras</button>
@@ -1817,80 +1842,74 @@ function EventoModal({ modo, token, agendas, evento, inicial, onClose, onDone }:
           return (
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Repetir</label>
-              <div className="grid grid-cols-2 gap-2">
-                <select value={repetir} onChange={(e) => setRepetir(e.target.value as "" | Freq | "CUSTOM")}
-                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-                  <option value="">Não repete</option>
-                  <option value="DAILY">Todo dia</option>
-                  <option value="WEEKLY">Toda semana</option>
-                  <option value="MONTHLY">Todo mês</option>
-                  <option value="YEARLY">Todo ano</option>
-                  <option value="CUSTOM">Personalizado…</option>
-                </select>
-                {repetir && repetir !== "CUSTOM" && (
-                  <Input type="date" value={until} onChange={(e) => setUntil(e.target.value)} placeholder="até (opcional)" />
-                )}
-              </div>
-              {repetir && repetir !== "CUSTOM" && <p className="text-[10.5px] text-gray-400 dark:text-gray-500">Sem data fim = repete indefinidamente.</p>}
+              <select value={repetir} onChange={(e) => setRepetir(e.target.value as "" | Freq | "CUSTOM")}
+                className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                <option value="">Não repete</option>
+                <option value="DAILY">Todo dia</option>
+                <option value="WEEKLY">Toda semana</option>
+                <option value="MONTHLY">Todo mês (no dia {dObj.getDate()})</option>
+                <option value="YEARLY">Todo ano</option>
+                <option value="CUSTOM">Personalizado…</option>
+              </select>
 
-              {repetir === "CUSTOM" && (
+              {repetir && (
                 <div className="mt-1 rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 space-y-2.5 bg-gray-50/60 dark:bg-gray-900/40">
-                  {/* A cada N unidade */}
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] text-gray-600 dark:text-gray-300">A cada</span>
-                    <input type="number" min={1} max={99} value={cIntervalo} onChange={(e) => setCIntervalo(Math.max(1, Number(e.target.value) || 1))}
-                      className="w-14 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                    <select value={cUnidade} onChange={(e) => setCUnidade(e.target.value as Freq)}
-                      className="flex-1 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-                      {UNI.map((u) => <option key={u.v} value={u.v}>{u.l}</option>)}
-                    </select>
-                  </div>
-
-                  {/* Semanal: dias da semana */}
-                  {cUnidade === "WEEKLY" && (
-                    <div className="flex gap-1">
-                      {DOW.map((lbl, i) => {
-                        const code = WD_CODE[i];
-                        const on = bydayEff.includes(code);
-                        const fixo = code === startCode;
-                        return (
-                          <button key={code} type="button" onClick={() => toggleDia(code)} disabled={fixo}
-                            title={fixo ? "Dia de início (fixo)" : lbl}
-                            className={`w-7 h-7 rounded-full text-[10px] font-bold ${on ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-300"} ${fixo ? "opacity-90 cursor-default ring-1 ring-indigo-300" : ""}`}>
-                            {lbl[0]}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  {repetir === "CUSTOM" && (
+                    <>
+                      {/* A cada N unidade */}
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-gray-600 dark:text-gray-300">A cada</span>
+                        <input type="number" min={1} max={99} value={cIntervalo} onChange={(e) => setCIntervalo(Math.max(1, Number(e.target.value) || 1))}
+                          className="w-14 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                        <select value={cUnidade} onChange={(e) => setCUnidade(e.target.value as Freq)}
+                          className="flex-1 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                          {UNI.map((u) => <option key={u.v} value={u.v}>{u.l}</option>)}
+                        </select>
+                      </div>
+                      {cUnidade === "WEEKLY" && (
+                        <div className="flex gap-1">
+                          {DOW.map((lbl, i) => {
+                            const code = WD_CODE[i];
+                            const on = bydayEff.includes(code);
+                            const fixo = code === startCode;
+                            return (
+                              <button key={code} type="button" onClick={() => toggleDia(code)} disabled={fixo}
+                                title={fixo ? "Dia de início (fixo)" : lbl}
+                                className={`w-7 h-7 rounded-full text-[10px] font-bold ${on ? "bg-indigo-600 text-white" : "bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-300"} ${fixo ? "opacity-90 cursor-default ring-1 ring-indigo-300" : ""}`}>
+                                {lbl[0]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {cUnidade === "MONTHLY" && (
+                        <div className="flex flex-col gap-1">
+                          <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                            <input type="radio" checked={cMensal === "dia"} onChange={() => setCMensal("dia")} /> No dia {dObj.getDate()}
+                          </label>
+                          <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                            <input type="radio" checked={cMensal === "semana"} onChange={() => setCMensal("semana")} /> Na {Math.ceil(dObj.getDate() / 7)}ª {DOW[(dObj.getDay() + 6) % 7]} do mês
+                          </label>
+                        </div>
+                      )}
+                    </>
                   )}
 
-                  {/* Mensal: por dia do mês ou por semana */}
-                  {cUnidade === "MONTHLY" && (
-                    <div className="flex flex-col gap-1">
-                      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
-                        <input type="radio" checked={cMensal === "dia"} onChange={() => setCMensal("dia")} /> No dia {dObj.getDate()}
-                      </label>
-                      <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
-                        <input type="radio" checked={cMensal === "semana"} onChange={() => setCMensal("semana")} /> Na {Math.ceil(dObj.getDate() / 7)}ª {DOW[(dObj.getDay() + 6) % 7]} do mês
-                      </label>
-                    </div>
-                  )}
-
-                  {/* Término */}
-                  <div className="flex flex-col gap-1 pt-1 border-t border-gray-200 dark:border-gray-700">
-                    <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 pt-1">Termina</span>
+                  {/* Término — vale pra qualquer repetição */}
+                  <div className={`flex flex-col gap-1 ${repetir === "CUSTOM" ? "pt-1.5 border-t border-gray-200 dark:border-gray-700" : ""}`}>
+                    <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Termina</span>
                     <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
-                      <input type="radio" checked={cFim === "nunca"} onChange={() => setCFim("nunca")} /> Nunca
-                    </label>
-                    <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
-                      <input type="radio" checked={cFim === "data"} onChange={() => setCFim("data")} /> Em
-                      <input type="date" value={until} onChange={(e) => { setUntil(e.target.value); setCFim("data"); }}
-                        className="px-2 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                      <input type="radio" checked={cFim === "nunca"} onChange={() => setCFim("nunca")} /> Indefinido (segue criando)
                     </label>
                     <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
                       <input type="radio" checked={cFim === "count"} onChange={() => setCFim("count")} /> Após
-                      <input type="number" min={1} max={730} value={cCount} onChange={(e) => { setCCount(Math.max(1, Number(e.target.value) || 1)); setCFim("count"); }}
+                      <input type="number" min={1} max={730} value={cCount} onClick={() => setCFim("count")} onChange={(e) => { setCCount(Math.max(1, Number(e.target.value) || 1)); setCFim("count"); }}
                         className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" /> ocorrências
+                    </label>
+                    <label className="flex items-center gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                      <input type="radio" checked={cFim === "data"} onChange={() => setCFim("data")} /> Em
+                      <input type="date" value={until} onClick={() => setCFim("data")} onChange={(e) => { setUntil(e.target.value); setCFim("data"); }}
+                        className="px-2 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                     </label>
                   </div>
                 </div>
