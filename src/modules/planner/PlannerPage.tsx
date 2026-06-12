@@ -188,13 +188,14 @@ function usePlannerSettings(uid: string | undefined) {
 }
 
 // ─── Eventos (events.list por agenda) ───────────────────────────────────────
-type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean };
+type PEvent = { id: string; calendarId: string; gravavel: boolean; color: string; title: string; start: Date; end: Date; allDay: boolean; pin: boolean; recorrente: boolean };
 async function listEvents(
   token: string,
   agendas: Agenda[],
   timeMin: Date,
   timeMax: Date,
   onUnauthorized: () => void,
+  maxResults = 250,
 ): Promise<PEvent[]> {
   const out: PEvent[] = [];
   await Promise.all(agendas.map(async (cal) => {
@@ -203,24 +204,25 @@ async function listEvents(
     url.searchParams.set("timeMax", timeMax.toISOString());
     url.searchParams.set("singleEvents", "true");
     url.searchParams.set("orderBy", "startTime");
-    url.searchParams.set("maxResults", "250");
+    url.searchParams.set("maxResults", String(maxResults));
     const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
     if (res.status === 401) { onUnauthorized(); return; }
     if (!res.ok) return;
     const data = await res.json() as {
-      items?: Array<{ id: string; summary?: string; status?: string; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
+      items?: Array<{ id: string; summary?: string; status?: string; recurringEventId?: string; extendedProperties?: { private?: Record<string, string> }; start?: { date?: string; dateTime?: string }; end?: { date?: string; dateTime?: string } }>;
     };
     for (const ev of (data.items || [])) {
       if (ev.status === "cancelled" || !ev.start) continue;
       const allDay = !!ev.start.date;
       const start = allDay ? parseDateOnly(ev.start.date!) : new Date(ev.start.dateTime!);
       const end = allDay ? parseDateOnly(ev.end?.date || ev.start.date!) : new Date(ev.end?.dateTime || ev.start.dateTime!);
-      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay });
+      const pin = ev.extendedProperties?.private?.kind === "pin";
+      out.push({ id: ev.id, calendarId: cal.id, gravavel: cal.gravavel, color: cal.cor, title: ev.summary || "(sem título)", start, end, allDay, pin, recorrente: !!ev.recurringEventId });
     }
   }));
   return out;
 }
-function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date, refresh: number) {
+function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date, refresh: number, maxResults = 250) {
   const [eventos, setEventos] = useState<PEvent[]>([]);
   const [carregando, setCarregando] = useState(false);
   const minISO = timeMin.toISOString();
@@ -231,12 +233,12 @@ function useEventos(conn: Conn, agendas: Agenda[], timeMin: Date, timeMax: Date,
     if (!conn.token || agendas.length === 0) { setEventos([]); return; }
     let vivo = true;
     setCarregando(true);
-    listEvents(conn.token, agendas, new Date(minISO), new Date(maxISO), conn.invalidar)
+    listEvents(conn.token, agendas, new Date(minISO), new Date(maxISO), conn.invalidar, maxResults)
       .then((evs) => { if (vivo) setEventos(evs); })
       .finally(() => { if (vivo) setCarregando(false); });
     return () => { vivo = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conn.token, chave, minISO, maxISO, refresh]);
+  }, [conn.token, chave, minISO, maxISO, refresh, maxResults]);
 
   return { eventos, carregando };
 }
@@ -295,8 +297,10 @@ async function moverEvento(token: string, calId: string, eventId: string, ev: {
 }): Promise<void> {
   const body: Record<string, unknown> = {};
   if (ev.allDay) {
+    // `fim` é a data de término EXCLUSIVA (preserva eventos de vários dias).
+    const fimEx = startOfDay(ev.fim) > startOfDay(ev.inicio) ? ev.fim : addDays(ev.inicio, 1);
     body.start = { date: ymd(ev.inicio) };
-    body.end = { date: ymd(addDays(ev.inicio, 1)) };
+    body.end = { date: ymd(fimEx) };
   } else {
     body.start = { dateTime: ev.inicio.toISOString() };
     body.end = { dateTime: ev.fim.toISOString() };
@@ -307,6 +311,16 @@ async function moverEvento(token: string, calId: string, eventId: string, ev: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`Falha ao mover (HTTP ${res.status})`);
+}
+// Troca o evento de agenda (events.move). Mantém o mesmo id no calendário destino.
+async function moverParaAgenda(token: string, fromCal: string, eventId: string, toCal: string): Promise<void> {
+  const url = new URL(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(fromCal)}/events/${encodeURIComponent(eventId)}/move`);
+  url.searchParams.set("destination", toCal);
+  const res = await fetch(url.toString(), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Falha ao trocar de agenda (HTTP ${res.status})`);
 }
 
 // ─── Datas ──────────────────────────────────────────────────────────────────
@@ -392,8 +406,8 @@ export function PlannerPage() {
 
       {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
       {alvo === "mes" && <MesView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
-      {alvo === "tri" && <EmBreve titulo="Trimestre" desc="Grade de semanas × dias, com janelas livres." />}
-      {alvo === "ano" && <EmBreve titulo="Ano (fita)" desc="12 faixas de meses; cada dia uma célula." />}
+      {alvo === "tri" && <TrimestreView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
+      {alvo === "ano" && <AnoView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} />}
       {alvo === "kanban" && <EmBreve titulo="Kanban" desc="Colunas = fases dos projetos; arrastar muda a fase." />}
       {alvo === "crono" && <EmBreve titulo="Cronograma" desc="Barras por duração, swimlanes por agenda." />}
 
@@ -473,7 +487,7 @@ function AgendasManager({ agendas, setPref }: { agendas: Agenda[]; setPref: (id:
             <label className="relative w-4 h-4 rounded-full cursor-pointer border border-black/10" style={{ background: a.cor }} title="Mudar cor">
               <input type="color" value={a.cor} onChange={(e) => setPref(a.id, { cor: e.target.value })} className="absolute inset-0 opacity-0 cursor-pointer" />
             </label>
-            <span className={`${a.oculta ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"} max-w-[180px] truncate`}>{a.summary}</span>
+            <span className={`${a.oculta ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"} whitespace-nowrap`}>{a.summary}</span>
             <button type="button" onClick={() => setPref(a.id, { oculta: !a.oculta })}
               title={a.oculta ? "Mostrar no Planner" : "Ocultar do Planner"}
               className="text-[12px] leading-none hover:opacity-70">
@@ -576,9 +590,10 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
   const mostraHoje = hoje >= weekStart && hoje < weekEnd;
   const hojeIdx = mostraHoje ? (hoje.getDay() + 6) % 7 : -1;
 
-  // Drag-and-drop dos eventos timados (hora + dia).
+  // Drag-and-drop: mover timado (hora+dia), redimensionar (fim) e mover all-day (dia).
   const gridRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ ev: PEvent; origCol: number; startX: number; startY: number; moved: boolean; target: { start: Date; end: Date } | null } | null>(null);
+  type DragKind = "move" | "resize" | "allday";
+  const dragRef = useRef<{ ev: PEvent; kind: DragKind; origCol: number; startX: number; startY: number; moved: boolean; target: { start: Date; end: Date } | null } | null>(null);
   const suppressClick = useRef(false);
   const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
 
@@ -615,10 +630,18 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
   const totH = (h1 - h0 + 1) * PX;
   const horas = Array.from({ length: h1 - h0 + 1 }, (_, i) => h0 + i);
 
-  function startDrag(e: React.PointerEvent, ev: PEvent, origCol: number) {
+  function startDrag(e: React.PointerEvent, ev: PEvent, origCol: number, kind: DragKind) {
+    suppressClick.current = false;                         // limpa estado preso de um drag anterior
     if (!ev.gravavel || e.button !== 0) return;
+    if (kind === "resize") e.stopPropagation();           // não dispara o "move" do bloco
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
-    dragRef.current = { ev, origCol, startX: e.clientX, startY: e.clientY, moved: false, target: null };
+    dragRef.current = { ev, kind, origCol, startX: e.clientX, startY: e.clientY, moved: false, target: null };
+  }
+  function colDoX(clientX: number): number {
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const colW = rect.width / 7;
+    return Math.max(0, Math.min(6, Math.floor((clientX - rect.left) / colW)));
   }
   function moveDrag(e: React.PointerEvent) {
     const d = dragRef.current;
@@ -626,17 +649,28 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
     const dx = e.clientX - d.startX, dy = e.clientY - d.startY;
     if (!d.moved && Math.hypot(dx, dy) < 5) return;
     d.moved = true;
-    const rect = gridRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const colW = rect.width / 7;
-    let col = Math.floor((e.clientX - rect.left) / colW);
-    col = Math.max(0, Math.min(6, col));
-    const quartos = Math.round((dy / PX) * 4);            // passos de 15 min
-    const novoIni = new Date(d.ev.start.getTime() + (col - d.origCol) * 86400000 + quartos * 15 * 60000);
-    const dur = d.ev.end.getTime() - d.ev.start.getTime();
-    const novoFim = new Date(novoIni.getTime() + dur);
-    d.target = { start: novoIni, end: novoFim };
-    setGhost({ x: e.clientX, y: e.clientY, label: `${DOW[col]} · ${fmtHora(novoIni)}–${fmtHora(novoFim)}` });
+    if (d.kind === "resize") {
+      const quartos = Math.round((dy / PX) * 4);
+      let novoFim = new Date(d.ev.end.getTime() + quartos * 15 * 60000);
+      if (novoFim.getTime() <= d.ev.start.getTime() + 15 * 60000) novoFim = new Date(d.ev.start.getTime() + 15 * 60000);
+      d.target = { start: d.ev.start, end: novoFim };
+      setGhost({ x: e.clientX, y: e.clientY, label: `${fmtHora(d.ev.start)}–${fmtHora(novoFim)}` });
+    } else if (d.kind === "allday") {
+      const col = colDoX(e.clientX);
+      const novoIni = startOfDay(dias[col]);
+      const nDias = Math.max(1, Math.round((startOfDay(d.ev.end).getTime() - startOfDay(d.ev.start).getTime()) / 86400000));
+      const novoFim = addDays(novoIni, nDias);             // fim exclusivo, preserva duração
+      d.target = { start: novoIni, end: novoFim };
+      setGhost({ x: e.clientX, y: e.clientY, label: `${DOW[col]} · ${novoIni.getDate()} ${MESES[novoIni.getMonth()].slice(0, 3)}` });
+    } else {
+      const col = colDoX(e.clientX);
+      const quartos = Math.round((dy / PX) * 4);          // passos de 15 min
+      const novoIni = new Date(d.ev.start.getTime() + (col - d.origCol) * 86400000 + quartos * 15 * 60000);
+      const dur = d.ev.end.getTime() - d.ev.start.getTime();
+      const novoFim = new Date(novoIni.getTime() + dur);
+      d.target = { start: novoIni, end: novoFim };
+      setGhost({ x: e.clientX, y: e.clientY, label: `${DOW[col]} · ${fmtHora(novoIni)}–${fmtHora(novoFim)}` });
+    }
   }
   async function endDrag(e: React.PointerEvent, ev: PEvent) {
     const d = dragRef.current;
@@ -644,9 +678,11 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
     setGhost(null);
     dragRef.current = null;
     if (!d || !d.moved || !d.target) return;              // não moveu → onClick abre o modal
-    suppressClick.current = true;                          // moveu → engole o clique seguinte
+    // No resize a alça já faz stopPropagation no clique; só os moves precisam engolir.
+    if (d.kind !== "resize") suppressClick.current = true;
     const { start, end } = d.target;
-    try { await moverEvento(token, ev.calendarId, ev.id, { allDay: false, inicio: start, fim: end }); }
+    const allDay = d.kind === "allday";
+    try { await moverEvento(token, ev.calendarId, ev.id, { allDay, inicio: start, fim: end }); }
     catch { /* recarrega pra refletir o estado real */ }
     onRefresh();
   }
@@ -671,7 +707,9 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
         <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "linha vermelha = agora"}</span>
       </div>
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden bg-white dark:bg-gray-900">
-        <div className="max-h-[600px] overflow-y-auto">
+        <div className="max-h-[600px] overflow-auto">
+          {/* min-w garante colunas tocáveis no mobile (rola na horizontal). */}
+          <div className="min-w-[600px]">
           <div className="sticky top-0 z-20 bg-white dark:bg-gray-900">
             <div className="flex border-b border-gray-200 dark:border-gray-800">
               <div className="w-[46px] flex-none" />
@@ -690,9 +728,18 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                 {dias.map((_, i) => (
                   <div key={i} className="p-1 border-l border-gray-200 dark:border-gray-800 min-h-[28px] space-y-0.5">
                     {alldayPorDia[i].map((ev) => (
-                      <button key={ev.id} type="button" onClick={() => onEventClick(ev)}
-                        className="block w-full text-left text-[9.5px] px-1.5 py-0.5 rounded truncate text-white cursor-pointer hover:opacity-90"
-                        style={{ background: ev.color }} title={ev.title}>{ev.title}</button>
+                      <button key={ev.id} type="button"
+                        onPointerDown={(e) => startDrag(e, ev, i, "allday")}
+                        onPointerMove={moveDrag}
+                        onPointerUp={(e) => endDrag(e, ev)}
+                        onClick={() => clickEvento(ev)}
+                        className={`block w-full text-left text-[9.5px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"}`}
+                        style={ev.pin
+                          ? { borderColor: ev.color, color: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
+                          : { background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+                        title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
+                        {ev.pin ? "📌 " : ""}{ev.title}
+                      </button>
                     ))}
                   </div>
                 ))}
@@ -717,15 +764,27 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                     const linhas = Math.max(1, Math.floor((altura - 6) / 11)); // qtd de linhas que cabe inteira
                     return (
                       <button key={ev.id} type="button"
-                        onPointerDown={(e) => startDrag(e, ev, i)}
+                        onPointerDown={(e) => startDrag(e, ev, i, "move")}
                         onPointerMove={moveDrag}
                         onPointerUp={(e) => endDrag(e, ev)}
                         onClick={() => clickEvento(ev)}
                         className="absolute left-[3px] right-[3px] rounded-md text-white text-[9.5px] leading-tight px-1.5 py-1 overflow-hidden shadow-sm text-left hover:brightness-95 touch-none select-none"
-                        style={{ background: ev.color, top: (ini - h0) * PX, height: altura, cursor: ev.gravavel ? "grab" : "pointer" }} title={ev.gravavel ? "Clique pra editar · arraste pra mover" : ev.title}>
+                        style={{ background: ev.color, top: (ini - h0) * PX, height: altura, cursor: ev.gravavel ? "grab" : "pointer" }} title={ev.gravavel ? "Clique pra editar · arraste pra mover · alça embaixo redimensiona" : ev.title}>
                         <div style={{ display: "-webkit-box", WebkitBoxOrient: "vertical", WebkitLineClamp: linhas, overflow: "hidden", wordBreak: "break-word" }}>
-                          <span className="font-bold text-[9px] opacity-90">{fmtHora(ev.start)}</span> {ev.title}
+                          <span className="font-bold text-[9px] opacity-90">{ev.pin ? "📌 " : ""}{fmtHora(ev.start)}</span> {ev.title}
                         </div>
+                        {ev.gravavel && altura >= 24 && (
+                          <span
+                            onPointerDown={(e) => startDrag(e, ev, i, "resize")}
+                            onPointerMove={moveDrag}
+                            onPointerUp={(e) => endDrag(e, ev)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute left-0 right-0 bottom-0 h-2 cursor-ns-resize touch-none"
+                            title="Arraste pra mudar a duração"
+                          >
+                            <span className="absolute left-1/2 -translate-x-1/2 bottom-[2px] w-5 h-0.5 rounded bg-white/70" />
+                          </span>
+                        )}
                       </button>
                     );
                   })}
@@ -737,6 +796,7 @@ function SemanaView({ conn, agendas, refresh, refDate, setRefDate, onEventClick,
                 </div>
               ))}
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -783,6 +843,7 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, on
     return (el?.closest("[data-date]") as HTMLElement | null)?.getAttribute("data-date") || null;
   }
   function startDragMes(e: React.PointerEvent, ev: PEvent, dia: Date) {
+    suppressClick.current = false;                         // limpa estado preso de um drag anterior
     if (!ev.gravavel || e.button !== 0) return;
     try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
     dragRef.current = { ev, origYmd: ymd(dia), startX: e.clientX, startY: e.clientY, moved: false, targetYmd: null };
@@ -814,8 +875,9 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, on
     if (!d.targetYmd || d.targetYmd === d.origYmd) return;       // soltou fora ou no mesmo dia
     const dt = parseDateOnly(d.targetYmd);
     const dur = ev.end.getTime() - ev.start.getTime();
+    const nDias = Math.max(1, Math.round((startOfDay(ev.end).getTime() - startOfDay(ev.start).getTime()) / 86400000));
     const novoIni = ev.allDay ? dt : comHoraDe(dt, ev.start);
-    const novoFim = ev.allDay ? dt : new Date(novoIni.getTime() + dur);
+    const novoFim = ev.allDay ? addDays(dt, nDias) : new Date(novoIni.getTime() + dur);
     try { await moverEvento(token, ev.calendarId, ev.id, { allDay: ev.allDay, inicio: novoIni, fim: novoFim }); }
     catch { /* recarrega pra refletir o estado real */ }
     onRefresh();
@@ -857,10 +919,12 @@ function MesView({ conn, agendas, refresh, refDate, setRefDate, onEventClick, on
                   onPointerMove={moveDragMes}
                   onPointerUp={(e) => endDragMes(e, ev)}
                   onClick={(e) => { e.stopPropagation(); clickPill(ev); }}
-                  className="mt-1 text-[10px] px-1.5 py-0.5 rounded text-white truncate touch-none select-none hover:brightness-95"
-                  style={{ background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
+                  className={`mt-1 text-[10px] px-1.5 py-0.5 rounded truncate touch-none select-none hover:brightness-95 ${ev.pin ? "bg-transparent border border-dashed font-semibold" : "text-white"}`}
+                  style={ev.pin
+                    ? { borderColor: ev.color, color: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }
+                    : { background: ev.color, cursor: ev.gravavel ? "grab" : "pointer" }}
                   title={ev.gravavel ? "Clique pra editar · arraste pra outro dia" : ev.title}>
-                  {ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
+                  {ev.pin ? "📌 " : ""}{ev.allDay ? ev.title : `${fmtHora(ev.start)} ${ev.title}`}
                 </div>
               ))}
               {evs.length > 3 && <div className="mt-1 text-[10px] text-gray-400 px-1.5">+{evs.length - 3}</div>}
@@ -897,9 +961,10 @@ function DiaPopup({ dia, eventos, onClose, onEventClick }: {
             className="w-full flex items-start gap-2 text-left p-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
             <span className="w-2.5 h-2.5 rounded-full mt-1 flex-none" style={{ background: ev.color }} />
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{ev.title}</div>
+              <div className="text-sm font-medium text-gray-800 dark:text-gray-100 break-words">{ev.pin ? "📌 " : ""}{ev.title}</div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400">
-                {ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}{ev.gravavel ? "" : " · só leitura"}
+                {ev.pin ? "Pin" : ev.allDay ? "Dia todo" : `${fmtHora(ev.start)}–${fmtHora(ev.end)}`}
+                {ev.recorrente ? " · 🔁 recorrente" : ""}{ev.gravavel ? "" : " · só leitura"}
               </div>
             </div>
             <span className="text-[11px] text-indigo-500 dark:text-indigo-400 flex-none">✏️</span>
@@ -907,6 +972,168 @@ function DiaPopup({ dia, eventos, onClose, onEventClick }: {
         ))}
       </div>
     </Modal>
+  );
+}
+
+// Constrói o mapa dia(ymd) → eventos, expandindo all-day por todos os dias.
+function mapaPorDia(eventos: PEvent[]): Map<string, PEvent[]> {
+  const porDia = new Map<string, PEvent[]>();
+  const push = (k: string, ev: PEvent) => { const arr = porDia.get(k); if (arr) arr.push(ev); else porDia.set(k, [ev]); };
+  for (const ev of eventos) {
+    if (ev.allDay) { for (let d = startOfDay(ev.start); d < startOfDay(ev.end); d = addDays(d, 1)) push(ymd(d), ev); }
+    else push(ymd(ev.start), ev);
+  }
+  return porDia;
+}
+function ordenaDia(a: PEvent, b: PEvent) { return Number(a.allDay) - Number(b.allDay) || a.start.getTime() - b.start.getTime(); }
+
+// ─── Visão TRIMESTRE (semanas × dias) ───────────────────────────────────────
+function TrimestreView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+}) {
+  const hoje = new Date();
+  const qMonth = Math.floor(refDate.getMonth() / 3) * 3;
+  const ano = refDate.getFullYear();
+  const quarterStart = new Date(ano, qMonth, 1);
+  const quarterEnd = new Date(ano, qMonth + 3, 1);                 // exclusivo
+  const gridStart = startOfWeek(quarterStart);
+  const semanas = Math.ceil((quarterEnd.getTime() - gridStart.getTime()) / (7 * 86400000));
+  const gridEnd = addDays(gridStart, semanas * 7);
+  const { eventos, carregando } = useEventos(conn, agendas, gridStart, gridEnd, refresh, 2500);
+  const [diaAberto, setDiaAberto] = useState<Date | null>(null);
+
+  if (!conn.token) return <PrecisaConectar />;
+
+  const porDia = mapaPorDia(eventos);
+  const evsDoDia = (d: Date) => (porDia.get(ymd(d)) || []).sort(ordenaDia);
+  const trimestreNo = Math.floor(qMonth / 3) + 1;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns
+            onPrev={() => setRefDate(new Date(ano, qMonth - 3, 1))}
+            onHoje={() => setRefDate(new Date())}
+            onNext={() => setRefDate(new Date(ano, qMonth + 3, 1))}
+          />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+            {trimestreNo}º trimestre · {MESES[qMonth].slice(0, 3)}–{MESES[qMonth + 2].slice(0, 3)} {ano}
+          </h2>
+        </div>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400">{carregando ? "carregando…" : "clique num dia pra ver o detalhe"}</span>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {DOW.map((d) => (<div key={d} className="text-[9px] uppercase tracking-wider text-gray-400 dark:text-gray-500 font-bold px-1 pb-0.5 text-center">{d}</div>))}
+        {Array.from({ length: semanas * 7 }, (_, i) => addDays(gridStart, i)).map((d, i) => {
+          const noTri = d >= quarterStart && d < quarterEnd;
+          const isHoje = ymd(d) === ymd(hoje);
+          const ehDia1 = d.getDate() === 1;
+          const evs = evsDoDia(d);
+          return (
+            <button key={i} type="button" onClick={() => setDiaAberto(d)}
+              className={`min-h-[52px] rounded-lg border p-1 text-left relative hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${
+                noTri ? "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-800" : "bg-transparent border-dashed border-gray-200 dark:border-gray-800 opacity-40"
+              } ${isHoje ? "ring-2 ring-indigo-300 dark:ring-indigo-700 border-indigo-400" : ""}`}>
+              <div className="flex items-baseline justify-between">
+                <span className={`text-[10.5px] font-semibold ${isHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-500 dark:text-gray-400"}`}>{d.getDate()}</span>
+                {ehDia1 && <span className="text-[8px] uppercase font-bold text-gray-400 dark:text-gray-500">{MESES[d.getMonth()].slice(0, 3)}</span>}
+              </div>
+              <div className="flex flex-wrap gap-0.5 mt-1">
+                {evs.slice(0, 6).map((ev) => (
+                  <span key={ev.id} className="w-1.5 h-1.5 rounded-full" style={{ background: ev.color }} title={ev.title} />
+                ))}
+                {evs.length > 6 && <span className="text-[8px] text-gray-400 leading-none">+{evs.length - 6}</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      {diaAberto && (
+        <DiaPopup dia={diaAberto} eventos={evsDoDia(diaAberto)} onClose={() => setDiaAberto(null)}
+          onEventClick={(ev) => { setDiaAberto(null); onEventClick(ev); }} />
+      )}
+    </section>
+  );
+}
+
+// ─── Visão ANO (12 faixas de meses; cada dia uma célula) ────────────────────
+function AnoView({ conn, agendas, refresh, refDate, setRefDate, onEventClick }: {
+  conn: Conn; agendas: Agenda[]; refresh: number;
+  refDate: Date; setRefDate: (d: Date) => void; onEventClick: (ev: PEvent) => void;
+}) {
+  const hoje = new Date();
+  const ano = refDate.getFullYear();
+  const yStart = new Date(ano, 0, 1);
+  const yEnd = new Date(ano + 1, 0, 1);
+  const { eventos, carregando } = useEventos(conn, agendas, yStart, yEnd, refresh, 2500);
+  const [diaAberto, setDiaAberto] = useState<Date | null>(null);
+
+  if (!conn.token) return <PrecisaConectar />;
+
+  const porDia = mapaPorDia(eventos);
+  const evsDoDia = (d: Date) => (porDia.get(ymd(d)) || []).sort(ordenaDia);
+  // Escala de "calor" por quantidade de eventos no dia.
+  function heat(n: number): string {
+    if (!n) return "bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700";
+    if (n === 1) return "bg-indigo-200 dark:bg-indigo-900/50 hover:bg-indigo-300";
+    if (n <= 3) return "bg-indigo-400 dark:bg-indigo-700 hover:bg-indigo-500";
+    if (n <= 5) return "bg-indigo-500 dark:bg-indigo-600 hover:bg-indigo-600";
+    return "bg-indigo-700 dark:bg-indigo-500 hover:bg-indigo-800";
+  }
+  const maxDias = 31;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <NavBtns
+            onPrev={() => setRefDate(new Date(ano - 1, refDate.getMonth(), 1))}
+            onHoje={() => setRefDate(new Date())}
+            onNext={() => setRefDate(new Date(ano + 1, refDate.getMonth(), 1))}
+          />
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{ano}</h2>
+        </div>
+        <span className="text-[11.5px] text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+          {carregando ? "carregando…" : <>menos <span className="inline-flex gap-0.5">{[0, 1, 3, 5, 6].map((n) => <span key={n} className={`w-2.5 h-2.5 rounded-sm ${heat(n)}`} />)}</span> mais</>}
+        </span>
+      </div>
+      <div className="overflow-x-auto">
+        <div className="min-w-[640px] space-y-1">
+          {/* Cabeçalho de números dos dias */}
+          <div className="flex items-center gap-0.5">
+            <div className="w-8 flex-none" />
+            {Array.from({ length: maxDias }, (_, i) => i + 1).map((n) => (
+              <div key={n} className="w-[18px] text-center text-[8px] text-gray-400 dark:text-gray-500 tabular-nums">{n % 2 === 1 ? n : ""}</div>
+            ))}
+          </div>
+          {Array.from({ length: 12 }, (_, m) => {
+            const diasNoMes = new Date(ano, m + 1, 0).getDate();
+            return (
+              <div key={m} className="flex items-center gap-0.5">
+                <div className="w-8 flex-none text-[10px] uppercase font-bold text-gray-400 dark:text-gray-500">{MESES[m].slice(0, 3)}</div>
+                {Array.from({ length: maxDias }, (_, i) => i + 1).map((dia) => {
+                  if (dia > diasNoMes) return <div key={dia} className="w-[18px] h-[18px]" />;
+                  const d = new Date(ano, m, dia);
+                  const evs = evsDoDia(d);
+                  const isHoje = ymd(d) === ymd(hoje);
+                  return (
+                    <button key={dia} type="button" onClick={() => evs.length ? setDiaAberto(d) : undefined}
+                      title={`${dia}/${m + 1} · ${evs.length} evento(s)`}
+                      className={`w-[18px] h-[18px] rounded-sm transition-colors ${heat(evs.length)} ${isHoje ? "ring-2 ring-rose-400" : ""} ${evs.length ? "cursor-pointer" : "cursor-default"}`} />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {diaAberto && (
+        <DiaPopup dia={diaAberto} eventos={evsDoDia(diaAberto)} onClose={() => setDiaAberto(null)}
+          onEventClick={(ev) => { setDiaAberto(null); onEventClick(ev); }} />
+      )}
+    </section>
   );
 }
 
@@ -965,7 +1192,12 @@ function EventoModal({ modo, token, agendas, evento, onClose, onDone }: {
         if (f <= ini) f = new Date(ini.getTime() + 30 * 60000);
       }
       if (isEdit && evento) {
-        await editarEvento(token, evento.calendarId, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f });
+        // Trocou de agenda? Move primeiro (events.move), depois aplica o resto.
+        const destino = calId || evento.calendarId;
+        if (destino !== evento.calendarId) {
+          await moverParaAgenda(token, evento.calendarId, evento.id, destino);
+        }
+        await editarEvento(token, destino, evento.id, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f });
       } else {
         await criarEvento(token, calId, { titulo: titulo.trim(), allDay: semHora, inicio: ini, fim: f, pin: isPin });
       }
@@ -1000,9 +1232,16 @@ function EventoModal({ modo, token, agendas, evento, onClose, onDone }: {
       <div className="space-y-3">
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} autoFocus
           placeholder={isPin ? "Ex: Lembrar de…" : "Ex: Reunião com…"} />
+        {evento?.recorrente && (
+          <div className="text-[11px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-2">
+            🔁 Evento recorrente — as alterações valem só pra <strong>esta ocorrência</strong>.
+          </div>
+        )}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Agenda{isEdit ? "" : " *"}</label>
-          {isEdit ? (
+          {/* Em edição, se a agenda atual não está na lista gravável (caso raro)
+              ou se é recorrente, trava com texto; senão deixa trocar de agenda. */}
+          {isEdit && (evento?.recorrente || !agendas.some((a) => a.id === calId)) ? (
             <div className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 text-gray-600 dark:text-gray-300 truncate">{agendaNome}</div>
           ) : (
             <select value={calId} onChange={(e) => setCalId(e.target.value)}
