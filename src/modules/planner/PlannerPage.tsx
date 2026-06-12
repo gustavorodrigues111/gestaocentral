@@ -156,21 +156,34 @@ function lerPrefsLocais(): Record<string, AgendaPref> {
 }
 function usePlannerSettings(uid: string | undefined) {
   const [prefs, setPrefs] = useState<Record<string, AgendaPref>>(lerPrefsLocais);
+  // Espelho síncrono das prefs (pra o onSnapshot mesclar sem depender de closure).
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
 
-  // Firestore é a verdade QUANDO existe (sync entre dispositivos). Sem permissão
-  // (regra não deployada) → erro silencioso, mantém o localStorage.
+  // Firestore sincroniza entre dispositivos QUANDO a regra está publicada.
+  // ⚠️ MESCLA por cima do local — NUNCA substitui. O doc do Firestore pode ter
+  // só um subconjunto das agendas (a gravação manda só a chave alterada); se a
+  // gente substituísse, as cores/ocultações que ainda não subiram seriam
+  // apagadas (bug do "perdeu a cor / agenda oculta voltou").
   useEffect(() => {
     if (!uid) return;
     const unsub = onSnapshot(
       doc(db, "plannerSettings", uid),
       (snap) => {
-        const d = snap.data() as { agendas?: Record<string, AgendaPref> } | undefined;
-        if (d?.agendas) {
-          setPrefs(d.agendas);
-          try { localStorage.setItem(PREFS_KEY, JSON.stringify(d.agendas)); } catch { /* noop */ }
+        const remote = (snap.data() as { agendas?: Record<string, AgendaPref> } | undefined)?.agendas;
+        if (!remote) return;
+        const local = prefsRef.current;
+        const merged: Record<string, AgendaPref> = { ...local };
+        for (const [k, v] of Object.entries(remote)) merged[k] = { ...local[k], ...v };
+        setPrefs(merged);
+        try { localStorage.setItem(PREFS_KEY, JSON.stringify(merged)); } catch { /* noop */ }
+        // "Cura": se o local tinha prefs que o servidor não tem, sobe o conjunto
+        // completo (1x — depois o snapshot bate igual e não re-grava → sem loop).
+        if (JSON.stringify(merged) !== JSON.stringify(remote)) {
+          void setDoc(doc(db, "plannerSettings", uid), { agendas: merged }, { merge: true }).catch(() => { /* noop */ });
         }
       },
-      () => { /* sem permissão: fica no localStorage */ },
+      () => { /* sem permissão (regra não publicada): fica no localStorage */ },
     );
     return () => unsub();
   }, [uid]);
