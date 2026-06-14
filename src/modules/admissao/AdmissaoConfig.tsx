@@ -20,7 +20,8 @@ import {
   TEMPLATES_DEFAULT,
   type TemplateKey,
 } from "../../core/admissao/admissaoHelpers";
-import type { CanalContato, ContatoExterno, Restaurant } from "../../core/types";
+import { DOCUMENTOS_ADMISSAO_DEFAULT } from "../../core/admissao/formTemplate";
+import type { CanalContato, ContatoExterno, DocumentoAdmissaoDef, Restaurant } from "../../core/types";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 
@@ -92,6 +93,12 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   );
   const [regulamentoInternoUrl, setRegulamentoInternoUrl] = useState<string>(
     activeRestaurant.regulamentoInternoUrl || "",
+  );
+  // Lista de documentos que o candidato envia no form (com fallback no default).
+  const [docsAdmissao, setDocsAdmissao] = useState<DocumentoAdmissaoDef[]>(() =>
+    activeRestaurant.documentosAdmissao && activeRestaurant.documentosAdmissao.length > 0
+      ? activeRestaurant.documentosAdmissao
+      : DOCUMENTOS_ADMISSAO_DEFAULT,
   );
 
   async function selecionarPastaDrive() {
@@ -167,6 +174,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         clicksignEmpresaNascimento: clicksignEmpresaNascimento.trim() || undefined,
         regulamentoInternoUrl: regulamentoInternoUrl.trim() || undefined,
         regulamentoInternoFileId: extractDriveFileId(regulamentoInternoUrl.trim()) || undefined,
+        documentosAdmissao: docsAdmissao,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -433,6 +441,9 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         </div>
       </details>
 
+      {/* Documentos que o candidato envia no form público */}
+      <DocumentosEditor docs={docsAdmissao} onChange={setDocsAdmissao} />
+
       <div className="flex items-center gap-2">
         <Button onClick={salvar} disabled={salvando}>
           {salvando ? "Salvando…" : "💾 Salvar configurações"}
@@ -623,5 +634,108 @@ function EditorTemplate({
         className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono resize-y"
       />
     </div>
+  );
+}
+
+// ─── Editor da lista de documentos pedidos no form público ────────────────────
+function DocumentosEditor({
+  docs,
+  onChange,
+}: {
+  docs: DocumentoAdmissaoDef[];
+  onChange: (d: DocumentoAdmissaoDef[]) => void;
+}) {
+  function patch(idx: number, p: Partial<DocumentoAdmissaoDef>) {
+    onChange(docs.map((d, i) => (i === idx ? { ...d, ...p } : d)));
+  }
+  function remover(idx: number) {
+    onChange(docs.filter((_, i) => i !== idx));
+  }
+  function adicionar() {
+    const id = `doc_custom_${Date.now().toString(36)}`;
+    onChange([
+      ...docs,
+      { id, nome: "Novo documento", obrigatorio: false, permiteNaoSeAplica: true, ativo: true },
+    ]);
+  }
+  const ativos = docs.filter((d) => d.ativo).length;
+
+  return (
+    <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+      <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
+        📎 Documentos pedidos no formulário
+        <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+          ({ativos} ativos — toque pra editar)
+        </span>
+      </summary>
+      <div className="p-4 pt-0 space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          O candidato anexa cada documento (ou marca "não tenho" + justificativa)
+          no último bloco do formulário. <strong>Obrigatório</strong> = precisa
+          anexar (sem opção de pular). <strong>Permite "não se aplica"</strong> =
+          mostra as opções "não tenho / não se aplica".
+        </p>
+
+        {docs.map((d, i) => (
+          <div key={d.id} className="border border-gray-200 dark:border-gray-800 rounded-lg p-3 space-y-2">
+            <div className="flex items-start gap-2">
+              <div className="flex-1 space-y-2">
+                <input
+                  value={d.nome}
+                  onChange={(e) => patch(i, { nome: e.target.value })}
+                  placeholder="Nome do documento (ex: RG ou CNH)"
+                  className="w-full text-xs font-semibold px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+                />
+                <input
+                  value={d.descricao || ""}
+                  onChange={(e) => patch(i, { descricao: e.target.value || undefined })}
+                  placeholder="Dica pro candidato (opcional) — ex: frente e verso, legível"
+                  className="w-full text-[11px] px-2 py-1.5 rounded border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => remover(i)}
+                className="text-red-500 hover:text-red-700 text-xs shrink-0 px-1"
+                title="Remover documento"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex flex-wrap gap-3">
+              <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                <input type="checkbox" checked={d.obrigatorio} onChange={(e) => patch(i, { obrigatorio: e.target.checked, ...(e.target.checked ? { permiteNaoSeAplica: false } : {}) })} className="accent-indigo-600" />
+                Obrigatório
+              </label>
+              <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                <input type="checkbox" checked={d.permiteNaoSeAplica} onChange={(e) => patch(i, { permiteNaoSeAplica: e.target.checked })} className="accent-indigo-600" />
+                Permite "não se aplica"
+              </label>
+              <label className="flex items-center gap-1.5 text-[11px] cursor-pointer">
+                <input type="checkbox" checked={d.ativo} onChange={(e) => patch(i, { ativo: e.target.checked })} className="accent-indigo-600" />
+                Ativo
+              </label>
+            </div>
+          </div>
+        ))}
+
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={adicionar}
+            className="text-xs px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
+          >
+            + Adicionar documento
+          </button>
+          <button
+            type="button"
+            onClick={() => onChange(DOCUMENTOS_ADMISSAO_DEFAULT)}
+            className="text-[11px] text-gray-500 hover:underline"
+          >
+            🔄 restaurar lista padrão
+          </button>
+        </div>
+      </div>
+    </details>
   );
 }
