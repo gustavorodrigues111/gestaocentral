@@ -30,6 +30,7 @@ import {
   type Restaurant,
 } from "../../core/types";
 import {
+  aprovarAdmissao,
   cancelarAdmissao,
   etapasAnterioresEmAtraso,
   excluirAdmissaoDefinitivamente,
@@ -182,55 +183,69 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
     try {
       await moverStatusKanban(adm, novoStatus, pendentes, colAtualId, destinoColunaId);
-      // Cascata: ao alcançar "admitido" (final do fluxo), gera as 4-5 tarefas
-      // trabalhistas (Experiência 1ª/2ª, Exame Clínico, Exame Complementar,
-      // Coprocultura). Idempotente — se já rodou, não duplica.
-      if (
-        novoStatus === "admitido"
-        && adm.empregadoIdCriado
-        && adm.dataAdmissao
-        && me?.id
-      ) {
-        // Cascata 1: tarefas trabalhistas legadas (Experiência 1ª/2ª).
-        // Exames eram criados aqui, mas agora vão via Fase 7 (módulo Exames).
-        try {
-          // Carrega cargo pra derivar "manipulador" + passar dados ao Exames
-          const cargo = adm.cargoId ? await carregarCargo(adm.cargoId) : null;
-          await gerarCascataAdmissao({
-            pessoaNome: adm.candidato.nome,
-            empregadoId: adm.empregadoIdCriado,
-            restaurantId: adm.restaurantId,
-            admissaoData: adm.dataAdmissao,
-            manipulaAlimentos: cargo?.area === "Cozinha" || cargo?.area === "Bar",
-            responsavelPadraoId: me.id,
-            responsavelPadraoNome: me.nome,
-            autorId: me.id,
-            autorNome: me.nome,
-          });
-
-          // Cascata 2 (Fase 7): cria ExameEmpregado pra cada tipo aplicável.
-          // Estes não viram tarefas imediatamente — vão pelo generator diário
-          // quando chegar a janela de antecedência.
-          await gerarExamesParaAdmissao({
-            empregadoId: adm.empregadoIdCriado,
-            empregadoNome: adm.candidato.nome,
-            cargoId: adm.cargoId,
-            cargoNome: cargo?.nome,
-            cargoArea: cargo?.area,
-            restaurantId: adm.restaurantId,
-            dataAdmissao: adm.dataAdmissao,
-            autor: { id: me.id, nome: me.nome },
-            // Passa subtarefas pra cascata herdar resultado dos exames
-            // admissionais (ASO + Parasitológico) como historico[0] no
-            // ExameEmpregado correspondente.
-            subtarefasAdmissao: adm.subtarefas,
-          });
-        } catch (err) {
-          console.warn("[admissao] falha ao gerar cascata de tarefas/exames:", err);
-        }
+      // Rede de segurança: ao chegar em "admitido" com empregado já criado,
+      // garante a cascata (idempotente — não duplica se já rodou).
+      if (novoStatus === "admitido" && adm.empregadoIdCriado && adm.dataAdmissao && me?.id) {
+        await rodarCascata(adm, adm.empregadoIdCriado);
       }
     } catch (e) {
       alert("Erro ao mover: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  // Cascata pós-admissão: tarefas trabalhistas (Experiência 1ª/2ª) + exames
+  // (Fase 7). Idempotente. Usada pela "Concluir → criar empregado" (com
+  // confirmação) e como rede de segurança ao mover pra "admitido".
+  async function rodarCascata(adm: Admissao, empregadoId: string) {
+    if (!me?.id || !adm.dataAdmissao) return;
+    try {
+      const cargo = adm.cargoId ? await carregarCargo(adm.cargoId) : null;
+      await gerarCascataAdmissao({
+        pessoaNome: adm.candidato.nome,
+        empregadoId,
+        restaurantId: adm.restaurantId,
+        admissaoData: adm.dataAdmissao,
+        manipulaAlimentos: cargo?.area === "Cozinha" || cargo?.area === "Bar",
+        responsavelPadraoId: me.id,
+        responsavelPadraoNome: me.nome,
+        autorId: me.id,
+        autorNome: me.nome,
+      });
+      await gerarExamesParaAdmissao({
+        empregadoId,
+        empregadoNome: adm.candidato.nome,
+        cargoId: adm.cargoId,
+        cargoNome: cargo?.nome,
+        cargoArea: cargo?.area,
+        restaurantId: adm.restaurantId,
+        dataAdmissao: adm.dataAdmissao,
+        autor: { id: me.id, nome: me.nome },
+        subtarefasAdmissao: adm.subtarefas,
+      });
+    } catch (err) {
+      console.warn("[admissao] falha ao gerar cascata de tarefas/exames:", err);
+    }
+  }
+
+  // Concluir → cria Pessoa + Empregado no sistema. Disponível A QUALQUER MOMENTO
+  // (não exige o checklist todo) — só os dados mínimos da vaga. Pergunta antes
+  // de rodar a cascata (auto + confirmar). aprovarAdmissao é idempotente.
+  async function concluirCriarEmpregado(adm: Admissao) {
+    if (!me) return;
+    if (adm.empregadoIdCriado) { alert("Empregado já criado no sistema."); return; }
+    if (!adm.cargoId || !adm.dataAdmissao || typeof adm.salario !== "number") {
+      alert("Pra criar o empregado preciso de: cargo, data de admissão e salário.\n\nPreencha os dados da vaga primeiro (no checklist do card).");
+      return;
+    }
+    if (!confirm(`Criar Pessoa + Empregado de ${adm.candidato.nome} no sistema?\n\nCria o registro do empregado já. Você pode continuar o checklist da admissão depois.`)) return;
+    try {
+      const { empregadoId } = await aprovarAdmissao(adm, me);
+      if (confirm("✅ Empregado criado!\n\nCriar também os exames admissionais e as tarefas de experiência no sistema agora?")) {
+        await rodarCascata(adm, empregadoId);
+      }
+      alert("Pronto — empregado criado no sistema.");
+    } catch (e) {
+      alert("Erro ao criar empregado: " + (e instanceof Error ? e.message : "?"));
     }
   }
 
@@ -456,6 +471,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onReabrir={() => reabrirCard(a)}
                     onAbrirFormulario={() => setFormAdm(a)}
                     onEnviarLink={() => enviarLink(a)}
+                    onConcluir={() => concluirCriarEmpregado(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -476,7 +492,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -493,6 +509,7 @@ function KanbanCard({
   onReabrir: () => void;
   onAbrirFormulario: () => void;
   onEnviarLink: () => void;
+  onConcluir: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -625,6 +642,28 @@ function KanbanCard({
           >
             ❌ cancelar admissão
           </button>
+        </div>
+      )}
+
+      {/* Concluir → criar empregado (disponível a qualquer momento). Destaque
+          quando já está em 'Pronto'/'Admitido'; discreto antes disso. */}
+      {!ehTerminal && !adm.empregadoIdCriado && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onConcluir(); }}
+          className={`w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold ${
+            adm.status === "pronto_admissao" || adm.status === "admitido"
+              ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+              : "border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+          }`}
+          title="Cria Pessoa + Empregado no sistema. Exige cargo, data e salário. Pode fazer a qualquer momento."
+        >
+          ✅ Concluir → criar empregado
+        </button>
+      )}
+      {!ehTerminal && adm.empregadoIdCriado && (
+        <div className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
+          ✓ empregado criado no sistema
         </div>
       )}
 
