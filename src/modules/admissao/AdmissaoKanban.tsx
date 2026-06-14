@@ -67,6 +67,19 @@ function fmtDataHora(iso: string): string {
   });
 }
 
+// Rótulo do prazo do candidato a partir de expiraEm ("vence em 1d 3h" /
+// "vencido há 2h"). Usado pra mostrar urgência no card + decidir o lembrete.
+function prazoLabel(expiraEm?: string): { txt: string; vencido: boolean; urgente: boolean } | null {
+  if (!expiraEm) return null;
+  const ms = new Date(expiraEm).getTime() - Date.now();
+  const vencido = ms <= 0;
+  const abs = Math.abs(ms);
+  const d = Math.floor(abs / 86400000);
+  const h = Math.floor((abs % 86400000) / 3600000);
+  const dur = d > 0 ? `${d}d ${h}h` : `${h}h`;
+  return { txt: vencido ? `prazo vencido há ${dur}` : `vence em ${dur}`, vencido, urgente: !vencido && ms < 24 * 3600000 };
+}
+
 type Props = {
   rid: string;
   activeRestaurant: Restaurant;
@@ -299,6 +312,17 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     }
   }
 
+  // Lembrete ao candidato (WhatsApp) — mensagem preparada, você confirma ao
+  // abrir. Diferente do "reenviar": não renova prazo, só cutuca.
+  function lembrar(adm: Admissao) {
+    const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
+    const nome1 = (adm.candidato.nome || "").split(" ")[0];
+    const msg = `Oi, ${nome1}! Passando pra lembrar da sua ficha de admissão do ${activeRestaurant.nome} 🙂\n\nO link ainda está te esperando:\n${url}\n\nSe precisar de ajuda ou de mais tempo, é só me chamar por aqui!`;
+    const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
+    if (link) window.open(link, "_blank");
+    else alert("WhatsApp do candidato inválido — confira o cadastro.");
+  }
+
   async function copiarLink(adm: Admissao) {
     const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
     try { await navigator.clipboard.writeText(url); alert("Link copiado:\n\n" + url); }
@@ -518,6 +542,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onCopiarLink={() => copiarLink(a)}
                     onEstender={(h) => estender(a, h)}
                     onNovoToken={() => novoToken(a)}
+                    onLembrar={() => lembrar(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -538,7 +563,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onNovoToken,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onNovoToken, onLembrar,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -559,6 +584,7 @@ function KanbanCard({
   onCopiarLink: () => void;
   onEstender: (horas: number) => void;
   onNovoToken: () => void;
+  onLembrar: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -635,26 +661,44 @@ function KanbanCard({
           📨 Enviar formulário (WhatsApp)
         </button>
       )}
-      {adm.status === "formulario_enviado" && (
-        <>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
-            className="w-full mt-2 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
-            title="Reabre o WhatsApp com o mesmo link e renova o prazo"
-          >
-            🔄 Reenviar link (WhatsApp)
-          </button>
-          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5 text-[10px] text-gray-500 dark:text-gray-400">
-            <button type="button" onClick={(e) => { e.stopPropagation(); onCopiarLink(); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">📋 copiar link</button>
-            <span className="text-gray-300 dark:text-gray-700">·</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(12); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">⏱ +12h</button>
-            <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(24); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">+24h</button>
-            <span className="text-gray-300 dark:text-gray-700">·</span>
-            <button type="button" onClick={(e) => { e.stopPropagation(); onNovoToken(); }} className="hover:text-rose-600 dark:hover:text-rose-400 hover:underline" title="Gera um link novo (invalida o anterior) — pra link expirado">🔑 novo link</button>
-          </div>
-        </>
-      )}
+      {adm.status === "formulario_enviado" && (() => {
+        const pz = prazoLabel(adm.expiraEm);
+        return (
+          <>
+            {pz && (
+              <div className={`mt-2 text-[10px] font-semibold ${pz.vencido ? "text-rose-600 dark:text-rose-400" : pz.urgente ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}>
+                ⏰ {pz.txt}
+              </div>
+            )}
+            <div className="flex gap-1.5 mt-1.5">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+                className="flex-1 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
+                title="Reabre o WhatsApp com o mesmo link e renova o prazo"
+              >
+                🔄 Reenviar
+              </button>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onLembrar(); }}
+                className="flex-1 px-2 py-1.5 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[11px] font-semibold"
+                title="Cutuca o candidato no WhatsApp (não renova o prazo)"
+              >
+                🔔 Lembrar
+              </button>
+            </div>
+            <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+              <button type="button" onClick={(e) => { e.stopPropagation(); onCopiarLink(); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">📋 copiar link</button>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(12); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">⏱ +12h</button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(24); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">+24h</button>
+              <span className="text-gray-300 dark:text-gray-700">·</span>
+              <button type="button" onClick={(e) => { e.stopPropagation(); onNovoToken(); }} className="hover:text-rose-600 dark:hover:text-rose-400 hover:underline" title="Gera um link novo (invalida o anterior) — pra link expirado">🔑 novo link</button>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Botões ◀ ▶ — só pra cards não-terminais e com etapa próxima/anterior */}
       {!ehTerminal && (anteColId || proxColId) && (
