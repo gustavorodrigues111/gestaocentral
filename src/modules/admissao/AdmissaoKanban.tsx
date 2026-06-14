@@ -37,6 +37,9 @@ import {
   getPrazoDias,
   getSchemaAdmissao,
   iniciarAdmissao,
+  linkWhatsAppCandidato,
+  marcarLinkEnviado,
+  montarMensagemEnvioLink,
   moverStatusKanban,
   normalizarAdmissao,
   progressoSubtarefasColuna,
@@ -45,6 +48,7 @@ import {
   statusAnterior,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
+  urlPublicaAdmissao,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
@@ -259,6 +263,23 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     void tentarMover(adm, colId);
   }
 
+  // Enviar (ou reenviar) o link do formulário pelo WhatsApp. Avança o status
+  // pra "Aguardando" quando ainda está em "A admitir" (libera o candidato).
+  async function enviarLink(adm: Admissao) {
+    if (!me) return;
+    try {
+      const prazoDias = getPrazoDias(activeRestaurant);
+      await marcarLinkEnviado(adm, prazoDias, me);
+      const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
+      const msg = montarMensagemEnvioLink(adm.candidato.nome, activeRestaurant.nome, url, prazoDias, activeRestaurant);
+      const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
+      if (!link) { alert("WhatsApp do candidato inválido — confira o cadastro."); return; }
+      window.open(link, "_blank");
+    } catch (e) {
+      alert("Erro ao enviar link: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   async function reabrirCard(adm: Admissao) {
     if (!me?.isMaster) return;
     const destinoStatus = adm.statusAntesCancelamento || "pronto_admissao";
@@ -434,6 +455,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onCancelar={() => setAdmCancelando(a)}
                     onReabrir={() => reabrirCard(a)}
                     onAbrirFormulario={() => setFormAdm(a)}
+                    onEnviarLink={() => enviarLink(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -454,7 +476,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -470,6 +492,7 @@ function KanbanCard({
   onCancelar: () => void;
   onReabrir: () => void;
   onAbrirFormulario: () => void;
+  onEnviarLink: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -533,6 +556,28 @@ function KanbanCard({
             </span>
           )}
         </div>
+      )}
+
+      {/* Próxima ação em destaque: enviar/reenviar o formulário ao candidato */}
+      {adm.status === "a_admitir" && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+          className="w-full mt-2 px-2 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
+          title="Gera o link e abre o WhatsApp pro candidato preencher. Move o card pra 'Aguardando' e inicia o prazo."
+        >
+          📨 Enviar formulário (WhatsApp)
+        </button>
+      )}
+      {adm.status === "formulario_enviado" && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+          className="w-full mt-2 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
+          title="Reabre o WhatsApp com o mesmo link e renova o prazo"
+        >
+          🔄 Reenviar link (WhatsApp)
+        </button>
       )}
 
       {/* Botões ◀ ▶ — só pra cards não-terminais e com etapa próxima/anterior */}

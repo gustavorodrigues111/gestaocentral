@@ -349,6 +349,11 @@ export async function iniciarAdmissao(
 // Marca o envio do link: define enviadoEm + expiraEm baseado no prazo do rest.
 // É essa ação que dispara o timer pro candidato. Auto-marca subtarefa de
 // "Solicitação de documentos + abertura conta Itaú".
+//
+// ⚠️ Avança o status pra "formulario_enviado" quando ainda está em "a_admitir":
+// é isso que LIBERA o formulário público pro candidato (o gate só abre em
+// formulario_enviado/preenchido) e faz o prazo realmente valer. Sem isso o
+// candidato batia em "aguarde contato" e o cronômetro não contava.
 export async function marcarLinkEnviado(
   admissao: Admissao,
   prazoDias: number,
@@ -358,9 +363,11 @@ export async function marcarLinkEnviado(
   const expiraEm = new Date(Date.now() + prazoDias * 86400000).toISOString();
   const subtarefas = [...(admissao.subtarefas || [])];
   aplicarAutoTrigger(subtarefas, "link_enviado", pessoa, enviadoEm);
+  const avancaStatus = admissao.status === "a_admitir";
   await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
     enviadoEm,
     expiraEm,
+    status: avancaStatus ? "formulario_enviado" : undefined,
     subtarefas: subtarefas.length > 0 ? subtarefas : undefined,
     updatedAt: enviadoEm,
   }));

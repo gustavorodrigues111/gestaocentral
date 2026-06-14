@@ -345,7 +345,7 @@ export function SubtarefasDrawer({
     try {
       const prazoDias = getPrazoDias(activeRestaurant);
       await marcarLinkEnviado(admissao, prazoDias, pessoa);
-      const url = urlPublicaAdmissao(admissao.token);
+      const url = urlPublicaAdmissao(admissao.token, activeRestaurant.subdomain);
       const msg = montarMensagemEnvioLink(
         admissao.candidato.nome,
         activeRestaurant.nome,
