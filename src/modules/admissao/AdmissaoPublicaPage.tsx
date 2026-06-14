@@ -14,7 +14,8 @@ import { useParams } from "react-router-dom";
 import {
   collection, doc, getDocs, query, setDoc, where,
 } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import {
@@ -22,7 +23,11 @@ import {
   linkWhatsAppDP,
   statusEstaExpirada,
 } from "../../core/admissao/admissaoHelpers";
-import type { Admissao, FormField } from "../../core/types";
+import { DOCUMENTOS_ADMISSAO_DEFAULT } from "../../core/admissao/formTemplate";
+import type {
+  Admissao, DocumentoAdmissaoArquivo, DocumentoAdmissaoDef,
+  DocumentoAdmissaoEnvio, FormField,
+} from "../../core/types";
 
 // Texto da declaração de veracidade — salvo junto da admissão como snapshot
 // pra histórico jurídico (se mudar o texto futuramente, admissões antigas
@@ -147,10 +152,19 @@ export function AdmissaoPublicaPage() {
   // sempre obrigatórios)
   const [selfieDataUrl, setSelfieDataUrl] = useState<string | null>(null);
   const [declaracaoAceita, setDeclaracaoAceita] = useState(false);
-  // Ciências obrigatórias sobre obrigações pós-form (conta Itaú + envio de
-  // documentos via WhatsApp). Bloqueiam submit se não marcadas.
+  // Ciência obrigatória sobre conta Itaú (bloqueia submit se não marcada).
   const [cienteContaItau, setCienteContaItau] = useState(false);
-  const [cienteDocsWhatsapp, setCienteDocsWhatsapp] = useState(false);
+
+  // Documentos: lista congelada no snapshot da admissão (ou default). Cada
+  // item é resolvido pelo candidato (anexa arquivo OU "não se aplica" +
+  // justificativa). Estado keyed por docId.
+  const docDefs: DocumentoAdmissaoDef[] = useMemo(
+    () =>
+      (admissao?.restaurantSnapshot?.documentosAdmissao || DOCUMENTOS_ADMISSAO_DEFAULT)
+        .filter((d) => d.ativo),
+    [admissao?.restaurantSnapshot?.documentosAdmissao],
+  );
+  const [docResol, setDocResol] = useState<Record<string, DocumentoAdmissaoEnvio>>({});
 
   // ─── Carrega admissão pelo token + restaurante ───────────────────────────
   useEffect(() => {
@@ -199,6 +213,16 @@ export function AdmissaoPublicaPage() {
     })();
     return () => { cancelled = true; };
   }, [token]);
+
+  // Hidrata resoluções de documentos já submetidas (resume após reload).
+  useEffect(() => {
+    const itens = admissao?.documentos?.itens;
+    if (itens && itens.length > 0) {
+      const map: Record<string, DocumentoAdmissaoEnvio> = {};
+      for (const it of itens) map[it.docId] = it;
+      setDocResol(map);
+    }
+  }, [admissao?.id, admissao?.documentos?.itens]);
 
   // ─── Timer ────────────────────────────────────────────────────────────────
   const [now, setNow] = useState(Date.now());
@@ -292,8 +316,10 @@ export function AdmissaoPublicaPage() {
       alert("Marque que você está ciente sobre abrir a conta no Itaú pra enviar a ficha.");
       return;
     }
-    if (!cienteDocsWhatsapp) {
-      alert("Marque que você está ciente sobre o envio dos documentos via WhatsApp pra enviar a ficha.");
+    // Documentos: cada item precisa estar resolvido (anexado OU justificado).
+    const erroDoc = validarDocumentos(docDefs, docResol);
+    if (erroDoc) {
+      alert(erroDoc);
       return;
     }
     setEnviando(true);
@@ -304,9 +330,26 @@ export function AdmissaoPublicaPage() {
         declaracaoEm: now,
         declaracaoTexto: TEXTO_DECLARACAO,
         ciencias: {
-          contaItau:          { aceita: true, em: now },
-          documentosWhatsapp: { aceita: true, em: now },
+          contaItau: { aceita: true, em: now },
         },
+      };
+      // Monta os itens de documentos resolvidos pelo candidato, na ordem da
+      // lista configurada (snapshot do nome pra histórico). Sem chaves
+      // undefined — Firestore rejeita (justificativa só quando existe).
+      const documentos = {
+        itens: docDefs.map((d) => {
+          const r = docResol[d.id];
+          const just = r?.justificativa?.trim();
+          const item: DocumentoAdmissaoEnvio = {
+            docId: d.id,
+            nome: d.nome,
+            resolucao: r?.resolucao || "nao_se_aplica",
+            arquivos: r?.arquivos || [],
+          };
+          if (just && item.resolucao !== "anexado") item.justificativa = just;
+          return item;
+        }),
+        enviadoEm: now,
       };
       // Se candidato já tem conta Itaú, popula dadosBancariosItau no doc
       // da admissão — depois usado pela mensagem de instruções (pula o
@@ -342,6 +385,7 @@ export function AdmissaoPublicaPage() {
           status: "formulario_preenchido",
           preenchidoEm: now,
           validacao,
+          documentos,
           ...(subtarefas.length > 0 ? { subtarefas } : {}),
           ...(dadosBancariosItau ? { dadosBancariosItau } : {}),
           updatedAt: now,
@@ -354,6 +398,7 @@ export function AdmissaoPublicaPage() {
         status: "formulario_preenchido",
         preenchidoEm: now,
         validacao,
+        documentos,
         subtarefas,
         ...(dadosBancariosItau ? { dadosBancariosItau } : {}),
       });
@@ -554,15 +599,6 @@ export function AdmissaoPublicaPage() {
           </section>
         ))}
 
-        {/* Bloco de envio de documentos via WhatsApp */}
-        {whatsappDP && (
-          <DocumentosWhatsBlock
-            admissao={admissao}
-            whatsappDP={whatsappDP}
-            restNome={restNome}
-          />
-        )}
-
         {/* Box: ciência conta Itaú */}
         <CienciaContaItauBox
           jaTemItau={dados.banco_tipo === "Já tenho conta no Itaú"}
@@ -570,12 +606,13 @@ export function AdmissaoPublicaPage() {
           onChange={setCienteContaItau}
         />
 
-        {/* Box: ciência envio docs WhatsApp */}
-        <CienciaDocsWhatsappBox
-          aceita={cienteDocsWhatsapp}
-          onChange={setCienteDocsWhatsapp}
-          whatsappDP={whatsappDP}
-          prazoDias={admissao.restaurantSnapshot?.prazoDias || 1}
+        {/* Último bloco: upload dos documentos (anexar ou justificar) */}
+        <DocumentosUploadSection
+          rid={admissao.restaurantId}
+          admissaoId={admissao.id}
+          docDefs={docDefs}
+          valor={docResol}
+          onChange={setDocResol}
         />
 
         {/* Bloco final: selfie + declaração de veracidade */}
@@ -590,16 +627,19 @@ export function AdmissaoPublicaPage() {
         <div className="bg-white border border-gray-200 rounded-xl p-4">
           <Button
             onClick={submeter}
-            disabled={enviando || !selfieDataUrl || !declaracaoAceita || !cienteContaItau || !cienteDocsWhatsapp}
+            disabled={
+              enviando || !selfieDataUrl || !declaracaoAceita || !cienteContaItau ||
+              !!validarDocumentos(docDefs, docResol)
+            }
             className="w-full"
           >
             {enviando ? "Enviando…" : "✅ Enviar ficha"}
           </Button>
           <p className="text-[11px] text-gray-500 text-center mt-2">
-            Marque as <strong>3 confirmações</strong> acima (conta Itaú, envio
-            de documentos e veracidade) pra liberar o envio. Os dados que você
-            preencheu são salvos automaticamente — pode fechar e voltar depois
-            dentro do prazo.
+            Pra liberar o envio: confirme a conta Itaú, resolva
+            <strong> todos os documentos</strong> (anexe ou marque "não tenho"),
+            tire a foto e aceite a declaração. Os dados são salvos automaticamente
+            — pode fechar e voltar dentro do prazo.
           </p>
         </div>
       </div>
@@ -1004,33 +1044,246 @@ function FormSubmitido({
   );
 }
 
-function DocumentosWhatsBlock({
-  admissao,
-  whatsappDP,
-  restNome,
+// ─── Upload de documentos (último bloco do form) ─────────────────────────
+const MAX_DOC_BYTES = 10 * 1024 * 1024;
+const TIPOS_DOC_OK = ["application/pdf", "image/jpeg", "image/png"];
+
+// Valida que todos os documentos da lista foram resolvidos pelo candidato.
+// Retorna a 1ª pendência (string) ou null se tudo OK.
+function validarDocumentos(
+  defs: DocumentoAdmissaoDef[],
+  resol: Record<string, DocumentoAdmissaoEnvio>,
+): string | null {
+  for (const d of defs) {
+    const r = resol[d.id];
+    if (!r || !r.resolucao) {
+      return `Resolva "${d.nome}": anexe o arquivo ou marque "não tenho / não se aplica".`;
+    }
+    if (r.resolucao === "anexado") {
+      if (!r.arquivos || r.arquivos.length === 0) {
+        return `Anexe o arquivo de "${d.nome}" (ou marque "não tenho / não se aplica").`;
+      }
+    } else if (!r.justificativa || !r.justificativa.trim()) {
+      return `Explique por que não tem "${d.nome}" (justificativa obrigatória).`;
+    }
+  }
+  return null;
+}
+
+function fmtBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function DocumentosUploadSection({
+  rid,
+  admissaoId,
+  docDefs,
+  valor,
+  onChange,
 }: {
-  admissao: Admissao;
-  whatsappDP: string;
-  restNome: string;
+  rid: string;
+  admissaoId: string;
+  docDefs: DocumentoAdmissaoDef[];
+  valor: Record<string, DocumentoAdmissaoEnvio>;
+  onChange: React.Dispatch<React.SetStateAction<Record<string, DocumentoAdmissaoEnvio>>>;
 }) {
-  const link = linkWhatsAppDP(whatsappDP, admissao.candidato.nome, admissao.candidato.cpf, restNome);
-  if (!link) return null;
+  const [subindo, setSubindo] = useState<string | null>(null); // docId em upload
+  const [erro, setErro] = useState("");
+
+  if (docDefs.length === 0) return null;
+
+  function patch(docId: string, nome: string, p: Partial<DocumentoAdmissaoEnvio>) {
+    onChange((cur) => {
+      const prev = cur[docId] || { docId, nome, resolucao: "anexado" as const, arquivos: [] };
+      return { ...cur, [docId]: { ...prev, docId, nome, ...p } };
+    });
+  }
+
+  async function anexar(d: DocumentoAdmissaoDef, files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setErro("");
+    setSubindo(d.id);
+    try {
+      const novos: DocumentoAdmissaoArquivo[] = [];
+      for (const file of Array.from(files)) {
+        if (!TIPOS_DOC_OK.includes(file.type)) {
+          setErro(`"${file.name}": formato inválido. Aceita PDF, JPG ou PNG.`);
+          continue;
+        }
+        if (file.size > MAX_DOC_BYTES) {
+          setErro(`"${file.name}": ${fmtBytes(file.size)} — máximo 10 MB.`);
+          continue;
+        }
+        const safe = file.name.replace(/[^\w.\-]+/g, "_");
+        const path = `admissoes/${rid}/${admissaoId}/${d.id}/${Date.now()}_${safe}`;
+        const snap = await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
+        const url = await getDownloadURL(snap.ref);
+        novos.push({ nome: file.name, url, path, tipo: file.type, tamanho: file.size });
+      }
+      if (novos.length > 0) {
+        onChange((cur) => {
+          const prev = cur[d.id] || { docId: d.id, nome: d.nome, resolucao: "anexado" as const, arquivos: [] };
+          const next: DocumentoAdmissaoEnvio = {
+            ...prev,
+            docId: d.id,
+            nome: d.nome,
+            resolucao: "anexado",
+            arquivos: [...(prev.arquivos || []), ...novos],
+          };
+          delete next.justificativa;
+          return { ...cur, [d.id]: next };
+        });
+      }
+    } catch (e) {
+      setErro("Erro ao subir arquivo: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSubindo(null);
+    }
+  }
+
+  function removerArquivo(d: DocumentoAdmissaoDef, idx: number) {
+    onChange((cur) => {
+      const prev = cur[d.id];
+      if (!prev) return cur;
+      const arquivos = (prev.arquivos || []).filter((_, i) => i !== idx);
+      return { ...cur, [d.id]: { ...prev, arquivos } };
+    });
+  }
+
   return (
-    <section className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
-      <h2 className="font-bold text-sm text-emerald-900 mb-1">📱 Envio dos documentos</h2>
-      <p className="text-xs text-emerald-900/80 mb-3">
-        Os documentos (RG, CPF, comprovante de residência, foto 3x4, CTPS) serão enviados por
-        WhatsApp pra equipe que cuida da sua admissão. Você pode mandar agora ou depois de
-        terminar a ficha.
-      </p>
-      <a
-        href={link}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="inline-block px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm"
-      >
-        📱 Enviar documentos via WhatsApp
-      </a>
+    <section className="bg-white border-2 border-indigo-200 rounded-xl p-4 space-y-3">
+      <div>
+        <h2 className="font-bold text-sm text-indigo-900">📎 Documentos</h2>
+        <p className="text-xs text-gray-600 mt-1">
+          Anexe cada documento abaixo (PDF, JPG ou PNG, até 10 MB). Se não tiver
+          algum, marque a opção e explique o motivo. Você precisa resolver{" "}
+          <strong>todos</strong> pra enviar a ficha.
+        </p>
+      </div>
+
+      {erro && (
+        <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+          {erro}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        {docDefs.map((d) => {
+          const r = valor[d.id];
+          const resol = r?.resolucao;
+          const arquivos = r?.arquivos || [];
+          const anexadoOk = resol === "anexado" && arquivos.length > 0;
+          const naoTem = resol === "nao_se_aplica" || resol === "nao_tenho";
+          return (
+            <div key={d.id} className="border border-gray-200 rounded-lg p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <span className="text-sm font-semibold text-gray-900">{d.nome}</span>
+                  {d.obrigatorio && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-red-600 font-bold">
+                      obrigatório
+                    </span>
+                  )}
+                  {d.descricao && (
+                    <p className="text-[11px] text-gray-500 mt-0.5">{d.descricao}</p>
+                  )}
+                </div>
+                {anexadoOk && <span className="text-emerald-600 text-sm shrink-0">✓</span>}
+                {naoTem && r?.justificativa?.trim() && (
+                  <span className="text-amber-500 text-sm shrink-0">—</span>
+                )}
+              </div>
+
+              {/* Opções de resolução */}
+              <div className="flex flex-wrap gap-3 mt-2">
+                <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                  <input
+                    type="radio"
+                    name={`doc_${d.id}`}
+                    checked={resol === "anexado"}
+                    onChange={() => patch(d.id, d.nome, { resolucao: "anexado" })}
+                    className="accent-indigo-600"
+                  />
+                  📎 Vou anexar
+                </label>
+                {d.permiteNaoSeAplica && (
+                  <>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input
+                        type="radio"
+                        name={`doc_${d.id}`}
+                        checked={resol === "nao_tenho"}
+                        onChange={() => patch(d.id, d.nome, { resolucao: "nao_tenho", arquivos: [] })}
+                        className="accent-indigo-600"
+                      />
+                      Não tenho
+                    </label>
+                    <label className="flex items-center gap-1.5 cursor-pointer text-xs">
+                      <input
+                        type="radio"
+                        name={`doc_${d.id}`}
+                        checked={resol === "nao_se_aplica"}
+                        onChange={() => patch(d.id, d.nome, { resolucao: "nao_se_aplica", arquivos: [] })}
+                        className="accent-indigo-600"
+                      />
+                      Não se aplica
+                    </label>
+                  </>
+                )}
+              </div>
+
+              {/* Anexar arquivo */}
+              {resol === "anexado" && (
+                <div className="mt-2 space-y-1.5">
+                  {arquivos.map((a, i) => (
+                    <div
+                      key={`${a.path}_${i}`}
+                      className="flex items-center justify-between gap-2 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1"
+                    >
+                      <span className="truncate">
+                        📄 {a.nome} <span className="text-gray-400">({fmtBytes(a.tamanho)})</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removerArquivo(d, i)}
+                        className="text-red-500 hover:text-red-700 shrink-0"
+                      >
+                        remover
+                      </button>
+                    </div>
+                  ))}
+                  <label className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 cursor-pointer">
+                    {subindo === d.id ? "Enviando…" : arquivos.length > 0 ? "+ Adicionar outro arquivo" : "Escolher arquivo"}
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png"
+                      multiple
+                      disabled={subindo === d.id}
+                      onChange={(e) => { void anexar(d, e.target.files); e.target.value = ""; }}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
+
+              {/* Justificativa (não tenho / não se aplica) */}
+              {naoTem && (
+                <div className="mt-2">
+                  <textarea
+                    value={r?.justificativa || ""}
+                    onChange={(e) => patch(d.id, d.nome, { justificativa: e.target.value })}
+                    placeholder="Explique por que não tem esse documento (obrigatório)…"
+                    rows={2}
+                    className="w-full text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-indigo-400 focus:outline-none"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
@@ -1105,105 +1358,6 @@ function CienciaContaItauBox({
   );
 }
 
-function CienciaDocsWhatsappBox({
-  aceita,
-  onChange,
-  whatsappDP,
-  prazoDias,
-}: {
-  aceita: boolean;
-  onChange: (v: boolean) => void;
-  whatsappDP?: string;
-  prazoDias: number;
-}) {
-  const fmtDP = (() => {
-    const d = (whatsappDP || "").replace(/\D/g, "");
-    if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
-    if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
-    return whatsappDP || "";
-  })();
-  // Lista de docs idêntica à usada na mensagem de instruções (mantida
-  // hardcoded aqui pra o form público não precisar importar do core/admissao).
-  const docs = [
-    "RG (frente e verso)",
-    "CPF",
-    "Comprovante de residência",
-    "Foto 3x4",
-    "CTPS (página de rosto + qualificação civil)",
-    "Título de eleitor",
-    "Comprovante de PIS/PASEP",
-    "Certificado de reservista (homens)",
-    "Comprovante de escolaridade",
-    "Certidão de nascimento dos dependentes (se houver)",
-  ];
-  // Prazo dos docs = prazo do form + 24h. Permite que o candidato envie o
-  // form rapidinho e tenha mais 1 dia pra reunir as fotos.
-  const prazoDocsDias = prazoDias + 1;
-  const prazoDocsLabel = prazoDocsDias === 1 ? "24 horas" : `${prazoDocsDias} dias`;
-  const [copiou, setCopiou] = useState(false);
-
-  async function copiarLista() {
-    const texto = `Documentos pra enviar via WhatsApp (até ${prazoDocsLabel}):\n\n` +
-      docs.map((d) => `• ${d}`).join("\n");
-    try {
-      await navigator.clipboard.writeText(texto);
-      setCopiou(true);
-      setTimeout(() => setCopiou(false), 2000);
-    } catch {
-      alert("Não consegui copiar — selecione e copie manualmente da tela.");
-    }
-  }
-
-  return (
-    <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-indigo-50 border-indigo-300"}`}>
-      <h2 className={`font-bold text-sm mb-2 ${aceita ? "text-emerald-900" : "text-indigo-900"}`}>
-        📎 Envio dos documentos pelo WhatsApp
-      </h2>
-      <div className="text-xs text-gray-800 space-y-2">
-        <p>
-          Mande fotos dos documentos abaixo via WhatsApp pra equipe que cuida
-          da sua admissão:
-        </p>
-        {whatsappDP ? (
-          <p className="font-mono bg-white border border-gray-200 rounded px-2 py-1 inline-block">
-            📱 {fmtDP}
-          </p>
-        ) : (
-          <p className="text-amber-700 italic">
-            ⚠ A empresa ainda não cadastrou o WhatsApp do DP. Você vai receber
-            o número assim que estiver configurado.
-          </p>
-        )}
-        <p>
-          <strong>Prazo:</strong> até <strong>{prazoDocsLabel}</strong> depois
-          do envio deste formulário (24h a mais que o prazo do form).
-        </p>
-        <ul className="list-disc pl-5 space-y-0.5">
-          {docs.map((d) => <li key={d}>{d}</li>)}
-        </ul>
-        <button
-          type="button"
-          onClick={copiarLista}
-          className="inline-flex items-center gap-1 text-[11px] px-2 py-1 rounded border border-indigo-300 bg-white hover:bg-indigo-50 text-indigo-700"
-        >
-          📋 {copiou ? "Copiado!" : "Copiar lista de docs"}
-        </button>
-      </div>
-      <label className="flex items-start gap-2 mt-3 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={aceita}
-          onChange={(e) => onChange(e.target.checked)}
-          className="mt-0.5 accent-emerald-600 w-4 h-4"
-        />
-        <span className="text-xs text-gray-900">
-          Estou ciente que devo <strong>enviar todos esses documentos por
-          WhatsApp</strong> em até <strong>{prazoDocsLabel}</strong>.
-        </span>
-      </label>
-    </section>
-  );
-}
 
 // ─── Bloco final: selfie + declaração ────────────────────────────────────
 

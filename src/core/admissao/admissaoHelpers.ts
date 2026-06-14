@@ -294,7 +294,7 @@ export const PLACEHOLDERS_DISPONIVEIS: Record<TemplateKey, string[]> = {
 
 export type IniciarAdmissaoInput = {
   restaurantId: string;
-  restaurantSnapshot: { nome: string; whatsappDP?: string; prazoDias: number };
+  restaurantSnapshot: { nome: string; whatsappDP?: string; prazoDias: number; documentosAdmissao?: DocumentoAdmissaoDef[] };
   candidato: { nome: string; cpf: string; email: string; whatsapp: string };
   cargoId: string;
   horariosCadastrados?: Record<string, unknown>;

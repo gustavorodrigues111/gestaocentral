@@ -2517,6 +2517,9 @@ export type Admissao = {
     nome: string;
     whatsappDP?: string;
     prazoDias: number;
+    // Lista de documentos pedidos no form, congelada no momento da criação.
+    // Ausente em admissões antigas → form usa DOCUMENTOS_ADMISSAO_DEFAULT.
+    documentosAdmissao?: DocumentoAdmissaoDef[];
   };
 
   // ─── Etapa 2: candidato preenche ───
