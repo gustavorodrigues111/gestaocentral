@@ -698,6 +698,11 @@ export type Restaurant = {
   regulamentoInternoUrl?: string;        // URL do PDF no Drive
   regulamentoInternoFileId?: string;     // fileId extraído (pra ir no Clicksign)
 
+  // Lista de documentos que o candidato deve fornecer no form público (último
+  // bloco). Se ausente, usa DOCUMENTOS_ADMISSAO_DEFAULT. Editável em
+  // Admissão → Configurações → Documentos.
+  documentosAdmissao?: DocumentoAdmissaoDef[];
+
   // Limites de carga horária semanal (em minutos) usados nas validações de horário
   // Default: 43h55min a 44h00min (CLT padrão)
   horarioConfig?: {
@@ -2430,6 +2435,43 @@ export type AdmissaoReenvio = {
   porNome: string;
 };
 
+// ─── Documentos do candidato ────────────────────────────────────────────────
+// Definição de UM documento que o candidato deve fornecer no form público.
+// Configurável por restaurante (Admissão → Configurações → Documentos). O
+// default vem de DOCUMENTOS_ADMISSAO_DEFAULT (admissaoHelpers).
+export type DocumentoAdmissaoDef = {
+  id: string;
+  nome: string;                 // ex: "RG ou CNH"
+  descricao?: string;           // dica pro candidato (ex: "frente e verso, legível")
+  obrigatorio: boolean;         // se true, candidato precisa anexar OU justificar
+  permiteNaoSeAplica: boolean;  // mostra a opção "não se aplica / não tenho"
+  ativo: boolean;
+};
+
+// Um arquivo anexado pelo candidato (vive no Firebase Storage).
+export type DocumentoAdmissaoArquivo = {
+  nome: string;       // nome original do arquivo
+  url: string;        // downloadURL do Storage (DP visualiza/baixa)
+  path: string;       // caminho no Storage (pra baixar bytes / deletar)
+  tipo: string;       // contentType (application/pdf, image/jpeg…)
+  tamanho: number;    // bytes
+};
+
+// Resolução do candidato para UM documento, submetida com o form. Depois o DP
+// confere (conferido/observacaoDp) antes de subir pro Drive.
+export type DocumentoAdmissaoEnvio = {
+  docId: string;
+  nome: string;       // snapshot do nome da def (caso a config mude depois)
+  resolucao: "anexado" | "nao_se_aplica" | "nao_tenho";
+  arquivos: DocumentoAdmissaoArquivo[];
+  justificativa?: string;   // obrigatória quando resolucao != "anexado"
+  // ─── Conferência do DP ───
+  conferido?: boolean;
+  conferidoEm?: string;
+  conferidoPor?: { id: string; nome: string };
+  observacaoDp?: string;
+};
+
 export type Admissao = {
   id: string;
   restaurantId: string;
@@ -2582,8 +2624,22 @@ export type Admissao = {
   // da conta conectada (DP cola a URL no Clicksign).
   driveFolderId?: string;       // pasta [Nome] do empregado (pra abrir/copiar link)
   driveFolderUrl?: string;
+  driveDocumentosFolderId?: string;    // subpasta "Documentos do Empregado" (docs do candidato)
   driveDocsAAssinarFolderId?: string;  // subpasta "docs a assinar" (termos gerados → Clicksign)
-  driveDocsAssinadosFolderId?: string; // subpasta "docs assinados" (PDFs que voltam assinados)
+  driveDocsAssinadosFolderId?: string; // subpasta "Kit de Admissão Assinado" (PDFs que voltam assinados)
+
+  // ─── Documentos enviados pelo candidato (último bloco do form público) ───
+  // Cada item = 1 documento da lista configurada (restaurant.documentosAdmissao,
+  // ou DOCUMENTOS_ADMISSAO_DEFAULT). O candidato resolve cada um: anexa
+  // arquivo(s) OU declara "não se aplica"/"não tenho" com justificativa
+  // obrigatória. O DP confere 1 a 1 e, quando todos conferidos, sobe os
+  // arquivos pra subpasta "Documentos do Empregado" no Drive.
+  documentos?: {
+    itens: DocumentoAdmissaoEnvio[];
+    enviadoEm?: string;                  // ISO — candidato submeteu o form
+    subidoDriveEm?: string;              // ISO — DP subiu pro Drive
+    subidoDrivePor?: { id: string; nome: string };
+  };
 
   // ─── Clicksign (envelope de assinatura) ───
   // Envelope criado via API v3. status: draft|running|closed|canceled.

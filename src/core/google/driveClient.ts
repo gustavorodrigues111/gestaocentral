@@ -14,6 +14,7 @@
 import {
   GOOGLE_CLIENT_ID, DRIVE_SCOPE, driveFolderUrl,
   SUBPASTAS_EMPREGADO, PASTA_DOCS_A_ASSINAR, PASTA_DOCS_ASSINADOS,
+  PASTA_DOCUMENTOS_EMPREGADO,
 } from "./driveConfig";
 
 // ─── Tipagem mínima do Google Identity Services (sem puxar @types) ──────────
@@ -263,15 +264,21 @@ export async function findOrCreateSubfolder(
 // uma pasta existente pelo Picker.
 export async function ensureSubfoldersIn(
   folderId: string,
-): Promise<{ docsAAssinarFolderId: string; docsAssinadosFolderId: string }> {
+): Promise<{
+  documentosFolderId: string;
+  docsAAssinarFolderId: string;
+  docsAssinadosFolderId: string;
+}> {
+  let documentosFolderId = "";
   let docsAAssinarFolderId = "";
   let docsAssinadosFolderId = "";
   for (const sub of SUBPASTAS_EMPREGADO) {
     const id = await findOrCreateSubfolder(folderId, sub);
+    if (sub === PASTA_DOCUMENTOS_EMPREGADO) documentosFolderId = id;
     if (sub === PASTA_DOCS_A_ASSINAR) docsAAssinarFolderId = id;
     if (sub === PASTA_DOCS_ASSINADOS) docsAssinadosFolderId = id;
   }
-  return { docsAAssinarFolderId, docsAssinadosFolderId };
+  return { documentosFolderId, docsAAssinarFolderId, docsAssinadosFolderId };
 }
 
 export async function createEmployeeFolderTree(
@@ -280,16 +287,16 @@ export async function createEmployeeFolderTree(
 ): Promise<{
   folderId: string;
   folderUrl: string;
+  documentosFolderId: string;
   docsAAssinarFolderId: string;
   docsAssinadosFolderId: string;
 }> {
   const folderId = await findOrCreateSubfolder(empregadosAtivosFolderId, nomeCompleto);
-  const { docsAAssinarFolderId, docsAssinadosFolderId } = await ensureSubfoldersIn(folderId);
+  const subs = await ensureSubfoldersIn(folderId);
   return {
     folderId,
     folderUrl: driveFolderUrl(folderId),
-    docsAAssinarFolderId,
-    docsAssinadosFolderId,
+    ...subs,
   };
 }
 

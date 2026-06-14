@@ -9,6 +9,7 @@ import {
 import { db } from "../firebase/config";
 import type {
   Admissao, AdmissaoStatus, AutoTriggerSubtarefa, ClicksignEnvioRef,
+  DocumentoAdmissaoDef,
   Empregado, EmpregadoPeriodo,
   FormField, HorarioDia, MotivoCancelamento,
   Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado, WorkSchedule,
@@ -23,6 +24,7 @@ import {
   DEPRECATED_SUBTAREFAS_IDS,
   CONTATO_CLINICA_DEFAULT, CONTATO_CONTABILIDADE_DEFAULT,
   CONTATO_FINANCEIRO_DEFAULT,
+  DOCUMENTOS_ADMISSAO_DEFAULT,
 } from "./formTemplate";
 import type { ContatoExterno } from "../types";
 
@@ -872,14 +874,81 @@ export async function salvarDriveFolder(
   folderUrl: string,
   docsAAssinarFolderId?: string,
   docsAssinadosFolderId?: string,
+  documentosFolderId?: string,
 ): Promise<void> {
   await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
     driveFolderId: folderId,
     driveFolderUrl: folderUrl,
     driveDocsAAssinarFolderId: docsAAssinarFolderId,
     driveDocsAssinadosFolderId: docsAssinadosFolderId,
+    driveDocumentosFolderId: documentosFolderId,
     updatedAt: new Date().toISOString(),
   }));
+}
+
+// ─── Documentos do candidato ────────────────────────────────────────────────
+
+// Lista de documentos que o candidato deve fornecer. Usa a config do
+// restaurante se houver itens ativos; senão, o default. Sempre só os ativos.
+export function getDocumentosAdmissao(restaurant: Restaurant): DocumentoAdmissaoDef[] {
+  const cfg = restaurant.documentosAdmissao;
+  const base = cfg && cfg.length > 0 ? cfg : DOCUMENTOS_ADMISSAO_DEFAULT;
+  return base.filter((d) => d.ativo);
+}
+
+// True se todos os itens de documentos foram conferidos pelo DP. Usado pra
+// habilitar o botão "Subir pro Drive".
+export function todosDocumentosConferidos(admissao: Admissao): boolean {
+  const itens = admissao.documentos?.itens || [];
+  return itens.length > 0 && itens.every((i) => i.conferido);
+}
+
+// Marca/desmarca a conferência de UM documento pelo DP (com observação
+// opcional). Persiste o array inteiro de documentos.
+export async function conferirDocumento(
+  admissao: Admissao,
+  docId: string,
+  conferido: boolean,
+  pessoa: { id: string; nome: string },
+  observacaoDp?: string,
+): Promise<Admissao["documentos"]> {
+  const now = new Date().toISOString();
+  const itens = (admissao.documentos?.itens || []).map((i) =>
+    i.docId === docId
+      ? {
+          ...i,
+          conferido,
+          conferidoEm: conferido ? now : undefined,
+          conferidoPor: conferido ? pessoa : undefined,
+          observacaoDp: observacaoDp ?? i.observacaoDp,
+        }
+      : i,
+  );
+  const documentos = { ...(admissao.documentos || { itens: [] }), itens };
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    documentos,
+    updatedAt: now,
+  }));
+  return documentos;
+}
+
+// Registra que os documentos foram subidos pro Drive (após o push em browser).
+export async function marcarDocumentosSubidosDrive(
+  admissaoId: string,
+  documentosAtual: NonNullable<Admissao["documentos"]>,
+  pessoa: { id: string; nome: string },
+): Promise<NonNullable<Admissao["documentos"]>> {
+  const now = new Date().toISOString();
+  const documentos = {
+    ...documentosAtual,
+    subidoDriveEm: now,
+    subidoDrivePor: pessoa,
+  };
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    documentos,
+    updatedAt: now,
+  }));
+  return documentos;
 }
 
 // Grava o envelope do Clicksign criado pra esta admissão.

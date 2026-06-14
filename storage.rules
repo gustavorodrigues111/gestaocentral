@@ -41,6 +41,20 @@ service firebase.storage {
       allow update, delete: if request.auth != null;
     }
 
+    // Documentos de admissão: o candidato sobe RG/CPF/etc pelo form público
+    // (sem auth, via token na URL), o DP lê/baixa com auth pra conferir e subir
+    // pro Drive. Path: admissoes/{rid}/{admissaoId}/{docId}/{file}
+    match /admissoes/{rid}/{admissaoId}/{file=**} {
+      allow read: if request.auth != null;
+      allow create: if request.resource.size < 10 * 1024 * 1024  // máx 10 MB
+        && (
+          request.resource.contentType.matches("application/pdf")
+          || request.resource.contentType.matches("image/jpeg")
+          || request.resource.contentType.matches("image/png")
+        );
+      allow update, delete: if request.auth != null;
+    }
+
     // Catch-all: nega o que não tá listado
     match /{allPaths=**} {
       allow read, write: if false;

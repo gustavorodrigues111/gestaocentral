@@ -17,6 +17,7 @@ import { salvarDriveFolder } from "../admissao/admissaoHelpers";
 export type EmpregadoDriveTree = {
   folderId: string;
   folderUrl: string;
+  documentos: string;
   aAssinar: string;
   assinados: string;
 };
@@ -26,17 +27,26 @@ export async function ensureEmployeeDriveTree(
   activeRestaurant: Restaurant,
 ): Promise<EmpregadoDriveTree> {
   // Já criada? devolve direto (sem nova chamada ao Drive).
+  // documentosFolderId pode faltar em admissões antigas (criadas antes da
+  // subpasta "Documentos do Empregado") — nesse caso recriamos as subpastas.
   if (
     admissao.driveFolderId &&
+    admissao.driveDocumentosFolderId &&
     admissao.driveDocsAAssinarFolderId &&
     admissao.driveDocsAssinadosFolderId
   ) {
     return {
       folderId: admissao.driveFolderId,
       folderUrl: admissao.driveFolderUrl || driveFolderUrl(admissao.driveFolderId),
+      documentos: admissao.driveDocumentosFolderId,
       aAssinar: admissao.driveDocsAAssinarFolderId,
       assinados: admissao.driveDocsAssinadosFolderId,
     };
+  }
+  // Pasta do empregado já existe mas faltam subpastas (ex: admissão antiga sem
+  // "Documentos do Empregado") → garante as subpastas dentro dela.
+  if (admissao.driveFolderId) {
+    return vincularPastaExistente(admissao, admissao.driveFolderId);
   }
   const parentId = activeRestaurant.driveEmpregadosAtivosFolderId;
   if (!parentId) {
@@ -47,11 +57,12 @@ export async function ensureEmployeeDriveTree(
   const tree = await createEmployeeFolderTree(parentId, admissao.candidato.nome);
   await salvarDriveFolder(
     admissao.id, tree.folderId, tree.folderUrl,
-    tree.docsAAssinarFolderId, tree.docsAssinadosFolderId,
+    tree.docsAAssinarFolderId, tree.docsAssinadosFolderId, tree.documentosFolderId,
   );
   return {
     folderId: tree.folderId,
     folderUrl: tree.folderUrl,
+    documentos: tree.documentosFolderId,
     aAssinar: tree.docsAAssinarFolderId,
     assinados: tree.docsAssinadosFolderId,
   };
@@ -68,11 +79,12 @@ export async function vincularPastaExistente(
   const url = driveFolderUrl(folderId);
   await salvarDriveFolder(
     admissao.id, folderId, url,
-    subs.docsAAssinarFolderId, subs.docsAssinadosFolderId,
+    subs.docsAAssinarFolderId, subs.docsAssinadosFolderId, subs.documentosFolderId,
   );
   return {
     folderId,
     folderUrl: url,
+    documentos: subs.documentosFolderId,
     aAssinar: subs.docsAAssinarFolderId,
     assinados: subs.docsAssinadosFolderId,
   };

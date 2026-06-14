@@ -3,7 +3,7 @@
 //  Contábil. Cada restaurante começa com esse schema; pode editar livremente.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { ContatoExterno, FormField, SubtarefaTemplate } from "../types";
+import type { ContatoExterno, DocumentoAdmissaoDef, FormField, SubtarefaTemplate } from "../types";
 
 // Helper local pra reduzir verbosidade ao declarar 50+ campos.
 function f(
@@ -407,3 +407,31 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
 ];
 
 export const SUBTAREFAS_TEMPLATE_DEFAULT: SubtarefaTemplate[] = RAW_SUBTAREFAS.map((s, i) => ({ ...s, ordem: i + 1 }));
+
+// ─── Documentos que o candidato envia no form público ───────────────────────
+// Último bloco do formulário. Cada item: candidato anexa arquivo(s) OU declara
+// "não se aplica / não tenho" + justificativa. Restaurante pode customizar em
+// Admissão → Configurações → Documentos (campo restaurant.documentosAdmissao).
+function docDef(
+  id: string,
+  nome: string,
+  obrigatorio: boolean,
+  permiteNaoSeAplica: boolean,
+  descricao?: string,
+): DocumentoAdmissaoDef {
+  return { id, nome, descricao, obrigatorio, permiteNaoSeAplica, ativo: true };
+}
+
+export const DOCUMENTOS_ADMISSAO_DEFAULT: DocumentoAdmissaoDef[] = [
+  docDef("doc_identidade", "RG ou CNH", true, false, "Documento de identidade com foto — frente e verso, legível."),
+  docDef("doc_cpf", "CPF", true, false, "Pode ser o cartão CPF ou um documento onde o número apareça."),
+  docDef("doc_residencia", "Comprovante de residência", true, false, "Conta de luz, água ou telefone dos últimos 90 dias."),
+  docDef("doc_ctps", "Carteira de Trabalho Digital (ou nº do PIS)", true, false, "Print/PDF da CTPS Digital ou número do PIS/NIS."),
+  docDef("doc_titulo_eleitor", "Título de eleitor", false, true, "Foto do título ou comprovante via app e-Título."),
+  docDef("doc_certidao", "Certidão de nascimento ou casamento", false, true),
+  docDef("doc_escolaridade", "Comprovante de escolaridade", false, true, "Diploma, histórico ou declaração."),
+  docDef("doc_reservista", "Certificado de reservista", false, true, "Apenas para homens entre 18 e 45 anos."),
+  docDef("doc_foto", "Foto 3x4 (ou foto recente do rosto)", false, true),
+  docDef("doc_comprovante_banco", "Comprovante de conta bancária", false, true, "Para depósito do salário (se já tiver conta)."),
+  docDef("doc_dependentes", "Documentos dos dependentes", false, true, "CPF e certidão de nascimento dos filhos/dependentes legais."),
+];

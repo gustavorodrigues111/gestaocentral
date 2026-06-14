@@ -42,13 +42,15 @@ export const GOOGLE_APP_ID = "777358299957";
 // ─── Estrutura de pastas por empregado ──────────────────────────────────────
 // A cada admissão, o app cria a pasta [Nome Completo] dentro de "Empregados
 // Ativos" (apontada por empresa) com estas subpastas.
-//   • docs a assinar  → termos gerados que vão PRA o Clicksign (ainda sem assinatura)
-//   • docs assinados  → os PDFs que voltam DO Clicksign já assinados
+//   • Documentos do Empregado → docs que o candidato sobe no form (RG, CPF…)
+//   • docs a assinar          → termos gerados que vão PRA o Clicksign (sem assinatura)
+//   • Kit de Admissão Assinado → os PDFs que voltam DO Clicksign já assinados
+export const PASTA_DOCUMENTOS_EMPREGADO = "Documentos do Empregado";
 export const PASTA_DOCS_A_ASSINAR = "docs a assinar";
-export const PASTA_DOCS_ASSINADOS = "docs assinados";
+export const PASTA_DOCS_ASSINADOS = "Kit de Admissão Assinado";
 export const SUBPASTAS_EMPREGADO = [
   "1- CONTRATOS",
-  "2 - DOCUMENTOS",
+  PASTA_DOCUMENTOS_EMPREGADO,
   PASTA_DOCS_A_ASSINAR,
   PASTA_DOCS_ASSINADOS,
 ];
