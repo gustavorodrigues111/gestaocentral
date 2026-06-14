@@ -48,7 +48,7 @@ import { ChecklistTermosModal } from "./ChecklistTermosModal";
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
-  montarMensagemKitAssinatura, finalizarAdmissao,
+  montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -341,6 +341,13 @@ export function SubtarefasDrawer({
   // pra admissões legadas) + abre WhatsApp pré-preenchido. NÃO marca a
   // subtarefa como feita — o usuário marca o checkbox quando o cliente
   // confirmar recebimento.
+  // Registra que a ação de uma subtarefa rodou (audit + base do "↻ refazer").
+  // Só pras ações que FAZEM algo externo (enviar/contato/gerar) — não pra
+  // abrir modal de edição. Erro silencioso pra não atrapalhar a ação em si.
+  function registrar(subId: string, tipo: string) {
+    void registrarExecucao(admissao, subId, tipo, pessoa).catch(() => { /* noop */ });
+  }
+
   async function abrirEnviarLinkForm(_s: SubtarefaAdmissao) {
     try {
       const prazoDias = getPrazoDias(activeRestaurant);
@@ -525,19 +532,19 @@ export function SubtarefasDrawer({
                                   onObs={(obs) => salvarObs(s, obs)}
                                   onDataAgendada={(d) => salvarDataAgendada(s, d)}
                                   onDadosBancarios={(p) => salvarDadosBancarios(s, p)}
-                                  onAtalhoContato={(tipo) => abrirContato(s, tipo)}
-                                  onAtalhoWhatsappInstrucoes={() => abrirWhatsappInstrucoes(s)}
+                                  onAtalhoContato={(tipo) => { abrirContato(s, tipo); registrar(s.id, "contato_" + tipo); }}
+                                  onAtalhoWhatsappInstrucoes={() => { abrirWhatsappInstrucoes(s); registrar(s.id, "whatsapp_instrucoes"); }}
                                   onAtalhoChecklistDocs={() => abrirChecklistDocs(s)}
-                                  onAtalhoBaixarPlanilha={() => abrirBaixarPlanilha(s)}
+                                  onAtalhoBaixarPlanilha={() => { abrirBaixarPlanilha(s); registrar(s.id, "baixar_planilha"); }}
                                   onAtalhoEditarCandidato={() => setShowEditarCandidato(true)}
                                   onAtalhoEditarDadosFinais={() => setShowEditarDadosFinais(true)}
-                                  onAtalhoEnviarLinkForm={() => abrirEnviarLinkForm(s)}
+                                  onAtalhoEnviarLinkForm={() => { abrirEnviarLinkForm(s); registrar(s.id, "enviar_link_form"); }}
                                   onAtalhoChecklistTermos={() => setShowChecklistTermos(true)}
-                                  onAtalhoClicksign={abrirClicksign}
-                                  onAtalhoWhatsappKit={abrirAvisarKitAssinatura}
-                                  onAtalhoGerarTermoUniformes={() => setGerarTermoTipo("uniforme")}
-                                  onAtalhoGerarTermoEpis={() => setGerarTermoTipo("epi")}
-                                  onAtalhoCriarPastaDrive={() => criarPastaDrive(s)}
+                                  onAtalhoClicksign={() => { abrirClicksign(); registrar(s.id, "abrir_clicksign"); }}
+                                  onAtalhoWhatsappKit={() => { abrirAvisarKitAssinatura(); registrar(s.id, "whatsapp_kit"); }}
+                                  onAtalhoGerarTermoUniformes={() => { setGerarTermoTipo("uniforme"); registrar(s.id, "gerar_termo_uniforme"); }}
+                                  onAtalhoGerarTermoEpis={() => { setGerarTermoTipo("epi"); registrar(s.id, "gerar_termo_epi"); }}
+                                  onAtalhoCriarPastaDrive={() => { criarPastaDrive(s); registrar(s.id, "criar_pasta_drive"); }}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
                               ))}
@@ -1040,6 +1047,14 @@ function SubtarefaRow({
           </button>
         )}
       </div>
+      {sub.execucoes && sub.execucoes.length > 0 && (() => {
+        const u = sub.execucoes[sub.execucoes.length - 1];
+        return (
+          <div className="mt-1 text-[9.5px] text-gray-400 dark:text-gray-500">
+            ↻ ação feita {sub.execucoes.length}× · última {new Date(u.em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })} por {u.por.nome} · <span className="italic">o botão acima refaz</span>
+          </div>
+        );
+      })()}
       {showDetails && (
         <div className="mt-2 space-y-1.5">
           {sub.pedeLink && (

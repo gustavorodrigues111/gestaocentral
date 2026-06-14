@@ -1232,6 +1232,27 @@ export function aplicarAutoTrigger(
 
 // Marca/desmarca uma subtarefa específica e persiste. Aceita também update
 // de link externo, observação e dataAgendada (sem mudar feita).
+// Registra que a AÇÃO de uma subtarefa foi executada (o botão de atalho rodou).
+// É o log de auditoria ("o que foi feito, quando, por quem") e a base do
+// "↻ refazer". NÃO marca a subtarefa como feita — isso continua sendo o
+// checkbox. Mantém só as últimas 10 execuções por subtarefa.
+export async function registrarExecucao(
+  admissao: Admissao,
+  subtarefaId: string,
+  tipo: string,
+  pessoa: Pessoa,
+): Promise<void> {
+  const em = new Date().toISOString();
+  const subtarefas = (admissao.subtarefas || []).map((s) => {
+    if (s.id !== subtarefaId) return s;
+    const execucoes = [...(s.execucoes || []), { tipo, em, por: { id: pessoa.id, nome: pessoa.nome } }].slice(-10);
+    return { ...s, execucoes };
+  });
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    subtarefas,
+    updatedAt: em,
+  }));
+}
 export async function atualizarSubtarefa(
   admissao: Admissao,
   subtarefaId: string,

@@ -2710,6 +2710,9 @@ export type SubtarefaAdmissao = SubtarefaTemplate & {
   observacao?: string;
   link?: string;                     // URL externa (se pedeLink)
   dataAgendada?: string;             // "YYYY-MM-DDTHH:MM" local — se pedeDataHora
+  // Registro de execuções da ação (atalho) — "o que foi feito, quando, por quem".
+  // Cada clique no botão de ação registra aqui (audit + base do "↻ refazer").
+  execucoes?: { tipo: string; em: string; por: { id: string; nome: string } }[];
 };
 
 export type KanbanColuna = {
