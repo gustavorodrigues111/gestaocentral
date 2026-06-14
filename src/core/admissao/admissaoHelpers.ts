@@ -179,6 +179,8 @@ Aqui é da equipe do {{restaurante}}. Estamos com tudo pronto pra sua admissão 
 
 {{linkAdmissao}}
 
+📎 No próprio formulário você também envia os seus *documentos* e confirma a *abertura/posse da conta Itaú* — já deixa eles à mão pra agilizar.
+
 Você tem {{prazoLabel}} pra preencher. Depois desse prazo o link expira automaticamente.
 
 Para acessar, vai ser solicitado o e-mail que você me informou.
