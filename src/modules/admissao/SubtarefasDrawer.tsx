@@ -50,11 +50,13 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
   montarHistoricoAdmissao,
+  conferirDocumento, todosDocumentosConferidos, marcarDocumentosSubidosDrive,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
+import { uploadFileToFolder } from "../../core/google/driveClient";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
@@ -558,6 +560,13 @@ export function SubtarefasDrawer({
                 );
               })}
           </div>
+
+          {/* 📎 Documentos do candidato — conferência + envio pro Drive */}
+          <DocumentosConferencia
+            admissao={admissao}
+            activeRestaurant={activeRestaurant}
+            pessoa={pessoa}
+          />
 
           {/* 🕘 Histórico — linha do tempo de tudo que rolou na admissão */}
           {(() => {
@@ -1181,5 +1190,177 @@ function NovaEntregaWrapper({
       admissaoContexto={admissao}
       onClose={onClose}
     />
+  );
+}
+
+// ─── Conferência de documentos do candidato (DP) ─────────────────────────────
+// Lista os documentos que o candidato resolveu no form. O DP confere 1 a 1
+// (abrindo cada arquivo) e, quando TODOS estão conferidos, libera o botão
+// "📤 Subir pro Drive" que joga os arquivos na subpasta "Documentos do
+// Empregado". Só aparece depois que o candidato enviou o form com documentos.
+function DocumentosConferencia({
+  admissao, activeRestaurant, pessoa,
+}: {
+  admissao: Admissao;
+  activeRestaurant: Restaurant;
+  pessoa: Pessoa;
+}) {
+  const itens = admissao.documentos?.itens || [];
+  const [busy, setBusy] = useState<string | null>(null); // docId | "__drive__"
+  const [erro, setErro] = useState("");
+
+  if (itens.length === 0) return null;
+
+  const jaSubiu = !!admissao.documentos?.subidoDriveEm;
+  const todosOk = todosDocumentosConferidos(admissao);
+  const conferidos = itens.filter((i) => i.conferido).length;
+  const totalArquivos = itens.reduce((n, it) => n + (it.arquivos?.length || 0), 0);
+
+  async function toggleConferido(it: typeof itens[number]) {
+    setErro("");
+    setBusy(it.docId);
+    try {
+      await conferirDocumento(
+        admissao, it.docId, !it.conferido, { id: pessoa.id, nome: pessoa.nome },
+      );
+    } catch (e) {
+      setErro("Erro ao conferir: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function subirParaDrive() {
+    if (!admissao.documentos) return;
+    setErro("");
+    setBusy("__drive__");
+    try {
+      const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
+      const folderId = tree.documentos;
+      if (!folderId) throw new Error("Subpasta 'Documentos do Empregado' não encontrada no Drive.");
+      for (const it of itens) {
+        for (const arq of it.arquivos || []) {
+          const resp = await fetch(arq.url);
+          if (!resp.ok) throw new Error(`Não consegui baixar "${arq.nome}" do armazenamento.`);
+          const blob = await resp.blob();
+          const nomeArquivo = `${it.nome} - ${arq.nome}`.replace(/\//g, "-");
+          const file = new File([blob], nomeArquivo, { type: arq.tipo || blob.type });
+          await uploadFileToFolder(folderId, file);
+        }
+      }
+      await marcarDocumentosSubidosDrive(
+        admissao.id, admissao.documentos, { id: pessoa.id, nome: pessoa.nome },
+      );
+      alert("Documentos enviados pra pasta 'Documentos do Empregado' no Drive ✓");
+    } catch (e) {
+      setErro("Erro ao subir pro Drive: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <details className="mx-4 mb-3 rounded-lg border border-indigo-200 dark:border-indigo-900" open>
+      <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 select-none">
+        📎 Documentos do candidato ({conferidos}/{itens.length} conferidos)
+      </summary>
+      <div className="px-3 pb-3 space-y-2">
+        {erro && (
+          <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
+            {erro}
+          </div>
+        )}
+
+        {itens.map((it) => {
+          const anexado = it.resolucao === "anexado" && (it.arquivos?.length || 0) > 0;
+          return (
+            <div
+              key={it.docId}
+              className={`rounded-lg border p-2 ${
+                it.conferido
+                  ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30"
+                  : "border-gray-200 dark:border-gray-800"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{it.nome}</div>
+                  {!anexado && (
+                    <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                      {it.resolucao === "nao_tenho" ? "Não tem" : "Não se aplica"}
+                      {it.justificativa ? <>: <span className="italic text-gray-600 dark:text-gray-300">{it.justificativa}</span></> : null}
+                    </div>
+                  )}
+                </div>
+                <label className="flex items-center gap-1 text-[11px] cursor-pointer shrink-0 select-none">
+                  <input
+                    type="checkbox"
+                    checked={!!it.conferido}
+                    disabled={busy === it.docId}
+                    onChange={() => void toggleConferido(it)}
+                    className="accent-emerald-600 w-4 h-4"
+                  />
+                  conferido
+                </label>
+              </div>
+              {anexado && (
+                <div className="mt-1.5 space-y-1">
+                  {it.arquivos.map((a, i) => (
+                    <a
+                      key={`${a.path}_${i}`}
+                      href={a.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline truncate"
+                    >
+                      📄 {a.nome}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Subir pro Drive — só com tudo conferido */}
+        {isDriveConfigured() ? (
+          <div className="pt-1">
+            <button
+              type="button"
+              onClick={() => void subirParaDrive()}
+              disabled={!todosOk || jaSubiu || busy !== null}
+              className={`w-full text-xs font-semibold rounded-lg px-3 py-2 ${
+                jaSubiu
+                  ? "bg-emerald-100 text-emerald-700 cursor-default"
+                  : todosOk
+                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
+                    : "bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800"
+              }`}
+            >
+              {jaSubiu
+                ? "✓ Documentos já enviados pro Drive"
+                : busy === "__drive__"
+                  ? "Enviando pro Drive…"
+                  : `📤 Subir ${totalArquivos} arquivo(s) pro Drive`}
+            </button>
+            {!todosOk && !jaSubiu && (
+              <p className="text-[10px] text-gray-500 text-center mt-1">
+                Confira todos os documentos pra liberar o envio.
+              </p>
+            )}
+            {jaSubiu && admissao.documentos?.subidoDriveEm && (
+              <p className="text-[10px] text-gray-500 text-center mt-1">
+                Enviado em {new Date(admissao.documentos.subidoDriveEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                {admissao.documentos.subidoDrivePor ? ` · ${admissao.documentos.subidoDrivePor.nome}` : ""}
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[10px] text-gray-400 italic">
+            Conecte o Google Drive (em Configurações) pra subir os documentos.
+          </p>
+        )}
+      </div>
+    </details>
   );
 }
