@@ -9,18 +9,22 @@
 //  sem alternating (single only — admissão MVP).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
-import type { Admissao, Cargo, HorarioDia, Restaurant } from "../../core/types";
+import type { Admissao, Cargo, Empregado, HorarioDia, Restaurant } from "../../core/types";
 import { atualizarDadosBasicos } from "../../core/admissao/admissaoHelpers";
 import { useAuth } from "../../core/auth/AuthContext";
 import {
   fmtHHMM,
+  getActiveWorkSchedule,
   validateWorkScheduleDays,
 } from "../../core/escala/horarios";
+import { todayYmd } from "../../core/utils/date";
 
 const DIAS_LABEL = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -96,6 +100,40 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
   const [dias, setDias] = useState<DiasState>(diasIniciais(admissao.horariosCadastrados));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  // Empregados do restaurante — pra copiar um horário existente.
+  const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [copiarDe, setCopiarDe] = useState("");
+  useEffect(() => {
+    let vivo = true;
+    getDocs(query(collection(db, "empregados"), where("restaurantId", "==", activeRestaurant.id)))
+      .then((snap) => { if (vivo) setEmpregados(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empregado))); })
+      .catch(() => { /* sem lista de cópia */ });
+    return () => { vivo = false; };
+  }, [activeRestaurant.id]);
+
+  // Empregados que têm um horário vigente aproveitável.
+  const empComHorario = useMemo(
+    () => empregados
+      .filter((e) => e.estaAtivo !== false && !!getActiveWorkSchedule(e.workSchedules, todayYmd()))
+      .sort((a, b) => (a.nome || "").localeCompare(b.nome || "")),
+    [empregados],
+  );
+
+  function copiarHorario(empId: string) {
+    const emp = empregados.find((e) => e.id === empId);
+    const ws = emp && getActiveWorkSchedule(emp.workSchedules, todayYmd());
+    if (!ws) return;
+    const src = ws.type === "alternating" ? ws.weeks?.A.days : ws.days;
+    if (!src) { setErro("Esse empregado não tem horário simples pra copiar."); return; }
+    const novo: DiasState = {};
+    for (let i = 0; i < 7; i++) {
+      const d = src[i];
+      novo[i] = { active: d?.active || false, in: d?.in || "", out: d?.out || "", break: d?.break || 0 };
+    }
+    setDias(novo);
+    setErro("");
+  }
 
   const cargosAtivos = cargos.filter((c) => c.ativo).sort((a, b) => a.nome.localeCompare(b.nome));
 
@@ -217,6 +255,31 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
             Marque os dias ativos e informe entrada, saída e intervalo (min). Dias
             sem marcação ficam como folga.
           </p>
+
+          {/* Copiar horário de um empregado existente */}
+          {empComHorario.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap text-xs bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2">
+              <span className="text-gray-500 dark:text-gray-400">📋 Copiar horário de:</span>
+              <select
+                value={copiarDe}
+                onChange={(e) => setCopiarDe(e.target.value)}
+                className="flex-1 min-w-[140px] px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+              >
+                <option value="">— escolher empregado —</option>
+                {empComHorario.map((e) => (
+                  <option key={e.id} value={e.id}>{e.nome}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                disabled={!copiarDe}
+                onClick={() => copiarHorario(copiarDe)}
+                className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white text-xs font-semibold"
+              >
+                Copiar
+              </button>
+            </div>
+          )}
           <div className="space-y-1.5">
             {/* Header só aparece em desktop. Em mobile cada linha vira card */}
             <div className="hidden sm:grid grid-cols-[60px_60px_1fr_1fr_80px] gap-2 text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold px-2">
