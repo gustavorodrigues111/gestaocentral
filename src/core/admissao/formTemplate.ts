@@ -295,10 +295,10 @@ const CK_ONBOARDING_D1  = { id: "ck_onboarding_d1",  nome: "🚀 Onboarding (D1)
 const CK_CADASTROS_POS  = { id: "ck_cadastros_pos",  nome: "📝 Cadastros pós-admissão" };
 
 // ════════════════════════════════════════════════════════════════════════════
-//  Nenhum item tem `autoTrigger` — TODA marcação é manual via botão de ação
-//  no drawer (atalho) + checkbox. O usuário clica no botão pra executar a
-//  ação (abrir modal, enviar email, etc), e depois marca o checkbox quando
-//  considerar concluído.
+//  Quase tudo é manual (botão de ação no drawer + checkbox). A ÚNICA exceção é
+//  "st_candidato_preencheu", que tem autoTrigger "form_preenchido" e se marca
+//  sozinha quando o candidato envia o formulário. O checkbox continua marcável
+//  à mão (rede de segurança se o auto falhar).
 // ════════════════════════════════════════════════════════════════════════════
 const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   // ─── Col 1: Pessoas a admitir ───
@@ -313,6 +313,12 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { atalho: { tipo: "criar_pasta_drive" } }),
 
   // ─── Col 2: Aguardando preenchimento e Solicitação de Exames e Conta ───
+  // Auto-marca quando o candidato envia o formulário (autoTrigger "form_preenchido").
+  // É obrigatória → enquanto o candidato não preenche, a coluna NÃO fica 100%
+  // (mostra "aguardando candidato") e avançar à mão alerta a pendência.
+  st("st_candidato_preencheu", "Candidato preencheu o formulário",
+     "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
+     { autoTrigger: "form_preenchido" }),
   st("st_solicitar_info", "Solicitar informações de admissão (cargo, horário e empresa)",
      "col_enviado", CK_ENVIO_LINK.id, CK_ENVIO_LINK.nome, true,
      { atalho: { tipo: "editar_dados_basicos" } }),
