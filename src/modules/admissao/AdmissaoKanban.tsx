@@ -37,6 +37,7 @@ import {
   getKanbanColunas,
   getPrazoDias,
   getSchemaAdmissao,
+  estenderPrazoAdmissao,
   iniciarAdmissao,
   linkWhatsAppCandidato,
   marcarLinkEnviado,
@@ -46,6 +47,7 @@ import {
   progressoSubtarefasColuna,
   proximoStatus,
   reabrirAdmissao,
+  reenviarAdmissao,
   statusAnterior,
   statusEfetivo,
   subtarefasPendentesObrigatorias,
@@ -56,6 +58,7 @@ import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
 import { ADMISSAO_STATUS_LABEL as STATUS_LABEL } from "../../core/types";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
+import { VerPreenchimentoModal } from "./VerPreenchimentoModal";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 
 function fmtDataHora(iso: string): string {
@@ -102,6 +105,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   // Modal de cancelar — guarda admissão sendo cancelada
   const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
   const [formAdm, setFormAdm] = useState<Admissao | null>(null);
+  const [verAdm, setVerAdm] = useState<Admissao | null>(null);
   // Drag state (id do card sendo arrastado + coluna origem)
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTargetColId, setDropTargetColId] = useState<string | null>(null);
@@ -295,6 +299,36 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     }
   }
 
+  async function copiarLink(adm: Admissao) {
+    const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
+    try { await navigator.clipboard.writeText(url); alert("Link copiado:\n\n" + url); }
+    catch { window.prompt("Copie o link do formulário:", url); }
+  }
+  async function estender(adm: Admissao, horas: number) {
+    if (!me) return;
+    try {
+      const novo = await estenderPrazoAdmissao(adm, horas, me);
+      alert(`Prazo estendido em ${horas}h.\n\nNovo limite: ${fmtDataHora(novo)}`);
+    } catch (e) {
+      alert("Erro ao estender prazo: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+  // Gera um link NOVO (token novo — invalida o anterior) e reabre o WhatsApp.
+  async function novoToken(adm: Admissao) {
+    if (!me) return;
+    if (!confirm(`Gerar um link NOVO pra ${adm.candidato.nome}?\n\nO link anterior deixa de funcionar. Use quando o link expirou ou vazou.`)) return;
+    try {
+      const prazoDias = getPrazoDias(activeRestaurant);
+      const { token } = await reenviarAdmissao(adm, prazoDias, me);
+      const url = urlPublicaAdmissao(token, activeRestaurant.subdomain);
+      const msg = montarMensagemEnvioLink(adm.candidato.nome, activeRestaurant.nome, url, prazoDias, activeRestaurant);
+      const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
+      if (link) window.open(link, "_blank");
+    } catch (e) {
+      alert("Erro ao gerar novo link: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
   async function reabrirCard(adm: Admissao) {
     if (!me?.isMaster) return;
     const destinoStatus = adm.statusAntesCancelamento || "pronto_admissao";
@@ -384,6 +418,15 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         />
       )}
 
+      {/* Ver preenchimento (só-leitura) — com handoff pra editar */}
+      {verAdm && (
+        <VerPreenchimentoModal
+          admissao={verAdm}
+          onClose={() => setVerAdm(null)}
+          onEditar={() => { const a = verAdm; setVerAdm(null); setFormAdm(a); }}
+        />
+      )}
+
       {showNovaModal && (
         <IniciarAdmissaoModal
           rid={rid}
@@ -469,9 +512,12 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onExcluir={() => excluirCard(a)}
                     onCancelar={() => setAdmCancelando(a)}
                     onReabrir={() => reabrirCard(a)}
-                    onAbrirFormulario={() => setFormAdm(a)}
+                    onAbrirFormulario={() => setVerAdm(a)}
                     onEnviarLink={() => enviarLink(a)}
                     onConcluir={() => concluirCriarEmpregado(a)}
+                    onCopiarLink={() => copiarLink(a)}
+                    onEstender={(h) => estender(a, h)}
+                    onNovoToken={() => novoToken(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -492,7 +538,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onNovoToken,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -510,6 +556,9 @@ function KanbanCard({
   onAbrirFormulario: () => void;
   onEnviarLink: () => void;
   onConcluir: () => void;
+  onCopiarLink: () => void;
+  onEstender: (horas: number) => void;
+  onNovoToken: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -587,14 +636,24 @@ function KanbanCard({
         </button>
       )}
       {adm.status === "formulario_enviado" && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
-          className="w-full mt-2 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
-          title="Reabre o WhatsApp com o mesmo link e renova o prazo"
-        >
-          🔄 Reenviar link (WhatsApp)
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+            className="w-full mt-2 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
+            title="Reabre o WhatsApp com o mesmo link e renova o prazo"
+          >
+            🔄 Reenviar link (WhatsApp)
+          </button>
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5 text-[10px] text-gray-500 dark:text-gray-400">
+            <button type="button" onClick={(e) => { e.stopPropagation(); onCopiarLink(); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">📋 copiar link</button>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(12); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">⏱ +12h</button>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(24); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">+24h</button>
+            <span className="text-gray-300 dark:text-gray-700">·</span>
+            <button type="button" onClick={(e) => { e.stopPropagation(); onNovoToken(); }} className="hover:text-rose-600 dark:hover:text-rose-400 hover:underline" title="Gera um link novo (invalida o anterior) — pra link expirado">🔑 novo link</button>
+          </div>
+        </>
       )}
 
       {/* Botões ◀ ▶ — só pra cards não-terminais e com etapa próxima/anterior */}
@@ -630,9 +689,9 @@ function KanbanCard({
             type="button"
             onClick={(e) => { e.stopPropagation(); onAbrirFormulario(); }}
             className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
-            title="Abrir o formulário do candidato pra visualizar e editar"
+            title="Ver o que o candidato preencheu (só leitura). Dá pra editar de lá."
           >
-            👁 Formulário
+            👁 Ver preenchimento
           </button>
           <button
             type="button"
