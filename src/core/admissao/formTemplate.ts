@@ -284,7 +284,7 @@ function st(
 // IDs e nomes de checklists — declarados como constantes pra evitar typos.
 const CK_DADOS_BASICOS  = { id: "ck_dados_basicos",  nome: "📝 Dados básicos" };
 const CK_ENVIO_LINK     = { id: "ck_envio_link",     nome: "📨 Envio do link" };
-const CK_INSTRUCOES     = { id: "ck_instrucoes",     nome: "📣 Enviar/reforçar instruções para o candidato" };
+const CK_EXAMES         = { id: "ck_exames",         nome: "🏥 Exames médicos" };
 const CK_DADOS_INTERNOS = { id: "ck_dados_internos", nome: "📋 Dados internos" };
 const CK_CONTABILIDADE  = { id: "ck_contabilidade",  nome: "📤 Contabilidade" };
 const CK_ASSINATURAS    = { id: "ck_assinaturas",    nome: "📃 Assinaturas" };
@@ -330,6 +330,14 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
      { atalho: { tipo: "editar_dados_finais" } }),
 
   // ─── Col 3: Exames, conta e dados internos ───
+  // 🏥 Exames PRIMEIRO: agenda com a clínica → depois avisa o candidato (data +
+  // local + instruções), gated na data do exame.
+  st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica",
+     "col_preenchido", CK_EXAMES.id, CK_EXAMES.nome, true,
+     { atalho: { tipo: "contato_clinica" } }),
+  st("st_avisar_exame", "Avisar o candidato sobre o exame (data, local e instruções)",
+     "col_preenchido", CK_EXAMES.id, CK_EXAMES.nome, true,
+     { pedeDataHora: true, atalho: { tipo: "whatsapp_instrucoes_candidato" } }),
   st("st_conferir_docs", "Conferir recebimento dos documentos enviados pelo candidato",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
      { atalho: { tipo: "checklist_docs_whatsapp" } }),
@@ -339,9 +347,6 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_cadastro_banco", "Solicitar cadastro empregado no Banco",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
      { atalho: { tipo: "contato_financeiro" } }),
-  st("st_agendar_exames", "Agendar exames médicos (clínico + manipulador de alimentos) com a clínica",
-     "col_preenchido", CK_INSTRUCOES.id, CK_INSTRUCOES.nome, true,
-     { atalho: { tipo: "contato_clinica" } }),
 
   // ─── Col 4: Contabilidade & contratos ───
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
