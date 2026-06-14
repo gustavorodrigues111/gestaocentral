@@ -5,12 +5,9 @@
 //    ⚙️ Configurações — prazo, WhatsApp DP, editor de schema, layout do Kanban
 //
 //  Aba "Pessoas em admissão" foi removida — toda gestão acontece no Kanban
-//  (drag-drop, botões ◀▶ no card, click pra abrir checklist).
-//
-//  TODO: O arquivo AdmissaoLista.tsx ainda existe no repo porque tem ações
-//  que ainda não foram migradas pro Kanban (cancelar admissão, reabrir,
-//  concluir/criar empregado, estender prazo, reenviar link). Em commits
-//  futuros essas ações vêm pro card / drawer.
+//  (drag-drop, botões ◀▶ no card, click pra abrir checklist). Todas as ações
+//  (enviar/reenviar/copiar link, estender prazo, concluir→criar empregado,
+//  cancelar, reabrir, ver preenchimento) vivem no card/drawer.
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState } from "react";

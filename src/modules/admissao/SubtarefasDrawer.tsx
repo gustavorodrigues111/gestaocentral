@@ -49,6 +49,7 @@ import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
+  montarHistoricoAdmissao,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -557,6 +558,29 @@ export function SubtarefasDrawer({
                 );
               })}
           </div>
+
+          {/* 🕘 Histórico — linha do tempo de tudo que rolou na admissão */}
+          {(() => {
+            const hist = montarHistoricoAdmissao(admissao);
+            return (
+              <details className="mx-4 mb-3 rounded-lg border border-gray-200 dark:border-gray-800">
+                <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 select-none">
+                  🕘 Histórico ({hist.length})
+                </summary>
+                <div className="px-3 pb-3 space-y-1.5">
+                  {hist.length === 0 && <div className="text-[11px] text-gray-400 italic">Sem eventos ainda.</div>}
+                  {hist.map((e, i) => (
+                    <div key={i} className="flex items-start gap-2 text-[11px]">
+                      <span className="text-gray-400 dark:text-gray-500 tabular-nums whitespace-nowrap">
+                        {new Date(e.em).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="text-gray-700 dark:text-gray-200">{e.texto}{e.por ? <span className="text-gray-400"> · {e.por}</span> : null}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            );
+          })()}
 
           {intencao === "avancar" && onConfirmarAvanco && proxStatus && (
             <footer className="border-t border-gray-200 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-900/60">

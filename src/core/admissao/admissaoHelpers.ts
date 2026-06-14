@@ -1143,6 +1143,34 @@ export function instanciarSubtarefas(template: SubtarefaTemplate[]): SubtarefaAd
 //   - Mantém subtarefas órfãs (existiam na admissão mas saíram do template)
 //     pra não perder dados; ficam soltas no final.
 // Idempotente — retorna o mesmo array por referência quando não há diferença.
+// ─── Histórico / linha do tempo da admissão ─────────────────────────────────
+// Monta a timeline a partir dos campos timestamped que já existem no doc
+// (sem nova persistência): criação, envio/reenvio do link, extensões de prazo,
+// preenchimento, conferências, criação do empregado, cancelamento, finalização,
+// subtarefas concluídas e execuções de ações registradas.
+export type EventoHistorico = { em: string; texto: string; por?: string };
+export function montarHistoricoAdmissao(a: Admissao): EventoHistorico[] {
+  const ev: EventoHistorico[] = [];
+  const push = (em: string | undefined, texto: string, por?: string) => { if (em) ev.push({ em, texto, por }); };
+  push(a.iniciadoEm, "📝 Admissão criada", a.iniciadoPor?.nome);
+  push(a.enviadoEm, "📨 Link enviado ao candidato");
+  for (const r of a.reenvios || []) push(r.em, "🔄 Link reenviado (novo token)", r.porNome);
+  for (const x of a.extensoesPrazo || []) push(x.em, `⏱ Prazo estendido +${x.horas}h`, x.porNome);
+  push(a.preenchidoEm, "📋 Candidato preencheu o formulário");
+  if (a.preenchimentoManual) push(a.preenchimentoManual.em, "📋 Formulário preenchido (manual pelo RH)", a.preenchimentoManual.por?.nome);
+  push(a.dadosRevisadosEm, "✏️ Dados revisados", a.dadosRevisadosPor?.nome);
+  push(a.documentosRecebidosEm, "📎 Documentos conferidos", a.documentosRecebidosPor?.nome);
+  push(a.clicksignEnviadoEm, "🔗 Enviado pro Clicksign");
+  push(a.aprovadoEm, "✅ Pessoa + Empregado criados", a.aprovadoPor?.nome);
+  push(a.canceladoEm, "❌ Admissão cancelada", a.canceladoPor?.nome);
+  push(a.finalizadoEm, "📦 Admissão finalizada", a.finalizadoPor?.nome);
+  for (const s of a.subtarefas || []) {
+    if (s.feita && s.feitaEm) push(s.feitaEm, `✓ ${s.nome}`, s.feitaPor?.nome);
+    for (const x of s.execucoes || []) push(x.em, `↻ ação: ${s.nome}`, x.por?.nome);
+  }
+  return ev.sort((x, y) => x.em.localeCompare(y.em));
+}
+
 export function sincronizarSubtarefasComTemplate(
   atuais: SubtarefaAdmissao[],
   template: SubtarefaTemplate[],
