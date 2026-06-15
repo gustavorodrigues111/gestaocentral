@@ -490,7 +490,7 @@ function usePrecificar(shift: FreelaShift, todosShifts: FreelaShift[]) {
 
 // Chips de tarifa com valores predeterminados (hardcoded).
 function TarifaPicker({
-  hist, valorTipo, valorUnit, outroAtivo, onAplicar, setValorUnit, disabled,
+  hist, valorTipo, valorUnit, outroAtivo, onAplicar, setValorUnit, disabled, block,
 }: {
   hist: ReturnType<typeof historicoDaPessoa>;
   valorTipo: "hora" | "diaria";
@@ -499,31 +499,33 @@ function TarifaPicker({
   onAplicar: (tipo: "hora" | "diaria", v: number) => void;
   setValorUnit: (n: number) => void;
   disabled?: boolean;
+  // block: layout empilhado/largura-cheia (mobile). Sem block = inline (desktop).
+  block?: boolean;
 }) {
   const presets = valoresPraTipo(valorTipo);
 
   function chipCls(ativo: boolean) {
-    const baseCls = "text-xs font-semibold px-3 py-1.5 rounded-full transition-colors border";
+    const baseCls = `text-xs font-semibold px-3 py-1.5 rounded-full transition-colors border ${block ? "w-full text-center" : ""}`;
     if (ativo) return `${baseCls} bg-indigo-600 text-white border-indigo-600`;
     return `${baseCls} bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800`;
   }
 
   return (
     <div className="space-y-2">
-      <div className="inline-flex rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 text-[11px]">
+      <div className={`${block ? "grid grid-cols-2" : "inline-flex"} rounded-lg overflow-hidden border border-gray-300 dark:border-gray-700 text-[11px]`}>
         <button
           type="button" disabled={disabled}
           onClick={() => onAplicar("hora", 0)}
-          className={`px-2 py-1 ${valorTipo === "hora" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
+          className={`px-2 py-1.5 ${valorTipo === "hora" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
         >Hora</button>
         <button
           type="button" disabled={disabled}
           onClick={() => onAplicar("diaria", 0)}
-          className={`px-2 py-1 ${valorTipo === "diaria" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
+          className={`px-2 py-1.5 ${valorTipo === "diaria" ? "bg-gray-700 text-white" : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"}`}
         >Diária</button>
       </div>
 
-      <div className="flex items-center gap-1.5 flex-wrap">
+      <div className={block ? "grid grid-cols-3 gap-1.5" : "flex items-center gap-1.5 flex-wrap"}>
         {presets.map((p) => {
           const ativo = !outroAtivo && Math.abs(p - valorUnit) < 0.01;
           return (
@@ -546,7 +548,7 @@ function TarifaPicker({
         >
           Outro
         </button>
-        {outroAtivo && (
+        {!block && outroAtivo && (
           <input
             type="number" min={0} step="0.01"
             value={valorUnit > 0.01 ? valorUnit : ""}
@@ -559,6 +561,19 @@ function TarifaPicker({
           />
         )}
       </div>
+
+      {block && outroAtivo && (
+        <input
+          type="number" min={0} step="0.01"
+          value={valorUnit > 0.01 ? valorUnit : ""}
+          onChange={(e) => setValorUnit(parseFloat(e.target.value) || 0.01)}
+          onBlur={() => onAplicar(valorTipo, valorUnit)}
+          disabled={disabled}
+          placeholder="Valor (R$)"
+          autoFocus
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50"
+        />
+      )}
 
       {/* Info contextual: último valor pago a esse freela */}
       <div className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -610,13 +625,13 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   return (
     <div className="px-3 py-3">
-      <div className="flex items-center justify-between gap-2 mb-1">
+      <div className="flex items-start justify-between gap-2 mb-1">
         <div className="min-w-0 flex-1">
           <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
-          <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</div>
+          <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 break-words">{shift.nomeSnapshot}</div>
           {!shift.pixSnapshot && <div className="text-[10px] text-red-600">⚠ sem PIX</div>}
         </div>
-        <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</div>
+        <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">{fmtBR(s.total)}</div>
       </div>
       <div className="text-xs text-gray-700 dark:text-gray-300 mb-2">
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
@@ -626,11 +641,10 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
         valorTipo={s.valorTipo} valorUnit={s.valorUnit} outroAtivo={s.outroAtivo}
         onAplicar={s.aplicarTarifa} setValorUnit={s.setValorUnit}
         disabled={!podeEditar || s.saving}
+        block
       />
       {podeEditar && (
-        <div className="flex justify-end mt-2">
-          <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
-        </div>
+        <Button size="sm" className="w-full mt-3" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
       )}
     </div>
   );
