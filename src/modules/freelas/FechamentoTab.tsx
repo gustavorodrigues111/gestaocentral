@@ -12,6 +12,7 @@ import {
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
+import { HorarioModal } from "./HorarioModal";
 
 type Props = {
   restaurantId: string;
@@ -589,6 +590,7 @@ function TarifaPicker({
 function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+  const [editar, setEditar] = useState(false);
   return (
     <tr className="border-t border-gray-100 dark:border-gray-800 align-top">
       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
@@ -601,6 +603,18 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: Freel
       <td className="px-2 py-3 text-xs text-gray-700 dark:text-gray-300">
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""}
         <div className="text-[11px] text-gray-500">{fmtHoras(horas)}</div>
+        {podeEditar && (
+          <button
+            type="button"
+            onClick={() => setEditar(true)}
+            className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5"
+          >
+            ✏️ editar horário
+          </button>
+        )}
+        {editar && (
+          <HorarioModal shift={shift} mode="editar" onClose={() => setEditar(false)} onSaved={() => setEditar(false)} />
+        )}
       </td>
       <td className="px-2 py-3">
         <TarifaPicker
@@ -623,6 +637,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: Freel
 function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+  const [editar, setEditar] = useState(false);
   return (
     <div className="px-3 py-3">
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -633,9 +648,17 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
         </div>
         <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">{fmtBR(s.total)}</div>
       </div>
-      <div className="text-xs text-gray-700 dark:text-gray-300 mb-2">
-        {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
+      <div className="text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2 flex-wrap">
+        <span>{shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}</span>
+        {podeEditar && (
+          <button type="button" onClick={() => setEditar(true)} className="text-indigo-600 dark:text-indigo-400 hover:underline">
+            ✏️ editar
+          </button>
+        )}
       </div>
+      {editar && (
+        <HorarioModal shift={shift} mode="editar" onClose={() => setEditar(false)} onSaved={() => setEditar(false)} />
+      )}
       <TarifaPicker
         hist={s.hist}
         valorTipo={s.valorTipo} valorUnit={s.valorUnit} outroAtivo={s.outroAtivo}
