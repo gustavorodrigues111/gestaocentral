@@ -222,26 +222,26 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
         {shift.area && <span> · {shift.area}</span>}
       </div>
 
-      {/* botões de ação (linha própria — não espremem o texto) */}
+      {/* botões de ação: grid 2 colunas, todos com texto e mesmo tamanho */}
       {temAcoes && (
-        <div className="flex flex-wrap items-center gap-2 mt-2">
+        <div className="grid grid-cols-2 gap-2 mt-2">
           {zona === "abrir" && (
-            <Button size="sm" onClick={() => setModalMode("abrir")} disabled={saving}>🟢 Abrir turno</Button>
+            <Button size="sm" className="w-full" onClick={() => setModalMode("abrir")} disabled={saving}>🟢 Abrir turno</Button>
           )}
           {zona === "fechar" && (
             <>
-              <Button size="sm" variant="secondary" onClick={() => setModalMode("intervalo")} disabled={saving}>⏸️ Intervalo</Button>
-              <Button size="sm" onClick={() => setModalMode("fechar")} disabled={saving}>🔴 Fechar turno</Button>
+              <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("intervalo")} disabled={saving}>⏸️ Intervalo</Button>
+              <Button size="sm" className="w-full" onClick={() => setModalMode("fechar")} disabled={saving}>🔴 Fechar turno</Button>
             </>
           )}
           {zona === "realizado" && (
-            <Button size="sm" variant="secondary" onClick={() => setModalMode("editar")} disabled={saving}>✏️ Editar</Button>
+            <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("editar")} disabled={saving}>✏️ Editar turno</Button>
           )}
           {(zona === "abrir" || zona === "fechar") && (
-            <button type="button" onClick={naoCompareceu} disabled={saving} title="Não compareceu" className="text-[16px] leading-none p-1 disabled:opacity-50">🚫</button>
+            <Button size="sm" variant="secondary" className="w-full" onClick={naoCompareceu} disabled={saving}>🚫 Não compareceu</Button>
           )}
           {zona !== "realizado" && (
-            <button type="button" onClick={excluir} disabled={saving} aria-label="Excluir" className="ml-auto text-[18px] text-gray-400 hover:text-red-600 dark:hover:text-red-400 leading-none p-1 disabled:opacity-50">🗑</button>
+            <Button size="sm" variant="danger" className="w-full" onClick={excluir} disabled={saving}>🗑 Excluir</Button>
           )}
         </div>
       )}
