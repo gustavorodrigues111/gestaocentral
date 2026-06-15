@@ -8,7 +8,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
-import { AREAS, type Area, type Empregado, type FreelaIntervalo, type Pessoa } from "../../core/types";
+import { AREAS, type Area, type Empregado, type FreelaIntervalo, type FreelaShift, type Pessoa } from "../../core/types";
 import { onlyDigits, resolverPixWhats } from "./helpers";
 import { SeletorSemana } from "./SeletorSemana";
 import { CadastroPorCpf } from "./CadastroPorCpf";
@@ -23,6 +23,9 @@ type Props = {
   // campos previstos. "avulso" → abre um turno agora (status aberto, hoje),
   // grava a entrada REAL — sem planejamento.
   modo?: "planejar" | "avulso";
+  // Quando presente, o modal ALTERA um turno planejado existente (mesma pessoa,
+  // edita data/área/previsto/obs) em vez de criar um novo.
+  editShift?: FreelaShift;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -34,17 +37,18 @@ type SelecionadoFreela = { tipo: "freela"; pessoa: Pessoa };
 type Selecionado = SelecionadoEmp | SelecionadoFreela | null;
 
 export function NovoTurnoModal({
-  restaurantId, empregados, pessoas, initialDate, modo = "planejar", onClose, onSaved,
+  restaurantId, empregados, pessoas, initialDate, modo = "planejar", editShift, onClose, onSaved,
 }: Props) {
   const { pessoa: me } = useAuth();
-  const isAvulso = modo === "avulso";
-  // Avulso é sempre hoje (abrir agora). Planejar pode ser hoje ou futuro.
-  const [date, setDate] = useState(isAvulso ? todayYmd() : (initialDate || todayYmd()));
-  const [area, setArea] = useState<Area | "">("");
-  const [entrada, setEntrada] = useState("");
-  const [saidaPrevista, setSaidaPrevista] = useState("");
-  const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>([]);
-  const [obs, setObs] = useState("");
+  const isEdit = !!editShift;
+  const isAvulso = modo === "avulso" && !isEdit;
+  // Avulso é sempre hoje (abrir agora). Planejar/editar pode ser hoje ou futuro.
+  const [date, setDate] = useState(editShift?.date || (isAvulso ? todayYmd() : (initialDate || todayYmd())));
+  const [area, setArea] = useState<Area | "">(editShift?.area || "");
+  const [entrada, setEntrada] = useState(editShift?.entradaPrevista || "");
+  const [saidaPrevista, setSaidaPrevista] = useState(editShift?.saidaPrevista || "");
+  const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>(editShift?.intervalosPrevistos || []);
+  const [obs, setObs] = useState(editShift?.observacao || "");
 
   const [escolhaTipo, setEscolhaTipo] = useState<EscolhaTipo>(null);
   const [selecionado, setSelecionado] = useState<Selecionado>(null);
@@ -92,7 +96,7 @@ export function NovoTurnoModal({
       setErr("Você não está autenticado. Faça login novamente.");
       return;
     }
-    if (!selecionado) { setErr("Selecione um freela."); return; }
+    if (!isEdit && !selecionado) { setErr("Selecione um freela."); return; }
     if (!date) { setErr("Data obrigatória."); return; }
     if (!area) { setErr("Área obrigatória."); return; }
     if (isAvulso && !entrada) {
@@ -103,6 +107,29 @@ export function NovoTurnoModal({
     setSaving(true);
     try {
       const now = new Date().toISOString();
+
+      // ─── Alterar turno planejado existente (pessoa fixa) ───
+      if (isEdit && editShift) {
+        await updateDoc(doc(db, "freelaShifts", editShift.id), {
+          date,
+          scheduledDate: date,
+          area,
+          entradaPrevista: entrada || deleteField(),
+          saidaPrevista: saidaPrevista || deleteField(),
+          intervalosPrevistos: intervalos.length ? intervalos : deleteField(),
+          observacao: obs.trim() || deleteField(),
+          updatedAt: now,
+        });
+        // Empregado da casa: se a data mudou, move a marca "freela" na escala.
+        if (editShift.empregadoId && editShift.date !== date) {
+          await limparFreelaDaEscala(restaurantId, editShift.empregadoId, editShift.date);
+          await marcarFreelaNaEscala(restaurantId, editShift.empregadoId, date);
+        }
+        onSaved();
+        return;
+      }
+
+      if (!selecionado) { setSaving(false); return; }
       const isEmp = selecionado.tipo === "empregado";
       const nome  = isEmp ? selecionado.emp.nome   : selecionado.pessoa.nome;
       const cpf   = isEmp ? selecionado.emp.cpf    : selecionado.pessoa.cpf;
@@ -154,7 +181,7 @@ export function NovoTurnoModal({
 
   return (
     <Modal
-      title={isAvulso ? "🟢 Abrir turno avulso" : "📋 Planejar turno de freela"}
+      title={isEdit ? "✏️ Alterar turno planejado" : (isAvulso ? "🟢 Abrir turno avulso" : "📋 Planejar turno de freela")}
       onClose={onClose}
       maxWidth="max-w-lg"
     >
@@ -179,9 +206,21 @@ export function NovoTurnoModal({
             Quem é o freela? *
           </label>
 
+          {/* Edição: pessoa é fixa (pra trocar, exclua e crie outro turno). */}
+          {isEdit && editShift && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                {editShift.empregadoId ? "👨‍💼 " : "🎒 "}{editShift.nomeSnapshot}
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                {editShift.empregadoId ? "Empregado da casa" : "Freela"} · pra trocar a pessoa, exclua e crie outro turno
+              </div>
+            </div>
+          )}
+
           {/* Quando ainda não selecionou, as 2 abas/chips ficam sempre visíveis
               pra permitir trocar sem precisar achar um "← voltar". */}
-          {!selecionado && (
+          {!isEdit && !selecionado && (
             <>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -277,7 +316,7 @@ export function NovoTurnoModal({
           )}
 
           {/* Selecionado */}
-          {selecionado && (
+          {!isEdit && selecionado && (
             <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2">
               <div>
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -375,8 +414,8 @@ export function NovoTurnoModal({
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
-          <Button onClick={salvar} disabled={saving || !selecionado}>
-            {saving ? "Salvando…" : (isAvulso ? "🟢 Abrir turno" : "📋 Planejar")}
+          <Button onClick={salvar} disabled={saving || (!isEdit && !selecionado)}>
+            {saving ? "Salvando…" : (isEdit ? "💾 Salvar" : (isAvulso ? "🟢 Abrir turno" : "📋 Planejar"))}
           </Button>
         </div>
       </div>

@@ -42,6 +42,7 @@ export function LancamentoTab({
   const [showPlanejarLocal, setShowPlanejarLocal] = useState(false);
   const [showAvulsoLocal, setShowAvulsoLocal] = useState(false);
   const [realizadosOpen, setRealizadosOpen] = useState(false);
+  const [editShift, setEditShift] = useState<FreelaShift | null>(null);
 
   const usaExterno = showNovoExt !== undefined;
   const showPlanejar = usaExterno ? !!showNovoExt : showPlanejarLocal;
@@ -76,7 +77,7 @@ export function LancamentoTab({
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} />)}
+            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
           </div>
         )}
       </section>
@@ -88,7 +89,7 @@ export function LancamentoTab({
             📅 Planejados ({planejados.length})
           </h3>
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white/60 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-800">
-            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} />)}
+            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
           </div>
         </section>
       )}
@@ -107,7 +108,7 @@ export function LancamentoTab({
           </button>
           {realizadosOpen && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} />)}
+              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
             </div>
           )}
         </section>
@@ -132,6 +133,16 @@ export function LancamentoTab({
           pessoas={pessoas}
           onClose={fecharAvulso}
           onSaved={fecharAvulso}
+        />
+      )}
+      {editShift && (
+        <NovoTurnoModal
+          editShift={editShift}
+          restaurantId={restaurantId}
+          empregados={empregados}
+          pessoas={pessoas}
+          onClose={() => setEditShift(null)}
+          onSaved={() => setEditShift(null)}
         />
       )}
     </div>
@@ -178,7 +189,7 @@ const ZONA_CARD: Record<Zona, string> = {
 };
 
 // ── Linha de turno (display + ações por zona) ───────────────────────────────
-function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: string; podeOperar: boolean }) {
+function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; hoje: string; podeOperar: boolean; onAlterar: () => void }) {
   const { pessoa: me } = useAuth();
   const [modalMode, setModalMode] = useState<"abrir" | "fechar" | "editar" | "intervalo" | null>(null);
   const [saving, setSaving] = useState(false);
@@ -236,6 +247,9 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
           )}
           {zona === "realizado" && (
             <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("editar")} disabled={saving}>✏️ Editar turno</Button>
+          )}
+          {(zona === "abrir" || zona === "planejado_futuro") && (
+            <Button size="sm" variant="secondary" className="w-full" onClick={onAlterar} disabled={saving}>✏️ Alterar</Button>
           )}
           {(zona === "abrir" || zona === "fechar") && (
             <Button size="sm" variant="secondary" className="w-full" onClick={naoCompareceu} disabled={saving}>🚫 Não compareceu</Button>
