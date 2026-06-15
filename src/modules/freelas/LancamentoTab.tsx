@@ -200,13 +200,20 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
   return (
     <div className={`flex items-center gap-3 px-3 py-2.5 ${discreto ? "opacity-80" : ""}`}>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold ${badge.cls}`}>{badge.txt}</span>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">{fmtDataCurta(shift.date)}</span>
-          <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</span>
-          {shift.area && <span className="text-[10px] text-gray-400">· {shift.area}</span>}
+        {/* 1ª linha: status (não quebra) + nome em destaque, na mesma linha */}
+        <div className="flex items-center gap-2">
+          {badge.txt && (
+            <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold whitespace-nowrap flex-none ${badge.cls}`}>{badge.txt}</span>
+          )}
+          <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</span>
         </div>
-        <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5">{textoHorario(shift, zona)}</div>
+        {/* 2ª linha: data · área · horário */}
+        <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span className="tabular-nums">{fmtDataCurta(shift.date)}</span>
+          {shift.area && <span className="text-gray-400">· {shift.area}</span>}
+          <span className="text-gray-400">·</span>
+          <span>{textoHorario(shift, zona)}</span>
+        </div>
       </div>
 
       {podeOperar && (
