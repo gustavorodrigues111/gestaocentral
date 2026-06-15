@@ -313,7 +313,7 @@ export function AdmissaoPublicaPage() {
       return;
     }
     if (!cienteContaItau) {
-      alert("Marque que você está ciente sobre abrir a conta no Itaú pra enviar a ficha.");
+      alert("Confirme a situação da sua conta bancária no bloco 🏦 (abrir conta Itaú ou confirmar os dados Itaú).");
       return;
     }
     // Documentos: cada item precisa estar resolvido (anexado OU justificado).
@@ -601,7 +601,7 @@ export function AdmissaoPublicaPage() {
 
         {/* Box: ciência conta Itaú */}
         <CienciaContaItauBox
-          jaTemItau={dados.banco_tipo === "Já tenho conta no Itaú"}
+          bancoTipo={dados.banco_tipo}
           aceita={cienteContaItau}
           onChange={setCienteContaItau}
         />
@@ -1297,12 +1297,33 @@ void onlyDigits;
 function CienciaContaItauBox({
   aceita,
   onChange,
-  jaTemItau,
+  bancoTipo,
 }: {
   aceita: boolean;
   onChange: (v: boolean) => void;
-  jaTemItau: boolean;
+  bancoTipo: unknown;
 }) {
+  const jaTemItau = bancoTipo === "Já tenho conta no Itaú";
+  const selecionou = typeof bancoTipo === "string" && bancoTipo.trim() !== "";
+
+  // Ainda não escolheu a situação bancária no bloco Banco acima → mensagem
+  // neutra, sem checkbox (não dá pra avisar nem confirmar nada ainda).
+  if (!selecionou) {
+    return (
+      <section className="rounded-xl p-4 border-2 bg-gray-50 border-gray-200">
+        <h2 className="font-bold text-sm mb-1 text-gray-700">
+          🏦 Conta bancária para receber seu salário
+        </h2>
+        <p className="text-xs text-gray-600">
+          Escolha sua situação no campo <strong>"Conta bancária"</strong> do
+          bloco <strong>Banco</strong> acima. Se você já tem conta no Itaú, o
+          processo fica mais rápido; se for outro banco, vamos te orientar a
+          abrir uma conta Itaú.
+        </p>
+      </section>
+    );
+  }
+
   return (
     <section className={`rounded-xl p-4 border-2 ${aceita ? "bg-emerald-50 border-emerald-300" : "bg-sky-50 border-sky-300"}`}>
       <h2 className={`font-bold text-sm mb-2 ${aceita ? "text-emerald-900" : "text-sky-900"}`}>

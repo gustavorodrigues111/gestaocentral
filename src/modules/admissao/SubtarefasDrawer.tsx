@@ -1214,7 +1214,9 @@ function DocumentosConferencia({
   const jaSubiu = !!admissao.documentos?.subidoDriveEm;
   const todosOk = todosDocumentosConferidos(admissao);
   const conferidos = itens.filter((i) => i.conferido).length;
-  const totalArquivos = itens.reduce((n, it) => n + (it.arquivos?.length || 0), 0);
+  const totalArquivos =
+    itens.reduce((n, it) => n + (it.arquivos?.length || 0), 0) +
+    (admissao.validacao?.selfieDataUrl ? 1 : 0); // +1 da selfie (foto cadastral)
 
   async function toggleConferido(it: typeof itens[number]) {
     setErro("");
@@ -1247,6 +1249,16 @@ function DocumentosConferencia({
           const file = new File([blob], nomeArquivo, { type: arq.tipo || blob.type });
           await uploadFileToFolder(folderId, file);
         }
+      }
+      // Selfie da ficha cadastral (base64 no doc) também vai pra pasta de
+      // documentos — serve de foto 3x4. fetch() resolve data URLs.
+      const selfie = admissao.validacao?.selfieDataUrl;
+      if (selfie) {
+        const resp = await fetch(selfie);
+        const blob = await resp.blob();
+        const nome = `Foto cadastral - ${admissao.candidato.nome}.jpg`.replace(/\//g, "-");
+        const file = new File([blob], nome, { type: blob.type || "image/jpeg" });
+        await uploadFileToFolder(folderId, file);
       }
       await marcarDocumentosSubidosDrive(
         admissao.id, admissao.documentos, { id: pessoa.id, nome: pessoa.nome },

@@ -431,7 +431,6 @@ export const DOCUMENTOS_ADMISSAO_DEFAULT: DocumentoAdmissaoDef[] = [
   docDef("doc_certidao", "Certidão de nascimento ou casamento", false, true),
   docDef("doc_escolaridade", "Comprovante de escolaridade", false, true, "Diploma, histórico ou declaração."),
   docDef("doc_reservista", "Certificado de reservista", false, true, "Apenas para homens entre 18 e 45 anos."),
-  docDef("doc_foto", "Foto 3x4 (ou foto recente do rosto)", false, true),
   docDef("doc_comprovante_banco", "Comprovante de conta bancária", false, true, "Para depósito do salário (se já tiver conta)."),
   docDef("doc_dependentes", "Documentos dos dependentes", false, true, "CPF e certidão de nascimento dos filhos/dependentes legais."),
 ];
