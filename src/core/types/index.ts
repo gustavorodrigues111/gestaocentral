@@ -2455,6 +2455,8 @@ export type DocumentoAdmissaoArquivo = {
   path: string;       // caminho no Storage (pra baixar bytes / deletar)
   tipo: string;       // contentType (application/pdf, image/jpeg…)
   tamanho: number;    // bytes
+  enviadoPeloDp?: boolean;  // true se o DP anexou manualmente (não veio do candidato)
+  driveFileId?: string;     // id no Drive depois de subido (evita re-subir/duplicar)
 };
 
 // Resolução do candidato para UM documento, submetida com o form. Depois o DP
@@ -2640,8 +2642,9 @@ export type Admissao = {
   documentos?: {
     itens: DocumentoAdmissaoEnvio[];
     enviadoEm?: string;                  // ISO — candidato submeteu o form
-    subidoDriveEm?: string;              // ISO — DP subiu pro Drive
+    subidoDriveEm?: string;              // ISO — última sincronização com o Drive
     subidoDrivePor?: { id: string; nome: string };
+    selfieDriveFileId?: string;          // id da foto cadastral no Drive (evita duplicar)
   };
 
   // ─── Clicksign (envelope de assinatura) ───

@@ -50,7 +50,6 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
   montarHistoricoAdmissao,
-  conferirDocumento, todosDocumentosConferidos, marcarDocumentosSubidosDrive,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -58,6 +57,9 @@ import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
 import { uploadFileToFolder } from "../../core/google/driveClient";
 import { pickDriveFolder } from "../../core/google/drivePicker";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { storage } from "../../core/firebase/config";
+import type { DocumentoAdmissaoArquivo, DocumentoAdmissaoEnvio } from "../../core/types";
 
 function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
   if (!col.statusAuto) return false;
@@ -1194,10 +1196,23 @@ function NovaEntregaWrapper({
 }
 
 // ─── Conferência de documentos do candidato (DP) ─────────────────────────────
-// Lista os documentos que o candidato resolveu no form. O DP confere 1 a 1
-// (abrindo cada arquivo) e, quando TODOS estão conferidos, libera o botão
-// "📤 Subir pro Drive" que joga os arquivos na subpasta "Documentos do
-// Empregado". Só aparece depois que o candidato enviou o form com documentos.
+// Lista os documentos que o candidato enviou no form (puxa automático). O DP
+// pode anexar manualmente um doc que não veio, remover/substituir, e subir
+// tudo pra subpasta "Documentos do Empregado" no Drive. Sobe só o que ainda
+// não foi sincronizado (sem duplicar) — então dá pra subir o que faltou depois,
+// enquanto a admissão estiver aberta. Sem checkbox de conferência (vem pronto).
+const MAX_DOC_DP_BYTES = 10 * 1024 * 1024;
+const TIPOS_DOC_DP_OK = ["application/pdf", "image/jpeg", "image/png"];
+
+// Nome do arquivo no Drive: "<nome do documento> - <nome do empregado>" (+ ordem
+// se houver mais de um arquivo no mesmo documento), preservando a extensão.
+function nomeArquivoDrive(docNome: string, empNome: string, originalNome: string, total: number, idx: number): string {
+  const ext = originalNome.includes(".") ? originalNome.split(".").pop()!.toLowerCase() : "";
+  const ordem = total > 1 ? ` (${idx + 1})` : "";
+  const base = `${docNome}${ordem} - ${empNome}`.replace(/[\\/]/g, "-");
+  return ext ? `${base}.${ext}` : base;
+}
+
 function DocumentosConferencia({
   admissao, activeRestaurant, pessoa,
 }: {
@@ -1211,27 +1226,76 @@ function DocumentosConferencia({
 
   if (itens.length === 0) return null;
 
+  // Admissão encerrada (arquivada/cancelada) → não dá mais pra mexer.
+  const encerrada = !!admissao.finalizadoEm || admissao.status === "cancelada";
+  const selfiePendente = !!admissao.validacao?.selfieDataUrl && !admissao.documentos?.selfieDriveFileId;
+  const arquivosPendentes = itens.reduce(
+    (n, it) => n + (it.arquivos || []).filter((a) => !a.driveFileId).length, 0,
+  );
+  const totalPendente = arquivosPendentes + (selfiePendente ? 1 : 0);
   const jaSubiu = !!admissao.documentos?.subidoDriveEm;
-  const todosOk = todosDocumentosConferidos(admissao);
-  const conferidos = itens.filter((i) => i.conferido).length;
-  const totalArquivos =
-    itens.reduce((n, it) => n + (it.arquivos?.length || 0), 0) +
-    (admissao.validacao?.selfieDataUrl ? 1 : 0); // +1 da selfie (foto cadastral)
 
-  async function toggleConferido(it: typeof itens[number]) {
+  async function persistir(novo: NonNullable<Admissao["documentos"]>) {
+    await updateDoc(doc(db, "admissoes", admissao.id), sanitizeForFirestore({
+      documentos: novo,
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  // DP anexa manualmente (doc que não veio, ou complemento). Sobe pro Storage
+  // e adiciona ao item — marcado como enviadoPeloDp.
+  async function anexarDp(it: DocumentoAdmissaoEnvio, files: FileList | null) {
+    if (!files || files.length === 0 || !admissao.documentos) return;
     setErro("");
     setBusy(it.docId);
     try {
-      await conferirDocumento(
-        admissao, it.docId, !it.conferido, { id: pessoa.id, nome: pessoa.nome },
+      const novos: DocumentoAdmissaoArquivo[] = [];
+      for (const file of Array.from(files)) {
+        if (!TIPOS_DOC_DP_OK.includes(file.type)) { setErro(`"${file.name}": use PDF, JPG ou PNG.`); continue; }
+        if (file.size > MAX_DOC_DP_BYTES) { setErro(`"${file.name}": máximo 10 MB.`); continue; }
+        const safe = file.name.replace(/[^\w.\-]+/g, "_");
+        const path = `admissoes/${admissao.restaurantId}/${admissao.id}/${it.docId}/dp_${Date.now()}_${safe}`;
+        const snap = await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
+        const url = await getDownloadURL(snap.ref);
+        novos.push({ nome: file.name, url, path, tipo: file.type, tamanho: file.size, enviadoPeloDp: true });
+      }
+      if (novos.length === 0) return;
+      const novosItens = admissao.documentos.itens.map((x) =>
+        x.docId === it.docId
+          ? { ...x, resolucao: "anexado" as const, arquivos: [...(x.arquivos || []), ...novos] }
+          : x,
       );
+      await persistir({ ...admissao.documentos, itens: novosItens });
     } catch (e) {
-      setErro("Erro ao conferir: " + (e instanceof Error ? e.message : "?"));
+      setErro("Erro ao anexar: " + (e instanceof Error ? e.message : "?"));
     } finally {
       setBusy(null);
     }
   }
 
+  // Remove um arquivo do documento (apaga do Storage também).
+  async function removerArquivo(it: DocumentoAdmissaoEnvio, arq: DocumentoAdmissaoArquivo) {
+    if (!admissao.documentos) return;
+    if (!window.confirm(`Remover "${arq.nome}" de ${it.nome}?`)) return;
+    setErro("");
+    setBusy(it.docId);
+    try {
+      try { await deleteObject(storageRef(storage, arq.path)); } catch { /* já pode não existir */ }
+      const novosItens = admissao.documentos.itens.map((x) =>
+        x.docId === it.docId
+          ? { ...x, arquivos: (x.arquivos || []).filter((a) => a.path !== arq.path) }
+          : x,
+      );
+      await persistir({ ...admissao.documentos, itens: novosItens });
+    } catch (e) {
+      setErro("Erro ao remover: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  // Sobe pro Drive só o que ainda não foi (driveFileId vazio). Pode rodar
+  // de novo depois quando chegarem docs que faltavam.
   async function subirParaDrive() {
     if (!admissao.documentos) return;
     setErro("");
@@ -1240,29 +1304,45 @@ function DocumentosConferencia({
       const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
       const folderId = tree.documentos;
       if (!folderId) throw new Error("Subpasta 'Documentos do Empregado' não encontrada no Drive.");
-      for (const it of itens) {
-        for (const arq of it.arquivos || []) {
+      const empNome = admissao.candidato.nome;
+
+      const novosItens: DocumentoAdmissaoEnvio[] = [];
+      for (const it of admissao.documentos.itens) {
+        const arqs = it.arquivos || [];
+        const novosArqs: DocumentoAdmissaoArquivo[] = [];
+        for (let i = 0; i < arqs.length; i++) {
+          const arq = arqs[i];
+          if (arq.driveFileId) { novosArqs.push(arq); continue; } // já no Drive
           const resp = await fetch(arq.url);
-          if (!resp.ok) throw new Error(`Não consegui baixar "${arq.nome}" do armazenamento.`);
+          if (!resp.ok) throw new Error(`Não consegui baixar "${arq.nome}".`);
           const blob = await resp.blob();
-          const nomeArquivo = `${it.nome} - ${arq.nome}`.replace(/\//g, "-");
-          const file = new File([blob], nomeArquivo, { type: arq.tipo || blob.type });
-          await uploadFileToFolder(folderId, file);
+          const nome = nomeArquivoDrive(it.nome, empNome, arq.nome, arqs.length, i);
+          const file = new File([blob], nome, { type: arq.tipo || blob.type });
+          const subido = await uploadFileToFolder(folderId, file);
+          novosArqs.push({ ...arq, driveFileId: subido.id });
         }
+        novosItens.push({ ...it, arquivos: novosArqs });
       }
-      // Selfie da ficha cadastral (base64 no doc) também vai pra pasta de
-      // documentos — serve de foto 3x4. fetch() resolve data URLs.
+
+      // Selfie da ficha cadastral (serve de foto 3x4) — só se ainda não subiu.
+      let selfieDriveFileId = admissao.documentos.selfieDriveFileId;
       const selfie = admissao.validacao?.selfieDataUrl;
-      if (selfie) {
+      if (selfie && !selfieDriveFileId) {
         const resp = await fetch(selfie);
         const blob = await resp.blob();
-        const nome = `Foto cadastral - ${admissao.candidato.nome}.jpg`.replace(/\//g, "-");
+        const nome = `Foto cadastral - ${empNome}.jpg`.replace(/[\\/]/g, "-");
         const file = new File([blob], nome, { type: blob.type || "image/jpeg" });
-        await uploadFileToFolder(folderId, file);
+        const subido = await uploadFileToFolder(folderId, file);
+        selfieDriveFileId = subido.id;
       }
-      await marcarDocumentosSubidosDrive(
-        admissao.id, admissao.documentos, { id: pessoa.id, nome: pessoa.nome },
-      );
+
+      await persistir({
+        ...admissao.documentos,
+        itens: novosItens,
+        selfieDriveFileId,
+        subidoDriveEm: new Date().toISOString(),
+        subidoDrivePor: { id: pessoa.id, nome: pessoa.nome },
+      });
       alert("Documentos enviados pra pasta 'Documentos do Empregado' no Drive ✓");
     } catch (e) {
       setErro("Erro ao subir pro Drive: " + (e instanceof Error ? e.message : "?"));
@@ -1274,7 +1354,7 @@ function DocumentosConferencia({
   return (
     <details className="mx-4 mb-3 rounded-lg border border-indigo-200 dark:border-indigo-900" open>
       <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 select-none">
-        📎 Documentos do candidato ({conferidos}/{itens.length} conferidos)
+        📎 Documentos do candidato ({itens.length})
       </summary>
       <div className="px-3 pb-3 space-y-2">
         {erro && (
@@ -1284,93 +1364,95 @@ function DocumentosConferencia({
         )}
 
         {itens.map((it) => {
-          const anexado = it.resolucao === "anexado" && (it.arquivos?.length || 0) > 0;
+          const arqs = it.arquivos || [];
+          const temArquivo = arqs.length > 0;
+          const semResposta = it.resolucao !== "anexado" && !temArquivo;
           return (
-            <div
-              key={it.docId}
-              className={`rounded-lg border p-2 ${
-                it.conferido
-                  ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/30"
-                  : "border-gray-200 dark:border-gray-800"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{it.nome}</div>
-                  {!anexado && (
-                    <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
-                      {it.resolucao === "nao_tenho" ? "Não tem" : "Não se aplica"}
-                      {it.justificativa ? <>: <span className="italic text-gray-600 dark:text-gray-300">{it.justificativa}</span></> : null}
-                    </div>
-                  )}
+            <div key={it.docId} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2">
+              <div className="text-xs font-semibold text-gray-900 dark:text-gray-100">{it.nome}</div>
+              {semResposta && (
+                <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5">
+                  {it.resolucao === "nao_tenho" ? "Candidato: não tem" : "Candidato: não se aplica"}
+                  {it.justificativa ? <>: <span className="italic text-gray-600 dark:text-gray-300">{it.justificativa}</span></> : null}
                 </div>
-                <label className="flex items-center gap-1 text-[11px] cursor-pointer shrink-0 select-none">
-                  <input
-                    type="checkbox"
-                    checked={!!it.conferido}
-                    disabled={busy === it.docId}
-                    onChange={() => void toggleConferido(it)}
-                    className="accent-emerald-600 w-4 h-4"
-                  />
-                  conferido
-                </label>
-              </div>
-              {anexado && (
+              )}
+              {temArquivo && (
                 <div className="mt-1.5 space-y-1">
-                  {it.arquivos.map((a, i) => (
-                    <a
-                      key={`${a.path}_${i}`}
-                      href={a.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline truncate"
-                    >
-                      📄 {a.nome}
-                    </a>
+                  {arqs.map((a) => (
+                    <div key={a.path} className="flex items-center gap-2 text-[11px]">
+                      <a
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline truncate flex-1"
+                      >
+                        📄 {a.nome}
+                      </a>
+                      {a.enviadoPeloDp && <span className="text-[9px] uppercase text-gray-400 shrink-0">DP</span>}
+                      {a.driveFileId && <span className="text-[9px] text-emerald-600 shrink-0" title="Já está no Drive">✓ Drive</span>}
+                      {!encerrada && (
+                        <button
+                          type="button"
+                          onClick={() => void removerArquivo(it, a)}
+                          disabled={busy !== null}
+                          className="text-red-500 hover:text-red-700 shrink-0 disabled:opacity-50"
+                        >
+                          remover
+                        </button>
+                      )}
+                    </div>
                   ))}
                 </div>
+              )}
+              {!encerrada && (
+                <label className={`inline-flex items-center gap-1 mt-1.5 text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${busy === it.docId ? "opacity-50" : ""}`}>
+                  {busy === it.docId ? "Enviando…" : temArquivo ? "+ Anexar outro" : "📎 Anexar (DP)"}
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png"
+                    multiple
+                    disabled={busy !== null}
+                    onChange={(e) => { void anexarDp(it, e.target.files); e.target.value = ""; }}
+                    className="hidden"
+                  />
+                </label>
               )}
             </div>
           );
         })}
 
-        {/* Subir pro Drive — só com tudo conferido */}
-        {isDriveConfigured() ? (
+        {/* Subir pro Drive — sobe só o que falta; pode rodar de novo depois */}
+        {!isDriveConfigured() ? (
+          <p className="text-[10px] text-gray-400 italic">
+            Conecte o Google Drive (em Configurações) pra subir os documentos.
+          </p>
+        ) : encerrada ? (
+          <p className="text-[10px] text-gray-400 italic">Admissão encerrada — documentos travados.</p>
+        ) : (
           <div className="pt-1">
             <button
               type="button"
               onClick={() => void subirParaDrive()}
-              disabled={!todosOk || jaSubiu || busy !== null}
+              disabled={totalPendente === 0 || busy !== null}
               className={`w-full text-xs font-semibold rounded-lg px-3 py-2 ${
-                jaSubiu
-                  ? "bg-emerald-100 text-emerald-700 cursor-default"
-                  : todosOk
-                    ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-                    : "bg-gray-100 text-gray-400 cursor-not-allowed dark:bg-gray-800"
+                totalPendente === 0
+                  ? "bg-emerald-100 text-emerald-700 cursor-default dark:bg-emerald-900/30 dark:text-emerald-300"
+                  : "bg-indigo-600 hover:bg-indigo-700 text-white"
               }`}
             >
-              {jaSubiu
-                ? "✓ Documentos já enviados pro Drive"
-                : busy === "__drive__"
-                  ? "Enviando pro Drive…"
-                  : `📤 Subir ${totalArquivos} arquivo(s) pro Drive`}
+              {busy === "__drive__"
+                ? "Enviando pro Drive…"
+                : totalPendente === 0
+                  ? "✓ Tudo no Drive"
+                  : `📤 ${jaSubiu ? "Subir " + totalPendente + " novo(s) pro Drive" : "Confirmar e subir " + totalPendente + " pro Drive"}`}
             </button>
-            {!todosOk && !jaSubiu && (
+            {admissao.documentos?.subidoDriveEm && (
               <p className="text-[10px] text-gray-500 text-center mt-1">
-                Confira todos os documentos pra liberar o envio.
-              </p>
-            )}
-            {jaSubiu && admissao.documentos?.subidoDriveEm && (
-              <p className="text-[10px] text-gray-500 text-center mt-1">
-                Enviado em {new Date(admissao.documentos.subidoDriveEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                Última sincronização: {new Date(admissao.documentos.subidoDriveEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
                 {admissao.documentos.subidoDrivePor ? ` · ${admissao.documentos.subidoDrivePor.nome}` : ""}
               </p>
             )}
           </div>
-        ) : (
-          <p className="text-[10px] text-gray-400 italic">
-            Conecte o Google Drive (em Configurações) pra subir os documentos.
-          </p>
         )}
       </div>
     </details>
