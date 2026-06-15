@@ -168,6 +168,15 @@ const ZONA_BADGE: Record<Zona, { txt: string; cls: string }> = {
   outro:            { txt: "", cls: "" },
 };
 
+// Cor da borda esquerda do card por status (o "box muda pela cor").
+const ZONA_CARD: Record<Zona, string> = {
+  planejado_futuro: "border-l-gray-300 dark:border-l-gray-700",
+  abrir:            "border-l-blue-400 dark:border-l-blue-500",
+  fechar:           "border-l-amber-400 dark:border-l-amber-500",
+  realizado:        "border-l-emerald-400 dark:border-l-emerald-500",
+  outro:            "border-l-transparent",
+};
+
 // ── Linha de turno (display + ações por zona) ───────────────────────────────
 function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: string; podeOperar: boolean }) {
   const { pessoa: me } = useAuth();
@@ -197,27 +206,25 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
     finally { setSaving(false); }
   }
 
+  const temAcoes = podeOperar && zona !== "outro";
+
   return (
-    <div className={`flex items-center gap-3 px-3 py-2.5 ${discreto ? "opacity-80" : ""}`}>
-      <div className="min-w-0 flex-1">
-        {/* 1ª linha: status (não quebra) + nome em destaque, na mesma linha */}
-        <div className="flex items-center gap-2">
-          {badge.txt && (
-            <span className={`text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold whitespace-nowrap flex-none ${badge.cls}`}>{badge.txt}</span>
-          )}
-          <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</span>
-        </div>
-        {/* 2ª linha: data · área · horário */}
-        <div className="text-xs text-gray-600 dark:text-gray-300 mt-0.5 flex items-center gap-1.5 flex-wrap">
-          <span className="tabular-nums">{fmtDataCurta(shift.date)}</span>
-          {shift.area && <span className="text-gray-400">· {shift.area}</span>}
-          <span className="text-gray-400">·</span>
-          <span>{textoHorario(shift, zona)}</span>
-        </div>
+    <div className={`px-3 py-2.5 border-l-4 ${ZONA_CARD[zona]} ${discreto ? "opacity-80" : ""}`}>
+      {/* status */}
+      {badge.txt && (
+        <span className={`inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${badge.cls}`}>{badge.txt}</span>
+      )}
+      {/* nome completo, em destaque */}
+      <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 mt-1 break-words">{shift.nomeSnapshot}</div>
+      {/* data · setor */}
+      <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+        <span className="tabular-nums">{fmtDataCurta(shift.date)}</span>
+        {shift.area && <span> · {shift.area}</span>}
       </div>
 
-      {podeOperar && (
-        <div className="flex items-center gap-2 flex-none">
+      {/* botões de ação (linha própria — não espremem o texto) */}
+      {temAcoes && (
+        <div className="flex flex-wrap items-center gap-2 mt-2">
           {zona === "abrir" && (
             <Button size="sm" onClick={() => setModalMode("abrir")} disabled={saving}>🟢 Abrir turno</Button>
           )}
@@ -234,10 +241,13 @@ function RowTurno({ shift, hoje, podeOperar }: { shift: FreelaShift; hoje: strin
             <button type="button" onClick={naoCompareceu} disabled={saving} title="Não compareceu" className="text-[16px] leading-none p-1 disabled:opacity-50">🚫</button>
           )}
           {zona !== "realizado" && (
-            <button type="button" onClick={excluir} disabled={saving} aria-label="Excluir" className="text-[18px] text-gray-400 hover:text-red-600 dark:hover:text-red-400 leading-none p-1 disabled:opacity-50">🗑</button>
+            <button type="button" onClick={excluir} disabled={saving} aria-label="Excluir" className="ml-auto text-[18px] text-gray-400 hover:text-red-600 dark:hover:text-red-400 leading-none p-1 disabled:opacity-50">🗑</button>
           )}
         </div>
       )}
+
+      {/* horário: entrou · intervalo · saiu (ou prevista, pra planejados) */}
+      <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5">{textoHorario(shift, zona)}</div>
 
       {modalMode && (
         <HorarioModal shift={shift} mode={modalMode} onClose={() => setModalMode(null)} onSaved={() => setModalMode(null)} />
