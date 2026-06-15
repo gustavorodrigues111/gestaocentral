@@ -527,6 +527,25 @@ export async function estenderPrazoAdmissao(
   return novo;
 }
 
+// Desfaz a ÚLTIMA extensão de prazo: subtrai as horas de volta de `expiraEm`
+// e remove o registro de `extensoesPrazo`. Pra quando o usuário clicou em
+// estender por engano. Retorna o novo `expiraEm`.
+export async function desfazerUltimaExtensaoPrazo(
+  admissao: Admissao,
+): Promise<string> {
+  const extensoes = [...(admissao.extensoesPrazo || [])];
+  const ultima = extensoes.pop();
+  if (!ultima) throw new Error("Não há extensão de prazo pra desfazer.");
+  if (!admissao.expiraEm) throw new Error("Admissão sem prazo definido.");
+  const novo = new Date(new Date(admissao.expiraEm).getTime() - ultima.horas * 3600_000).toISOString();
+  await updateDoc(doc(db, "admissoes", admissao.id), {
+    expiraEm: novo,
+    extensoesPrazo: extensoes,
+    updatedAt: new Date().toISOString(),
+  });
+  return novo;
+}
+
 // Reabre uma admissão em estado terminal (admitido/cancelada/expirada),
 // devolvendo-a pra "Pronto pra admitir". Limpa flags de cancelamento e de
 // admissão pra que o card volte ao fluxo normal. Operação master-only —

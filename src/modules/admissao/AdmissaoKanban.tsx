@@ -39,6 +39,7 @@ import {
   getDocumentosAdmissao,
   getSchemaAdmissao,
   estenderPrazoAdmissao,
+  desfazerUltimaExtensaoPrazo,
   iniciarAdmissao,
   linkWhatsAppCandidato,
   marcarLinkEnviado,
@@ -338,6 +339,17 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
       alert("Erro ao estender prazo: " + (e instanceof Error ? e.message : "?"));
     }
   }
+  async function desfazerExtensao(adm: Admissao) {
+    const ultima = (adm.extensoesPrazo || []).slice(-1)[0];
+    if (!ultima) return;
+    if (!window.confirm(`Desfazer a última extensão (+${ultima.horas}h)?`)) return;
+    try {
+      const novo = await desfazerUltimaExtensaoPrazo(adm);
+      alert(`Extensão de +${ultima.horas}h desfeita.\n\nNovo limite: ${fmtDataHora(novo)}`);
+    } catch (e) {
+      alert("Erro ao desfazer extensão: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
   // Gera um link NOVO (token novo — invalida o anterior) e reabre o WhatsApp.
   async function novoToken(adm: Admissao) {
     if (!me) return;
@@ -543,6 +555,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onConcluir={() => concluirCriarEmpregado(a)}
                     onCopiarLink={() => copiarLink(a)}
                     onEstender={(h) => estender(a, h)}
+                    onDesfazerExtensao={() => desfazerExtensao(a)}
                     onNovoToken={() => novoToken(a)}
                     onLembrar={() => lembrar(a)}
                   />
@@ -565,7 +578,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onNovoToken, onLembrar,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onDesfazerExtensao, onNovoToken, onLembrar,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -585,6 +598,7 @@ function KanbanCard({
   onConcluir: () => void;
   onCopiarLink: () => void;
   onEstender: (horas: number) => void;
+  onDesfazerExtensao: () => void;
   onNovoToken: () => void;
   onLembrar: () => void;
 }) {
@@ -694,7 +708,9 @@ function KanbanCard({
               <button type="button" onClick={(e) => { e.stopPropagation(); onCopiarLink(); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">📋 copiar link</button>
               <span className="text-gray-300 dark:text-gray-700">·</span>
               <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(12); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">⏱ +12h</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(24); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">+24h</button>
+              {(adm.extensoesPrazo?.length ?? 0) > 0 && (
+                <button type="button" onClick={(e) => { e.stopPropagation(); onDesfazerExtensao(); }} className="hover:text-amber-600 dark:hover:text-amber-400 hover:underline" title={`Desfaz a última extensão (+${adm.extensoesPrazo!.slice(-1)[0].horas}h)`}>↩ desfazer</button>
+              )}
               <span className="text-gray-300 dark:text-gray-700">·</span>
               <button type="button" onClick={(e) => { e.stopPropagation(); onNovoToken(); }} className="hover:text-rose-600 dark:hover:text-rose-400 hover:underline" title="Gera um link novo (invalida o anterior) — pra link expirado">🔑 novo link</button>
             </div>
