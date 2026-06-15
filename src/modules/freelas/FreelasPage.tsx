@@ -117,27 +117,29 @@ export function FreelasPage() {
     <div className="max-w-6xl">
       <div className="mb-4">
         {podeOperar && tab === "lancamentos" && (
-          <div className="mt-3 space-y-2 max-w-md">
-            {/* Ações principais: Planejar + Abrir lado a lado */}
-            <div className="grid grid-cols-2 gap-2">
-              <Button className="w-full" onClick={() => setShowNovoTurno(true)}>📋 Planejar turno</Button>
-              <Button className="w-full" onClick={() => setShowAvulsoTurno(true)}>🟢 Abrir turno</Button>
+          // Mobile: empilhado (grid 2 + full-width). Desktop: toolbar horizontal
+          // compacto, largura natural, alinhado à esquerda.
+          <div className="mt-3 space-y-2 max-w-md sm:space-y-0 sm:max-w-none sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+            {/* Ações principais: Planejar + Abrir lado a lado (no mobile) */}
+            <div className="grid grid-cols-2 gap-2 sm:contents">
+              <Button className="w-full sm:w-auto" onClick={() => setShowNovoTurno(true)}>📋 Planejar turno</Button>
+              <Button className="w-full sm:w-auto" onClick={() => setShowAvulsoTurno(true)}>🟢 Abrir turno</Button>
             </div>
-            {/* Cadastro: largura cheia, mais fino */}
-            <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowCadastro(true)}>
+            {/* Cadastro: largura cheia no mobile, fino */}
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setShowCadastro(true)}>
               + Cadastrar novo freela
             </Button>
             {/* PROVISÓRIO — importação em lote (master). */}
             {isMaster && (
-              <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowImportLote(true)}>
+              <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setShowImportLote(true)}>
                 🧪 Importar lote
               </Button>
             )}
           </div>
         )}
         {podeOperar && tab !== "lancamentos" && (
-          <div className="mt-3 max-w-md">
-            <Button variant="secondary" size="sm" className="w-full" onClick={() => setShowCadastro(true)}>
+          <div className="mt-3 max-w-md sm:max-w-none">
+            <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setShowCadastro(true)}>
               + Cadastrar novo freela
             </Button>
           </div>
