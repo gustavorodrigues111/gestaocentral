@@ -125,13 +125,13 @@ export function FreelasPage() {
               <Button className="w-full sm:w-auto" onClick={() => setShowNovoTurno(true)}>📋 Planejar turno</Button>
               <Button className="w-full sm:w-auto" onClick={() => setShowAvulsoTurno(true)}>🟢 Abrir turno</Button>
             </div>
-            {/* Cadastro: largura cheia no mobile, fino */}
-            <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setShowCadastro(true)}>
+            {/* Cadastro: largura cheia no mobile. Mesmo tamanho dos principais. */}
+            <Button variant="secondary" className="w-full sm:w-auto" onClick={() => setShowCadastro(true)}>
               + Cadastrar novo freela
             </Button>
             {/* PROVISÓRIO — importação em lote (master). */}
             {isMaster && (
-              <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={() => setShowImportLote(true)}>
+              <Button variant="secondary" className="w-full sm:w-auto" onClick={() => setShowImportLote(true)}>
                 🧪 Importar lote
               </Button>
             )}
