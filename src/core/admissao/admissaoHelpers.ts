@@ -924,22 +924,15 @@ export async function salvarDriveFolderMeta(
 }
 
 // ─── Expurgo dos originais no Storage (depois que já estão no Drive) ─────────
-// Colchão de segurança: por padrão só apaga arquivos que estão no Drive há mais
-// de DIAS_EXPURGO_STORAGE dias. Com `ignorarPrazo: true` (ex: ao concluir a
-// admissão), apaga todos que já estão no Drive na hora. Mantém driveFileId pra
-// UI apontar pro Drive. Retorna quantos apagou.
-export const DIAS_EXPURGO_STORAGE = 7;
-
+// Apaga do Storage todos os documentos que já estão no Drive (driveFileId set).
+// Chamado nos eventos terminais (Concluir / Cancelar) — não há regra de prazo.
+// Mantém driveFileId pra UI apontar pro Drive. Retorna quantos apagou.
 export async function expurgarDocumentosNoStorage(
   admissao: Admissao,
-  opts: { ignorarPrazo?: boolean } = {},
 ): Promise<number> {
   const docs = admissao.documentos;
   if (!docs) return 0;
-  const limite = Date.now() - DIAS_EXPURGO_STORAGE * 86400000;
-  const venceu = (a: DocumentoAdmissaoArquivo) =>
-    !!a.driveFileId && !a.storageExpurgado &&
-    (opts.ignorarPrazo || (!!a.driveSubidoEm && new Date(a.driveSubidoEm).getTime() < limite));
+  const venceu = (a: DocumentoAdmissaoArquivo) => !!a.driveFileId && !a.storageExpurgado;
   if (!docs.itens.some((it) => (it.arquivos || []).some(venceu))) return 0;
 
   let n = 0;

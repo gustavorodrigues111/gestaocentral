@@ -50,7 +50,7 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
   montarHistoricoAdmissao, aprovarAdmissao, temDadosFinaisCompletos,
-  salvarDriveFolderMeta, expurgarDocumentosNoStorage,
+  salvarDriveFolderMeta,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -1329,14 +1329,6 @@ function DocumentosConferencia({
   const itens = admissao.documentos?.itens || [];
   const [busy, setBusy] = useState<string | null>(null); // docId | "__drive__"
   const [erro, setErro] = useState("");
-
-  // Expurgo com colchão de segurança: ao abrir a admissão, apaga do Storage só
-  // os arquivos que já estão no Drive há mais de 7 dias (padrão client-side do
-  // projeto — sem Admin SDK server-side). Lógica centralizada no helper.
-  useEffect(() => {
-    void expurgarDocumentosNoStorage(admissao);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [admissao.id]);
 
   if (itens.length === 0) return null;
 
