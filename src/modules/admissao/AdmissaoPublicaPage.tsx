@@ -625,21 +625,41 @@ export function AdmissaoPublicaPage() {
         />
 
         <div className="bg-white border border-gray-200 rounded-xl p-4">
-          <Button
-            onClick={submeter}
-            disabled={
-              enviando || !selfieDataUrl || !declaracaoAceita || !cienteContaItau ||
-              !!validarDocumentos(docDefs, docResol)
+          {(() => {
+            const pend: string[] = [];
+            if (!cienteContaItau) pend.push("Confirme a situação da sua conta bancária (bloco 🏦).");
+            const docsPendentes = docDefs.filter((d) => {
+              const r = docResol[d.id];
+              if (!r || !r.resolucao) return true;
+              if (r.resolucao === "anexado") return (r.arquivos?.length || 0) === 0;
+              return !r.justificativa?.trim();
+            }).length;
+            if (docsPendentes > 0) {
+              pend.push(`Responda os ${docsPendentes} documento(s) pendente(s) no bloco 📎 — anexe o arquivo ou marque "não tenho / não se aplica" e explique o motivo.`);
             }
-            className="w-full"
-          >
+            if (!selfieDataUrl) pend.push("Tire a foto pra ficha cadastral.");
+            if (!declaracaoAceita) pend.push("Aceite a declaração de veracidade.");
+            if (pend.length === 0) {
+              return (
+                <div className="mb-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-center font-medium">
+                  ✓ Tudo certo — pode enviar a ficha.
+                </div>
+              );
+            }
+            return (
+              <div className="mb-3 text-xs bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="font-semibold text-amber-800 mb-1">Falta pra liberar o envio:</div>
+                <ul className="list-disc pl-4 space-y-1 text-amber-800">
+                  {pend.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              </div>
+            );
+          })()}
+          <Button onClick={submeter} disabled={enviando} className="w-full">
             {enviando ? "Enviando…" : "✅ Enviar ficha"}
           </Button>
           <p className="text-[11px] text-gray-500 text-center mt-2">
-            Pra liberar o envio: confirme a conta Itaú, resolva
-            <strong> todos os documentos</strong> (anexe ou marque "não tenho"),
-            tire a foto e aceite a declaração. Os dados são salvos automaticamente
-            — pode fechar e voltar dentro do prazo.
+            Os dados são salvos automaticamente — pode fechar e voltar depois dentro do prazo.
           </p>
         </div>
       </div>
@@ -1152,14 +1172,31 @@ function DocumentosUploadSection({
     });
   }
 
+  // Um documento está "resolvido" quando tem arquivo anexado OU foi marcado
+  // como não-tem/não-se-aplica COM justificativa.
+  const docResolvido = (d: DocumentoAdmissaoDef) => {
+    const r = valor[d.id];
+    if (!r || !r.resolucao) return false;
+    if (r.resolucao === "anexado") return (r.arquivos?.length || 0) > 0;
+    return !!r.justificativa?.trim();
+  };
+  const resolvidos = docDefs.filter(docResolvido).length;
+  const tudoResolvido = resolvidos === docDefs.length;
+
   return (
     <section className="bg-white border-2 border-indigo-200 rounded-xl p-4 space-y-3">
       <div>
-        <h2 className="font-bold text-sm text-indigo-900">📎 Documentos</h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="font-bold text-sm text-indigo-900">📎 Documentos</h2>
+          <span className={`text-[11px] font-bold ${tudoResolvido ? "text-emerald-600" : "text-amber-600"}`}>
+            {resolvidos}/{docDefs.length} resolvidos
+          </span>
+        </div>
         <p className="text-xs text-gray-600 mt-1">
-          Anexe cada documento abaixo (PDF, JPG ou PNG, até 10 MB). Se não tiver
-          algum, marque a opção e explique o motivo. Você precisa resolver{" "}
-          <strong>todos</strong> pra enviar a ficha.
+          Em <strong>cada</strong> documento, escolha uma opção: <strong>anexar</strong> o
+          arquivo (PDF, JPG ou PNG, até 10 MB), ou marcar <strong>"não tenho / não se
+          aplica"</strong> e explicar o motivo. É obrigatório <strong>responder todos</strong>{" "}
+          — inclusive os que você não vai anexar — pra liberar o envio da ficha.
         </p>
       </div>
 
@@ -1174,10 +1211,10 @@ function DocumentosUploadSection({
           const r = valor[d.id];
           const resol = r?.resolucao;
           const arquivos = r?.arquivos || [];
-          const anexadoOk = resol === "anexado" && arquivos.length > 0;
           const naoTem = resol === "nao_se_aplica" || resol === "nao_tenho";
+          const resolvido = docResolvido(d);
           return (
-            <div key={d.id} className="border border-gray-200 rounded-lg p-3">
+            <div key={d.id} className={`border rounded-lg p-3 ${resolvido ? "border-gray-200" : "border-amber-300 bg-amber-50/40"}`}>
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <span className="text-sm font-semibold text-gray-900">{d.nome}</span>
@@ -1190,9 +1227,10 @@ function DocumentosUploadSection({
                     <p className="text-[11px] text-gray-500 mt-0.5">{d.descricao}</p>
                   )}
                 </div>
-                {anexadoOk && <span className="text-emerald-600 text-sm shrink-0">✓</span>}
-                {naoTem && r?.justificativa?.trim() && (
-                  <span className="text-amber-500 text-sm shrink-0">—</span>
+                {resolvido ? (
+                  <span className="text-emerald-600 text-sm shrink-0">✓</span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-600 shrink-0 whitespace-nowrap">⚠ responda</span>
                 )}
               </div>
 
