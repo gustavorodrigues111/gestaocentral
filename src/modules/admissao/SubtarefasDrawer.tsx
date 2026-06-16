@@ -50,6 +50,7 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
   montarHistoricoAdmissao, aprovarAdmissao, temDadosFinaisCompletos,
+  salvarDriveFolderMeta,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -209,6 +210,7 @@ export function SubtarefasDrawer({
       if (picked) {
         const tree = await vincularPastaExistente(admissao, picked.id);
         folderUrl = tree.folderUrl;
+        await salvarDriveFolderMeta(admissao.id, "vinculada", pessoa);
       } else {
         const ok = confirm(
           `Nenhuma pasta selecionada.\n\nCriar uma NOVA pasta "${admissao.candidato.nome}" em "Empregados Ativos"?`,
@@ -216,6 +218,7 @@ export function SubtarefasDrawer({
         if (!ok) { setSalvando(null); return; }
         const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
         folderUrl = tree.folderUrl;
+        await salvarDriveFolderMeta(admissao.id, "criada", pessoa);
       }
       await atualizarSubtarefa(admissao, s.id, { feita: true, link: folderUrl }, pessoa);
     } catch (e) {
@@ -612,6 +615,11 @@ export function SubtarefasDrawer({
                                     activeRestaurant={activeRestaurant}
                                     pessoa={pessoa}
                                   />
+                                )}
+                                {s.id === "st_pasta_drive" && (
+                                  <div className="pl-1">
+                                    <PastaDriveInfo admissao={admissao} />
+                                  </div>
                                 )}
                                 </Fragment>
                               ))}
@@ -1278,6 +1286,38 @@ function nomeArquivoDrive(docNome: string, empNome: string, originalNome: string
   return ext ? `${base}.${ext}` : base;
 }
 
+// Linha de status da pasta do empregado no Drive: criada/vinculada por quem,
+// quando, e link pra abrir. Ou aviso de que ainda não existe.
+function PastaDriveInfo({ admissao }: { admissao: Admissao }) {
+  if (admissao.driveFolderId) {
+    const modo = admissao.driveFolderModo;
+    const quando = admissao.driveFolderEm
+      ? new Date(admissao.driveFolderEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })
+      : null;
+    const verbo = modo === "vinculada" ? "vinculada" : modo === "criada" ? "criada" : "definida";
+    return (
+      <div className="text-[11px] text-gray-600 dark:text-gray-300 flex items-center gap-2 flex-wrap mt-1">
+        <span>
+          📁 Pasta {verbo}
+          {admissao.driveFolderPor ? ` por ${admissao.driveFolderPor.nome}` : ""}
+          {quando ? ` · ${quando}` : ""}
+        </span>
+        {admissao.driveFolderUrl && (
+          <a href={admissao.driveFolderUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">
+            abrir no Drive ↗
+          </a>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+      📁 Pasta do empregado ainda não criada — será criada ao subir os documentos
+      pro Drive, ou crie/vincule na subtarefa "Criar pasta do empregado".
+    </div>
+  );
+}
+
 function DocumentosConferencia({
   admissao, activeRestaurant, pessoa,
 }: {
@@ -1369,6 +1409,10 @@ function DocumentosConferencia({
       const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
       const folderId = tree.documentos;
       if (!folderId) throw new Error("Subpasta 'Documentos do Empregado' não encontrada no Drive.");
+      // Se a pasta foi criada agora (não havia proveniência), registra.
+      if (!admissao.driveFolderModo) {
+        await salvarDriveFolderMeta(admissao.id, "criada", pessoa);
+      }
       const empNome = admissao.candidato.nome;
 
       const novosItens: DocumentoAdmissaoEnvio[] = [];
@@ -1422,6 +1466,7 @@ function DocumentosConferencia({
         📎 Documentos do candidato ({itens.length})
       </summary>
       <div className="px-3 pb-3 space-y-2">
+        <PastaDriveInfo admissao={admissao} />
         {erro && (
           <div className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">
             {erro}

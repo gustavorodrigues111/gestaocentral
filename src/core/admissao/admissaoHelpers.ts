@@ -905,6 +905,23 @@ export async function salvarDriveFolder(
   }));
 }
 
+// Registra a proveniência da pasta do empregado no Drive (criada × vinculada,
+// por quem e quando). Idempotência fica a cargo de quem chama (só grava quando
+// faz sentido). Não sobrescreve com modo vazio.
+export async function salvarDriveFolderMeta(
+  admissaoId: string,
+  modo: "criada" | "vinculada",
+  pessoa: { id: string; nome: string },
+): Promise<void> {
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "admissoes", admissaoId), stripUndefined({
+    driveFolderModo: modo,
+    driveFolderEm: now,
+    driveFolderPor: { id: pessoa.id, nome: pessoa.nome },
+    updatedAt: now,
+  }));
+}
+
 // ─── Documentos do candidato ────────────────────────────────────────────────
 
 // Lista de documentos que o candidato deve fornecer. Usa a config do
