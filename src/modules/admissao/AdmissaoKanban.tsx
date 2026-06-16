@@ -56,6 +56,7 @@ import {
   urlPublicaAdmissao,
   finalizarAdmissao,
   temDadosFinaisCompletos,
+  expurgarDocumentosNoStorage,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
@@ -297,7 +298,14 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     }
     try {
       await finalizarAdmissao(adm.id, me);
-      alert("Admissão concluída e arquivada.");
+      // Limpeza ao concluir: apaga do Storage os docs já no Drive (respeita o
+      // colchão de 7 dias). Best-effort — não bloqueia a conclusão se falhar.
+      try {
+        const n = await expurgarDocumentosNoStorage(adm);
+        alert(`Admissão concluída e arquivada.${n > 0 ? `\n\n${n} documento(s) já no Drive foram limpos do Storage.` : ""}`);
+      } catch {
+        alert("Admissão concluída e arquivada.");
+      }
     } catch (e) {
       alert("Erro ao concluir: " + (e instanceof Error ? e.message : "?"));
     }

@@ -50,7 +50,7 @@ import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
   montarHistoricoAdmissao, aprovarAdmissao, temDadosFinaisCompletos,
-  salvarDriveFolderMeta,
+  salvarDriveFolderMeta, expurgarDocumentosNoStorage,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -1276,9 +1276,6 @@ function NovaEntregaWrapper({
 // enquanto a admissão estiver aberta. Sem checkbox de conferência (vem pronto).
 const MAX_DOC_DP_BYTES = 10 * 1024 * 1024;
 const TIPOS_DOC_DP_OK = ["application/pdf", "image/jpeg", "image/png"];
-// Colchão de segurança: só apaga o original do Storage N dias DEPOIS de
-// confirmado no Drive (se der pau no meio, o arquivo ainda está lá).
-const DIAS_EXPURGO_STORAGE = 7;
 const driveViewUrl = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
 
 // Nome do arquivo no Drive: "<nome do documento> - <nome do empregado>" (+ ordem
@@ -1333,38 +1330,11 @@ function DocumentosConferencia({
   const [busy, setBusy] = useState<string | null>(null); // docId | "__drive__"
   const [erro, setErro] = useState("");
 
-  // Expurgo com colchão de segurança: apaga do Storage só os arquivos que já
-  // estão no Drive há mais de DIAS_EXPURGO_STORAGE dias. Roda ao abrir a
-  // admissão (padrão client-side do projeto — sem Admin SDK server-side).
-  // Mantém driveFileId pra UI apontar pro Drive depois de apagado.
+  // Expurgo com colchão de segurança: ao abrir a admissão, apaga do Storage só
+  // os arquivos que já estão no Drive há mais de 7 dias (padrão client-side do
+  // projeto — sem Admin SDK server-side). Lógica centralizada no helper.
   useEffect(() => {
-    const docs = admissao.documentos;
-    if (!docs) return;
-    const limite = Date.now() - DIAS_EXPURGO_STORAGE * 86400000;
-    const venceu = (a: DocumentoAdmissaoArquivo) =>
-      !!a.driveFileId && !a.storageExpurgado && !!a.driveSubidoEm &&
-      new Date(a.driveSubidoEm).getTime() < limite;
-    if (!docs.itens.some((it) => (it.arquivos || []).some(venceu))) return;
-    let cancelado = false;
-    (async () => {
-      for (const it of docs.itens) {
-        for (const a of it.arquivos || []) {
-          if (venceu(a)) {
-            try { await deleteObject(storageRef(storage, a.path)); } catch { /* já pode não existir */ }
-          }
-        }
-      }
-      if (cancelado) return;
-      const itensNovos = docs.itens.map((it) => ({
-        ...it,
-        arquivos: (it.arquivos || []).map((a) => (venceu(a) ? { ...a, storageExpurgado: true } : a)),
-      }));
-      await updateDoc(doc(db, "admissoes", admissao.id), sanitizeForFirestore({
-        documentos: { ...docs, itens: itensNovos },
-        updatedAt: new Date().toISOString(),
-      }));
-    })();
-    return () => { cancelado = true; };
+    void expurgarDocumentosNoStorage(admissao);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admissao.id]);
 

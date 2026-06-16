@@ -6,10 +6,11 @@
 import {
   addDoc, collection, deleteDoc, deleteField, doc, getDoc, getDocs, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
-import { db } from "../firebase/config";
+import { db, storage } from "../firebase/config";
+import { ref as storageRef, deleteObject } from "firebase/storage";
 import type {
   Admissao, AdmissaoStatus, AutoTriggerSubtarefa, ClicksignEnvioRef,
-  DocumentoAdmissaoDef,
+  DocumentoAdmissaoDef, DocumentoAdmissaoArquivo,
   Empregado, EmpregadoPeriodo,
   FormField, HorarioDia, MotivoCancelamento,
   Pessoa, Restaurant, SubtarefaAdmissao, SubtarefaTemplate, TermoAssinado, WorkSchedule,
@@ -920,6 +921,44 @@ export async function salvarDriveFolderMeta(
     driveFolderPor: { id: pessoa.id, nome: pessoa.nome },
     updatedAt: now,
   }));
+}
+
+// ─── Expurgo dos originais no Storage (depois que já estão no Drive) ─────────
+// Colchão de segurança: por padrão só apaga arquivos que estão no Drive há mais
+// de DIAS_EXPURGO_STORAGE dias. Com `ignorarPrazo: true` (ex: ao concluir a
+// admissão), apaga todos que já estão no Drive na hora. Mantém driveFileId pra
+// UI apontar pro Drive. Retorna quantos apagou.
+export const DIAS_EXPURGO_STORAGE = 7;
+
+export async function expurgarDocumentosNoStorage(
+  admissao: Admissao,
+  opts: { ignorarPrazo?: boolean } = {},
+): Promise<number> {
+  const docs = admissao.documentos;
+  if (!docs) return 0;
+  const limite = Date.now() - DIAS_EXPURGO_STORAGE * 86400000;
+  const venceu = (a: DocumentoAdmissaoArquivo) =>
+    !!a.driveFileId && !a.storageExpurgado &&
+    (opts.ignorarPrazo || (!!a.driveSubidoEm && new Date(a.driveSubidoEm).getTime() < limite));
+  if (!docs.itens.some((it) => (it.arquivos || []).some(venceu))) return 0;
+
+  let n = 0;
+  for (const it of docs.itens) {
+    for (const a of it.arquivos || []) {
+      if (venceu(a)) {
+        try { await deleteObject(storageRef(storage, a.path)); n++; } catch { /* já pode não existir */ }
+      }
+    }
+  }
+  const itensNovos = docs.itens.map((it) => ({
+    ...it,
+    arquivos: (it.arquivos || []).map((a) => (venceu(a) ? { ...a, storageExpurgado: true } : a)),
+  }));
+  await updateDoc(doc(db, "admissoes", admissao.id), stripUndefined({
+    documentos: { ...docs, itens: itensNovos },
+    updatedAt: new Date().toISOString(),
+  }));
+  return n;
 }
 
 // ─── Documentos do candidato ────────────────────────────────────────────────
