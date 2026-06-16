@@ -421,11 +421,15 @@ function docDef(
   return { id, nome, descricao, obrigatorio, permiteNaoSeAplica, ativo: true };
 }
 
+// Nenhum documento é obrigatório: todos aceitam "não tenho / não se aplica" +
+// justificativa. Assim o candidato sempre consegue finalizar (RG já costuma
+// ter CPF, nem todo mundo tem todos os docs, etc.). O que importa é responder
+// cada item — anexar OU justificar a ausência.
 export const DOCUMENTOS_ADMISSAO_DEFAULT: DocumentoAdmissaoDef[] = [
-  docDef("doc_identidade", "RG ou CNH", true, false, "Documento de identidade com foto — frente e verso, legível."),
-  docDef("doc_cpf", "CPF", true, false, "Pode ser o cartão CPF ou um documento onde o número apareça."),
-  docDef("doc_residencia", "Comprovante de residência", true, false, "Conta de luz, água ou telefone dos últimos 90 dias."),
-  docDef("doc_ctps", "Carteira de Trabalho Digital (ou nº do PIS)", true, false, "Print/PDF da CTPS Digital ou número do PIS/NIS."),
+  docDef("doc_identidade", "RG ou CNH", false, true, "Documento de identidade com foto — frente e verso, legível."),
+  docDef("doc_cpf", "CPF", false, true, "Pode ser o cartão CPF ou um documento onde o número apareça (o RG novo já traz o CPF)."),
+  docDef("doc_residencia", "Comprovante de residência", false, true, "Conta de luz, água ou telefone dos últimos 90 dias."),
+  docDef("doc_ctps", "Carteira de Trabalho Digital (ou nº do PIS)", false, true, "Print/PDF da CTPS Digital ou número do PIS/NIS."),
   docDef("doc_titulo_eleitor", "Título de eleitor", false, true, "Foto do título ou comprovante via app e-Título."),
   docDef("doc_certidao", "Certidão de nascimento ou casamento", false, true),
   docDef("doc_escolaridade", "Comprovante de escolaridade", false, true, "Diploma, histórico ou declaração."),

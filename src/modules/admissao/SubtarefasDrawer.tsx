@@ -6,7 +6,7 @@
 //  na lista. Em modo "avancar" mostra rodapé com botão de confirmar avanço.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -108,6 +108,9 @@ export function SubtarefasDrawer({
   const colunaAtual: KanbanColuna | undefined =
     colunas.find((c) => colunaCapturaStatus(c, st)) || colunas[0];
   const subtarefas = admissao.subtarefas || [];
+  // Se existe a subtarefa de conferir docs, a conferência aparece INLINE logo
+  // abaixo dela (mais perto da ação). Senão, cai num bloco no rodapé.
+  const temSubtarefaConferirDocs = subtarefas.some((s) => s.id === "st_conferir_docs");
   const [salvando, setSalvando] = useState<string | null>(null);
   // Quando uma subtarefa abre o modal de docs WhatsApp, guardamos a admissão
   // pra o modal usar — fechamos quando o modal fecha.
@@ -527,8 +530,8 @@ export function SubtarefasDrawer({
                             </div>
                             <div className="space-y-1.5">
                               {itens.map((s) => (
+                                <Fragment key={s.id}>
                                 <SubtarefaRow
-                                  key={s.id}
                                   sub={s}
                                   admissao={admissao}
                                   salvando={salvando === s.id}
@@ -552,6 +555,14 @@ export function SubtarefasDrawer({
                                   onAtalhoCriarPastaDrive={() => { criarPastaDrive(s); registrar(s.id, "criar_pasta_drive"); }}
                                   contatoLabel={(tipo) => labelContato(activeRestaurant, tipo)}
                                 />
+                                {s.id === "st_conferir_docs" && (
+                                  <DocumentosConferencia
+                                    admissao={admissao}
+                                    activeRestaurant={activeRestaurant}
+                                    pessoa={pessoa}
+                                  />
+                                )}
+                                </Fragment>
                               ))}
                             </div>
                           </div>
@@ -562,12 +573,15 @@ export function SubtarefasDrawer({
                 );
               })}
 
-          {/* 📎 Documentos do candidato — conferência + envio pro Drive */}
-          <DocumentosConferencia
-            admissao={admissao}
-            activeRestaurant={activeRestaurant}
-            pessoa={pessoa}
-          />
+          {/* 📎 Documentos do candidato — fallback no rodapé só quando NÃO existe
+              a subtarefa de conferir docs (senão aparece inline acima). */}
+          {!temSubtarefaConferirDocs && (
+            <DocumentosConferencia
+              admissao={admissao}
+              activeRestaurant={activeRestaurant}
+              pessoa={pessoa}
+            />
+          )}
 
           {/* 🕘 Histórico — linha do tempo de tudo que rolou na admissão */}
           {(() => {
