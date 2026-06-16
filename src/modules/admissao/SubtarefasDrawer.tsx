@@ -49,7 +49,7 @@ import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
 import {
   marcarLinkEnviado, urlPublicaAdmissao, montarMensagemEnvioLink,
   montarMensagemKitAssinatura, finalizarAdmissao, registrarExecucao,
-  montarHistoricoAdmissao,
+  montarHistoricoAdmissao, aprovarAdmissao, temDadosFinaisCompletos,
 } from "../../core/admissao/admissaoHelpers";
 import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
@@ -112,6 +112,23 @@ export function SubtarefasDrawer({
   // abaixo dela (mais perto da ação). Senão, cai num bloco no rodapé.
   const temSubtarefaConferirDocs = subtarefas.some((s) => s.id === "st_conferir_docs");
   const [salvando, setSalvando] = useState<string | null>(null);
+  const [criandoEmp, setCriandoEmp] = useState(false);
+
+  // Criar Pessoa + Empregado no sistema (dá acesso). Pode ser feito cedo —
+  // a escala só mostra a partir da data de admissão. Não encerra a admissão.
+  async function criarEmpregadoDrawer() {
+    if (admissao.empregadoIdCriado || !temDadosFinaisCompletos(admissao)) return;
+    if (!window.confirm(`Criar Pessoa + Empregado de ${admissao.candidato.nome} no sistema?\n\nDá acesso a ele e deixa o registro pronto. A admissão continua normalmente — concluir/arquivar é só no final.`)) return;
+    setCriandoEmp(true);
+    try {
+      await aprovarAdmissao(admissao, pessoa);
+      alert("Empregado criado no sistema ✓ — acesso liberado.");
+    } catch (e) {
+      alert("Erro ao criar empregado: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setCriandoEmp(false);
+    }
+  }
   // Quando uma subtarefa abre o modal de docs WhatsApp, guardamos a admissão
   // pra o modal usar — fechamos quando o modal fecha.
   const [docsModalOpen, setDocsModalOpen] = useState(false);
@@ -469,6 +486,40 @@ export function SubtarefasDrawer({
           </header>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-3">
+            {/* 👤 Empregado no sistema — criar cedo (dá acesso); não encerra a admissão */}
+            <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 p-3">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
+                👤 Empregado no sistema
+              </div>
+              {admissao.empregadoIdCriado ? (
+                <div className="text-xs text-emerald-700 dark:text-emerald-400">
+                  ✓ Criado
+                  {admissao.aprovadoEm ? ` em ${new Date(admissao.aprovadoEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" })}` : ""}
+                  {admissao.aprovadoPor ? ` por ${admissao.aprovadoPor.nome}` : ""} · acesso liberado
+                </div>
+              ) : temDadosFinaisCompletos(admissao) ? (
+                <>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+                    Cria o registro do empregado e libera o acesso dele. Pode fazer agora —
+                    ele só aparece na escala a partir da data de admissão.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void criarEmpregadoDrawer()}
+                    disabled={criandoEmp}
+                    className="text-xs font-semibold rounded-lg px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
+                  >
+                    {criandoEmp ? "Criando…" : "👤 Criar empregado"}
+                  </button>
+                </>
+              ) : (
+                <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                  Preencha cargo, data de admissão, salário e horário (em "Ver/editar dados")
+                  pra liberar a criação do empregado.
+                </p>
+              )}
+            </div>
+
             {colunas
               .filter((c) => c.id !== "col_terminados")
               .map((col) => {

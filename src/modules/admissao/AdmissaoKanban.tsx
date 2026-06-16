@@ -54,6 +54,8 @@ import {
   statusEfetivo,
   subtarefasPendentesObrigatorias,
   urlPublicaAdmissao,
+  finalizarAdmissao,
+  temDadosFinaisCompletos,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
@@ -249,14 +251,18 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   // Concluir → cria Pessoa + Empregado no sistema. Disponível A QUALQUER MOMENTO
   // (não exige o checklist todo) — só os dados mínimos da vaga. Pergunta antes
   // de rodar a cascata (auto + confirmar). aprovarAdmissao é idempotente.
-  async function concluirCriarEmpregado(adm: Admissao) {
+  // CRIAR empregado (Pessoa + Empregado no sistema) — pode ser feito cedo,
+  // assim que os dados da vaga estão completos. A escala só mostra a pessoa a
+  // partir da data de admissão, então criar antes é seguro. NÃO encerra a
+  // admissão (isso é o "Concluir"). aprovarAdmissao é idempotente.
+  async function criarEmpregado(adm: Admissao) {
     if (!me) return;
     if (adm.empregadoIdCriado) { alert("Empregado já criado no sistema."); return; }
-    if (!adm.cargoId || !adm.dataAdmissao || typeof adm.salario !== "number") {
-      alert("Pra criar o empregado preciso de: cargo, data de admissão e salário.\n\nPreencha os dados da vaga primeiro (no checklist do card).");
+    if (!temDadosFinaisCompletos(adm)) {
+      alert("Pra criar o empregado preciso dos dados da vaga: cargo, data de admissão, salário e horário.\n\nPreencha em 'Ver/editar dados' no checklist do card.");
       return;
     }
-    if (!confirm(`Criar Pessoa + Empregado de ${adm.candidato.nome} no sistema?\n\nCria o registro do empregado já. Você pode continuar o checklist da admissão depois.`)) return;
+    if (!confirm(`Criar Pessoa + Empregado de ${adm.candidato.nome} no sistema?\n\nDá acesso a ele e já deixa o registro pronto. A admissão continua no Kanban — concluir/arquivar é só no final.`)) return;
     try {
       const { empregadoId } = await aprovarAdmissao(adm, me);
       if (confirm("✅ Empregado criado!\n\nCriar também os exames admissionais e as tarefas de experiência no sistema agora?")) {
@@ -265,6 +271,35 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
       alert("Pronto — empregado criado no sistema.");
     } catch (e) {
       alert("Erro ao criar empregado: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  // CONCLUIR a admissão — encerra/arquiva (sai do Kanban ativo, vai pra
+  // Finalizadas). Só no final. Garante que o empregado exista (cria na hora
+  // como rede de segurança se ainda não foi criado).
+  async function concluirAdmissao(adm: Admissao) {
+    if (!me) return;
+    if (adm.finalizadoEm) { alert("Admissão já concluída."); return; }
+    if (!adm.empregadoIdCriado) {
+      if (!temDadosFinaisCompletos(adm)) {
+        alert("Antes de concluir, crie o empregado (precisa de cargo, data, salário e horário).");
+        return;
+      }
+      if (!confirm(`Concluir a admissão de ${adm.candidato.nome}?\n\nO empregado ainda não foi criado — vou criar agora e arquivar a admissão.`)) return;
+      try {
+        await aprovarAdmissao(adm, me);
+      } catch (e) {
+        alert("Erro ao criar empregado: " + (e instanceof Error ? e.message : "?"));
+        return;
+      }
+    } else {
+      if (!confirm(`Concluir e arquivar a admissão de ${adm.candidato.nome}?\n\nEla sai do Kanban ativo e vai pra aba Finalizadas (pode reabrir depois).`)) return;
+    }
+    try {
+      await finalizarAdmissao(adm.id, me);
+      alert("Admissão concluída e arquivada.");
+    } catch (e) {
+      alert("Erro ao concluir: " + (e instanceof Error ? e.message : "?"));
     }
   }
 
@@ -552,7 +587,8 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onReabrir={() => reabrirCard(a)}
                     onAbrirFormulario={() => setVerAdm(a)}
                     onEnviarLink={() => enviarLink(a)}
-                    onConcluir={() => concluirCriarEmpregado(a)}
+                    onCriarEmpregado={() => criarEmpregado(a)}
+                    onConcluir={() => concluirAdmissao(a)}
                     onCopiarLink={() => copiarLink(a)}
                     onEstender={(h) => estender(a, h)}
                     onDesfazerExtensao={() => desfazerExtensao(a)}
@@ -578,7 +614,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onConcluir, onCopiarLink, onEstender, onDesfazerExtensao, onNovoToken, onLembrar,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onCriarEmpregado, onConcluir, onCopiarLink, onEstender, onDesfazerExtensao, onNovoToken, onLembrar,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -595,6 +631,7 @@ function KanbanCard({
   onReabrir: () => void;
   onAbrirFormulario: () => void;
   onEnviarLink: () => void;
+  onCriarEmpregado: () => void;
   onConcluir: () => void;
   onCopiarLink: () => void;
   onEstender: (horas: number) => void;
@@ -766,26 +803,33 @@ function KanbanCard({
         </div>
       )}
 
-      {/* Concluir → criar empregado (disponível a qualquer momento). Destaque
-          quando já está em 'Pronto'/'Admitido'; discreto antes disso. */}
-      {!ehTerminal && !adm.empregadoIdCriado && (
+      {/* Criar empregado — quando os dados da vaga estão completos e ainda não
+          foi criado. Pode ser feito cedo (não encerra a admissão). */}
+      {!ehTerminal && !adm.empregadoIdCriado && temDadosFinaisCompletos(adm) && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onConcluir(); }}
-          className={`w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold ${
-            adm.status === "pronto_admissao" || adm.status === "admitido"
-              ? "bg-indigo-600 hover:bg-indigo-700 text-white"
-              : "border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-          }`}
-          title="Cria Pessoa + Empregado no sistema. Exige cargo, data e salário. Pode fazer a qualquer momento."
+          onClick={(e) => { e.stopPropagation(); onCriarEmpregado(); }}
+          className="w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+          title="Cria Pessoa + Empregado no sistema e dá acesso. A admissão continua no Kanban."
         >
-          ✅ Concluir → criar empregado
+          👤 Criar empregado
         </button>
       )}
       {!ehTerminal && adm.empregadoIdCriado && (
         <div className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-          ✓ empregado criado no sistema
+          👤 empregado criado no sistema ✓
         </div>
+      )}
+      {/* Concluir admissão — só na etapa final (admitido). Arquiva. */}
+      {!ehTerminal && adm.status === "admitido" && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onConcluir(); }}
+          className="w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
+          title="Encerra e arquiva a admissão (vai pra aba Finalizadas)."
+        >
+          ✅ Concluir admissão
+        </button>
       )}
 
       {/* Cancelada/Expirada: badges cumulativas dos motivos + data + autor */}
