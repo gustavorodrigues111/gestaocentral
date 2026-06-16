@@ -561,7 +561,6 @@ export function SubtarefasDrawer({
                   </details>
                 );
               })}
-          </div>
 
           {/* 📎 Documentos do candidato — conferência + envio pro Drive */}
           <DocumentosConferencia
@@ -574,7 +573,7 @@ export function SubtarefasDrawer({
           {(() => {
             const hist = montarHistoricoAdmissao(admissao);
             return (
-              <details className="mx-4 mb-3 rounded-lg border border-gray-200 dark:border-gray-800">
+              <details className="rounded-lg border border-gray-200 dark:border-gray-800">
                 <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 select-none">
                   🕘 Histórico ({hist.length})
                 </summary>
@@ -592,6 +591,7 @@ export function SubtarefasDrawer({
               </details>
             );
           })()}
+          </div>
 
           {intencao === "avancar" && onConfirmarAvanco && proxStatus && (
             <footer className="border-t border-gray-200 dark:border-gray-800 p-4 bg-gray-50 dark:bg-gray-900/60">
@@ -1352,7 +1352,7 @@ function DocumentosConferencia({
   }
 
   return (
-    <details className="mx-4 mb-3 rounded-lg border border-indigo-200 dark:border-indigo-900" open>
+    <details className="rounded-lg border border-indigo-200 dark:border-indigo-900" open>
       <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 select-none">
         📎 Documentos do candidato ({itens.length})
       </summary>

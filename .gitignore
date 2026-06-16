@@ -31,3 +31,4 @@ dist-ssr
 # Instaladores que pousaram aqui por engano (gcloud SDK)
 y/
 google-cloud-sdk/
+.vercel
