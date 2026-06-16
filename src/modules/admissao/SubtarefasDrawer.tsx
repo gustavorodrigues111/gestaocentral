@@ -1276,6 +1276,10 @@ function NovaEntregaWrapper({
 // enquanto a admissão estiver aberta. Sem checkbox de conferência (vem pronto).
 const MAX_DOC_DP_BYTES = 10 * 1024 * 1024;
 const TIPOS_DOC_DP_OK = ["application/pdf", "image/jpeg", "image/png"];
+// Colchão de segurança: só apaga o original do Storage N dias DEPOIS de
+// confirmado no Drive (se der pau no meio, o arquivo ainda está lá).
+const DIAS_EXPURGO_STORAGE = 7;
+const driveViewUrl = (fileId: string) => `https://drive.google.com/file/d/${fileId}/view`;
 
 // Nome do arquivo no Drive: "<nome do documento> - <nome do empregado>" (+ ordem
 // se houver mais de um arquivo no mesmo documento), preservando a extensão.
@@ -1328,6 +1332,41 @@ function DocumentosConferencia({
   const itens = admissao.documentos?.itens || [];
   const [busy, setBusy] = useState<string | null>(null); // docId | "__drive__"
   const [erro, setErro] = useState("");
+
+  // Expurgo com colchão de segurança: apaga do Storage só os arquivos que já
+  // estão no Drive há mais de DIAS_EXPURGO_STORAGE dias. Roda ao abrir a
+  // admissão (padrão client-side do projeto — sem Admin SDK server-side).
+  // Mantém driveFileId pra UI apontar pro Drive depois de apagado.
+  useEffect(() => {
+    const docs = admissao.documentos;
+    if (!docs) return;
+    const limite = Date.now() - DIAS_EXPURGO_STORAGE * 86400000;
+    const venceu = (a: DocumentoAdmissaoArquivo) =>
+      !!a.driveFileId && !a.storageExpurgado && !!a.driveSubidoEm &&
+      new Date(a.driveSubidoEm).getTime() < limite;
+    if (!docs.itens.some((it) => (it.arquivos || []).some(venceu))) return;
+    let cancelado = false;
+    (async () => {
+      for (const it of docs.itens) {
+        for (const a of it.arquivos || []) {
+          if (venceu(a)) {
+            try { await deleteObject(storageRef(storage, a.path)); } catch { /* já pode não existir */ }
+          }
+        }
+      }
+      if (cancelado) return;
+      const itensNovos = docs.itens.map((it) => ({
+        ...it,
+        arquivos: (it.arquivos || []).map((a) => (venceu(a) ? { ...a, storageExpurgado: true } : a)),
+      }));
+      await updateDoc(doc(db, "admissoes", admissao.id), sanitizeForFirestore({
+        documentos: { ...docs, itens: itensNovos },
+        updatedAt: new Date().toISOString(),
+      }));
+    })();
+    return () => { cancelado = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admissao.id]);
 
   if (itens.length === 0) return null;
 
@@ -1428,7 +1467,7 @@ function DocumentosConferencia({
           const nome = nomeArquivoDrive(it.nome, empNome, arq.nome, arqs.length, i);
           const file = new File([blob], nome, { type: arq.tipo || blob.type });
           const subido = await uploadFileToFolder(folderId, file);
-          novosArqs.push({ ...arq, driveFileId: subido.id });
+          novosArqs.push({ ...arq, driveFileId: subido.id, driveSubidoEm: new Date().toISOString() });
         }
         novosItens.push({ ...it, arquivos: novosArqs });
       }
@@ -1491,7 +1530,7 @@ function DocumentosConferencia({
                   {arqs.map((a) => (
                     <div key={a.path} className="flex items-center gap-2 text-[11px]">
                       <a
-                        href={a.url}
+                        href={a.storageExpurgado && a.driveFileId ? driveViewUrl(a.driveFileId) : a.url}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-indigo-600 dark:text-indigo-400 hover:underline truncate flex-1"
@@ -1499,7 +1538,11 @@ function DocumentosConferencia({
                         📄 {a.nome}
                       </a>
                       {a.enviadoPeloDp && <span className="text-[9px] uppercase text-gray-400 shrink-0">DP</span>}
-                      {a.driveFileId && <span className="text-[9px] text-emerald-600 shrink-0" title="Já está no Drive">✓ Drive</span>}
+                      {a.driveFileId && (
+                        <span className="text-[9px] text-emerald-600 shrink-0" title={a.storageExpurgado ? "No Drive (original removido do Storage)" : "Já está no Drive"}>
+                          {a.storageExpurgado ? "📁 Drive" : "✓ Drive"}
+                        </span>
+                      )}
                       {!encerrada && (
                         <button
                           type="button"

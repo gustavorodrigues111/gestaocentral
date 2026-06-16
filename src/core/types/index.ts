@@ -2457,6 +2457,8 @@ export type DocumentoAdmissaoArquivo = {
   tamanho: number;    // bytes
   enviadoPeloDp?: boolean;  // true se o DP anexou manualmente (não veio do candidato)
   driveFileId?: string;     // id no Drive depois de subido (evita re-subir/duplicar)
+  driveSubidoEm?: string;   // ISO — quando subiu pro Drive (base do prazo de expurgo)
+  storageExpurgado?: boolean; // true depois que o original foi apagado do Storage
 };
 
 // Resolução do candidato para UM documento, submetida com o form. Depois o DP
