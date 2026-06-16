@@ -298,10 +298,10 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
     }
     try {
       await finalizarAdmissao(adm.id, me);
-      // Limpeza ao concluir: apaga do Storage os docs já no Drive (respeita o
-      // colchão de 7 dias). Best-effort — não bloqueia a conclusão se falhar.
+      // Limpeza ao concluir: apaga do Storage TODOS os docs já no Drive na hora
+      // (sem o colchão de 7 dias — concluir é a confirmação final). Best-effort.
       try {
-        const n = await expurgarDocumentosNoStorage(adm);
+        const n = await expurgarDocumentosNoStorage(adm, { ignorarPrazo: true });
         alert(`Admissão concluída e arquivada.${n > 0 ? `\n\n${n} documento(s) já no Drive foram limpos do Storage.` : ""}`);
       } catch {
         alert("Admissão concluída e arquivada.");
