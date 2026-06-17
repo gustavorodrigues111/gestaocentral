@@ -305,12 +305,34 @@ async function criarEvento(token: string, calId: string, ev: DadosEvento): Promi
   if (ev.pin) body.transparency = "transparent";        // pin não bloqueia tempo
   aplicaCampos(body, ev);
   if (ev.recorrencia?.length) body.recurrence = ev.recorrencia;
+  // INSERT não apaga nada: remove valores null de extendedProperties.private.
+  // `null` só é válido em PATCH (pra deletar a chave) — no insert a API do
+  // Google rejeita com HTTP 400 ("Invalid value").
+  removeNullsPrivate(body);
   const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calId)}/events`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`Falha ao criar (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Falha ao criar (HTTP ${res.status})${await msgErroGoogle(res)}`);
+}
+
+// Tira chaves com valor null do extendedProperties.private (válidas só em patch).
+function removeNullsPrivate(body: Record<string, unknown>): void {
+  const ep = body.extendedProperties as { private?: Record<string, unknown> } | undefined;
+  const priv = ep?.private;
+  if (!priv) return;
+  for (const k of Object.keys(priv)) if (priv[k] == null) delete priv[k];
+}
+
+// Extrai a mensagem de erro do corpo JSON do Google (pra debugar 4xx).
+async function msgErroGoogle(res: Response): Promise<string> {
+  try {
+    const j = (await res.json()) as { error?: { message?: string } };
+    return j?.error?.message ? ` — ${j.error.message}` : "";
+  } catch {
+    return "";
+  }
 }
 async function editarEvento(token: string, calId: string, eventId: string, ev: DadosEvento): Promise<void> {
   const body: Record<string, unknown> = { summary: ev.titulo };
