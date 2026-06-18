@@ -35,6 +35,29 @@ const fmtYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 // Converte qualquer YYYY-MM-DD (inclusive dentro de "X a Y") → DD/MM/YYYY.
 const fmtBR = (s: string) => s.replace(/(\d{4})-(\d{2})-(\d{2})/g, "$3/$2/$1");
 
+type PresetId = "7d" | "estaSemana" | "semanaPassada" | "esteMes" | "mesPassado";
+const PRESETS: { id: PresetId; label: string }[] = [
+  { id: "semanaPassada", label: "Semana passada" },
+  { id: "estaSemana", label: "Esta semana" },
+  { id: "7d", label: "Últimos 7 dias" },
+  { id: "esteMes", label: "Este mês" },
+  { id: "mesPassado", label: "Mês passado" },
+];
+// Semanas Dom–Sáb (a Sólides troca escala/semana aos domingos).
+function rangePreset(p: PresetId): [string, string] {
+  const h = new Date(); h.setHours(0, 0, 0, 0);
+  if (p === "7d") { const s = new Date(h); s.setDate(s.getDate() - 6); return [fmtYmd(s), fmtYmd(h)]; }
+  if (p === "estaSemana") { const s = new Date(h); s.setDate(s.getDate() - s.getDay()); return [fmtYmd(s), fmtYmd(h)]; }
+  if (p === "semanaPassada") {
+    const dom = new Date(h); dom.setDate(dom.getDate() - dom.getDay() - 7);
+    const sab = new Date(dom); sab.setDate(sab.getDate() + 6);
+    return [fmtYmd(dom), fmtYmd(sab)];
+  }
+  if (p === "esteMes") return [fmtYmd(new Date(h.getFullYear(), h.getMonth(), 1)), fmtYmd(h)];
+  // mês passado
+  return [fmtYmd(new Date(h.getFullYear(), h.getMonth() - 1, 1)), fmtYmd(new Date(h.getFullYear(), h.getMonth(), 0))];
+}
+
 const SEV_COR: Record<Severidade, string> = {
   alta: "bg-red-500",
   media: "bg-amber-500",
@@ -94,7 +117,13 @@ export function AnalisePontoPage() {
     return m;
   }, [empregados, cargos, roster]);
 
-  async function analisar() {
+  function aplicarPreset(p: PresetId) {
+    const [s, e] = rangePreset(p);
+    setInicio(s); setFim(e);
+    void analisar(s, e);
+  }
+
+  async function analisar(ini: string = inicio, fimArg: string = fim) {
     if (!activeRestaurant) return;
     const shortCode = activeRestaurant.shortCode || "";
     if (!shortCode) { setErro("Restaurante sem shortCode configurado."); return; }
@@ -105,13 +134,13 @@ export function AnalisePontoPage() {
       // Roster pode vir vazio em algumas contas → FALTA simplesmente não aponta;
       // não derruba o resto. Por isso o catch dele é tolerante.
       const [{ punches }, schedules, employees] = await Promise.all([
-        fetchPunches(inicio, fim, shortCode),
+        fetchPunches(ini, fimArg, shortCode),
         fetchScheduleCatalog(shortCode),
         fetchRoster(shortCode).catch(() => []),
       ]);
       setRoster(employees);
       const res = analisarPonto(
-        punches as unknown as PontoMarcacao[], employees, schedules, inicio, fim,
+        punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
     } catch (e) {
@@ -149,31 +178,49 @@ export function AnalisePontoPage() {
 
       {tab === "inconsist" && <>
       {/* Filtros */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-wrap items-end gap-3">
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início</label>
-          <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        {/* Atalhos de período */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Período</span>
+          {PRESETS.map((p) => (
+            <button key={p.id} type="button" onClick={() => aplicarPreset(p.id)} disabled={carregando}
+              className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50">
+              {p.label}
+            </button>
+          ))}
+          <span className="ml-auto text-[11px] text-gray-400 inline-flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
+          </span>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim</label>
-          <input type="date" value={fim} onChange={(e) => setFim(e.target.value)}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+
+        <div className="border-t border-gray-100 dark:border-gray-800" />
+
+        {/* Datas + área + ação */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início</label>
+            <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim</label>
+            <input type="date" value={fim} onChange={(e) => setFim(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+          </div>
+          <div className="flex flex-col gap-1 min-w-[160px]">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Área</label>
+            <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value as Area | "todas" | "sem")}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none">
+              <option value="todas">Todas as áreas</option>
+              {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+              <option value="sem">Sem área (não vinculado)</option>
+            </select>
+          </div>
+          <button type="button" onClick={() => void analisar()} disabled={carregando}
+            className="ml-auto px-5 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 inline-flex items-center gap-2">
+            {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+          </button>
         </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Área</label>
-          <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value as Area | "todas" | "sem")}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-            <option value="todas">Todas as áreas</option>
-            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-            <option value="sem">Sem área (não vinculado)</option>
-          </select>
-        </div>
-        <button type="button" onClick={() => void analisar()} disabled={carregando}
-          className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
-          {carregando ? "Analisando…" : "🔍 Analisar período"}
-        </button>
-        <span className="text-[11px] text-gray-400 ml-auto">{activeRestaurant.nome} · {activeRestaurant.shortCode}</span>
       </div>
 
       {erro && (
