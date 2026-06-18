@@ -5,11 +5,12 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { PontoColaborador, PontoEscala } from "./analise";
+import { authHeader } from "../firebase/idToken";
 
 export async function fetchScheduleCatalog(restaurantKey: string): Promise<PontoEscala[]> {
   const params = new URLSearchParams();
   if (restaurantKey) params.set("restaurant", restaurantKey);
-  const resp = await fetch(`/api/solides-schedule-catalog?${params.toString()}`, { method: "GET" });
+  const resp = await fetch(`/api/solides-schedule-catalog?${params.toString()}`, { method: "GET", headers: await authHeader() });
   const text = await resp.text();
   let json: unknown = {};
   if (text) {
@@ -27,7 +28,7 @@ export async function fetchScheduleCatalog(restaurantKey: string): Promise<Ponto
 export async function fetchRoster(restaurantKey: string): Promise<PontoColaborador[]> {
   const params = new URLSearchParams();
   if (restaurantKey) params.set("restaurant", restaurantKey);
-  const resp = await fetch(`/api/solides-roster?${params.toString()}`, { method: "GET" });
+  const resp = await fetch(`/api/solides-roster?${params.toString()}`, { method: "GET", headers: await authHeader() });
   const text = await resp.text();
   let json: unknown = {};
   if (text) {

@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { SolidesPunch } from "./types";
+import { authHeader } from "../firebase/idToken";
 
 export type FetchPunchesResult = {
   punches: SolidesPunch[];
@@ -42,7 +43,7 @@ export async function fetchPunches(
 
   let resp: Response;
   try {
-    resp = await fetch(url, { method: "GET" });
+    resp = await fetch(url, { method: "GET", headers: await authHeader() });
   } catch (e) {
     throw new Error(
       `Não consegui falar com o servidor (/api/solides-punches). ` +

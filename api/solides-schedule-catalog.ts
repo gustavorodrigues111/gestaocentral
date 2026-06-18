@@ -15,7 +15,9 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 const REQ_TIMEOUT_MS = 20_000;
 
-type VercelReq = { method?: string; query: Record<string, string | string[] | undefined> };
+import { requireUser, AuthError } from "./_auth";
+
+type VercelReq = { method?: string; query: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined> };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 type SolidesPage = { content?: unknown[]; last?: boolean };
 
@@ -76,6 +78,10 @@ async function fetchPage(token: string, page: number): Promise<SolidesPage> {
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   if (req.method && req.method !== "GET") {
     res.status(405).json({ error: "Método não permitido. Use GET." });
+    return;
+  }
+  try { await requireUser(req); } catch (e) {
+    res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
   const restaurantKey = String(req.query.restaurant ?? "").trim();

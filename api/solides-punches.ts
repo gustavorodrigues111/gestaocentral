@@ -22,6 +22,7 @@
 //  Vercel compila esta function com o runtime Node próprio dela. Por isso os
 //  tipos de req/res são declarados inline — zero dependência nova.
 // ════════════════════════════════════════════════════════════════════════════
+import { requireUser, AuthError } from "./_auth";
 
 const PUNCH_API = "https://api.tangerino.com.br/api/punch/";
 const PAGE_SIZE = 200;
@@ -32,6 +33,7 @@ const REQ_TIMEOUT_MS = 20_000;
 type VercelReq = {
   method?: string;
   query: Record<string, string | string[] | undefined>;
+  headers?: Record<string, string | string[] | undefined>;
 };
 type VercelRes = {
   status: (code: number) => VercelRes;
@@ -161,6 +163,10 @@ async function fetchPage(
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   if (req.method && req.method !== "GET") {
     res.status(405).json({ error: "Método não permitido. Use GET." });
+    return;
+  }
+  try { await requireUser(req); } catch (e) {
+    res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
 
