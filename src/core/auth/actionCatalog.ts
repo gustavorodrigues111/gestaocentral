@@ -365,8 +365,10 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Relatório de inconsistências de ponto (A Corrigir × A Avaliar) e correções",
     area: "gestao",
     acoes: [
-      { id: "ver",      label: "Ver análise de ponto (relatórios)", sensivel: true },
-      { id: "corrigir", label: "Corrigir ponto / lançar ajuste na Sólides", sensivel: true },
+      { id: "ver",       label: "Ver análise de ponto (relatórios)", sensivel: true },
+      { id: "solicitar", label: "Enviar apontamentos pro empregado + marcar 'ciente'", sensivel: true },
+      { id: "aprovar",   label: "Aprovar / reprovar ajustes de ponto do empregado", sensivel: true },
+      { id: "corrigir",  label: "Corrigir manualmente (editar/excluir batida, lançar ajuste)", sensivel: true },
     ],
   },
   {
