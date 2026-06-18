@@ -8,13 +8,18 @@
 //  Excel e FALTA (precisa do roster de colaboradores) entram nas próximas fases.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
-import { fetchScheduleCatalog, fetchRoster } from "../../core/ponto/solidesPontoClient";
+import {
+  fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
+  type Justificativa,
+} from "../../core/ponto/solidesPontoClient";
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
   type PontoMarcacao, type ResultadoAnalise, type Severidade,
@@ -35,7 +40,9 @@ export function AnalisePontoPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "analise-ponto");
+  const { can, loading: permLoading } = useCanAcao(rid);
+  const podeVer = can("analise-ponto", "ver");
+  const podeCorrigir = can("analise-ponto", "corrigir");
 
   const hoje = new Date();
   const [inicio, setInicio] = useState(fmtYmd(new Date(hoje.getTime() - 7 * 86400000)));
@@ -43,6 +50,7 @@ export function AnalisePontoPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
+  const [corrigindo, setCorrigindo] = useState<Ocorrencia | null>(null);
 
   async function analisar() {
     if (!activeRestaurant) return;
@@ -71,6 +79,7 @@ export function AnalisePontoPage() {
   }
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
+  if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando permissões…</div>;
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
@@ -125,7 +134,9 @@ export function AnalisePontoPage() {
                   <div className="px-4 py-6 text-center text-sm text-gray-400">Nada nesta categoria 🎉</div>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {itens.map((o, i) => <Linha key={i} o={o} />)}
+                    {itens.map((o, i) => (
+                      <Linha key={i} o={o} podeCorrigir={podeCorrigir} onCorrigir={() => setCorrigindo(o)} />
+                    ))}
                   </div>
                 )}
               </section>
@@ -133,9 +144,9 @@ export function AnalisePontoPage() {
           })}
 
           <p className="text-[11px] text-gray-400">
-            FALTA depende do roster de colaboradores da Sólides (se a conta não
-            retornar colaboradores, faltas não são apontadas). As correções
-            (escrita) vêm na próxima fase.
+            Correções de "Ponto em aberto" (lançar ponto em atraso) são feitas pelo
+            botão ✏️ Corrigir{podeCorrigir ? "" : " (só com permissão de Corrigir)"}.
+            FALTA depende do roster da Sólides (se a conta não retornar colaboradores, não aparece).
           </p>
         </>
       )}
@@ -144,6 +155,17 @@ export function AnalisePontoPage() {
         <div className="text-center text-sm text-gray-400 py-12">
           Escolha o período e clique em <strong>Analisar</strong>.
         </div>
+      )}
+
+      {corrigindo && activeRestaurant && (
+        <CorrecaoModal
+          ocorrencia={corrigindo}
+          shortCode={activeRestaurant.shortCode || ""}
+          restaurantId={rid}
+          por={{ id: me?.id || "", nome: me?.nome || "?" }}
+          onClose={() => setCorrigindo(null)}
+          onDone={() => { setCorrigindo(null); void analisar(); }}
+        />
       )}
     </div>
   );
@@ -158,7 +180,9 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
   );
 }
 
-function Linha({ o }: { o: Ocorrencia }) {
+function Linha({ o, podeCorrigir, onCorrigir }: { o: Ocorrencia; podeCorrigir: boolean; onCorrigir: () => void }) {
+  // Ponto em atraso corrige o caso clássico de PONTO_EM_ABERTO (saída faltante).
+  const corrigivel = podeCorrigir && o.tipo === "PONTO_EM_ABERTO" && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data);
   return (
     <div className="px-4 py-2.5 flex items-start gap-2.5">
       <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${SEV_COR[o.severidade]}`} title={o.severidade} />
@@ -172,6 +196,110 @@ function Linha({ o }: { o: Ocorrencia }) {
         {o.marcacoes.length > 0 && (
           <div className="text-[11px] text-gray-400 tabular-nums mt-0.5">{o.marcacoes.join("  ·  ")}</div>
         )}
+      </div>
+      {corrigivel && (
+        <button type="button" onClick={onCorrigir}
+          className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+          ✏️ Corrigir
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal de correção: lança ponto em atraso na Sólides ─────────────────────
+function CorrecaoModal({
+  ocorrencia, shortCode, restaurantId, por, onClose, onDone,
+}: {
+  ocorrencia: Ocorrencia;
+  shortCode: string;
+  restaurantId: string;
+  por: { id: string; nome: string };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [justs, setJusts] = useState<Justificativa[]>([]);
+  const [justId, setJustId] = useState<number | null>(null);
+  const [data, setData] = useState(ocorrencia.data);
+  const [hora, setHora] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    fetchJustificativas(shortCode)
+      .then((js) => { if (vivo) { setJusts(js); if (js[0]) setJustId(js[0].id); } })
+      .catch((e) => { if (vivo) setErro(e instanceof Error ? e.message : "Falha ao carregar justificativas."); });
+    return () => { vivo = false; };
+  }, [shortCode]);
+
+  async function confirmar() {
+    if (!justId) { setErro("Escolha uma justificativa."); return; }
+    if (!/^\d{2}:\d{2}$/.test(hora)) { setErro("Informe a hora real (HH:MM)."); return; }
+    const dataHoraIso = `${data}T${hora}:00.000-0300`; // America/Sao_Paulo (UTC-3 fixo)
+    if (!window.confirm(`Lançar ponto em atraso para ${ocorrencia.colaborador} em ${data} ${hora}?\n\nIsso grava na Sólides (dado trabalhista). A Sólides decide se é entrada ou saída e pareia.`)) return;
+    setErro("");
+    setSalvando(true);
+    try {
+      await corrigirPontoAtraso(shortCode, { employeeId: ocorrencia.employeeId, dataHoraIso, justificativaId: justId });
+      // Auditoria (quem/quando/o quê) — dado trabalhista.
+      try {
+        await addDoc(collection(db, "pontoAuditoria"), {
+          restaurantId, tipo: "ponto_atraso",
+          por: { id: por.id, nome: por.nome },
+          employeeId: ocorrencia.employeeId, colaborador: ocorrencia.colaborador,
+          data, hora, justificativaId: justId,
+          em: new Date().toISOString(),
+        });
+      } catch { /* auditoria não bloqueia a correção */ }
+      alert("Ponto lançado na Sólides ✓ (entra como pendente de aprovação). Reanalisando o período…");
+      onDone();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao lançar o ponto.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">✏️ Corrigir ponto — {ocorrencia.colaborador}</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {ROTULOS[ocorrencia.tipo]} em {ocorrencia.data}. Informe a hora real da batida faltante.
+          Para saída de madrugada (vira-dia), use a data do dia seguinte.
+        </p>
+        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Data</label>
+            <input type="date" value={data} onChange={(e) => setData(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Hora (HH:MM)</label>
+            <input type="time" value={hora} onChange={(e) => setHora(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          </div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Justificativa</label>
+          <select value={justId ?? ""} onChange={(e) => setJustId(Number(e.target.value))}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            {justs.length === 0 && <option value="">— carregando —</option>}
+            {justs.map((j) => <option key={j.id} value={j.id}>{j.description}</option>)}
+          </select>
+        </div>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} disabled={salvando}
+            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+            Cancelar
+          </button>
+          <button type="button" onClick={() => void confirmar()} disabled={salvando}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
+            {salvando ? "Lançando…" : "Confirmar correção"}
+          </button>
+        </div>
       </div>
     </div>
   );

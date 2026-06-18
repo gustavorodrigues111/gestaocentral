@@ -41,3 +41,40 @@ export async function fetchRoster(restaurantKey: string): Promise<PontoColaborad
   const data = json as { employees?: unknown };
   return Array.isArray(data.employees) ? (data.employees as PontoColaborador[]) : [];
 }
+
+export type Justificativa = { id: number; description: string };
+
+export async function fetchJustificativas(restaurantKey: string): Promise<Justificativa[]> {
+  const params = new URLSearchParams();
+  if (restaurantKey) params.set("restaurant", restaurantKey);
+  const resp = await fetch(`/api/solides-ponto-correcao?${params.toString()}`, { method: "GET", headers: await authHeader() });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  const arr = (json as { justificativas?: unknown[] }).justificativas || [];
+  return arr
+    .map((j) => {
+      const o = j as { id?: number; description?: string; nome?: string };
+      return { id: Number(o.id), description: o.description || o.nome || `Justificativa ${o.id}` };
+    })
+    .filter((j) => Number.isFinite(j.id));
+}
+
+// Lança ponto em atraso. `dataHoraIso` = ISO com offset (ex: 2026-06-17T00:06:00.000-0300).
+export async function corrigirPontoAtraso(
+  restaurantKey: string,
+  params: { employeeId: number; dataHoraIso: string; justificativaId: number },
+): Promise<{ ok: boolean; resultado: unknown }> {
+  const resp = await fetch(`/api/solides-ponto-correcao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({
+      restaurant: restaurantKey,
+      employeeId: params.employeeId,
+      date: params.dataHoraIso,
+      justificativaId: params.justificativaId,
+    }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean; resultado: unknown };
+}
