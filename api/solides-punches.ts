@@ -22,7 +22,7 @@
 //  Vercel compila esta function com o runtime Node próprio dela. Por isso os
 //  tipos de req/res são declarados inline — zero dependência nova.
 // ════════════════════════════════════════════════════════════════════════════
-import { requireUser, AuthError } from "./_auth";
+import { requireUser, AuthError } from "./_auth.js";
 
 const PUNCH_API = "https://api.tangerino.com.br/api/punch/";
 const PAGE_SIZE = 200;

@@ -12,7 +12,7 @@
 //  Sempre exige Firebase ID token (api/_auth) — escrita em dado trabalhista.
 //  O controle por restaurante/permissão "corrigir" é feito no app (perfil de acesso).
 // ════════════════════════════════════════════════════════════════════════════
-import { requireUser, AuthError } from "./_auth";
+import { requireUser, AuthError } from "./_auth.js";
 
 const PUNCH = "https://api.tangerino.com.br/api/punch";
 const REQ_TIMEOUT_MS = 20_000;

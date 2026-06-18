@@ -16,7 +16,7 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 50;
 const REQ_TIMEOUT_MS = 20_000;
 
-import { requireUser, AuthError } from "./_auth";
+import { requireUser, AuthError } from "./_auth.js";
 
 type VercelReq = { method?: string; query: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined> };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
