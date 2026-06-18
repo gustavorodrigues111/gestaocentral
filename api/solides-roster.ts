@@ -86,7 +86,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     return;
   }
   const restaurantKey = String(req.query.restaurant ?? "").trim();
-  const showFired = String(req.query.showFired ?? "true") !== "false"; // inclui demitidos (analyzer respeita firedDate)
+  // Default = ativos (showFired=false), igual ao /api/solides-employees. Em
+  // algumas contas showFired=true traz SÓ demitidos → roster vazio de ativos.
+  const showFired = String(req.query.showFired ?? "false") === "true";
   const tokenResult = resolveToken(restaurantKey);
   if ("error" in tokenResult) {
     res.status(tokenResult.status).json({ error: tokenResult.error });
