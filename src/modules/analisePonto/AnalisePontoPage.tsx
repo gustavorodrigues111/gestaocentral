@@ -30,7 +30,7 @@ import {
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
   type PontoColaborador, type PontoMarcacao, type ResultadoAnalise, type Severidade,
-  type TipoOcorrencia,
+  type TipoOcorrencia, type SaldoColaborador,
 } from "../../core/ponto/analise";
 
 import { EscalasComparacaoTab } from "./EscalasComparacaoTab";
@@ -171,6 +171,7 @@ export function AnalisePontoPage() {
     return next;
   });
   const [mostrarAvaliados, setMostrarAvaliados] = useState(false);
+  const [mostrarSaldos, setMostrarSaldos] = useState(false);
   const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
   const [aprovacoes, setAprovacoes] = useState<AprovacaoPendente[]>([]);
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
@@ -528,6 +529,14 @@ export function AnalisePontoPage() {
 
         // ─── Aba Inconsistências: pendentes (tira os marcados "ciente") agrupados por empregado.
         const pendentes = filtradas.filter((o) => !cienteKeys.has(ocKey(o)));
+        const saldoPorEmp = new Map<number, SaldoColaborador>();
+        for (const s of resultado.saldos || []) saldoPorEmp.set(s.employeeId, s);
+        const passaEmp = (eid: number) => {
+          if (filtroAreas.size === 0) return true;
+          const a = areaPorEmpId(eid);
+          return a ? filtroAreas.has(a) : filtroAreas.has("sem");
+        };
+        const saldosVisiveis = (resultado.saldos || []).filter((s) => passaEmp(s.employeeId));
         const avaliadosVisiveis = avaliacoes.filter((a) =>
           filtroAreas.size === 0 ? true : (() => {
             const ar = areaPorEmpId(a.employeeId);
@@ -560,6 +569,7 @@ export function AnalisePontoPage() {
                     {grupos.map((g) => (
                       <GrupoEmp key={g.employeeId} grupo={g}
                         area={areaPorEmpId(g.employeeId)} tel={telPorEmpId(g.employeeId)}
+                        saldo={saldoPorEmp.get(g.employeeId)}
                         sel={sel} toggleSel={toggleSel} solPorKey={solPorKey} now={now}
                         podeSolicitar={podeSolicitar}
                         onEnviar={(itens) => enviarCorrecao(g.colaborador, g.employeeId, itens)}
@@ -623,7 +633,29 @@ export function AnalisePontoPage() {
             </section>
           )}
 
+          {/* Saldo de horas do período — todos os empregados (status, não apontamento) */}
+          {saldosVisiveis.length > 0 && (
+            <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+              <button type="button" onClick={() => setMostrarSaldos((v) => !v)}
+                className="w-full px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-700 dark:text-gray-200 flex items-center justify-between">
+                <span>📊 Saldo de horas do período — todos ({saldosVisiveis.length})</span>
+                <span className="text-gray-400">{mostrarSaldos ? "▲" : "▼"}</span>
+              </button>
+              {mostrarSaldos && (
+                <div className="p-3 flex flex-wrap gap-2">
+                  {saldosVisiveis.map((s) => (
+                    <span key={s.employeeId} title={s.detalhe}
+                      className="inline-flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">
+                      {s.colaborador} <SaldoBadge saldo={s} />
+                    </span>
+                  ))}
+                </div>
+              )}
+            </section>
+          )}
+
           <p className="text-[11px] text-gray-400">
+            O saldo de horas vira o badge ao lado do nome (+ vermelho acima · 0 verde · − âmbar abaixo do previsto); passe o mouse pra ver o detalhe.
             O empregado corrige no app dele; depois você aprova (aba Aprovações — em breve).
             Correção manual só em exceção, na aba 🛠️{podeCorrigir ? "" : " (sem permissão)"}.
             FALTA depende do roster da Sólides (se a conta não retornar colaboradores, não aparece).
@@ -711,6 +743,26 @@ export function AnalisePontoPage() {
   );
 }
 
+// Badge do saldo de horas: + (acima) vermelho · 0 verde · − (abaixo) âmbar.
+function SaldoBadge({ saldo }: { saldo: SaldoColaborador }) {
+  const s = saldo.saldoSeg;
+  const abs = Math.abs(s);
+  const hh = Math.floor(abs / 3600);
+  const mm = Math.floor((abs % 3600) / 60);
+  const val = s === 0 ? "0" : `${s > 0 ? "+" : "−"}${pad(hh)}:${pad(mm)}`;
+  const cls = s > 0
+    ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+    : s < 0
+      ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300";
+  return (
+    <span title={saldo.detalhe}
+      className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full tabular-nums cursor-help ${cls}`}>
+      {val}
+    </span>
+  );
+}
+
 function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick}
@@ -735,11 +787,12 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
 
 // ─── Grupo de um empregado: cabeçalho (nome + relógio + enviar) + itens ───────
 function GrupoEmp({
-  grupo, area, tel, sel, toggleSel, solPorKey, now, podeSolicitar, onEnviar, onCiencia,
+  grupo, area, tel, saldo, sel, toggleSel, solPorKey, now, podeSolicitar, onEnviar, onCiencia,
 }: {
   grupo: { employeeId: number; colaborador: string; itens: Ocorrencia[] };
   area?: Area;
   tel: string;
+  saldo?: SaldoColaborador;
   sel: Set<string>;
   toggleSel: (k: string) => void;
   solPorKey: Map<string, Solicitacao>;
@@ -771,6 +824,7 @@ function GrupoEmp({
             className="w-4 h-4 accent-indigo-600 cursor-pointer" title="Selecionar todos" />
         )}
         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{grupo.colaborador}</span>
+        {saldo && <SaldoBadge saldo={saldo} />}
         {area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
         <span className="text-[11px] text-gray-400">({grupo.itens.length})</span>
         {rel && (

@@ -81,6 +81,18 @@ export type Ocorrencia = {
   detalhe: string;
   marcacoes: string[];
 };
+// Saldo de horas do período por colaborador — vira STATUS (badge), não apontamento.
+export type SaldoColaborador = {
+  employeeId: number;
+  colaborador: string;
+  saldoSeg: number;       // + acima do previsto, − abaixo, 0 zerado
+  trabalhadoSeg: number;
+  previstoSeg: number;
+  dias: number;
+  periodo: string;        // "início a fim"
+  detalhe: string;        // texto completo p/ tooltip
+};
+
 export type ResultadoAnalise = {
   periodo: [string, string];
   total: number;
@@ -88,6 +100,7 @@ export type ResultadoAnalise = {
   porTipo: Record<string, number>;
   porColaborador: Record<string, number>;
   ocorrencias: Ocorrencia[];
+  saldos: SaldoColaborador[];
 };
 
 export type ParamsAnalise = {
@@ -383,17 +396,22 @@ export function analisarPonto(
     }
   }
 
-  // 3) saldo do período por colaborador (déficit/excesso)
-  const limite = p.saldoPeriodoMin * 60;
+  // 3) saldo do período por colaborador → STATUS por empregado (badge), NÃO
+  //    apontamento. Calcula pra TODOS (inclusive zerados); a UI mostra como badge.
   const periodoTxt = `${startDate} a ${endDate}`;
+  const saldos: SaldoColaborador[] = [];
   for (const [empIdNum, s] of saldo) {
-    if (s.bal <= -limite || s.bal >= limite) {
-      const tipo: TipoOcorrencia = s.bal < 0 ? "DEFICIT_PERIODO" : "EXCESSO_PERIODO";
-      const sinal = s.bal < 0 ? "negativo" : "positivo";
-      add(empIdNum, s.name, periodoTxt, tipo,
-        `Saldo ${sinal} de ${secondsToHHMM(s.bal)} no período: trabalhou ${semSinal(secondsToHHMM(s.w))} de ${semSinal(secondsToHHMM(s.e))} previstos em ${s.dias} dia(s).`);
-    }
+    const sinal = s.bal < 0 ? "negativo" : s.bal > 0 ? "positivo" : "zerado";
+    const detalhe = s.bal === 0
+      ? `Saldo zerado no período: trabalhou ${semSinal(secondsToHHMM(s.w))} de ${semSinal(secondsToHHMM(s.e))} previstos em ${s.dias} dia(s).`
+      : `Saldo ${sinal} de ${secondsToHHMM(s.bal)} no período: trabalhou ${semSinal(secondsToHHMM(s.w))} de ${semSinal(secondsToHHMM(s.e))} previstos em ${s.dias} dia(s).`;
+    saldos.push({
+      employeeId: empIdNum, colaborador: s.name,
+      saldoSeg: s.bal, trabalhadoSeg: s.w, previstoSeg: s.e, dias: s.dias,
+      periodo: periodoTxt, detalhe,
+    });
   }
+  saldos.sort((a, b) => a.colaborador.localeCompare(b.colaborador));
 
   // supressão de derivados (1 causa-raiz por dia)
   const byDay = new Map<string, Ocorrencia[]>();
@@ -428,5 +446,6 @@ export function analisarPonto(
     total: final.length,
     porCategoria, porTipo, porColaborador: porColab,
     ocorrencias: final,
+    saldos,
   };
 }
