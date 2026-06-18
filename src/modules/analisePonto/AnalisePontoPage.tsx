@@ -24,7 +24,8 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import {
   fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
-  type Justificativa,
+  fetchAprovacoesPendentes, decidirAprovacao,
+  type Justificativa, type AprovacaoPendente,
 } from "../../core/ponto/solidesPontoClient";
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
@@ -82,6 +83,16 @@ function fmtDataHora(iso: string): string {
   const d = new Date(iso);
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} às ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
+function fmtHoraMs(ms?: number): string {
+  if (!ms) return "—";
+  const d = new Date(ms);
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function fmtDataMs(ms?: number): string {
+  if (!ms) return "";
+  const d = new Date(ms);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+}
 function montarMensagem(colaborador: string, itens: Ocorrencia[], prazoEm: string): string {
   const primeiro = (colaborador || "").trim().split(/\s+/)[0] || colaborador;
   const linhas = itens.map((o) => `• ${fmtBR(o.data)} — ${ROTULOS[o.tipo]}`).join("\n");
@@ -127,6 +138,7 @@ export function AnalisePontoPage() {
   const { can, loading: permLoading } = useCanAcao(rid);
   const podeVer = can("analise-ponto", "ver");
   const podeSolicitar = can("analise-ponto", "solicitar");
+  const podeAprovar = can("analise-ponto", "aprovar");
   const podeCorrigir = can("analise-ponto", "corrigir");
 
   const hoje = new Date();
@@ -160,7 +172,9 @@ export function AnalisePontoPage() {
   });
   const [mostrarAvaliados, setMostrarAvaliados] = useState(false);
   const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
-  const [tab, setTab] = useState<"inconsist" | "manual" | "escalas">("inconsist");
+  const [aprovacoes, setAprovacoes] = useState<AprovacaoPendente[]>([]);
+  const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
+  const [tab, setTab] = useState<"inconsist" | "aprovacoes" | "manual" | "escalas">("inconsist");
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
   const [now, setNow] = useState(() => Date.now());
@@ -261,6 +275,12 @@ export function AnalisePontoPage() {
         punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
+      // Aprovações pendentes (acende o indicador da aba). Não bloqueia a análise.
+      if (podeAprovar) {
+        fetchAprovacoesPendentes(shortCode, ini, fimArg)
+          .then(setAprovacoes)
+          .catch(() => setAprovacoes([]));
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao analisar.");
     } finally {
@@ -339,6 +359,30 @@ export function AnalisePontoPage() {
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao reabrir."); }
   }
 
+  // Aprova / reprova um ponto na Sólides; audita, remove da lista e reanalisa
+  // (a inconsistência some quando o ajuste aprovado entra na base).
+  async function decidir(p: AprovacaoPendente, status: "APPROVED" | "REPROVED") {
+    setErro("");
+    setDecidindo(p.punchId);
+    try {
+      await decidirAprovacao(activeRestaurant?.shortCode || "", { punchId: p.punchId, status });
+      try {
+        await addDoc(collection(db, "pontoAuditoria"), {
+          restaurantId: rid, tipo: "aprovacao", status,
+          por: { id: me?.id || "", nome: me?.nome || "?" },
+          punchId: p.punchId, employeeId: p.employeeId, colaborador: p.employeeName,
+          em: new Date().toISOString(),
+        });
+      } catch { /* auditoria não bloqueia */ }
+      setAprovacoes((prev) => prev.filter((x) => x.punchId !== p.punchId));
+      void analisar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
+    } finally {
+      setDecidindo(null);
+    }
+  }
+
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando permissões…</div>;
   if (!podeVer) {
@@ -351,16 +395,27 @@ export function AnalisePontoPage() {
   }
 
   const tabsDisp = ([
-    ["inconsist", "⚠️ Inconsistências"],
-    podeCorrigir ? ["manual", "🛠️ Corrigir manual"] : null,
-    ["escalas", "🗓️ Escalas (Sólides × app)"],
-  ].filter(Boolean)) as Array<[typeof tab, string]>;
+    { id: "inconsist", label: "⚠️ Inconsistências" },
+    podeAprovar ? {
+      id: "aprovacoes",
+      label: (
+        <span className="inline-flex items-center gap-1.5">
+          ✅ Aprovações
+          {aprovacoes.length > 0 && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white tabular-nums">{aprovacoes.length}</span>
+          )}
+        </span>
+      ),
+    } : null,
+    podeCorrigir ? { id: "manual", label: "🛠️ Corrigir manual" } : null,
+    { id: "escalas", label: "🗓️ Escalas (Sólides × app)" },
+  ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
     <div className="max-w-5xl space-y-4">
       {/* Abas */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
-        {tabsDisp.map(([id, label]) => (
+        {tabsDisp.map(({ id, label }) => (
           <button key={id} type="button" onClick={() => setTab(id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
@@ -371,7 +426,7 @@ export function AnalisePontoPage() {
 
       {tab === "escalas" && <EscalasComparacaoTab rid={rid} activeRestaurant={activeRestaurant} />}
 
-      {(tab === "inconsist" || tab === "manual") && <>
+      {(tab === "inconsist" || tab === "manual" || tab === "aprovacoes") && <>
       {/* Filtros */}
       <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3 space-y-2.5">
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
@@ -422,7 +477,7 @@ export function AnalisePontoPage() {
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>
       )}
 
-      {resultado && (() => {
+      {(tab === "inconsist" || tab === "manual") && resultado && (() => {
         const passaArea = (o: Ocorrencia) => {
           if (filtroAreas.size === 0) return true; // TODAS
           const a = areaPorEmpId(o.employeeId);
@@ -577,7 +632,65 @@ export function AnalisePontoPage() {
         );
       })()}
 
-      {!resultado && !carregando && !erro && (
+      {tab === "aprovacoes" && (() => {
+        const passa = (eid: number) => {
+          if (filtroAreas.size === 0) return true;
+          const a = areaPorEmpId(eid);
+          return a ? filtroAreas.has(a) : filtroAreas.has("sem");
+        };
+        const itens = aprovacoes.filter((p) => passa(p.employeeId));
+        return (
+          <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+            <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+              <div className="font-bold text-sm text-gray-900 dark:text-gray-100">✅ Aprovações pendentes ({itens.length})</div>
+              <p className="text-[11px] text-gray-500 mt-0.5">
+                O empregado ajustou no app dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some — reanaliso automaticamente.
+              </p>
+            </header>
+            {carregando ? (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Carregando…</div>
+            ) : itens.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma aprovação pendente 🎉</div>
+            ) : (
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {itens.map((p) => {
+                  const area = areaPorEmpId(p.employeeId);
+                  const dataTxt = p.date ? fmtBR(p.date) : fmtDataMs(p.dateIn);
+                  return (
+                    <div key={p.punchId} className="px-4 py-2.5 flex items-start gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm">
+                          <span className="font-semibold text-gray-900 dark:text-gray-100">{p.employeeName}</span>
+                          {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
+                        </div>
+                        <div className="text-xs text-gray-500 tabular-nums">
+                          {dataTxt} · {fmtHoraMs(p.dateIn)}–{fmtHoraMs(p.dateOut)}
+                        </div>
+                        {p.motivo && <div className="text-xs text-indigo-700 dark:text-indigo-300">{p.motivo}</div>}
+                        {p.observation && <div className="text-xs text-gray-500 italic">"{p.observation}"</div>}
+                      </div>
+                      {podeAprovar && (
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "APPROVED")}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">
+                            ✓ Aprovar
+                          </button>
+                          <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "REPROVED")}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
+                            ✗ Reprovar
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })()}
+
+      {(tab === "inconsist" || tab === "manual") && !resultado && !carregando && !erro && (
         <div className="text-center text-sm text-gray-400 py-12">
           Escolha o período e clique em <strong>Analisar</strong>.
         </div>

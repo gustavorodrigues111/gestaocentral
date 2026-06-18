@@ -59,6 +59,90 @@ export async function fetchJustificativas(restaurantKey: string): Promise<Justif
     .filter((j) => Number.isFinite(j.id));
 }
 
+// ─── Aprovações de ajuste (o empregado ajustou no app dele → gestor aprova) ──
+export type AprovacaoPendente = {
+  punchId: number;
+  employeeId: number;
+  employeeName: string;
+  date: string;          // YYYY-MM-DD (quando disponível)
+  dateIn?: number;       // epoch ms
+  dateOut?: number;      // epoch ms
+  status: string;        // PENDING
+  motivo?: string;       // descrição do ajuste
+  observation?: string;
+};
+
+function txtMotivo(x: unknown): string | undefined {
+  if (!x) return undefined;
+  if (typeof x === "string") return x;
+  if (typeof x === "object") {
+    const o = x as { description?: string; name?: string; reason?: string; descricao?: string };
+    return o.description || o.descricao || o.name || o.reason || undefined;
+  }
+  return undefined;
+}
+
+// Lista pendências de aprovação no período (achata pendingPunchs/adjustments com status PENDING).
+export async function fetchAprovacoesPendentes(
+  restaurantKey: string, startDate: string, endDate: string,
+): Promise<AprovacaoPendente[]> {
+  const params = new URLSearchParams({ startDate, endDate });
+  if (restaurantKey) params.set("restaurant", restaurantKey);
+  const resp = await fetch(`/api/solides-ponto-aprovacoes?${params.toString()}`, { method: "GET", headers: await authHeader() });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  const employees = (json as { employees?: unknown[] }).employees || [];
+  const out: AprovacaoPendente[] = [];
+  for (const empRaw of employees) {
+    const emp = empRaw as {
+      id?: number; name?: string;
+      pendingPunchs?: unknown[]; adjustments?: unknown[]; punchs?: unknown[];
+    };
+    const seen = new Set<number>();
+    for (const arr of [emp.pendingPunchs, emp.adjustments, emp.punchs]) {
+      if (!Array.isArray(arr)) continue;
+      for (const itRaw of arr) {
+        const it = itRaw as {
+          id?: number; punchId?: number; status?: string; date?: string;
+          dateIn?: number; dateOut?: number; adjustmentReason?: unknown;
+          observation?: string; justification?: string;
+        };
+        if (String(it.status || "").toUpperCase() !== "PENDING") continue;
+        const pid = it.id ?? it.punchId;
+        if (pid == null || seen.has(Number(pid))) continue;
+        seen.add(Number(pid));
+        out.push({
+          punchId: Number(pid),
+          employeeId: Number(emp.id),
+          employeeName: emp.name || "?",
+          date: it.date || "",
+          dateIn: typeof it.dateIn === "number" ? it.dateIn : undefined,
+          dateOut: typeof it.dateOut === "number" ? it.dateOut : undefined,
+          status: "PENDING",
+          motivo: txtMotivo(it.adjustmentReason),
+          observation: it.observation || it.justification || undefined,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Decide um ponto: APPROVED ou REPROVED (PUT .../status/{status} na Sólides).
+export async function decidirAprovacao(
+  restaurantKey: string,
+  params: { punchId: number; status: "APPROVED" | "REPROVED"; observation?: string },
+): Promise<{ ok: boolean; resultado: unknown }> {
+  const resp = await fetch(`/api/solides-ponto-aprovacoes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, ...params }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean; resultado: unknown };
+}
+
 // Lança ponto em atraso. `dataHoraIso` = ISO com offset (ex: 2026-06-17T00:06:00.000-0300).
 export async function corrigirPontoAtraso(
   restaurantKey: string,
