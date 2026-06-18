@@ -17,7 +17,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { AREAS, type Area, type Cargo, type Empregado } from "../../core/types";
+import { AREAS, type Area, type Cargo, type Empregado, type Pessoa } from "../../core/types";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -169,16 +169,19 @@ export function AnalisePontoPage() {
     return () => clearInterval(t);
   }, []);
 
-  // Empregados + cargos do app → ponte pra área + telefone (Sólides id ↔ CPF).
+  // Empregados + cargos + pessoas do app → ponte pra área + WhatsApp (Sólides id ↔ CPF).
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   useEffect(() => {
     if (!rid) return;
     const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
       (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)));
     const u2 = onSnapshot(collection(db, "cargos"),
       (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)));
-    return () => { u1(); u2(); };
+    const u3 = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
+      (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa)));
+    return () => { u1(); u2(); u3(); };
   }, [rid]);
 
   // Solicitações enviadas + avaliações (ciente) — estado persistido.
@@ -203,15 +206,24 @@ export function AnalisePontoPage() {
       const cpf = soDigitos(e.cpf);
       if (cpf) empPorCpf.set(cpf, e);
     }
+    // WhatsApp vem do cadastro da Pessoa (campo whatsapp), casado por CPF.
+    const whatsPorCpf = new Map<string, string>();
+    for (const p of pessoas) {
+      const cpf = soDigitos(p.cpf);
+      if (cpf && p.whatsapp) whatsPorCpf.set(cpf, soDigitos(p.whatsapp));
+    }
     const m = new Map<number, { area?: Area; tel: string }>();
     for (const r of roster) {
       if (typeof r.id !== "number") continue;
-      const e = empPorCpf.get(soDigitos(r.cpf));
-      if (!e) continue;
-      m.set(r.id, { area: cargoArea.get(e.cargoId), tel: soDigitos(e.telefone) });
+      const cpf = soDigitos(r.cpf);
+      const e = empPorCpf.get(cpf);
+      // Prioriza WhatsApp da Pessoa; fallback no telefone do empregado.
+      const tel = whatsPorCpf.get(cpf) || soDigitos(e?.telefone);
+      if (!e && !tel) continue;
+      m.set(r.id, { area: e ? cargoArea.get(e.cargoId) : undefined, tel });
     }
     return m;
-  }, [empregados, cargos, roster]);
+  }, [empregados, cargos, pessoas, roster]);
   const areaPorEmpId = (id: number): Area | undefined => dadosPorEmpId.get(id)?.area;
   const telPorEmpId = (id: number): string => dadosPorEmpId.get(id)?.tel || "";
 
