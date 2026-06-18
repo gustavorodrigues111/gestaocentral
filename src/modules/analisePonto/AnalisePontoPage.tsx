@@ -15,7 +15,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { AREAS, type Area, type Cargo, type Empregado } from "../../core/types";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -159,6 +159,7 @@ export function AnalisePontoPage() {
     return next;
   });
   const [mostrarAvaliados, setMostrarAvaliados] = useState(false);
+  const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
   const [tab, setTab] = useState<"inconsist" | "manual" | "escalas">("inconsist");
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
@@ -292,23 +293,33 @@ export function AnalisePontoPage() {
     });
   }
 
-  async function marcarCiente(o: Ocorrencia) {
-    const obs = window.prompt(
-      `Marcar como "ciente / sem ação":\n${o.colaborador} · ${fmtBR(o.data)} · ${ROTULOS[o.tipo]}\n\nMotivo (opcional):`,
-      "",
-    );
-    if (obs === null) return; // cancelou
-    try {
-      await addDoc(collection(db, "pontoAvaliacoes"), {
+  // Ciência em lote (sem caixa) — mesma lógica do envio: seleciona e dá ciência
+  // de uma vez. Observação é opcional, adicionada depois na seção "Avaliados".
+  function darCiencia(itens: Ocorrencia[]) {
+    if (itens.length === 0) return;
+    const por = { id: me?.id || "", nome: me?.nome || "?" };
+    const em = new Date().toISOString();
+    for (const o of itens) {
+      void addDoc(collection(db, "pontoAvaliacoes"), {
         restaurantId: rid, key: ocKey(o),
         employeeId: o.employeeId, colaborador: o.colaborador,
-        tipo: o.tipo, data: o.data, detalhe: o.detalhe, obs: obs || "",
-        por: { id: me?.id || "", nome: me?.nome || "?" },
-        em: new Date().toISOString(),
-      });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao registrar a avaliação.");
+        tipo: o.tipo, data: o.data, detalhe: o.detalhe, obs: "",
+        por, em,
+      }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar ciência."));
     }
+    setSel((cur) => {
+      const next = new Set(cur);
+      itens.forEach((o) => next.delete(ocKey(o)));
+      return next;
+    });
+  }
+
+  async function salvarObs() {
+    if (!editObs) return;
+    const { id, text } = editObs;
+    setEditObs(null);
+    try { await updateDoc(doc(db, "pontoAvaliacoes", id), { obs: text.trim() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar observação."); }
   }
 
   async function reabrirAvaliacao(a: Avaliacao) {
@@ -485,7 +496,7 @@ export function AnalisePontoPage() {
                         sel={sel} toggleSel={toggleSel} solPorKey={solPorKey} now={now}
                         podeSolicitar={podeSolicitar}
                         onEnviar={(itens) => enviarCorrecao(g.colaborador, g.employeeId, itens)}
-                        onCiente={(o) => void marcarCiente(o)} />
+                        onCiencia={darCiencia} />
                     ))}
                   </div>
                 )}
@@ -505,17 +516,38 @@ export function AnalisePontoPage() {
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {avaliadosVisiveis.map((a) => (
                     <div key={a.id} className="px-4 py-2 flex items-start gap-2.5 text-sm">
+                      <span className="mt-0.5 shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ ciente</span>
                       <div className="min-w-0 flex-1">
                         <span className="font-semibold text-gray-900 dark:text-gray-100">{a.colaborador}</span>
                         <span className="text-gray-400"> · {fmtBR(a.data)} · {ROTULOS[a.tipo]}</span>
-                        {a.obs && <div className="text-xs text-gray-500 italic">"{a.obs}"</div>}
+                        {editObs?.id === a.id ? (
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <input autoFocus type="text" value={editObs.text}
+                              onChange={(e) => setEditObs({ id: a.id, text: e.target.value })}
+                              onKeyDown={(e) => { if (e.key === "Enter") void salvarObs(); if (e.key === "Escape") setEditObs(null); }}
+                              placeholder="Observação (opcional)…"
+                              className="flex-1 px-2 py-1 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-indigo-400" />
+                            <button type="button" onClick={() => void salvarObs()}
+                              className="text-[11px] font-semibold px-2 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white">Salvar</button>
+                            <button type="button" onClick={() => setEditObs(null)}
+                              className="text-[11px] px-2 py-1 rounded-md text-gray-500 hover:text-gray-800">Cancelar</button>
+                          </div>
+                        ) : (
+                          a.obs && <div className="text-xs text-gray-500 italic">"{a.obs}"</div>
+                        )}
                         <div className="text-[11px] text-gray-400">por {a.por?.nome} · {fmtDataHora(a.em)}</div>
                       </div>
-                      {podeSolicitar && (
-                        <button type="button" onClick={() => void reabrirAvaliacao(a)}
-                          className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                          ↩︎ Reabrir
-                        </button>
+                      {podeSolicitar && editObs?.id !== a.id && (
+                        <div className="shrink-0 flex items-center gap-1.5">
+                          <button type="button" onClick={() => setEditObs({ id: a.id, text: a.obs || "" })}
+                            className="text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400">
+                            {a.obs ? "✏️ observação" : "+ observação"}
+                          </button>
+                          <button type="button" onClick={() => void reabrirAvaliacao(a)}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                            ↩︎ Reabrir
+                          </button>
+                        </div>
                       )}
                     </div>
                   ))}
@@ -578,7 +610,7 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
 
 // ─── Grupo de um empregado: cabeçalho (nome + relógio + enviar) + itens ───────
 function GrupoEmp({
-  grupo, area, tel, sel, toggleSel, solPorKey, now, podeSolicitar, onEnviar, onCiente,
+  grupo, area, tel, sel, toggleSel, solPorKey, now, podeSolicitar, onEnviar, onCiencia,
 }: {
   grupo: { employeeId: number; colaborador: string; itens: Ocorrencia[] };
   area?: Area;
@@ -589,7 +621,7 @@ function GrupoEmp({
   now: number;
   podeSolicitar: boolean;
   onEnviar: (itens: Ocorrencia[]) => void;
-  onCiente: (o: Ocorrencia) => void;
+  onCiencia: (itens: Ocorrencia[]) => void;
 }) {
   const selecionados = grupo.itens.filter((o) => sel.has(ocKey(o)));
   // Relógio do empregado = solicitação ativa mais urgente entre os itens visíveis.
@@ -623,7 +655,12 @@ function GrupoEmp({
           </span>
         )}
         {podeSolicitar && (
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1.5">
+            <button type="button" disabled={selecionados.length === 0}
+              onClick={() => onCiencia(selecionados)}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1">
+              ✓ Dar ciência{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
+            </button>
             {semNumero ? (
               <span className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed" title="Empregado sem telefone cadastrado no app">
                 sem número cadastrado
@@ -663,7 +700,7 @@ function GrupoEmp({
                 )}
               </div>
               {podeSolicitar && (
-                <button type="button" onClick={() => onCiente(o)}
+                <button type="button" onClick={() => onCiencia([o])}
                   className="shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
                   title="Ciente / sem ação">
                   ✓ ciente
