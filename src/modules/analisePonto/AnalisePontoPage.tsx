@@ -184,7 +184,7 @@ export function AnalisePontoPage() {
 
       {tab === "inconsist" && <>
       {/* Filtros */}
-      <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-4 space-y-3">
+      <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3 space-y-2.5">
         {/* Atalhos de período */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Período</span>
@@ -201,32 +201,32 @@ export function AnalisePontoPage() {
 
         <div className="border-t border-gray-100 dark:border-gray-800" />
 
-        {/* Datas + ação — mesma altura (h-10) */}
-        <div className="flex flex-wrap items-end gap-3">
+        {/* Datas + Área + ação — uma linha só (área preenche o meio) */}
+        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início</label>
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
             <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
-              className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim</label>
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
             <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
-              className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Área</label>
+            <div className="flex items-center gap-1.5 flex-wrap h-9">
+              <Chip ativo={filtroAreas.size === 0} onClick={() => setFiltroAreas(new Set())}>Todas</Chip>
+              {AREAS.map((a) => (
+                <Chip key={a} ativo={filtroAreas.has(a)} onClick={() => toggleArea(a)}>{a}</Chip>
+              ))}
+              <Chip ativo={filtroAreas.has("sem")} onClick={() => toggleArea("sem")}>Sem área</Chip>
+            </div>
           </div>
           <button type="button" onClick={() => void analisar()} disabled={carregando}
-            className="ml-auto h-10 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2">
+            className="ml-auto h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
             {carregando ? "Analisando…" : <>🔍 Analisar período</>}
           </button>
-        </div>
-
-        {/* Área — chips multi-seleção (vazio = TODAS) */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Área</span>
-          <Chip ativo={filtroAreas.size === 0} onClick={() => setFiltroAreas(new Set())}>Todas</Chip>
-          {AREAS.map((a) => (
-            <Chip key={a} ativo={filtroAreas.has(a)} onClick={() => toggleArea(a)}>{a}</Chip>
-          ))}
-          <Chip ativo={filtroAreas.has("sem")} onClick={() => toggleArea("sem")}>Sem área</Chip>
         </div>
       </div>
 
