@@ -178,10 +178,10 @@ export function AnalisePontoPage() {
 
       {tab === "inconsist" && <>
       {/* Filtros */}
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+      <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl p-4 space-y-3">
         {/* Atalhos de período */}
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Período</span>
+          <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Período</span>
           {PRESETS.map((p) => (
             <button key={p.id} type="button" onClick={() => aplicarPreset(p.id)} disabled={carregando}
               className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50">
@@ -195,29 +195,29 @@ export function AnalisePontoPage() {
 
         <div className="border-t border-gray-100 dark:border-gray-800" />
 
-        {/* Datas + área + ação */}
+        {/* Datas + área + ação — todos com a MESMA altura (h-10) */}
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início</label>
-            <input type="date" value={inicio} onChange={(e) => setInicio(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+            <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
+              className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim</label>
-            <input type="date" value={fim} onChange={(e) => setFim(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none" />
+            <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
+              className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
-          <div className="flex flex-col gap-1 min-w-[160px]">
+          <div className="flex flex-col gap-1 min-w-[170px]">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Área</label>
             <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value as Area | "todas" | "sem")}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none">
+              className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none">
               <option value="todas">Todas as áreas</option>
               {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
               <option value="sem">Sem área (não vinculado)</option>
             </select>
           </div>
           <button type="button" onClick={() => void analisar()} disabled={carregando}
-            className="ml-auto px-5 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 inline-flex items-center gap-2">
+            className="ml-auto h-10 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2">
             {carregando ? "Analisando…" : <>🔍 Analisar período</>}
           </button>
         </div>
