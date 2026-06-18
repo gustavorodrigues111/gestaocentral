@@ -479,6 +479,15 @@ service cloud.firestore {
       allow read, write: if authed() && request.auth.uid == uid;
     }
 
+    // ── Auditoria de correções de ponto (Análise de Ponto) ──────────────
+    // Log append-only: cria/lê autenticado; sem update/delete pra preservar
+    // a integridade do registro (dado trabalhista — quem corrigiu o quê/quando).
+    match /pontoAuditoria/{id} {
+      allow create: if authed();
+      allow read:   if authed();
+      allow update, delete: if false;
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
