@@ -56,10 +56,8 @@ export function AnalisePontoPage() {
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
-  const [catalogoDbg, setCatalogoDbg] = useState<unknown[]>([]); // TEMP debug
   const [corrigindo, setCorrigindo] = useState<Ocorrencia | null>(null);
   const [filtroArea, setFiltroArea] = useState<Area | "todas" | "sem">("todas");
-  const [debug, setDebug] = useState(false); // TEMP: inspeção do cadastro cru (ciclos)
 
   // Empregados + cargos do app → ponte pra área (Sólides employeeId === empregado.solidesId).
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -109,7 +107,6 @@ export function AnalisePontoPage() {
         fetchRoster(shortCode).catch(() => []),
       ]);
       setRoster(employees);
-      setCatalogoDbg(schedules as unknown[]); // TEMP debug
       const res = analisarPonto(
         punches as unknown as PontoMarcacao[], employees, schedules, inicio, fim,
       );
@@ -160,22 +157,7 @@ export function AnalisePontoPage() {
           {carregando ? "Analisando…" : "🔍 Analisar período"}
         </button>
         <span className="text-[11px] text-gray-400 ml-auto">{activeRestaurant.nome} · {activeRestaurant.shortCode}</span>
-        <button type="button" onClick={() => setDebug((v) => !v)}
-          className="text-[10px] text-gray-400 hover:text-gray-600 underline">🔬 debug</button>
       </div>
-
-      {debug && (roster.length > 0 || catalogoDbg.length > 0) && (
-        <div className="bg-gray-900 text-gray-100 rounded-xl p-3 text-[10px] overflow-auto max-h-[60vh] space-y-2">
-          <div className="text-amber-300 font-bold">DEBUG — chaves do colaborador cru (procurando config de ciclo):</div>
-          <div className="text-emerald-300">{[...new Set(roster.flatMap((e) => Object.keys(e as object)))].join(", ")}</div>
-          <div className="text-amber-300 font-bold">Colaborador [0] cru:</div>
-          <pre className="whitespace-pre-wrap">{JSON.stringify(roster[0], null, 2)}</pre>
-          <div className="text-amber-300 font-bold">Colaborador [1] cru:</div>
-          <pre className="whitespace-pre-wrap">{JSON.stringify(roster[1], null, 2)}</pre>
-          <div className="text-amber-300 font-bold">Escala [0] do catálogo (chaves):</div>
-          <div className="text-emerald-300">{catalogoDbg[0] ? Object.keys(catalogoDbg[0] as object).join(", ") : "—"}</div>
-        </div>
-      )}
 
       {erro && (
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>

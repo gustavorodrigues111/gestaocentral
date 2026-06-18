@@ -33,12 +33,22 @@ export type PontoColaborador = {
   id?: number;
   name?: string;
   cpf?: string;                   // pra cruzar com o empregado do app (área)
-  workSchedule?: number;          // id da escala
+  // Escala atual do cadastro (campo real da Sólides). `workSchedule` fica como
+  // fallback legado.
+  currentWorkSchedule?: { id?: number; startDate?: number; inactive?: boolean };
+  workSchedule?: number;
+  doubleBindEmployee?: boolean;   // indicador de ciclo/vínculo duplo (escala cíclica)
   admissionDate?: number;
   effectiveDate?: number;
   fired?: boolean;
-  firedDate?: number;
+  resignationDate?: number;       // data de desligamento (campo real)
+  firedDate?: number;             // fallback legado
 };
+
+// Id da escala atual do empregado (cadastro), com fallbacks.
+function empSchedId(emp: PontoColaborador): number | undefined {
+  return emp.currentWorkSchedule?.id ?? emp.workSchedule;
+}
 
 export type PontoEscalaTurno = {
   day?: number;                   // 1=Domingo … 7=Sábado
@@ -190,7 +200,8 @@ function empName(p: PontoMarcacao, empById: Map<number, PontoColaborador>): stri
 function schedId(p: PontoMarcacao, empById: Map<number, PontoColaborador>): number | undefined {
   if (p.workScheduleId) return p.workScheduleId;
   const id = empId(p);
-  return id != null ? empById.get(id)?.workSchedule : undefined;
+  const emp = id != null ? empById.get(id) : undefined;
+  return emp ? empSchedId(emp) : undefined;
 }
 function isAdjustment(p: PontoMarcacao): boolean {
   return !!(p.adjustmentReason || p.adjustmentReasonRecord || p.allowance);
@@ -222,7 +233,10 @@ function empAdmission(emp: PontoColaborador): number | null {
   return null;
 }
 function empTermination(emp: PontoColaborador): number | null {
-  return emp.fired && typeof emp.firedDate === "number" ? emp.firedDate : null;
+  if (!emp.fired) return null;
+  if (typeof emp.resignationDate === "number") return emp.resignationDate;
+  if (typeof emp.firedDate === "number") return emp.firedDate;
+  return null;
 }
 
 // ─── Núcleo ──────────────────────────────────────────────────────────────────
@@ -349,7 +363,8 @@ export function analisarPonto(
     // Escala padrão do empregado (fallback). Em cíclicos, a escala real da
     // semana é inferida das batidas (weekSched); se a semana não tem batida,
     // cai no padrão.
-    const schedPadrao = emp.workSchedule != null ? schedById.get(emp.workSchedule) : undefined;
+    const padraoId = empSchedId(emp);
+    const schedPadrao = padraoId != null ? schedById.get(padraoId) : undefined;
     const name = emp.name || `ID ${empIdNum}`;
     const adm = empAdmission(emp);
     const term = empTermination(emp);
