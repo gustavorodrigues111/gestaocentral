@@ -359,6 +359,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "analise-ponto",
+    icon: "📊",
+    label: "Análise de Ponto (Sólides)",
+    desc: "Relatório de inconsistências de ponto (A Corrigir × A Avaliar) e correções",
+    area: "gestao",
+    acoes: [
+      { id: "ver",      label: "Ver análise de ponto (relatórios)", sensivel: true },
+      { id: "corrigir", label: "Corrigir ponto / lançar ajuste na Sólides", sensivel: true },
+    ],
+  },
+  {
     id: "pessoas",
     icon: "👥",
     label: "Pessoas",

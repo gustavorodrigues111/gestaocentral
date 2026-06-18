@@ -58,6 +58,7 @@ export const MODULES: ModuleDef[] = [
   // ── Operação Diária ──────────────────────────────────────────────
   { id: "escala",      area: "dp", subarea: "Operação Diária",         label: "Escala",          icon: "📅", status: "ativo", etapa: "beta",               desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
   { id: "excecoes",    area: "dp", subarea: "Operação Diária",         label: "Registros de Ponto", icon: "🕐", status: "ativo", etapa: "beta",            desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"] },
+  { id: "analise-ponto", area: "dp", subarea: "Operação Diária",       label: "Análise de Ponto", icon: "📊", status: "ativo", etapa: "em_desenvolvimento", desc: "Análise de inconsistências de ponto (Sólides) — A Corrigir × A Avaliar, jornada flexível. Substitui Exceções quando estável.", dependsOn: [] },
   { id: "comunicados", area: "dp", subarea: "Operação Diária",         label: "Comunicados",     icon: "📣", status: "ativo", etapa: "em_desenvolvimento", desc: "Avisos e comunicados pra equipe", dependsOn: ["pessoas"] },
   { id: "chat",        area: "dp", subarea: "Operação Diária",         label: "Chat",            icon: "💬", status: "ativo", etapa: "em_desenvolvimento", desc: "Comunicação unificada: chat interno + WhatsApp externo (banco, contador, fornecedor). Plugável — gateway WhatsApp escolhido em fase futura.", dependsOn: ["pessoas"] },
 

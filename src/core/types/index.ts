@@ -49,7 +49,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "admissao" | "sites"
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
