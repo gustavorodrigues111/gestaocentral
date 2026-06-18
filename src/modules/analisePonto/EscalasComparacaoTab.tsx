@@ -50,18 +50,22 @@ function minutosDia(d?: HorarioDia): number {
   return Math.max(0, o - i - (d.break || 0));
 }
 
+// Qual semana (A/B) está vigente hoje numa escala alternante (via anchor).
+function semanaVigente(ws: WorkSchedule, hoje: Date): "A" | "B" | null {
+  if (ws.type !== "alternating" || !ws.weeks || !ws.anchor) return null;
+  const ref = new Date(ws.anchor.date + "T00:00:00");
+  const semanas = Math.floor((hoje.getTime() - ref.getTime()) / (7 * 86400000));
+  const ehAncora = semanas % 2 === 0;
+  return ehAncora ? ws.anchor.week : (ws.anchor.week === "A" ? "B" : "A");
+}
+
 // App WorkSchedule → minutos por dia da semana (idx 0=Dom..6=Sáb), resolvendo
 // a semana vigente hoje pra escalas alternadas (A/B via anchor).
 function minutosApp(ws: WorkSchedule | undefined, hoje: Date): number[] {
   if (!ws) return [0, 0, 0, 0, 0, 0, 0];
   let days = ws.days;
-  if (ws.type === "alternating" && ws.weeks && ws.anchor) {
-    const ref = new Date(ws.anchor.date + "T00:00:00");
-    const semanas = Math.floor((hoje.getTime() - ref.getTime()) / (7 * 86400000));
-    const ehAncora = semanas % 2 === 0;
-    const semana = ehAncora ? ws.anchor.week : (ws.anchor.week === "A" ? "B" : "A");
-    days = ws.weeks[semana]?.days;
-  }
+  const semana = semanaVigente(ws, hoje);
+  if (semana && ws.weeks) days = ws.weeks[semana]?.days;
   const out = [0, 0, 0, 0, 0, 0, 0];
   for (let wd = 0; wd < 7; wd++) out[wd] = minutosDia(days?.[wd]);
   return out;
@@ -126,19 +130,22 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
     return roster
       .filter((r) => !r.fired)
       .map((r) => {
-        const ciclico = !!r.doubleBindEmployee;
         const solSched = catById.get(r.currentWorkSchedule?.id ?? -1);
         const minSol = minutosSolides(solSched);
         const appEmp = empAppPorCpf.get(soDigitos(r.cpf));
         const area = appEmp ? cargoArea.get(appEmp.cargoId) : undefined;
         const wsApp = appEmp ? escalaAppVigente(appEmp, hojeStr) : undefined;
+        // A API do Sólides não expõe o ciclo. O cíclico é conhecido pelo CADASTRO
+        // do app: escala alternante (A/B). (doubleBindEmployee fica como sinal extra.)
+        const ciclico = wsApp?.type === "alternating" || !!r.doubleBindEmployee;
+        const semanaCiclo = ciclico && wsApp?.type === "alternating" ? semanaVigente(wsApp, hoje) : null;
         const minApp = minutosApp(wsApp, hoje);
         const temApp = !!appEmp;
         const divergeDias = temApp ? DIAS.map((_, wd) => minSol[wd] !== minApp[wd]) : [];
         const totalSol = minSol.reduce((a, b) => a + b, 0);
         const totalApp = minApp.reduce((a, b) => a + b, 0);
         const bate = temApp && divergeDias.every((x) => !x);
-        return { r, ciclico, solSched, minSol, appEmp, area, minApp, temApp, divergeDias, totalSol, totalApp, bate };
+        return { r, ciclico, semanaCiclo, solSched, minSol, appEmp, area, minApp, temApp, divergeDias, totalSol, totalApp, bate };
       })
       .sort((a, b) => (a.r.name || "").localeCompare(b.r.name || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,7 +183,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
               {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
-              {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Tem ciclo de troca de escala no Sólides — comparação do ciclo atual">🔁 cíclico</span>}
+              {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
               {!l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado no app (CPF)</span>}
               {l.temApp && (l.bate
                 ? <span className="text-[11px] text-emerald-600 ml-auto">✓ batem</span>
@@ -200,7 +207,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
             </div>
             <div className="mt-1 text-[10px] text-gray-400">
               Carga semanal — Sólides: {fmtH(l.totalSol)} {l.temApp ? `· app: ${fmtH(l.totalApp)}` : ""}
-              {l.ciclico ? " · (cíclico: comparação do ciclo vigente; config completa do ciclo não vem da API)" : ""}
+              {l.ciclico ? ` · cíclico: comparando a semana ${l.semanaCiclo ?? "vigente"} (a Sólides só expõe o ciclo atual; o ciclo completo está no cadastro alternante do app)` : ""}
             </div>
           </div>
         ))}
