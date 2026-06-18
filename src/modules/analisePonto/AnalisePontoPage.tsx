@@ -14,7 +14,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
-import { fetchScheduleCatalog } from "../../core/ponto/solidesPontoClient";
+import { fetchScheduleCatalog, fetchRoster } from "../../core/ponto/solidesPontoClient";
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
   type PontoMarcacao, type ResultadoAnalise, type Severidade,
@@ -52,15 +52,15 @@ export function AnalisePontoPage() {
     setCarregando(true);
     setResultado(null);
     try {
-      const [{ punches }, schedules] = await Promise.all([
+      // Roster pode vir vazio em algumas contas → FALTA simplesmente não aponta;
+      // não derruba o resto. Por isso o catch dele é tolerante.
+      const [{ punches }, schedules, employees] = await Promise.all([
         fetchPunches(inicio, fim, shortCode),
         fetchScheduleCatalog(shortCode),
+        fetchRoster(shortCode).catch(() => []),
       ]);
-      // employees=[] por enquanto → FALTA não é calculada nesta fase (precisa do
-      // roster da Sólides). Todo o resto (estrutura de batidas, dia de folga,
-      // saldo do período) já funciona com punches + catálogo de escalas.
       const res = analisarPonto(
-        punches as unknown as PontoMarcacao[], [], schedules, inicio, fim,
+        punches as unknown as PontoMarcacao[], employees, schedules, inicio, fim,
       );
       setResultado(res);
     } catch (e) {
@@ -133,9 +133,9 @@ export function AnalisePontoPage() {
           })}
 
           <p className="text-[11px] text-gray-400">
-            FALTA (dia previsto sem batida) ainda não entra nesta fase — depende do
-            roster de colaboradores da Sólides. As correções (escrita) e o Excel
-            também vêm nas próximas fases.
+            FALTA depende do roster de colaboradores da Sólides (se a conta não
+            retornar colaboradores, faltas não são apontadas). As correções
+            (escrita) vêm na próxima fase.
           </p>
         </>
       )}
