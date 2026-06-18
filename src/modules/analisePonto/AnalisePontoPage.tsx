@@ -8,10 +8,11 @@
 //  Excel e FALTA (precisa do roster de colaboradores) entram nas próximas fases.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { AREAS, type Area, type Cargo, type Empregado } from "../../core/types";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -22,11 +23,15 @@ import {
 } from "../../core/ponto/solidesPontoClient";
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
-  type PontoMarcacao, type ResultadoAnalise, type Severidade,
+  type PontoColaborador, type PontoMarcacao, type ResultadoAnalise, type Severidade,
 } from "../../core/ponto/analise";
+
+const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// Converte qualquer YYYY-MM-DD (inclusive dentro de "X a Y") → DD/MM/YYYY.
+const fmtBR = (s: string) => s.replace(/(\d{4})-(\d{2})-(\d{2})/g, "$3/$2/$1");
 
 const SEV_COR: Record<Severidade, string> = {
   alta: "bg-red-500",
@@ -50,7 +55,41 @@ export function AnalisePontoPage() {
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
+  const [roster, setRoster] = useState<PontoColaborador[]>([]);
   const [corrigindo, setCorrigindo] = useState<Ocorrencia | null>(null);
+  const [filtroArea, setFiltroArea] = useState<Area | "todas" | "sem">("todas");
+
+  // Empregados + cargos do app → ponte pra área (Sólides employeeId === empregado.solidesId).
+  const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
+      (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)));
+    const u2 = onSnapshot(collection(db, "cargos"),
+      (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)));
+    return () => { u1(); u2(); };
+  }, [rid]);
+
+  // Mapa: employeeId da Sólides → área. Ponte por CPF (roster Sólides → empregado
+  // do app → cargo.area), igual ao módulo antigo.
+  const areaPorEmpId = useMemo(() => {
+    const cargoArea = new Map<string, Area>();
+    for (const c of cargos) cargoArea.set(c.id, c.area);
+    const areaPorCpf = new Map<string, Area>();
+    for (const e of empregados) {
+      const cpf = soDigitos(e.cpf);
+      const a = cargoArea.get(e.cargoId);
+      if (cpf && a) areaPorCpf.set(cpf, a);
+    }
+    const m = new Map<number, Area>();
+    for (const r of roster) {
+      if (typeof r.id !== "number") continue;
+      const a = areaPorCpf.get(soDigitos(r.cpf));
+      if (a) m.set(r.id, a);
+    }
+    return m;
+  }, [empregados, cargos, roster]);
 
   async function analisar() {
     if (!activeRestaurant) return;
@@ -67,6 +106,7 @@ export function AnalisePontoPage() {
         fetchScheduleCatalog(shortCode),
         fetchRoster(shortCode).catch(() => []),
       ]);
+      setRoster(employees);
       const res = analisarPonto(
         punches as unknown as PontoMarcacao[], employees, schedules, inicio, fim,
       );
@@ -103,6 +143,15 @@ export function AnalisePontoPage() {
           <input type="date" value={fim} onChange={(e) => setFim(e.target.value)}
             className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Área</label>
+          <select value={filtroArea} onChange={(e) => setFiltroArea(e.target.value as Area | "todas" | "sem")}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            <option value="todas">Todas as áreas</option>
+            {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+            <option value="sem">Sem área (não vinculado)</option>
+          </select>
+        </div>
         <button type="button" onClick={() => void analisar()} disabled={carregando}
           className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
           {carregando ? "Analisando…" : "🔍 Analisar período"}
@@ -114,17 +163,27 @@ export function AnalisePontoPage() {
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>
       )}
 
-      {resultado && (
+      {resultado && (() => {
+        const passaArea = (o: Ocorrencia) => {
+          if (filtroArea === "todas") return true;
+          const a = areaPorEmpId.get(o.employeeId);
+          if (filtroArea === "sem") return !a;
+          return a === filtroArea;
+        };
+        const filtradas = resultado.ocorrencias.filter(passaArea);
+        const nCorrigir = filtradas.filter((o) => o.categoria === "CORRIGIR").length;
+        const nAvaliar = filtradas.filter((o) => o.categoria === "AVALIAR").length;
+        return (
         <>
-          {/* Resumo */}
+          {/* Resumo (reflete o filtro de área) */}
           <div className="grid grid-cols-3 gap-3">
-            <Cartao titulo="A Corrigir" valor={resultado.porCategoria.CORRIGIR} cor="text-red-600" />
-            <Cartao titulo="A Avaliar" valor={resultado.porCategoria.AVALIAR} cor="text-amber-600" />
-            <Cartao titulo="Total" valor={resultado.total} cor="text-gray-700 dark:text-gray-200" />
+            <Cartao titulo="A Corrigir" valor={nCorrigir} cor="text-red-600" />
+            <Cartao titulo="A Avaliar" valor={nAvaliar} cor="text-amber-600" />
+            <Cartao titulo="Total" valor={filtradas.length} cor="text-gray-700 dark:text-gray-200" />
           </div>
 
           {(["CORRIGIR", "AVALIAR"] as Categoria[]).map((cat) => {
-            const itens = resultado.ocorrencias.filter((o) => o.categoria === cat);
+            const itens = filtradas.filter((o) => o.categoria === cat);
             return (
               <section key={cat} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
                 <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-900 dark:text-gray-100">
@@ -135,7 +194,8 @@ export function AnalisePontoPage() {
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {itens.map((o, i) => (
-                      <Linha key={i} o={o} podeCorrigir={podeCorrigir} onCorrigir={() => setCorrigindo(o)} />
+                      <Linha key={i} o={o} area={areaPorEmpId.get(o.employeeId)}
+                        podeCorrigir={podeCorrigir} onCorrigir={() => setCorrigindo(o)} />
                     ))}
                   </div>
                 )}
@@ -149,7 +209,8 @@ export function AnalisePontoPage() {
             FALTA depende do roster da Sólides (se a conta não retornar colaboradores, não aparece).
           </p>
         </>
-      )}
+        );
+      })()}
 
       {!resultado && !carregando && !erro && (
         <div className="text-center text-sm text-gray-400 py-12">
@@ -180,7 +241,7 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
   );
 }
 
-function Linha({ o, podeCorrigir, onCorrigir }: { o: Ocorrencia; podeCorrigir: boolean; onCorrigir: () => void }) {
+function Linha({ o, area, podeCorrigir, onCorrigir }: { o: Ocorrencia; area?: Area; podeCorrigir: boolean; onCorrigir: () => void }) {
   // Ponto em atraso corrige o caso clássico de PONTO_EM_ABERTO (saída faltante).
   const corrigivel = podeCorrigir && o.tipo === "PONTO_EM_ABERTO" && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data);
   return (
@@ -189,7 +250,8 @@ function Linha({ o, podeCorrigir, onCorrigir }: { o: Ocorrencia; podeCorrigir: b
       <div className="min-w-0 flex-1">
         <div className="text-sm">
           <span className="font-semibold text-gray-900 dark:text-gray-100">{o.colaborador}</span>
-          <span className="text-gray-400"> · {o.data}{o.diaSemana !== "período" ? ` (${o.diaSemana})` : ""}</span>
+          {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
+          <span className="text-gray-400"> · {fmtBR(o.data)}{o.diaSemana !== "período" ? ` (${o.diaSemana})` : ""}</span>
         </div>
         <div className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{ROTULOS[o.tipo]}</div>
         <div className="text-xs text-gray-600 dark:text-gray-300">{o.detalhe}</div>
@@ -237,7 +299,7 @@ function CorrecaoModal({
     if (!justId) { setErro("Escolha uma justificativa."); return; }
     if (!/^\d{2}:\d{2}$/.test(hora)) { setErro("Informe a hora real (HH:MM)."); return; }
     const dataHoraIso = `${data}T${hora}:00.000-0300`; // America/Sao_Paulo (UTC-3 fixo)
-    if (!window.confirm(`Lançar ponto em atraso para ${ocorrencia.colaborador} em ${data} ${hora}?\n\nIsso grava na Sólides (dado trabalhista). A Sólides decide se é entrada ou saída e pareia.`)) return;
+    if (!window.confirm(`Lançar ponto em atraso para ${ocorrencia.colaborador} em ${fmtBR(data)} ${hora}?\n\nIsso grava na Sólides (dado trabalhista). A Sólides decide se é entrada ou saída e pareia.`)) return;
     setErro("");
     setSalvando(true);
     try {
@@ -266,7 +328,7 @@ function CorrecaoModal({
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">✏️ Corrigir ponto — {ocorrencia.colaborador}</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          {ROTULOS[ocorrencia.tipo]} em {ocorrencia.data}. Informe a hora real da batida faltante.
+          {ROTULOS[ocorrencia.tipo]} em {fmtBR(ocorrencia.data)}. Informe a hora real da batida faltante.
           Para saída de madrugada (vira-dia), use a data do dia seguinte.
         </p>
         {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}

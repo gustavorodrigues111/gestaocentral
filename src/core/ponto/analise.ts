@@ -32,6 +32,7 @@ export type PontoMarcacao = {
 export type PontoColaborador = {
   id?: number;
   name?: string;
+  cpf?: string;                   // pra cruzar com o empregado do app (área)
   workSchedule?: number;          // id da escala
   admissionDate?: number;
   effectiveDate?: number;
