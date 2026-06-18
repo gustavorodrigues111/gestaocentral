@@ -488,6 +488,18 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Solicitações de correção enviadas ao empregado (relógio/prazo). Atualiza
+    // status (resolvido) mas não apaga — histórico do que foi cobrado e quando.
+    match /pontoSolicitacoes/{id} {
+      allow create, read, update: if authed();
+      allow delete: if false;
+    }
+
+    // Avaliações "ciente / sem ação". Delete permitido = reabrir o apontamento.
+    match /pontoAvaliacoes/{id} {
+      allow create, read, update, delete: if authed();
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
