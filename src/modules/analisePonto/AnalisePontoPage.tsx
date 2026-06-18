@@ -8,7 +8,7 @@
 //  Excel e FALTA (precisa do roster de colaboradores) entram nas próximas fases.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -128,6 +128,18 @@ export function AnalisePontoPage() {
       setCarregando(false);
     }
   }
+
+  // Auto-analisa ao abrir (e ao trocar de restaurante) — atualiza com os dados
+  // atuais, sem tela vazia. Roda 1× por restaurante quando permissão e dados
+  // estão prontos. Mudança manual de data NÃO dispara (aí é o botão Analisar).
+  const autoRef = useRef<string>("");
+  useEffect(() => {
+    if (permLoading || !podeVer || !activeRestaurant) return;
+    if (autoRef.current === rid) return;
+    autoRef.current = rid;
+    void analisar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rid, permLoading, podeVer, activeRestaurant]);
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando permissões…</div>;
