@@ -35,28 +35,6 @@ const fmtYmd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d
 // Converte qualquer YYYY-MM-DD (inclusive dentro de "X a Y") → DD/MM/YYYY.
 const fmtBR = (s: string) => s.replace(/(\d{4})-(\d{2})-(\d{2})/g, "$3/$2/$1");
 
-type PresetId = "7d" | "estaSemana" | "semanaPassada" | "esteMes" | "mesPassado";
-const PRESETS: { id: PresetId; label: string }[] = [
-  { id: "semanaPassada", label: "Semana passada" },
-  { id: "estaSemana", label: "Esta semana" },
-  { id: "7d", label: "Últimos 7 dias" },
-  { id: "esteMes", label: "Este mês" },
-  { id: "mesPassado", label: "Mês passado" },
-];
-// Semanas Dom–Sáb (a Sólides troca escala/semana aos domingos).
-function rangePreset(p: PresetId): [string, string] {
-  const h = new Date(); h.setHours(0, 0, 0, 0);
-  if (p === "7d") { const s = new Date(h); s.setDate(s.getDate() - 6); return [fmtYmd(s), fmtYmd(h)]; }
-  if (p === "estaSemana") { const s = new Date(h); s.setDate(s.getDate() - s.getDay()); return [fmtYmd(s), fmtYmd(h)]; }
-  if (p === "semanaPassada") {
-    const dom = new Date(h); dom.setDate(dom.getDate() - dom.getDay() - 7);
-    const sab = new Date(dom); sab.setDate(sab.getDate() + 6);
-    return [fmtYmd(dom), fmtYmd(sab)];
-  }
-  if (p === "esteMes") return [fmtYmd(new Date(h.getFullYear(), h.getMonth(), 1)), fmtYmd(h)];
-  // mês passado
-  return [fmtYmd(new Date(h.getFullYear(), h.getMonth() - 1, 1)), fmtYmd(new Date(h.getFullYear(), h.getMonth(), 0))];
-}
 
 const SEV_COR: Record<Severidade, string> = {
   alta: "bg-red-500",
@@ -75,8 +53,9 @@ export function AnalisePontoPage() {
   const podeCorrigir = can("analise-ponto", "corrigir");
 
   const hoje = new Date();
-  const [inicio, setInicio] = useState(fmtYmd(new Date(hoje.getTime() - 7 * 86400000)));
-  const [fim, setFim] = useState(fmtYmd(hoje));
+  // Default: 1º dia do mês corrente → ontem.
+  const [inicio, setInicio] = useState(fmtYmd(new Date(hoje.getFullYear(), hoje.getMonth(), 1)));
+  const [fim, setFim] = useState(fmtYmd(new Date(hoje.getTime() - 86400000)));
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
@@ -122,12 +101,6 @@ export function AnalisePontoPage() {
     }
     return m;
   }, [empregados, cargos, roster]);
-
-  function aplicarPreset(p: PresetId) {
-    const [s, e] = rangePreset(p);
-    setInicio(s); setFim(e);
-    void analisar(s, e);
-  }
 
   async function analisar(ini: string = inicio, fimArg: string = fim) {
     if (!activeRestaurant) return;
@@ -185,22 +158,6 @@ export function AnalisePontoPage() {
       {tab === "inconsist" && <>
       {/* Filtros */}
       <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3 space-y-2.5">
-        {/* Atalhos de período */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Período</span>
-          {PRESETS.map((p) => (
-            <button key={p.id} type="button" onClick={() => aplicarPreset(p.id)} disabled={carregando}
-              className="text-[11px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 disabled:opacity-50">
-              {p.label}
-            </button>
-          ))}
-          <span className="ml-auto text-[11px] text-gray-400 inline-flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
-          </span>
-        </div>
-
-        <div className="border-t border-gray-100 dark:border-gray-800" />
-
         {/* Datas + Área + ação — uma linha só (área preenche o meio) */}
         <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
           <div className="flex flex-col gap-1">
@@ -223,10 +180,15 @@ export function AnalisePontoPage() {
               <Chip ativo={filtroAreas.has("sem")} onClick={() => toggleArea("sem")}>Sem área</Chip>
             </div>
           </div>
-          <button type="button" onClick={() => void analisar()} disabled={carregando}
-            className="ml-auto h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
-            {carregando ? "Analisando…" : <>🔍 Analisar período</>}
-          </button>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
+            </span>
+            <button type="button" onClick={() => void analisar()} disabled={carregando}
+              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
+              {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+            </button>
+          </div>
         </div>
       </div>
 
