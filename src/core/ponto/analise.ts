@@ -148,6 +148,14 @@ function weekdaySolides(day: string): number {
   const [y, m, d] = day.split("-").map(Number);
   return new Date(y, m - 1, d).getDay() + 1;
 }
+// Domingo da semana de um YYYY-MM-DD (a rotação de escala cíclica da Sólides
+// troca sempre aos domingos). Usado pra inferir a escala da semana.
+function domingoDaSemana(day: string): string {
+  const [y, m, d] = day.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() - dt.getDay()); // volta pro domingo (getDay 0=Dom)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, "0")}-${String(dt.getDate()).padStart(2, "0")}`;
+}
 // Meia-noite (SP, UTC-3 fixo desde 2019) de um YYYY-MM-DD em epoch ms.
 function midnightMsSP(day: string): number {
   return new Date(`${day}T00:00:00-03:00`).getTime();
@@ -249,6 +257,9 @@ export function analisarPonto(
 
   const occ: Ocorrencia[] = [];
   const saldo = new Map<number, { bal: number; dias: number; w: number; e: number; name: string }>();
+  // Escala usada por (emp, semana-domingo), inferida das batidas — pra FALTA
+  // respeitar escala cíclica (empregado que alterna escala por semana).
+  const weekSched = new Map<string, number>();
 
   const add = (emp: number, name: string, day: string, tipo: TipoOcorrencia, detalhe: string, marcacoes?: string[]) => {
     let diaSem = "período";
@@ -267,7 +278,9 @@ export function analisarPonto(
     const recs = [...recsRaw].sort((a, b) => (a.dateIn || 0) - (b.dateIn || 0));
     const name = empName(recs[0], empById);
     const wd = weekdaySolides(day);
-    const sched = schedById.get(schedId(recs[0], empById) ?? -1);
+    const wsId = schedId(recs[0], empById);
+    if (wsId) weekSched.set(`${emp}|${domingoDaSemana(day)}`, wsId); // p/ inferir escala cíclica na FALTA
+    const sched = schedById.get(wsId ?? -1);
     const expected = sched ? expectedSeconds(sched, wd) : 0;
     const passado = day < hoje;
 
@@ -333,8 +346,10 @@ export function analisarPonto(
   // 2) dias SEM registros → falta em dia previsto
   for (const [empIdNum, emp] of empById) {
     if (emp.fired && !empTermination(emp)) continue;
-    const sched = emp.workSchedule != null ? schedById.get(emp.workSchedule) : undefined;
-    if (!sched) continue;
+    // Escala padrão do empregado (fallback). Em cíclicos, a escala real da
+    // semana é inferida das batidas (weekSched); se a semana não tem batida,
+    // cai no padrão.
+    const schedPadrao = emp.workSchedule != null ? schedById.get(emp.workSchedule) : undefined;
     const name = emp.name || `ID ${empIdNum}`;
     const adm = empAdmission(emp);
     const term = empTermination(emp);
@@ -344,6 +359,9 @@ export function analisarPonto(
       if (adm && ms0 < adm) continue;
       if (term && ms0 > term) continue;
       if (grouped.has(`${empIdNum}|${day}`)) continue; // tem batida ou ajuste
+      const schedSemana = weekSched.get(`${empIdNum}|${domingoDaSemana(day)}`);
+      const sched = (schedSemana != null ? schedById.get(schedSemana) : undefined) || schedPadrao;
+      if (!sched) continue;
       if (expectedSeconds(sched, weekdaySolides(day)) > 0) {
         add(empIdNum, name, day, "FALTA", "Dia previsto de trabalho sem nenhuma batida nem ajuste.");
       }
