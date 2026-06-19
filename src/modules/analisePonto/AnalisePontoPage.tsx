@@ -1041,6 +1041,10 @@ function BatidasDiaModal({
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState<number | null>(null);
   const [erro, setErro] = useState("");
+  const [justs, setJusts] = useState<Justificativa[]>([]);
+  const [justId, setJustId] = useState<number | null>(null);
+  const [novaHora, setNovaHora] = useState("");
+  const [adicionando, setAdicionando] = useState(false);
 
   const msToInput = (ms?: number | null) => {
     if (!ms) return "";
@@ -1073,6 +1077,14 @@ function BatidasDiaModal({
     }
   }
   useEffect(() => { void recarregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [shortCode, info.employeeId, info.data]);
+
+  useEffect(() => {
+    let vivo = true;
+    fetchJustificativas(shortCode)
+      .then((js) => { if (vivo) { setJusts(js); if (js[0]) setJustId(js[0].id); } })
+      .catch(() => { /* sem justificativas → bloqueia o adicionar */ });
+    return () => { vivo = false; };
+  }, [shortCode]);
 
   async function audit(tipo: string, extra: Record<string, unknown>) {
     try {
@@ -1108,6 +1120,25 @@ function BatidasDiaModal({
       setErro(ex instanceof Error ? ex.message : "Falha ao editar a batida.");
     } finally {
       setSalvando(null);
+    }
+  }
+
+  async function adicionarBatida() {
+    if (!/^\d{2}:\d{2}$/.test(novaHora)) { setErro("Informe a hora da batida (HH:MM)."); return; }
+    if (!justId) { setErro("Escolha uma justificativa."); return; }
+    const dataHoraIso = `${info.data}T${novaHora}:00.000-0300`;
+    if (!window.confirm(`Adicionar batida ${novaHora} para ${info.colaborador} em ${fmtBR(info.data)}?\n\nGrava na Sólides (a Sólides decide se é entrada ou saída e pareia).`)) return;
+    setErro(""); setAdicionando(true);
+    try {
+      await corrigirPontoAtraso(shortCode, { employeeId: info.employeeId, dataHoraIso, justificativaId: justId });
+      await audit("adicionar_batida", { hora: novaHora, justificativaId: justId });
+      setNovaHora("");
+      await recarregar();
+      onChanged();
+    } catch (ex) {
+      setErro(ex instanceof Error ? ex.message : "Falha ao adicionar a batida.");
+    } finally {
+      setAdicionando(false);
     }
   }
 
@@ -1174,6 +1205,31 @@ function BatidasDiaModal({
             })}
           </div>
         )}
+
+        {/* Adicionar batida (lança ponto em atraso; a Sólides decide entrada/saída) */}
+        <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">➕ Adicionar batida</div>
+          <div className="flex items-end gap-2 flex-wrap">
+            <div className="flex flex-col gap-1">
+              <label className="text-[10px] font-semibold text-gray-500">Hora</label>
+              <input type="time" value={novaHora} disabled={adicionando} onChange={(ev) => setNovaHora(ev.target.value)}
+                className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+            </div>
+            <div className="flex flex-col gap-1 flex-1 min-w-[160px]">
+              <label className="text-[10px] font-semibold text-gray-500">Justificativa</label>
+              <select value={justId ?? ""} disabled={adicionando} onChange={(ev) => setJustId(Number(ev.target.value))}
+                className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                {justs.length === 0 && <option value="">— carregando —</option>}
+                {justs.map((j) => <option key={j.id} value={j.id}>{j.description}</option>)}
+              </select>
+            </div>
+            <button type="button" onClick={() => void adicionarBatida()} disabled={adicionando}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50">
+              {adicionando ? "Adicionando…" : "Adicionar"}
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-400 mt-1">A Sólides decide se é entrada ou saída e pareia com as batidas existentes.</p>
+        </div>
 
         <div className="flex justify-end pt-1">
           <button type="button" onClick={onClose}
