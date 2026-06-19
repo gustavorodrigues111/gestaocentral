@@ -94,7 +94,49 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       return;
     }
     if (method === "POST") {
-      const body = (req.body || {}) as { employeeId?: number; date?: string; justificativaId?: number };
+      const body = (req.body || {}) as {
+        action?: string;
+        employeeId?: number; date?: string; justificativaId?: number;
+        punchId?: number; oldMs?: number; newMs?: number; observation?: string;
+        dateIn?: number; dateOut?: number;
+      };
+      const action = body.action || "late";
+
+      // Editar batida: POST /modify/punch/1.1 (datas em ms epoch).
+      if (action === "modify") {
+        if (!body.employeeId || !body.punchId || !body.oldMs || !body.newMs) {
+          res.status(400).json({ error: "Campos obrigatórios: employeeId, punchId, oldMs, newMs (ms epoch)." });
+          return;
+        }
+        const payload = {
+          employeeId: body.employeeId,
+          punchId: body.punchId,
+          punchOldDateHour: body.oldMs,
+          punchNewDateHour: body.newMs,
+          observation: body.observation || "",
+          user: usuario.email || usuario.uid,
+        };
+        const data = await solidesFetch(`${PUNCH}/modify/punch/1.1`, { method: "POST", body: JSON.stringify(payload) }, token);
+        res.status(200).json({ ok: true, resultado: data, por: usuario.email || usuario.uid });
+        return;
+      }
+
+      // Excluir batida (bloco): DELETE /punches/{punchId}/employee/{employeeId}?dateIn&dateOut (ms).
+      if (action === "delete") {
+        if (!body.employeeId || !body.punchId) {
+          res.status(400).json({ error: "Campos obrigatórios: employeeId, punchId." });
+          return;
+        }
+        const qs = new URLSearchParams();
+        if (typeof body.dateIn === "number") qs.set("dateIn", String(body.dateIn));
+        if (typeof body.dateOut === "number") qs.set("dateOut", String(body.dateOut));
+        const url = `${PUNCH}/punches/${encodeURIComponent(String(body.punchId))}/employee/${encodeURIComponent(String(body.employeeId))}${qs.toString() ? `?${qs.toString()}` : ""}`;
+        const data = await solidesFetch(url, { method: "DELETE" }, token);
+        res.status(200).json({ ok: true, resultado: data, por: usuario.email || usuario.uid });
+        return;
+      }
+
+      // Lançar ponto em atraso (default): POST /register/late/1.1 (a Sólides decide entrada/saída).
       if (!body.employeeId || !body.date || !body.justificativaId) {
         res.status(400).json({ error: "Campos obrigatórios: employeeId, date (ISO offset), justificativaId." });
         return;

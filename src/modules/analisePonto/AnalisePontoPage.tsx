@@ -22,9 +22,10 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
+import type { SolidesPunch } from "../../core/excecoes/types";
 import {
   fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
-  fetchAprovacoesPendentes, decidirAprovacao,
+  fetchAprovacoesPendentes, decidirAprovacao, editarBatida, excluirBatida,
   type Justificativa, type AprovacaoPendente,
 } from "../../core/ponto/solidesPontoClient";
 import {
@@ -150,6 +151,7 @@ export function AnalisePontoPage() {
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
   const [corrigindo, setCorrigindo] = useState<Ocorrencia | null>(null);
+  const [batidasDia, setBatidasDia] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
   // Prazo de correção (horas) — configurável, padrão 6h. Persiste no navegador.
   const [prazoHoras, setPrazoHoras] = useState<number>(() => {
     const v = Number(localStorage.getItem("analisePonto.prazoHoras"));
@@ -501,19 +503,20 @@ export function AnalisePontoPage() {
 
         // ─── Aba Corrigir manual: só os corrigíveis, com o modal de ponto em atraso.
         if (tab === "manual") {
+          // Todas as pendências (não dadas ciência) com data e empregado válidos.
           const corrigiveis = filtradas.filter(
-            (o) => o.tipo === "PONTO_EM_ABERTO" && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data),
+            (o) => !cienteKeys.has(ocKey(o)) && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data),
           );
           return (
             <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
               <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
                 <div className="font-bold text-sm text-gray-900 dark:text-gray-100">🛠️ Correção manual ({corrigiveis.length})</div>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  Use só em exceção — o ideal é o empregado corrigir no app dele. Lança ponto em atraso direto na Sólides (a Sólides decide se é entrada ou saída).
+                  Use só em exceção — o ideal é o empregado corrigir no app dele. <strong>Batidas do dia</strong> abre os blocos pra editar/excluir direto na Sólides; <strong>Lançar ponto</strong> adiciona uma batida que faltou (a Sólides decide entrada/saída).
                 </p>
               </header>
               {corrigiveis.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhum ponto em aberto pra corrigir 🎉</div>
+                <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma pendência pra corrigir 🎉</div>
               ) : (
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {corrigiveis.map((o, i) => (
@@ -527,10 +530,18 @@ export function AnalisePontoPage() {
                         <div className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{ROTULOS[o.tipo]}</div>
                         <div className="text-xs text-gray-600 dark:text-gray-300">{o.detalhe}</div>
                       </div>
-                      <button type="button" onClick={() => setCorrigindo(o)}
-                        className="shrink-0 text-[11px] font-semibold px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-                        ✏️ Corrigir
-                      </button>
+                      <div className="shrink-0 flex items-center gap-1.5">
+                        <button type="button" onClick={() => setBatidasDia({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          🛠️ Batidas do dia
+                        </button>
+                        {o.tipo === "PONTO_EM_ABERTO" && (
+                          <button type="button" onClick={() => setCorrigindo(o)}
+                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                            ✏️ Lançar ponto
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -748,6 +759,17 @@ export function AnalisePontoPage() {
           por={{ id: me?.id || "", nome: me?.nome || "?" }}
           onClose={() => setCorrigindo(null)}
           onDone={() => { setCorrigindo(null); void analisar(); }}
+        />
+      )}
+
+      {batidasDia && activeRestaurant && (
+        <BatidasDiaModal
+          info={batidasDia}
+          shortCode={activeRestaurant.shortCode || ""}
+          restaurantId={rid}
+          por={{ id: me?.id || "", nome: me?.nome || "?" }}
+          onClose={() => setBatidasDia(null)}
+          onChanged={() => void analisar()}
         />
       )}
       </>}
@@ -996,6 +1018,167 @@ function CorrecaoModal({
           <button type="button" onClick={() => void confirmar()} disabled={salvando}
             className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
             {salvando ? "Lançando…" : "Confirmar correção"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal "Batidas do dia": edita/exclui blocos direto na Sólides ──────────
+function BatidasDiaModal({
+  info, shortCode, restaurantId, por, onClose, onChanged,
+}: {
+  info: { employeeId: number; colaborador: string; data: string };
+  shortCode: string;
+  restaurantId: string;
+  por: { id: string; nome: string };
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [punches, setPunches] = useState<SolidesPunch[]>([]);
+  const [edits, setEdits] = useState<Record<number, { in: string; out: string }>>({});
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState<number | null>(null);
+  const [erro, setErro] = useState("");
+
+  const msToInput = (ms?: number | null) => {
+    if (!ms) return "";
+    const d = new Date(ms);
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const inputToMs = (origMs: number, hhmm: string) => {
+    const d = new Date(origMs);
+    const [h, m] = hhmm.split(":").map(Number);
+    d.setHours(h, m, 0, 0);
+    return d.getTime();
+  };
+  const temSaida = (p: SolidesPunch) => typeof p.dateOut === "number" && p.dateOut > p.dateIn;
+
+  async function recarregar() {
+    setCarregando(true);
+    try {
+      const r = await fetchPunches(info.data, info.data, shortCode);
+      const blocos = r.punches
+        .filter((p) => p.employeeId === info.employeeId && p.date === info.data)
+        .sort((a, b) => a.dateIn - b.dateIn);
+      setPunches(blocos);
+      const e: Record<number, { in: string; out: string }> = {};
+      for (const p of blocos) e[p.id] = { in: msToInput(p.dateIn), out: temSaida(p) ? msToInput(p.dateOut) : "" };
+      setEdits(e);
+    } catch (ex) {
+      setErro(ex instanceof Error ? ex.message : "Falha ao carregar as batidas do dia.");
+    } finally {
+      setCarregando(false);
+    }
+  }
+  useEffect(() => { void recarregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [shortCode, info.employeeId, info.data]);
+
+  async function audit(tipo: string, extra: Record<string, unknown>) {
+    try {
+      await addDoc(collection(db, "pontoAuditoria"), {
+        restaurantId, tipo, por: { id: por.id, nome: por.nome },
+        employeeId: info.employeeId, colaborador: info.colaborador, data: info.data,
+        ...extra, em: new Date().toISOString(),
+      });
+    } catch { /* auditoria não bloqueia */ }
+  }
+
+  async function salvarBloco(p: SolidesPunch) {
+    const e = edits[p.id]; if (!e) return;
+    const curIn = msToInput(p.dateIn);
+    const curOut = temSaida(p) ? msToInput(p.dateOut) : "";
+    const mudouIn = /^\d{2}:\d{2}$/.test(e.in) && e.in !== curIn;
+    const mudouOut = curOut && /^\d{2}:\d{2}$/.test(e.out) && e.out !== curOut;
+    if (!mudouIn && !mudouOut) { setErro("Nenhuma alteração nessa batida."); return; }
+    if (!window.confirm(`Editar batida de ${info.colaborador} em ${fmtBR(info.data)}?\n${mudouIn ? `Entrada ${curIn} → ${e.in}\n` : ""}${mudouOut ? `Saída ${curOut} → ${e.out}\n` : ""}\nGrava na Sólides (dado trabalhista).`)) return;
+    setErro(""); setSalvando(p.id);
+    try {
+      if (mudouIn) {
+        await editarBatida(shortCode, { employeeId: info.employeeId, punchId: p.id, oldMs: p.dateIn, newMs: inputToMs(p.dateIn, e.in) });
+        await audit("editar_batida", { punchId: p.id, campo: "entrada", de: curIn, para: e.in });
+      }
+      if (mudouOut) {
+        await editarBatida(shortCode, { employeeId: info.employeeId, punchId: p.id, oldMs: p.dateOut, newMs: inputToMs(p.dateOut, e.out) });
+        await audit("editar_batida", { punchId: p.id, campo: "saida", de: curOut, para: e.out });
+      }
+      await recarregar();
+      onChanged();
+    } catch (ex) {
+      setErro(ex instanceof Error ? ex.message : "Falha ao editar a batida.");
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  async function excluirBloco(p: SolidesPunch) {
+    if (!window.confirm(`Excluir a batida ${msToInput(p.dateIn)}${temSaida(p) ? `–${msToInput(p.dateOut)}` : ""} de ${info.colaborador} em ${fmtBR(info.data)}?\n\nRemove na Sólides (dado trabalhista).`)) return;
+    setErro(""); setSalvando(p.id);
+    try {
+      await excluirBatida(shortCode, { employeeId: info.employeeId, punchId: p.id, dateIn: p.dateIn, dateOut: temSaida(p) ? p.dateOut : undefined });
+      await audit("excluir_batida", { punchId: p.id, entrada: msToInput(p.dateIn), saida: temSaida(p) ? msToInput(p.dateOut) : "" });
+      await recarregar();
+      onChanged();
+    } catch (ex) {
+      setErro(ex instanceof Error ? ex.message : "Falha ao excluir a batida.");
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-3" onClick={(ev) => ev.stopPropagation()}>
+        <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">🛠️ Batidas do dia — {info.colaborador}</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {fmtBR(info.data)}. Edite a hora e clique em <strong>Salvar</strong>, ou <strong>Excluir</strong> o bloco. Grava direto na Sólides.
+        </p>
+        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
+
+        {carregando ? (
+          <div className="py-6 text-center text-sm text-gray-400">Carregando batidas…</div>
+        ) : punches.length === 0 ? (
+          <div className="py-6 text-center text-sm text-gray-400">Nenhuma batida nesse dia. Use “Lançar ponto” pra adicionar.</div>
+        ) : (
+          <div className="space-y-2">
+            {punches.map((p) => {
+              const e = edits[p.id] || { in: "", out: "" };
+              const busy = salvando === p.id;
+              return (
+                <div key={p.id} className="flex items-end gap-2 border border-gray-200 dark:border-gray-800 rounded-lg p-2.5">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-gray-500">Entrada</label>
+                    <input type="time" value={e.in} disabled={busy}
+                      onChange={(ev) => setEdits((c) => ({ ...c, [p.id]: { ...c[p.id], in: ev.target.value } }))}
+                      className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-gray-500">Saída</label>
+                    <input type="time" value={e.out} disabled={busy || !temSaida(p)}
+                      onChange={(ev) => setEdits((c) => ({ ...c, [p.id]: { ...c[p.id], out: ev.target.value } }))}
+                      className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-50 [color-scheme:light] dark:[color-scheme:dark]" />
+                  </div>
+                  {!temSaida(p) && <span className="text-[10px] text-amber-600 mb-2">em aberto</span>}
+                  <div className="ml-auto flex items-center gap-1.5 mb-0.5">
+                    <button type="button" disabled={busy} onClick={() => void salvarBloco(p)}
+                      className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
+                      {busy ? "…" : "Salvar"}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => void excluirBloco(p)}
+                      className="text-[11px] font-semibold px-2.5 py-1.5 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50">
+                      Excluir
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex justify-end pt-1">
+          <button type="button" onClick={onClose}
+            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
+            Fechar
           </button>
         </div>
       </div>

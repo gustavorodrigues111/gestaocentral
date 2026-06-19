@@ -143,6 +143,36 @@ export async function decidirAprovacao(
   return json as { ok: boolean; resultado: unknown };
 }
 
+// Editar batida (modify/punch). oldMs = batida atual, newMs = nova — ambos ms epoch.
+export async function editarBatida(
+  restaurantKey: string,
+  params: { employeeId: number; punchId: number; oldMs: number; newMs: number; observation?: string },
+): Promise<{ ok: boolean }> {
+  const resp = await fetch(`/api/solides-ponto-correcao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, action: "modify", ...params }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean };
+}
+
+// Excluir batida (bloco). dateIn/dateOut = ms epoch do bloco.
+export async function excluirBatida(
+  restaurantKey: string,
+  params: { employeeId: number; punchId: number; dateIn?: number; dateOut?: number },
+): Promise<{ ok: boolean }> {
+  const resp = await fetch(`/api/solides-ponto-correcao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, action: "delete", ...params }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean };
+}
+
 // Lança ponto em atraso. `dataHoraIso` = ISO com offset (ex: 2026-06-17T00:06:00.000-0300).
 export async function corrigirPontoAtraso(
   restaurantKey: string,
