@@ -470,7 +470,7 @@ export function AnalisePontoPage() {
           )}
           <div className="flex flex-col gap-1 min-w-0 flex-1 basis-full sm:basis-auto">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Área</label>
-            <div className="flex flex-wrap items-center gap-1.5 min-h-9">
+            <div className="flex items-center gap-1.5 h-9 overflow-x-auto">
               <Chip ativo={filtroAreas.size === 0} onClick={() => setFiltroAreas(new Set())}>Todas</Chip>
               {AREAS.map((a) => (
                 <Chip key={a} ativo={filtroAreas.has(a)} onClick={() => toggleArea(a)}>{a}</Chip>
@@ -803,7 +803,7 @@ function SaldoBadge({ saldo }: { saldo: SaldoColaborador }) {
 function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={`text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
+      className={`shrink-0 whitespace-nowrap text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${
         ativo
           ? "bg-indigo-600 text-white border-indigo-600"
           : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400"
