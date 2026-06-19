@@ -26,7 +26,7 @@ import type { SolidesPunch } from "../../core/excecoes/types";
 import { Modal } from "../../core/ui/Modal";
 import {
   fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
-  fetchAprovacoesPendentes, decidirAprovacao, editarBatida, excluirBatida,
+  decidirAprovacao, editarBatida, excluirBatida,
   type Justificativa, type AprovacaoPendente,
 } from "../../core/ponto/solidesPontoClient";
 import {
@@ -279,11 +279,24 @@ export function AnalisePontoPage() {
         punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
-      // Aprovações pendentes (acende o indicador da aba). Não bloqueia a análise.
+      // Aprovações pendentes = punches com status PENDING (o empregado ajustou e
+      // aguarda aprovação). Deriva dos próprios punches — o endpoint daily-activity
+      // não existe nesse host (cai num S3 e rejeita o Basic).
       if (podeAprovar) {
-        fetchAprovacoesPendentes(shortCode, ini, fimArg)
-          .then(setAprovacoes)
-          .catch(() => setAprovacoes([]));
+        const pend: AprovacaoPendente[] = punches
+          .filter((p) => String(p.status || "").toUpperCase() === "PENDING")
+          .map((p) => ({
+            punchId: p.id,
+            employeeId: p.employeeId,
+            employeeName: p.employeeName || p.employee?.name || "?",
+            date: p.date || "",
+            dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
+            dateOut: typeof p.dateOut === "number" && p.dateOut > p.dateIn ? p.dateOut : undefined,
+            status: "PENDING",
+            motivo: typeof p.adjustmentReason === "string" ? p.adjustmentReason : undefined,
+            observation: p.justification || undefined,
+          }));
+        setAprovacoes(pend);
       }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao analisar.");
@@ -307,13 +320,7 @@ export function AnalisePontoPage() {
   // Abas que sempre reatualizam ao serem acessadas. (Escalas remonta sozinha.)
   useEffect(() => {
     if (permLoading || !podeVer || !activeRestaurant) return;
-    if (tab === "manual") {
-      void analisar();
-    } else if (tab === "aprovacoes" && podeAprovar) {
-      fetchAprovacoesPendentes(activeRestaurant.shortCode || "", inicio, fim)
-        .then(setAprovacoes)
-        .catch(() => setAprovacoes([]));
-    }
+    if (tab === "manual" || tab === "aprovacoes") void analisar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
