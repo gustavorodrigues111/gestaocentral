@@ -442,20 +442,20 @@ export function AnalisePontoPage() {
 
       {(tab === "inconsist" || tab === "manual" || tab === "aprovacoes") && <>
       {/* Filtros */}
-      <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3 space-y-2.5">
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-3">
-          <div className="flex flex-col gap-1">
+      <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3">
+        <div className="flex items-end gap-3">
+          <div className="flex flex-col gap-1 shrink-0">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
             <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
               className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 shrink-0">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
             <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
               className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
           {tab === "inconsist" && (
-            <div className="flex flex-col gap-1">
+            <div className="flex flex-col gap-1 shrink-0">
               <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Prazo p/ correção</label>
               <div className="h-9 inline-flex items-center gap-1.5">
                 <input type="number" min={1} max={168} value={prazoHoras}
@@ -465,17 +465,16 @@ export function AnalisePontoPage() {
               </div>
             </div>
           )}
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1 min-w-0 flex-1">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Área</label>
-            <div className="flex items-center gap-1.5 flex-wrap h-9">
+            <div className="flex items-center gap-1.5 h-9 overflow-x-auto">
               <Chip ativo={filtroAreas.size === 0} onClick={() => setFiltroAreas(new Set())}>Todas</Chip>
               {AREAS.map((a) => (
                 <Chip key={a} ativo={filtroAreas.has(a)} onClick={() => toggleArea(a)}>{a}</Chip>
               ))}
-              <Chip ativo={filtroAreas.has("sem")} onClick={() => toggleArea("sem")}>Sem área</Chip>
             </div>
           </div>
-          <div className="ml-auto flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0">
             <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
