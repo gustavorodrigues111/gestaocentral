@@ -23,6 +23,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
+import { Modal } from "../../core/ui/Modal";
 import {
   fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
   fetchAprovacoesPendentes, decidirAprovacao, editarBatida, excluirBatida,
@@ -984,9 +985,8 @@ function CorrecaoModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">✏️ Corrigir ponto — {ocorrencia.colaborador}</h2>
+    <Modal title={`✏️ Corrigir ponto — ${ocorrencia.colaborador}`} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {ROTULOS[ocorrencia.tipo]} em {fmtBR(ocorrencia.data)}. Informe a hora real da batida faltante.
           Para saída de madrugada (vira-dia), use a data do dia seguinte.
@@ -1023,7 +1023,7 @@ function CorrecaoModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -1160,9 +1160,8 @@ function BatidasDiaModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={(ev) => ev.stopPropagation()}>
-        <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">🛠️ Batidas do dia — {info.colaborador}</h2>
+    <Modal title={`🛠️ Batidas do dia — ${info.colaborador}`} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {fmtBR(info.data)}. Edite a hora e clique em <strong>Salvar</strong>, ou <strong>Excluir</strong> o bloco. Grava direto na Sólides.
         </p>
@@ -1232,14 +1231,7 @@ function BatidasDiaModal({
           </div>
           <p className="text-[10px] text-gray-400 mt-1">A Sólides decide se é entrada ou saída e pareia com as batidas existentes.</p>
         </div>
-
-        <div className="flex justify-end pt-1">
-          <button type="button" onClick={onClose}
-            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-            Fechar
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
