@@ -196,20 +196,22 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
                 : <span className="text-[11px] text-red-600 ml-auto">⚠ divergem</span>)}
             </div>
 
-            {/* Grade semanal: Sólides × app */}
-            <div className="mt-2 grid grid-cols-8 gap-1 text-center text-[10px]">
-              <div />
-              {DIAS.map((d) => <div key={d} className="font-semibold text-gray-400">{d}</div>)}
-              <div className="text-left text-[10px] text-gray-500 self-center">Sólides</div>
-              {l.minSol.map((m, wd) => (
-                <div key={`s${wd}`} className={`py-1 rounded ${l.temApp && l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
-              ))}
-              <div className="text-left text-[10px] text-gray-500 self-center">planejamento.app</div>
-              {l.temApp
-                ? l.minApp.map((m, wd) => (
-                    <div key={`a${wd}`} className={`py-1 rounded ${l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
-                  ))
-                : DIAS.map((_, wd) => <div key={`a${wd}`} className="py-1 rounded bg-gray-50 dark:bg-gray-800/40 text-gray-300">—</div>)}
+            {/* Grade semanal: Sólides × planejamento.app (scroll horizontal no mobile) */}
+            <div className="mt-2 overflow-x-auto -mx-1 px-1">
+              <div className="grid gap-1 text-center text-[10px] min-w-[440px]" style={{ gridTemplateColumns: "minmax(72px,auto) repeat(7, 1fr)" }}>
+                <div />
+                {DIAS.map((d) => <div key={d} className="font-semibold text-gray-400">{d}</div>)}
+                <div className="text-left text-[10px] text-gray-500 self-center">Sólides</div>
+                {l.minSol.map((m, wd) => (
+                  <div key={`s${wd}`} className={`py-1 rounded ${l.temApp && l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
+                ))}
+                <div className="text-left text-[10px] text-gray-500 self-center">planejamento.app</div>
+                {l.temApp
+                  ? l.minApp.map((m, wd) => (
+                      <div key={`a${wd}`} className={`py-1 rounded ${l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
+                    ))
+                  : DIAS.map((_, wd) => <div key={`a${wd}`} className="py-1 rounded bg-gray-50 dark:bg-gray-800/40 text-gray-300">—</div>)}
+              </div>
             </div>
             <div className="mt-1 text-[10px] text-gray-400">
               Carga semanal — Sólides: {fmtH(l.totalSol)} {l.temApp ? `· planejamento.app: ${fmtH(l.totalApp)}` : ""}

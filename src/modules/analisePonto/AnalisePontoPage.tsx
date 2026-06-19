@@ -445,7 +445,7 @@ export function AnalisePontoPage() {
       {(tab === "inconsist" || tab === "manual" || tab === "aprovacoes") && <>
       {/* Filtros */}
       <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3">
-        <div className="flex items-end gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1 shrink-0">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
             <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
@@ -467,21 +467,21 @@ export function AnalisePontoPage() {
               </div>
             </div>
           )}
-          <div className="flex flex-col gap-1 min-w-0 flex-1">
+          <div className="flex flex-col gap-1 min-w-0 flex-1 basis-full sm:basis-auto">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Área</label>
-            <div className="flex items-center gap-1.5 h-9 overflow-x-auto">
+            <div className="flex flex-wrap items-center gap-1.5 min-h-9">
               <Chip ativo={filtroAreas.size === 0} onClick={() => setFiltroAreas(new Set())}>Todas</Chip>
               {AREAS.map((a) => (
                 <Chip key={a} ativo={filtroAreas.has(a)} onClick={() => toggleArea(a)}>{a}</Chip>
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-3 w-full md:w-auto md:ml-auto justify-between">
             <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
             <button type="button" onClick={() => void analisar()} disabled={carregando}
-              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
+              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
               {carregando ? "Analisando…" : <>🔍 Analisar período</>}
             </button>
           </div>
@@ -1159,7 +1159,7 @@ function BatidasDiaModal({
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-3" onClick={(ev) => ev.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-lg p-5 space-y-3 max-h-[88vh] overflow-y-auto" onClick={(ev) => ev.stopPropagation()}>
         <h2 className="font-bold text-base text-gray-900 dark:text-gray-100">🛠️ Batidas do dia — {info.colaborador}</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {fmtBR(info.data)}. Edite a hora e clique em <strong>Salvar</strong>, ou <strong>Excluir</strong> o bloco. Grava direto na Sólides.
@@ -1176,7 +1176,7 @@ function BatidasDiaModal({
               const e = edits[p.id] || { in: "", out: "" };
               const busy = salvando === p.id;
               return (
-                <div key={p.id} className="flex items-end gap-2 border border-gray-200 dark:border-gray-800 rounded-lg p-2.5">
+                <div key={p.id} className="flex flex-wrap items-end gap-2 border border-gray-200 dark:border-gray-800 rounded-lg p-2.5">
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] font-semibold text-gray-500">Entrada</label>
                     <input type="time" value={e.in} disabled={busy}
