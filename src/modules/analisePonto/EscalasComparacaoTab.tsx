@@ -78,7 +78,7 @@ function escalaAppVigente(emp: Empregado, hoje: string): WorkSchedule | undefine
 }
 
 export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; activeRestaurant: Restaurant }) {
-  const [carregando, setCarregando] = useState(false);
+  const [carregando, setCarregando] = useState(!!activeRestaurant.shortCode);
   const [erro, setErro] = useState("");
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
   const [catalogo, setCatalogo] = useState<PontoEscala[]>([]);
@@ -106,6 +106,12 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       setErro(e instanceof Error ? e.message : "Falha ao carregar escalas.");
     } finally { setCarregando(false); }
   }
+
+  // Carrega sozinho ao abrir a aba (remonta no acesso → sempre atualizado).
+  useEffect(() => {
+    if (activeRestaurant.shortCode) void carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRestaurant.shortCode]);
 
   const hoje = new Date();
   const hojeStr = hoje.toISOString().slice(0, 10);
