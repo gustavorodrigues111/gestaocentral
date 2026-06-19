@@ -162,7 +162,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       <div className="text-center py-12">
         <button type="button" onClick={() => void carregar()}
           className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white">
-          🗓️ Comparar escalas (Sólides × app)
+          🗓️ Comparar escalas (Sólides × planejamento.app)
         </button>
         <p className="text-[11px] text-gray-400 mt-2">Compara a escala cadastrada no Sólides com a do planejamento.app, por colaborador.</p>
       </div>
@@ -179,7 +179,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       <div className="flex items-center gap-3 text-xs text-gray-500">
         <span>{linhas.length} colaborador(es)</span>
         <span className="text-red-600">{divergentes} divergente(s)</span>
-        <span className="text-amber-600">{semApp} sem vínculo no app</span>
+        <span className="text-amber-600">{semApp} sem vínculo no planejamento.app</span>
         <button type="button" onClick={() => void carregar()} className="ml-auto text-indigo-600 hover:underline">↻ recarregar</button>
       </div>
 
@@ -190,7 +190,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
               <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
               {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
               {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
-              {!l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado no app (CPF)</span>}
+              {!l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado no planejamento.app (CPF)</span>}
               {l.temApp && (l.bate
                 ? <span className="text-[11px] text-emerald-600 ml-auto">✓ batem</span>
                 : <span className="text-[11px] text-red-600 ml-auto">⚠ divergem</span>)}
@@ -204,7 +204,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
               {l.minSol.map((m, wd) => (
                 <div key={`s${wd}`} className={`py-1 rounded ${l.temApp && l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
               ))}
-              <div className="text-left text-[10px] text-gray-500 self-center">app</div>
+              <div className="text-left text-[10px] text-gray-500 self-center">planejamento.app</div>
               {l.temApp
                 ? l.minApp.map((m, wd) => (
                     <div key={`a${wd}`} className={`py-1 rounded ${l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
@@ -212,8 +212,8 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
                 : DIAS.map((_, wd) => <div key={`a${wd}`} className="py-1 rounded bg-gray-50 dark:bg-gray-800/40 text-gray-300">—</div>)}
             </div>
             <div className="mt-1 text-[10px] text-gray-400">
-              Carga semanal — Sólides: {fmtH(l.totalSol)} {l.temApp ? `· app: ${fmtH(l.totalApp)}` : ""}
-              {l.ciclico ? ` · cíclico: comparando a semana ${l.semanaCiclo ?? "vigente"} (a Sólides só expõe o ciclo atual; o ciclo completo está no cadastro alternante do app)` : ""}
+              Carga semanal — Sólides: {fmtH(l.totalSol)} {l.temApp ? `· planejamento.app: ${fmtH(l.totalApp)}` : ""}
+              {l.ciclico ? ` · cíclico: comparando a semana ${l.semanaCiclo ?? "vigente"} (a Sólides só expõe o ciclo atual; o ciclo completo está no cadastro alternante do planejamento.app)` : ""}
             </div>
           </div>
         ))}

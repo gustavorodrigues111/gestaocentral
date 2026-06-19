@@ -424,7 +424,7 @@ export function AnalisePontoPage() {
       ),
     } : null,
     podeCorrigir ? { id: "manual", label: "🛠️ Corrigir manual" } : null,
-    { id: "escalas", label: "🗓️ Escalas (Sólides × app)" },
+    { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
   ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
@@ -512,7 +512,7 @@ export function AnalisePontoPage() {
               <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
                 <div className="font-bold text-sm text-gray-900 dark:text-gray-100">🛠️ Correção manual ({corrigiveis.length})</div>
                 <p className="text-[11px] text-gray-500 mt-0.5">
-                  Use só em exceção — o ideal é o empregado corrigir no app dele. <strong>Batidas do dia</strong> abre os blocos pra editar/excluir direto na Sólides; <strong>Lançar ponto</strong> adiciona uma batida que faltou (a Sólides decide entrada/saída).
+                  Use só em exceção — o ideal é o empregado corrigir no app de ponto dele. <strong>Batidas do dia</strong> abre os blocos pra editar/excluir direto na Sólides; <strong>Lançar ponto</strong> adiciona uma batida que faltou (a Sólides decide entrada/saída).
                 </p>
               </header>
               {corrigiveis.length === 0 ? (
@@ -679,7 +679,7 @@ export function AnalisePontoPage() {
 
           <p className="text-[11px] text-gray-400">
             O saldo de horas vira o badge ao lado do nome (+ vermelho acima · 0 verde · − âmbar abaixo do previsto); passe o mouse pra ver o detalhe.
-            O empregado corrige no app dele; depois você aprova (aba Aprovações — em breve).
+            O empregado corrige no app de ponto dele; depois você aprova (aba Aprovações).
             Correção manual só em exceção, na aba 🛠️{podeCorrigir ? "" : " (sem permissão)"}.
             FALTA depende do roster da Sólides (se a conta não retornar colaboradores, não aparece).
           </p>
@@ -699,7 +699,7 @@ export function AnalisePontoPage() {
             <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
               <div className="font-bold text-sm text-gray-900 dark:text-gray-100">✅ Aprovações pendentes ({itens.length})</div>
               <p className="text-[11px] text-gray-500 mt-0.5">
-                O empregado ajustou no app dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some — reanaliso automaticamente.
+                O empregado ajustou no app de ponto dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some — reanaliso automaticamente.
               </p>
             </header>
             {carregando ? (
@@ -875,7 +875,7 @@ function GrupoEmp({
               ✓ Dar ciência{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
             </button>
             {semNumero ? (
-              <span className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed" title="Empregado sem telefone cadastrado no app">
+              <span className="text-[11px] font-medium px-2.5 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed" title="Empregado sem WhatsApp cadastrado no planejamento.app">
                 sem número cadastrado
               </span>
             ) : (
