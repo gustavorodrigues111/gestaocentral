@@ -301,6 +301,19 @@ export function AnalisePontoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, permLoading, podeVer, activeRestaurant]);
 
+  // Abas que sempre reatualizam ao serem acessadas. (Escalas remonta sozinha.)
+  useEffect(() => {
+    if (permLoading || !podeVer || !activeRestaurant) return;
+    if (tab === "manual") {
+      void analisar();
+    } else if (tab === "aprovacoes" && podeAprovar) {
+      fetchAprovacoesPendentes(activeRestaurant.shortCode || "", inicio, fim)
+        .then(setAprovacoes)
+        .catch(() => setAprovacoes([]));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
   // ─── Ações ────────────────────────────────────────────────────────────────
   function enviarCorrecao(colaborador: string, employeeId: number, itens: Ocorrencia[]) {
     const tel = telPorEmpId(employeeId);
