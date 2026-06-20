@@ -165,6 +165,9 @@ function agrupar(itens: Ocorrencia[]): Array<{ employeeId: number; colaborador: 
     if (!g) { g = { employeeId: o.employeeId, colaborador: o.colaborador, itens: [] }; m.set(o.employeeId, g); }
     g.itens.push(o);
   }
+  // Dentro de cada empregado: ordem cronológica (o sort global do motor é por
+  // nome, que separa FALTA dos demais por variação do texto do nome).
+  for (const g of m.values()) g.itens.sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
   return [...m.values()].sort((a, b) => a.colaborador.localeCompare(b.colaborador));
 }
 
