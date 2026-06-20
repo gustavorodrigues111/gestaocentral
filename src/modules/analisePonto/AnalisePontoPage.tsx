@@ -311,14 +311,20 @@ function AnalisePontoInner() {
     try {
       // Roster pode vir vazio em algumas contas → FALTA simplesmente não aponta;
       // não derruba o resto. Por isso o catch dele é tolerante.
+      // Busca até HOJE (o fim da análise pode ser ontem por padrão) pra as
+      // aprovações enxergarem pendências do dia atual; a análise em si fica
+      // limitada ao período escolhido [ini, fimArg].
+      const hojeStr = fmtYmd(hoje);
+      const fimFetch = fimArg < hojeStr ? hojeStr : fimArg;
       const [{ punches }, schedules, employees] = await Promise.all([
-        fetchPunches(ini, fimArg, shortCode),
+        fetchPunches(ini, fimFetch, shortCode),
         fetchScheduleCatalog(shortCode),
         fetchRoster(shortCode).catch(() => []),
       ]);
       setRoster(employees);
+      const punchesAnalise = punches.filter((p) => p.date >= ini && p.date <= fimArg);
       const res = analisarPonto(
-        punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
+        punchesAnalise as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
       // Aprovações pendentes = punches com status PENDING (o empregado ajustou e
