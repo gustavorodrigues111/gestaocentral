@@ -70,6 +70,8 @@ export type AprovacaoPendente = {
   status: string;        // PENDING
   motivo?: string;       // descrição do ajuste
   observation?: string;
+  editIn?: boolean;      // empregado mexeu na entrada
+  editOut?: boolean;     // empregado mexeu na saída
 };
 
 function txtMotivo(x: unknown): string | undefined {

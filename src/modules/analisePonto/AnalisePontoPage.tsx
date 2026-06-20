@@ -343,6 +343,8 @@ function AnalisePontoInner() {
             status: "PENDING",
             motivo: textoOuDesc(p.adjustmentReason),
             observation: textoOuDesc(p.justification),
+            editIn: (p as { editedIn?: boolean }).editedIn === true,
+            editOut: (p as { editedOut?: boolean }).editedOut === true,
           }));
         setAprovacoes(pend);
       }
@@ -777,7 +779,15 @@ function AnalisePontoInner() {
                           {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
                         </div>
                         <div className="text-xs text-gray-500 tabular-nums">
-                          {dataTxt} · {fmtHoraMs(p.dateIn)}–{fmtHoraMs(p.dateOut)}
+                          {dataTxt} ·{" "}
+                          <span className={p.editIn ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateIn)}</span>
+                          –
+                          <span className={p.editOut ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateOut)}</span>
+                          {(p.editIn || p.editOut) && (
+                            <span className="ml-1.5 text-[10px] text-red-600 dark:text-red-400">
+                              ajustou {p.editIn && p.editOut ? "entrada e saída" : p.editIn ? "a entrada" : "a saída"}
+                            </span>
+                          )}
                         </div>
                         {p.motivo && <div className="text-xs text-indigo-700 dark:text-indigo-300">{p.motivo}</div>}
                         {p.observation && <div className="text-xs text-gray-500 italic">"{p.observation}"</div>}
