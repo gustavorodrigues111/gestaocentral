@@ -216,7 +216,6 @@ function AnalisePontoInner() {
   const [erro, setErro] = useState("");
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
-  const [corrigindo, setCorrigindo] = useState<Ocorrencia | null>(null);
   const [batidasDia, setBatidasDia] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
   // Prazo de correção (horas) — configurável, padrão 6h. Persiste no navegador.
   const [prazoHoras, setPrazoHoras] = useState<number>(() => {
@@ -242,11 +241,10 @@ function AnalisePontoInner() {
   const [mostrarSaldos, setMostrarSaldos] = useState(false);
   const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
   const [aprovacoes, setAprovacoes] = useState<AprovacaoPendente[]>([]);
-  const [aprovCarregando, setAprovCarregando] = useState(false);
   const [selAprov, setSelAprov] = useState<Set<number>>(new Set());
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
   const [decidindoLote, setDecidindoLote] = useState(false);
-  const [tab, setTab] = useState<"inconsist" | "aprovacoes" | "manual" | "escalas">("inconsist");
+  const [tab, setTab] = useState<"inconsist" | "escalas">("inconsist");
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
   const [now, setNow] = useState(() => Date.now());
@@ -337,40 +335,26 @@ function AnalisePontoInner() {
     try {
       // Roster pode vir vazio em algumas contas → FALTA simplesmente não aponta;
       // não derruba o resto. Por isso o catch dele é tolerante.
+      // Busca até HOJE (o fim padrão pode ser ontem) pra o banner de aprovações
+      // não esconder uma pendência de hoje; a análise fica limitada a [ini, fim].
+      const hojeStr = fmtYmd(hoje);
+      const fimFetch = fimArg < hojeStr ? hojeStr : fimArg;
       const [{ punches }, schedules, employees] = await Promise.all([
-        fetchPunches(ini, fimArg, shortCode),
+        fetchPunches(ini, fimFetch, shortCode),
         fetchScheduleCatalog(shortCode),
         fetchRoster(shortCode).catch(() => []),
       ]);
       setRoster(employees);
+      const punchesAnalise = punches.filter((p) => p.date >= ini && p.date <= fimArg);
       const res = analisarPonto(
-        punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
+        punchesAnalise as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
+      if (podeAprovar) setAprovacoes(derivarAprovacoes(punches));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao analisar.");
     } finally {
       setCarregando(false);
-    }
-  }
-
-  // Aprovações NÃO dependem do período — varre uma janela ampla (últimos 120 dias
-  // até hoje) e mostra todas as pendências. Roda no mount, ao entrar na aba e
-  // após decidir.
-  async function carregarAprovacoes() {
-    if (!podeAprovar || !activeRestaurant) return;
-    const shortCode = activeRestaurant.shortCode || "";
-    if (!shortCode) return;
-    const ate = fmtYmd(hoje);
-    const de = fmtYmd(new Date(hoje.getTime() - 90 * 86400000));
-    setAprovCarregando(true);
-    try {
-      const { punches } = await fetchPunches(de, ate, shortCode);
-      setAprovacoes(derivarAprovacoes(punches));
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao carregar aprovações.");
-    } finally {
-      setAprovCarregando(false);
     }
   }
 
@@ -383,17 +367,8 @@ function AnalisePontoInner() {
     if (autoRef.current === rid) return;
     autoRef.current = rid;
     void analisar();
-    void carregarAprovacoes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, permLoading, podeVer, activeRestaurant]);
-
-  // Abas que sempre reatualizam ao serem acessadas. (Escalas remonta sozinha.)
-  useEffect(() => {
-    if (permLoading || !podeVer || !activeRestaurant) return;
-    if (tab === "manual") void analisar();
-    else if (tab === "aprovacoes") void carregarAprovacoes();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab]);
 
   // ─── Ações ────────────────────────────────────────────────────────────────
   function enviarCorrecao(colaborador: string, employeeId: number, itens: Ocorrencia[]) {
@@ -470,7 +445,6 @@ function AnalisePontoInner() {
         });
       } catch { /* auditoria não bloqueia */ }
       setAprovacoes((prev) => prev.filter((x) => x.punchId !== p.punchId));
-      void carregarAprovacoes();
       void analisar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
@@ -508,7 +482,6 @@ function AnalisePontoInner() {
     setSelAprov(new Set());
     setDecidindoLote(false);
     if (falhas > 0) setErro(`${falhas} de ${itens.length} não puderam ser ${status === "APPROVED" ? "aprovados" : "reprovados"}.`);
-    await carregarAprovacoes();
     void analisar();
   }
 
@@ -525,20 +498,8 @@ function AnalisePontoInner() {
 
   const tabsDisp = ([
     { id: "inconsist", label: "⚠️ Inconsistências" },
-    podeAprovar ? {
-      id: "aprovacoes",
-      label: (
-        <span className="inline-flex items-center gap-1.5">
-          ✅ Aprovações
-          {aprovacoes.length > 0 && (
-            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white tabular-nums">{aprovacoes.length}</span>
-          )}
-        </span>
-      ),
-    } : null,
-    podeCorrigir ? { id: "manual", label: "🛠️ Corrigir manual" } : null,
     { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
-  ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
+  ]) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
     <div className="max-w-5xl space-y-4">
@@ -555,24 +516,20 @@ function AnalisePontoInner() {
 
       {tab === "escalas" && <EscalasComparacaoTab rid={rid} activeRestaurant={activeRestaurant} />}
 
-      {(tab === "inconsist" || tab === "manual" || tab === "aprovacoes") && <>
+      {tab === "inconsist" && <>
       {/* Filtros */}
       <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3">
         <div className="flex flex-wrap items-end gap-3">
-          {tab !== "aprovacoes" && (
-            <>
-              <div className="flex flex-col gap-1 shrink-0">
-                <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
-                <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
-                  className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
-              </div>
-              <div className="flex flex-col gap-1 shrink-0">
-                <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
-                <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
-                  className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
-              </div>
-            </>
-          )}
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
+            <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
+            <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
           {tab === "inconsist" && (
             <div className="flex flex-col gap-1 shrink-0">
               <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Prazo p/ correção</label>
@@ -597,17 +554,10 @@ function AnalisePontoInner() {
             <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
-            {tab === "aprovacoes" ? (
-              <button type="button" onClick={() => void carregarAprovacoes()} disabled={aprovCarregando}
-                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
-                {aprovCarregando ? "Atualizando…" : "🔄 Atualizar"}
-              </button>
-            ) : (
-              <button type="button" onClick={() => void analisar()} disabled={carregando}
-                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
-                {carregando ? "Analisando…" : <>🔍 Analisar período</>}
-              </button>
-            )}
+            <button type="button" onClick={() => void analisar()} disabled={carregando}
+              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
+              {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+            </button>
           </div>
         </div>
       </div>
@@ -616,7 +566,7 @@ function AnalisePontoInner() {
         <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>
       )}
 
-      {(tab === "inconsist" || tab === "manual") && resultado && (() => {
+      {tab === "inconsist" && resultado && (() => {
         const passaArea = (o: Ocorrencia) => {
           if (filtroAreas.size === 0) return true; // TODAS
           const a = areaPorEmpId(o.employeeId);
@@ -625,59 +575,7 @@ function AnalisePontoInner() {
         };
         const filtradas = resultado.ocorrencias.filter(passaArea);
 
-        // ─── Aba Corrigir manual: só os corrigíveis, com o modal de ponto em atraso.
-        if (tab === "manual") {
-          // Todas as pendências (não dadas ciência) com data e empregado válidos.
-          const corrigiveis = filtradas.filter(
-            (o) => !cienteKeys.has(ocKey(o)) && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data)
-              && o.tipo !== "AJUSTE_PENDENTE",
-          );
-          return (
-            <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-              <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-                <div className="font-bold text-sm text-gray-900 dark:text-gray-100">🛠️ Correção manual ({corrigiveis.length})</div>
-                <p className="text-[11px] text-gray-500 mt-0.5">
-                  Use só em exceção — o ideal é o empregado corrigir no app de ponto dele. <strong>Batidas do dia</strong> abre os blocos pra editar/excluir direto na Sólides; <strong>Lançar ponto</strong> adiciona uma batida que faltou (a Sólides decide entrada/saída).
-                </p>
-              </header>
-              {corrigiveis.length === 0 ? (
-                <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma pendência pra corrigir 🎉</div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {corrigiveis.map((o, i) => (
-                    <div key={i} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-2.5">
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                        <span className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${SEV_COR[o.severidade]}`} />
-                        <div className="min-w-0">
-                          <div className="text-sm">
-                            <span className="font-semibold text-gray-900 dark:text-gray-100">{o.colaborador}</span>
-                            <span className="text-gray-400"> · {fmtBR(o.data)}{o.diaSemana !== "período" ? ` (${o.diaSemana})` : ""}</span>
-                          </div>
-                          <div className="text-xs text-indigo-700 dark:text-indigo-300 font-medium">{ROTULOS[o.tipo]}</div>
-                          <div className="text-xs text-gray-600 dark:text-gray-300">{o.detalhe}</div>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-1.5 pl-[18px] sm:pl-0 sm:shrink-0">
-                        <button type="button" onClick={() => setBatidasDia({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })}
-                          className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                          🛠️ Batidas do dia
-                        </button>
-                        {o.tipo === "PONTO_EM_ABERTO" && (
-                          <button type="button" onClick={() => setCorrigindo(o)}
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-                            ✏️ Lançar ponto
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </section>
-          );
-        }
-
-        // ─── Aba Inconsistências: pendentes (tira os marcados "ciente") agrupados por empregado.
+        // pendentes (tira os marcados "ciente") agrupados por empregado.
         const pendentes = filtradas.filter((o) => !cienteKeys.has(ocKey(o)));
         const saldoPorEmp = new Map<number, SaldoColaborador>();
         for (const s of resultado.saldos || []) saldoPorEmp.set(s.employeeId, s);
@@ -695,9 +593,83 @@ function AnalisePontoInner() {
         );
         const nCorrigir = pendentes.filter((o) => o.categoria === "CORRIGIR").length;
         const nAvaliar = pendentes.filter((o) => o.categoria === "AVALIAR").length;
+        // Banner de aprovações (mesma tela): pendências do período filtradas por área.
+        const aprovVisiveis = aprovacoes.filter((p) => passaEmp(p.employeeId));
+        const selAprovVis = aprovVisiveis.filter((p) => selAprov.has(p.punchId));
+        const todosAprovSel = aprovVisiveis.length > 0 && selAprovVis.length === aprovVisiveis.length;
+        const toggleTodosAprov = () => setSelAprov(() => todosAprovSel ? new Set() : new Set(aprovVisiveis.map((p) => p.punchId)));
 
         return (
         <>
+          {podeAprovar && aprovVisiveis.length > 0 && (
+            <section className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 rounded-xl overflow-hidden">
+              <header className="px-4 py-2.5 border-b border-blue-100 dark:border-blue-900/50">
+                <div className="font-bold text-sm text-blue-900 dark:text-blue-200">⏳ Aprovações pendentes ({aprovVisiveis.length})</div>
+                <p className="text-[11px] text-blue-700/80 dark:text-blue-300/70 mt-0.5">
+                  O empregado ajustou no app de ponto dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some.
+                </p>
+              </header>
+              <div className="px-4 py-2 border-b border-blue-100 dark:border-blue-900/50 flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                  <input type="checkbox" checked={todosAprovSel} onChange={toggleTodosAprov} className="w-4 h-4 accent-indigo-600" />
+                  Selecionar todos
+                </label>
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button type="button" disabled={selAprovVis.length === 0 || decidindoLote} onClick={() => void decidirLote(selAprovVis, "APPROVED")}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                    {decidindoLote ? "Processando…" : `✓ Aprovar${selAprovVis.length ? ` (${selAprovVis.length})` : ""}`}
+                  </button>
+                  <button type="button" disabled={selAprovVis.length === 0 || decidindoLote} onClick={() => void decidirLote(selAprovVis, "REPROVED")}
+                    className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                    ✗ Reprovar{selAprovVis.length ? ` (${selAprovVis.length})` : ""}
+                  </button>
+                </div>
+              </div>
+              <div className="divide-y divide-blue-100 dark:divide-blue-900/40">
+                {aprovVisiveis.map((p) => {
+                  const area = areaPorEmpId(p.employeeId);
+                  const dataTxt = p.date ? fmtBR(p.date) : fmtDataMs(p.dateIn);
+                  return (
+                    <div key={p.punchId} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-2.5">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        <input type="checkbox" checked={selAprov.has(p.punchId)} onChange={() => toggleSelAprov(p.punchId)}
+                          className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm">
+                            <span className="font-semibold text-gray-900 dark:text-gray-100">{p.employeeName}</span>
+                            {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
+                          </div>
+                          <div className="text-xs text-gray-500 tabular-nums">
+                            {dataTxt} ·{" "}
+                            <span className={p.editIn ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateIn)}</span>
+                            –
+                            <span className={p.editOut ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateOut)}</span>
+                            {(p.editIn || p.editOut) && (
+                              <span className="ml-1.5 text-[10px] text-red-600 dark:text-red-400">
+                                ajustou {p.editIn && p.editOut ? "entrada e saída" : p.editIn ? "a entrada" : "a saída"}
+                              </span>
+                            )}
+                          </div>
+                          {p.motivo && <div className="text-xs text-indigo-700 dark:text-indigo-300">{p.motivo}</div>}
+                          {p.observation && <div className="text-xs text-gray-500 italic">"{p.observation}"</div>}
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
+                        <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "APPROVED")}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">
+                          ✓ Aprovar
+                        </button>
+                        <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "REPROVED")}
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
+                          ✗ Reprovar
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
           <div className="grid grid-cols-3 gap-3">
             <Cartao titulo="A Corrigir" valor={nCorrigir} cor="text-red-600" />
             <Cartao titulo="A Avaliar" valor={nAvaliar} cor="text-amber-600" />
@@ -721,9 +693,10 @@ function AnalisePontoInner() {
                         area={areaPorEmpId(g.employeeId)} tel={telPorEmpId(g.employeeId)}
                         saldo={saldoPorEmp.get(g.employeeId)}
                         sel={sel} toggleSel={toggleSel} solPorKey={solPorKey} now={now}
-                        podeSolicitar={podeSolicitar}
+                        podeSolicitar={podeSolicitar} podeCorrigir={podeCorrigir}
                         onEnviar={(itens) => enviarCorrecao(g.colaborador, g.employeeId, itens)}
-                        onCiencia={darCiencia} />
+                        onCiencia={darCiencia}
+                        onCorrigir={(o) => setBatidasDia({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })} />
                     ))}
                   </div>
                 )}
@@ -814,116 +787,10 @@ function AnalisePontoInner() {
         );
       })()}
 
-      {tab === "aprovacoes" && (() => {
-        const passa = (eid: number) => {
-          if (filtroAreas.size === 0) return true;
-          const a = areaPorEmpId(eid);
-          return a ? filtroAreas.has(a) : filtroAreas.has("sem");
-        };
-        const itens = aprovacoes.filter((p) => passa(p.employeeId));
-        const selecionados = itens.filter((p) => selAprov.has(p.punchId));
-        const todosSel = itens.length > 0 && selecionados.length === itens.length;
-        const toggleTodos = () => setSelAprov(() => todosSel ? new Set() : new Set(itens.map((p) => p.punchId)));
-        return (
-          <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
-              <div className="font-bold text-sm text-gray-900 dark:text-gray-100">✅ Aprovações pendentes ({itens.length})</div>
-              <p className="text-[11px] text-gray-500 mt-0.5">
-                O empregado ajustou no app de ponto dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some — reanaliso automaticamente.
-              </p>
-            </header>
-            {(carregando || aprovCarregando) ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Carregando…</div>
-            ) : itens.length === 0 ? (
-              <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma aprovação pendente 🎉</div>
-            ) : (
-              <>
-              {podeAprovar && (
-                <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2 bg-gray-50/60 dark:bg-gray-800/30">
-                  <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" checked={todosSel} onChange={toggleTodos} className="w-4 h-4 accent-indigo-600" />
-                    Selecionar todos
-                  </label>
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <button type="button" disabled={selecionados.length === 0 || decidindoLote} onClick={() => void decidirLote(selecionados, "APPROVED")}
-                      className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
-                      {decidindoLote ? "Processando…" : `✓ Aprovar${selecionados.length ? ` (${selecionados.length})` : ""}`}
-                    </button>
-                    <button type="button" disabled={selecionados.length === 0 || decidindoLote} onClick={() => void decidirLote(selecionados, "REPROVED")}
-                      className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
-                      ✗ Reprovar{selecionados.length ? ` (${selecionados.length})` : ""}
-                    </button>
-                  </div>
-                </div>
-              )}
-              <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                {itens.map((p) => {
-                  const area = areaPorEmpId(p.employeeId);
-                  const dataTxt = p.date ? fmtBR(p.date) : fmtDataMs(p.dateIn);
-                  return (
-                    <div key={p.punchId} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-2.5">
-                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                        {podeAprovar && (
-                          <input type="checkbox" checked={selAprov.has(p.punchId)} onChange={() => toggleSelAprov(p.punchId)}
-                            className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                        <div className="text-sm">
-                          <span className="font-semibold text-gray-900 dark:text-gray-100">{p.employeeName}</span>
-                          {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
-                        </div>
-                        <div className="text-xs text-gray-500 tabular-nums">
-                          {dataTxt} ·{" "}
-                          <span className={p.editIn ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateIn)}</span>
-                          –
-                          <span className={p.editOut ? "text-red-600 dark:text-red-400 font-bold" : ""}>{fmtHoraMs(p.dateOut)}</span>
-                          {(p.editIn || p.editOut) && (
-                            <span className="ml-1.5 text-[10px] text-red-600 dark:text-red-400">
-                              ajustou {p.editIn && p.editOut ? "entrada e saída" : p.editIn ? "a entrada" : "a saída"}
-                            </span>
-                          )}
-                        </div>
-                        {p.motivo && <div className="text-xs text-indigo-700 dark:text-indigo-300">{p.motivo}</div>}
-                        {p.observation && <div className="text-xs text-gray-500 italic">"{p.observation}"</div>}
-                        </div>
-                      </div>
-                      {podeAprovar && (
-                        <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
-                          <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "APPROVED")}
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">
-                            ✓ Aprovar
-                          </button>
-                          <button type="button" disabled={decidindo === p.punchId} onClick={() => void decidir(p, "REPROVED")}
-                            className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40">
-                            ✗ Reprovar
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              </>
-            )}
-          </section>
-        );
-      })()}
-
-      {(tab === "inconsist" || tab === "manual") && !resultado && !carregando && !erro && (
+      {tab === "inconsist" && !resultado && !carregando && !erro && (
         <div className="text-center text-sm text-gray-400 py-12">
           Escolha o período e clique em <strong>Analisar</strong>.
         </div>
-      )}
-
-      {corrigindo && activeRestaurant && (
-        <CorrecaoModal
-          ocorrencia={corrigindo}
-          shortCode={activeRestaurant.shortCode || ""}
-          restaurantId={rid}
-          por={{ id: me?.id || "", nome: me?.nome || "?" }}
-          onClose={() => setCorrigindo(null)}
-          onDone={() => { setCorrigindo(null); void analisar(); }}
-        />
       )}
 
       {batidasDia && activeRestaurant && (
@@ -985,7 +852,7 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
 
 // ─── Grupo de um empregado: cabeçalho (nome + relógio + enviar) + itens ───────
 function GrupoEmp({
-  grupo, area, tel, saldo, sel, toggleSel, solPorKey, now, podeSolicitar, onEnviar, onCiencia,
+  grupo, area, tel, saldo, sel, toggleSel, solPorKey, now, podeSolicitar, podeCorrigir, onEnviar, onCiencia, onCorrigir,
 }: {
   grupo: { employeeId: number; colaborador: string; itens: Ocorrencia[] };
   area?: Area;
@@ -996,8 +863,10 @@ function GrupoEmp({
   solPorKey: Map<string, Solicitacao>;
   now: number;
   podeSolicitar: boolean;
+  podeCorrigir: boolean;
   onEnviar: (itens: Ocorrencia[]) => void;
   onCiencia: (itens: Ocorrencia[]) => void;
+  onCorrigir: (o: Ocorrencia) => void;
 }) {
   const selecionados = grupo.itens.filter((o) => sel.has(ocKey(o)));
   // Relógio do empregado = solicitação ativa mais urgente entre os itens visíveis.
@@ -1057,9 +926,22 @@ function GrupoEmp({
       <div className="space-y-1 pl-0.5">
         {grupo.itens.map((o, i) => {
           const k = ocKey(o);
-          const enviado = solPorKey.has(k);
+          const sol = solPorKey.get(k);
+          const enviado = !!sol;
+          const rel = sol ? relogio(sol.prazoEm, now) : null;
+          const pend = o.tipo === "AJUSTE_PENDENTE";
+          // Cor da linha por status: azul=aguardando aprovação · vermelho=prazo
+          // vencido · âmbar=enviado p/ correção · neutro=aberto.
+          const rowCls = pend
+            ? "bg-blue-50/70 dark:bg-blue-950/25"
+            : rel?.vencido
+              ? "bg-red-50/70 dark:bg-red-950/20"
+              : enviado
+                ? "bg-amber-50/70 dark:bg-amber-950/20"
+                : "";
+          const podeManual = podeCorrigir && !pend && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data);
           return (
-            <div key={i} className="flex items-start gap-2.5">
+            <div key={i} className={`flex items-start gap-2.5 rounded-lg px-2 py-1 ${rowCls}`}>
               {podeSolicitar && (
                 <input type="checkbox" checked={sel.has(k)} onChange={() => toggleSel(k)}
                   className="mt-1 w-4 h-4 accent-indigo-600 cursor-pointer shrink-0" />
@@ -1069,20 +951,34 @@ function GrupoEmp({
                 <div className="text-xs">
                   <span className="text-gray-500">{fmtBR(o.data)}{o.diaSemana !== "período" ? ` (${o.diaSemana})` : ""}</span>
                   <span className="ml-1.5 text-indigo-700 dark:text-indigo-300 font-medium">{ROTULOS[o.tipo]}</span>
-                  {enviado && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">enviado</span>}
+                  {pend && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">aguardando aprovação</span>}
+                  {!pend && enviado && (
+                    <span className={`ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full ${rel?.vencido ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>
+                      {rel?.vencido ? `⏱ venceu ${rel.txt}` : `enviado · ⏱ ${rel?.txt ?? ""}`}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-gray-600 dark:text-gray-300">{o.detalhe}</div>
                 {o.marcacoes.length > 0 && (
                   <div className="text-[11px] text-gray-400 tabular-nums">{o.marcacoes.join("  ·  ")}</div>
                 )}
               </div>
-              {podeSolicitar && (
-                <button type="button" onClick={() => onCiencia([o])}
-                  className="shrink-0 text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
-                  title="Ciente / sem ação">
-                  ✓ ciente
-                </button>
-              )}
+              <div className="shrink-0 flex items-center gap-1.5">
+                {podeManual && (
+                  <button type="button" onClick={() => onCorrigir(o)}
+                    className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
+                    title="Corrigir manual (batidas do dia)">
+                    🛠️
+                  </button>
+                )}
+                {podeSolicitar && (
+                  <button type="button" onClick={() => onCiencia([o])}
+                    className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
+                    title="Ciente / sem ação">
+                    ✓ ciente
+                  </button>
+                )}
+              </div>
             </div>
           );
         })}
@@ -1091,102 +987,6 @@ function GrupoEmp({
   );
 }
 
-// ─── Modal de correção: lança ponto em atraso na Sólides ─────────────────────
-function CorrecaoModal({
-  ocorrencia, shortCode, restaurantId, por, onClose, onDone,
-}: {
-  ocorrencia: Ocorrencia;
-  shortCode: string;
-  restaurantId: string;
-  por: { id: string; nome: string };
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [justs, setJusts] = useState<Justificativa[]>([]);
-  const [justId, setJustId] = useState<number | null>(null);
-  const [data, setData] = useState(ocorrencia.data);
-  const [hora, setHora] = useState("");
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
-
-  useEffect(() => {
-    let vivo = true;
-    fetchJustificativas(shortCode)
-      .then((js) => { if (vivo) { setJusts(js); if (js[0]) setJustId(js[0].id); } })
-      .catch((e) => { if (vivo) setErro(e instanceof Error ? e.message : "Falha ao carregar justificativas."); });
-    return () => { vivo = false; };
-  }, [shortCode]);
-
-  async function confirmar() {
-    if (!justId) { setErro("Escolha uma justificativa."); return; }
-    if (!/^\d{2}:\d{2}$/.test(hora)) { setErro("Informe a hora real (HH:MM)."); return; }
-    const dataHoraIso = `${data}T${hora}:00.000-0300`; // America/Sao_Paulo (UTC-3 fixo)
-    if (!window.confirm(`Lançar ponto em atraso para ${ocorrencia.colaborador} em ${fmtBR(data)} ${hora}?\n\nIsso grava na Sólides (dado trabalhista). A Sólides decide se é entrada ou saída e pareia.`)) return;
-    setErro("");
-    setSalvando(true);
-    try {
-      await corrigirPontoAtraso(shortCode, { employeeId: ocorrencia.employeeId, dataHoraIso, justificativaId: justId });
-      // Auditoria (quem/quando/o quê) — dado trabalhista.
-      try {
-        await addDoc(collection(db, "pontoAuditoria"), {
-          restaurantId, tipo: "ponto_atraso",
-          por: { id: por.id, nome: por.nome },
-          employeeId: ocorrencia.employeeId, colaborador: ocorrencia.colaborador,
-          data, hora, justificativaId: justId,
-          em: new Date().toISOString(),
-        });
-      } catch { /* auditoria não bloqueia a correção */ }
-      alert("Ponto lançado na Sólides ✓ (entra como pendente de aprovação). Reanalisando o período…");
-      onDone();
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao lançar o ponto.");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Modal title={`✏️ Corrigir ponto — ${ocorrencia.colaborador}`} onClose={onClose} maxWidth="max-w-md">
-      <div className="space-y-3">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {ROTULOS[ocorrencia.tipo]} em {fmtBR(ocorrencia.data)}. Informe a hora real da batida faltante.
-          Para saída de madrugada (vira-dia), use a data do dia seguinte.
-        </p>
-        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Data</label>
-            <input type="date" value={data} onChange={(e) => setData(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Hora (HH:MM)</label>
-            <input type="time" value={hora} onChange={(e) => setHora(e.target.value)}
-              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-          </div>
-        </div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Justificativa</label>
-          <select value={justId ?? ""} onChange={(e) => setJustId(Number(e.target.value))}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-            {justs.length === 0 && <option value="">— carregando —</option>}
-            {justs.map((j) => <option key={j.id} value={j.id}>{j.description}</option>)}
-          </select>
-        </div>
-        <div className="flex justify-end gap-2 pt-1">
-          <button type="button" onClick={onClose} disabled={salvando}
-            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-            Cancelar
-          </button>
-          <button type="button" onClick={() => void confirmar()} disabled={salvando}
-            className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
-            {salvando ? "Lançando…" : "Confirmar correção"}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-}
 
 // ─── Modal "Batidas do dia": edita/exclui blocos direto na Sólides ──────────
 function BatidasDiaModal({
