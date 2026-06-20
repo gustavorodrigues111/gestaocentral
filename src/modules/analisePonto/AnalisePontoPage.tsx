@@ -243,7 +243,9 @@ function AnalisePontoInner() {
   const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
   const [aprovacoes, setAprovacoes] = useState<AprovacaoPendente[]>([]);
   const [aprovCarregando, setAprovCarregando] = useState(false);
+  const [selAprov, setSelAprov] = useState<Set<number>>(new Set());
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
+  const [decidindoLote, setDecidindoLote] = useState(false);
   const [tab, setTab] = useState<"inconsist" | "aprovacoes" | "manual" | "escalas">("inconsist");
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
@@ -475,6 +477,39 @@ function AnalisePontoInner() {
     } finally {
       setDecidindo(null);
     }
+  }
+
+  const toggleSelAprov = (id: number) => setSelAprov((s) => {
+    const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n;
+  });
+
+  // Aprova/reprova vários de uma vez (sequencial p/ não estourar a API).
+  async function decidirLote(itens: AprovacaoPendente[], status: "APPROVED" | "REPROVED") {
+    if (itens.length === 0 || decidindoLote) return;
+    const verbo = status === "APPROVED" ? "Aprovar" : "Reprovar";
+    if (!window.confirm(`${verbo} ${itens.length} ajuste(s) de uma vez?\n\nGrava na Sólides (dado trabalhista).`)) return;
+    setErro("");
+    setDecidindoLote(true);
+    const sc = activeRestaurant?.shortCode || "";
+    let falhas = 0;
+    for (const p of itens) {
+      try {
+        await decidirAprovacao(sc, { punchId: p.punchId, status });
+        try {
+          await addDoc(collection(db, "pontoAuditoria"), {
+            restaurantId: rid, tipo: "aprovacao", status,
+            por: { id: me?.id || "", nome: me?.nome || "?" },
+            punchId: p.punchId, employeeId: p.employeeId, colaborador: p.employeeName,
+            em: new Date().toISOString(),
+          });
+        } catch { /* auditoria não bloqueia */ }
+      } catch { falhas += 1; }
+    }
+    setSelAprov(new Set());
+    setDecidindoLote(false);
+    if (falhas > 0) setErro(`${falhas} de ${itens.length} não puderam ser ${status === "APPROVED" ? "aprovados" : "reprovados"}.`);
+    await carregarAprovacoes();
+    void analisar();
   }
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -785,6 +820,9 @@ function AnalisePontoInner() {
           return a ? filtroAreas.has(a) : filtroAreas.has("sem");
         };
         const itens = aprovacoes.filter((p) => passa(p.employeeId));
+        const selecionados = itens.filter((p) => selAprov.has(p.punchId));
+        const todosSel = itens.length > 0 && selecionados.length === itens.length;
+        const toggleTodos = () => setSelAprov(() => todosSel ? new Set() : new Set(itens.map((p) => p.punchId)));
         return (
           <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
             <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
@@ -798,13 +836,37 @@ function AnalisePontoInner() {
             ) : itens.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma aprovação pendente 🎉</div>
             ) : (
+              <>
+              {podeAprovar && (
+                <div className="px-4 py-2 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2 bg-gray-50/60 dark:bg-gray-800/30">
+                  <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={todosSel} onChange={toggleTodos} className="w-4 h-4 accent-indigo-600" />
+                    Selecionar todos
+                  </label>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <button type="button" disabled={selecionados.length === 0 || decidindoLote} onClick={() => void decidirLote(selecionados, "APPROVED")}
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                      {decidindoLote ? "Processando…" : `✓ Aprovar${selecionados.length ? ` (${selecionados.length})` : ""}`}
+                    </button>
+                    <button type="button" disabled={selecionados.length === 0 || decidindoLote} onClick={() => void decidirLote(selecionados, "REPROVED")}
+                      className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 disabled:cursor-not-allowed">
+                      ✗ Reprovar{selecionados.length ? ` (${selecionados.length})` : ""}
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
                 {itens.map((p) => {
                   const area = areaPorEmpId(p.employeeId);
                   const dataTxt = p.date ? fmtBR(p.date) : fmtDataMs(p.dateIn);
                   return (
                     <div key={p.punchId} className="px-4 py-2.5 flex flex-col sm:flex-row sm:items-start gap-2 sm:gap-2.5">
-                      <div className="min-w-0 flex-1">
+                      <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                        {podeAprovar && (
+                          <input type="checkbox" checked={selAprov.has(p.punchId)} onChange={() => toggleSelAprov(p.punchId)}
+                            className="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
+                        )}
+                        <div className="min-w-0 flex-1">
                         <div className="text-sm">
                           <span className="font-semibold text-gray-900 dark:text-gray-100">{p.employeeName}</span>
                           {area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{area}</span>}
@@ -822,6 +884,7 @@ function AnalisePontoInner() {
                         </div>
                         {p.motivo && <div className="text-xs text-indigo-700 dark:text-indigo-300">{p.motivo}</div>}
                         {p.observation && <div className="text-xs text-gray-500 italic">"{p.observation}"</div>}
+                        </div>
                       </div>
                       {podeAprovar && (
                         <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0">
@@ -839,6 +902,7 @@ function AnalisePontoInner() {
                   );
                 })}
               </div>
+              </>
             )}
           </section>
         );
