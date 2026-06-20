@@ -13,7 +13,7 @@
 //  em pontoSolicitacoes / pontoAvaliacoes (a análise em si é recalculada do zero).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -131,7 +131,36 @@ function agrupar(itens: Ocorrencia[]): Array<{ employeeId: number; colaborador: 
   return [...m.values()].sort((a, b) => a.colaborador.localeCompare(b.colaborador));
 }
 
+// Error boundary local: se algo quebrar, mostra a mensagem na tela em vez de
+// sumir o site inteiro (e me dá o texto do erro pra corrigir).
+class PontoErrorBoundary extends Component<{ children: ReactNode }, { erro: Error | null }> {
+  state = { erro: null as Error | null };
+  static getDerivedStateFromError(erro: Error) { return { erro }; }
+  render() {
+    if (this.state.erro) {
+      return (
+        <div className="m-4 p-4 rounded-xl border border-red-300 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 text-sm">
+          <div className="font-bold mb-1">⚠️ A Análise de Ponto quebrou nesta tela.</div>
+          <div className="font-mono text-xs whitespace-pre-wrap break-all">{this.state.erro.message}</div>
+          <div className="font-mono text-[10px] mt-2 whitespace-pre-wrap break-all opacity-70">{this.state.erro.stack?.slice(0, 800)}</div>
+          <button type="button" onClick={() => this.setState({ erro: null })}
+            className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg bg-red-600 text-white">Tentar de novo</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export function AnalisePontoPage() {
+  return (
+    <PontoErrorBoundary>
+      <AnalisePontoInner />
+    </PontoErrorBoundary>
+  );
+}
+
+function AnalisePontoInner() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
