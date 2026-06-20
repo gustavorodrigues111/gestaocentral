@@ -27,6 +27,7 @@ export type PontoMarcacao = {
   adjustmentReason?: unknown;
   adjustmentReasonRecord?: unknown;
   status?: string;
+  edited?: boolean;               // batida editada pelo empregado (p/ AJUSTE_PENDENTE)
 };
 
 export type PontoColaborador = {
@@ -367,7 +368,9 @@ export function analisarPonto(
     // ajuste do empregado aguardando aprovação (status PENDING) — fica visível
     // nas Inconsistências até você aprovar/reprovar (a Sólides já devolve o punch
     // com o valor novo, então sem isto o dia "sumiria" antes da aprovação).
-    if (recs.some((r) => String(r.status || "").toUpperCase() === "PENDING")) {
+    // Mesmo critério da aba Aprovações: PENDING E marca de ajuste (editado/motivo)
+    // — punch recente nasce PENDING por rotina e NÃO é ajuste do empregado.
+    if (recs.some((r) => String(r.status || "").toUpperCase() === "PENDING" && (r.adjustmentReason != null || r.edited === true))) {
       add(emp, name, day, "AJUSTE_PENDENTE", "Ajuste do empregado aguardando sua aprovação (veja a aba Aprovações).", marks);
     }
 
