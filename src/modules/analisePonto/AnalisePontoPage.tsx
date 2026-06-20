@@ -629,7 +629,8 @@ function AnalisePontoInner() {
         if (tab === "manual") {
           // Todas as pendências (não dadas ciência) com data e empregado válidos.
           const corrigiveis = filtradas.filter(
-            (o) => !cienteKeys.has(ocKey(o)) && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data),
+            (o) => !cienteKeys.has(ocKey(o)) && o.employeeId > 0 && /^\d{4}-\d{2}-\d{2}$/.test(o.data)
+              && o.tipo !== "AJUSTE_PENDENTE",
           );
           return (
             <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">

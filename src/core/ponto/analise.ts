@@ -66,7 +66,7 @@ export type PontoEscala = {
 export type TipoOcorrencia =
   | "PONTO_EM_ABERTO" | "SOBREPOSICAO" | "BATIDA_DUPLA" | "TURNO_LONGO"
   | "SEM_INTERVALO" | "DIA_FOLGA_TRABALHADO" | "CONFLITO_AJUSTE"
-  | "FALTA" | "DEFICIT_PERIODO" | "EXCESSO_PERIODO";
+  | "FALTA" | "DEFICIT_PERIODO" | "EXCESSO_PERIODO" | "AJUSTE_PENDENTE";
 export type Categoria = "CORRIGIR" | "AVALIAR";
 export type Severidade = "alta" | "media" | "baixa";
 
@@ -118,12 +118,13 @@ export const SEVERIDADE: Record<TipoOcorrencia, Severidade> = {
   SEM_INTERVALO: "media", TURNO_LONGO: "media", CONFLITO_AJUSTE: "media",
   DEFICIT_PERIODO: "media", EXCESSO_PERIODO: "baixa",
   BATIDA_DUPLA: "baixa", DIA_FOLGA_TRABALHADO: "baixa",
+  AJUSTE_PENDENTE: "media",
 };
 export const CATEGORIA: Record<TipoOcorrencia, Categoria> = {
   PONTO_EM_ABERTO: "CORRIGIR", BATIDA_DUPLA: "CORRIGIR", SOBREPOSICAO: "CORRIGIR",
   TURNO_LONGO: "CORRIGIR", CONFLITO_AJUSTE: "CORRIGIR",
   FALTA: "AVALIAR", SEM_INTERVALO: "AVALIAR", DIA_FOLGA_TRABALHADO: "AVALIAR",
-  DEFICIT_PERIODO: "AVALIAR", EXCESSO_PERIODO: "AVALIAR",
+  DEFICIT_PERIODO: "AVALIAR", EXCESSO_PERIODO: "AVALIAR", AJUSTE_PENDENTE: "AVALIAR",
 };
 export const CAT_LABEL: Record<Categoria, string> = {
   CORRIGIR: "Inconsistências a Corrigir",
@@ -140,6 +141,7 @@ export const ROTULOS: Record<TipoOcorrencia, string> = {
   CONFLITO_AJUSTE: "Conflito de ajuste (ajuste + batida)",
   DEFICIT_PERIODO: "Déficit de horas no período",
   EXCESSO_PERIODO: "Excesso de horas no período",
+  AJUSTE_PENDENTE: "⏳ Ajuste aguardando aprovação",
 };
 const DIAS_PT: Record<number, string> = {
   1: "domingo", 2: "segunda", 3: "terça", 4: "quarta",
@@ -361,6 +363,13 @@ export function analisarPonto(
     // conflito de ajuste
     const hasOpen = blocks.some(([, o]) => o === null) && passado;
     if (adjDescs.length && hasPunch) add(emp, name, day, "CONFLITO_AJUSTE", `Dia com ${[...new Set(adjDescs)].join(", ")} lançado, mas tem batida de ponto.`, marks);
+
+    // ajuste do empregado aguardando aprovação (status PENDING) — fica visível
+    // nas Inconsistências até você aprovar/reprovar (a Sólides já devolve o punch
+    // com o valor novo, então sem isto o dia "sumiria" antes da aprovação).
+    if (recs.some((r) => String(r.status || "").toUpperCase() === "PENDING")) {
+      add(emp, name, day, "AJUSTE_PENDENTE", "Ajuste do empregado aguardando sua aprovação (veja a aba Aprovações).", marks);
+    }
 
     // saldo do período (só dias confiáveis)
     if (hasPunch && expected > 0 && !hasOpen && !adjDescs.length && !hasTurnoLongo) {
