@@ -242,6 +242,7 @@ function AnalisePontoInner() {
   const [mostrarSaldos, setMostrarSaldos] = useState(false);
   const [editObs, setEditObs] = useState<{ id: string; text: string } | null>(null);
   const [aprovacoes, setAprovacoes] = useState<AprovacaoPendente[]>([]);
+  const [aprovCarregando, setAprovCarregando] = useState(false);
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
   const [tab, setTab] = useState<"inconsist" | "aprovacoes" | "manual" | "escalas">("inconsist");
 
@@ -359,11 +360,16 @@ function AnalisePontoInner() {
     const shortCode = activeRestaurant.shortCode || "";
     if (!shortCode) return;
     const ate = fmtYmd(hoje);
-    const de = fmtYmd(new Date(hoje.getTime() - 120 * 86400000));
+    const de = fmtYmd(new Date(hoje.getTime() - 90 * 86400000));
+    setAprovCarregando(true);
     try {
       const { punches } = await fetchPunches(de, ate, shortCode);
       setAprovacoes(derivarAprovacoes(punches));
-    } catch { /* não derruba a tela */ }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao carregar aprovações.");
+    } finally {
+      setAprovCarregando(false);
+    }
   }
 
   // Auto-analisa ao abrir (e ao trocar de restaurante) — atualiza com os dados
@@ -557,9 +563,9 @@ function AnalisePontoInner() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
             {tab === "aprovacoes" ? (
-              <button type="button" onClick={() => void carregarAprovacoes()}
-                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
-                🔄 Atualizar
+              <button type="button" onClick={() => void carregarAprovacoes()} disabled={aprovCarregando}
+                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
+                {aprovCarregando ? "Atualizando…" : "🔄 Atualizar"}
               </button>
             ) : (
               <button type="button" onClick={() => void analisar()} disabled={carregando}
@@ -787,7 +793,7 @@ function AnalisePontoInner() {
                 O empregado ajustou no app de ponto dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some — reanaliso automaticamente.
               </p>
             </header>
-            {carregando ? (
+            {(carregando || aprovCarregando) ? (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Carregando…</div>
             ) : itens.length === 0 ? (
               <div className="px-4 py-6 text-center text-sm text-gray-400">Nenhuma aprovação pendente 🎉</div>
