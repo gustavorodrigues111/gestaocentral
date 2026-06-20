@@ -60,6 +60,29 @@ function textoOuDesc(x: unknown): string | undefined {
   return String(x);
 }
 
+// Pendências de aprovação = ajustes do empregado (editado/com motivo) aguardando
+// aval. NÃO depende de período — se está PENDING, aparece.
+function derivarAprovacoes(punches: SolidesPunch[]): AprovacaoPendente[] {
+  return punches
+    .filter((p) => {
+      if (String(p.status || "").toUpperCase() !== "PENDING") return false;
+      return p.adjustmentReason != null || p.edited === true;
+    })
+    .map((p) => ({
+      punchId: p.id,
+      employeeId: p.employeeId,
+      employeeName: p.employeeName || p.employee?.name || "?",
+      date: p.date || "",
+      dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
+      dateOut: typeof p.dateOut === "number" && p.dateOut > p.dateIn ? p.dateOut : undefined,
+      status: "PENDING",
+      motivo: textoOuDesc(p.adjustmentReason),
+      observation: textoOuDesc(p.justification),
+      editIn: (p as { editedIn?: boolean }).editedIn === true,
+      editOut: (p as { editedOut?: boolean }).editedOut === true,
+    }));
+}
+
 const SEV_COR: Record<Severidade, string> = {
   alta: "bg-red-500",
   media: "bg-amber-500",
@@ -311,54 +334,36 @@ function AnalisePontoInner() {
     try {
       // Roster pode vir vazio em algumas contas → FALTA simplesmente não aponta;
       // não derruba o resto. Por isso o catch dele é tolerante.
-      // Busca até HOJE (o fim da análise pode ser ontem por padrão) pra as
-      // aprovações enxergarem pendências do dia atual; a análise em si fica
-      // limitada ao período escolhido [ini, fimArg].
-      const hojeStr = fmtYmd(hoje);
-      const fimFetch = fimArg < hojeStr ? hojeStr : fimArg;
       const [{ punches }, schedules, employees] = await Promise.all([
-        fetchPunches(ini, fimFetch, shortCode),
+        fetchPunches(ini, fimArg, shortCode),
         fetchScheduleCatalog(shortCode),
         fetchRoster(shortCode).catch(() => []),
       ]);
       setRoster(employees);
-      const punchesAnalise = punches.filter((p) => p.date >= ini && p.date <= fimArg);
       const res = analisarPonto(
-        punchesAnalise as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
+        punches as unknown as PontoMarcacao[], employees, schedules, ini, fimArg,
       );
       setResultado(res);
-      // Aprovações pendentes = punches com status PENDING (o empregado ajustou e
-      // aguarda aprovação). Deriva dos próprios punches — o endpoint daily-activity
-      // não existe nesse host (cai num S3 e rejeita o Basic).
-      if (podeAprovar) {
-        const pend: AprovacaoPendente[] = punches
-          .filter((p) => {
-            // Aprovação = AJUSTE do empregado aguardando aval — NÃO batida normal
-            // (nessa conta toda batida nasce PENDING; sem este filtro a aba enche
-            // de milhares de linhas e trava a página). Exige marca de ajuste/edição.
-            if (String(p.status || "").toUpperCase() !== "PENDING") return false;
-            return p.adjustmentReason != null || p.edited === true;
-          })
-          .map((p) => ({
-            punchId: p.id,
-            employeeId: p.employeeId,
-            employeeName: p.employeeName || p.employee?.name || "?",
-            date: p.date || "",
-            dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
-            dateOut: typeof p.dateOut === "number" && p.dateOut > p.dateIn ? p.dateOut : undefined,
-            status: "PENDING",
-            motivo: textoOuDesc(p.adjustmentReason),
-            observation: textoOuDesc(p.justification),
-            editIn: (p as { editedIn?: boolean }).editedIn === true,
-            editOut: (p as { editedOut?: boolean }).editedOut === true,
-          }));
-        setAprovacoes(pend);
-      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao analisar.");
     } finally {
       setCarregando(false);
     }
+  }
+
+  // Aprovações NÃO dependem do período — varre uma janela ampla (últimos 120 dias
+  // até hoje) e mostra todas as pendências. Roda no mount, ao entrar na aba e
+  // após decidir.
+  async function carregarAprovacoes() {
+    if (!podeAprovar || !activeRestaurant) return;
+    const shortCode = activeRestaurant.shortCode || "";
+    if (!shortCode) return;
+    const ate = fmtYmd(hoje);
+    const de = fmtYmd(new Date(hoje.getTime() - 120 * 86400000));
+    try {
+      const { punches } = await fetchPunches(de, ate, shortCode);
+      setAprovacoes(derivarAprovacoes(punches));
+    } catch { /* não derruba a tela */ }
   }
 
   // Auto-analisa ao abrir (e ao trocar de restaurante) — atualiza com os dados
@@ -370,13 +375,15 @@ function AnalisePontoInner() {
     if (autoRef.current === rid) return;
     autoRef.current = rid;
     void analisar();
+    void carregarAprovacoes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, permLoading, podeVer, activeRestaurant]);
 
   // Abas que sempre reatualizam ao serem acessadas. (Escalas remonta sozinha.)
   useEffect(() => {
     if (permLoading || !podeVer || !activeRestaurant) return;
-    if (tab === "manual" || tab === "aprovacoes") void analisar();
+    if (tab === "manual") void analisar();
+    else if (tab === "aprovacoes") void carregarAprovacoes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab]);
 
@@ -455,6 +462,7 @@ function AnalisePontoInner() {
         });
       } catch { /* auditoria não bloqueia */ }
       setAprovacoes((prev) => prev.filter((x) => x.punchId !== p.punchId));
+      void carregarAprovacoes();
       void analisar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
@@ -510,16 +518,20 @@ function AnalisePontoInner() {
       {/* Filtros */}
       <div className="bg-gradient-to-br from-indigo-50/50 to-white dark:from-indigo-950/20 dark:to-gray-900 border border-indigo-100 dark:border-indigo-900/40 rounded-xl px-4 py-3">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="flex flex-col gap-1 shrink-0">
-            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
-            <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
-              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
-          </div>
-          <div className="flex flex-col gap-1 shrink-0">
-            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
-            <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
-              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
-          </div>
+          {tab !== "aprovacoes" && (
+            <>
+              <div className="flex flex-col gap-1 shrink-0">
+                <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Início</label>
+                <input type="date" value={inicio} max={fim} onChange={(e) => setInicio(e.target.value)}
+                  className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+              </div>
+              <div className="flex flex-col gap-1 shrink-0">
+                <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Fim</label>
+                <input type="date" value={fim} min={inicio} onChange={(e) => setFim(e.target.value)}
+                  className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-indigo-400 focus:border-indigo-400 outline-none [color-scheme:light] dark:[color-scheme:dark]" />
+              </div>
+            </>
+          )}
           {tab === "inconsist" && (
             <div className="flex flex-col gap-1 shrink-0">
               <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Prazo p/ correção</label>
@@ -544,10 +556,17 @@ function AnalisePontoInner() {
             <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
-            <button type="button" onClick={() => void analisar()} disabled={carregando}
-              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
-              {carregando ? "Analisando…" : <>🔍 Analisar período</>}
-            </button>
+            {tab === "aprovacoes" ? (
+              <button type="button" onClick={() => void carregarAprovacoes()}
+                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
+                🔄 Atualizar
+              </button>
+            ) : (
+              <button type="button" onClick={() => void analisar()} disabled={carregando}
+                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
+                {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+              </button>
+            )}
           </div>
         </div>
       </div>
