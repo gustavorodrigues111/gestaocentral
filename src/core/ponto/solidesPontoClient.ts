@@ -145,6 +145,33 @@ export async function decidirAprovacao(
   return json as { ok: boolean; resultado: unknown };
 }
 
+// ─── Afastamentos / Férias (módulo employer) ───────────────────────────────
+export type MotivoAfastamento = { id: number; description: string; fullDay: boolean };
+
+export async function fetchMotivosAfastamento(restaurantKey: string): Promise<MotivoAfastamento[]> {
+  const params = new URLSearchParams();
+  if (restaurantKey) params.set("restaurant", restaurantKey);
+  const resp = await fetch(`/api/solides-afastamentos?${params.toString()}`, { method: "GET", headers: await authHeader() });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return (json as { reasons?: MotivoAfastamento[] }).reasons || [];
+}
+
+// Lança afastamento/férias no período inteiro (1 chamada). Datas YYYY-MM-DD.
+export async function lancarAfastamento(
+  restaurantKey: string,
+  params: { employeeId: number; adjustmentReasonId: number; startDate: string; endDate: string; fullDay: boolean },
+): Promise<{ ok: boolean }> {
+  const resp = await fetch(`/api/solides-afastamentos`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, ...params }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean };
+}
+
 // Editar batida (modify/punch). oldMs = batida atual, newMs = nova — ambos ms epoch.
 export async function editarBatida(
   restaurantKey: string,

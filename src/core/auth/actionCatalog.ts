@@ -369,6 +369,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "solicitar", label: "Enviar apontamentos pro empregado + marcar 'ciente'", sensivel: true },
       { id: "aprovar",   label: "Aprovar / reprovar ajustes de ponto do empregado", sensivel: true },
       { id: "corrigir",  label: "Corrigir manualmente (editar/excluir batida, lançar ajuste)", sensivel: true },
+      { id: "afastamentos", label: "Lançar afastamentos / férias", sensivel: true },
     ],
   },
   {

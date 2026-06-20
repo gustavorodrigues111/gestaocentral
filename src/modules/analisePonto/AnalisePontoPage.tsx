@@ -27,7 +27,8 @@ import { Modal } from "../../core/ui/Modal";
 import {
   fetchScheduleCatalog, fetchRoster, fetchJustificativas, corrigirPontoAtraso,
   decidirAprovacao, editarBatida, excluirBatida,
-  type Justificativa, type AprovacaoPendente,
+  fetchMotivosAfastamento, lancarAfastamento,
+  type Justificativa, type AprovacaoPendente, type MotivoAfastamento,
 } from "../../core/ponto/solidesPontoClient";
 import {
   analisarPonto, CAT_LABEL, ROTULOS, type Categoria, type Ocorrencia,
@@ -207,6 +208,7 @@ function AnalisePontoInner() {
   const podeSolicitar = can("analise-ponto", "solicitar");
   const podeAprovar = can("analise-ponto", "aprovar");
   const podeCorrigir = can("analise-ponto", "corrigir");
+  const podeAfastar = can("analise-ponto", "afastamentos");
 
   const hoje = new Date();
   // Default: 1º dia do mês corrente → ontem.
@@ -217,6 +219,8 @@ function AnalisePontoInner() {
   const [resultado, setResultado] = useState<ResultadoAnalise | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
   const [batidasDia, setBatidasDia] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
+  // Afastamento/férias: null = fechado; objeto (mesmo vazio) = aberto, com prefill opcional.
+  const [afastamento, setAfastamento] = useState<{ employeeId?: number; colaborador?: string; data?: string } | null>(null);
   // Prazo de correção (horas) — configurável, padrão 6h. Persiste no navegador.
   const [prazoHoras, setPrazoHoras] = useState<number>(() => {
     const v = Number(localStorage.getItem("analisePonto.prazoHoras"));
@@ -550,14 +554,22 @@ function AnalisePontoInner() {
               ))}
             </div>
           </div>
-          <div className="flex items-center gap-3 w-full md:w-auto md:ml-auto justify-between">
+          <div className="flex items-center gap-2 w-full md:w-auto md:ml-auto justify-between">
             <span className="text-[11px] text-gray-400 inline-flex items-center gap-1 whitespace-nowrap">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {activeRestaurant.nome} · {activeRestaurant.shortCode}
             </span>
-            <button type="button" onClick={() => void analisar()} disabled={carregando}
-              className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap shrink-0">
-              {carregando ? "Analisando…" : <>🔍 Analisar período</>}
-            </button>
+            <div className="flex items-center gap-2 shrink-0">
+              {podeAfastar && (
+                <button type="button" onClick={() => setAfastamento({})}
+                  className="h-9 px-3 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 inline-flex items-center gap-1.5 whitespace-nowrap">
+                  🏖️ Afastamento/férias
+                </button>
+              )}
+              <button type="button" onClick={() => void analisar()} disabled={carregando}
+                className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
+                {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -693,10 +705,11 @@ function AnalisePontoInner() {
                         area={areaPorEmpId(g.employeeId)} tel={telPorEmpId(g.employeeId)}
                         saldo={saldoPorEmp.get(g.employeeId)}
                         sel={sel} toggleSel={toggleSel} solPorKey={solPorKey} now={now}
-                        podeSolicitar={podeSolicitar} podeCorrigir={podeCorrigir}
+                        podeSolicitar={podeSolicitar} podeCorrigir={podeCorrigir} podeAfastar={podeAfastar}
                         onEnviar={(itens) => enviarCorrecao(g.colaborador, g.employeeId, itens)}
                         onCiencia={darCiencia}
-                        onCorrigir={(o) => setBatidasDia({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })} />
+                        onCorrigir={(o) => setBatidasDia({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })}
+                        onAfastar={(o) => setAfastamento({ employeeId: o.employeeId, colaborador: o.colaborador, data: o.data })} />
                     ))}
                   </div>
                 )}
@@ -803,8 +816,147 @@ function AnalisePontoInner() {
           onChanged={() => void analisar()}
         />
       )}
+
+      {afastamento && activeRestaurant && (
+        <AfastamentoModal
+          prefill={afastamento}
+          roster={roster}
+          shortCode={activeRestaurant.shortCode || ""}
+          restaurantId={rid}
+          por={{ id: me?.id || "", nome: me?.nome || "?" }}
+          onClose={() => setAfastamento(null)}
+          onDone={() => { setAfastamento(null); void analisar(); }}
+        />
+      )}
       </>}
     </div>
+  );
+}
+
+// ─── Modal "Lançar afastamento / férias" ────────────────────────────────────
+function AfastamentoModal({
+  prefill, roster, shortCode, restaurantId, por, onClose, onDone,
+}: {
+  prefill: { employeeId?: number; colaborador?: string; data?: string };
+  roster: PontoColaborador[];
+  shortCode: string;
+  restaurantId: string;
+  por: { id: string; nome: string };
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [motivos, setMotivos] = useState<MotivoAfastamento[]>([]);
+  const [empId, setEmpId] = useState<number | "">(prefill.employeeId ?? "");
+  const [motivoId, setMotivoId] = useState<number | "">("");
+  const [inicio, setInicio] = useState(prefill.data || "");
+  const [fim, setFim] = useState(prefill.data || "");
+  const [diaInteiro, setDiaInteiro] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  useEffect(() => {
+    let vivo = true;
+    fetchMotivosAfastamento(shortCode)
+      .then((ms) => { if (vivo) setMotivos(ms); })
+      .catch((e) => { if (vivo) setErro(e instanceof Error ? e.message : "Falha ao carregar motivos."); });
+    return () => { vivo = false; };
+  }, [shortCode]);
+
+  // Ao escolher o motivo, se ele for "dia inteiro" obrigatório, marca o checkbox.
+  function escolherMotivo(id: number) {
+    setMotivoId(id);
+    const m = motivos.find((x) => x.id === id);
+    if (m?.fullDay) setDiaInteiro(true);
+  }
+
+  const empNome = (id: number) => roster.find((r) => r.id === id)?.name || prefill.colaborador || "?";
+
+  async function confirmar() {
+    if (!empId) { setErro("Escolha o colaborador."); return; }
+    if (!motivoId) { setErro("Escolha o motivo."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
+    if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
+    const motivo = motivos.find((m) => m.id === motivoId);
+    if (!window.confirm(`Lançar ${motivo?.description || "afastamento"} para ${empNome(Number(empId))}\nde ${fmtBR(inicio)} a ${fmtBR(fim)}?\n\nGrava na Sólides como APROVADO.`)) return;
+    setErro(""); setSalvando(true);
+    try {
+      await lancarAfastamento(shortCode, {
+        employeeId: Number(empId), adjustmentReasonId: Number(motivoId),
+        startDate: inicio, endDate: fim, fullDay: diaInteiro,
+      });
+      try {
+        await addDoc(collection(db, "pontoAuditoria"), {
+          restaurantId, tipo: "afastamento",
+          por: { id: por.id, nome: por.nome },
+          employeeId: Number(empId), colaborador: empNome(Number(empId)),
+          motivoId: Number(motivoId), motivo: motivo?.description || "",
+          inicio, fim, diaInteiro, em: new Date().toISOString(),
+        });
+      } catch { /* auditoria não bloqueia */ }
+      alert(`Afastamento lançado na Sólides ✓ (${motivo?.description || ""}, ${fmtBR(inicio)}–${fmtBR(fim)}). Reanalisando…`);
+      onDone();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao lançar o afastamento.");
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal title="🏖️ Lançar afastamento / férias" onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          O período inteiro é lançado de uma vez (a justificativa vale pra todos os dias). Entra como <strong>aprovado</strong> na Sólides.
+        </p>
+        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Colaborador</label>
+          {prefill.employeeId ? (
+            <div className="px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-200">{prefill.colaborador}</div>
+          ) : (
+            <select value={empId} onChange={(e) => setEmpId(e.target.value ? Number(e.target.value) : "")}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+              <option value="">— escolha —</option>
+              {[...roster].filter((r) => typeof r.id === "number" && !r.fired).sort((a, b) => (a.name || "").localeCompare(b.name || "")).map((r) => (
+                <option key={r.id} value={r.id}>{r.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo</label>
+          <select value={motivoId} onChange={(e) => escolherMotivo(Number(e.target.value))}
+            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            <option value="">{motivos.length ? "— escolha —" : "— carregando —"}</option>
+            {motivos.map((m) => <option key={m.id} value={m.id}>{m.description}</option>)}
+          </select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Início</label>
+            <input type="date" value={inicio} max={fim || undefined} onChange={(e) => setInicio(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fim</label>
+            <input type="date" value={fim} min={inicio || undefined} onChange={(e) => setFim(e.target.value)}
+              className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+        </div>
+        <label className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+          <input type="checkbox" checked={diaInteiro} onChange={(e) => setDiaInteiro(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+          Dia inteiro
+        </label>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onClose} disabled={salvando}
+            className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">Cancelar</button>
+          <button type="button" onClick={() => void confirmar()} disabled={salvando}
+            className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
+            {salvando ? "Lançando…" : "Lançar afastamento"}
+          </button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -852,7 +1004,7 @@ function Cartao({ titulo, valor, cor }: { titulo: string; valor: number; cor: st
 
 // ─── Grupo de um empregado: cabeçalho (nome + relógio + enviar) + itens ───────
 function GrupoEmp({
-  grupo, area, tel, saldo, sel, toggleSel, solPorKey, now, podeSolicitar, podeCorrigir, onEnviar, onCiencia, onCorrigir,
+  grupo, area, tel, saldo, sel, toggleSel, solPorKey, now, podeSolicitar, podeCorrigir, podeAfastar, onEnviar, onCiencia, onCorrigir, onAfastar,
 }: {
   grupo: { employeeId: number; colaborador: string; itens: Ocorrencia[] };
   area?: Area;
@@ -864,9 +1016,11 @@ function GrupoEmp({
   now: number;
   podeSolicitar: boolean;
   podeCorrigir: boolean;
+  podeAfastar: boolean;
   onEnviar: (itens: Ocorrencia[]) => void;
   onCiencia: (itens: Ocorrencia[]) => void;
   onCorrigir: (o: Ocorrencia) => void;
+  onAfastar: (o: Ocorrencia) => void;
 }) {
   const selecionados = grupo.itens.filter((o) => sel.has(ocKey(o)));
   // Relógio do empregado = solicitação ativa mais urgente entre os itens visíveis.
@@ -964,6 +1118,13 @@ function GrupoEmp({
                 )}
               </div>
               <div className="shrink-0 flex items-center gap-1.5">
+                {podeAfastar && o.tipo === "FALTA" && (
+                  <button type="button" onClick={() => onAfastar(o)}
+                    className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
+                    title="Lançar afastamento (atestado/folga/férias…) neste dia">
+                    🏖️
+                  </button>
+                )}
                 {podeManual && (
                   <button type="button" onClick={() => onCorrigir(o)}
                     className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
