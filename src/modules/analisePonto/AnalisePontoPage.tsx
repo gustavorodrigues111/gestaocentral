@@ -284,7 +284,13 @@ export function AnalisePontoPage() {
       // não existe nesse host (cai num S3 e rejeita o Basic).
       if (podeAprovar) {
         const pend: AprovacaoPendente[] = punches
-          .filter((p) => String(p.status || "").toUpperCase() === "PENDING")
+          .filter((p) => {
+            // Aprovação = AJUSTE do empregado aguardando aval — NÃO batida normal
+            // (nessa conta toda batida nasce PENDING; sem este filtro a aba enche
+            // de milhares de linhas e trava a página). Exige marca de ajuste/edição.
+            if (String(p.status || "").toUpperCase() !== "PENDING") return false;
+            return p.adjustmentReason != null || p.edited === true;
+          })
           .map((p) => ({
             punchId: p.id,
             employeeId: p.employeeId,
