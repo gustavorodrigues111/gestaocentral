@@ -47,6 +47,19 @@ const fmtBR = (s: string) => s.replace(/(\d{4})-(\d{2})-(\d{2})/g, "$3/$2/$1");
 // Identidade estável de uma ocorrência (pra casar com solicitações / avaliações).
 const ocKey = (o: Ocorrencia) => `${o.employeeId}|${o.data}|${o.tipo}`;
 
+// adjustmentReason/justification dos punches às vezes vêm como OBJETO
+// ({id, description, ...}), não string. Extrai um texto seguro pra não renderizar
+// objeto (React error #31).
+function textoOuDesc(x: unknown): string | undefined {
+  if (x == null) return undefined;
+  if (typeof x === "string") return x || undefined;
+  if (typeof x === "object") {
+    const o = x as { description?: string; descricao?: string; name?: string };
+    return o.description || o.descricao || o.name || undefined;
+  }
+  return String(x);
+}
+
 const SEV_COR: Record<Severidade, string> = {
   alta: "bg-red-500",
   media: "bg-amber-500",
@@ -328,8 +341,8 @@ function AnalisePontoInner() {
             dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
             dateOut: typeof p.dateOut === "number" && p.dateOut > p.dateIn ? p.dateOut : undefined,
             status: "PENDING",
-            motivo: typeof p.adjustmentReason === "string" ? p.adjustmentReason : undefined,
-            observation: p.justification || undefined,
+            motivo: textoOuDesc(p.adjustmentReason),
+            observation: textoOuDesc(p.justification),
           }));
         setAprovacoes(pend);
       }
