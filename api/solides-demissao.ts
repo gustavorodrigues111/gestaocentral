@@ -70,11 +70,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const token = tokenResult.token;
 
-  // /employee/dismiss faz binding por QUERY PARAMS (@ModelAttribute), não JSON —
-  // o JSON com resignationDateInMillis chegava como null. Enviamos via query.
-  const qs = new URLSearchParams();
-  qs.set("employeeId", String(body.employeeId));
-  qs.set("resignationDateInMillis", String(ymdToMs(body.dismissalDate)));
+  // Assinatura: dismiss(String, DismissDTO) — o DTO é @RequestBody (JSON) e há um
+  // parâmetro String (provável employeeId na query). Mandamos os dois.
+  const dto = { resignationDateInMillis: ymdToMs(body.dismissalDate), employeeId: body.employeeId };
+  const qs = new URLSearchParams({ employeeId: String(body.employeeId) });
   const url = `${EMPLOYER}/employee/dismiss?${qs.toString()}`;
 
   const ctrl = new AbortController();
@@ -82,14 +81,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   try {
     const resp = await fetch(url, {
       method: "POST",
-      headers: { Authorization: `Basic ${token}`, Accept: "application/json" },
+      headers: { Authorization: `Basic ${token}`, Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(dto),
       signal: ctrl.signal,
     });
     if (resp.status === 401 || resp.status === 403) throw new HttpError(502, "Sólides recusou as credenciais (401/403).");
     const text = await resp.text();
     let json: unknown = null;
     try { json = text ? JSON.parse(text) : null; } catch { json = text; }
-    if (!resp.ok) throw new HttpError(502, `Sólides HTTP ${resp.status}. ENVIEI: ${url} · RESP: ${String(text).slice(0, 500)}`);
+    if (!resp.ok) throw new HttpError(502, `Sólides HTTP ${resp.status}. URL: ${url} · BODY: ${JSON.stringify(dto)} · RESP: ${String(text).slice(0, 450)}`);
     res.status(200).json({ ok: true, resultado: json, por: usuario.email || usuario.uid });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") { res.status(504).json({ error: "Timeout na demissão (Sólides)." }); return; }
