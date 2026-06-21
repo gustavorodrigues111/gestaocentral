@@ -783,8 +783,9 @@ export type Pessoa = {
 
   // Status de acesso
   ativa: boolean;              // false = bloqueio imediato (polling 30s detecta)
-  inativadaEm?: string | null; // ISO
+  inativadaEm?: string | null; // ISO (momento da ação)
   inativadaPor?: string | null;
+  inativadaUltimoDia?: string | null; // YYYY-MM-DD — último dia trabalhado informado na demissão
   motivoInativacao?: string;
   // Demissão espelhada na Sólides (integração). Presente = já demitido lá.
   solidesDemissao?: { em: string; data: string; motivo?: string; por?: string } | null;

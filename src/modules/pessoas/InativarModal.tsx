@@ -22,7 +22,7 @@ const MOTIVOS: { id: string; label: string }[] = [
 type Props = {
   pessoa: Pessoa;
   onClose: () => void;
-  onInativada?: () => void;  // chamado no SUCESSO (pra encadear, ex: demitir na Sólides)
+  onInativada?: (ultimoDiaTrabalhado: string) => void;  // SUCESSO (pra encadear, ex: demitir na Sólides)
   titulo?: string;
 };
 
@@ -75,6 +75,7 @@ export function InativarModal({ pessoa, onClose, onInativada, titulo }: Props) {
         ativa: false,
         inativadaEm: now,
         inativadaPor: me.id,
+        inativadaUltimoDia: dataEfetiva, // último dia trabalhado (pra espelhar na Sólides)
         motivoInativacao: motivoLabel,
       });
       await logAudit({
@@ -134,7 +135,7 @@ export function InativarModal({ pessoa, onClose, onInativada, titulo }: Props) {
         }
       }
 
-      (onInativada || onClose)();
+      if (onInativada) onInativada(dataEfetiva); else onClose();
     } catch (e) {
       console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");

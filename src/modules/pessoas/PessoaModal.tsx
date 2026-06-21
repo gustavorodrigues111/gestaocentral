@@ -159,6 +159,7 @@ function TabIdentidade({
   const podeDemitirSolides = !!me?.isMaster || can("demissao", "demitirSolides");
   const shortCode = restaurants.find((r) => r.id === restaurantId)?.shortCode || "";
   const [showDemitirSolides, setShowDemitirSolides] = useState(false);
+  const [ultimoDiaDemissao, setUltimoDiaDemissao] = useState("");
   // Vínculo CLT/Estagiário → "Demitir" (desligamento). Demais → "Inativar".
   const vincPessoa = pessoa?.vinculos?.[restaurantId];
   const ehDesligavel = vincPessoa === "clt" || vincPessoa === "estagiario";
@@ -465,8 +466,9 @@ function TabIdentidade({
           pessoa={pessoa}
           titulo={ehDesligavel ? `Demitir — ${pessoa.nome}` : undefined}
           onClose={() => setShowInativar(false)}
-          onInativada={() => {
+          onInativada={(ultimoDia) => {
             setShowInativar(false);
+            setUltimoDiaDemissao(ultimoDia);
             // CLT/estagiário: encadeia o box "Demitir na Sólides". Demais: fecha.
             if (ehDesligavel && podeDemitirSolides && pessoa.cpf && !pessoa.solidesDemissao) {
               setShowDemitirSolides(true);
@@ -480,6 +482,7 @@ function TabIdentidade({
         <DemitirSolidesModal
           pessoa={pessoa}
           shortCode={shortCode}
+          ultimoDiaTrabalhado={ultimoDiaDemissao || (pessoa.inativadaUltimoDia || "").slice(0, 10) || undefined}
           por={{ id: me?.id || "", nome: me?.nome || "?" }}
           onClose={() => setShowDemitirSolides(false)}
         />

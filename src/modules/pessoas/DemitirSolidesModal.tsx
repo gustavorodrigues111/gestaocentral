@@ -11,15 +11,16 @@ import { demitirNoSolides } from "../../core/ponto/solidesPontoClient";
 import { Modal } from "../../core/ui/Modal";
 
 export function DemitirSolidesModal({
-  pessoa, shortCode, por, onClose,
+  pessoa, shortCode, ultimoDiaTrabalhado, por, onClose,
 }: {
   pessoa: Pessoa;
   shortCode: string;
+  ultimoDiaTrabalhado?: string; // YYYY-MM-DD — pré-preenche o campo
   por: { id: string; nome: string };
   onClose: () => void;
 }) {
   const hojeYmd = new Date().toISOString().slice(0, 10);
-  const [data, setData] = useState((pessoa.inativadaEm || "").slice(0, 10) || hojeYmd);
+  const [data, setData] = useState(ultimoDiaTrabalhado || (pessoa.inativadaUltimoDia || "").slice(0, 10) || hojeYmd);
   const [motivo, setMotivo] = useState(pessoa.motivoInativacao || "");
   const [noticeType, setNoticeType] = useState<"trabalhado" | "indenizado">("indenizado");
   const [salvando, setSalvando] = useState(false);
@@ -57,7 +58,7 @@ export function DemitirSolidesModal({
         {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Data de demissão (desligamento)</label>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Último dia trabalhado</label>
             <input type="date" value={data} onChange={(e) => setData(e.target.value)}
               className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
@@ -76,7 +77,7 @@ export function DemitirSolidesModal({
             className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         </div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          📅 A <strong>data de demissão</strong> é o <strong>fim do contrato</strong> (como na Sólides): aviso <strong>trabalhado</strong> = último dia trabalhado; <strong>indenizado</strong> = data de projeção do aviso prévio (futura).
+          📅 É o mesmo <strong>último dia trabalhado</strong> que você informou na demissão. A Sólides calcula o desligamento conforme o aviso prévio.
         </p>
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} disabled={salvando}
