@@ -75,11 +75,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const ms = ymdToMs(body.dismissalDate);
   // O JSON não mapeou "resignationDateInMillis" exato → manda aliases (snake_case
   // etc); o Jackson deles ignora os que não existirem e usa o que casar.
+  // O campo da data NÃO é "resignationDateInMillis" exato — um dos aliases casa.
+  // Mantém todos até confirmar qual; tangerinoId identifica o empregado.
   const dto: Record<string, unknown> = {
     resignationDateInMillis: ms,
+    resignation_date_in_millis: ms,
+    resignationDate: ms,
+    resignationDateMillis: ms,
     tangerinoId: body.employeeId,
   };
-  // O empregado é identificado por tangerinoId (não employeeId) — erro TGRO0006.
   const qs = new URLSearchParams({ tangerinoId: String(body.employeeId) });
   const url = `${EMPLOYER}/employee/dismiss?${qs.toString()}`;
 
