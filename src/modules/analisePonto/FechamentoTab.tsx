@@ -159,13 +159,16 @@ export function FechamentoTab({
   }
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [mes, shortCode, rid]);
 
-  // Colaboradores ativos do roster (Sólides) que casam com empregado do app.
+  // Ativos + demitidos RELEVANTES ao mês (saíram no mês ou depois) — sem o
+  // histórico inteiro de demitidos antigos.
   const colaboradores = useMemo(() => {
+    const monthStart = `${mes}-01`;
     return roster
       .filter((r) => typeof r.id === "number")
       .map((r) => ({ solId: r.id as number, nome: r.name || "?", emp: empAppPorCpf.get(soDigitos(r.cpf)), demissao: demissaoYmd(r), fired: !!r.fired }))
+      .filter((c) => !c.fired || (c.demissao ? c.demissao >= monthStart : false))
       .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [roster, empAppPorCpf]);
+  }, [roster, empAppPorCpf, mes]);
 
   // Espelho do empregado selecionado: 1 linha por dia do mês.
   const espelho = useMemo<DiaEspelho[]>(() => {
