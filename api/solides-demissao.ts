@@ -92,7 +92,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const text = await resp.text();
     let json: unknown = null;
     try { json = text ? JSON.parse(text) : null; } catch { json = text; }
-    if (!resp.ok) throw new HttpError(502, `Sólides retornou HTTP ${resp.status}. ${String(text).slice(0, 900)}`);
+    if (!resp.ok) throw new HttpError(502, `Sólides HTTP ${resp.status}. ENVIEI: ${JSON.stringify(payload)} · RESP: ${String(text).slice(0, 500)}`);
     res.status(200).json({ ok: true, resultado: json, por: usuario.email || usuario.uid });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") { res.status(504).json({ error: "Timeout na demissão (Sólides)." }); return; }
