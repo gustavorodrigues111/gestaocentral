@@ -293,6 +293,12 @@ export function PessoasList({ restaurantId }: Props) {
                         {VINCULO_LOGICO_ICONE[vinculo]} {VINCULO_LOGICO_LABEL[vinculo].split(" ")[0]}
                       </span>
                     )}
+                    {!vinculo && p.ativa !== false && (
+                      <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                        title="Sem vínculo definido — abra e defina o vínculo desta pessoa">
+                        ⚠ sem vínculo
+                      </span>
+                    )}
                     {acessoBadges.map(b => (
                       <span
                         key={b.status}

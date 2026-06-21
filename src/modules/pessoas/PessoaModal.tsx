@@ -957,9 +957,16 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
           🤝 Vínculo neste restaurante
         </div>
         {!vinculoExplicito && vinculoResolvido && (
-          <div className="text-[11px] text-fuchsia-600 dark:text-fuchsia-400">
-            Inferido do cargo · grave explícito pra travar
-          </div>
+          <button type="button" onClick={() => void alterarVinculo(vinculoResolvido)} disabled={salvando}
+            title="Inferido do cargo — clique pra gravar explícito e travar"
+            className="text-[11px] font-semibold px-2 py-0.5 rounded-md bg-fuchsia-600 text-white hover:bg-fuchsia-700 disabled:opacity-50">
+            Gravar como {VINCULO_LOGICO_LABEL[vinculoResolvido]} (inferido)
+          </button>
+        )}
+        {!vinculoExplicito && !vinculoResolvido && (
+          <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
+            ⚠ Sem vínculo — defina
+          </span>
         )}
       </div>
       <select
