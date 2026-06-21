@@ -320,16 +320,11 @@ export function FechamentoTab({
               ))}
             </select>
           </div>
-          {selEmp !== "" && !colSel?.fired && (
+          {selEmp !== "" && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
               {pdfLoading ? "Gerando…" : "👁 Visualizar espelho (PDF)"}
             </button>
-          )}
-          {selEmp !== "" && colSel?.fired && (
-            <span className="text-[11px] text-amber-600 dark:text-amber-400 max-w-[260px]">
-              ⚠️ Espelho de demitido não vem pela API da Sólides — gere antes de demitir ou puxe na plataforma deles.
-            </span>
           )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">

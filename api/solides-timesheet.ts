@@ -67,8 +67,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const [y, m, dd] = d.split("-").map(Number);
     return end ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
   };
-  // Obs.: o report NÃO retorna espelho de DEMITIDO por API (testado vários params).
-  // Pra ativo funciona normal.
+  // Funciona pra ativo E demitido (com showFired). Espelho vazio = colaborador
+  // sem marcações no período (não é limitação de demitido).
   const p = new URLSearchParams({
     employeeId, tangerinoId: employeeId,
     startDate, endDate,
