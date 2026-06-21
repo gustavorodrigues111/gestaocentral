@@ -37,6 +37,7 @@ import {
 } from "../../core/ponto/analise";
 
 import { EscalasComparacaoTab } from "./EscalasComparacaoTab";
+import { FechamentoTab } from "./FechamentoTab";
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 
@@ -212,6 +213,7 @@ function AnalisePontoInner() {
   const podeAprovar = can("analise-ponto", "aprovar");
   const podeCorrigir = can("analise-ponto", "corrigir");
   const podeAfastar = can("analise-ponto", "afastamentos");
+  const podeFechar = can("analise-ponto", "fecharFolha");
 
   const hoje = new Date();
   // Default: 1º dia do mês corrente → ontem.
@@ -251,7 +253,7 @@ function AnalisePontoInner() {
   const [selAprov, setSelAprov] = useState<Set<number>>(new Set());
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
   const [decidindoLote, setDecidindoLote] = useState(false);
-  const [tab, setTab] = useState<"inconsist" | "escalas">("inconsist");
+  const [tab, setTab] = useState<"inconsist" | "fechamento" | "escalas">("inconsist");
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
   const [now, setNow] = useState(() => Date.now());
@@ -505,8 +507,9 @@ function AnalisePontoInner() {
 
   const tabsDisp = ([
     { id: "inconsist", label: "⚠️ Inconsistências" },
+    podeFechar ? { id: "fechamento", label: "📄 Fechamento de folha" } : null,
     { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
-  ]) as Array<{ id: typeof tab; label: ReactNode }>;
+  ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
     <div className="max-w-5xl space-y-4">
@@ -522,6 +525,10 @@ function AnalisePontoInner() {
       </div>
 
       {tab === "escalas" && <EscalasComparacaoTab rid={rid} activeRestaurant={activeRestaurant} />}
+
+      {tab === "fechamento" && (
+        <FechamentoTab rid={rid} activeRestaurant={activeRestaurant} empregados={empregados} mesInicial={inicio.slice(0, 7)} />
+      )}
 
       {tab === "inconsist" && <>
       {/* Filtros */}
