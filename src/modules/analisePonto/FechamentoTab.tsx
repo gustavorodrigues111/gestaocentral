@@ -94,6 +94,7 @@ type DiaEspelho = {
   prevista?: ScheduleStatus;
   sugerido: ScheduleStatus;
   demitido?: boolean;   // dia posterior à demissão do empregado
+  futuro?: boolean;     // dia ainda não ocorrido — não há o que fechar
 };
 
 export function FechamentoTab({
@@ -234,6 +235,8 @@ export function FechamentoTab({
     }
     return diasDoMes(mes).map((date) => {
       if (dem && date > dem) return { date, worked: false, marks: "", prevista: prevista?.[date], sugerido: "folga" as ScheduleStatus, demitido: true };
+      // Dia futuro: ainda não ocorreu — não há batida nem o que fechar.
+      if (date > hojeYmd) return { date, worked: false, marks: "", prevista: prevista?.[date], sugerido: prevista?.[date] || ("folga" as ScheduleStatus), futuro: true };
       // Cargo de confiança: ignora batidas (não existem) e adota a prevista como praticada.
       if (naoBate) {
         const prev = prevista?.[date];
@@ -254,7 +257,7 @@ export function FechamentoTab({
       else sugerido = prev || "folga";
       return { date, worked, marks, afastamento, prevista: prev, sugerido };
     });
-  }, [selEmp, colaboradores, escala, punches, mes, cargoPorId]);
+  }, [selEmp, colaboradores, escala, punches, mes, cargoPorId, hojeYmd]);
 
   const colSel = colaboradores.find((c) => c.solId === selEmp);
   const naoBateSel = naoBatePontoDe(colSel?.emp);
@@ -283,9 +286,10 @@ export function FechamentoTab({
   const toggleDia = (date: string) => setSelDias((s) => {
     const n = new Set(s); n.has(date) ? n.delete(date) : n.add(date); return n;
   });
-  const diasAbertos = espelho.filter((d) => !fechadoEm(d.date) && !d.demitido).map((d) => d.date);
+  const diasAbertos = espelho.filter((d) => !fechadoEm(d.date) && !d.demitido && !d.futuro).map((d) => d.date);
   const todosAbertosSel = diasAbertos.length > 0 && diasAbertos.every((d) => selDias.has(d));
   const totalFechados = espelho.filter((d) => fechadoEm(d.date)).length;
+  const totalFechaveis = espelho.filter((d) => !d.demitido && !d.futuro).length;
 
   async function fecharDias() {
     if (!selEmp || !appIdSel) return;
@@ -437,7 +441,7 @@ export function FechamentoTab({
           <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
             <div className="font-bold text-sm text-gray-900 dark:text-gray-100">
               {colSel?.nome} — {nomeMes(mes)}
-              <span className="ml-2 text-[11px] font-normal text-gray-400">{totalFechados}/{espelho.length} fechados</span>
+              <span className="ml-2 text-[11px] font-normal text-gray-400">{totalFechados}/{totalFechaveis} fechados</span>
             </div>
             {!colSel?.emp && <span className="text-[10px] text-amber-600">sem empregado vinculado no app — não dá pra fechar</span>}
             {colSel?.emp && !previstaFechada && <span className="text-[10px] text-amber-600">feche a prevista do mês na Escala pra poder fechar o ponto</span>}
@@ -465,6 +469,16 @@ export function FechamentoTab({
                     <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-rose-600 text-white">DM</span>
                     <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
                     <div className="min-w-0 flex-1 truncate text-rose-700 dark:text-rose-300 font-medium">Demitido (fora do contrato)</div>
+                  </div>
+                );
+              }
+              if (d.futuro) {
+                return (
+                  <div key={d.date} className="px-3 py-2 flex items-center gap-2.5 text-xs opacity-50">
+                    <span className="w-4 shrink-0" />
+                    <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300">–</span>
+                    <span className="w-24 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400 tabular-nums">{wd} {dataBR}</span>
+                    <div className="min-w-0 flex-1 truncate text-gray-400">data futura{d.prevista ? <span className="ml-2">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span> : null}</div>
                   </div>
                 );
               }
