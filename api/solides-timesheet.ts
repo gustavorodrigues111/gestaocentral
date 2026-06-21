@@ -67,8 +67,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const [y, m, dd] = d.split("-").map(Number);
     return end ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
   };
-  // Funciona pra ativo E demitido (com showFired). Espelho vazio = colaborador
-  // sem marcações no período (não é limitação de demitido).
+  // CONFIRMADO: o /time-sheet devolve PDF em branco pra DEMITIDO (showFired não
+  // afeta o report, só o endpoint de ponto). Pra ativo funciona normal.
   const p = new URLSearchParams({
     employeeId, tangerinoId: employeeId,
     startDate, endDate,

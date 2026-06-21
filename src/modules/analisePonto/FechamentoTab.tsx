@@ -320,11 +320,16 @@ export function FechamentoTab({
               ))}
             </select>
           </div>
-          {selEmp !== "" && (
+          {selEmp !== "" && !colSel?.fired && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
               {pdfLoading ? "Gerando…" : "👁 Visualizar espelho (PDF)"}
             </button>
+          )}
+          {selEmp !== "" && colSel?.fired && (
+            <span className="text-[11px] text-amber-600 dark:text-amber-400 max-w-[280px]">
+              ⚠️ O espelho oficial (PDF) de demitido vem em branco pela API da Sólides (confirmado). As batidas aparecem aqui pro fechamento; pro PDF homologado, gere antes da demissão ou na plataforma da Sólides.
+            </span>
           )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">
