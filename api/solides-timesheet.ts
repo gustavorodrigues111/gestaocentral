@@ -67,14 +67,14 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const [y, m, dd] = d.split("-").map(Number);
     return end ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
   };
+  // Obs.: o report NÃO retorna espelho de DEMITIDO por API (testado vários params).
+  // Pra ativo funciona normal.
   const p = new URLSearchParams({
     employeeId, tangerinoId: employeeId,
     startDate, endDate,
     startDateInMillis: String(ymdMs(startDate, false)),
     endDateInMillis: String(ymdMs(endDate, true)),
-    // Incluir demitido — nome do param é incerto no report; manda vários aliases.
-    showFired: "true", showDismissed: "true", includeFired: "true",
-    fired: "true", includeDismissed: "true", dismissed: "true",
+    showFired: "true",
   });
   const url = `${REPORT}/time-sheet?${p.toString()}`;
   const ctrl = new AbortController();
