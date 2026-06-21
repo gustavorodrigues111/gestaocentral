@@ -454,8 +454,8 @@ export const AJUSTE_MOTIVO_LABEL: Record<AjusteEscalaMotivo, string> = {
   atestado:  "🏥 Atestado médico",
   ferias:    "🏖️ Férias",
   folga:     "🌴 Folga",
-  comp:      "🔄 Compensação",
-  comp_trab: "⚒️ Comp. trabalhado",
+  comp:      "🔄 Folga por compensação",
+  comp_trab: "⚒️ Trabalho por compensação",
   freela:    "🎒 Freela",
   trabalho:  "✓ Trabalho",
 };

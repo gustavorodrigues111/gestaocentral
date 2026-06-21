@@ -9,11 +9,11 @@ import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
 
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
-  trabalho:  { label: "Trabalho",                short: "T",  bg: "bg-emerald-500",  text: "text-white" },
-  folga:     { label: "Folga",                   short: "F",  bg: "bg-gray-300 dark:bg-gray-700",  text: "text-gray-700 dark:text-gray-200" },
+  trabalho:  { label: "Trabalho",                short: "TR", bg: "bg-emerald-500",  text: "text-white" },
+  folga:     { label: "Folga",                   short: "FO", bg: "bg-gray-300 dark:bg-gray-700",  text: "text-gray-700 dark:text-gray-200" },
   freela:    { label: "Freela",                  short: "FR", bg: "bg-purple-500",   text: "text-white" },
-  comp:      { label: "Compensação",             short: "C",  bg: "bg-amber-400",    text: "text-amber-950" },
-  comp_trab: { label: "Comp. trabalhado",        short: "CT", bg: "bg-amber-600",    text: "text-white" },
+  comp:      { label: "Folga por compensação",   short: "FC", bg: "bg-amber-400",    text: "text-amber-950" },
+  comp_trab: { label: "Trabalho por compensação", short: "TC", bg: "bg-amber-600",    text: "text-white" },
   ferias:    { label: "Férias",                  short: "FE", bg: "bg-sky-500",      text: "text-white" },
   falta_j:   { label: "Falta justificada",       short: "FJ", bg: "bg-rose-300",     text: "text-rose-900" },
   falta_i:   { label: "Falta injustificada",     short: "FI", bg: "bg-rose-600",     text: "text-white" },

@@ -23,11 +23,11 @@ const STATUS_COR: Record<ScheduleStatus, [number, number, number]> = {
 };
 
 const STATUS_SHORT: Record<ScheduleStatus, string> = {
-  trabalho:  "T",
-  folga:     "F",
+  trabalho:  "TR",
+  folga:     "FO",
   freela:    "FR",
-  comp:      "C",
-  comp_trab: "CT",
+  comp:      "FC",
+  comp_trab: "TC",
   ferias:    "FE",
   falta_j:   "FJ",
   falta_i:   "FI",
@@ -37,8 +37,8 @@ const STATUS_LABEL: Record<ScheduleStatus, string> = {
   trabalho:  "Trabalho",
   folga:     "Folga",
   freela:    "Freela",
-  comp:      "Compensar",
-  comp_trab: "Comp. trabalhada",
+  comp:      "Folga por compensação",
+  comp_trab: "Trabalho por compensação",
   ferias:    "Férias",
   falta_j:   "Falta justificada",
   falta_i:   "Falta injustificada",
