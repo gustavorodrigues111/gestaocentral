@@ -1467,15 +1467,10 @@ function Celula({
       ⚡
     </span>
   ) : null;
-  const atrasoBadge = atraso ? (
-    <span
-      className="absolute -bottom-1 -left-1 text-[9px] leading-none px-0.5 rounded bg-rose-500 text-white font-bold border border-rose-600 shadow-sm"
-      style={{ minWidth: "11px", textAlign: "center" }}
-      title={`🕐 Atraso de ${atraso.minutos}min${atraso.previsto ? ` (previsto ${atraso.previsto}, chegou ${atraso.realizado || "?"})` : ""} — auto-registrado na Trilha`}
-    >
-      🕐
-    </span>
-  ) : null;
+  // 🕐 Badge de atraso OCULTADO temporariamente — os horários de atraso ainda não
+  // estão batendo certo e estavam gerando confusão na Escala. Plumbing mantida
+  // (prop `atraso` + tooltip) pra retomar no futuro; só não renderiza o ícone.
+  const atrasoBadge = null;
   const ajusteAtrasoTitle = [
     ajuste && ajuste.origem === "ponto_auto"
       ? `⚡ Ajuste automático: ${ajuste.motivo ? AJUSTE_MOTIVO_LABEL[ajuste.motivo] : "—"}${ajuste.observacao ? ` (${ajuste.observacao})` : ""}${ajuste.ajustadoPorNome ? ` · por ${ajuste.ajustadoPorNome}` : ""}${ajuste.ajustadoEm ? ` em ${new Date(ajuste.ajustadoEm).toLocaleString("pt-BR")}` : ""}`
