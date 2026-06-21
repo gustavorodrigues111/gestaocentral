@@ -38,8 +38,11 @@ function resolveToken(restaurantKey: string): { token: string } | { error: strin
   return { error: "Integração Sólides não configurada (SOLIDES_TOKENS).", status: 500 };
 }
 
+// 00:00 America/Sao_Paulo (UTC-3) em ms — via Date.UTC pra não depender do
+// parser de string (offset "-0300" sem dois-pontos vira Invalid Date no Node).
 function ymdToMs(d: string): number {
-  return new Date(`${d}T00:00:00.000-0300`).getTime();
+  const [y, m, dd] = d.split("-").map(Number);
+  return Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
 }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {

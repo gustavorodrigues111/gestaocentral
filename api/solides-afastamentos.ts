@@ -46,9 +46,13 @@ function resolveToken(restaurantKey: string): { token: string } | { error: strin
   return { error: "Integração Sólides não configurada (SOLIDES_TOKENS).", status: 500 };
 }
 
-// YYYY-MM-DD → epoch ms (America/Sao_Paulo, UTC-3 fixo).
+// YYYY-MM-DD → epoch ms (America/Sao_Paulo, UTC-3) via Date.UTC (offset "-0300"
+// sem dois-pontos vira Invalid Date no parser de string do Node).
 function ymdToMs(d: string, fimDoDia: boolean): number {
-  return new Date(`${d}T${fimDoDia ? "23:59:59" : "00:00:00"}.000-0300`).getTime();
+  const [y, m, dd] = d.split("-").map(Number);
+  return fimDoDia
+    ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) // 23:59:59 SP = 02:59:59 UTC do dia seguinte
+    : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);      // 00:00 SP = 03:00 UTC
 }
 
 async function solidesFetch(url: string, init: RequestInit, token: string): Promise<unknown> {
