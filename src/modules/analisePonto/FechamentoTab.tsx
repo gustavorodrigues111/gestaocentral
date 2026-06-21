@@ -6,9 +6,9 @@
 //  O "Fechar folha do empregado" (gravar na praticada) entra no Passo 2.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
+import type { AjusteEscalaMeta, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
 import { fetchRoster, fetchEspelhoPdf } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
@@ -26,6 +26,18 @@ const STATUS_OPCOES: Array<{ id: ScheduleStatus; label: string }> = [
   { id: "falta_i", label: "Falta injustificada" },
 ];
 const STATUS_LABEL: Record<string, string> = Object.fromEntries(STATUS_OPCOES.map((o) => [o.id, o.label]));
+
+// Mesmas cores da Escala — sigla (fundo sólido) + tom claro pra sombrear a linha.
+const STATUS_VIS: Record<ScheduleStatus, { short: string; badge: string; row: string }> = {
+  trabalho:  { short: "TR", badge: "bg-emerald-500 text-white", row: "bg-emerald-50 dark:bg-emerald-950/20" },
+  folga:     { short: "FO", badge: "bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200", row: "bg-gray-100/70 dark:bg-gray-800/40" },
+  freela:    { short: "FR", badge: "bg-purple-500 text-white", row: "bg-purple-50 dark:bg-purple-950/20" },
+  comp:      { short: "FC", badge: "bg-gray-500 text-white", row: "bg-slate-100 dark:bg-slate-800/40" },
+  comp_trab: { short: "TC", badge: "bg-emerald-800 text-white", row: "bg-emerald-100/70 dark:bg-emerald-900/30" },
+  ferias:    { short: "FE", badge: "bg-sky-500 text-white", row: "bg-sky-50 dark:bg-sky-950/20" },
+  falta_j:   { short: "FJ", badge: "bg-rose-300 text-rose-900", row: "bg-rose-50 dark:bg-rose-950/20" },
+  falta_i:   { short: "FI", badge: "bg-rose-600 text-white", row: "bg-rose-100/70 dark:bg-rose-900/30" },
+};
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 const pad = (n: number) => String(n).padStart(2, "0");
@@ -69,12 +81,13 @@ type DiaEspelho = {
 };
 
 export function FechamentoTab({
-  rid, activeRestaurant, empregados, mesInicial,
+  rid, activeRestaurant, empregados, mesInicial, por,
 }: {
   rid: string;
   activeRestaurant: Restaurant;
   empregados: Empregado[];
   mesInicial: string; // YYYY-MM
+  por: { id: string; nome: string };
 }) {
   const [mes, setMes] = useState(mesInicial);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
@@ -86,6 +99,8 @@ export function FechamentoTab({
   const [edits, setEdits] = useState<Record<number, Record<string, ScheduleStatus>>>({});
   const [pdf, setPdf] = useState<{ url: string; nome: string } | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [selDias, setSelDias] = useState<Set<string>>(new Set());
+  const [salvando, setSalvando] = useState(false);
 
   const shortCode = activeRestaurant.shortCode || "";
   const empAppPorCpf = useMemo(() => {
@@ -153,8 +168,17 @@ export function FechamentoTab({
     });
   }, [selEmp, colaboradores, escala, punches, mes]);
 
+  const colSel = colaboradores.find((c) => c.solId === selEmp);
+  const appIdSel = colSel?.emp?.id;
+  const previstaFechada = !!escala?.previstaFechadaEm;
+  const mesEncerrado = !!escala?.fechadoEm;
+  const realAjustesSel = appIdSel ? escala?.realAjustes?.[appIdSel] : undefined;
+  const fechadoEm = (date: string) => realAjustesSel?.[date]?.origem === "solides_sync";
+
+  // Status exibido: dia fechado mostra o que foi gravado na praticada; senão, edição/sugestão.
   const statusDe = (date: string): ScheduleStatus | undefined => {
     if (!selEmp) return undefined;
+    if (appIdSel && fechadoEm(date)) return escala?.real?.[appIdSel]?.[date];
     const ed = edits[selEmp]?.[date];
     if (ed) return ed;
     return espelho.find((d) => d.date === date)?.sugerido;
@@ -163,6 +187,61 @@ export function FechamentoTab({
     if (!selEmp) return;
     setEdits((cur) => ({ ...cur, [selEmp]: { ...(cur[selEmp] || {}), [date]: s } }));
   };
+
+  // limpa seleção ao trocar de colaborador/mês
+  useEffect(() => { setSelDias(new Set()); }, [selEmp, mes]);
+
+  const toggleDia = (date: string) => setSelDias((s) => {
+    const n = new Set(s); n.has(date) ? n.delete(date) : n.add(date); return n;
+  });
+  const diasAbertos = espelho.filter((d) => !fechadoEm(d.date)).map((d) => d.date);
+  const todosAbertosSel = diasAbertos.length > 0 && diasAbertos.every((d) => selDias.has(d));
+  const totalFechados = espelho.filter((d) => fechadoEm(d.date)).length;
+
+  async function fecharDias() {
+    if (!selEmp || !appIdSel) return;
+    const dias = [...selDias].filter((d) => !fechadoEm(d) && statusDe(d));
+    if (dias.length === 0) return;
+    if (!previstaFechada) { setErro("Feche a PREVISTA do mês primeiro (no módulo de Escala)."); return; }
+    if (mesEncerrado) { setErro("Mês já encerrado — reabra no módulo de Escala pra editar a praticada."); return; }
+    if (!window.confirm(`Fechar ${dias.length} dia(s) de ${colSel?.nome}?\n\nSobe pra escala PRATICADA do mês.`)) return;
+    setErro(""); setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      const updates: Record<string, unknown> = { updatedAt: now };
+      for (const d of dias) {
+        const status = statusDe(d);
+        if (!status) continue;
+        const ant = escala?.real?.[appIdSel]?.[d];
+        updates[`real.${appIdSel}.${d}`] = status;
+        const meta: AjusteEscalaMeta = {
+          origem: "solides_sync", ajustadoEm: now, ajustadoPor: por.id, ajustadoPorNome: por.nome,
+          ...(ant ? { statusAnterior: ant } : {}),
+        };
+        updates[`realAjustes.${appIdSel}.${d}`] = meta;
+      }
+      await updateDoc(doc(db, "escalas", `${rid}_${mes}`), updates);
+      setSelDias(new Set());
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao fechar os dias.");
+    } finally { setSalvando(false); }
+  }
+
+  async function reabrirDia(date: string) {
+    if (!appIdSel) return;
+    if (!window.confirm(`Reabrir ${date.split("-").reverse().join("/")}? Volta a ficar editável (o valor já gravado permanece até você fechar de novo).`)) return;
+    setSalvando(true);
+    try {
+      await updateDoc(doc(db, "escalas", `${rid}_${mes}`), {
+        [`realAjustes.${appIdSel}.${date}`]: deleteField(),
+        updatedAt: new Date().toISOString(),
+      });
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao reabrir o dia.");
+    } finally { setSalvando(false); }
+  }
 
   async function verPdf() {
     if (!selEmp) return;
@@ -185,8 +264,6 @@ export function FechamentoTab({
     if (pdf) URL.revokeObjectURL(pdf.url);
     setPdf(null);
   }
-
-  const colSel = colaboradores.find((c) => c.solId === selEmp);
 
   return (
     <div className="space-y-4">
@@ -216,7 +293,7 @@ export function FechamentoTab({
           )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">
-          <strong>Passo 1 (revisão):</strong> o status sugerido vem do ponto + prevista; edite o que precisar. Ainda <strong>não grava</strong> na escala — o "Fechar folha" entra no próximo passo.
+          O status sugerido vem do ponto + prevista; edite o que precisar. Marque os dias conferidos e <strong>feche</strong> — eles sobem pra escala <strong>praticada</strong> e ficam travados (controle do que já foi apurado).
         </p>
       </div>
 
@@ -228,28 +305,61 @@ export function FechamentoTab({
         <div className="text-center text-sm text-gray-400 py-12">Escolha um colaborador pra revisar o espelho.</div>
       ) : (
         <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-900 dark:text-gray-100">
-            {colSel?.nome} — {mes.split("-").reverse().join("/")}
-            {!colSel?.emp && <span className="ml-2 text-[10px] text-amber-600">sem empregado vinculado no app (prevista não aparece)</span>}
+          <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
+            <div className="font-bold text-sm text-gray-900 dark:text-gray-100">
+              {colSel?.nome} — {mes.split("-").reverse().join("/")}
+              <span className="ml-2 text-[11px] font-normal text-gray-400">{totalFechados}/{espelho.length} fechados</span>
+            </div>
+            {!colSel?.emp && <span className="text-[10px] text-amber-600">sem empregado vinculado no app — não dá pra fechar</span>}
+            {colSel?.emp && !previstaFechada && <span className="text-[10px] text-amber-600">feche a prevista do mês na Escala pra poder fechar a folha</span>}
+            {colSel?.emp && previstaFechada && (
+              <div className="ml-auto flex items-center gap-2">
+                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                  <input type="checkbox" checked={todosAbertosSel} onChange={() => setSelDias(todosAbertosSel ? new Set() : new Set(diasAbertos))} className="w-4 h-4 accent-indigo-600" />
+                  Selecionar abertos
+                </label>
+                <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                  {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
+                </button>
+              </div>
+            )}
           </header>
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
             {espelho.map((d) => {
               const dataBR = d.date.split("-").reverse().join("/");
               const wd = DIAS_PT[weekdayOf(d.date)];
-              const editado = edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;
+              const st = statusDe(d.date);
+              const fechado = fechadoEm(d.date);
+              const editado = !fechado && edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;
+              const vis = st ? STATUS_VIS[st] : null;
               return (
-                <div key={d.date} className="px-4 py-2 flex items-center gap-3 text-sm">
-                  <div className="w-28 shrink-0 text-gray-500 tabular-nums">{dataBR} <span className="text-gray-400">({wd})</span></div>
+                <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-sm ${vis?.row || ""}`}>
+                  {colSel?.emp && previstaFechada && !fechado ? (
+                    <input type="checkbox" checked={selDias.has(d.date)} onChange={() => toggleDia(d.date)}
+                      className="w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
+                  ) : (
+                    <span className="w-4 shrink-0 text-center text-[11px]">{fechado ? "🔒" : ""}</span>
+                  )}
+                  {vis && <span className={`shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${vis.badge}`}>{vis.short}</span>}
+                  <div className="w-24 shrink-0 text-gray-600 dark:text-gray-300 tabular-nums">{dataBR} <span className="text-gray-400">({wd})</span></div>
                   <div className="min-w-0 flex-1 text-xs text-gray-600 dark:text-gray-300">
                     {d.worked ? <span className="tabular-nums">{d.marks}</span>
                       : d.afastamento ? <span className="text-indigo-700 dark:text-indigo-300">{d.afastamento}</span>
                       : <span className="text-gray-400">sem batida</span>}
                     {d.prevista && <span className="ml-2 text-[10px] text-gray-400">prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
                   </div>
-                  <select value={statusDe(d.date) || ""} onChange={(e) => setStatus(d.date, e.target.value as ScheduleStatus)}
-                    className={`h-8 px-2 text-xs rounded-md border bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 ${editado ? "border-indigo-400 ring-1 ring-indigo-300" : "border-gray-300 dark:border-gray-700"}`}>
-                    {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                  </select>
+                  {fechado ? (
+                    <button type="button" disabled={salvando || mesEncerrado} onClick={() => void reabrirDia(d.date)}
+                      className="shrink-0 text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40">
+                      ↩︎ reabrir
+                    </button>
+                  ) : (
+                    <select value={st || ""} onChange={(e) => setStatus(d.date, e.target.value as ScheduleStatus)}
+                      className={`h-8 px-2 text-xs rounded-md border bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 ${editado ? "border-indigo-400 ring-1 ring-indigo-300" : "border-gray-300 dark:border-gray-700"}`}>
+                      {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                    </select>
+                  )}
                 </div>
               );
             })}

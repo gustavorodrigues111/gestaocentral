@@ -527,7 +527,8 @@ function AnalisePontoInner() {
       {tab === "escalas" && <EscalasComparacaoTab rid={rid} activeRestaurant={activeRestaurant} />}
 
       {tab === "fechamento" && (
-        <FechamentoTab rid={rid} activeRestaurant={activeRestaurant} empregados={empregados} mesInicial={inicio.slice(0, 7)} />
+        <FechamentoTab rid={rid} activeRestaurant={activeRestaurant} empregados={empregados} mesInicial={inicio.slice(0, 7)}
+          por={{ id: me?.id || "", nome: me?.nome || "?" }} />
       )}
 
       {tab === "inconsist" && <>
