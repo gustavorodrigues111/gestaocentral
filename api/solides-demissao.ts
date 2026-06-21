@@ -67,10 +67,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const token = tokenResult.token;
 
-  // Payload best-guess — campos prováveis do DismissDTO.
+  // DTO real (descoberto pelo erro 400): resignationDateInMillis (NotNull).
+  // Há um 2º campo obrigatório começando com "dism" ainda a confirmar.
   const payload: Record<string, unknown> = {
     employeeId: body.employeeId,
-    dismissalDate: ymdToMs(body.dismissalDate),
+    resignationDateInMillis: ymdToMs(body.dismissalDate),
   };
   if (body.reason) payload.reason = body.reason;
   if (body.noticeType) payload.noticeType = body.noticeType;
@@ -88,7 +89,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const text = await resp.text();
     let json: unknown = null;
     try { json = text ? JSON.parse(text) : null; } catch { json = text; }
-    if (!resp.ok) throw new HttpError(502, `Sólides retornou HTTP ${resp.status}. ${String(text).slice(0, 300)}`);
+    if (!resp.ok) throw new HttpError(502, `Sólides retornou HTTP ${resp.status}. ${String(text).slice(0, 900)}`);
     res.status(200).json({ ok: true, resultado: json, por: usuario.email || usuario.uid });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") { res.status(504).json({ error: "Timeout na demissão (Sólides)." }); return; }

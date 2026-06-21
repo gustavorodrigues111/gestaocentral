@@ -55,7 +55,7 @@ export function DemitirSolidesModal({
         <p className="text-[11px] text-amber-700 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
           ⚠️ Demissão na Sólides é <strong>irreversível</strong> por aqui (reativar seria manual na plataforma deles).
         </p>
-        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5">{erro}</div>}
+        {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all">{erro}</div>}
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Último dia trabalhado</label>
