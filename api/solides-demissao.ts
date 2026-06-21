@@ -77,12 +77,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   // etc); o Jackson deles ignora os que não existirem e usa o que casar.
   const dto: Record<string, unknown> = {
     resignationDateInMillis: ms,
-    resignation_date_in_millis: ms,
-    resignationDate: ms,
-    resignationDateMillis: ms,
-    employeeId: body.employeeId,
+    tangerinoId: body.employeeId,
   };
-  const qs = new URLSearchParams({ employeeId: String(body.employeeId) });
+  // O empregado é identificado por tangerinoId (não employeeId) — erro TGRO0006.
+  const qs = new URLSearchParams({ tangerinoId: String(body.employeeId) });
   const url = `${EMPLOYER}/employee/dismiss?${qs.toString()}`;
 
   const ctrl = new AbortController();
