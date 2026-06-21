@@ -42,6 +42,12 @@ const STATUS_VIS: Record<ScheduleStatus, { short: string; badge: string; row: st
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 const pad = (n: number) => String(n).padStart(2, "0");
 const DIAS_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+function nomeMes(ym: string): string {
+  const [y, m] = ym.split("-").map(Number);
+  const n = MESES_PT[m - 1] || "";
+  return `${n.charAt(0).toUpperCase()}${n.slice(1)}/${y}`;
+}
 const fmtH = (ms?: number) => { if (!ms) return ""; const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 function diasDoMes(ym: string): string[] {
@@ -103,6 +109,16 @@ export function FechamentoTab({
   const [salvando, setSalvando] = useState(false);
 
   const shortCode = activeRestaurant.shortCode || "";
+  // Opções do seletor de mês (últimos 18 meses + o mês atual selecionado).
+  const mesesOpcoes = useMemo(() => {
+    const out: string[] = [];
+    const now = new Date();
+    let y = now.getFullYear();
+    let m = now.getMonth() + 1;
+    for (let i = 0; i < 18; i++) { out.push(`${y}-${pad(m)}`); m--; if (m < 1) { m = 12; y--; } }
+    if (!out.includes(mes)) out.unshift(mes);
+    return out;
+  }, [mes]);
   const empAppPorCpf = useMemo(() => {
     const m = new Map<string, Empregado>();
     for (const e of empregados) { const c = soDigitos(e.cpf); if (c) m.set(c, e); }
@@ -272,8 +288,10 @@ export function FechamentoTab({
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1 shrink-0">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Mês</label>
-            <input type="month" value={mes} onChange={(e) => { setSelEmp(""); setMes(e.target.value); }}
-              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+            <select value={mes} onChange={(e) => { setSelEmp(""); setMes(e.target.value); }}
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+              {mesesOpcoes.map((ym) => <option key={ym} value={ym}>{nomeMes(ym)}</option>)}
+            </select>
           </div>
           <div className="flex flex-col gap-1 min-w-0 flex-1">
             <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Colaborador</label>
@@ -307,7 +325,7 @@ export function FechamentoTab({
         <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
             <div className="font-bold text-sm text-gray-900 dark:text-gray-100">
-              {colSel?.nome} — {mes.split("-").reverse().join("/")}
+              {colSel?.nome} — {nomeMes(mes)}
               <span className="ml-2 text-[11px] font-normal text-gray-400">{totalFechados}/{espelho.length} fechados</span>
             </div>
             {!colSel?.emp && <span className="text-[10px] text-amber-600">sem empregado vinculado no app — não dá pra fechar</span>}
