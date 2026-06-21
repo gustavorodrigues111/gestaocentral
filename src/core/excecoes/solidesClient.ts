@@ -36,9 +36,11 @@ export async function fetchPunches(
   startDate: string,
   endDate: string,
   restaurantKey?: string,
+  showFired = false,
 ): Promise<FetchPunchesResult> {
   const params = new URLSearchParams({ startDate, endDate });
   if (restaurantKey) params.set("restaurant", restaurantKey);
+  if (showFired) params.set("showFired", "true");
   const url = `/api/solides-punches?${params.toString()}`;
 
   let resp: Response;

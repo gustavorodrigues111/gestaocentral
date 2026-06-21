@@ -122,8 +122,9 @@ async function fetchPage(
   startMs: number,
   endMs: number,
   page: number,
+  showFired: boolean,
 ): Promise<SolidesPage> {
-  const url = `${PUNCH_API}?startDate=${startMs}&endDate=${endMs}&page=${page}&size=${PAGE_SIZE}`;
+  const url = `${PUNCH_API}?startDate=${startMs}&endDate=${endMs}&page=${page}&size=${PAGE_SIZE}${showFired ? "&showFired=true" : ""}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
@@ -180,6 +181,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const startDate = String(req.query.startDate ?? "");
   const endDate = String(req.query.endDate ?? "");
+  const showFired = String(req.query.showFired ?? "false") === "true";
   const startMs = ymdToMs(startDate, false);
   const endMs = ymdToMs(endDate, true);
 
@@ -207,7 +209,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     // `last: true` ou uma página parcial (< PAGE_SIZE). Dedupe por id remove
     // as repetições antes de devolver pro front.
     while (page < MAX_PAGES) {
-      const data = await fetchPage(token, startMs, endMs, page);
+      const data = await fetchPage(token, startMs, endMs, page, showFired);
       const content = Array.isArray(data.content) ? data.content : [];
       punches.push(...content);
       pageSizes.push(content.length);

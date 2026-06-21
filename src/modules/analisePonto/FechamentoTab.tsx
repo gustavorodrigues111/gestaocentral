@@ -143,7 +143,7 @@ export function FechamentoTab({
       const [ros, rosFired, pun, escSnap] = await Promise.all([
         fetchRoster(shortCode).catch(() => []),
         fetchRoster(shortCode, true).catch(() => []),  // demitidos (p/ fechar quem saiu no meio do mês)
-        fetchPunches(ini, fim, shortCode).then((r) => r.punches).catch(() => []),
+        fetchPunches(ini, fim, shortCode, true).then((r) => r.punches).catch(() => []),  // inclui demitidos
         getDoc(doc(db, "escalas", `${rid}_${mes}`)),
       ]);
       const mapR = new Map<number, PontoColaborador>();
