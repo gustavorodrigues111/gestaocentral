@@ -22,9 +22,11 @@ const MOTIVOS: { id: string; label: string }[] = [
 type Props = {
   pessoa: Pessoa;
   onClose: () => void;
+  onInativada?: () => void;  // chamado no SUCESSO (pra encadear, ex: demitir na Sólides)
+  titulo?: string;
 };
 
-export function InativarModal({ pessoa, onClose }: Props) {
+export function InativarModal({ pessoa, onClose, onInativada, titulo }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
 
@@ -132,7 +134,7 @@ export function InativarModal({ pessoa, onClose }: Props) {
         }
       }
 
-      onClose();
+      (onInativada || onClose)();
     } catch (e) {
       console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");
@@ -142,7 +144,7 @@ export function InativarModal({ pessoa, onClose }: Props) {
   }
 
   return (
-    <Modal title={`Inativar — ${pessoa.nome}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={titulo || `Inativar — ${pessoa.nome}`} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300">
           ⚠ Ao inativar:

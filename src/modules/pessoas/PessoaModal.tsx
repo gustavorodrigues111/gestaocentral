@@ -159,6 +159,9 @@ function TabIdentidade({
   const podeDemitirSolides = !!me?.isMaster || can("demissao", "demitirSolides");
   const shortCode = restaurants.find((r) => r.id === restaurantId)?.shortCode || "";
   const [showDemitirSolides, setShowDemitirSolides] = useState(false);
+  // Vínculo CLT/Estagiário → "Demitir" (desligamento). Demais → "Inativar".
+  const vincPessoa = pessoa?.vinculos?.[restaurantId];
+  const ehDesligavel = vincPessoa === "clt" || vincPessoa === "estagiario";
 
   // Detecção de pessoa duplicada por CPF — quando user tenta criar nova com
   // CPF que já existe (em qualquer restaurante). Oferece vincular em vez de
@@ -399,7 +402,7 @@ function TabIdentidade({
               )}
               {podeDemitir && (
                 <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
-                  🚫 Inativar pessoa
+                  {ehDesligavel ? "👋 Demitir" : "🚫 Inativar pessoa"}
                 </Button>
               )}
             </>
@@ -460,7 +463,17 @@ function TabIdentidade({
       {showInativar && pessoa && (
         <InativarModal
           pessoa={pessoa}
-          onClose={() => { setShowInativar(false); onClose(); }}
+          titulo={ehDesligavel ? `Demitir — ${pessoa.nome}` : undefined}
+          onClose={() => setShowInativar(false)}
+          onInativada={() => {
+            setShowInativar(false);
+            // CLT/estagiário: encadeia o box "Demitir na Sólides". Demais: fecha.
+            if (ehDesligavel && podeDemitirSolides && pessoa.cpf && !pessoa.solidesDemissao) {
+              setShowDemitirSolides(true);
+            } else {
+              onClose();
+            }
+          }}
         />
       )}
       {showDemitirSolides && pessoa && (
