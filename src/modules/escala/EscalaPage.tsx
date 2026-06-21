@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -50,6 +50,7 @@ export function EscalaPage() {
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
+  const navigate = useNavigate();
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
   const podeUsar = canUse(me, rid, "escala");
   const podeConfig = canConfig(me, rid, "escala");
@@ -326,17 +327,12 @@ export function EscalaPage() {
     const isMaster = !!me?.isMaster;
 
     // ── BLOQUEIOS DO LIFECYCLE ──
-    // Praticada só edita após prevista fechada
-    if (versao === "real" && !escala?.previstaFechadaEm) {
-      alert("🔒 Pra editar a Praticada, primeiro feche a Prevista do mês.");
-      return [];
-    }
-    // Praticada só edita em mês corrente/passado — não faz sentido pintar
-    // "o que aconteceu" em mês que ainda não começou.
-    if (versao === "real" && isMesFuturo) {
+    // Praticada NÃO é mais editável pela tela de Escala — a edição da realidade
+    // do mês passou a ser exclusiva do Fechamento de folha (Análise de Ponto).
+    if (versao === "real") {
       alert(
-        "⏰ Esse mês ainda não começou — não dá pra editar a Praticada.\n\n" +
-        "Praticada registra o que de fato aconteceu. Pra mês futuro, ajuste a Prevista.",
+        "✏️ A edição da Praticada agora é pelo Fechamento de folha de ponto.\n\n" +
+        "Abra Análise de Ponto → Fechamento pra ajustar os dias e fechar a praticada do mês.",
       );
       return [];
     }
@@ -569,9 +565,11 @@ export function EscalaPage() {
   //   - Praticada com prevista AINDA aberta → trava (precisa fechar prevista primeiro)
   const podeEditar = podeConfig
     && !fechada
+    // Praticada é READ-ONLY aqui — a edição da realidade do mês passou a ser só
+    // pelo Fechamento de folha (Análise de Ponto). A Prevista continua editável.
+    && versao !== "real"
     && !(versao === "prevista" && previstaFechada)
-    && !(versao === "prevista" && !isMesFuturo && !me?.isMaster && !previstaFechada)
-    && !(versao === "real" && !previstaFechada);
+    && !(versao === "prevista" && !isMesFuturo && !me?.isMaster && !previstaFechada);
 
   return (
     <div>
@@ -626,6 +624,17 @@ export function EscalaPage() {
             ✅ Praticada{!previstaFechada && <span className="ml-1 text-[10px]">🔒</span>}
           </button>
         </div>
+
+        {versao === "real" && !fechada && (
+          <button
+            type="button"
+            onClick={() => navigate(`/r/${rid}/analise-ponto?tab=fechamento`)}
+            title="A edição da praticada agora é no Fechamento de folha de ponto"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white"
+          >
+            ✏️ Editar no Fechamento de folha →
+          </button>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           {usaMultiUnidades && unidadesAtivas.length > 0 && (
@@ -1022,6 +1031,11 @@ function BannerStatus({
         É a fonte usada pra calcular gorjetas e pra detectar divergências de VT (dias a devolver
         ou a receber). No fim do mês, trave ela com <strong>🔒 Fechar praticada</strong> pra consolidar
         gorjetas e VT.
+      </p>
+      <p className="text-amber-700 dark:text-amber-300">
+        ✏️ <strong>Aqui a praticada é só leitura.</strong> Os ajustes do dia-a-dia (falta, atestado,
+        troca, hora extra) são feitos no <strong>Fechamento de folha de ponto</strong> (Análise de Ponto),
+        que cruza com as batidas da Sólides e sobe pra cá.
       </p>
     </PainelExplicativo>
   );

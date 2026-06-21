@@ -75,7 +75,6 @@ import {
   registrarEnvioLote,
   type LoteRascunhoDoc,
 } from "../../core/excecoes/loteRascunho";
-import { MotivoAjusteModal } from "./MotivoAjusteModal";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
 
@@ -225,15 +224,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   // Status do DIA (empregado × data) — listener real-time pro mês inteiro.
   // Não bloqueia exibição: começa vazio e popula assim que Firestore responde.
   const [statusDiaMap, setStatusDiaMap] = useState<Map<string, PontoDiaStatusDoc>>(new Map());
-  // Modal "Resolver na escala" aberto (apontamento clicado)
-  const [resolverNaEscala, setResolverNaEscala] = useState<{
-    empregadoId: string;
-    empregadoNome: string;
-    data: string;
-    apontamentoId?: string;
-    apontamentoRuleId?: string;
-    contexto: "ausencia" | "presenca";
-  } | null>(null);
   useEffect(() => {
     if (!rid) { setStatusDiaMap(new Map()); return; }
     const u = ouvirStatusDoMes(rid, anoMes.ano, anoMes.mes, (docs) => {
@@ -2595,17 +2585,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   batidasPorCpfData={displayedResult?.batidasPorCpfData}
                   onApagarNota={apagarNotaInterna}
                   onAdicionarNotaApontamento={(exc, texto) => adicionarNotaApontamento(grupo.empregadoId, grupo.nome, exc, texto)}
-                  onResolverNaEscala={(exc) => {
-                    const ehAusencia = exc.ruleId === "faltaSemAjuste";
-                    setResolverNaEscala({
-                      empregadoId: grupo.empregadoId,
-                      empregadoNome: grupo.nome,
-                      data: exc.date,
-                      apontamentoId: apontamentosPorChave.get(`${grupo.empregadoId}_${exc.date}_${exc.ruleId}`)?.id,
-                      apontamentoRuleId: exc.ruleId,
-                      contexto: ehAusencia ? "ausencia" : "presenca",
-                    });
-                  }}
                   statusDiaMap={statusDiaMap}
                   statusApontamentoMap={statusApontamentoMap}
                   salvandoApontamento={salvandoApontamento}
@@ -2691,55 +2670,6 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             />
           </div>
         </div>
-      )}
-      {resolverNaEscala && me && (
-        <MotivoAjusteModal
-          rid={rid}
-          empregadoId={resolverNaEscala.empregadoId}
-          empregadoNome={resolverNaEscala.empregadoNome}
-          data={resolverNaEscala.data}
-          apontamentoId={resolverNaEscala.apontamentoId}
-          apontamentoRuleId={resolverNaEscala.apontamentoRuleId}
-          contexto={resolverNaEscala.contexto}
-          me={me}
-          onClose={() => setResolverNaEscala(null)}
-          onSalvo={async () => {
-            // Após o modal aplicar na escala, marca o apontamento como ciência
-            // e cria nota interna documentando a resolução. Resolve a semana
-            // a partir da DATA do apontamento (não há mais semana ativa).
-            if (!resolverNaEscala.apontamentoId) return;
-            const wk = semanaInfoParaData(resolverNaEscala.data);
-            if (!wk) {
-              console.warn(`[ponto] semana não encontrada pra data ${resolverNaEscala.data}`);
-              return;
-            }
-            try {
-              await marcarApontamentoCiencia(
-                rid,
-                wk.weekStart,
-                wk.weekEnd,
-                resolverNaEscala.apontamentoId,
-                me,
-              );
-              await adicionarNotaInterna(
-                rid,
-                wk.weekStart,
-                wk.weekEnd,
-                {
-                  empregadoId: resolverNaEscala.empregadoId,
-                  empregadoNome: resolverNaEscala.empregadoNome,
-                  texto: `✓ Resolvido via ajuste de escala em ${new Date(resolverNaEscala.data + "T12:00:00").toLocaleDateString("pt-BR")}`,
-                  origem: "ciencia",
-                  apontamentoIds: [resolverNaEscala.apontamentoId],
-                },
-                me,
-              );
-              await recarregarCaches();
-            } catch (e) {
-              console.warn("Erro pós resolver na escala:", e);
-            }
-          }}
-        />
       )}
     </div>
   );
@@ -3186,7 +3116,6 @@ function ColaboradorBlock({
   batidasPorCpfData,
   onApagarNota,
   onAdicionarNotaApontamento,
-  onResolverNaEscala,
   statusDiaMap,
   statusApontamentoMap,
   salvandoApontamento,
@@ -3211,7 +3140,6 @@ function ColaboradorBlock({
   batidasPorCpfData?: Record<string, Record<string, string>>;
   onApagarNota: (notaId: string) => void;
   onAdicionarNotaApontamento: (exc: ExceptionRecord, texto: string) => Promise<void> | void;
-  onResolverNaEscala?: (exc: ExceptionRecord) => void;
   statusDiaMap?: Map<string, PontoDiaStatusDoc>;
   statusApontamentoMap: Map<string, PontoApontamentoStatusDoc>;
   salvandoApontamento: Set<string>;
@@ -4003,18 +3931,6 @@ function ColaboradorBlock({
                             title="Reabrir — volta o apontamento pra aberto"
                           >
                             ↩ reabrir
-                          </button>
-                        )}
-                        {/* "📋 Resolver na escala" só pra ausência/presença divergente */}
-                        {podeAnotar && !isTerminal && onResolverNaEscala
-                          && (e.ruleId === "faltaSemAjuste" || e.ruleId === "marcacaoForaDaEscala") && (
-                          <button
-                            type="button"
-                            onClick={() => onResolverNaEscala(e)}
-                            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap font-medium"
-                            title="Resolver na escala — abre seletor de motivo e aplica na escala praticada"
-                          >
-                            📋 Resolver na escala
                           </button>
                         )}
                         {/* "💬 + nota" — adiciona nota interna ao apontamento.

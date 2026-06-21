@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { AREAS, type Area, type Cargo, type Empregado, type Pessoa } from "../../core/types";
@@ -253,7 +253,11 @@ function AnalisePontoInner() {
   const [selAprov, setSelAprov] = useState<Set<number>>(new Set());
   const [decidindo, setDecidindo] = useState<number | null>(null); // punchId em decisão
   const [decidindoLote, setDecidindoLote] = useState(false);
-  const [tab, setTab] = useState<"inconsist" | "fechamento" | "escalas">("inconsist");
+  const [searchParams] = useSearchParams();
+  const tabInicial = searchParams.get("tab");
+  const [tab, setTab] = useState<"inconsist" | "fechamento" | "escalas">(
+    tabInicial === "fechamento" || tabInicial === "escalas" ? tabInicial : "inconsist",
+  );
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
   const [now, setNow] = useState(() => Date.now());
@@ -507,7 +511,7 @@ function AnalisePontoInner() {
 
   const tabsDisp = ([
     { id: "inconsist", label: "⚠️ Inconsistências" },
-    podeFechar ? { id: "fechamento", label: "📄 Fechamento de folha" } : null,
+    podeFechar ? { id: "fechamento", label: "📄 Fechamento de ponto" } : null,
     { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
   ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 

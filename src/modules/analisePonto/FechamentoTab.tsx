@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Fechamento de folha — Passo 1: REVISÃO (sem gravar na escala ainda).
+//  Fechamento de ponto — Passo 1: REVISÃO (sem gravar na escala ainda).
 //
 //  Mostra o espelho do mês por empregado, com status sugerido (cruza ponto +
 //  prevista), editável dia a dia, e permite VISUALIZAR o PDF do espelho (Sólides).
@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
-import { empregadoBatePonto } from "../../core/types";
+import { AREAS, empregadoBatePonto } from "../../core/types";
 import { fetchRoster, fetchEspelhoPdf } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
@@ -181,6 +181,44 @@ export function FechamentoTab({
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }, [roster, empAppPorCpf, mes]);
 
+  const hojeYmd = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }, []);
+
+  // Status de fechamento por colaborador (pros chips). "fechado" = todos os dias
+  // do contrato até hoje já fechados (solides_sync); "aberto" = ainda tem dias a
+  // fechar; "sem_vinculo" = sem empregado no app (não dá pra fechar).
+  const statusFechCol = useMemo(() => {
+    const map = new Map<number, "fechado" | "aberto" | "sem_vinculo">();
+    const dias = diasDoMes(mes);
+    for (const c of colaboradores) {
+      if (!c.emp) { map.set(c.solId, "sem_vinculo"); continue; }
+      const aj = escala?.realAjustes?.[c.emp.id] || {};
+      let pendentes = 0;
+      for (const d of dias) {
+        if (c.demissao && d > c.demissao) continue;  // fora do contrato
+        if (d > hojeYmd) continue;                   // futuro não conta
+        if ((aj[d] as AjusteEscalaMeta | undefined)?.origem === "solides_sync") continue;
+        pendentes++;
+      }
+      map.set(c.solId, pendentes === 0 ? "fechado" : "aberto");
+    }
+    return map;
+  }, [colaboradores, escala, mes, hojeYmd]);
+
+  // Colaboradores agrupados por área (coluna por área) pros chips.
+  const colaboradoresPorArea = useMemo(() => {
+    const groups = new Map<string, typeof colaboradores>();
+    for (const c of colaboradores) {
+      const area = c.emp?.cargoId ? cargoPorId.get(c.emp.cargoId)?.area : undefined;
+      const key = area || "Sem área";
+      const arr = groups.get(key) || []; arr.push(c); groups.set(key, arr);
+    }
+    const ordem: string[] = [...AREAS, "Sem área"];
+    return [...groups.entries()].sort((a, b) => {
+      const ia = ordem.indexOf(a[0]); const ib = ordem.indexOf(b[0]);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+  }, [colaboradores, cargoPorId]);
+
   // Espelho do empregado selecionado: 1 linha por dia do mês.
   const espelho = useMemo<DiaEspelho[]>(() => {
     if (!selEmp) return [];
@@ -328,16 +366,7 @@ export function FechamentoTab({
               {mesesOpcoes.map((ym) => <option key={ym} value={ym}>{nomeMes(ym)}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-1 min-w-0 flex-1">
-            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Colaborador</label>
-            <select value={selEmp} onChange={(e) => setSelEmp(e.target.value ? Number(e.target.value) : "")}
-              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-              <option value="">{colaboradores.length ? "— escolha —" : "— carregando —"}</option>
-              {colaboradores.map((c) => (
-                <option key={c.solId} value={c.solId}>{naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}{c.fired ? " (demitido)" : ""}{c.emp ? "" : " · sem vínculo no app"}</option>
-              ))}
-            </select>
-          </div>
+          <div className="flex-1" />
           {selEmp !== "" && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
@@ -346,9 +375,50 @@ export function FechamentoTab({
           )}
         </div>
         <p className="text-[11px] text-gray-500 mt-2">
-          O status sugerido vem do ponto + prevista; edite o que precisar. Marque os dias conferidos e <strong>feche</strong> — eles sobem pra escala <strong>praticada</strong> e ficam travados (controle do que já foi apurado).
+          Escolha um colaborador pelo chip. <span className="text-emerald-700 dark:text-emerald-300 font-semibold">✓ verde</span> = período fechado · <span className="text-amber-700 dark:text-amber-300 font-semibold">● amarelo</span> = ainda tem dias a fechar · <span className="text-gray-400 font-semibold">○ cinza</span> = sem vínculo no app.
         </p>
       </div>
+
+      {/* Chips por área — visão geral de quem já está fechado */}
+      {colaboradores.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {colaboradoresPorArea.map(([area, cols]) => {
+            const fechadosArea = cols.filter((c) => statusFechCol.get(c.solId) === "fechado").length;
+            return (
+              <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2.5">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{area}</span>
+                  <span className="text-[10px] text-gray-400 tabular-nums">{fechadosArea}/{cols.length}</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {cols.map((c) => {
+                    const st = statusFechCol.get(c.solId);
+                    const sel = c.solId === selEmp;
+                    const cls = st === "fechado"
+                      ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
+                      : st === "aberto"
+                      ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
+                      : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
+                    return (
+                      <button
+                        key={c.solId}
+                        type="button"
+                        onClick={() => setSelEmp(c.solId)}
+                        title={st === "sem_vinculo" ? "Sem vínculo no app — não dá pra fechar" : st === "fechado" ? "Período fechado" : "Ainda tem dias a fechar"}
+                        className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${sel ? "ring-2 ring-indigo-500" : ""}`}
+                      >
+                        <span className="shrink-0">{st === "fechado" ? "✓" : st === "aberto" ? "●" : "○"}</span>
+                        <span className="truncate flex-1">{naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
+                        {c.fired && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200">DEM</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
@@ -370,7 +440,7 @@ export function FechamentoTab({
               <span className="ml-2 text-[11px] font-normal text-gray-400">{totalFechados}/{espelho.length} fechados</span>
             </div>
             {!colSel?.emp && <span className="text-[10px] text-amber-600">sem empregado vinculado no app — não dá pra fechar</span>}
-            {colSel?.emp && !previstaFechada && <span className="text-[10px] text-amber-600">feche a prevista do mês na Escala pra poder fechar a folha</span>}
+            {colSel?.emp && !previstaFechada && <span className="text-[10px] text-amber-600">feche a prevista do mês na Escala pra poder fechar o ponto</span>}
             {colSel?.emp && previstaFechada && (
               <div className="ml-auto flex items-center gap-2">
                 <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
