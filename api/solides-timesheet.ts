@@ -61,7 +61,20 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const token = tokenResult.token;
 
-  const url = `${REPORT}/time-sheet?employeeId=${encodeURIComponent(employeeId)}&startDate=${startDate}&endDate=${endDate}`;
+  // Manda datas em YYYY-MM-DD E em millis + showFired (demitido) + identificadores
+  // — não sabemos os nomes exatos do report; os que casarem valem, o resto é ignorado.
+  const ymdMs = (d: string, end: boolean) => {
+    const [y, m, dd] = d.split("-").map(Number);
+    return end ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
+  };
+  const p = new URLSearchParams({
+    employeeId, tangerinoId: employeeId,
+    startDate, endDate,
+    startDateInMillis: String(ymdMs(startDate, false)),
+    endDateInMillis: String(ymdMs(endDate, true)),
+    showFired: "true",
+  });
+  const url = `${REPORT}/time-sheet?${p.toString()}`;
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
