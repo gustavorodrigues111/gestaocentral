@@ -61,20 +61,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   const token = tokenResult.token;
 
-  // Manda datas em YYYY-MM-DD E em millis + showFired (demitido) + identificadores
-  // — não sabemos os nomes exatos do report; os que casarem valem, o resto é ignorado.
-  const ymdMs = (d: string, end: boolean) => {
-    const [y, m, dd] = d.split("-").map(Number);
-    return end ? Date.UTC(y, m - 1, dd, 26, 59, 59, 999) : Date.UTC(y, m - 1, dd, 3, 0, 0, 0);
-  };
-  // CONFIRMADO: o /time-sheet devolve PDF em branco pra DEMITIDO (showFired não
-  // afeta o report, só o endpoint de ponto). Pra ativo funciona normal.
+  // statusEmployee=TODOS é o que faz o espelho do DEMITIDO vir preenchido — é o
+  // mesmo filtro "Status do colaborador" da tela web (capturado do request real
+  // report.tangerino.com.br/async-reports). Sem ele, demitido volta em branco.
+  // Como filtramos por employeeId, "TODOS" só garante que demitido não seja excluído.
   const p = new URLSearchParams({
-    employeeId, tangerinoId: employeeId,
+    employeeId,
     startDate, endDate,
-    startDateInMillis: String(ymdMs(startDate, false)),
-    endDateInMillis: String(ymdMs(endDate, true)),
-    showFired: "true",
+    statusEmployee: "TODOS",
+    format: "PDF",
   });
   const url = `${REPORT}/time-sheet?${p.toString()}`;
   const ctrl = new AbortController();
