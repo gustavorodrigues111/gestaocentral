@@ -145,6 +145,20 @@ export async function decidirAprovacao(
   return json as { ok: boolean; resultado: unknown };
 }
 
+// ─── Espelho de ponto (PDF) — módulo report ────────────────────────────────
+export type EspelhoPdf = { base64: string; fileExtension: string; fileName: string };
+
+export async function fetchEspelhoPdf(
+  restaurantKey: string, employeeId: number, startDate: string, endDate: string,
+): Promise<EspelhoPdf> {
+  const params = new URLSearchParams({ employeeId: String(employeeId), startDate, endDate });
+  if (restaurantKey) params.set("restaurant", restaurantKey);
+  const resp = await fetch(`/api/solides-timesheet?${params.toString()}`, { method: "GET", headers: await authHeader() });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as EspelhoPdf;
+}
+
 // ─── Afastamentos / Férias (módulo employer) ───────────────────────────────
 export type MotivoAfastamento = { id: number; description: string; fullDay: boolean };
 
