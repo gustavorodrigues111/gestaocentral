@@ -334,20 +334,20 @@ export function FechamentoTab({
               const editado = !fechado && edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;
               const vis = st ? STATUS_VIS[st] : null;
               return (
-                <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-sm ${vis?.row || ""}`}>
+                <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-xs ${vis?.row || ""}`}>
                   {colSel?.emp && previstaFechada && !fechado ? (
                     <input type="checkbox" checked={selDias.has(d.date)} onChange={() => toggleDia(d.date)}
                       className="w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
                   ) : (
-                    <span className="w-4 shrink-0 text-center text-[11px]">{fechado ? "🔒" : ""}</span>
+                    <span className="w-4 shrink-0 text-center">{fechado ? "🔒" : ""}</span>
                   )}
                   {vis && <span className={`shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${vis.badge}`}>{vis.short}</span>}
-                  <div className="w-24 shrink-0 text-gray-600 dark:text-gray-300 tabular-nums">{dataBR} <span className="text-gray-400">({wd})</span></div>
-                  <div className="min-w-0 flex-1 text-xs text-gray-600 dark:text-gray-300">
+                  <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
+                  <div className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">
                     {d.worked ? <span className="tabular-nums">{d.marks}</span>
                       : d.afastamento ? <span className="text-indigo-700 dark:text-indigo-300">{d.afastamento}</span>
                       : <span className="text-gray-400">sem batida</span>}
-                    {d.prevista && <span className="ml-2 text-[10px] text-gray-400">prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
+                    {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
                   </div>
                   {fechado ? (
                     <button type="button" disabled={salvando || mesEncerrado} onClick={() => void reabrirDia(d.date)}
