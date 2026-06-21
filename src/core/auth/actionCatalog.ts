@@ -490,6 +490,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "bloquear",  label: "Bloquear acesso do empregado manualmente", sensivel: true },
       { id: "cancelar",  label: "Cancelar processo (reverte tudo)", sensivel: true },
       { id: "concluir",  label: "Finalizar demissão (inativa empregado)", sensivel: true },
+      { id: "demitirSolides", label: "Demitir também na Sólides (integração)", sensivel: true },
     ],
   },
   {

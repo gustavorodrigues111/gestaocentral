@@ -11,6 +11,7 @@ import { Button } from "../../core/ui/Button";
 import { EmpregadoModal } from "./EmpregadoModal";
 import { InativarModal } from "./InativarModal";
 import { ReativarModal } from "./ReativarModal";
+import { DemitirSolidesModal } from "./DemitirSolidesModal";
 import { ExcluirModal } from "./ExcluirModal";
 import { LiberarEmailModal } from "./LiberarEmailModal";
 import { logAudit } from "../../core/audit/versionedChange";
@@ -155,6 +156,9 @@ function TabIdentidade({
   const podeExcluir = canExcluirPessoa(me, restaurantId);
   const { can } = useCanAcao(restaurantId);
   const podeDemitir = !!me?.isMaster || can("pessoas", "demitir");
+  const podeDemitirSolides = !!me?.isMaster || can("demissao", "demitirSolides");
+  const shortCode = restaurants.find((r) => r.id === restaurantId)?.shortCode || "";
+  const [showDemitirSolides, setShowDemitirSolides] = useState(false);
 
   // Detecção de pessoa duplicada por CPF — quando user tenta criar nova com
   // CPF que já existe (em qualquer restaurante). Oferece vincular em vez de
@@ -279,13 +283,22 @@ function TabIdentidade({
   return (
     <div className="space-y-3">
       {isInativa && (
-        <div className="rounded-lg bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm">
+        <div className="rounded-lg bg-gray-100 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm flex flex-wrap items-center gap-2">
           <span className="text-gray-700 dark:text-gray-300">○ Pessoa inativa</span>
           {pessoa?.motivoInativacao && (
-            <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
-              · {pessoa.motivoInativacao}
-            </span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">· {pessoa.motivoInativacao}</span>
           )}
+          {pessoa?.solidesDemissao ? (
+            <span className="ml-auto text-[11px] font-semibold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+              title={`Por ${pessoa.solidesDemissao.por || "?"}${pessoa.solidesDemissao.motivo ? ` · ${pessoa.solidesDemissao.motivo}` : ""}`}>
+              ✓ Demitido na Sólides em {(pessoa.solidesDemissao.data || "").split("-").reverse().join("/")}
+            </span>
+          ) : podeDemitirSolides && pessoa?.cpf ? (
+            <button type="button" onClick={() => setShowDemitirSolides(true)}
+              className="ml-auto text-[11px] font-semibold px-2.5 py-1 rounded-md border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20">
+              Demitir na Sólides
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -448,6 +461,14 @@ function TabIdentidade({
         <InativarModal
           pessoa={pessoa}
           onClose={() => { setShowInativar(false); onClose(); }}
+        />
+      )}
+      {showDemitirSolides && pessoa && (
+        <DemitirSolidesModal
+          pessoa={pessoa}
+          shortCode={shortCode}
+          por={{ id: me?.id || "", nome: me?.nome || "?" }}
+          onClose={() => setShowDemitirSolides(false)}
         />
       )}
       {showReativar && pessoa && (

@@ -145,6 +145,28 @@ export async function decidirAprovacao(
   return json as { ok: boolean; resultado: unknown };
 }
 
+// ─── Demissão na Sólides (módulo employer) ─────────────────────────────────
+// Resolve o employeeId da Sólides pelo CPF (roster) e demite. Datas YYYY-MM-DD.
+export async function demitirNoSolides(
+  restaurantKey: string,
+  params: { cpf: string; dismissalDate: string; reason?: string; noticeType?: string },
+): Promise<{ ok: boolean; resultado: unknown }> {
+  const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
+  const alvo = soDig(params.cpf);
+  if (!alvo) throw new Error("Pessoa sem CPF — não dá pra casar com a Sólides.");
+  const roster = await fetchRoster(restaurantKey);
+  const emp = roster.find((r) => soDig(r.cpf) === alvo && typeof r.id === "number");
+  if (!emp || typeof emp.id !== "number") throw new Error("Empregado não encontrado/ativo na Sólides (CPF não casou).");
+  const resp = await fetch(`/api/solides-demissao`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, employeeId: emp.id, dismissalDate: params.dismissalDate, reason: params.reason, noticeType: params.noticeType }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean; resultado: unknown };
+}
+
 // ─── Espelho de ponto (PDF) — módulo report ────────────────────────────────
 export type EspelhoPdf = { base64: string; fileExtension: string; fileName: string };
 

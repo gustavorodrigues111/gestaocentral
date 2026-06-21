@@ -786,6 +786,8 @@ export type Pessoa = {
   inativadaEm?: string | null; // ISO
   inativadaPor?: string | null;
   motivoInativacao?: string;
+  // Demissão espelhada na Sólides (integração). Presente = já demitido lá.
+  solidesDemissao?: { em: string; data: string; motivo?: string; por?: string } | null;
 
   createdAt: string;
 };
