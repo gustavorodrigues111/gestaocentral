@@ -145,6 +145,7 @@ function TabIdentidade({
     cpf: pessoa?.cpf || "",
     whatsapp: pessoa?.whatsapp || "",
   });
+  const [vinculoNovo, setVinculoNovo] = useState<VinculoLogico | "">("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -178,6 +179,7 @@ function TabIdentidade({
     const cpfDigits = cpfLimpo(form.cpf);
     if (!cpfDigits) { setErr("CPF obrigatório"); return; }
     if (cpfDigits.length !== 11) { setErr("CPF inválido — precisa de 11 dígitos"); return; }
+    if (isNew && !vinculoNovo) { setErr("Escolha o vínculo da pessoa neste restaurante"); return; }
     if (!me) return;
     setErr("");
     setDuplicada(null);
@@ -206,6 +208,7 @@ function TabIdentidade({
           isMaster: false,
           restaurantIds: [restaurantId],
           permissions: { [restaurantId]: {} },
+          vinculos: { [restaurantId]: vinculoNovo },
           ativa: true,
           createdAt: now,
         });
@@ -360,6 +363,23 @@ function TabIdentidade({
           placeholder="(11) 99999-9999"
         />
       </div>
+
+      {isNew && (
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Vínculo neste restaurante *</label>
+          <select
+            value={vinculoNovo}
+            onChange={(e) => setVinculoNovo(e.target.value as VinculoLogico | "")}
+            className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          >
+            <option value="">— escolha o vínculo —</option>
+            {VINCULOS_LOGICOS.map(v => (
+              <option key={v} value={v}>{VINCULO_LOGICO_ICONE[v]} {VINCULO_LOGICO_LABEL[v]}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Define o comportamento da pessoa (escala, ponto, gorjeta, VT). Pode ajustar depois na aba Vínculos.</p>
+        </div>
+      )}
 
       {/* Atribuição de perfil de acesso — substitui a tab "🔐 Permissões"
           antiga (checkboxes ver/configurar) que foi removida. */}
