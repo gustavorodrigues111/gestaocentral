@@ -72,7 +72,16 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   // Assinatura: dismiss(String, DismissDTO) — o DTO é @RequestBody (JSON) e há um
   // parâmetro String (provável employeeId na query). Mandamos os dois.
-  const dto = { resignationDateInMillis: ymdToMs(body.dismissalDate), employeeId: body.employeeId };
+  const ms = ymdToMs(body.dismissalDate);
+  // O JSON não mapeou "resignationDateInMillis" exato → manda aliases (snake_case
+  // etc); o Jackson deles ignora os que não existirem e usa o que casar.
+  const dto: Record<string, unknown> = {
+    resignationDateInMillis: ms,
+    resignation_date_in_millis: ms,
+    resignationDate: ms,
+    resignationDateMillis: ms,
+    employeeId: body.employeeId,
+  };
   const qs = new URLSearchParams({ employeeId: String(body.employeeId) });
   const url = `${EMPLOYER}/employee/dismiss?${qs.toString()}`;
 
