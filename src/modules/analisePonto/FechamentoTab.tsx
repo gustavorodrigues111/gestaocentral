@@ -415,8 +415,15 @@ export function FechamentoTab({
       {pdf && (
         <Modal title="👁 Espelho de ponto" onClose={fecharPdf} maxWidth="max-w-4xl">
           <div className="space-y-2">
-            <iframe title="espelho" src={pdf.url} className="w-full h-[70vh] rounded-lg border border-gray-200 dark:border-gray-700" />
-            <div className="flex justify-end">
+            <object data={pdf.url} type="application/pdf" className="w-full h-[70vh] rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="p-6 text-center text-sm text-gray-500">
+                Não deu pra exibir o PDF aqui (o Safari às vezes bloqueia).{" "}
+                <button type="button" onClick={() => window.open(pdf.url, "_blank")} className="text-indigo-600 underline">Abrir em nova aba</button>.
+              </div>
+            </object>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => window.open(pdf.url, "_blank")}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">↗ Abrir em nova aba</button>
               <a href={pdf.url} download={pdf.nome}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white">⬇ Baixar PDF</a>
             </div>
