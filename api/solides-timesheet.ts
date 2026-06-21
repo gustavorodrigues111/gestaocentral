@@ -72,7 +72,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     startDate, endDate,
     startDateInMillis: String(ymdMs(startDate, false)),
     endDateInMillis: String(ymdMs(endDate, true)),
-    showFired: "true",
+    // Incluir demitido — nome do param é incerto no report; manda vários aliases.
+    showFired: "true", showDismissed: "true", includeFired: "true",
+    fired: "true", includeDismissed: "true", dismissed: "true",
   });
   const url = `${REPORT}/time-sheet?${p.toString()}`;
   const ctrl = new AbortController();
