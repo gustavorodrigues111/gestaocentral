@@ -61,6 +61,14 @@ function weekdayOf(date: string): number {
   const [y, m, d] = date.split("-").map(Number);
   return new Date(y, m - 1, d).getDay();
 }
+function demissaoYmd(r: PontoColaborador): string | undefined {
+  if (!r.fired) return undefined;
+  const ms = typeof r.resignationDate === "number" ? r.resignationDate
+    : typeof r.firedDate === "number" ? r.firedDate : undefined;
+  if (!ms) return undefined;
+  const d = new Date(ms);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
 function mapMotivo(txt?: string): ScheduleStatus {
   const t = (txt || "").toLowerCase();
   if (/féri|feri/.test(t)) return "ferias";
@@ -84,6 +92,7 @@ type DiaEspelho = {
   afastamento?: string; // descrição do afastamento, se houver
   prevista?: ScheduleStatus;
   sugerido: ScheduleStatus;
+  demitido?: boolean;   // dia posterior à demissão do empregado
 };
 
 export function FechamentoTab({
@@ -131,12 +140,15 @@ export function FechamentoTab({
     const dias = diasDoMes(mes);
     const ini = dias[0]; const fim = dias[dias.length - 1];
     try {
-      const [ros, pun, escSnap] = await Promise.all([
+      const [ros, rosFired, pun, escSnap] = await Promise.all([
         fetchRoster(shortCode).catch(() => []),
+        fetchRoster(shortCode, true).catch(() => []),  // demitidos (p/ fechar quem saiu no meio do mês)
         fetchPunches(ini, fim, shortCode).then((r) => r.punches).catch(() => []),
         getDoc(doc(db, "escalas", `${rid}_${mes}`)),
       ]);
-      setRoster(ros);
+      const mapR = new Map<number, PontoColaborador>();
+      for (const r of [...ros, ...rosFired]) if (typeof r.id === "number" && !mapR.has(r.id)) mapR.set(r.id, r);
+      setRoster([...mapR.values()]);
       setPunches(pun);
       setEscala(escSnap.exists() ? ({ id: escSnap.id, ...escSnap.data() } as EscalaMes) : null);
     } catch (e) {
@@ -150,8 +162,8 @@ export function FechamentoTab({
   // Colaboradores ativos do roster (Sólides) que casam com empregado do app.
   const colaboradores = useMemo(() => {
     return roster
-      .filter((r) => typeof r.id === "number" && !r.fired)
-      .map((r) => ({ solId: r.id as number, nome: r.name || "?", emp: empAppPorCpf.get(soDigitos(r.cpf)) }))
+      .filter((r) => typeof r.id === "number")
+      .map((r) => ({ solId: r.id as number, nome: r.name || "?", emp: empAppPorCpf.get(soDigitos(r.cpf)), demissao: demissaoYmd(r), fired: !!r.fired }))
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }, [roster, empAppPorCpf]);
 
@@ -160,6 +172,7 @@ export function FechamentoTab({
     if (!selEmp) return [];
     const col = colaboradores.find((c) => c.solId === selEmp);
     const appId = col?.emp?.id;
+    const dem = col?.demissao;
     const prevista = appId ? escala?.prevista?.[appId] : undefined;
     const porDia = new Map<string, SolidesPunch[]>();
     for (const p of punches) {
@@ -167,6 +180,7 @@ export function FechamentoTab({
       const arr = porDia.get(p.date) || []; arr.push(p); porDia.set(p.date, arr);
     }
     return diasDoMes(mes).map((date) => {
+      if (dem && date > dem) return { date, worked: false, marks: "", prevista: prevista?.[date], sugerido: "folga" as ScheduleStatus, demitido: true };
       const ps = (porDia.get(date) || []).sort((a, b) => a.dateIn - b.dateIn);
       const trabalho = ps.filter((p) => !(p as { allowance?: boolean }).allowance && p.dateIn);
       const afastP = ps.find((p) => (p as { allowance?: boolean }).allowance) || ps.find((p) => descAfast(p));
@@ -210,7 +224,7 @@ export function FechamentoTab({
   const toggleDia = (date: string) => setSelDias((s) => {
     const n = new Set(s); n.has(date) ? n.delete(date) : n.add(date); return n;
   });
-  const diasAbertos = espelho.filter((d) => !fechadoEm(d.date)).map((d) => d.date);
+  const diasAbertos = espelho.filter((d) => !fechadoEm(d.date) && !d.demitido).map((d) => d.date);
   const todosAbertosSel = diasAbertos.length > 0 && diasAbertos.every((d) => selDias.has(d));
   const totalFechados = espelho.filter((d) => fechadoEm(d.date)).length;
 
@@ -299,7 +313,7 @@ export function FechamentoTab({
               className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
               <option value="">{colaboradores.length ? "— escolha —" : "— carregando —"}</option>
               {colaboradores.map((c) => (
-                <option key={c.solId} value={c.solId}>{c.nome}{c.emp ? "" : " (sem vínculo no app)"}</option>
+                <option key={c.solId} value={c.solId}>{c.nome}{c.fired ? " (demitido)" : ""}{c.emp ? "" : " · sem vínculo no app"}</option>
               ))}
             </select>
           </div>
@@ -347,6 +361,16 @@ export function FechamentoTab({
             {espelho.map((d) => {
               const dataBR = d.date.split("-").reverse().join("/");
               const wd = DIAS_PT[weekdayOf(d.date)];
+              if (d.demitido) {
+                return (
+                  <div key={d.date} className="px-3 py-2 flex items-center gap-2.5 text-xs bg-rose-100/70 dark:bg-rose-900/30">
+                    <span className="w-4 shrink-0" />
+                    <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-rose-600 text-white">DM</span>
+                    <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
+                    <div className="min-w-0 flex-1 truncate text-rose-700 dark:text-rose-300 font-medium">Demitido (fora do contrato)</div>
+                  </div>
+                );
+              }
               const st = statusDe(d.date);
               const fechado = fechadoEm(d.date);
               const editado = !fechado && edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;

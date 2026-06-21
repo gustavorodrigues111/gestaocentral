@@ -25,9 +25,10 @@ export async function fetchScheduleCatalog(restaurantKey: string): Promise<Ponto
 }
 
 // Roster de colaboradores (pra apontar FALTA). Pode vir vazio em algumas contas.
-export async function fetchRoster(restaurantKey: string): Promise<PontoColaborador[]> {
+export async function fetchRoster(restaurantKey: string, showFired = false): Promise<PontoColaborador[]> {
   const params = new URLSearchParams();
   if (restaurantKey) params.set("restaurant", restaurantKey);
+  if (showFired) params.set("showFired", "true");
   const resp = await fetch(`/api/solides-roster?${params.toString()}`, { method: "GET", headers: await authHeader() });
   const text = await resp.text();
   let json: unknown = {};
