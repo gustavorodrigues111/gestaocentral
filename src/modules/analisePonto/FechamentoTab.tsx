@@ -8,7 +8,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { AjusteEscalaMeta, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
+import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
+import { empregadoBatePonto } from "../../core/types";
 import { fetchRoster, fetchEspelhoPdf } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
@@ -96,11 +97,12 @@ type DiaEspelho = {
 };
 
 export function FechamentoTab({
-  rid, activeRestaurant, empregados, mesInicial, por,
+  rid, activeRestaurant, empregados, cargos, mesInicial, por,
 }: {
   rid: string;
   activeRestaurant: Restaurant;
   empregados: Empregado[];
+  cargos: Cargo[];
   mesInicial: string; // YYYY-MM
   por: { id: string; nome: string };
 }) {
@@ -133,6 +135,15 @@ export function FechamentoTab({
     for (const e of empregados) { const c = soDigitos(e.cpf); if (c) m.set(c, e); }
     return m;
   }, [empregados]);
+  const cargoPorId = useMemo(() => {
+    const m = new Map<string, Cargo>();
+    for (const c of cargos) m.set(c.id, c);
+    return m;
+  }, [cargos]);
+  // Cargo de confiança / dispensado de ponto (CLT Art. 62 II): não bate ponto.
+  // Pra esses a praticada = prevista (não há batidas pra cruzar).
+  const naoBatePontoDe = (emp?: Empregado) =>
+    !!emp && !empregadoBatePonto(emp, emp.cargoId ? cargoPorId.get(emp.cargoId) : undefined);
 
   async function carregar() {
     if (!shortCode) { setErro("Restaurante sem shortCode."); return; }
@@ -176,6 +187,7 @@ export function FechamentoTab({
     const col = colaboradores.find((c) => c.solId === selEmp);
     const appId = col?.emp?.id;
     const dem = col?.demissao;
+    const naoBate = !!col?.emp && !empregadoBatePonto(col.emp, col.emp.cargoId ? cargoPorId.get(col.emp.cargoId) : undefined);
     const prevista = appId ? escala?.prevista?.[appId] : undefined;
     const porDia = new Map<string, SolidesPunch[]>();
     for (const p of punches) {
@@ -184,6 +196,11 @@ export function FechamentoTab({
     }
     return diasDoMes(mes).map((date) => {
       if (dem && date > dem) return { date, worked: false, marks: "", prevista: prevista?.[date], sugerido: "folga" as ScheduleStatus, demitido: true };
+      // Cargo de confiança: ignora batidas (não existem) e adota a prevista como praticada.
+      if (naoBate) {
+        const prev = prevista?.[date];
+        return { date, worked: false, marks: "", prevista: prev, sugerido: prev || ("folga" as ScheduleStatus) };
+      }
       const ps = (porDia.get(date) || []).sort((a, b) => a.dateIn - b.dateIn);
       const trabalho = ps.filter((p) => !(p as { allowance?: boolean }).allowance && p.dateIn);
       const afastP = ps.find((p) => (p as { allowance?: boolean }).allowance) || ps.find((p) => descAfast(p));
@@ -199,9 +216,10 @@ export function FechamentoTab({
       else sugerido = prev || "folga";
       return { date, worked, marks, afastamento, prevista: prev, sugerido };
     });
-  }, [selEmp, colaboradores, escala, punches, mes]);
+  }, [selEmp, colaboradores, escala, punches, mes, cargoPorId]);
 
   const colSel = colaboradores.find((c) => c.solId === selEmp);
+  const naoBateSel = naoBatePontoDe(colSel?.emp);
   const appIdSel = colSel?.emp?.id;
   const previstaFechada = !!escala?.previstaFechadaEm;
   const mesEncerrado = !!escala?.fechadoEm;
@@ -316,7 +334,7 @@ export function FechamentoTab({
               className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
               <option value="">{colaboradores.length ? "— escolha —" : "— carregando —"}</option>
               {colaboradores.map((c) => (
-                <option key={c.solId} value={c.solId}>{c.nome}{c.fired ? " (demitido)" : ""}{c.emp ? "" : " · sem vínculo no app"}</option>
+                <option key={c.solId} value={c.solId}>{naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}{c.fired ? " (demitido)" : ""}{c.emp ? "" : " · sem vínculo no app"}</option>
               ))}
             </select>
           </div>
@@ -340,6 +358,12 @@ export function FechamentoTab({
         <div className="text-center text-sm text-gray-400 py-12">Escolha um colaborador pra revisar o espelho.</div>
       ) : (
         <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          {naoBateSel && (
+            <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 text-[12px] text-amber-800 dark:text-amber-200 flex items-start gap-2">
+              <span className="text-base leading-none">🎩</span>
+              <span><strong>Cargo de confiança</strong> — dispensado de bater ponto (CLT Art. 62 II). Não há batidas pra cruzar: a sugestão abaixo vem direto da <strong>escala prevista</strong>. Confira e feche pra registrar a praticada do mês.</span>
+            </div>
+          )}
           <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
             <div className="font-bold text-sm text-gray-900 dark:text-gray-100">
               {colSel?.nome} — {nomeMes(mes)}
