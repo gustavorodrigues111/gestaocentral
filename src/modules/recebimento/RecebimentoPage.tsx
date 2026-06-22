@@ -237,7 +237,8 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { rec
 }
 
 // ─── Tabela de recebimentos ─────────────────────────────────────────────────
-type SortKey = "recebido" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme";
+// Chaves de ordenação: as fixas + "venc:<i>" (coluna de vencimento dinâmica).
+type SortKey = "recebido" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme" | `venc:${number}`;
 function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
   notas: RecebimentoNota[];
   podeConfig: boolean;
@@ -250,11 +251,17 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
   function ordenarPor(k: SortKey) {
     if (k === sortKey) { setSortDir((d) => (d === "asc" ? "desc" : "asc")); return; }
     setSortKey(k);
+    // Vencimento e datas com texto: padrão crescente p/ venc (mais próximo 1º); desc p/ recebido/emissão/valor.
     setSortDir(k === "recebido" || k === "emissao" || k === "valor" ? "desc" : "asc");
   }
 
   const ordenadas = useMemo(() => {
     const val = (n: RecebimentoNota): string | number => {
+      if (sortKey.startsWith("venc:")) {
+        const i = parseInt(sortKey.slice(5), 10);
+        // Sem essa parcela → joga pro fim (sentinela alta).
+        return vencimentosDe(n)[i] || "9999-12-31";
+      }
       switch (sortKey) {
         case "recebido": return n.recebidoEm || "";
         case "emissao": return n.dataEmissao || "";
@@ -263,6 +270,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
         case "valor": return n.valorTotal ?? -1;
         case "recebeu": return (n.recebidoPor?.nome || "").toLowerCase();
         case "conforme": return n.conforme ? 1 : 0;
+        default: return "";
       }
     };
     const arr = [...notas];
@@ -305,7 +313,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
             <Th k="conforme" label="Conforme?" />
             <th className="px-3 py-2 uppercase tracking-wide">Divergência</th>
             {Array.from({ length: maxVenc }, (_, i) => (
-              <th key={i} className="px-3 py-2 uppercase tracking-wide whitespace-nowrap">{i === 0 ? "Vencimento" : `${i + 1}º venc.`}</th>
+              <Th key={i} k={`venc:${i}`} label={i === 0 ? "Vencimento" : `${i + 1}º venc.`} />
             ))}
             <th className="px-3 py-2 uppercase tracking-wide">Nota</th>
             <th className="px-3 py-2" />
