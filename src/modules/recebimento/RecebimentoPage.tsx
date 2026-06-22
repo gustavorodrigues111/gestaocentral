@@ -23,7 +23,19 @@ import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNo
 import { FORMA_PAGAMENTO_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { centralConfigured, centralEnsureRoot, centralEnsureWeek, centralUpload } from "../../core/google/driveCentral";
 import { authHeader } from "../../core/firebase/idToken";
+
+// Dispatch: conta central (backend) × OAuth do navegador (fallback). `central`
+// é resolvido uma vez por salvamento.
+async function ensureSemanaFolder(central: boolean, parentId: string, label: string): Promise<string> {
+  return central ? centralEnsureWeek(parentId, label) : findOrCreateSubfolder(parentId, label);
+}
+async function subirArquivo(central: boolean, parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
+  if (central) return centralUpload(parentId, file);
+  const s = await uploadFileToFolder(parentId, file);
+  return { id: s.id, name: s.name, ...(s.webViewLink ? { webViewLink: s.webViewLink } : {}) };
+}
 import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
 
 // Arquivo → base64 (sem o prefixo data:...;base64,).
@@ -239,10 +251,14 @@ export function RecebimentoPage() {
 }
 
 // ─── Configurações: pasta do Drive ──────────────────────────────────────────
-function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { recebimentoDriveFolderId?: string; recebimentoDriveFolderNome?: string } }) {
+function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; recebimentoDriveFolderId?: string; recebimentoDriveFolderNome?: string } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [central, setCentral] = useState<boolean | null>(null);
 
+  useEffect(() => { void centralConfigured().then(setCentral); }, []);
+
+  // Navegador (fallback): escolhe a pasta no Drive do próprio usuário.
   async function escolherPasta() {
     setErro("");
     try {
@@ -258,12 +274,31 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { rec
     } finally { setSalvando(false); }
   }
 
+  // Conta central: o backend cria/usa "Recebimentos — <restaurante>" e salva o id.
+  async function inicializarCentral() {
+    setErro(""); setSalvando(true);
+    try {
+      const r = await centralEnsureRoot(restaurant.nome || "Restaurante");
+      await updateDoc(doc(db, "restaurants", rid), {
+        recebimentoDriveFolderId: r.folderId,
+        recebimentoDriveFolderNome: `Recebimentos — ${restaurant.nome || "Restaurante"}`,
+      });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao inicializar a pasta central.");
+    } finally { setSalvando(false); }
+  }
+
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3 max-w-2xl">
       <h3 className="font-semibold text-gray-900 dark:text-gray-100">Pasta do Drive pras notas</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400">
         As notas recebidas são arquivadas aqui. O sistema cria automaticamente subpastas por semana (segunda→domingo), nomeadas <code>dd.mm.aa a dd.mm.aa</code>.
       </p>
+      {central === true && (
+        <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
+          ✓ Conta central do Drive ativa — os operadores não precisam conectar o próprio Drive. Os arquivos ficam na conta central.
+        </p>
+      )}
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
       <div className="flex items-center gap-3">
         <div className="flex-1 text-sm">
@@ -271,9 +306,15 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { rec
             ? <span className="text-emerald-700 dark:text-emerald-300">📁 {restaurant.recebimentoDriveFolderNome || "pasta selecionada"}</span>
             : <span className="text-amber-600">Nenhuma pasta selecionada</span>}
         </div>
-        <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolherPasta()}>
-          {salvando ? "Salvando…" : restaurant.recebimentoDriveFolderId ? "Trocar pasta" : "Selecionar pasta"}
-        </Button>
+        {central === true ? (
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void inicializarCentral()}>
+            {salvando ? "Criando…" : restaurant.recebimentoDriveFolderId ? "Recriar pasta central" : "Inicializar pasta central"}
+          </Button>
+        ) : (
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolherPasta()}>
+            {salvando ? "Salvando…" : restaurant.recebimentoDriveFolderId ? "Trocar pasta" : "Selecionar pasta"}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -793,13 +834,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     if (!restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
     setSalvando(true);
     try {
-      // Garante autorização do Drive (o token vive só em memória e some ao recarregar
-      // a página; aqui o popup do Google reabre se preciso, sem bloquear o fluxo).
-      await requestAccessToken();
+      // Conta central configurada → sobe pelo backend (operador não conecta Drive).
+      // Senão, fluxo antigo: OAuth no navegador (popup reabre se preciso).
+      const central = await centralConfigured();
+      if (!central) await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
-      const semanaId = await findOrCreateSubfolder(restaurant.recebimentoDriveFolderId, label);
+      const semanaId = await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId, label);
       // Nome dos arquivos: "<fornecedor> <data emissão> nota" (e ...boleto / boleto1, boleto2…).
       const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
       const dataSlug = dataEmissao
@@ -813,7 +855,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         const nf = notaFiles[i];
         const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
         const nome = `${baseNome} ${sufixo}${ext(nf, ".jpg")}`;
-        const s = await uploadFileToFolder(semanaId, new File([nf], nome, { type: nf.type }));
+        const s = await subirArquivo(central, semanaId, new File([nf], nome, { type: nf.type }));
         notaPaginas.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       const subidaNota = notaPaginas[0];
@@ -823,13 +865,13 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         const bf = boletoFiles[i];
         const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
         const nome = `${baseNome} ${sufixo}${ext(bf, ".jpg")}`;
-        const s = await uploadFileToFolder(semanaId, new File([bf], nome, { type: bf.type }));
+        const s = await subirArquivo(central, semanaId, new File([bf], nome, { type: bf.type }));
         boletos.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
-        const s = await uploadFileToFolder(semanaId, new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }));
+        const s = await subirArquivo(central, semanaId, new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }));
         fotoDiv = { id: s.id, url: s.webViewLink };
       }
       const nota: Omit<RecebimentoNota, "id"> = {
