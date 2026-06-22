@@ -6,15 +6,17 @@
 //  O "Fechar folha do empregado" (gravar na praticada) entra no Passo 2.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { doc, getDoc, updateDoc, deleteField } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
 import { AREAS, empregadoBatePonto } from "../../core/types";
-import { fetchRoster, fetchEspelhoPdf } from "../../core/ponto/solidesPontoClient";
-import type { PontoColaborador } from "../../core/ponto/analise";
+import { fetchRoster, fetchEspelhoPdf, fetchScheduleCatalog, decidirAprovacao, type AprovacaoPendente } from "../../core/ponto/solidesPontoClient";
+import { analisarPonto, ROTULOS, type Ocorrencia, type PontoColaborador, type PontoEscala, type PontoMarcacao, type TipoOcorrencia } from "../../core/ponto/analise";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
 import { Modal } from "../../core/ui/Modal";
+import { BatidasDiaModal } from "./BatidasDiaModal";
+import { AfastamentoModal } from "./AfastamentoModal";
 
 const STATUS_OPCOES: Array<{ id: ScheduleStatus; label: string }> = [
   { id: "trabalho", label: "Trabalho" },
@@ -86,6 +88,64 @@ function descAfast(p: SolidesPunch): string | undefined {
   return undefined;
 }
 
+// ─── Integração com Análise de Ponto (inconsistências / fluxo) ───────────────
+const ocKey = (employeeId: number, data: string, tipo: TipoOcorrencia) => `${employeeId}|${data}|${tipo}`;
+
+type SolItem = { key: string; tipo: TipoOcorrencia; data: string; rotulo: string };
+type Solicitacao = { id: string; employeeId: number; itens: SolItem[]; prazoEm: string; status: string };
+type Avaliacao = { id: string; key: string };
+
+function textoOuDesc(x: unknown): string | undefined {
+  if (x == null) return undefined;
+  if (typeof x === "string") return x || undefined;
+  if (typeof x === "object") {
+    const o = x as { description?: string; descricao?: string; name?: string };
+    return o.description || o.descricao || o.name || undefined;
+  }
+  return String(x);
+}
+function derivarAprovacoes(punches: SolidesPunch[]): AprovacaoPendente[] {
+  return punches
+    .filter((p) => String(p.status || "").toUpperCase() === "PENDING" && (p.adjustmentReason != null || p.edited === true))
+    .map((p) => ({
+      punchId: p.id, employeeId: p.employeeId,
+      employeeName: p.employeeName || p.employee?.name || "?",
+      date: p.date || "",
+      dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
+      dateOut: typeof p.dateOut === "number" && p.dateOut > p.dateIn ? p.dateOut : undefined,
+      status: "PENDING" as const,
+      motivo: textoOuDesc(p.adjustmentReason),
+      observation: textoOuDesc(p.justification),
+      editIn: (p as { editedIn?: boolean }).editedIn === true,
+      editOut: (p as { editedOut?: boolean }).editedOut === true,
+    }));
+}
+function relogio(prazoEm: string, now: number): { txt: string; vencido: boolean } {
+  const diff = new Date(prazoEm).getTime() - now;
+  const vencido = diff < 0; const abs = Math.abs(diff);
+  const h = Math.floor(abs / 3_600_000); const m = Math.floor((abs % 3_600_000) / 60_000);
+  const dur = h > 0 ? `${h}h${pad(m)}` : `${m}min`;
+  return { txt: vencido ? `venceu há ${dur}` : `faltam ${dur}`, vencido };
+}
+const fmtBRdata = (s: string) => s.replace(/(\d{4})-(\d{2})-(\d{2})/g, "$3/$2/$1");
+function fmtDataHora(iso: string): string {
+  const d = new Date(iso);
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} às ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function montarMensagem(colaborador: string, ocs: Ocorrencia[], prazoEm: string): string {
+  const primeiro = (colaborador || "").trim().split(/\s+/)[0] || colaborador;
+  const linhas = ocs.map((o) => `• ${fmtBRdata(o.data)} — ${ROTULOS[o.tipo]}`).join("\n");
+  return `Olá ${primeiro}, tudo bem?\n\nIdentificamos pendências no seu registro de ponto que precisam de ajuste no aplicativo da Sólides:\n\n${linhas}\n\nPor favor, faça os ajustes até ${fmtDataHora(prazoEm)}. Depois disso eles passam pela nossa revisão e aprovação. Qualquer dúvida, é só falar com a gente. Obrigado! 🙏`;
+}
+function waLink(tel: string, msg: string): string {
+  const d = (tel || "").replace(/\D/g, "");
+  const num = d.startsWith("55") ? d : `55${d}`;
+  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+}
+
+// Estado do fluxo de inconsistência num dia do empregado.
+type EstadoDia = "aberto" | "enviado" | "ciente" | "aprovar";
+
 type DiaEspelho = {
   date: string;
   worked: boolean;
@@ -119,6 +179,13 @@ export function FechamentoTab({
   const [pdfLoading, setPdfLoading] = useState(false);
   const [selDias, setSelDias] = useState<Set<string>>(new Set());
   const [salvando, setSalvando] = useState(false);
+  // Integração Análise de Ponto: catálogo de escalas Sólides + estado do fluxo.
+  const [schedules, setSchedules] = useState<PontoEscala[]>([]);
+  const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
+  const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  const [modalBatidas, setModalBatidas] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
+  const [modalAfast, setModalAfast] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
 
   const shortCode = activeRestaurant.shortCode || "";
   // Opções do seletor de mês (últimos 18 meses + o mês atual selecionado).
@@ -152,16 +219,18 @@ export function FechamentoTab({
     const dias = diasDoMes(mes);
     const ini = dias[0]; const fim = dias[dias.length - 1];
     try {
-      const [ros, rosFired, pun, escSnap] = await Promise.all([
+      const [ros, rosFired, pun, escSnap, sched] = await Promise.all([
         fetchRoster(shortCode).catch(() => []),
         fetchRoster(shortCode, true).catch(() => []),  // demitidos (p/ fechar quem saiu no meio do mês)
         fetchPunches(ini, fim, shortCode, true).then((r) => r.punches).catch(() => []),  // inclui demitidos
         getDoc(doc(db, "escalas", `${rid}_${mes}`)),
+        fetchScheduleCatalog(shortCode).catch(() => []),  // catálogo de escalas Sólides (p/ análise de inconsistências)
       ]);
       const mapR = new Map<number, PontoColaborador>();
       for (const r of [...ros, ...rosFired]) if (typeof r.id === "number" && !mapR.has(r.id)) mapR.set(r.id, r);
       setRoster([...mapR.values()]);
       setPunches(pun);
+      setSchedules(sched);
       setEscala(escSnap.exists() ? ({ id: escSnap.id, ...escSnap.data() } as EscalaMes) : null);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao carregar o mês.");
@@ -170,6 +239,19 @@ export function FechamentoTab({
     }
   }
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [mes, shortCode, rid]);
+
+  // Estado do fluxo (solicitações enviadas + ciências dadas) — tempo real.
+  useEffect(() => {
+    if (!rid) return;
+    const u1 = onSnapshot(query(collection(db, "pontoSolicitacoes"), where("restaurantId", "==", rid)),
+      (s) => setSolicitacoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Solicitacao)));
+    const u2 = onSnapshot(query(collection(db, "pontoAvaliacoes"), where("restaurantId", "==", rid)),
+      (s) => setAvaliacoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Avaliacao)));
+    return () => { u1(); u2(); };
+  }, [rid]);
+
+  // Relógio pro countdown das solicitações (atualiza a cada minuto).
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 60_000); return () => clearInterval(t); }, []);
 
   // Ativos + demitidos RELEVANTES ao mês (saíram no mês ou depois) — sem o
   // histórico inteiro de demitidos antigos.
@@ -219,6 +301,50 @@ export function FechamentoTab({
       return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
     });
   }, [colaboradores, cargoPorId]);
+
+  // ── Análise de inconsistências do mês (motor determinístico Sólides) ──────
+  const ocorrenciasPorDia = useMemo(() => {
+    const map = new Map<string, Ocorrencia[]>();
+    if (!roster.length) return map;
+    const dias = diasDoMes(mes);
+    const res = analisarPonto(punches as unknown as PontoMarcacao[], roster, schedules, dias[0], dias[dias.length - 1]);
+    for (const o of res.ocorrencias) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(o.data)) continue; // ignora ocorrências de período (déficit/excesso)
+      const k = `${o.employeeId}|${o.data}`;
+      const arr = map.get(k) || []; arr.push(o); map.set(k, arr);
+    }
+    return map;
+  }, [punches, roster, schedules, mes]);
+  const cienteKeys = useMemo(() => new Set(avaliacoes.map((a) => a.key)), [avaliacoes]);
+  const solPorKey = useMemo(() => {
+    const m = new Map<string, Solicitacao>();
+    for (const s of solicitacoes) for (const it of s.itens || []) {
+      const cur = m.get(it.key);
+      if (!cur || s.prazoEm > cur.prazoEm) m.set(it.key, s);
+    }
+    return m;
+  }, [solicitacoes]);
+  const aprovacoesPorDia = useMemo(() => {
+    const m = new Map<string, AprovacaoPendente[]>();
+    for (const a of derivarAprovacoes(punches)) {
+      const k = `${a.employeeId}|${a.date}`;
+      const arr = m.get(k) || []; arr.push(a); m.set(k, arr);
+    }
+    return m;
+  }, [punches]);
+
+  // Inconsistências + estado do fluxo de um dia do empregado (pros badges/ações).
+  function inconsistDoDia(employeeId: number, date: string): { ocs: Ocorrencia[]; estado: EstadoDia | null; prazoEm?: string; aprovacoes: AprovacaoPendente[] } {
+    const ocs = ocorrenciasPorDia.get(`${employeeId}|${date}`) || [];
+    const aprovacoes = aprovacoesPorDia.get(`${employeeId}|${date}`) || [];
+    if (!ocs.length && !aprovacoes.length) return { ocs, estado: null, aprovacoes };
+    if (aprovacoes.length) return { ocs, estado: "aprovar", aprovacoes };
+    let sol: Solicitacao | undefined;
+    for (const o of ocs) { const s = solPorKey.get(ocKey(o.employeeId, o.data, o.tipo)); if (s && (!sol || s.prazoEm > sol.prazoEm)) sol = s; }
+    if (sol) return { ocs, estado: "enviado", prazoEm: sol.prazoEm, aprovacoes };
+    if (ocs.length && ocs.every((o) => cienteKeys.has(ocKey(o.employeeId, o.data, o.tipo)))) return { ocs, estado: "ciente", aprovacoes };
+    return { ocs, estado: "aberto", aprovacoes };
+  }
 
   // Espelho do empregado selecionado: 1 linha por dia do mês.
   const espelho = useMemo<DiaEspelho[]>(() => {
@@ -290,6 +416,60 @@ export function FechamentoTab({
   const todosAbertosSel = diasAbertos.length > 0 && diasAbertos.every((d) => selDias.has(d));
   const totalFechados = espelho.filter((d) => fechadoEm(d.date)).length;
   const totalFechaveis = espelho.filter((d) => !d.demitido && !d.futuro).length;
+
+  // ── Ações inline de inconsistência (mesma lógica da aba Inconsistências) ──
+  function solicitarDia(date: string) {
+    if (selEmp === "" || !colSel) return;
+    const ocs = inconsistDoDia(Number(selEmp), date).ocs;
+    if (!ocs.length) return;
+    const tel = colSel.emp?.telefone || "";
+    if (!tel) { setErro("Empregado sem telefone cadastrado pra enviar a correção."); return; }
+    const prazoHoras = 6;
+    const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
+    window.open(waLink(tel, montarMensagem(colSel.nome, ocs, prazoEm)), "_blank");
+    const itens = ocs.map((o) => ({ key: ocKey(o.employeeId, o.data, o.tipo), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
+    void addDoc(collection(db, "pontoSolicitacoes"), {
+      restaurantId: rid, employeeId: Number(selEmp), colaborador: colSel.nome, itens,
+      enviadoEm: new Date().toISOString(), prazoHoras, prazoEm,
+      por: { id: por.id, nome: por.nome }, status: "enviado",
+    }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar a solicitação."));
+  }
+  function cienciaDia(date: string) {
+    if (selEmp === "") return;
+    const ocs = inconsistDoDia(Number(selEmp), date).ocs;
+    const em = new Date().toISOString();
+    for (const o of ocs) {
+      const k = ocKey(o.employeeId, o.data, o.tipo);
+      if (cienteKeys.has(k)) continue;
+      void addDoc(collection(db, "pontoAvaliacoes"), {
+        restaurantId: rid, key: k, employeeId: o.employeeId, colaborador: o.colaborador,
+        tipo: o.tipo, data: o.data, detalhe: o.detalhe, obs: "",
+        por: { id: por.id, nome: por.nome }, em,
+      }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar ciência."));
+    }
+  }
+  async function decidirDia(date: string, status: "APPROVED" | "REPROVED") {
+    if (selEmp === "") return;
+    const aps = inconsistDoDia(Number(selEmp), date).aprovacoes;
+    if (!aps.length) return;
+    const verbo = status === "APPROVED" ? "Aprovar" : "Reprovar";
+    if (!window.confirm(`${verbo} ${aps.length} ajuste(s) de ${colSel?.nome} em ${date.split("-").reverse().join("/")}?\n\nGrava na Sólides (dado trabalhista).`)) return;
+    setErro(""); setSalvando(true);
+    try {
+      for (const a of aps) {
+        await decidirAprovacao(shortCode, { punchId: a.punchId, status });
+        try {
+          await addDoc(collection(db, "pontoAuditoria"), {
+            restaurantId: rid, tipo: "aprovacao", status, por: { id: por.id, nome: por.nome },
+            punchId: a.punchId, employeeId: a.employeeId, colaborador: a.employeeName, em: new Date().toISOString(),
+          });
+        } catch { /* auditoria não bloqueia */ }
+      }
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
+    } finally { setSalvando(false); }
+  }
 
   async function fecharDias() {
     if (!selEmp || !appIdSel) return;
@@ -486,6 +666,12 @@ export function FechamentoTab({
               const fechado = fechadoEm(d.date);
               const editado = !fechado && edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;
               const vis = st ? STATUS_VIS[st] : null;
+              const inc = naoBateSel
+                ? { ocs: [] as Ocorrencia[], estado: null as EstadoDia | null, prazoEm: undefined as string | undefined, aprovacoes: [] as AprovacaoPendente[] }
+                : inconsistDoDia(Number(selEmp), d.date);
+              const incRot = inc.ocs[0] ? (ROTULOS[inc.ocs[0].tipo] || "").split(" (")[0] : "";
+              const incExtra = inc.ocs.length > 1 ? ` +${inc.ocs.length - 1}` : "";
+              const incTitle = inc.ocs.map((o) => ROTULOS[o.tipo]).join(" · ");
               return (
                 <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-xs ${vis?.row || ""}`}>
                   {colSel?.emp && previstaFechada && !fechado ? (
@@ -502,6 +688,40 @@ export function FechamentoTab({
                       : <span className="text-gray-400">sem batida</span>}
                     {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
                   </div>
+                  {inc.estado === "aprovar" && (
+                    <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
+                  )}
+                  {inc.estado === "enviado" && (
+                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">enviado{inc.prazoEm ? ` · ${relogio(inc.prazoEm, now).txt}` : ""}</span>
+                  )}
+                  {inc.estado === "ciente" && (
+                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">✓ ciente</span>
+                  )}
+                  {inc.estado === "aberto" && (
+                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ {incRot}{incExtra}</span>
+                  )}
+                  {!fechado && inc.estado === "aprovar" && colSel?.emp && (
+                    <span className="shrink-0 flex gap-1">
+                      <button type="button" title="Aprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDia(d.date, "APPROVED")}
+                        className="w-7 h-7 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 text-[13px]">✅</button>
+                      <button type="button" title="Reprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDia(d.date, "REPROVED")}
+                        className="w-7 h-7 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40 text-[13px]">✗</button>
+                    </span>
+                  )}
+                  {!fechado && inc.estado && inc.estado !== "aprovar" && colSel?.emp && (
+                    <span className="shrink-0 flex gap-1">
+                      <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDia(d.date)}
+                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">💬</button>
+                      <button type="button" title="Corrigir / lançar batida na Sólides" onClick={() => setModalBatidas({ employeeId: Number(selEmp), colaborador: colSel?.nome || "", data: d.date })}
+                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">🔧</button>
+                      <button type="button" title="Lançar afastamento / férias" onClick={() => setModalAfast({ employeeId: Number(selEmp), colaborador: colSel?.nome || "", data: d.date })}
+                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">☂️</button>
+                      {inc.estado !== "ciente" && (
+                        <button type="button" title="Dar ciência (sem ação)" onClick={() => cienciaDia(d.date)}
+                          className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">✓</button>
+                      )}
+                    </span>
+                  )}
                   {fechado ? (
                     <button type="button" disabled={salvando || mesEncerrado} onClick={() => void reabrirDia(d.date)}
                       className="shrink-0 text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40">
@@ -537,6 +757,28 @@ export function FechamentoTab({
             </div>
           </div>
         </Modal>
+      )}
+
+      {modalBatidas && (
+        <BatidasDiaModal
+          info={modalBatidas}
+          shortCode={shortCode}
+          restaurantId={rid}
+          por={por}
+          onClose={() => setModalBatidas(null)}
+          onChanged={() => { void carregar(); }}
+        />
+      )}
+      {modalAfast && (
+        <AfastamentoModal
+          prefill={{ employeeId: modalAfast.employeeId, colaborador: modalAfast.colaborador, data: modalAfast.data }}
+          roster={roster}
+          shortCode={shortCode}
+          restaurantId={rid}
+          por={por}
+          onClose={() => setModalAfast(null)}
+          onDone={() => { setModalAfast(null); void carregar(); }}
+        />
       )}
     </div>
   );
