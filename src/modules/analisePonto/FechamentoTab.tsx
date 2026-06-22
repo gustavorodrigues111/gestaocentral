@@ -94,6 +94,8 @@ const ocKey = (employeeId: number, data: string, tipo: TipoOcorrencia) => `${emp
 type SolItem = { key: string; tipo: TipoOcorrencia; data: string; rotulo: string };
 type Solicitacao = { id: string; employeeId: number; itens: SolItem[]; prazoEm: string; status: string };
 type Avaliacao = { id: string; key: string };
+// Afastamento lançado na Sólides PELA NOSSA TELA (registro em pontoAuditoria).
+type AfastamentoAudit = { id: string; tipo?: string; employeeId: number; motivo?: string; inicio?: string; fim?: string; diaInteiro?: boolean; em?: string };
 
 function textoOuDesc(x: unknown): string | undefined {
   if (x == null) return undefined;
@@ -183,6 +185,7 @@ export function FechamentoTab({
   const [schedules, setSchedules] = useState<PontoEscala[]>([]);
   const [solicitacoes, setSolicitacoes] = useState<Solicitacao[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<Avaliacao[]>([]);
+  const [afastamentos, setAfastamentos] = useState<AfastamentoAudit[]>([]);
   const [now, setNow] = useState(() => Date.now());
   const [modalBatidas, setModalBatidas] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
   const [modalAfast, setModalAfast] = useState<{ employeeId: number; colaborador: string; data: string } | null>(null);
@@ -247,7 +250,10 @@ export function FechamentoTab({
       (s) => setSolicitacoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Solicitacao)));
     const u2 = onSnapshot(query(collection(db, "pontoAvaliacoes"), where("restaurantId", "==", rid)),
       (s) => setAvaliacoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Avaliacao)));
-    return () => { u1(); u2(); };
+    // Afastamentos lançados na Sólides pela nossa tela (auditoria, tipo=afastamento).
+    const u3 = onSnapshot(query(collection(db, "pontoAuditoria"), where("restaurantId", "==", rid)),
+      (s) => setAfastamentos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as AfastamentoAudit).filter((a) => a.tipo === "afastamento")));
+    return () => { u1(); u2(); u3(); };
   }, [rid]);
 
   // Relógio pro countdown das solicitações (atualiza a cada minuto).
@@ -332,6 +338,18 @@ export function FechamentoTab({
     }
     return m;
   }, [punches]);
+
+  // Afastamento lançado na Sólides (pela nossa tela) por dia: employeeId|date → motivo.
+  const afastamentoPorDia = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const a of afastamentos) {
+      if (!a.inicio || !a.fim || typeof a.employeeId !== "number") continue;
+      for (const d of diasDoMes(mes)) {
+        if (d >= a.inicio && d <= a.fim) m.set(`${a.employeeId}|${d}`, a.motivo || "Afastamento");
+      }
+    }
+    return m;
+  }, [afastamentos, mes]);
 
   // Inconsistências + estado do fluxo de um dia do empregado (pros badges/ações).
   function inconsistDoDia(employeeId: number, date: string): { ocs: Ocorrencia[]; estado: EstadoDia | null; prazoEm?: string; aprovacoes: AprovacaoPendente[] } {
@@ -681,6 +699,7 @@ export function FechamentoTab({
               const incRot = inc.ocs[0] ? (ROTULOS[inc.ocs[0].tipo] || "").split(" (")[0] : "";
               const incExtra = inc.ocs.length > 1 ? ` +${inc.ocs.length - 1}` : "";
               const incTitle = inc.ocs.map((o) => ROTULOS[o.tipo]).join(" · ");
+              const afastLancado = afastamentoPorDia.get(`${Number(selEmp)}|${d.date}`);
               return (
                 <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-xs ${vis?.row || ""}`}>
                   {colSel?.emp && previstaFechada && !fechado ? (
@@ -697,19 +716,22 @@ export function FechamentoTab({
                       : <span className="text-gray-400">sem batida</span>}
                     {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
                   </div>
-                  {inc.estado === "aprovar" && (
+                  {afastLancado && (
+                    <span title={`Afastamento lançado na Sólides pela nossa tela: ${afastLancado}`} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado} · Sólides ✓</span>
+                  )}
+                  {!afastLancado && inc.estado === "aprovar" && (
                     <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
                   )}
-                  {inc.estado === "enviado" && (
+                  {!afastLancado && inc.estado === "enviado" && (
                     <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">enviado{inc.prazoEm ? ` · ${relogio(inc.prazoEm, now).txt}` : ""}</span>
                   )}
-                  {inc.estado === "ciente" && (
+                  {!afastLancado && inc.estado === "ciente" && (
                     <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">✓ ciente</span>
                   )}
-                  {inc.estado === "aberto" && (
+                  {!afastLancado && inc.estado === "aberto" && (
                     <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ {incRot}{incExtra}</span>
                   )}
-                  {!fechado && inc.estado === "aprovar" && colSel?.emp && (
+                  {!afastLancado && !fechado && inc.estado === "aprovar" && colSel?.emp && (
                     <span className="shrink-0 flex gap-1">
                       <button type="button" title="Aprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDia(d.date, "APPROVED")}
                         className="w-7 h-7 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 text-[13px]">✅</button>
@@ -717,7 +739,7 @@ export function FechamentoTab({
                         className="w-7 h-7 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40 text-[13px]">✗</button>
                     </span>
                   )}
-                  {!fechado && inc.estado && inc.estado !== "aprovar" && colSel?.emp && (
+                  {!afastLancado && !fechado && inc.estado && inc.estado !== "aprovar" && colSel?.emp && (
                     <span className="shrink-0 flex gap-1">
                       <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDia(d.date)}
                         className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">💬</button>
