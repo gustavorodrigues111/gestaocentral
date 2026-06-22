@@ -376,7 +376,11 @@ export function FechamentoTab({
       const afastamento = !worked ? descAfast(afastP || ({} as SolidesPunch)) : undefined;
       const prev = prevista?.[date];
       let sugerido: ScheduleStatus;
-      if (worked) sugerido = prev === "folga" ? "comp_trab" : prev === "freela" ? "freela" : "trabalho";
+      // Trabalhou: preserva a prevista quando ela já é "trabalho-like" (TC/freela);
+      // se a prevista era folga (folga ou folga-por-compensação), virou compensação.
+      if (worked) sugerido = (prev === "comp_trab" || prev === "freela") ? prev
+        : (prev === "folga" || prev === "comp") ? "comp_trab"
+        : "trabalho";
       else if (afastamento) sugerido = mapMotivo(afastamento);
       else if (prev === "freela") sugerido = "freela";
       else if (prev === "trabalho") sugerido = "falta_i";
