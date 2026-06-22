@@ -48,7 +48,7 @@ export type ModuleId =
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
-  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recursos" | "faleDp"
+  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
@@ -681,6 +681,10 @@ export type Restaurant = {
   // a pasta [Nome do empregado] aqui dentro (com subpastas + "docs assinados").
   driveEmpregadosAtivosFolderId?: string;
   driveEmpregadosAtivosFolderNome?: string;
+  // Pasta raiz no Drive pras notas de recebimento de produtos. Dentro dela o
+  // app cria subpastas por semana (segunda→domingo) nomeadas "dd.mm.aa a dd.mm.aa".
+  recebimentoDriveFolderId?: string;
+  recebimentoDriveFolderNome?: string;
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
@@ -4663,3 +4667,27 @@ export function podeVerConversa(
   // só libera quem é participante (campo deve listar todo o público alvo).
   return false;
 }
+
+// ─── Recebimento de produtos (conferência de notas fiscais) ──────────────────
+// Cada nota recebida vira um doc em `recebimentos`. O arquivo da nota (foto/PDF)
+// e a foto de divergência sobem pro Drive, na subpasta da semana do recebimento.
+export type RecebimentoNota = {
+  id: string;
+  restaurantId: string;
+  recebidoEm: string;                 // ISO — data/hora do recebimento (chave de ordenação)
+  recebidoPor: { id: string; nome: string };
+  // Dados da nota (pré-preenchidos por OCR, confirmados pelo usuário)
+  emissor?: string;
+  valorTotal?: number;                // R$
+  dataEmissao?: string;               // YYYY-MM-DD
+  // Conformidade
+  conforme: boolean;                  // true = recebido tudo nos conformes
+  divergencia?: string;               // descrição, quando !conforme
+  // Arquivos no Drive
+  notaDriveFileId?: string;
+  notaDriveUrl?: string;
+  notaNome?: string;
+  fotoDivergenciaDriveFileId?: string;
+  fotoDivergenciaUrl?: string;
+  semanaLabel?: string;               // "dd.mm.aa a dd.mm.aa" (nome da subpasta)
+};
