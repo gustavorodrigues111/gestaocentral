@@ -421,10 +421,21 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
         const novas = j.duplicatas as DuplicataNota[];
         setDuplicatas((prev) => {
-          const chave = (d: DuplicataNota) => `${d.vencimento || ""}|${d.valor ?? ""}`;
-          const vistos = new Set(prev.map(chave));
-          const extras = novas.filter((d) => !vistos.has(chave(d)));
-          return [...prev, ...extras];
+          // Mesmo VALOR (em centavos) = mesma parcela já lida na nota — funde os
+          // campos (completa vencimento/número) em vez de criar linha duplicada.
+          const cents = (d: DuplicataNota) => d.valor != null ? Math.round(d.valor * 100) : null;
+          const result = prev.map((d) => ({ ...d }));
+          for (const nova of novas) {
+            const c = cents(nova);
+            const alvo = c != null ? result.find((d) => cents(d) === c) : undefined;
+            if (alvo) {
+              if (!alvo.vencimento && nova.vencimento) alvo.vencimento = nova.vencimento;
+              if (!alvo.numero && nova.numero) alvo.numero = nova.numero;
+            } else {
+              result.push(nova);
+            }
+          }
+          return result;
         });
       }
     } catch { /* best-effort; o usuário pode lançar manualmente */ }
@@ -516,6 +527,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o recebimento.");
     } finally { setSalvando(false); }
   }
+
+  // Conferência: a soma das faturas deve bater com o total da nota.
+  const somaDuplicatas = duplicatas.reduce((s, d) => s + (d.valor || 0), 0);
+  const totalNum = parseBRL(valor);
+  const faturasNaoBatem = totalNum != null && duplicatas.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
 
   return (
     <Modal title="🧾 Novo recebimento" onClose={onClose} maxWidth="max-w-lg">
@@ -652,9 +668,22 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
                   <span className="flex-1">{d.numero ? `Parcela ${d.numero}` : `Parcela ${i + 1}`}</span>
                   <span className="shrink-0 tabular-nums text-gray-500">{d.vencimento ? `vence ${d.vencimento.split("-").reverse().join("/")}` : "—"}</span>
                   <span className="shrink-0 tabular-nums w-20 text-right">{d.valor != null ? d.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</span>
+                  <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" title="Remover fatura" onClick={() => setDuplicatas((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
+              {duplicatas.length > 1 && (
+                <div className="px-2 py-1 text-[11px] flex items-center gap-2 font-semibold bg-gray-50 dark:bg-gray-800/40">
+                  <span className="flex-1">Soma das faturas</span>
+                  <span className="shrink-0 tabular-nums w-20 text-right">{fmtBRL(somaDuplicatas)}</span>
+                </div>
+              )}
             </div>
+            {faturasNaoBatem && (
+              <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                ⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).
+                Pode ter boleto lido em duplicidade ou parcela faltando — confira antes de salvar.
+              </p>
+            )}
           </div>
         )}
 
