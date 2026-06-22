@@ -440,21 +440,39 @@ export function FechamentoTab({
   const totalFechaveis = espelho.filter((d) => !d.demitido && !d.futuro).length;
 
   // ── Ações inline de inconsistência (mesma lógica da aba Inconsistências) ──
-  function solicitarDia(date: string) {
-    if (selEmp === "" || !colSel) return;
-    const ocs = inconsistDoDia(Number(selEmp), date).ocs;
-    if (!ocs.length) return;
+  // Núcleo: monta UMA mensagem de WhatsApp com TODAS as ocorrências passadas e
+  // registra UMA solicitação (usado tanto pelo 💬 do dia quanto pelo lote).
+  function enviarCorrecaoOcs(ocs: Ocorrencia[]) {
+    if (selEmp === "" || !colSel || !ocs.length) return;
     const tel = colSel.emp?.telefone || "";
     if (!tel) { setErro("Empregado sem telefone cadastrado pra enviar a correção."); return; }
+    const ordenadas = [...ocs].sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
     const prazoHoras = 6;
     const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
-    window.open(waLink(tel, montarMensagem(colSel.nome, ocs, prazoEm)), "_blank");
-    const itens = ocs.map((o) => ({ key: ocKey(o.employeeId, o.data, o.tipo), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
+    window.open(waLink(tel, montarMensagem(colSel.nome, ordenadas, prazoEm)), "_blank");
+    const itens = ordenadas.map((o) => ({ key: ocKey(o.employeeId, o.data, o.tipo), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
     void addDoc(collection(db, "pontoSolicitacoes"), {
       restaurantId: rid, employeeId: Number(selEmp), colaborador: colSel.nome, itens,
       enviadoEm: new Date().toISOString(), prazoHoras, prazoEm,
       por: { id: por.id, nome: por.nome }, status: "enviado",
     }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar a solicitação."));
+  }
+  function solicitarDia(date: string) {
+    if (selEmp === "") return;
+    enviarCorrecaoOcs(inconsistDoDia(Number(selEmp), date).ocs);
+  }
+  // Lote: junta as ocorrências de TODOS os dias selecionados (que tenham
+  // inconsistência aberta, ainda não lançada como afastamento) em 1 mensagem.
+  const diasSelComInconsist = selEmp === "" ? [] : [...selDias].filter((d) => {
+    if (afastamentoPorDia.get(`${Number(selEmp)}|${d}`)) return false;
+    return inconsistDoDia(Number(selEmp), d).ocs.length > 0;
+  });
+  function solicitarSelecionados() {
+    if (selEmp === "") return;
+    const ocs = diasSelComInconsist.flatMap((d) => inconsistDoDia(Number(selEmp), d).ocs);
+    if (!ocs.length) { setErro("Nenhum dia selecionado com inconsistência pra solicitar."); return; }
+    enviarCorrecaoOcs(ocs);
+    setSelDias(new Set());
   }
   function cienciaDia(date: string) {
     if (selEmp === "") return;
@@ -658,6 +676,11 @@ export function FechamentoTab({
                   <input type="checkbox" checked={todosAbertosSel} onChange={() => setSelDias(todosAbertosSel ? new Set() : new Set(diasAbertos))} className="w-4 h-4 accent-indigo-600" />
                   Selecionar abertos
                 </label>
+                <button type="button" disabled={diasSelComInconsist.length === 0} onClick={() => solicitarSelecionados()}
+                  title="Manda UM WhatsApp com todos os dias selecionados que têm inconsistência"
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                  💬 Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}
+                </button>
                 <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
                   className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
                   {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
