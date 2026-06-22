@@ -136,9 +136,12 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         res.status(400).json({ error: "startDate não pode ser depois de endDate." });
         return;
       }
+      // A Sólides espera os IDs como DTOs ANINHADOS (adjustmentReasonDTO/employeeDTO).
+      // Com os campos flat (adjustmentReasonId/employeeId) ela retorna OK mas NÃO cria.
+      // Payload validado contra a integração de referência (conector MCP que funciona).
       const payload = {
-        adjustmentReasonId: body.adjustmentReasonId,
-        employeeId: body.employeeId,
+        adjustmentReasonDTO: { id: body.adjustmentReasonId },
+        employeeDTO: { id: body.employeeId },
         startDate: ymdToMs(body.startDate, false),
         endDate: ymdToMs(body.endDate, true),
         fullDay: body.fullDay === true,
