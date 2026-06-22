@@ -55,6 +55,15 @@ const PROMPT_BOLETO =
   '  "duplicatas": [<{"numero": <número do documento/parcela ou null>, "valor": <valor do boleto>, "vencimento": "YYYY-MM-DD"}>, ...]  (uma entrada por boleto/parcela; normalmente 1)\n' +
   "}";
 
+const PROMPT_FECHAMENTO =
+  "Você recebe a imagem/PDF de um COMPROVANTE DE FECHAMENTO DE CAIXA de restaurante (sistema Altec/PDV). " +
+  "Extraia os totais do turno e responda SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais " +
+  'como NÚMERO (ex 1234.56), sem "R$" e sem separador de milhar. null se não achar. NÃO invente.\n' +
+  "{\n" +
+  '  "totalVendas": <valor TOTAL de vendas do turno (faturamento/total apurado), ou null>,\n' +
+  '  "dinheiro": <total recebido em DINHEIRO, ou null>\n' +
+  "}";
+
 function parseNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -120,6 +129,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     files?: Array<{ data?: string; mediaType?: string }>;
   };
   const isBoleto = body.tipo === "boleto";
+  const isFechamento = body.tipo === "fechamento";
 
   // Aceita 1 arquivo (data/mediaType) OU vários (files[]) — notas de várias páginas.
   const arquivos: Array<{ data: string; mediaType: string }> = [];
@@ -139,7 +149,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const payload = {
     model: MODEL,
     max_tokens: 8000, // notas grandes (ex: Heineken, 6 páginas) têm muitos itens
-    messages: [{ role: "user", content: [...blocks, { type: "text", text: isBoleto ? PROMPT_BOLETO : PROMPT }] }],
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
@@ -163,6 +173,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    if (isFechamento) {
+      res.status(200).json({ totalVendas: parseNum(p.totalVendas) ?? null, dinheiro: parseNum(p.dinheiro) ?? null });
+      return;
+    }
     if (isBoleto) {
       res.status(200).json({ emissor: str(p.emissor), duplicatas: parseDuplicatas(p.duplicatas) });
       return;

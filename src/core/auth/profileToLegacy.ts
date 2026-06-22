@@ -103,6 +103,7 @@ const ACOES_OPERACIONAIS: Record<string, Set<string>> = {
   freelas: new Set(["lancarTurnos", "criarVaga", "atribuir", "avaliar"]),
   // "receber" e "editar" abrem a tela mas não são "configurar" (pasta do Drive).
   recebimento: new Set(["receber", "editar"]),
+  fechamentoCaixa: new Set(["fechar", "editar"]),
 };
 
 function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions {

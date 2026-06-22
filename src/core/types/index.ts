@@ -48,7 +48,7 @@ export type ModuleId =
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
-  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "recursos" | "faleDp"
+  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
@@ -685,6 +685,10 @@ export type Restaurant = {
   // app cria subpastas por semana (segunda→domingo) nomeadas "dd.mm.aa a dd.mm.aa".
   recebimentoDriveFolderId?: string;
   recebimentoDriveFolderNome?: string;
+  // Fechamento de caixa: pasta raiz no Drive (subpastas dia/turno) + sócios notificados.
+  fechamentoDriveFolderId?: string;
+  fechamentoDriveFolderNome?: string;
+  fechamentoSociosEmails?: string[];
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
@@ -4687,6 +4691,41 @@ export type BoletoNota = {
   driveFileId: string;
   driveUrl?: string;
   nome: string;
+};
+
+// ─── Fechamento de Caixa ─────────────────────────────────────────────────────
+export type TurnoCaixa = "almoco" | "jantar";
+export const TURNO_CAIXA_LABEL: Record<TurnoCaixa, string> = { almoco: "Almoço", jantar: "Jantar" };
+// Grupos de anexo do fechamento (organização/rótulo).
+export type GrupoAnexoFechamento = "comprovante" | "filipeta" | "comanda" | "dinheiro" | "outro";
+export const GRUPO_ANEXO_LABEL: Record<GrupoAnexoFechamento, string> = {
+  comprovante: "Comprovante de fechamento (Altec)",
+  filipeta: "Filipetas das maquininhas",
+  comanda: "Comandas de sócios",
+  dinheiro: "Foto do dinheiro",
+  outro: "Outros",
+};
+export type AnexoFechamento = {
+  driveFileId: string;
+  driveUrl?: string;
+  nome: string;
+  grupo: GrupoAnexoFechamento;
+};
+export type FechamentoCaixa = {
+  id: string;
+  restaurantId: string;
+  data: string;                 // YYYY-MM-DD do turno
+  turno: TurnoCaixa;
+  fechadoEm: string;            // ISO — quando foi registrado
+  fechadoPor: { id: string; nome: string };
+  totalVendas?: number;
+  dinheiro?: number;
+  fundoCaixa?: number;
+  numeroLacre?: string;         // nº do lacre do malote
+  observacao?: string;
+  anexos?: AnexoFechamento[];
+  driveFolderUrl?: string;      // pasta do turno no Drive
+  emailEnviadoPara?: string[];  // emails dos sócios notificados
 };
 export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa" | "romaneio";
 export const TIPO_DOCUMENTO_LABEL: Record<TipoDocumento, string> = {

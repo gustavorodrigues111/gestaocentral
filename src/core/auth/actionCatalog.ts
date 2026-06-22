@@ -172,6 +172,19 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "fechamentoCaixa",
+    icon: "💵",
+    label: "Fechamento de Caixa",
+    desc: "Fechamento de caixa por turno: anexos (comprovante, filipetas, comandas), valores e email aos sócios",
+    area: "appmise",
+    acoes: [
+      { id: "fechar",     label: "Fazer fechamento (dar entrada)" },
+      { id: "ver",        label: "Ver fechamentos enviados (lista completa)", sensivel: true },
+      { id: "editar",     label: "Editar fechamentos" },
+      { id: "configurar", label: "Configurações (pasta do Drive, sócios)" },
+    ],
+  },
+  {
     id: "fichas",
     icon: "📚",
     label: "Fichas técnicas",

@@ -72,6 +72,9 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     recebimento: {
       receber: true, ver: true, editar: true, configurar: true,
     },
+    fechamentoCaixa: {
+      fechar: true, ver: true, editar: true, configurar: true,
+    },
     escala: {
       verPropria: true, verTime: true,
       editar: true, aprovarTrocas: true, publicar: true, exportar: true,

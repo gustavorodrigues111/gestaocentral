@@ -133,6 +133,7 @@ service cloud.firestore {
     match /vtFolhas/{id}            { allow read, write: if authed(); }
     match /vtLotes/{id}             { allow read, write: if authed(); }
     match /recebimentos/{id}        { allow read, write: if authed(); }
+    match /fechamentosCaixa/{id}    { allow read, write: if authed(); }
     match /comunicados/{id}         { allow read, write: if authed(); }
     match /comunicadoLeituras/{id}  { allow read, write: if authed(); }
     match /ocorrencias/{id}         { allow read, write: if authed(); }
