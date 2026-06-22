@@ -1377,7 +1377,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
           <div className="text-center">
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Recebeu boleto (físico) pra anexar?</p>
             <div className="flex gap-2 justify-center">
-              <button type="button" onClick={() => { setRecebeuBoleto(true); setFormaPagamento("boleto"); }}
+              <button type="button" onClick={() => { setRecebeuBoleto(true); setFormaPagamento("boleto"); if (!boletoFiles.length) setAddBoletoWiz(true); }}
                 className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === true ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>✓ Sim</button>
               <button type="button" onClick={() => { setRecebeuBoleto(false); setBoletoFiles([]); }}
                 className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === false ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Não</button>
@@ -1410,7 +1410,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             <>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Selecione a forma de pagamento</label>
-                <FormaPagamentoSelector value={formaPagamento} onChange={setFormaPagamento} />
+                <FormaPagamentoSelector value={formaPagamento} onChange={(v) => { setFormaPagamento(v); if (v === "cartao" && !comprovanteFiles.length) setAddComprovante(true); }} />
               </div>
               {formaPagamento === "cartao" && (
                 <div className="space-y-2">
