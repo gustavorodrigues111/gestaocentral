@@ -35,6 +35,32 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// Bloco pro OCR: imagens são redimensionadas/comprimidas (canvas) pra não
+// estourar o limite de payload da função serverless (Vercel ~4,5 MB) quando há
+// várias páginas. PDFs vão sem alteração. O arquivo ORIGINAL é o que sobe pro Drive.
+async function paraOcrBlock(file: File): Promise<{ data: string; mediaType: string }> {
+  if (!file.type.startsWith("image/")) {
+    return { data: await fileToBase64(file), mediaType: file.type || "application/pdf" };
+  }
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxLado = 1600; // suficiente pra OCR; reduz bastante o tamanho
+    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * escala));
+    const h = Math.max(1, Math.round(bitmap.height * escala));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("sem contexto 2d");
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.7);
+    const b64 = dataUrl.split(",")[1] || "";
+    if (b64) return { data: b64, mediaType: "image/jpeg" };
+  } catch { /* fallback abaixo: manda o original */ }
+  return { data: await fileToBase64(file), mediaType: file.type || "image/jpeg" };
+}
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -437,7 +463,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     if (!files.length) return;
     setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
-      const blocos = await Promise.all(files.map(async (f) => ({ data: await fileToBase64(f), mediaType: f.type || "image/jpeg" })));
+      const blocos = await Promise.all(files.map(paraOcrBlock));
       const resp = await fetch("/api/ocr-nota", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
@@ -472,11 +498,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   async function lerBoleto(file: File) {
     setLendoBoleto(true);
     try {
-      const data = await fileToBase64(file);
+      const bloco = await paraOcrBlock(file);
       const resp = await fetch("/api/ocr-nota", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ data, mediaType: file.type || "image/jpeg", tipo: "boleto" }),
+        body: JSON.stringify({ files: [bloco], tipo: "boleto" }),
       });
       const j = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
