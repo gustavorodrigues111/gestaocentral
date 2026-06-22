@@ -3,13 +3,14 @@
 //  Lazy-load das libs (jspdf/jspdf-autotable/xlsx) pra não pesar o bundle.
 // ════════════════════════════════════════════════════════════════════════════
 import type { RecebimentoNota } from "../../core/types";
+import { FORMA_PAGAMENTO_LABEL } from "../../core/types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fmtDataBR = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "";
 const brl = (v?: number) => v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const COLS_BASE = ["Recebido em", "Emissão", "Nº NF", "Emissor", "CNPJ", "Valor total", "Recebeu", "Conforme?", "Divergência"];
+const COLS_BASE = ["Recebido em", "Emissão", "Nº NF", "Emissor", "CNPJ", "Valor total", "Recebeu", "Forma pgto", "Conforme?", "Divergência"];
 const COL_SEMANA = "Semana";
 
 // Vencimentos ordenados (mais cedo primeiro), só as datas.
@@ -44,6 +45,7 @@ function linhaDe(n: RecebimentoNota, maxVenc: number, brlValor: boolean): (strin
     n.cnpjEmissor || "",
     brlValor ? brl(n.valorTotal) : (n.valorTotal ?? ""),
     n.recebidoPor?.nome || "",
+    n.formaPagamento ? FORMA_PAGAMENTO_LABEL[n.formaPagamento] : "",
     n.conforme ? "Sim" : "Não",
     n.conforme ? "" : (n.divergencia || ""),
     ...colsVenc,
@@ -117,7 +119,7 @@ export async function exportarRecebimentosPDF(notas: RecebimentoNota[], restaura
     styles: { fontSize: 7, cellPadding: { top: 1.2, bottom: 1.2, left: 1.5, right: 1.5 }, lineWidth: 0.1, lineColor: [200, 200, 200], valign: "middle", textColor: [30, 30, 30], overflow: "ellipsize" },
     headStyles: { fillColor: [233, 226, 209], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7 },
     footStyles: { fillColor: [248, 248, 248], textColor: [30, 30, 30] },
-    columnStyles: { 5: { halign: "right" }, 7: { halign: "center" } },
+    columnStyles: { 5: { halign: "right" }, 8: { halign: "center" } },
   });
 
   doc.save(nomeArquivo(restaurantNome, "pdf"));

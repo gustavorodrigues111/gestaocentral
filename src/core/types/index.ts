@@ -4688,6 +4688,13 @@ export type BoletoNota = {
   driveUrl?: string;
   nome: string;
 };
+export type FormaPagamento = "boleto" | "cartao" | "dinheiro" | "pix";
+export const FORMA_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
+  boleto: "Boleto",
+  cartao: "Cartão de crédito",
+  dinheiro: "Dinheiro",
+  pix: "PIX",
+};
 export type RecebimentoNota = {
   id: string;
   restaurantId: string;
@@ -4705,6 +4712,7 @@ export type RecebimentoNota = {
   dataEmissao?: string;               // YYYY-MM-DD
   itens?: ItemNota[];                 // produtos da nota
   duplicatas?: DuplicataNota[];       // faturas/parcelas (valor + vencimento)
+  formaPagamento?: FormaPagamento;    // opcional — boleto auto ao anexar boleto
   // Conformidade
   conforme: boolean;                  // true = recebido tudo nos conformes
   divergencia?: string;               // descrição, quando !conforme
