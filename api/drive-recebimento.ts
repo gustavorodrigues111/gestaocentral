@@ -10,7 +10,7 @@
 //  Exige usuário logado (Firebase ID token). Bytes não passam por aqui.
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
-import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubfolder, initResumableUpload, downloadFileBase64, listFolder, moveFolder } from "./_googleDrive.js";
+import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubfolder, initResumableUpload, uploadMultipart, downloadFileBase64, listFolder, moveFolder } from "./_googleDrive.js";
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
@@ -22,7 +22,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   if ((req.method || "GET") !== "POST") { res.status(405).json({ error: "Use POST." }); return; }
 
-  const body = (req.body || {}) as { action?: string; nome?: string; topName?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string; fileId?: string; folderId?: string; newParentId?: string };
+  const body = (req.body || {}) as { action?: string; nome?: string; topName?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string; data?: string; fileId?: string; folderId?: string; newParentId?: string };
   const action = String(body.action || "");
 
   // status não exige config — serve justamente pra avisar que falta.
@@ -60,6 +60,12 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (!body.parentId || !body.name) { res.status(400).json({ error: "Faltam parentId/name." }); return; }
       const uploadUrl = await initResumableUpload(body.parentId, body.name, String(body.mimeType || "application/octet-stream"), token);
       res.status(200).json({ uploadUrl });
+      return;
+    }
+    if (action === "uploadFile") {
+      if (!body.parentId || !body.name || !body.data) { res.status(400).json({ error: "Faltam parentId/name/data." }); return; }
+      const f = await uploadMultipart(body.parentId, body.name, String(body.mimeType || "application/octet-stream"), body.data, token);
+      res.status(200).json(f);
       return;
     }
     if (action === "download") {

@@ -122,6 +122,25 @@ export async function listFolder(folderId: string, token: string): Promise<Array
   return data.files ?? [];
 }
 
+// Upload direto (multipart) pela conta central — recebe base64 do front e sobe
+// pro Google. Evita CORS do resumable no navegador. Limitado a ~4,5 MB (limite
+// de payload da serverless) — o front comprime imagens antes de mandar.
+export async function uploadMultipart(parentId: string, name: string, mimeType: string, base64: string, token: string): Promise<{ id: string; name: string; webViewLink?: string }> {
+  const boundary = "gc_boundary_" + base64.length.toString(36) + name.length.toString(36);
+  const meta = JSON.stringify({ name, parents: [parentId] });
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n` +
+    `--${boundary}\r\nContent-Type: ${mimeType || "application/octet-stream"}\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n` +
+    `--${boundary}--`;
+  const resp = await fetch(
+    `${DRIVE_UPLOAD}/files?uploadType=multipart&fields=id,name,webViewLink&${ALL_DRIVES}`,
+    { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": `multipart/related; boundary=${boundary}` }, body },
+  );
+  const txt = await resp.text();
+  if (!resp.ok) throw new Error(`Falha no upload (HTTP ${resp.status}). ${txt.slice(0, 200)}`);
+  return JSON.parse(txt) as { id: string; name: string; webViewLink?: string };
+}
+
 // Inicia um upload resumable e devolve a URL de sessão (pro browser dar PUT).
 export async function initResumableUpload(parentId: string, name: string, mimeType: string, token: string): Promise<string> {
   const meta = { name, parents: [parentId] };

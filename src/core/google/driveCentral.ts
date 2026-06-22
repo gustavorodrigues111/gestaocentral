@@ -81,21 +81,52 @@ export function parseDriveFolderId(input: string): string | null {
   return null;
 }
 
-// Sobe um arquivo pela conta central: inicia a sessão resumable no backend e
-// faz o PUT dos bytes direto no Google. Devolve id + link do arquivo.
-export async function centralUpload(parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
-  const { uploadUrl } = await post<{ uploadUrl: string }>("initUpload", {
-    parentId, name: file.name, mimeType: file.type || "application/octet-stream",
+// File → base64 (sem prefixo data:).
+function fileToBase64(file: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || "").split(",")[1] || "");
+    r.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+    r.readAsDataURL(file);
   });
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
-  });
-  if (!put.ok) {
-    const txt = await put.text().catch(() => "");
-    throw new Error(`Falha ao enviar o arquivo pro Drive (HTTP ${put.status}). ${txt.slice(0, 200)}`);
+}
+
+// Prepara o arquivo p/ subir pelo backend: imagens são redimensionadas (canvas)
+// pra caber no limite de payload da serverless (~4,5 MB) mantendo legibilidade.
+// PDFs vão como estão (com aviso se muito grandes).
+async function prepararArquivo(file: File): Promise<{ data: string; mimeType: string }> {
+  if (file.type.startsWith("image/")) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxLado = 2200; // legível pra arquivo da nota e leve o suficiente
+      const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(1, Math.round(bitmap.width * escala));
+      const h = Math.max(1, Math.round(bitmap.height * escala));
+      const canvas = document.createElement("canvas");
+      canvas.width = w; canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close?.();
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+        const b64 = dataUrl.split(",")[1] || "";
+        if (b64) return { data: b64, mimeType: "image/jpeg" };
+      }
+    } catch { /* fallback abaixo */ }
   }
-  const j = (await put.json()) as { id: string; name?: string; webViewLink?: string };
+  const data = await fileToBase64(file);
+  // ~4,5 MB de payload; base64 infla ~33%. Avisa se passar do limite seguro.
+  if (data.length > 5_600_000) {
+    throw new Error("Arquivo grande demais pra subir (máx ~4 MB). Reduza o PDF ou envie como foto.");
+  }
+  return { data, mimeType: file.type || "application/octet-stream" };
+}
+
+// Sobe um arquivo pela conta central (via backend, multipart — sem CORS).
+export async function centralUpload(parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
+  const { data, mimeType } = await prepararArquivo(file);
+  const j = await post<{ id: string; name?: string; webViewLink?: string }>("uploadFile", {
+    parentId, name: file.name, mimeType, data,
+  });
   return { id: j.id, name: j.name || file.name, ...(j.webViewLink ? { webViewLink: j.webViewLink } : {}) };
 }
