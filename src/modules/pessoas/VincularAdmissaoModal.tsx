@@ -21,7 +21,7 @@ const STATUS_LABEL: Record<string, string> = {
   formulario_enviado: "Aguardando preenchimento",
   formulario_preenchido: "Exames / conta / dados",
   solicitacao_contabilidade: "Contabilidade & contratos",
-  pronto_admissao: "Pronto pra admitir",
+  pronto_admissao: "Última milha",
   admitido: "Admitido (onboarding)",
 };
 

@@ -172,7 +172,7 @@ export const KANBAN_COLUNAS_DEFAULT = [
   { id: "col_enviado",        nome: "Aguardando preenchimento e Solicitação de Exames e Conta", ordem: 2, statusAuto: "formulario_enviado" as const, cor: "94a3b8" },
   { id: "col_preenchido",     nome: "Exames, conta e dados internos", ordem: 3, statusAuto: "formulario_preenchido" as const, cor: "f59e0b" },
   { id: "col_contabilidade",  nome: "Contabilidade & contratos",  ordem: 4, statusAuto: "solicitacao_contabilidade" as const, cor: "8b5cf6" },
-  { id: "col_pronto",         nome: "Pronto pra admitir",         ordem: 5, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
+  { id: "col_pronto",         nome: "Última milha",               ordem: 5, statusAuto: "pronto_admissao" as const,           cor: "6366f1" },
   { id: "col_admitido",       nome: "Admitido e Onboarding",      ordem: 6, statusAuto: "admitido" as const,                  cor: "0ea5e9" },
   { id: "col_terminados",     nome: "Cancelados e Expirados",     ordem: 7, statusAuto: ["cancelada", "expirada"] as ("cancelada" | "expirada")[], cor: "ef4444" },
 ];
@@ -346,6 +346,14 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_cadastro_banco", "Solicitar cadastro empregado no Banco",
      "col_preenchido", CK_DADOS_INTERNOS.id, CK_DADOS_INTERNOS.nome, true,
      { atalho: { tipo: "contato_financeiro" } }),
+  // 🏥 Resultados dos exames — ÚLTIMO grupo desta etapa: só depois de receber os
+  // resultados a admissão segue pra contabilidade/contratos.
+  st("st_receber_aso", "Recebimento do ASO",
+     "col_preenchido", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
+     { pedeLink: true }),
+  st("st_receber_cert_manip", "Recebimento do Exame Parasitológico",
+     "col_preenchido", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
+     { pedeLink: true }),
 
   // ─── Col 4: Contabilidade & contratos ───
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",
@@ -368,13 +376,7 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   st("st_cadastro_tangerino", "Cadastro no Sólides Controle de Ponto",
      "col_contabilidade", CK_CADASTROS_EXT.id, CK_CADASTROS_EXT.nome, true),
 
-  // ─── Col 5: Pronto pra admitir ───
-  st("st_receber_aso", "Recebimento do ASO",
-     "col_pronto", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
-     { pedeLink: true }),
-  st("st_receber_cert_manip", "Recebimento do Exame Parasitológico",
-     "col_pronto", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
-     { pedeLink: true }),
+  // ─── Col 5: Última milha ───
   st("st_certificados_cursos", "Receber certificados dos cursos obrigatórios",
      "col_pronto", CK_ULTIMA_MILHA.id, CK_ULTIMA_MILHA.nome, true,
      { pedeLink: true }),

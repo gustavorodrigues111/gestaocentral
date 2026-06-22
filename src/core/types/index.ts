@@ -2411,7 +2411,7 @@ export const ADMISSAO_STATUS_LABEL: Record<AdmissaoStatus, string> = {
   formulario_enviado:        "Aguardando preenchimento e Solicitação de Exames e Conta",
   formulario_preenchido:     "Exames, conta e dados internos",
   solicitacao_contabilidade: "Contabilidade & contratos",
-  pronto_admissao:           "Pronto pra admitir",
+  pronto_admissao:           "Última milha",
   admitido:                  "Admitido e Onboarding",
   cancelada:                 "Cancelada",
   expirada:                  "Expirada",
