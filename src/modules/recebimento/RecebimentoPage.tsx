@@ -209,7 +209,7 @@ export function RecebimentoPage() {
   return (
     <div className="max-w-5xl space-y-4">
       {/* Abas */}
-      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto whitespace-nowrap">
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
         {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
