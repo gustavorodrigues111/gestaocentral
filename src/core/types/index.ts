@@ -4735,5 +4735,6 @@ export type RecebimentoNota = {
   fotoDivergenciaDriveFileId?: string;
   fotoDivergenciaUrl?: string;
   boletos?: BoletoNota[];             // boletos anexados (arquivados no Drive)
+  comprovantes?: BoletoNota[];        // comprovantes de pagamento (ex: cartão) no Drive
   semanaLabel?: string;               // "dd.mm.aa a dd.mm.aa" (nome da subpasta)
 };

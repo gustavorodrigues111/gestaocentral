@@ -702,6 +702,19 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: Recebimen
           </div>
         </div>
       )}
+      {nota.comprovantes && nota.comprovantes.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Comprovantes ({nota.comprovantes.length})</div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.comprovantes.map((c, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="truncate flex-1">🧾 {c.nome}</span>
+                {c.driveUrl && <a href={c.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {nota.boletos && nota.boletos.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Boletos ({nota.boletos.length})</div>
@@ -1022,6 +1035,9 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const [salvo, setSalvo] = useState(false);
   const [addPagina, setAddPagina] = useState(false); // seletor de fonte p/ folha extra
   const [addBoletoWiz, setAddBoletoWiz] = useState(false); // seletor de fonte p/ boleto no wizard
+  const [recebeuBoleto, setRecebeuBoleto] = useState<boolean | null>(null);
+  const [comprovanteFiles, setComprovanteFiles] = useState<File[]>([]);
+  const [addComprovante, setAddComprovante] = useState(false);
   const leituraSeq = useRef(0);
 
   // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
@@ -1115,7 +1131,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   async function salvar() {
     setErro("");
     const temNota = notaFiles.length > 0;
-    const temArquivos = temNota || boletoFiles.length > 0 || (!conforme && !!fotoDivFile);
+    const temArquivos = temNota || boletoFiles.length > 0 || comprovanteFiles.length > 0 || (!conforme && !!fotoDivFile);
     if (!temNota && !emissor.trim() && parseBRL(valor) == null) { setErro("Anexe a nota ou preencha ao menos emissor/valor."); return; }
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
     if (temArquivos && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
@@ -1157,6 +1173,15 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         const s = await subirArquivo(central, semanaId, alvo);
         boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
+      // Comprovantes (ex: cartão): "<base> comprovante" / comprovante1, 2…
+      const comprovantes: BoletoNota[] = [];
+      for (let i = 0; i < comprovanteFiles.length; i++) {
+        const cf = comprovanteFiles[i];
+        const sufixo = comprovanteFiles.length > 1 ? `comprovante${i + 1}` : "comprovante";
+        const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo);
+        const s = await subirArquivo(central, semanaId, alvo);
+        comprovantes.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+      }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
@@ -1187,6 +1212,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         ...(!conforme && divergencia.trim() ? { divergencia: divergencia.trim() } : {}),
         ...(formaPagamento ? { formaPagamento } : {}),
         ...(boletos.length ? { boletos } : {}),
+        ...(comprovantes.length ? { comprovantes } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
       await addDoc(collection(db, "recebimentos"), nota);
@@ -1246,11 +1272,6 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
 
         {/* Passo 2 — conferir dados */}
         {etapa === "dados" && (<>
-        <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Forma de pagamento <span className="font-normal text-gray-400">— opcional</span></label>
-          <FormaPagamentoSelector value={formaPagamento} onChange={setFormaPagamento} />
-        </div>
-
         {/* Dados da nota (o OCR pré-preenche; confira/corrija) */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
@@ -1349,26 +1370,71 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         )}
         </>)}
 
-        {/* Passo 3 — boleto */}
+        {/* Passo 3 — pagamento (boleto sim/não → forma → comprovante) */}
         {etapa === "boleto" && (
-        <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Recebeu boleto? <span className="font-normal text-gray-400">— opcional</span></label>
-          {boletoFiles.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
-              {boletoFiles.map((b, i) => (
-                <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
-                  <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
-                  <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
-                </div>
-              ))}
+        <div className="space-y-3">
+          {/* Pergunta principal */}
+          <div className="text-center">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Recebeu boleto (físico) pra anexar?</p>
+            <div className="flex gap-2 justify-center">
+              <button type="button" onClick={() => { setRecebeuBoleto(true); setFormaPagamento("boleto"); }}
+                className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === true ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>✓ Sim</button>
+              <button type="button" onClick={() => { setRecebeuBoleto(false); setBoletoFiles([]); }}
+                className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === false ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Não</button>
             </div>
-          )}
-          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
-          <div className="mt-2 flex flex-col items-center gap-2 py-5 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{boletoFiles.length ? "Tem outro boleto?" : "Recebeu boleto junto?"}</p>
-            <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
-            <p className="text-[11px] text-gray-400 text-center">{boletoFiles.length ? 'Sem mais boletos? Toque em "Continuar →".' : 'Se não veio boleto, é só tocar em "Continuar →".'}</p>
           </div>
+
+          {/* Sim → anexa boleto(s) */}
+          {recebeuBoleto === true && (
+            <>
+              {boletoFiles.length > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                  {boletoFiles.map((b, i) => (
+                    <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
+                      <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
+                      <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
+              <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{boletoFiles.length ? "Tem outro boleto?" : "Anexe o boleto"}</p>
+                <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
+              </div>
+            </>
+          )}
+
+          {/* Não → escolhe forma de pagamento */}
+          {recebeuBoleto === false && (
+            <>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Selecione a forma de pagamento</label>
+                <FormaPagamentoSelector value={formaPagamento} onChange={setFormaPagamento} />
+              </div>
+              {formaPagamento === "cartao" && (
+                <div className="space-y-2">
+                  {comprovanteFiles.length > 0 && (
+                    <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                      {comprovanteFiles.map((c, i) => (
+                        <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
+                          <span className="truncate flex-1">🧾 Comprovante {comprovanteFiles.length > 1 ? i + 1 : ""} · {c.name}</span>
+                          <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setComprovanteFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Anexe o comprovante do cartão</p>
+                    <Button variant="secondary" size="sm" onClick={() => setAddComprovante(true)}>➕ {comprovanteFiles.length ? "Adicionar outro comprovante" : "Anexar comprovante"}</Button>
+                  </div>
+                </div>
+              )}
+              {formaPagamento && formaPagamento !== "cartao" && (
+                <p className="text-[12px] text-gray-500 dark:text-gray-400 text-center py-2">{formaPagamento === "boleto" ? "Boleto com envio online" : FORMA_PAGAMENTO_LABEL[formaPagamento]} — sem nada pra anexar. Toque em "Continuar →".</p>
+              )}
+            </>
+          )}
         </div>
         )}
 
@@ -1419,7 +1485,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
           {etapa === "final" ? (
             <Button size="sm" disabled={salvando || !podeAvancar} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
           ) : (
-            <Button size="sm" disabled={!podeAvancar} onClick={avancar}>Continuar →</Button>
+            <Button size="sm" disabled={!podeAvancar || (etapa === "boleto" && recebeuBoleto === null)} onClick={avancar}>Continuar →</Button>
           )}
         </div>
 
@@ -1437,6 +1503,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             semManual
             onClose={() => setAddBoletoWiz(false)}
             onArquivo={(f) => { setAddBoletoWiz(false); aoAnexarBoleto(f); }}
+          />
+        )}
+        {addComprovante && (
+          <EscolhaFonteModal
+            titulo="Anexar comprovante"
+            semManual
+            onClose={() => setAddComprovante(false)}
+            onArquivo={(f) => { setAddComprovante(false); setComprovanteFiles((prev) => [...prev, f]); }}
           />
         )}
       </div>
