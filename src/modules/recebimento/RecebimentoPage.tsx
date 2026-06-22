@@ -1033,7 +1033,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const [notaFiles, setNotaFiles] = useState<File[]>([]);
   const [boletoFiles, setBoletoFiles] = useState<File[]>([]);
   const [lendoBoleto, setLendoBoleto] = useState(false);
-  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento | undefined>(undefined);
+  // Conta fixa já é um documento único com o boleto embutido → pagamento = boleto.
+  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento | undefined>(tipoDocumento === "conta_fixa" ? "boleto" : undefined);
   const [conforme, setConforme] = useState(true);
   const [divergencia, setDivergencia] = useState("");
   const [fotoDivFile, setFotoDivFile] = useState<File | null>(null);
@@ -1252,10 +1253,17 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const totalNum = parseBRL(valor);
   const faturasNaoBatem = totalNum != null && duplicatas.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
 
-  const stepNum = { paginas: 1, dados: 2, boleto: 3, final: 4 }[etapa];
+  // Conta fixa = documento único com boleto embutido → pula o passo de Pagamento.
+  const passos: Array<"paginas" | "dados" | "boleto" | "final"> = tipoDocumento === "conta_fixa"
+    ? ["paginas", "dados", "final"]
+    : ["paginas", "dados", "boleto", "final"];
+  const idxPasso = Math.max(0, passos.indexOf(etapa));
+  const stepNum = idxPasso + 1;
+  const totalPassos = passos.length;
+  const tituloPasso = { paginas: "Documento", dados: "Conferir dados", boleto: "Pagamento", final: "Conferência" }[etapa];
   const lendoAlgo = lendo || lendoBoleto; // leitura em segundo plano (não bloqueia)
-  const voltar = () => setEtapa(etapa === "dados" ? "paginas" : etapa === "boleto" ? "dados" : "boleto");
-  const avancar = () => setEtapa(etapa === "paginas" ? "dados" : etapa === "dados" ? "boleto" : "final");
+  const voltar = () => { if (idxPasso > 0) setEtapa(passos[idxPasso - 1]); };
+  const avancar = () => { if (idxPasso < passos.length - 1) setEtapa(passos[idxPasso + 1]); };
   return (
     <Modal title="🧾 Novo recebimento" onClose={onClose} maxWidth="max-w-lg">
       {salvo ? (
@@ -1268,7 +1276,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       ) : (
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
-        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Passo {stepNum} de 4 · {["Folhas da nota", "Conferir dados", "Boleto", "Conferência"][stepNum - 1]}</div>
+        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Passo {stepNum} de {totalPassos} · {tituloPasso}</div>
 
         {/* Passo 1 — folha(s) da nota */}
         {etapa === "paginas" && (
