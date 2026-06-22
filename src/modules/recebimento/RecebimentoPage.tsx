@@ -184,50 +184,92 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { rec
 }
 
 // ─── Tabela de recebimentos ─────────────────────────────────────────────────
+type SortKey = "recebido" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme";
 function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
   notas: RecebimentoNota[];
   podeConfig: boolean;
   onExcluir: (n: RecebimentoNota) => void;
 }) {
   const [detalhe, setDetalhe] = useState<RecebimentoNota | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("recebido");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
+  function ordenarPor(k: SortKey) {
+    if (k === sortKey) { setSortDir((d) => (d === "asc" ? "desc" : "asc")); return; }
+    setSortKey(k);
+    setSortDir(k === "recebido" || k === "emissao" || k === "valor" ? "desc" : "asc");
+  }
+
+  const ordenadas = useMemo(() => {
+    const val = (n: RecebimentoNota): string | number => {
+      switch (sortKey) {
+        case "recebido": return n.recebidoEm || "";
+        case "emissao": return n.dataEmissao || "";
+        case "nf": { const x = parseInt((n.numeroNota || "").replace(/\D/g, ""), 10); return Number.isFinite(x) ? x : -1; }
+        case "emissor": return (n.emissor || "").toLowerCase();
+        case "valor": return n.valorTotal ?? -1;
+        case "recebeu": return (n.recebidoPor?.nome || "").toLowerCase();
+        case "conforme": return n.conforme ? 1 : 0;
+      }
+    };
+    const arr = [...notas];
+    arr.sort((a, b) => {
+      const va = val(a), vb = val(b);
+      const c = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "pt-BR");
+      return sortDir === "asc" ? c : -c;
+    });
+    return arr;
+  }, [notas, sortKey, sortDir]);
+
   if (notas.length === 0) {
     return <div className="text-center text-sm text-gray-400 py-12">Nenhum recebimento ainda. Clique em <strong>+ Novo recebimento</strong>.</div>;
   }
+
+  const seta = (k: SortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+  const Th = ({ k, label, alinhar }: { k: SortKey; label: string; alinhar?: "right" }) => (
+    <th className={`px-3 py-2 ${alinhar === "right" ? "text-right" : ""}`}>
+      <button type="button" onClick={() => ordenarPor(k)}
+        className={`uppercase tracking-wide hover:text-gray-700 dark:hover:text-gray-200 ${sortKey === k ? "text-gray-800 dark:text-gray-100 font-semibold" : ""}`}>
+        {label}{seta(k)}
+      </button>
+    </th>
+  );
+
   return (
     <>
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200 dark:border-gray-800">
-            <th className="px-3 py-2">Recebido em</th>
-            <th className="px-3 py-2">Emissão</th>
-            <th className="px-3 py-2">Nº NF</th>
-            <th className="px-3 py-2">Emissor</th>
-            <th className="px-3 py-2 text-right">Valor</th>
-            <th className="px-3 py-2">Recebeu</th>
-            <th className="px-3 py-2">Conforme?</th>
-            <th className="px-3 py-2">Divergência</th>
-            <th className="px-3 py-2">Nota</th>
+          <tr className="text-left text-[11px] text-gray-500 border-b border-gray-200 dark:border-gray-800">
+            <Th k="recebido" label="Recebido em" />
+            <Th k="emissao" label="Emissão" />
+            <Th k="nf" label="Nº NF" />
+            <Th k="emissor" label="Emissor" />
+            <Th k="valor" label="Valor" alinhar="right" />
+            <Th k="recebeu" label="Recebeu" />
+            <Th k="conforme" label="Conforme?" />
+            <th className="px-3 py-2 uppercase tracking-wide">Divergência</th>
+            <th className="px-3 py-2 uppercase tracking-wide">Nota</th>
             <th className="px-3 py-2" />
             {podeConfig && <th className="px-3 py-2" />}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {notas.map((n) => (
-            <tr key={n.id} className={n.conforme ? "" : "bg-rose-50/50 dark:bg-rose-950/10"}>
-              <td className="px-3 py-2 whitespace-nowrap tabular-nums">{fmtDataHora(n.recebidoEm)}</td>
-              <td className="px-3 py-2 whitespace-nowrap tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao)}</td>
-              <td className="px-3 py-2 whitespace-nowrap tabular-nums text-gray-500">{n.numeroNota || "—"}{n.serieNota ? `/${n.serieNota}` : ""}</td>
-              <td className="px-3 py-2">{n.emissor || "—"}</td>
+          {ordenadas.map((n) => (
+            <tr key={n.id} className={`whitespace-nowrap ${n.conforme ? "" : "bg-rose-50/50 dark:bg-rose-950/10"}`}>
+              <td className="px-3 py-2 tabular-nums">{fmtDataHora(n.recebidoEm)}</td>
+              <td className="px-3 py-2 tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao)}</td>
+              <td className="px-3 py-2 tabular-nums text-gray-500">{n.numeroNota || "—"}{n.serieNota ? `/${n.serieNota}` : ""}</td>
+              <td className="px-3 py-2 max-w-[260px] truncate" title={n.emissor || ""}>{n.emissor || "—"}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(n.valorTotal)}</td>
-              <td className="px-3 py-2 text-gray-500">{n.recebidoPor?.nome || "—"}</td>
+              <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate" title={n.recebidoPor?.nome || ""}>{n.recebidoPor?.nome || "—"}</td>
               <td className="px-3 py-2">
                 {n.conforme
                   ? <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Sim</span>
                   : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Não</span>}
               </td>
               <td className="px-3 py-2 max-w-[220px] truncate text-gray-600 dark:text-gray-300" title={n.divergencia || ""}>{n.conforme ? "—" : (n.divergencia || "—")}</td>
-              <td className="px-3 py-2 whitespace-nowrap">
+              <td className="px-3 py-2">
                 {n.notaDriveUrl
                   ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a>
                   : "—"}
@@ -235,7 +277,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
                 {n.boletos && n.boletos.length > 0 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
               </td>
               <td className="px-3 py-2">
-                <button type="button" onClick={() => setDetalhe(n)} className="text-[11px] text-indigo-600 hover:underline whitespace-nowrap">detalhes</button>
+                <button type="button" onClick={() => setDetalhe(n)} className="text-[11px] text-indigo-600 hover:underline">detalhes</button>
               </td>
               {podeConfig && (
                 <td className="px-3 py-2 text-right">
