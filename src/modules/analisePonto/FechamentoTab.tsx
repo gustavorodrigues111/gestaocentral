@@ -294,7 +294,7 @@ export function FechamentoTab({
       let pendentes = 0;
       for (const d of dias) {
         if (c.demissao && d > c.demissao) continue;  // fora do contrato
-        if (d > hojeYmd) continue;                   // futuro não conta
+        if (d >= hojeYmd) continue;                  // hoje (em curso) e futuro não contam — verde = fechado até ontem
         if ((aj[d] as AjusteEscalaMeta | undefined)?.origem === "solides_sync") continue;
         pendentes++;
       }
