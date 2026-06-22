@@ -66,6 +66,14 @@ const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { s
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fmtDataBR = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "—";
 
+// Vencimentos das faturas (mais cedo primeiro), só as datas YYYY-MM-DD.
+function vencimentosDe(n: RecebimentoNota): string[] {
+  return [...(n.duplicatas || [])]
+    .filter((d) => d.vencimento)
+    .sort((a, b) => (a.vencimento || "").localeCompare(b.vencimento || ""))
+    .map((d) => d.vencimento as string);
+}
+
 // Semana de segunda a domingo que contém a data, com rótulo "dd.mm.aa a dd.mm.aa".
 function semanaDe(d: Date): { label: string } {
   const day = d.getDay();                 // 0=dom … 6=sáb
@@ -266,6 +274,8 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
     return arr;
   }, [notas, sortKey, sortDir]);
 
+  const maxVenc = useMemo(() => notas.reduce((m, n) => Math.max(m, vencimentosDe(n).length), 0), [notas]);
+
   if (notas.length === 0) {
     return <div className="text-center text-sm text-gray-400 py-12">Nenhum recebimento ainda. Clique em <strong>+ Novo recebimento</strong>.</div>;
   }
@@ -294,6 +304,9 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
             <Th k="recebeu" label="Recebeu" />
             <Th k="conforme" label="Conforme?" />
             <th className="px-3 py-2 uppercase tracking-wide">Divergência</th>
+            {Array.from({ length: maxVenc }, (_, i) => (
+              <th key={i} className="px-3 py-2 uppercase tracking-wide whitespace-nowrap">{i === 0 ? "Vencimento" : `${i + 1}º venc.`}</th>
+            ))}
             <th className="px-3 py-2 uppercase tracking-wide">Nota</th>
             <th className="px-3 py-2" />
             {podeConfig && <th className="px-3 py-2" />}
@@ -314,6 +327,9 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
                   : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Não</span>}
               </td>
               <td className="px-3 py-2 max-w-[220px] truncate text-gray-600 dark:text-gray-300" title={n.divergencia || ""}>{n.conforme ? "—" : (n.divergencia || "—")}</td>
+              {maxVenc > 0 && (() => { const vs = vencimentosDe(n); return Array.from({ length: maxVenc }, (_, i) => (
+                <td key={i} className="px-3 py-2 tabular-nums text-gray-500">{vs[i] ? fmtDataBR(vs[i]) : "—"}</td>
+              )); })()}
               <td className="px-3 py-2">
                 {n.notaDriveUrl
                   ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a>
