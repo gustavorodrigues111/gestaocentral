@@ -19,7 +19,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { RecebimentoNota } from "../../core/types";
+import type { ItemNota, RecebimentoNota } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { isDriveConnected, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { authHeader } from "../../core/firebase/idToken";
@@ -189,22 +189,26 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
   podeConfig: boolean;
   onExcluir: (n: RecebimentoNota) => void;
 }) {
+  const [detalhe, setDetalhe] = useState<RecebimentoNota | null>(null);
   if (notas.length === 0) {
     return <div className="text-center text-sm text-gray-400 py-12">Nenhum recebimento ainda. Clique em <strong>+ Novo recebimento</strong>.</div>;
   }
   return (
+    <>
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200 dark:border-gray-800">
             <th className="px-3 py-2">Recebido em</th>
             <th className="px-3 py-2">Emissão</th>
+            <th className="px-3 py-2">Nº NF</th>
             <th className="px-3 py-2">Emissor</th>
             <th className="px-3 py-2 text-right">Valor</th>
             <th className="px-3 py-2">Recebeu</th>
             <th className="px-3 py-2">Conforme?</th>
             <th className="px-3 py-2">Divergência</th>
             <th className="px-3 py-2">Nota</th>
+            <th className="px-3 py-2" />
             {podeConfig && <th className="px-3 py-2" />}
           </tr>
         </thead>
@@ -213,6 +217,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
             <tr key={n.id} className={n.conforme ? "" : "bg-rose-50/50 dark:bg-rose-950/10"}>
               <td className="px-3 py-2 whitespace-nowrap tabular-nums">{fmtDataHora(n.recebidoEm)}</td>
               <td className="px-3 py-2 whitespace-nowrap tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao)}</td>
+              <td className="px-3 py-2 whitespace-nowrap tabular-nums text-gray-500">{n.numeroNota || "—"}{n.serieNota ? `/${n.serieNota}` : ""}</td>
               <td className="px-3 py-2">{n.emissor || "—"}</td>
               <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(n.valorTotal)}</td>
               <td className="px-3 py-2 text-gray-500">{n.recebidoPor?.nome || "—"}</td>
@@ -227,6 +232,9 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
                   ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline whitespace-nowrap">abrir ↗</a>
                   : "—"}
               </td>
+              <td className="px-3 py-2">
+                <button type="button" onClick={() => setDetalhe(n)} className="text-[11px] text-indigo-600 hover:underline whitespace-nowrap">detalhes</button>
+              </td>
               {podeConfig && (
                 <td className="px-3 py-2 text-right">
                   <button type="button" onClick={() => onExcluir(n)} className="text-[11px] text-rose-600 hover:underline">excluir</button>
@@ -237,6 +245,55 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
         </tbody>
       </table>
     </div>
+    {detalhe && <DetalheModal nota={detalhe} onClose={() => setDetalhe(null)} />}
+    </>
+  );
+}
+
+// ─── Modal: detalhes de um recebimento ──────────────────────────────────────
+function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () => void }) {
+  const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
+    <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
+      <span className="text-gray-500 dark:text-gray-400">{label}</span>
+      <span className="text-right text-gray-800 dark:text-gray-200 break-all">{valor}</span>
+    </div>
+  ) : null;
+  return (
+    <Modal title="🧾 Detalhes do recebimento" onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-1">
+        {linha("Recebido em", fmtDataHora(nota.recebidoEm))}
+        {linha("Recebido por", nota.recebidoPor?.nome)}
+        {linha("Emissor", nota.emissor)}
+        {linha("CNPJ", nota.cnpjEmissor)}
+        {linha("Nº NF / série", nota.numeroNota ? `${nota.numeroNota}${nota.serieNota ? "/" + nota.serieNota : ""}` : null)}
+        {linha("Chave de acesso", nota.chaveAcesso)}
+        {linha("Data de emissão", fmtDataBR(nota.dataEmissao))}
+        {linha("Valor dos produtos", nota.valorProdutos != null ? fmtBRL(nota.valorProdutos) : null)}
+        {linha("Impostos", nota.valorImpostos != null ? fmtBRL(nota.valorImpostos) : null)}
+        {linha("Valor total", nota.valorTotal != null ? fmtBRL(nota.valorTotal) : null)}
+        {linha("Conforme?", nota.conforme ? "Sim" : "Não")}
+        {!nota.conforme && linha("Divergência", nota.divergencia)}
+      </div>
+      {nota.itens && nota.itens.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Itens ({nota.itens.length})</div>
+          <div className="max-h-60 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.itens.map((it, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="flex-1">{it.descricao || "—"}</span>
+                <span className="shrink-0 tabular-nums text-gray-500">{it.quantidade ?? "—"}{it.unidade ? ` ${it.unidade}` : ""}</span>
+                <span className="shrink-0 tabular-nums text-gray-500">{it.valorUnitario != null ? `× ${fmtBRL(it.valorUnitario)}` : ""}</span>
+                <span className="shrink-0 tabular-nums w-20 text-right">{it.valorTotal != null ? fmtBRL(it.valorTotal) : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <div className="flex justify-end gap-2 pt-3">
+        {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
+        <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
+      </div>
+    </Modal>
   );
 }
 
@@ -253,6 +310,13 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [divergencia, setDivergencia] = useState("");
   const [fotoDivFile, setFotoDivFile] = useState<File | null>(null);
   const [emissor, setEmissor] = useState("");
+  const [cnpjEmissor, setCnpjEmissor] = useState("");
+  const [numeroNota, setNumeroNota] = useState("");
+  const [serieNota, setSerieNota] = useState("");
+  const [chaveAcesso, setChaveAcesso] = useState("");
+  const [valorProdutos, setValorProdutos] = useState("");
+  const [valorImpostos, setValorImpostos] = useState("");
+  const [itens, setItens] = useState<ItemNota[]>([]);
   const [valor, setValor] = useState("");
   const [dataEmissao, setDataEmissao] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -275,8 +339,15 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       const j = await resp.json().catch(() => ({}));
       if (resp.ok) {
         if (j.emissor) setEmissor(j.emissor);
+        if (j.cnpjEmissor) setCnpjEmissor(j.cnpjEmissor);
+        if (j.numeroNota) setNumeroNota(j.numeroNota);
+        if (j.serieNota) setSerieNota(j.serieNota);
+        if (j.chaveAcesso) setChaveAcesso(j.chaveAcesso);
+        if (j.valorProdutos != null) setValorProdutos(String(j.valorProdutos).replace(".", ","));
+        if (j.valorImpostos != null) setValorImpostos(String(j.valorImpostos).replace(".", ","));
         if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
         if (j.dataEmissao) setDataEmissao(j.dataEmissao);
+        if (Array.isArray(j.itens)) setItens(j.itens as ItemNota[]);
         setLeuOcr(true);
       } else {
         setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
@@ -322,8 +393,15 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         notaNome: `${baseNome}${extNota}`,
         ...(subidaNota.webViewLink ? { notaDriveUrl: subidaNota.webViewLink } : {}),
         ...(emissor.trim() ? { emissor: emissor.trim() } : {}),
+        ...(cnpjEmissor.trim() ? { cnpjEmissor: cnpjEmissor.replace(/\D/g, "") } : {}),
+        ...(numeroNota.trim() ? { numeroNota: numeroNota.trim() } : {}),
+        ...(serieNota.trim() ? { serieNota: serieNota.trim() } : {}),
+        ...(chaveAcesso.trim() ? { chaveAcesso: chaveAcesso.replace(/\D/g, "") } : {}),
+        ...(parseBRL(valorProdutos) != null ? { valorProdutos: parseBRL(valorProdutos) } : {}),
+        ...(parseBRL(valorImpostos) != null ? { valorImpostos: parseBRL(valorImpostos) } : {}),
         ...(parseBRL(valor) != null ? { valorTotal: parseBRL(valor) } : {}),
         ...(dataEmissao ? { dataEmissao } : {}),
+        ...(itens.length ? { itens } : {}),
         ...(!conforme && divergencia.trim() ? { divergencia: divergencia.trim() } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
@@ -362,11 +440,43 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}
         </div>
 
-        {/* Dados da nota (OCR vai pré-preencher na Fase 2) */}
+        {/* Dados da nota (o OCR pré-preenche; confira/corrija) */}
         <div className="grid grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Emissor</label>
             <input value={emissor} onChange={(e) => setEmissor(e.target.value)} placeholder="Fornecedor / emissor da nota"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">CNPJ do emissor</label>
+            <input value={cnpjEmissor} onChange={(e) => setCnpjEmissor(e.target.value)} placeholder="00.000.000/0000-00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº NF</label>
+              <input value={numeroNota} onChange={(e) => setNumeroNota(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Série</label>
+              <input value={serieNota} onChange={(e) => setSerieNota(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            </div>
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Chave de acesso</label>
+            <input value={chaveAcesso} onChange={(e) => setChaveAcesso(e.target.value)} placeholder="44 dígitos"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 tabular-nums" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Valor dos produtos</label>
+            <input value={valorProdutos} onChange={(e) => setValorProdutos(e.target.value)} inputMode="decimal" placeholder="R$ 0,00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Impostos / tributos</label>
+            <input value={valorImpostos} onChange={(e) => setValorImpostos(e.target.value)} inputMode="decimal" placeholder="R$ 0,00"
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
           </div>
           <div>
@@ -380,6 +490,23 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
           </div>
         </div>
+
+        {/* Itens lidos da nota */}
+        {itens.length > 0 && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Itens da nota ({itens.length})</label>
+            <div className="max-h-40 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+              {itens.map((it, i) => (
+                <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
+                  <span className="flex-1 truncate">{it.descricao || "—"}</span>
+                  <span className="shrink-0 tabular-nums text-gray-500">{it.quantidade ?? "—"}{it.unidade ? ` ${it.unidade}` : ""}</span>
+                  <span className="shrink-0 tabular-nums">{it.valorTotal != null ? it.valorTotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-gray-400 mt-0.5">Lidos pelo OCR — a lista completa fica salva no recebimento.</p>
+          </div>
+        )}
 
         {/* Conformidade */}
         <div>

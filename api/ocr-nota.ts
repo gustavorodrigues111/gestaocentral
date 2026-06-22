@@ -20,12 +20,21 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 const PROMPT =
-  "Você recebe a imagem/PDF de uma nota fiscal brasileira. Extraia APENAS estes campos e responda " +
-  "SOMENTE um objeto JSON, sem texto antes ou depois:\n" +
-  '{"emissor": <razão social ou nome do fornecedor que EMITIU a nota, string ou null>, ' +
-  '"valorTotal": <valor TOTAL da nota em reais como NÚMERO, ex 1234.56, sem "R$" e sem separador de milhar, ou null>, ' +
-  '"dataEmissao": <data de emissão no formato YYYY-MM-DD, ou null>}\n' +
-  "Se não tiver certeza de um campo, use null. Não invente valores.";
+  "Você recebe a imagem/PDF de uma nota fiscal brasileira. Extraia os campos abaixo e responda " +
+  "SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais como NÚMERO (ex 1234.56), " +
+  'sem "R$" e sem separador de milhar. Se não tiver certeza de um campo, use null. NÃO invente valores.\n' +
+  "{\n" +
+  '  "emissor": <razão social/nome do fornecedor que EMITIU a nota, ou null>,\n' +
+  '  "cnpjEmissor": <CNPJ do emissor só com dígitos, ou null>,\n' +
+  '  "numeroNota": <número da NF, ou null>,\n' +
+  '  "serieNota": <série da NF, ou null>,\n' +
+  '  "chaveAcesso": <chave de acesso de 44 dígitos, só números, ou null>,\n' +
+  '  "valorProdutos": <subtotal dos produtos antes de frete/desconto, ou null>,\n' +
+  '  "valorTotal": <valor TOTAL da nota, ou null>,\n' +
+  '  "valorImpostos": <total de tributos/impostos, ou null>,\n' +
+  '  "dataEmissao": <data de emissão em YYYY-MM-DD, ou null>,\n' +
+  '  "itens": [<{"descricao": str, "quantidade": num, "unidade": str, "valorUnitario": num, "valorTotal": num}>, ...] ou []\n' +
+  "}";
 
 function parseNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
@@ -36,6 +45,30 @@ function parseNum(v: unknown): number | undefined {
   }
   return undefined;
 }
+function str(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+function digits(v: unknown): string | null {
+  const s = typeof v === "string" ? v.replace(/\D/g, "") : (typeof v === "number" ? String(v) : "");
+  return s || null;
+}
+function parseItens(v: unknown): ItemNotaOut[] {
+  if (!Array.isArray(v)) return [];
+  const out: ItemNotaOut[] = [];
+  for (const it of v.slice(0, 200)) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const item: ItemNotaOut = {};
+    const d = str(o.descricao); if (d) item.descricao = d;
+    const q = parseNum(o.quantidade); if (q != null) item.quantidade = q;
+    const u = str(o.unidade); if (u) item.unidade = u;
+    const vu = parseNum(o.valorUnitario); if (vu != null) item.valorUnitario = vu;
+    const vt = parseNum(o.valorTotal); if (vt != null) item.valorTotal = vt;
+    if (Object.keys(item).length) out.push(item);
+  }
+  return out;
+}
+type ItemNotaOut = { descricao?: string; quantidade?: number; unidade?: string; valorUnitario?: number; valorTotal?: number };
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -81,13 +114,21 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const json = JSON.parse(txt) as { content?: Array<{ type?: string; text?: string }> };
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
-    if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, _raw: textOut.slice(0, 200) }); return; }
-    let parsed: { emissor?: unknown; valorTotal?: unknown; dataEmissao?: unknown } = {};
-    try { parsed = JSON.parse(m[0]); } catch { /* devolve vazio abaixo */ }
-    const emissor = typeof parsed.emissor === "string" && parsed.emissor.trim() ? parsed.emissor.trim() : null;
-    const valorTotal = parseNum(parsed.valorTotal) ?? null;
-    const dataEmissao = typeof parsed.dataEmissao === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dataEmissao) ? parsed.dataEmissao : null;
-    res.status(200).json({ emissor, valorTotal, dataEmissao });
+    if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], _raw: textOut.slice(0, 200) }); return; }
+    let p: Record<string, unknown> = {};
+    try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    res.status(200).json({
+      emissor: str(p.emissor),
+      cnpjEmissor: digits(p.cnpjEmissor),
+      numeroNota: str(p.numeroNota) ?? (parseNum(p.numeroNota) != null ? String(parseNum(p.numeroNota)) : null),
+      serieNota: str(p.serieNota) ?? (parseNum(p.serieNota) != null ? String(parseNum(p.serieNota)) : null),
+      chaveAcesso: digits(p.chaveAcesso),
+      valorProdutos: parseNum(p.valorProdutos) ?? null,
+      valorTotal: parseNum(p.valorTotal) ?? null,
+      valorImpostos: parseNum(p.valorImpostos) ?? null,
+      dataEmissao: typeof p.dataEmissao === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.dataEmissao) ? p.dataEmissao : null,
+      itens: parseItens(p.itens),
+    });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") { res.status(504).json({ error: "Timeout lendo a nota." }); return; }
     res.status(500).json({ error: e instanceof Error ? e.message : "Erro ao ler a nota." });

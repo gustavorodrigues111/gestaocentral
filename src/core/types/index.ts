@@ -4671,6 +4671,13 @@ export function podeVerConversa(
 // ─── Recebimento de produtos (conferência de notas fiscais) ──────────────────
 // Cada nota recebida vira um doc em `recebimentos`. O arquivo da nota (foto/PDF)
 // e a foto de divergência sobem pro Drive, na subpasta da semana do recebimento.
+export type ItemNota = {
+  descricao?: string;
+  quantidade?: number;
+  unidade?: string;
+  valorUnitario?: number;
+  valorTotal?: number;
+};
 export type RecebimentoNota = {
   id: string;
   restaurantId: string;
@@ -4678,8 +4685,15 @@ export type RecebimentoNota = {
   recebidoPor: { id: string; nome: string };
   // Dados da nota (pré-preenchidos por OCR, confirmados pelo usuário)
   emissor?: string;
-  valorTotal?: number;                // R$
+  cnpjEmissor?: string;
+  numeroNota?: string;
+  serieNota?: string;
+  chaveAcesso?: string;               // 44 dígitos (NFe)
+  valorProdutos?: number;             // subtotal dos produtos (antes de frete/desconto)
+  valorTotal?: number;                // R$ — total da nota
+  valorImpostos?: number;             // total de tributos
   dataEmissao?: string;               // YYYY-MM-DD
+  itens?: ItemNota[];                 // produtos da nota
   // Conformidade
   conforme: boolean;                  // true = recebido tudo nos conformes
   divergencia?: string;               // descrição, quando !conforme
