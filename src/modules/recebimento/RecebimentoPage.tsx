@@ -74,6 +74,38 @@ async function paraOcrBlock(file: File): Promise<{ data: string; mediaType: stri
   return { data: await fileToBase64(file), mediaType: file.type || "image/jpeg" };
 }
 
+// Carimba a imagem com um selo no rodapé (quem recebeu + data/hora) e devolve um
+// novo File JPEG. PDFs e não-imagens voltam sem alteração.
+async function carimbarImagem(file: File, linhas: string[]): Promise<File> {
+  if (!file.type.startsWith("image/") || !linhas.length) return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxLado = 2200;
+    const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * escala));
+    const h = Math.max(1, Math.round(bitmap.height * escala));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const fonte = Math.max(13, Math.round(w / 48));
+    const pad = Math.round(fonte * 0.45);
+    const alturaBox = (fonte + pad) * linhas.length + pad;
+    ctx.fillStyle = "rgba(0,0,0,0.58)";
+    ctx.fillRect(0, h - alturaBox, w, alturaBox);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `bold ${fonte}px -apple-system, Helvetica, Arial, sans-serif`;
+    ctx.textBaseline = "top";
+    linhas.forEach((linha, i) => ctx.fillText(linha, pad, h - alturaBox + pad + i * (fonte + pad)));
+    const blob: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.85));
+    if (!blob) return file;
+    const nome = file.name.replace(/\.[a-z0-9]+$/i, "") + ".jpg";
+    return new File([blob], nome, { type: "image/jpeg" });
+  } catch { return file; }
+}
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
@@ -780,13 +812,14 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
         const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : "";
         const baseNome = `${fornecedorSlug} ${dataSlug}`.trim();
         const jaExistentes = nota.boletos?.length || 0;
+        const carimbo = [`Recebido por ${nota.recebidoPor?.nome || "?"}`, fmtDataHora(new Date().toISOString())];
         const acc: BoletoNota[] = [];
         for (let i = 0; i < boletosNovos.length; i++) {
           const bf = boletosNovos[i];
           const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
-          const nome = `${baseNome} boleto${jaExistentes + i + 1}${ext}`;
-          const s = await subirArquivo(central, semanaId, new File([bf], nome, { type: bf.type }));
-          acc.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo);
+          const s = await subirArquivo(central, semanaId, alvo);
+          acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
         boletosFinais = [...(boletosFinais || []), ...acc];
       }
@@ -988,11 +1021,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const [etapa, setEtapa] = useState<"paginas" | "dados" | "boleto" | "final">("paginas");
   const [salvo, setSalvo] = useState(false);
   const [addPagina, setAddPagina] = useState(false); // seletor de fonte p/ folha extra
+  const [addBoletoWiz, setAddBoletoWiz] = useState(false); // seletor de fonte p/ boleto no wizard
+  const leituraSeq = useRef(0);
 
   // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
   // Lê TODAS as páginas juntas (uma nota pode ter várias). Confere antes de salvar.
   async function lerNota(files: File[]) {
     if (!files.length) return;
+    const seq = ++leituraSeq.current; // ignora respostas de leituras antigas
     setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
       const blocos = await Promise.all(files.map(paraOcrBlock));
@@ -1002,6 +1038,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         body: JSON.stringify({ files: blocos }),
       });
       const j = await resp.json().catch(() => ({}));
+      if (seq !== leituraSeq.current) return; // chegou uma leitura mais nova — descarta esta
       if (resp.ok) {
         if (j.emissor) setEmissor(j.emissor);
         if (j.cnpjEmissor) setCnpjEmissor(j.cnpjEmissor);
@@ -1023,8 +1060,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
       }
     } catch (e) {
-      setOcrErro(e instanceof Error ? e.message : "Falha ao chamar o leitor de nota.");
-    } finally { setLendo(false); }
+      if (seq === leituraSeq.current) setOcrErro(e instanceof Error ? e.message : "Falha ao chamar o leitor de nota.");
+    } finally { if (seq === leituraSeq.current) setLendo(false); }
   }
   // Anexa página(s) e relê a nota inteira (todas as páginas) pra agregar os itens.
   function aoAnexar(...fs: File[]) { if (!fs.length) return; setNotaFiles((prev) => { const todos = [...prev, ...fs]; void lerNota(todos); return todos; }); }
@@ -1075,10 +1112,6 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     void lerBoleto(f);
   }
 
-  const bolCamRef = useRef<HTMLInputElement>(null);
-  const bolGalRef = useRef<HTMLInputElement>(null);
-  const bolPdfRef = useRef<HTMLInputElement>(null);
-
   async function salvar() {
     setErro("");
     const temNota = notaFiles.length > 0;
@@ -1103,14 +1136,16 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         : `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)}.${String(agora.getFullYear()).slice(2)}`;
       const baseNome = `${fornecedorSlug} ${dataSlug}`;
       const ext = (f: File, fallback: string) => (f.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (f.type.includes("pdf") ? ".pdf" : fallback);
+      // Carimbo (selo) gravado nas imagens antes de subir: quem recebeu + data/hora.
+      const carimbo = [`Recebido por ${por.nome}`, fmtDataHora(recebidoEm)];
       // Páginas da nota: "<base> nota" se 1 só; "<base> nota1/2/3…" se mais de uma.
       const notaPaginas: BoletoNota[] = [];
       for (let i = 0; i < notaFiles.length; i++) {
         const nf = notaFiles[i];
         const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
-        const nome = `${baseNome} ${sufixo}${ext(nf, ".jpg")}`;
-        const s = await subirArquivo(central, semanaId, new File([nf], nome, { type: nf.type }));
-        notaPaginas.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+        const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo);
+        const s = await subirArquivo(central, semanaId, alvo);
+        notaPaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       const subidaNota = notaPaginas[0];
       // Boletos: "<base> boleto" se 1 só; "<base> boleto1/2/3…" se mais de um.
@@ -1118,14 +1153,15 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < boletoFiles.length; i++) {
         const bf = boletoFiles[i];
         const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
-        const nome = `${baseNome} ${sufixo}${ext(bf, ".jpg")}`;
-        const s = await subirArquivo(central, semanaId, new File([bf], nome, { type: bf.type }));
-        boletos.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+        const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo);
+        const s = await subirArquivo(central, semanaId, alvo);
+        boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
-        const s = await subirArquivo(central, semanaId, new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }));
+        const alvo = await carimbarImagem(new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }), carimbo);
+        const s = await subirArquivo(central, semanaId, alvo);
         fotoDiv = { id: s.id, url: s.webViewLink };
       }
       const nota: Omit<RecebimentoNota, "id"> = {
@@ -1327,16 +1363,12 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
               ))}
             </div>
           )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => bolCamRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
-            <button type="button" onClick={() => bolGalRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
-            <button type="button" onClick={() => bolPdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
-          </div>
-          <input ref={bolCamRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
-          <input ref={bolGalRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
-          <input ref={bolPdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
           {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
-          <p className="text-[10px] text-gray-400 mt-0.5">Se não veio boleto, é só continuar.</p>
+          <div className="mt-2 flex flex-col items-center gap-2 py-5 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{boletoFiles.length ? "Tem outro boleto?" : "Recebeu boleto junto?"}</p>
+            <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
+            <p className="text-[11px] text-gray-400 text-center">{boletoFiles.length ? 'Sem mais boletos? Toque em "Continuar →".' : 'Se não veio boleto, é só tocar em "Continuar →".'}</p>
+          </div>
         </div>
         )}
 
@@ -1397,6 +1429,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             semManual
             onClose={() => setAddPagina(false)}
             onArquivo={(f) => { setAddPagina(false); aoAnexar(f); }}
+          />
+        )}
+        {addBoletoWiz && (
+          <EscolhaFonteModal
+            titulo="Adicionar boleto"
+            semManual
+            onClose={() => setAddBoletoWiz(false)}
+            onArquivo={(f) => { setAddBoletoWiz(false); aoAnexarBoleto(f); }}
           />
         )}
       </div>
