@@ -320,11 +320,14 @@ function EscolhaTipoModal({ onClose, onConfirm }: {
   );
 }
 
-// ─── Modal: escolher fonte da nota (câmera / galeria / arquivo / manual) ─────
-function EscolhaFonteModal({ onClose, onArquivo, onManual }: {
+// ─── Modal: escolher fonte (câmera / galeria / arquivo / manual) ─────────────
+// `semManual` esconde a opção Manual — usado ao adicionar páginas extras.
+function EscolhaFonteModal({ titulo, semManual, onClose, onArquivo, onManual }: {
+  titulo?: string;
+  semManual?: boolean;
   onClose: () => void;
   onArquivo: (f: File) => void;
-  onManual: () => void;
+  onManual?: () => void;
 }) {
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
@@ -337,17 +340,17 @@ function EscolhaFonteModal({ onClose, onArquivo, onManual }: {
     </button>
   );
   return (
-    <Modal title="Como você quer dar entrada?" onClose={onClose} maxWidth="max-w-sm">
-      <div className="grid grid-cols-2 gap-3">
+    <Modal title={titulo || "Como você quer dar entrada?"} onClose={onClose} maxWidth="max-w-sm">
+      <div className={`grid ${semManual ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
         <Opcao icon="📷" label="Câmera" onClick={() => camRef.current?.click()} />
         <Opcao icon="🖼️" label="Galeria" onClick={() => galRef.current?.click()} />
         <Opcao icon="📄" label="Arquivo (PDF)" onClick={() => pdfRef.current?.click()} />
-        <Opcao icon="✍️" label="Manual" onClick={onManual} />
+        {!semManual && <Opcao icon="✍️" label="Manual" onClick={() => onManual?.()} />}
       </div>
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
       <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
       <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
-      <p className="text-[11px] text-gray-400 mt-3 text-center">Câmera, galeria e PDF fazem a leitura automática. "Manual" abre o formulário em branco.</p>
+      {!semManual && <p className="text-[11px] text-gray-400 mt-3 text-center">Câmera, galeria e PDF fazem a leitura automática. "Manual" abre o formulário em branco.</p>}
     </Modal>
   );
 }
@@ -893,6 +896,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   // Wizard guiado: páginas → dados → boleto → conferência/salvar → sucesso.
   const [etapa, setEtapa] = useState<"paginas" | "dados" | "boleto" | "final">("paginas");
   const [salvo, setSalvo] = useState(false);
+  const [addPagina, setAddPagina] = useState(false); // seletor de fonte p/ folha extra
 
   // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
   // Lê TODAS as páginas juntas (uma nota pode ter várias). Confere antes de salvar.
@@ -980,9 +984,6 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     void lerBoleto(f);
   }
 
-  const camRef = useRef<HTMLInputElement>(null);
-  const galRef = useRef<HTMLInputElement>(null);
-  const pdfRef = useRef<HTMLInputElement>(null);
   const bolCamRef = useRef<HTMLInputElement>(null);
   const bolGalRef = useRef<HTMLInputElement>(null);
   const bolPdfRef = useRef<HTMLInputElement>(null);
@@ -1105,19 +1106,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
               ))}
             </div>
           )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => camRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
-            <button type="button" onClick={() => galRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
-            <button type="button" onClick={() => pdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
+          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos vão ser pré-preenchidos.</p>}
+          {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos.</p>}
+          {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha manualmente.</p>}
+          <div className="mt-3 flex flex-col items-center gap-2 py-5 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{notaFiles.length ? "Tem outra folha desta nota?" : "Adicione a 1ª folha da nota"}</p>
+            <Button variant="secondary" size="sm" disabled={lendo} onClick={() => setAddPagina(true)}>➕ {notaFiles.length ? "Adicionar outra folha" : "Adicionar folha"}</Button>
+            {notaFiles.length > 0 && <p className="text-[11px] text-gray-400 text-center">Se não tem mais, toque em "Continuar →" abaixo.</p>}
           </div>
-          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
-          <input ref={galRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.currentTarget.value = ""; aoAnexar(...fs); }} />
-          <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
-          {notaFiles.length > 0 && <p className="text-[10px] text-gray-400 mt-0.5">Notas com várias páginas (ex: Heineken): anexe todas — a leitura junta os itens de todas.</p>}
-          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
-          {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
-          {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Tem mais de uma folha? Adicione todas antes de continuar.</p>
         </div>
         )}
 
@@ -1303,6 +1299,15 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             <Button size="sm" disabled={!podeAvancar} onClick={avancar}>Continuar →</Button>
           )}
         </div>
+
+        {addPagina && (
+          <EscolhaFonteModal
+            titulo="Adicionar folha da nota"
+            semManual
+            onClose={() => setAddPagina(false)}
+            onArquivo={(f) => { setAddPagina(false); aoAnexar(f); }}
+          />
+        )}
       </div>
       )}
     </Modal>
