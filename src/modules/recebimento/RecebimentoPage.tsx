@@ -713,9 +713,12 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-1">
-          <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
+        <div className="flex flex-col items-end gap-1 pt-1">
+          {(lendo || lendoBoleto) && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Aguarde a leitura terminar pra salvar…</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
+            <Button size="sm" disabled={salvando || lendo || lendoBoleto} onClick={() => void salvar()}>{salvando ? "Salvando…" : (lendo || lendoBoleto) ? "Lendo…" : "Salvar recebimento"}</Button>
+          </div>
         </div>
       </div>
     </Modal>
