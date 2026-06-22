@@ -844,6 +844,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
         if (!central) await requestAccessToken();
         const label = nota.semanaLabel || semanaDe(new Date()).label;
         const semanaId = await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label);
+        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
         const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
         const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : "";
         const baseNome = `${fornecedorSlug} ${dataSlug}`.trim();
@@ -854,7 +855,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
           const bf = boletosNovos[i];
           const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
           const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo, true);
-          const s = await subirArquivo(central, semanaId, alvo);
+          const s = await subirArquivo(central, boletosFolderId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
         boletosFinais = [...(boletosFinais || []), ...acc];
@@ -1190,14 +1191,17 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         notaPaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       const subidaNota = notaPaginas[0];
-      // Boletos: "<base> boleto" se 1 só; "<base> boleto1/2/3…" se mais de um.
+      // Boletos: subpasta "boletos da semana <label>" dentro da pasta da semana.
       const boletos: BoletoNota[] = [];
-      for (let i = 0; i < boletoFiles.length; i++) {
-        const bf = boletoFiles[i];
-        const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
-        const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
-        const s = await subirArquivo(central, semanaId, alvo);
-        boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+      if (boletoFiles.length) {
+        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
+        for (let i = 0; i < boletoFiles.length; i++) {
+          const bf = boletoFiles[i];
+          const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
+          const s = await subirArquivo(central, boletosFolderId, alvo);
+          boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+        }
       }
       // Comprovantes (ex: cartão): "<base> comprovante" / comprovante1, 2…
       const comprovantes: BoletoNota[] = [];
