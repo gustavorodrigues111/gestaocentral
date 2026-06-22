@@ -19,7 +19,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { ItemNota, RecebimentoNota } from "../../core/types";
+import type { DuplicataNota, ItemNota, RecebimentoNota } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { isDriveConnected, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { authHeader } from "../../core/firebase/idToken";
@@ -289,6 +289,20 @@ function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () =>
           </div>
         </div>
       )}
+      {nota.duplicatas && nota.duplicatas.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Faturas / duplicatas ({nota.duplicatas.length})</div>
+          <div className="max-h-48 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.duplicatas.map((d, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="flex-1">{d.numero ? `Parcela ${d.numero}` : `Parcela ${i + 1}`}</span>
+                <span className="shrink-0 tabular-nums text-gray-500">{d.vencimento ? `vence ${fmtDataBR(d.vencimento)}` : "—"}</span>
+                <span className="shrink-0 tabular-nums w-20 text-right">{d.valor != null ? fmtBRL(d.valor) : "—"}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2 pt-3">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
@@ -317,6 +331,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [valorProdutos, setValorProdutos] = useState("");
   const [valorImpostos, setValorImpostos] = useState("");
   const [itens, setItens] = useState<ItemNota[]>([]);
+  const [duplicatas, setDuplicatas] = useState<DuplicataNota[]>([]);
   const [valor, setValor] = useState("");
   const [dataEmissao, setDataEmissao] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -348,6 +363,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
         if (j.dataEmissao) setDataEmissao(j.dataEmissao);
         if (Array.isArray(j.itens)) setItens(j.itens as ItemNota[]);
+        if (Array.isArray(j.duplicatas)) setDuplicatas(j.duplicatas as DuplicataNota[]);
         setLeuOcr(true);
       } else {
         setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
@@ -402,6 +418,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         ...(parseBRL(valor) != null ? { valorTotal: parseBRL(valor) } : {}),
         ...(dataEmissao ? { dataEmissao } : {}),
         ...(itens.length ? { itens } : {}),
+        ...(duplicatas.length ? { duplicatas } : {}),
         ...(!conforme && divergencia.trim() ? { divergencia: divergencia.trim() } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
@@ -505,6 +522,22 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
               ))}
             </div>
             <p className="text-[10px] text-gray-400 mt-0.5">Lidos pelo OCR — a lista completa fica salva no recebimento.</p>
+          </div>
+        )}
+
+        {/* Faturas / duplicatas (vencimentos) */}
+        {duplicatas.length > 0 && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Faturas / duplicatas ({duplicatas.length})</label>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+              {duplicatas.map((d, i) => (
+                <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
+                  <span className="flex-1">{d.numero ? `Parcela ${d.numero}` : `Parcela ${i + 1}`}</span>
+                  <span className="shrink-0 tabular-nums text-gray-500">{d.vencimento ? `vence ${d.vencimento.split("-").reverse().join("/")}` : "—"}</span>
+                  <span className="shrink-0 tabular-nums w-20 text-right">{d.valor != null ? d.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

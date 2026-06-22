@@ -33,7 +33,8 @@ const PROMPT =
   '  "valorTotal": <valor TOTAL da nota, ou null>,\n' +
   '  "valorImpostos": <total de tributos/impostos, ou null>,\n' +
   '  "dataEmissao": <data de emissão em YYYY-MM-DD, ou null>,\n' +
-  '  "itens": [<{"descricao": str, "quantidade": num, "unidade": str, "valorUnitario": num, "valorTotal": num}>, ...] ou []\n' +
+  '  "itens": [<{"descricao": str, "quantidade": num, "unidade": str, "valorUnitario": num, "valorTotal": num}>, ...] ou [],\n' +
+  '  "duplicatas": [<{"numero": str, "valor": num, "vencimento": "YYYY-MM-DD"}>, ...] ou []  (faturas/parcelas da cobrança)\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
@@ -69,6 +70,22 @@ function parseItens(v: unknown): ItemNotaOut[] {
   return out;
 }
 type ItemNotaOut = { descricao?: string; quantidade?: number; unidade?: string; valorUnitario?: number; valorTotal?: number };
+type DuplicataOut = { numero?: string; valor?: number; vencimento?: string };
+function parseDuplicatas(v: unknown): DuplicataOut[] {
+  if (!Array.isArray(v)) return [];
+  const out: DuplicataOut[] = [];
+  for (const it of v.slice(0, 100)) {
+    if (!it || typeof it !== "object") continue;
+    const o = it as Record<string, unknown>;
+    const d: DuplicataOut = {};
+    const num = str(o.numero); if (num) d.numero = num;
+    const val = parseNum(o.valor); if (val != null) d.valor = val;
+    const venc = typeof o.vencimento === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.vencimento) ? o.vencimento : null;
+    if (venc) d.vencimento = venc;
+    if (Object.keys(d).length) out.push(d);
+  }
+  return out;
+}
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -114,7 +131,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const json = JSON.parse(txt) as { content?: Array<{ type?: string; text?: string }> };
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
-    if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], _raw: textOut.slice(0, 200) }); return; }
+    if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
     res.status(200).json({
@@ -128,6 +145,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       valorImpostos: parseNum(p.valorImpostos) ?? null,
       dataEmissao: typeof p.dataEmissao === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.dataEmissao) ? p.dataEmissao : null,
       itens: parseItens(p.itens),
+      duplicatas: parseDuplicatas(p.duplicatas),
     });
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") { res.status(504).json({ error: "Timeout lendo a nota." }); return; }

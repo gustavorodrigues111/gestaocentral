@@ -4678,6 +4678,11 @@ export type ItemNota = {
   valorUnitario?: number;
   valorTotal?: number;
 };
+export type DuplicataNota = {
+  numero?: string;
+  valor?: number;
+  vencimento?: string;                // YYYY-MM-DD
+};
 export type RecebimentoNota = {
   id: string;
   restaurantId: string;
@@ -4694,6 +4699,7 @@ export type RecebimentoNota = {
   valorImpostos?: number;             // total de tributos
   dataEmissao?: string;               // YYYY-MM-DD
   itens?: ItemNota[];                 // produtos da nota
+  duplicatas?: DuplicataNota[];       // faturas/parcelas (valor + vencimento)
   // Conformidade
   conforme: boolean;                  // true = recebido tudo nos conformes
   divergencia?: string;               // descrição, quando !conforme
