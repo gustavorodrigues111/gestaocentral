@@ -16,7 +16,7 @@ import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, query, upd
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota } from "../../core/types";
@@ -118,8 +118,12 @@ export function RecebimentoPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find((r) => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "recebimento");
-  const podeConfig = canConfigurar(me, rid, "recebimento");
+  const { can, canModulo, loading: permLoading } = useCanAcao(rid);
+  const podeReceber = can("recebimento", "receber");
+  const podeVer = can("recebimento", "ver");
+  const podeEditar = can("recebimento", "editar");
+  const podeConfig = can("recebimento", "configurar");
+  const temAcesso = canModulo("recebimento");
 
   const [tab, setTab] = useState<"lista" | "config">("lista");
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
@@ -159,7 +163,8 @@ export function RecebimentoPage() {
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeVer) {
+  if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
+  if (!temAcesso) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -168,39 +173,56 @@ export function RecebimentoPage() {
     );
   }
 
+  // Aba efetiva: sem permissão de ver lista, força "config" (se puder) — senão
+  // mostra só o atalho de novo recebimento.
+  const abaEfetiva = tab === "config" && podeConfig ? "config" : "lista";
+
   return (
     <div className="max-w-5xl space-y-4">
       {/* Abas */}
       <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-800">
         <button type="button" onClick={() => setTab("lista")}
-          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "lista" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === "lista" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
           📋 Recebimentos
         </button>
         {podeConfig && (
           <button type="button" onClick={() => setTab("config")}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${tab === "config" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === "config" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
             ⚙️ Configurações
           </button>
         )}
-        {tab === "lista" && (
+        {abaEfetiva === "lista" && (
           <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
-              {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
-            </Button>
-            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
-              {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
-            </Button>
-            <Button size="sm" onClick={() => { setErro(""); setNovo(true); }}>+ Novo recebimento</Button>
+            {podeVer && (
+              <>
+                <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
+                  {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
+                </Button>
+                <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
+                  {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
+                </Button>
+              </>
+            )}
+            {podeReceber && <Button size="sm" onClick={() => { setErro(""); setNovo(true); }}>+ Novo recebimento</Button>}
           </div>
         )}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-      {tab === "config" && podeConfig && <RecebimentoConfig rid={rid} restaurant={restaurant} />}
+      {abaEfetiva === "config" && podeConfig && <RecebimentoConfig rid={rid} restaurant={restaurant} />}
 
-      {tab === "lista" && (
-        <RecebimentoTabela notas={ordenadas} podeConfig={podeConfig} onExcluir={excluir} />
+      {abaEfetiva === "lista" && (
+        podeVer
+          ? <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+          : (
+            <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-16 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+              <div className="text-3xl mb-2">🧾</div>
+              {podeReceber
+                ? <>Você pode <strong>dar entrada</strong> em notas. Clique em <strong>+ Novo recebimento</strong> acima.</>
+                : <>Você não tem permissão pra ver a lista de recebimentos.</>}
+            </div>
+          )
       )}
 
       {novo && (
@@ -260,8 +282,9 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { rec
 // ─── Tabela de recebimentos ─────────────────────────────────────────────────
 // Chaves de ordenação: as fixas + "venc:<i>" (coluna de vencimento dinâmica).
 type SortKey = "recebido" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme" | "pgto" | `venc:${number}`;
-function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
+function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
   notas: RecebimentoNota[];
+  podeEditar: boolean;
   podeConfig: boolean;
   onExcluir: (n: RecebimentoNota) => void;
 }) {
@@ -383,14 +406,14 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
         </tbody>
       </table>
     </div>
-    {detalhe && <DetalheModal nota={detalhe} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
+    {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
     {editar && <EditarRecebimentoModal nota={editar} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
   );
 }
 
 // ─── Modal: detalhes de um recebimento ──────────────────────────────────────
-function DetalheModal({ nota, onClose, onEditar }: { nota: RecebimentoNota; onClose: () => void; onEditar: (n: RecebimentoNota) => void }) {
+function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void }) {
   const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
       <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -471,7 +494,7 @@ function DetalheModal({ nota, onClose, onEditar }: { nota: RecebimentoNota; onCl
       )}
       <div className="flex justify-end gap-2 pt-3">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
-        <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>
+        {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
       </div>
     </Modal>

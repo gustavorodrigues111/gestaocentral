@@ -159,6 +159,19 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "recebimento",
+    icon: "🧾",
+    label: "Recebimento de produtos",
+    desc: "Conferência e recebimento de notas fiscais (OCR), arquivamento no Drive",
+    area: "appmise",
+    acoes: [
+      { id: "receber",    label: "Receber (dar entrada na nota)" },
+      { id: "ver",        label: "Ver recebimentos (lista completa)" },
+      { id: "editar",     label: "Editar recebimentos" },
+      { id: "configurar", label: "Configurações (pasta do Drive)" },
+    ],
+  },
+  {
     id: "fichas",
     icon: "📚",
     label: "Fichas técnicas",

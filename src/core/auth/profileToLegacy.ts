@@ -101,6 +101,8 @@ const ACOES_SELF_SERVICE: Record<string, Set<string>> = {
 // fecharLote, acessarDados, verRelatoriosLote) abrem o Fechamento.
 const ACOES_OPERACIONAIS: Record<string, Set<string>> = {
   freelas: new Set(["lancarTurnos", "criarVaga", "atribuir", "avaliar"]),
+  // "receber" e "editar" abrem a tela mas não são "configurar" (pasta do Drive).
+  recebimento: new Set(["receber", "editar"]),
 };
 
 function mapearProfilePraLegacy(perms: PermissoesPerfil): RestaurantPermissions {
