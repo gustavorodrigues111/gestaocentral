@@ -231,6 +231,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
                 {n.notaDriveUrl
                   ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a>
                   : "—"}
+                {n.notaPaginas && n.notaPaginas.length > 1 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.notaPaginas.length} páginas`}>📄{n.notaPaginas.length}</span>}
                 {n.boletos && n.boletos.length > 0 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
               </td>
               <td className="px-3 py-2">
@@ -304,6 +305,19 @@ function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () =>
           </div>
         </div>
       )}
+      {nota.notaPaginas && nota.notaPaginas.length > 1 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Páginas da nota ({nota.notaPaginas.length})</div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.notaPaginas.map((p, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="truncate flex-1">📄 {p.nome}</span>
+                {p.driveUrl && <a href={p.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {nota.boletos && nota.boletos.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Boletos ({nota.boletos.length})</div>
@@ -333,7 +347,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   onClose: () => void;
   onSalvo: () => void;
 }) {
-  const [notaFile, setNotaFile] = useState<File | null>(null);
+  const [notaFiles, setNotaFiles] = useState<File[]>([]);
   const [boletoFiles, setBoletoFiles] = useState<File[]>([]);
   const [lendoBoleto, setLendoBoleto] = useState(false);
   const [conforme, setConforme] = useState(true);
@@ -356,16 +370,17 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [ocrErro, setOcrErro] = useState("");
   const [erro, setErro] = useState("");
 
-  // Ao anexar a nota: arquiva no state e dispara o OCR (Haiku) pra pré-preencher
-  // os campos. O usuário SEMPRE confere/corrige antes de salvar.
-  async function lerNota(file: File) {
+  // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
+  // Lê TODAS as páginas juntas (uma nota pode ter várias). Confere antes de salvar.
+  async function lerNota(files: File[]) {
+    if (!files.length) return;
     setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
-      const data = await fileToBase64(file);
+      const blocos = await Promise.all(files.map(async (f) => ({ data: await fileToBase64(f), mediaType: f.type || "image/jpeg" })));
       const resp = await fetch("/api/ocr-nota", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ data, mediaType: file.type || "image/jpeg" }),
+        body: JSON.stringify({ files: blocos }),
       });
       const j = await resp.json().catch(() => ({}));
       if (resp.ok) {
@@ -388,7 +403,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       setOcrErro(e instanceof Error ? e.message : "Falha ao chamar o leitor de nota.");
     } finally { setLendo(false); }
   }
-  function aoAnexar(f: File) { setNotaFile(f); void lerNota(f); }
+  // Anexa página(s) e relê a nota inteira (todas as páginas) pra agregar os itens.
+  function aoAnexar(...fs: File[]) { if (!fs.length) return; setNotaFiles((prev) => { const todos = [...prev, ...fs]; void lerNota(todos); return todos; }); }
 
   // Ao anexar um boleto: arquiva no state e lê valor/vencimento via OCR, mesclando
   // nas faturas/duplicatas (preenche o que não veio na nota; não duplica).
@@ -425,7 +441,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
 
   async function salvar() {
     setErro("");
-    if (!notaFile) { setErro("Anexe a nota (foto ou PDF)."); return; }
+    if (!notaFiles.length) { setErro("Anexe a nota (foto ou PDF)."); return; }
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
     if (!restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
     setSalvando(true);
@@ -444,8 +460,16 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         : `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)}.${String(agora.getFullYear()).slice(2)}`;
       const baseNome = `${fornecedorSlug} ${dataSlug}`;
       const ext = (f: File, fallback: string) => (f.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (f.type.includes("pdf") ? ".pdf" : fallback);
-      const extNota = ext(notaFile, ".jpg");
-      const subidaNota = await uploadFileToFolder(semanaId, new File([notaFile], `${baseNome} nota${extNota}`, { type: notaFile.type }));
+      // Páginas da nota: "<base> nota" se 1 só; "<base> nota1/2/3…" se mais de uma.
+      const notaPaginas: BoletoNota[] = [];
+      for (let i = 0; i < notaFiles.length; i++) {
+        const nf = notaFiles[i];
+        const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
+        const nome = `${baseNome} ${sufixo}${ext(nf, ".jpg")}`;
+        const s = await uploadFileToFolder(semanaId, new File([nf], nome, { type: nf.type }));
+        notaPaginas.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+      }
+      const subidaNota = notaPaginas[0];
       // Boletos: "<base> boleto" se 1 só; "<base> boleto1/2/3…" se mais de um.
       const boletos: BoletoNota[] = [];
       for (let i = 0; i < boletoFiles.length; i++) {
@@ -467,9 +491,10 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         recebidoPor: por,
         conforme,
         semanaLabel: label,
-        notaDriveFileId: subidaNota.id,
-        notaNome: `${baseNome} nota${extNota}`,
-        ...(subidaNota.webViewLink ? { notaDriveUrl: subidaNota.webViewLink } : {}),
+        notaDriveFileId: subidaNota.driveFileId,
+        notaNome: subidaNota.nome,
+        notaPaginas,
+        ...(subidaNota.driveUrl ? { notaDriveUrl: subidaNota.driveUrl } : {}),
         ...(emissor.trim() ? { emissor: emissor.trim() } : {}),
         ...(cnpjEmissor.trim() ? { cnpjEmissor: cnpjEmissor.replace(/\D/g, "") } : {}),
         ...(numeroNota.trim() ? { numeroNota: numeroNota.trim() } : {}),
@@ -497,24 +522,28 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-        {/* Anexar nota — câmera / galeria / PDF */}
+        {/* Anexar nota — câmera / galeria / PDF. Pode ter várias páginas. */}
         <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nota fiscal</label>
-          {notaFile ? (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="truncate flex-1">📎 {notaFile.name}</span>
-              <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setNotaFile(null)}>trocar</button>
-            </div>
-          ) : (
-            <div className="flex gap-2">
-              <button type="button" onClick={() => camRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
-              <button type="button" onClick={() => galRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
-              <button type="button" onClick={() => pdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nota fiscal <span className="font-normal text-gray-400">— anexe todas as páginas</span></label>
+          {notaFiles.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {notaFiles.map((f, i) => (
+                <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
+                  <span className="truncate flex-1">📎 {notaFiles.length > 1 ? `Página ${i + 1}` : "Nota"} · {f.name}</span>
+                  <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => { const restantes = notaFiles.filter((_, j) => j !== i); setNotaFiles(restantes); if (restantes.length) void lerNota(restantes); else { setLeuOcr(false); setOcrErro(""); } }}>remover</button>
+                </div>
+              ))}
             </div>
           )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => camRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
+            <button type="button" onClick={() => galRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
+            <button type="button" onClick={() => pdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
+          </div>
           <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
-          <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
+          <input ref={galRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.currentTarget.value = ""; aoAnexar(...fs); }} />
           <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
+          {notaFiles.length > 0 && <p className="text-[10px] text-gray-400 mt-0.5">Notas com várias páginas (ex: Heineken): anexe todas — a leitura junta os itens de todas.</p>}
           {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
           {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}

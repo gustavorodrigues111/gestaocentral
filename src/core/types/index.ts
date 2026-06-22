@@ -4709,9 +4709,10 @@ export type RecebimentoNota = {
   conforme: boolean;                  // true = recebido tudo nos conformes
   divergencia?: string;               // descrição, quando !conforme
   // Arquivos no Drive
-  notaDriveFileId?: string;
+  notaDriveFileId?: string;           // 1ª página (retrocompat / link rápido)
   notaDriveUrl?: string;
   notaNome?: string;
+  notaPaginas?: BoletoNota[];         // todas as páginas da nota (1+), arquivadas no Drive
   fotoDivergenciaDriveFileId?: string;
   fotoDivergenciaUrl?: string;
   boletos?: BoletoNota[];             // boletos anexados (arquivados no Drive)

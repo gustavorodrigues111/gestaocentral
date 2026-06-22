@@ -20,7 +20,9 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 const PROMPT =
-  "Você recebe a imagem/PDF de uma nota fiscal brasileira. Extraia os campos abaixo e responda " +
+  "Você recebe uma ou mais páginas (imagens/PDF) de UMA MESMA nota fiscal brasileira. " +
+  "Junte as páginas: o cabeçalho costuma estar na 1ª e os itens continuam nas seguintes. " +
+  "Liste TODOS os itens de TODAS as páginas (não pare na primeira). Extraia os campos abaixo e responda " +
   "SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais como NÚMERO (ex 1234.56), " +
   'sem "R$" e sem separador de milhar. Se não tiver certeza de um campo, use null. NÃO invente valores.\n' +
   "{\n" +
@@ -106,21 +108,31 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada nas env vars da Vercel." }); return; }
 
-  const body = (req.body || {}) as { data?: string; mediaType?: string; tipo?: string };
-  const data = typeof body.data === "string" ? body.data : "";
-  const mediaType = String(body.mediaType || "");
+  const body = (req.body || {}) as {
+    data?: string; mediaType?: string; tipo?: string;
+    files?: Array<{ data?: string; mediaType?: string }>;
+  };
   const isBoleto = body.tipo === "boleto";
-  if (!data) { res.status(400).json({ error: "Falta o arquivo (data base64)." }); return; }
 
-  const isPdf = mediaType === "application/pdf";
-  const docBlock = isPdf
-    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data } }
-    : { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data } };
+  // Aceita 1 arquivo (data/mediaType) OU vários (files[]) — notas de várias páginas.
+  const arquivos: Array<{ data: string; mediaType: string }> = [];
+  if (Array.isArray(body.files) && body.files.length) {
+    for (const f of body.files) {
+      if (f && typeof f.data === "string" && f.data) arquivos.push({ data: f.data, mediaType: String(f.mediaType || "image/jpeg") });
+    }
+  } else if (typeof body.data === "string" && body.data) {
+    arquivos.push({ data: body.data, mediaType: String(body.mediaType || "image/jpeg") });
+  }
+  if (!arquivos.length) { res.status(400).json({ error: "Falta o arquivo (data base64)." }); return; }
+
+  const blocks = arquivos.map((a) => a.mediaType === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.data } }
+    : { type: "image", source: { type: "base64", media_type: a.mediaType || "image/jpeg", data: a.data } });
 
   const payload = {
     model: MODEL,
-    max_tokens: 512,
-    messages: [{ role: "user", content: [docBlock, { type: "text", text: isBoleto ? PROMPT_BOLETO : PROMPT }] }],
+    max_tokens: 8000, // notas grandes (ex: Heineken, 6 páginas) têm muitos itens
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
