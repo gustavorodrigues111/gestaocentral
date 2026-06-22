@@ -4688,6 +4688,14 @@ export type BoletoNota = {
   driveUrl?: string;
   nome: string;
 };
+export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa";
+export const TIPO_DOCUMENTO_LABEL: Record<TipoDocumento, string> = {
+  nota_fiscal: "Nota fiscal",
+  cupom_fiscal: "Cupom fiscal",
+  conta_fixa: "Conta fixa",
+};
+// Categorias sugeridas pra conta fixa (campo livre aceita outras).
+export const CONTA_FIXA_CATEGORIAS = ["Água", "Luz", "Telefone", "Internet", "Gás", "Aluguel", "Outro"];
 export type FormaPagamento = "boleto" | "cartao" | "dinheiro" | "pix";
 export const FORMA_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
   boleto: "Boleto",
@@ -4712,6 +4720,8 @@ export type RecebimentoNota = {
   dataEmissao?: string;               // YYYY-MM-DD
   itens?: ItemNota[];                 // produtos da nota
   duplicatas?: DuplicataNota[];       // faturas/parcelas (valor + vencimento)
+  tipoDocumento?: TipoDocumento;      // nota fiscal | cupom fiscal | conta fixa
+  contaCategoria?: string;            // quando conta fixa: água, luz, telefone…
   formaPagamento?: FormaPagamento;    // opcional — boleto auto ao anexar boleto
   // Conformidade
   conforme: boolean;                  // true = recebido tudo nos conformes

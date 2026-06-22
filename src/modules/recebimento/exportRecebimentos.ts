@@ -3,14 +3,18 @@
 //  Lazy-load das libs (jspdf/jspdf-autotable/xlsx) pra não pesar o bundle.
 // ════════════════════════════════════════════════════════════════════════════
 import type { RecebimentoNota } from "../../core/types";
-import { FORMA_PAGAMENTO_LABEL } from "../../core/types";
+import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL } from "../../core/types";
+
+const tipoLabel = (n: RecebimentoNota): string => n.tipoDocumento
+  ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
+  : "";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const fmtDataBR = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "";
 const brl = (v?: number) => v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const COLS_BASE = ["Recebido em", "Emissão", "Nº NF", "Emissor", "CNPJ", "Valor total", "Recebeu", "Forma pgto", "Conforme?", "Divergência"];
+const COLS_BASE = ["Recebido em", "Tipo", "Emissão", "Nº NF", "Emissor", "CNPJ", "Valor total", "Recebeu", "Forma pgto", "Conforme?", "Divergência"];
 const COL_SEMANA = "Semana";
 
 // Vencimentos ordenados (mais cedo primeiro), só as datas.
@@ -39,6 +43,7 @@ function linhaDe(n: RecebimentoNota, maxVenc: number, brlValor: boolean): (strin
   for (let i = 0; i < maxVenc; i++) colsVenc.push(vencs[i] || "");
   return [
     fmtDataHora(n.recebidoEm),
+    tipoLabel(n),
     fmtDataBR(n.dataEmissao),
     `${n.numeroNota || ""}${n.serieNota ? "/" + n.serieNota : ""}`,
     n.emissor || "",
@@ -101,10 +106,10 @@ export async function exportarRecebimentosPDF(notas: RecebimentoNota[], restaura
   doc.text(`Gerado em ${fmtDataHora(agora.toISOString())}  ·  ${notas.length} recebimento(s)`, pageW - MARGIN_X, 12, { align: "right" });
 
   const total = notas.reduce((s, n) => s + (n.valorTotal || 0), 0);
-  // Rodapé: "TOTAL" ocupando até a coluna Valor (índice 5), com o valor em 5 e o resto vazio.
-  const colsRestantes = head.length - 6;
+  // Rodapé: "TOTAL" ocupando até a coluna Valor (índice 6), com o valor em 6 e o resto vazio.
+  const colsRestantes = head.length - 7;
   const foot = [[
-    { content: "TOTAL", colSpan: 5, styles: { halign: "right" as const, fontStyle: "bold" as const } },
+    { content: "TOTAL", colSpan: 6, styles: { halign: "right" as const, fontStyle: "bold" as const } },
     { content: brl(total), styles: { halign: "right" as const, fontStyle: "bold" as const } },
     ...Array.from({ length: colsRestantes }, () => ""),
   ]];
@@ -119,7 +124,7 @@ export async function exportarRecebimentosPDF(notas: RecebimentoNota[], restaura
     styles: { fontSize: 7, cellPadding: { top: 1.2, bottom: 1.2, left: 1.5, right: 1.5 }, lineWidth: 0.1, lineColor: [200, 200, 200], valign: "middle", textColor: [30, 30, 30], overflow: "ellipsize" },
     headStyles: { fillColor: [233, 226, 209], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7 },
     footStyles: { fillColor: [248, 248, 248], textColor: [30, 30, 30] },
-    columnStyles: { 5: { halign: "right" }, 8: { halign: "center" } },
+    columnStyles: { 6: { halign: "right" }, 9: { halign: "center" } },
   });
 
   doc.save(nomeArquivo(restaurantNome, "pdf"));

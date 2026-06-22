@@ -19,8 +19,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota } from "../../core/types";
-import { FORMA_PAGAMENTO_LABEL } from "../../core/types";
+import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
+import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { centralConfigured, centralEnsureRoot, centralEnsureFolder, centralEnsureWeek, centralUpload, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
@@ -140,8 +140,11 @@ export function RecebimentoPage() {
   const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
+  const [escolhendoTipo, setEscolhendoTipo] = useState(false);
   const [escolhendoFonte, setEscolhendoFonte] = useState(false);
   const [arquivoInicial, setArquivoInicial] = useState<File | null>(null);
+  const [tipoSel, setTipoSel] = useState<TipoDocumento>("nota_fiscal");
+  const [categoriaSel, setCategoriaSel] = useState<string>("");
   const [erro, setErro] = useState("");
   const [exportando, setExportando] = useState<"" | "pdf" | "xlsx">("");
 
@@ -214,14 +217,14 @@ export function RecebimentoPage() {
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-      {/* Aba Recebimento — botão grande "Nova nota" */}
+      {/* Aba Recebimento — botão grande "Novo recebimento" */}
       {abaEfetiva === "receber" && podeReceber && (
         <div className="flex flex-col items-center justify-center py-16 gap-4">
-          <button type="button" onClick={() => { setErro(""); setEscolhendoFonte(true); }}
+          <button type="button" onClick={() => { setErro(""); setEscolhendoTipo(true); }}
             className="flex flex-col items-center justify-center gap-3 w-full max-w-sm py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 transition">
             <span className="text-5xl">🧾</span>
-            <span className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Nova nota</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400">Toque pra dar entrada numa nota</span>
+            <span className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Novo recebimento</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Toque pra dar entrada</span>
           </button>
         </div>
       )}
@@ -244,6 +247,13 @@ export function RecebimentoPage() {
         </div>
       )}
 
+      {escolhendoTipo && (
+        <EscolhaTipoModal
+          onClose={() => setEscolhendoTipo(false)}
+          onConfirm={(tipo, categoria) => { setTipoSel(tipo); setCategoriaSel(categoria); setEscolhendoTipo(false); setEscolhendoFonte(true); }}
+        />
+      )}
+
       {escolhendoFonte && (
         <EscolhaFonteModal
           onClose={() => setEscolhendoFonte(false)}
@@ -258,11 +268,54 @@ export function RecebimentoPage() {
           restaurant={restaurant}
           por={{ id: me?.id || "", nome: me?.nome || "?" }}
           arquivoInicial={arquivoInicial}
+          tipoDocumento={tipoSel}
+          contaCategoria={categoriaSel}
           onClose={() => { setNovo(false); setArquivoInicial(null); }}
           onSalvo={() => { setNovo(false); setArquivoInicial(null); }}
         />
       )}
     </div>
+  );
+}
+
+// ─── Modal: escolher o tipo do documento (1º passo) ─────────────────────────
+function EscolhaTipoModal({ onClose, onConfirm }: {
+  onClose: () => void;
+  onConfirm: (tipo: TipoDocumento, categoria: string) => void;
+}) {
+  const [tipo, setTipo] = useState<TipoDocumento | null>(null);
+  const [categoria, setCategoria] = useState("");
+  const Opcao = ({ icon, label, t }: { icon: string; label: string; t: TipoDocumento }) => (
+    <button type="button" onClick={() => { if (t === "conta_fixa") setTipo("conta_fixa"); else onConfirm(t, ""); }}
+      className={`flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border transition ${tipo === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30" : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+      <span className="text-3xl">{icon}</span>
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
+    </button>
+  );
+  return (
+    <Modal title="O que você vai dar entrada?" onClose={onClose} maxWidth="max-w-sm">
+      <div className="grid grid-cols-3 gap-3">
+        <Opcao icon="🧾" label="Nota fiscal" t="nota_fiscal" />
+        <Opcao icon="🧮" label="Cupom fiscal" t="cupom_fiscal" />
+        <Opcao icon="💡" label="Conta fixa" t="conta_fixa" />
+      </div>
+      {tipo === "conta_fixa" && (
+        <div className="mt-4 space-y-2">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Qual conta?</label>
+          <div className="flex flex-wrap gap-2">
+            {CONTA_FIXA_CATEGORIAS.map((c) => (
+              <button key={c} type="button" onClick={() => setCategoria(c)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-lg border ${categoria === c ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                {c}
+              </button>
+            ))}
+          </div>
+          <div className="flex justify-end pt-1">
+            <Button size="sm" disabled={!categoria} onClick={() => onConfirm("conta_fixa", categoria)}>Continuar →</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -407,7 +460,10 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nom
 
 // ─── Tabela de recebimentos ─────────────────────────────────────────────────
 // Chaves de ordenação: as fixas + "venc:<i>" (coluna de vencimento dinâmica).
-type SortKey = "recebido" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme" | "pgto" | `venc:${number}`;
+type SortKey = "recebido" | "tipo" | "emissao" | "nf" | "emissor" | "valor" | "recebeu" | "conforme" | "pgto" | `venc:${number}`;
+const tipoLabelDe = (n: RecebimentoNota): string => n.tipoDocumento
+  ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
+  : "—";
 function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
   notas: RecebimentoNota[];
   podeEditar: boolean;
@@ -435,6 +491,7 @@ function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
       }
       switch (sortKey) {
         case "recebido": return n.recebidoEm || "";
+        case "tipo": return tipoLabelDe(n);
         case "emissao": return n.dataEmissao || "";
         case "nf": { const x = parseInt((n.numeroNota || "").replace(/\D/g, ""), 10); return Number.isFinite(x) ? x : -1; }
         case "emissor": return (n.emissor || "").toLowerCase();
@@ -477,6 +534,7 @@ function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
         <thead>
           <tr className="text-left text-[11px] text-gray-500 border-b border-gray-200 dark:border-gray-800">
             <Th k="recebido" label="Recebido em" />
+            <Th k="tipo" label="Tipo" />
             <Th k="emissao" label="Emissão" />
             <Th k="nf" label="Nº NF" />
             <Th k="emissor" label="Emissor" />
@@ -497,6 +555,7 @@ function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
           {ordenadas.map((n) => (
             <tr key={n.id} className={`whitespace-nowrap ${n.conforme ? "" : "bg-rose-50/50 dark:bg-rose-950/10"}`}>
               <td className="px-3 py-2 tabular-nums">{fmtDataHora(n.recebidoEm)}</td>
+              <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{tipoLabelDe(n)}</td>
               <td className="px-3 py-2 tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao)}</td>
               <td className="px-3 py-2 tabular-nums text-gray-500">{n.numeroNota || "—"}{n.serieNota ? `/${n.serieNota}` : ""}</td>
               <td className="px-3 py-2 max-w-[260px] truncate" title={n.emissor || ""}>{n.emissor || "—"}</td>
@@ -550,6 +609,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: Recebimen
     <Modal title="🧾 Detalhes do recebimento" onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-1">
         {linha("Recebido em", fmtDataHora(nota.recebidoEm))}
+        {nota.tipoDocumento && linha("Tipo", tipoLabelDe(nota))}
         {linha("Recebido por", nota.recebidoPor?.nome)}
         {nota.formaPagamento && linha("Forma de pagamento", FORMA_PAGAMENTO_LABEL[nota.formaPagamento])}
         {linha("Emissor", nota.emissor)}
@@ -796,11 +856,13 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
 }
 
 // ─── Modal: novo recebimento ────────────────────────────────────────────────
-function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, onSalvo }: {
+function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocumento, contaCategoria, onClose, onSalvo }: {
   rid: string;
   restaurant: { recebimentoDriveFolderId?: string };
   por: { id: string; nome: string };
   arquivoInicial?: File | null;
+  tipoDocumento?: TipoDocumento;
+  contaCategoria?: string;
   onClose: () => void;
   onSalvo: () => void;
 }) {
@@ -975,6 +1037,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
         recebidoPor: por,
         conforme,
         semanaLabel: label,
+        ...(tipoDocumento ? { tipoDocumento } : {}),
+        ...(tipoDocumento === "conta_fixa" && contaCategoria ? { contaCategoria } : {}),
         ...(subidaNota ? { notaDriveFileId: subidaNota.driveFileId, notaNome: subidaNota.nome, notaPaginas, ...(subidaNota.driveUrl ? { notaDriveUrl: subidaNota.driveUrl } : {}) } : {}),
         ...(emissor.trim() ? { emissor: emissor.trim() } : {}),
         ...(cnpjEmissor.trim() ? { cnpjEmissor: cnpjEmissor.replace(/\D/g, "") } : {}),
@@ -1213,6 +1277,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
 
         {/* Resumo final */}
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-[12px] space-y-0.5">
+          {tipoDocumento && <div className="flex justify-between"><span className="text-gray-500">Tipo</span><span className="font-medium">{TIPO_DOCUMENTO_LABEL[tipoDocumento]}{tipoDocumento === "conta_fixa" && contaCategoria ? ` · ${contaCategoria}` : ""}</span></div>}
           <div className="flex justify-between"><span className="text-gray-500">Emissor</span><span className="font-medium truncate ml-2">{emissor.trim() || "—"}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Valor total</span><span className="font-medium">{parseBRL(valor) != null ? fmtBRL(parseBRL(valor)) : "—"}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Folhas / boletos</span><span className="font-medium">{notaFiles.length} / {boletoFiles.length}</span></div>
