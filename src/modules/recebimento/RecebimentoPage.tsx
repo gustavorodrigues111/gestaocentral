@@ -23,6 +23,7 @@ import type { BoletoNota, DuplicataNota, ItemNota, RecebimentoNota } from "../..
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { authHeader } from "../../core/firebase/idToken";
+import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
 
 // Arquivo → base64 (sem o prefixo data:...;base64,).
 function fileToBase64(file: File): Promise<string> {
@@ -69,6 +70,7 @@ export function RecebimentoPage() {
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
+  const [exportando, setExportando] = useState<"" | "pdf" | "xlsx">("");
 
   useEffect(() => {
     if (!rid) return;
@@ -83,6 +85,17 @@ export function RecebimentoPage() {
     () => [...notas].sort((a, b) => (b.recebidoEm || "").localeCompare(a.recebidoEm || "")),
     [notas],
   );
+
+  async function exportar(tipo: "pdf" | "xlsx") {
+    if (!ordenadas.length) return;
+    setErro(""); setExportando(tipo);
+    try {
+      if (tipo === "pdf") await exportarRecebimentosPDF(ordenadas, restaurant?.nome || "");
+      else await exportarRecebimentosXLSX(ordenadas, restaurant?.nome || "");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao exportar.");
+    } finally { setExportando(""); }
+  }
 
   async function excluir(n: RecebimentoNota) {
     if (!window.confirm(`Excluir o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)})?\n\nO arquivo no Drive NÃO é apagado.`)) return;
@@ -115,7 +128,13 @@ export function RecebimentoPage() {
           </button>
         )}
         {tab === "lista" && (
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
+              {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
+              {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
+            </Button>
             <Button size="sm" onClick={() => { setErro(""); setNovo(true); }}>+ Novo recebimento</Button>
           </div>
         )}
