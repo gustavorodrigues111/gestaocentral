@@ -258,12 +258,13 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [salvando, setSalvando] = useState(false);
   const [lendo, setLendo] = useState(false);
   const [leuOcr, setLeuOcr] = useState(false);
+  const [ocrErro, setOcrErro] = useState("");
   const [erro, setErro] = useState("");
 
   // Ao anexar a nota: arquiva no state e dispara o OCR (Haiku) pra pré-preencher
   // os campos. O usuário SEMPRE confere/corrige antes de salvar.
   async function lerNota(file: File) {
-    setLendo(true); setLeuOcr(false);
+    setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
       const data = await fileToBase64(file);
       const resp = await fetch("/api/ocr-nota", {
@@ -277,9 +278,12 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
         if (j.dataEmissao) setDataEmissao(j.dataEmissao);
         setLeuOcr(true);
+      } else {
+        setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
       }
-    } catch { /* OCR é best-effort — se falhar, fica manual */ }
-    finally { setLendo(false); }
+    } catch (e) {
+      setOcrErro(e instanceof Error ? e.message : "Falha ao chamar o leitor de nota.");
+    } finally { setLendo(false); }
   }
   function aoAnexar(f: File) { setNotaFile(f); void lerNota(f); }
 
@@ -355,6 +359,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
           {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
+          {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}
         </div>
 
         {/* Dados da nota (OCR vai pré-preencher na Fase 2) */}
