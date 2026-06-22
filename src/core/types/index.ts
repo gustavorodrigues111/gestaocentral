@@ -4688,11 +4688,12 @@ export type BoletoNota = {
   driveUrl?: string;
   nome: string;
 };
-export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa";
+export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa" | "romaneio";
 export const TIPO_DOCUMENTO_LABEL: Record<TipoDocumento, string> = {
   nota_fiscal: "Nota fiscal",
   cupom_fiscal: "Cupom fiscal",
   conta_fixa: "Conta fixa",
+  romaneio: "Romaneio",
 };
 // Categorias sugeridas pra conta fixa (campo livre aceita outras).
 export const CONTA_FIXA_CATEGORIAS = ["Água", "Luz", "Telefone", "Internet", "Gás", "Aluguel", "Outro"];

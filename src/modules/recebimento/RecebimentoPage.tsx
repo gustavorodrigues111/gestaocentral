@@ -294,9 +294,10 @@ function EscolhaTipoModal({ onClose, onConfirm }: {
   );
   return (
     <Modal title="O que você vai dar entrada?" onClose={onClose} maxWidth="max-w-sm">
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <Opcao icon="🧾" label="Nota fiscal" t="nota_fiscal" />
         <Opcao icon="🧮" label="Cupom fiscal" t="cupom_fiscal" />
+        <Opcao icon="📦" label="Romaneio" t="romaneio" />
         <Opcao icon="💡" label="Conta fixa" t="conta_fixa" />
       </div>
       {tipo === "conta_fixa" && (
