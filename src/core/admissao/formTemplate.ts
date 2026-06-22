@@ -350,10 +350,12 @@ const RAW_SUBTAREFAS: SubtarefaTemplate[] = [
   // resultados a admissão segue pra contabilidade/contratos.
   st("st_receber_aso", "Recebimento do ASO",
      "col_preenchido", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
-     { pedeLink: true }),
-  st("st_receber_cert_manip", "Recebimento do Exame Parasitológico",
-     "col_preenchido", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, true,
-     { pedeLink: true }),
+     { pedeAnexoExame: true }),
+  // Parasitológico é OPCIONAL: só manipuladores de alimento precisam. Não bloqueia
+  // o avanço da etapa (obrigatoria=false).
+  st("st_receber_cert_manip", "Recebimento do Exame Parasitológico (só manipuladores)",
+     "col_preenchido", CK_RESULT_EXAMES.id, CK_RESULT_EXAMES.nome, false,
+     { pedeAnexoExame: true }),
 
   // ─── Col 4: Contabilidade & contratos ───
   st("st_envio_contabilidade", "Envio de dados de admissão para contabilidade",

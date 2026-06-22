@@ -56,7 +56,7 @@ import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
-import { uploadFileToFolder } from "../../core/google/driveClient";
+import { uploadFileToFolder, findOrCreateSubfolder } from "../../core/google/driveClient";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
@@ -234,6 +234,24 @@ export function SubtarefasDrawer({
       await atualizarSubtarefa(admissao, s.id, { link }, pessoa);
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSalvando(null);
+    }
+  }
+
+  // Anexa um exame (ASO / parasitológico) → sobe pra subpasta "Exames Médicos"
+  // do empregado no Drive, salva o link e marca a subtarefa como feita.
+  async function anexarExame(s: SubtarefaAdmissao, file: File) {
+    setSalvando(s.id);
+    try {
+      const tree = await ensureEmployeeDriveTree(admissao, activeRestaurant);
+      const examesId = await findOrCreateSubfolder(tree.folderId, "Exames Médicos");
+      const nome = `${s.nome.replace(/\(.*\)/, "").trim()} - ${admissao.candidato.nome}`.replace(/[\\/]/g, "-");
+      const ext = (file.name.match(/\.[a-z0-9]+$/i) || [""])[0];
+      const subido = await uploadFileToFolder(examesId, new File([file], `${nome}${ext}`, { type: file.type }));
+      await atualizarSubtarefa(admissao, s.id, { feita: true, link: subido.webViewLink || subido.id }, pessoa);
+    } catch (e) {
+      alert("Erro ao anexar exame no Drive: " + (e instanceof Error ? e.message : "?"));
     } finally {
       setSalvando(null);
     }
@@ -591,6 +609,7 @@ export function SubtarefasDrawer({
                                   salvando={salvando === s.id}
                                   onToggle={() => toggle(s)}
                                   onLink={(link) => salvarLink(s, link)}
+                                  onAnexarExame={(file) => anexarExame(s, file)}
                                   onObs={(obs) => salvarObs(s, obs)}
                                   onDataAgendada={(d) => salvarDataAgendada(s, d)}
                                   onDadosBancarios={(p) => salvarDadosBancarios(s, p)}
@@ -836,6 +855,7 @@ function SubtarefaRow({
   salvando,
   onToggle,
   onLink,
+  onAnexarExame,
   onObs,
   onDataAgendada,
   onDadosBancarios,
@@ -859,6 +879,7 @@ function SubtarefaRow({
   salvando: boolean;
   onToggle: () => void;
   onLink: (link: string) => void;
+  onAnexarExame: (file: File) => void;
   onObs: (obs: string) => void;
   onDataAgendada: (d: string) => void;
   onDadosBancarios: (p: Partial<{ tipo: "salario" | "corrente"; agencia: string; conta: string }>) => void;
@@ -1136,7 +1157,17 @@ function SubtarefaRow({
             🦺 Gerar termo de EPIs
           </button>
         )}
-        {(sub.pedeLink || sub.observacao || sub.link) && (
+        {sub.pedeAnexoExame && (
+          <span className="inline-flex items-center gap-2 flex-wrap">
+            <label className={`text-[10px] font-semibold px-2 py-1 rounded border cursor-pointer whitespace-nowrap border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 ${salvando ? "opacity-50 pointer-events-none" : ""}`}>
+              {salvando ? "enviando…" : sub.link ? "📎 substituir anexo" : "📎 anexar exame (sobe pro Drive)"}
+              <input type="file" accept="application/pdf,image/*" className="hidden" disabled={salvando}
+                onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onAnexarExame(f); }} />
+            </label>
+            {sub.link && <a href={sub.link} target="_blank" rel="noreferrer" className="text-[10px] text-emerald-700 dark:text-emerald-300 hover:underline whitespace-nowrap">anexado ✓ — abrir ↗</a>}
+          </span>
+        )}
+        {(sub.pedeLink || sub.observacao || (sub.link && !sub.pedeAnexoExame)) && (
           <button
             type="button"
             onClick={() => setShowDetails((v) => !v)}

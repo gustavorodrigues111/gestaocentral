@@ -1336,7 +1336,8 @@ export function sincronizarSubtarefasComTemplate(
       JSON.stringify(ex.atalho) !== JSON.stringify(t.atalho) ||
       !!ex.pedeLink !== !!t.pedeLink ||
       !!ex.pedeDataHora !== !!t.pedeDataHora ||
-      !!ex.pedeDadosBancarios !== !!t.pedeDadosBancarios;
+      !!ex.pedeDadosBancarios !== !!t.pedeDadosBancarios ||
+      !!ex.pedeAnexoExame !== !!t.pedeAnexoExame;
     if (!atualizou) return ex;
     mudou = true;
     // Constrói o merge SEM atribuir undefined — Firestore rejeita undefined

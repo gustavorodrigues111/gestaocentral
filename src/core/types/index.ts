@@ -2772,6 +2772,7 @@ export type SubtarefaTemplate = {
   pedeLink?: boolean;                // se true, mostra input de URL (Drive/Dropbox)
   pedeDataHora?: boolean;            // se true, mostra input datetime-local
   pedeDadosBancarios?: boolean;      // se true, mostra 3 campos (tipo + agência + conta) — atualizam adm.dadosBancariosItau
+  pedeAnexoExame?: boolean;          // se true, mostra anexar arquivo → sobe pra subpasta "Exames Médicos" do Drive e salva o link
 };
 
 // Instância de subtarefa numa admissão concreta (state + dados).
