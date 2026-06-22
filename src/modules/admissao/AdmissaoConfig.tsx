@@ -24,7 +24,7 @@ import { DOCUMENTOS_ADMISSAO_DEFAULT } from "../../core/admissao/formTemplate";
 import type { CanalContato, ContatoExterno, DocumentoAdmissaoDef, Restaurant } from "../../core/types";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { pickDriveFolder } from "../../core/google/drivePicker";
-import { centralConfigured, centralEnsureTopFolder } from "../../core/google/driveCentral";
+import { centralConfigured, centralEnsureTopFolder, centralEnsureFolder, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 
 type Props = {
   rid: string;
@@ -77,6 +77,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   const [drivePicking, setDrivePicking] = useState(false);
   const [driveMsg, setDriveMsg] = useState("");
   const [driveCentral, setDriveCentral] = useState<boolean | null>(null);
+  const [driveDestino, setDriveDestino] = useState("");
   useEffect(() => { void centralConfigured().then(setDriveCentral); }, []);
   // Clicksign: signatário fixo da empresa
   const [clicksignEmpresaNome, setClicksignEmpresaNome] = useState<string>(
@@ -125,20 +126,44 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
     }
   }
 
-  // Conta central: o backend cria/usa "Empregados Ativos — <empresa>" e salva o id.
+  // Conta central: cria "Empregados Ativos — <empresa>" dentro do destino colado
+  // (link do Drive) ou no raiz da conta central se vazio.
   async function inicializarPastaCentral() {
     setDriveMsg(""); setDrivePicking(true);
     try {
       const nome = activeRestaurant.nome || "Empresa";
-      const r = await centralEnsureTopFolder(`Empregados Ativos — ${nome}`);
+      const parent = driveDestino.trim() ? parseDriveFolderId(driveDestino) : null;
+      if (driveDestino.trim() && !parent) throw new Error("Link/ID da pasta de destino inválido.");
+      const folderId = parent
+        ? await centralEnsureFolder(parent, `Empregados Ativos — ${nome}`)
+        : (await centralEnsureTopFolder(`Empregados Ativos — ${nome}`)).folderId;
       await salvarConfigAdmissao(rid, {
-        driveEmpregadosAtivosFolderId: r.folderId,
+        driveEmpregadosAtivosFolderId: folderId,
         driveEmpregadosAtivosFolderNome: `Empregados Ativos — ${nome}`,
       });
-      setDriveFolder({ id: r.folderId, nome: `Empregados Ativos — ${nome}` });
+      setDriveFolder({ id: folderId, nome: `Empregados Ativos — ${nome}` });
+      setDriveDestino("");
       setDriveMsg("✓ Pasta central pronta.");
     } catch (e) {
       setDriveMsg("❌ " + (e instanceof Error ? e.message : "Erro ao inicializar pasta central."));
+    } finally {
+      setDrivePicking(false);
+    }
+  }
+
+  // Move a pasta "Empregados Ativos" já criada pra dentro do destino colado.
+  async function moverPastaCentral() {
+    setDriveMsg("");
+    const parent = parseDriveFolderId(driveDestino);
+    if (!parent) { setDriveMsg("❌ Cole um link/ID de pasta do Drive válido."); return; }
+    if (!driveFolder?.id) { setDriveMsg("❌ Não há pasta pra mover ainda."); return; }
+    setDrivePicking(true);
+    try {
+      await centralMoveFolder(driveFolder.id, parent);
+      setDriveDestino("");
+      setDriveMsg("✓ Pasta movida.");
+    } catch (e) {
+      setDriveMsg("❌ " + (e instanceof Error ? e.message : "Erro ao mover pasta."));
     } finally {
       setDrivePicking(false);
     }
@@ -279,15 +304,28 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             </div>
           )}
           {driveCentral === true && (
-            <p className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
-              ✓ Conta central do Drive ativa — clique abaixo pra criar a pasta na conta central (o DP não conecta o próprio Drive).
-            </p>
+            <>
+              <p className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
+                ✓ Conta central do Drive ativa — o DP não conecta o próprio Drive.
+              </p>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Onde guardar no Drive <span className="font-normal text-gray-400">— opcional</span></label>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Cole o link de uma pasta do Drive (ex: Shared Drive) pra criar/mover lá dentro. Vazio = raiz da conta central.</p>
+              <input value={driveDestino} onChange={(e) => setDriveDestino(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            </>
           )}
           <div className="flex items-center gap-2 flex-wrap">
             {driveCentral === true ? (
-              <Button variant="secondary" onClick={inicializarPastaCentral} disabled={drivePicking}>
-                {drivePicking ? "Criando…" : driveFolder ? "🔄 Recriar pasta central" : "📁 Inicializar pasta central"}
-              </Button>
+              <>
+                <Button variant="secondary" onClick={inicializarPastaCentral} disabled={drivePicking}>
+                  {drivePicking ? "Criando…" : driveFolder ? "🔄 Recriar pasta aqui" : "📁 Inicializar pasta central"}
+                </Button>
+                {driveFolder && (
+                  <Button variant="secondary" onClick={moverPastaCentral} disabled={drivePicking || !driveDestino.trim()}>
+                    Mover pasta atual pra cá
+                  </Button>
+                )}
+              </>
             ) : (
               <Button variant="secondary" onClick={selecionarPastaDrive} disabled={drivePicking}>
                 {drivePicking

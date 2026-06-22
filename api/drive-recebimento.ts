@@ -10,7 +10,7 @@
 //  Exige usuário logado (Firebase ID token). Bytes não passam por aqui.
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
-import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubfolder, initResumableUpload, downloadFileBase64, listFolder } from "./_googleDrive.js";
+import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubfolder, initResumableUpload, downloadFileBase64, listFolder, moveFolder } from "./_googleDrive.js";
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
@@ -22,7 +22,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   if ((req.method || "GET") !== "POST") { res.status(405).json({ error: "Use POST." }); return; }
 
-  const body = (req.body || {}) as { action?: string; nome?: string; topName?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string; fileId?: string; folderId?: string };
+  const body = (req.body || {}) as { action?: string; nome?: string; topName?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string; fileId?: string; folderId?: string; newParentId?: string };
   const action = String(body.action || "");
 
   // status não exige config — serve justamente pra avisar que falta.
@@ -72,6 +72,12 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (!body.folderId) { res.status(400).json({ error: "Falta folderId." }); return; }
       const files = await listFolder(String(body.folderId), token);
       res.status(200).json({ files });
+      return;
+    }
+    if (action === "moveFolder") {
+      if (!body.folderId || !body.newParentId) { res.status(400).json({ error: "Faltam folderId/newParentId." }); return; }
+      await moveFolder(String(body.folderId), String(body.newParentId), token);
+      res.status(200).json({ ok: true });
       return;
     }
     res.status(400).json({ error: `Ação desconhecida: ${action}` });

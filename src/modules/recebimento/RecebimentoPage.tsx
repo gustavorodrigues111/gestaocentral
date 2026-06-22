@@ -23,7 +23,7 @@ import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNo
 import { FORMA_PAGAMENTO_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
-import { centralConfigured, centralEnsureRoot, centralEnsureWeek, centralUpload } from "../../core/google/driveCentral";
+import { centralConfigured, centralEnsureRoot, centralEnsureFolder, centralEnsureWeek, centralUpload, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 import { authHeader } from "../../core/firebase/idToken";
 
 // Dispatch: conta central (backend) × OAuth do navegador (fallback). `central`
@@ -255,6 +255,7 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nom
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [central, setCentral] = useState<boolean | null>(null);
+  const [destino, setDestino] = useState("");
 
   useEffect(() => { void centralConfigured().then(setCentral); }, []);
 
@@ -274,17 +275,39 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nom
     } finally { setSalvando(false); }
   }
 
-  // Conta central: o backend cria/usa "Recebimentos — <restaurante>" e salva o id.
+  // Conta central: cria "Recebimentos — <restaurante>" dentro do destino colado
+  // (link do Drive) ou no raiz da conta central se o campo estiver vazio.
   async function inicializarCentral() {
     setErro(""); setSalvando(true);
     try {
-      const r = await centralEnsureRoot(restaurant.nome || "Restaurante");
+      const nome = restaurant.nome || "Restaurante";
+      let folderId: string;
+      const parent = destino.trim() ? parseDriveFolderId(destino) : null;
+      if (destino.trim() && !parent) throw new Error("Link/ID da pasta de destino inválido.");
+      if (parent) folderId = await centralEnsureFolder(parent, `Recebimentos — ${nome}`);
+      else folderId = (await centralEnsureRoot(nome)).folderId;
       await updateDoc(doc(db, "restaurants", rid), {
-        recebimentoDriveFolderId: r.folderId,
-        recebimentoDriveFolderNome: `Recebimentos — ${restaurant.nome || "Restaurante"}`,
+        recebimentoDriveFolderId: folderId,
+        recebimentoDriveFolderNome: `Recebimentos — ${nome}`,
       });
+      setDestino("");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao inicializar a pasta central.");
+    } finally { setSalvando(false); }
+  }
+
+  // Move a pasta já criada pra dentro do destino colado (id não muda).
+  async function moverParaDestino() {
+    setErro("");
+    const parent = parseDriveFolderId(destino);
+    if (!parent) { setErro("Cole um link/ID de pasta do Drive válido."); return; }
+    if (!restaurant.recebimentoDriveFolderId) { setErro("Não há pasta pra mover ainda."); return; }
+    setSalvando(true);
+    try {
+      await centralMoveFolder(restaurant.recebimentoDriveFolderId, parent);
+      setDestino("");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao mover a pasta.");
     } finally { setSalvando(false); }
   }
 
@@ -306,16 +329,30 @@ function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nom
             ? <span className="text-emerald-700 dark:text-emerald-300">📁 {restaurant.recebimentoDriveFolderNome || "pasta selecionada"}</span>
             : <span className="text-amber-600">Nenhuma pasta selecionada</span>}
         </div>
-        {central === true ? (
-          <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void inicializarCentral()}>
-            {salvando ? "Criando…" : restaurant.recebimentoDriveFolderId ? "Recriar pasta central" : "Inicializar pasta central"}
-          </Button>
-        ) : (
+        {central !== true && (
           <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolherPasta()}>
             {salvando ? "Salvando…" : restaurant.recebimentoDriveFolderId ? "Trocar pasta" : "Selecionar pasta"}
           </Button>
         )}
       </div>
+      {central === true && (
+        <div className="space-y-2 pt-1 border-t border-gray-100 dark:border-gray-800">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Onde guardar no Drive <span className="font-normal text-gray-400">— opcional</span></label>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Cole o link de uma pasta do Drive (ex: de um Shared Drive) pra criar/mover lá dentro. Vazio = raiz da conta central.</p>
+          <input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <div className="flex gap-2 flex-wrap">
+            <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void inicializarCentral()}>
+              {salvando ? "Criando…" : restaurant.recebimentoDriveFolderId ? "Recriar pasta aqui" : "Inicializar pasta central"}
+            </Button>
+            {restaurant.recebimentoDriveFolderId && (
+              <Button variant="secondary" size="sm" disabled={salvando || !destino.trim()} onClick={() => void moverParaDestino()}>
+                Mover pasta atual pra cá
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

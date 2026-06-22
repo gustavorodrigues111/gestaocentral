@@ -66,6 +66,21 @@ export async function centralListFolder(folderId: string): Promise<Array<{ id: s
   return files;
 }
 
+// Move uma pasta pra dentro de outro pai (id não muda).
+export async function centralMoveFolder(folderId: string, newParentId: string): Promise<void> {
+  await post("moveFolder", { folderId, newParentId });
+}
+
+// Extrai o id de uma pasta a partir de um link do Drive ou de um id cru.
+export function parseDriveFolderId(input: string): string | null {
+  const s = (input || "").trim();
+  if (!s) return null;
+  const m = s.match(/\/folders\/([-\w]{10,})/) || s.match(/[?&]id=([-\w]{10,})/);
+  if (m) return m[1];
+  if (/^[-\w]{10,}$/.test(s)) return s; // já é um id
+  return null;
+}
+
 // Sobe um arquivo pela conta central: inicia a sessão resumable no backend e
 // faz o PUT dos bytes direto no Google. Devolve id + link do arquivo.
 export async function centralUpload(parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
