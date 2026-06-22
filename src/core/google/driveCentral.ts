@@ -38,9 +38,32 @@ export async function centralEnsureRoot(nome: string): Promise<{ folderId: strin
   return post("ensureRoot", { nome });
 }
 
+// Pasta de topo genérica (ex: "Empregados Ativos — X").
+export async function centralEnsureTopFolder(topName: string): Promise<{ folderId: string; folderUrl: string }> {
+  return post("ensureTopFolder", { topName });
+}
+
 export async function centralEnsureWeek(parentId: string, weekLabel: string): Promise<string> {
   const { subfolderId } = await post<{ subfolderId: string }>("ensureWeek", { parentId, weekLabel });
   return subfolderId;
+}
+
+// Subpasta por nome dentro de um pai (genérico).
+export async function centralEnsureFolder(parentId: string, name: string): Promise<string> {
+  const { folderId } = await post<{ folderId: string }>("ensureFolder", { parentId, name });
+  return folderId;
+}
+
+// Baixa um arquivo (base64) pela conta central — pra reenviar a outro serviço.
+export async function centralDownloadBase64(fileId: string): Promise<string> {
+  const { base64 } = await post<{ base64: string }>("download", { fileId });
+  return base64;
+}
+
+// Lista arquivos de uma pasta pela conta central.
+export async function centralListFolder(folderId: string): Promise<Array<{ id: string; name: string; webViewLink?: string }>> {
+  const { files } = await post<{ files: Array<{ id: string; name: string; webViewLink?: string }> }>("listFolder", { folderId });
+  return files;
 }
 
 // Sobe um arquivo pela conta central: inicia a sessão resumable no backend e

@@ -10,7 +10,7 @@
 //  Exige usuário logado (Firebase ID token). Bytes não passam por aqui.
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
-import { isCentralConfigured, getCentralAccessToken, ensureRestaurantFolder, ensureSubfolder, initResumableUpload } from "./_googleDrive.js";
+import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubfolder, initResumableUpload, downloadFileBase64, listFolder } from "./_googleDrive.js";
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
@@ -22,7 +22,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   }
   if ((req.method || "GET") !== "POST") { res.status(405).json({ error: "Use POST." }); return; }
 
-  const body = (req.body || {}) as { action?: string; nome?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string };
+  const body = (req.body || {}) as { action?: string; nome?: string; topName?: string; parentId?: string; weekLabel?: string; name?: string; mimeType?: string; fileId?: string; folderId?: string };
   const action = String(body.action || "");
 
   // status não exige config — serve justamente pra avisar que falta.
@@ -35,21 +35,43 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   try {
     const token = await getCentralAccessToken();
+    // ensureRoot: pasta de topo do recebimento ("Recebimentos — <nome>").
     if (action === "ensureRoot") {
-      const r = await ensureRestaurantFolder(String(body.nome || "Restaurante"), token);
+      const r = await ensureTopFolder(`Recebimentos — ${String(body.nome || "Restaurante")}`, token);
       res.status(200).json({ folderId: r.id, folderUrl: r.url });
       return;
     }
-    if (action === "ensureWeek") {
-      if (!body.parentId || !body.weekLabel) { res.status(400).json({ error: "Faltam parentId/weekLabel." }); return; }
-      const sub = await ensureSubfolder(body.parentId, body.weekLabel, token);
-      res.status(200).json({ subfolderId: sub.id });
+    // ensureTopFolder: pasta de topo genérica (ex: "Empregados Ativos — <nome>").
+    if (action === "ensureTopFolder") {
+      if (!body.topName) { res.status(400).json({ error: "Falta topName." }); return; }
+      const r = await ensureTopFolder(String(body.topName), token);
+      res.status(200).json({ folderId: r.id, folderUrl: r.url });
+      return;
+    }
+    // ensureWeek / ensureFolder: subpasta por nome dentro de um pai.
+    if (action === "ensureWeek" || action === "ensureFolder") {
+      const nome = body.weekLabel || body.name;
+      if (!body.parentId || !nome) { res.status(400).json({ error: "Faltam parentId/nome." }); return; }
+      const sub = await ensureSubfolder(body.parentId, String(nome), token);
+      res.status(200).json({ subfolderId: sub.id, folderId: sub.id });
       return;
     }
     if (action === "initUpload") {
       if (!body.parentId || !body.name) { res.status(400).json({ error: "Faltam parentId/name." }); return; }
       const uploadUrl = await initResumableUpload(body.parentId, body.name, String(body.mimeType || "application/octet-stream"), token);
       res.status(200).json({ uploadUrl });
+      return;
+    }
+    if (action === "download") {
+      if (!body.fileId) { res.status(400).json({ error: "Falta fileId." }); return; }
+      const base64 = await downloadFileBase64(String(body.fileId), token);
+      res.status(200).json({ base64 });
+      return;
+    }
+    if (action === "listFolder") {
+      if (!body.folderId) { res.status(400).json({ error: "Falta folderId." }); return; }
+      const files = await listFolder(String(body.folderId), token);
+      res.status(200).json({ files });
       return;
     }
     res.status(400).json({ error: `Ação desconhecida: ${action}` });

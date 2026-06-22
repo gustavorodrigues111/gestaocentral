@@ -34,7 +34,7 @@ import { isDriveConfigured, driveFolderUrl } from "../../core/google/driveConfig
 import {
   createEmployeeFolderTree, uploadFileToFolder, listFolderFiles,
   downloadDriveFileBase64, type DriveFile,
-} from "../../core/google/driveClient";
+} from "../../core/google/driveShared";
 import {
   criarEnvelopeClicksign, statusEnvelopeClicksign, baixarAssinadoClicksign,
   CLICKSIGN_SANDBOX,

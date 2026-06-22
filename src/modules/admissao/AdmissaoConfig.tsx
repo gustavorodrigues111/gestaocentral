@@ -3,7 +3,7 @@
 //  iteração) editor do schema do formulário.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -24,6 +24,7 @@ import { DOCUMENTOS_ADMISSAO_DEFAULT } from "../../core/admissao/formTemplate";
 import type { CanalContato, ContatoExterno, DocumentoAdmissaoDef, Restaurant } from "../../core/types";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { pickDriveFolder } from "../../core/google/drivePicker";
+import { centralConfigured, centralEnsureTopFolder } from "../../core/google/driveCentral";
 
 type Props = {
   rid: string;
@@ -75,6 +76,8 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
   );
   const [drivePicking, setDrivePicking] = useState(false);
   const [driveMsg, setDriveMsg] = useState("");
+  const [driveCentral, setDriveCentral] = useState<boolean | null>(null);
+  useEffect(() => { void centralConfigured().then(setDriveCentral); }, []);
   // Clicksign: signatário fixo da empresa
   const [clicksignEmpresaNome, setClicksignEmpresaNome] = useState<string>(
     activeRestaurant.clicksignEmpresaNome || "",
@@ -117,6 +120,25 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       setDriveMsg("✓ Pasta vinculada.");
     } catch (e) {
       setDriveMsg("❌ " + (e instanceof Error ? e.message : "Erro ao selecionar pasta."));
+    } finally {
+      setDrivePicking(false);
+    }
+  }
+
+  // Conta central: o backend cria/usa "Empregados Ativos — <empresa>" e salva o id.
+  async function inicializarPastaCentral() {
+    setDriveMsg(""); setDrivePicking(true);
+    try {
+      const nome = activeRestaurant.nome || "Empresa";
+      const r = await centralEnsureTopFolder(`Empregados Ativos — ${nome}`);
+      await salvarConfigAdmissao(rid, {
+        driveEmpregadosAtivosFolderId: r.folderId,
+        driveEmpregadosAtivosFolderNome: `Empregados Ativos — ${nome}`,
+      });
+      setDriveFolder({ id: r.folderId, nome: `Empregados Ativos — ${nome}` });
+      setDriveMsg("✓ Pasta central pronta.");
+    } catch (e) {
+      setDriveMsg("❌ " + (e instanceof Error ? e.message : "Erro ao inicializar pasta central."));
     } finally {
       setDrivePicking(false);
     }
@@ -234,7 +256,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       </div>
 
       {/* Google Drive — pasta "Empregados Ativos" desta empresa (Picker) */}
-      {isDriveConfigured() && (
+      {(isDriveConfigured() || driveCentral === true) && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
           <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
             📁 Pasta no Google Drive (admissão)
@@ -256,14 +278,25 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
               empregado no Drive durante a admissão.
             </div>
           )}
+          {driveCentral === true && (
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
+              ✓ Conta central do Drive ativa — clique abaixo pra criar a pasta na conta central (o DP não conecta o próprio Drive).
+            </p>
+          )}
           <div className="flex items-center gap-2 flex-wrap">
-            <Button variant="secondary" onClick={selecionarPastaDrive} disabled={drivePicking}>
-              {drivePicking
-                ? "Abrindo seletor…"
-                : driveFolder
-                  ? "🔄 Trocar pasta"
-                  : "📁 Selecionar pasta"}
-            </Button>
+            {driveCentral === true ? (
+              <Button variant="secondary" onClick={inicializarPastaCentral} disabled={drivePicking}>
+                {drivePicking ? "Criando…" : driveFolder ? "🔄 Recriar pasta central" : "📁 Inicializar pasta central"}
+              </Button>
+            ) : (
+              <Button variant="secondary" onClick={selecionarPastaDrive} disabled={drivePicking}>
+                {drivePicking
+                  ? "Abrindo seletor…"
+                  : driveFolder
+                    ? "🔄 Trocar pasta"
+                    : "📁 Selecionar pasta"}
+              </Button>
+            )}
             {driveMsg && <span className="text-xs">{driveMsg}</span>}
           </div>
           <p className="text-[10px] text-gray-400 dark:text-gray-500">

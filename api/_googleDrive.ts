@@ -84,12 +84,31 @@ export async function ensureSubfolder(parentId: string, name: string, token: str
   return { id: ((await created.json()) as { id: string }).id };
 }
 
-// Pasta raiz das notas de um restaurante (dentro do ROOT opcional ou My Drive).
-export async function ensureRestaurantFolder(nome: string, token: string): Promise<{ id: string; url: string }> {
+// Pasta de topo (dentro do ROOT opcional ou My Drive). Genérico — usado pra
+// "Recebimentos — X" e "Empregados Ativos — X".
+export async function ensureTopFolder(name: string, token: string): Promise<{ id: string; url: string }> {
   const root = process.env.GOOGLE_DRIVE_RECEBIMENTOS_ROOT;
   const parentId = root || "root";
-  const { id } = await ensureSubfolder(parentId, `Recebimentos — ${nome}`.trim(), token);
+  const { id } = await ensureSubfolder(parentId, name.trim(), token);
   return { id, url: `https://drive.google.com/drive/folders/${id}` };
+}
+
+// Baixa um arquivo como base64 (pra reenviar a outro serviço, ex: Clicksign).
+export async function downloadFileBase64(fileId: string, token: string): Promise<string> {
+  const res = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(fileId)}?alt=media&${ALL_DRIVES}`, { method: "GET" }, token);
+  const buf = Buffer.from(await res.arrayBuffer());
+  return buf.toString("base64");
+}
+
+// Lista arquivos (não-pasta, não-lixeira) dentro de uma pasta.
+export async function listFolder(folderId: string, token: string): Promise<Array<{ id: string; name: string; webViewLink?: string }>> {
+  const q = encodeURIComponent(`'${folderId}' in parents and trashed = false`);
+  const res = await driveFetch(
+    `${DRIVE_API}/files?q=${q}&fields=files(id,name,webViewLink)&orderBy=name&includeItemsFromAllDrives=true&${ALL_DRIVES}`,
+    { method: "GET" }, token,
+  );
+  const data = (await res.json()) as { files?: Array<{ id: string; name: string; webViewLink?: string }> };
+  return data.files ?? [];
 }
 
 // Inicia um upload resumable e devolve a URL de sessão (pro browser dar PUT).

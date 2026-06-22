@@ -10,7 +10,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { Admissao, Restaurant } from "../types";
-import { createEmployeeFolderTree, ensureSubfoldersIn } from "./driveClient";
+import { createEmployeeFolderTree, ensureSubfoldersIn } from "./driveShared";
 import { driveFolderUrl } from "./driveConfig";
 import { salvarDriveFolder } from "../admissao/admissaoHelpers";
 

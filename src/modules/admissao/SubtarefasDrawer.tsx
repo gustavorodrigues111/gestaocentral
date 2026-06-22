@@ -56,7 +56,7 @@ import { gerarCascataAdmissao } from "../tarefas/generator";
 import { carregarCargo } from "../exames/gerador";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { ensureEmployeeDriveTree, vincularPastaExistente } from "../../core/google/driveAdmissao";
-import { uploadFileToFolder, findOrCreateSubfolder } from "../../core/google/driveClient";
+import { uploadFileToFolder, findOrCreateSubfolder } from "../../core/google/driveShared";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
