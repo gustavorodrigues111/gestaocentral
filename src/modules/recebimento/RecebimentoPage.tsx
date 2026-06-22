@@ -74,13 +74,16 @@ async function paraOcrBlock(file: File): Promise<{ data: string; mediaType: stri
   return { data: await fileToBase64(file), mediaType: file.type || "image/jpeg" };
 }
 
-// Carimba a imagem com um selo no rodapé (quem recebeu + data/hora) e devolve um
-// novo File JPEG. PDFs e não-imagens voltam sem alteração.
-async function carimbarImagem(file: File, linhas: string[]): Promise<File> {
-  if (!file.type.startsWith("image/") || !linhas.length) return file;
+// Processa a imagem antes de subir: opcionalmente aplica filtro "scanner"
+// (cinza + contraste, pra ficar legível como documento) e carimba um selo no
+// rodapé (quem recebeu + data/hora). Devolve um novo File JPEG. PDFs voltam
+// sem alteração.
+async function carimbarImagem(file: File, linhas: string[], scan = false): Promise<File> {
+  if (!file.type.startsWith("image/")) return file;
+  if (!linhas.length && !scan) return file;
   try {
     const bitmap = await createImageBitmap(file);
-    const maxLado = 2200;
+    const maxLado = 2400; // resolução maior pra leitura humana do documento
     const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * escala));
     const h = Math.max(1, Math.round(bitmap.height * escala));
@@ -90,6 +93,26 @@ async function carimbarImagem(file: File, linhas: string[]): Promise<File> {
     if (!ctx) return file;
     ctx.drawImage(bitmap, 0, 0, w, h);
     bitmap.close?.();
+    // Filtro "scanner": cinza de alto contraste — fundo branco, texto preto.
+    if (scan) {
+      try {
+        const img = ctx.getImageData(0, 0, w, h);
+        const px = img.data;
+        const contraste = 1.7, brilho = 10;
+        for (let i = 0; i < px.length; i += 4) {
+          let g = 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+          g = (g - 128) * contraste + 128 + brilho;
+          g = g < 0 ? 0 : g > 255 ? 255 : g;
+          px[i] = px[i + 1] = px[i + 2] = g;
+        }
+        ctx.putImageData(img, 0, 0);
+      } catch { /* getImageData pode falhar; segue sem o filtro */ }
+    }
+    if (!linhas.length) {
+      const blob0: Blob | null = await new Promise((res) => canvas.toBlob((b) => res(b), "image/jpeg", 0.82));
+      if (blob0) return new File([blob0], file.name.replace(/\.[a-z0-9]+$/i, "") + ".jpg", { type: "image/jpeg" });
+      return file;
+    }
     const fonte = Math.max(13, Math.round(w / 48));
     const pad = Math.round(fonte * 0.45);
     const alturaBox = (fonte + pad) * linhas.length + pad;
@@ -830,7 +853,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
         for (let i = 0; i < boletosNovos.length; i++) {
           const bf = boletosNovos[i];
           const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
-          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo);
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo, true);
           const s = await subirArquivo(central, semanaId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
@@ -1056,19 +1079,21 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return; // chegou uma leitura mais nova — descarta esta
       if (resp.ok) {
-        if (j.emissor) setEmissor(j.emissor);
-        if (j.cnpjEmissor) setCnpjEmissor(j.cnpjEmissor);
-        if (j.numeroNota) setNumeroNota(j.numeroNota);
-        if (j.serieNota) setSerieNota(j.serieNota);
-        if (j.chaveAcesso) setChaveAcesso(j.chaveAcesso);
-        if (j.valorProdutos != null) setValorProdutos(String(j.valorProdutos).replace(".", ","));
-        if (j.valorImpostos != null) setValorImpostos(String(j.valorImpostos).replace(".", ","));
-        if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
-        if (j.dataEmissao) setDataEmissao(j.dataEmissao);
-        if (Array.isArray(j.itens)) setItens(j.itens as ItemNota[]);
+        // Preenche só campos AINDA vazios — não sobrescreve o que o usuário digitou
+        // enquanto a leitura rodava em segundo plano.
+        if (j.emissor) setEmissor((p) => p || j.emissor);
+        if (j.cnpjEmissor) setCnpjEmissor((p) => p || j.cnpjEmissor);
+        if (j.numeroNota) setNumeroNota((p) => p || j.numeroNota);
+        if (j.serieNota) setSerieNota((p) => p || j.serieNota);
+        if (j.chaveAcesso) setChaveAcesso((p) => p || j.chaveAcesso);
+        if (j.valorProdutos != null) setValorProdutos((p) => p || String(j.valorProdutos).replace(".", ","));
+        if (j.valorImpostos != null) setValorImpostos((p) => p || String(j.valorImpostos).replace(".", ","));
+        if (j.valorTotal != null) setValor((p) => p || String(j.valorTotal).replace(".", ","));
+        if (j.dataEmissao) setDataEmissao((p) => p || j.dataEmissao);
+        // Itens/faturas são prévia (não editáveis aqui) → recebem o agregado da leitura.
+        if (Array.isArray(j.itens) && j.itens.length) setItens(j.itens as ItemNota[]);
         if (Array.isArray(j.duplicatas)) {
-          setDuplicatas(j.duplicatas as DuplicataNota[]);
-          // Nota com fatura/duplicata → cobrança por boleto (não sobrescreve escolha manual).
+          setDuplicatas((p) => p.length ? p : (j.duplicatas as DuplicataNota[]));
           if (j.duplicatas.length) setFormaPagamento((prev) => prev ?? "boleto");
         }
         setLeuOcr(true);
@@ -1159,7 +1184,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < notaFiles.length; i++) {
         const nf = notaFiles[i];
         const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
-        const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo);
+        const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo, true);
         const s = await subirArquivo(central, semanaId, alvo);
         notaPaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
@@ -1169,7 +1194,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < boletoFiles.length; i++) {
         const bf = boletoFiles[i];
         const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
-        const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo);
+        const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
         const s = await subirArquivo(central, semanaId, alvo);
         boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
@@ -1178,7 +1203,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < comprovanteFiles.length; i++) {
         const cf = comprovanteFiles[i];
         const sufixo = comprovanteFiles.length > 1 ? `comprovante${i + 1}` : "comprovante";
-        const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo);
+        const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo, true);
         const s = await subirArquivo(central, semanaId, alvo);
         comprovantes.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
@@ -1228,7 +1253,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const faturasNaoBatem = totalNum != null && duplicatas.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
 
   const stepNum = { paginas: 1, dados: 2, boleto: 3, final: 4 }[etapa];
-  const podeAvancar = !lendo && !lendoBoleto;
+  const lendoAlgo = lendo || lendoBoleto; // leitura em segundo plano (não bloqueia)
   const voltar = () => setEtapa(etapa === "dados" ? "paginas" : etapa === "boleto" ? "dados" : "boleto");
   const avancar = () => setEtapa(etapa === "paginas" ? "dados" : etapa === "dados" ? "boleto" : "final");
   return (
@@ -1264,7 +1289,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
           {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha manualmente.</p>}
           <div className="mt-3 flex flex-col items-center gap-2 py-5 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{notaFiles.length ? "Tem outra folha desta nota?" : "Adicione a 1ª folha da nota"}</p>
-            <Button variant="secondary" size="sm" disabled={lendo} onClick={() => setAddPagina(true)}>➕ {notaFiles.length ? "Adicionar outra folha" : "Adicionar folha"}</Button>
+            <Button variant="secondary" size="sm" onClick={() => setAddPagina(true)}>➕ {notaFiles.length ? "Adicionar outra folha" : "Adicionar folha"}</Button>
             {notaFiles.length > 0 && <p className="text-[11px] text-gray-400 text-center">Se não tem mais, toque em "Continuar →" abaixo.</p>}
           </div>
         </div>
@@ -1400,7 +1425,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
               {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
               <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{boletoFiles.length ? "Tem outro boleto?" : "Anexe o boleto"}</p>
-                <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
+                <Button variant="secondary" size="sm" onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
               </div>
             </>
           )}
@@ -1481,11 +1506,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
           <Button variant="secondary" size="sm" disabled={salvando} onClick={etapa === "paginas" ? onClose : voltar}>
             {etapa === "paginas" ? "Cancelar" : "← Voltar"}
           </Button>
-          {(lendo || lendoBoleto) && <span className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo…</span>}
+          {lendoAlgo && <span className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo em 2º plano…</span>}
           {etapa === "final" ? (
-            <Button size="sm" disabled={salvando || !podeAvancar} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
+            <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
           ) : (
-            <Button size="sm" disabled={!podeAvancar || (etapa === "boleto" && recebeuBoleto === null)} onClick={avancar}>Continuar →</Button>
+            <Button size="sm" disabled={etapa === "boleto" && recebeuBoleto === null} onClick={avancar}>Continuar →</Button>
           )}
         </div>
 
