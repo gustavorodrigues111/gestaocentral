@@ -8,7 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Restaurant, ScheduleStatus } from "../../core/types";
+import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Pessoa, Restaurant, ScheduleStatus } from "../../core/types";
 import { AREAS, empregadoBatePonto } from "../../core/types";
 import { fetchRoster, fetchEspelhoPdf, fetchScheduleCatalog, decidirAprovacao, type AprovacaoPendente } from "../../core/ponto/solidesPontoClient";
 import { analisarPonto, ROTULOS, type Ocorrencia, type PontoColaborador, type PontoEscala, type PontoMarcacao, type TipoOcorrencia } from "../../core/ponto/analise";
@@ -160,12 +160,13 @@ type DiaEspelho = {
 };
 
 export function FechamentoTab({
-  rid, activeRestaurant, empregados, cargos, mesInicial, por,
+  rid, activeRestaurant, empregados, cargos, pessoas, mesInicial, por,
 }: {
   rid: string;
   activeRestaurant: Restaurant;
   empregados: Empregado[];
   cargos: Cargo[];
+  pessoas: Pessoa[];
   mesInicial: string; // YYYY-MM
   por: { id: string; nome: string };
 }) {
@@ -211,6 +212,15 @@ export function FechamentoTab({
     for (const c of cargos) m.set(c.id, c);
     return m;
   }, [cargos]);
+  // WhatsApp vem do cadastro da Pessoa (campo whatsapp), casado por CPF — mesma
+  // prioridade da aba Inconsistências (Pessoa.whatsapp → fallback Empregado.telefone).
+  const whatsPorCpf = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const p of pessoas) { const c = soDigitos(p.cpf); if (c && p.whatsapp) m.set(c, soDigitos(p.whatsapp)); }
+    return m;
+  }, [pessoas]);
+  const telDoColaborador = (emp?: Empregado): string =>
+    (emp?.cpf ? whatsPorCpf.get(soDigitos(emp.cpf)) || "" : "") || soDigitos(emp?.telefone);
   // Cargo de confiança / dispensado de ponto (CLT Art. 62 II): não bate ponto.
   // Pra esses a praticada = prevista (não há batidas pra cruzar).
   const naoBatePontoDe = (emp?: Empregado) =>
@@ -444,8 +454,8 @@ export function FechamentoTab({
   // registra UMA solicitação (usado tanto pelo 💬 do dia quanto pelo lote).
   function enviarCorrecaoOcs(ocs: Ocorrencia[]) {
     if (selEmp === "" || !colSel || !ocs.length) return;
-    const tel = colSel.emp?.telefone || "";
-    if (!tel) { setErro("Empregado sem telefone cadastrado pra enviar a correção."); return; }
+    const tel = telDoColaborador(colSel.emp);
+    if (!tel) { alert(`${colSel.nome} não tem WhatsApp/telefone no cadastro (Pessoa ou Empregado). Cadastre pra poder enviar a correção.`); return; }
     const ordenadas = [...ocs].sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
     const prazoHoras = 6;
     const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
