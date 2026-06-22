@@ -243,7 +243,7 @@ export function RecebimentoPage() {
               </Button>
             </div>
           )}
-          <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+          <RecebimentoTabela notas={ordenadas} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
         </div>
       )}
 
@@ -468,8 +468,9 @@ type SortKey = "recebido" | "tipo" | "emissao" | "nf" | "emissor" | "valor" | "r
 const tipoLabelDe = (n: RecebimentoNota): string => n.tipoDocumento
   ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
   : "—";
-function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
+function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExcluir }: {
   notas: RecebimentoNota[];
+  restaurant: { recebimentoDriveFolderId?: string };
   podeEditar: boolean;
   podeConfig: boolean;
   onExcluir: (n: RecebimentoNota) => void;
@@ -596,7 +597,7 @@ function RecebimentoTabela({ notas, podeEditar, podeConfig, onExcluir }: {
       </table>
     </div>
     {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
-    {editar && <EditarRecebimentoModal nota={editar} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
+    {editar && <EditarRecebimentoModal nota={editar} restaurant={restaurant} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
   );
 }
@@ -694,8 +695,9 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: Recebimen
 // ─── Modal: editar um recebimento já salvo ──────────────────────────────────
 // Corrige os campos da nota (emissor, valores, data, conformidade e faturas) sem
 // re-anexar arquivos. Salva via updateDoc; campos esvaziados são removidos.
-function EditarRecebimentoModal({ nota, onClose, onSaved }: {
+function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
   nota: RecebimentoNota;
+  restaurant: { recebimentoDriveFolderId?: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -713,11 +715,41 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
   const [divergencia, setDivergencia] = useState(nota.divergencia || "");
   const [formaPagamento, setFormaPagamento] = useState<FormaPagamento | undefined>(nota.formaPagamento);
   const [dups, setDups] = useState<DuplicataNota[]>((nota.duplicatas || []).map((d) => ({ ...d })));
+  const [boletosNovos, setBoletosNovos] = useState<File[]>([]); // boletos a anexar agora
+  const [addBoleto, setAddBoleto] = useState(false);
+  const [lendoBoleto, setLendoBoleto] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
   function setDup(i: number, campo: keyof DuplicataNota, valor: string) {
     setDups((prev) => prev.map((d, j) => j !== i ? d : { ...d, [campo]: campo === "valor" ? (parseBRL(valor) ?? undefined) : (valor || undefined) }));
+  }
+
+  // Anexa um boleto agora: lê valor/vencimento e mescla nas faturas (por valor).
+  async function aoAnexarBoletoEdit(file: File) {
+    setAddBoleto(false);
+    setBoletosNovos((prev) => [...prev, file]);
+    setLendoBoleto(true);
+    try {
+      const bloco = await paraOcrBlock(file);
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "boleto" }) });
+      const j = await resp.json().catch(() => ({}));
+      if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
+        const novas = j.duplicatas as DuplicataNota[];
+        setDups((prev) => {
+          const cents = (d: DuplicataNota) => d.valor != null ? Math.round(d.valor * 100) : null;
+          const result = prev.map((d) => ({ ...d }));
+          for (const nova of novas) {
+            const c = cents(nova);
+            const alvo = c != null ? result.find((d) => cents(d) === c) : undefined;
+            if (alvo) { if (!alvo.vencimento && nova.vencimento) alvo.vencimento = nova.vencimento; if (!alvo.numero && nova.numero) alvo.numero = nova.numero; }
+            else result.push(nova);
+          }
+          return result;
+        });
+      }
+    } catch { /* best-effort */ }
+    finally { setLendoBoleto(false); }
   }
 
   const somaDuplicatas = dups.reduce((s, d) => s + (d.valor || 0), 0);
@@ -727,6 +759,7 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
   async function salvar() {
     setErro("");
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
+    if (boletosNovos.length && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações pra anexar boletos."); return; }
     setSalvando(true);
     try {
       const dupsLimpas = dups
@@ -736,6 +769,27 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
           ...(d.valor != null ? { valor: d.valor } : {}),
           ...(d.vencimento ? { vencimento: d.vencimento } : {}),
         }));
+      // Sobe os boletos novos pro Drive (mesma semana da nota) e junta aos existentes.
+      let boletosFinais: BoletoNota[] | undefined = nota.boletos ? [...nota.boletos] : undefined;
+      if (boletosNovos.length) {
+        const central = await centralConfigured();
+        if (!central) await requestAccessToken();
+        const label = nota.semanaLabel || semanaDe(new Date()).label;
+        const semanaId = await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label);
+        const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
+        const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : "";
+        const baseNome = `${fornecedorSlug} ${dataSlug}`.trim();
+        const jaExistentes = nota.boletos?.length || 0;
+        const acc: BoletoNota[] = [];
+        for (let i = 0; i < boletosNovos.length; i++) {
+          const bf = boletosNovos[i];
+          const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
+          const nome = `${baseNome} boleto${jaExistentes + i + 1}${ext}`;
+          const s = await subirArquivo(central, semanaId, new File([bf], nome, { type: bf.type }));
+          acc.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+        }
+        boletosFinais = [...(boletosFinais || []), ...acc];
+      }
       const patch: Record<string, unknown> = {
         emissor: emissor.trim() || deleteField(),
         cnpjEmissor: cnpjEmissor.replace(/\D/g, "") || deleteField(),
@@ -750,6 +804,7 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
         divergencia: (!conforme && divergencia.trim()) ? divergencia.trim() : deleteField(),
         formaPagamento: formaPagamento || deleteField(),
         duplicatas: dupsLimpas.length ? dupsLimpas : deleteField(),
+        ...(boletosFinais && boletosFinais.length ? { boletos: boletosFinais } : {}),
       };
       await updateDoc(doc(db, "recebimentos", nota.id), patch);
       onSaved();
@@ -829,6 +884,33 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
           )}
         </div>
 
+        {/* Boletos — existentes + anexar novos */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Boletos</label>
+          {(nota.boletos && nota.boletos.length > 0) && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {nota.boletos.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                  <span className="truncate flex-1">🧾 {b.nome}</span>
+                  {b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
+                </div>
+              ))}
+            </div>
+          )}
+          {boletosNovos.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
+              {boletosNovos.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                  <span className="truncate flex-1">🧾 {b.name} <span className="text-emerald-600">(novo)</span></span>
+                  <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setBoletosNovos((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo o boleto…</p>}
+          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}>➕ Anexar boleto</Button>
+        </div>
+
         {/* Forma de pagamento */}
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Forma de pagamento <span className="font-normal text-gray-400">— opcional</span></label>
@@ -852,8 +934,17 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
 
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar alterações"}</Button>
+          <Button size="sm" disabled={salvando || lendoBoleto} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar alterações"}</Button>
         </div>
+
+        {addBoleto && (
+          <EscolhaFonteModal
+            titulo="Anexar boleto"
+            semManual
+            onClose={() => setAddBoleto(false)}
+            onArquivo={(f) => void aoAnexarBoletoEdit(f)}
+          />
+        )}
       </div>
     </Modal>
   );
