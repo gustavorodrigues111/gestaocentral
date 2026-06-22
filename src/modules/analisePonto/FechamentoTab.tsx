@@ -555,6 +555,11 @@ export function FechamentoTab({
             </select>
           </div>
           <div className="flex-1" />
+          <button type="button" onClick={() => void carregar()} disabled={carregando}
+            title="Recarregar batidas, escala e inconsistências do mês"
+            className="h-9 px-4 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap">
+            {carregando ? "Atualizando…" : "🔄 Atualizar"}
+          </button>
           {selEmp !== "" && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
