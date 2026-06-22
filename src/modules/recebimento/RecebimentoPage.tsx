@@ -1063,6 +1063,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const [recebeuBoleto, setRecebeuBoleto] = useState<boolean | null>(null);
   const [comprovanteFiles, setComprovanteFiles] = useState<File[]>([]);
   const [addComprovante, setAddComprovante] = useState(false);
+  const [semComprovante, setSemComprovante] = useState(false); // cartão pago online, sem comprovante
   const leituraSeq = useRef(0);
 
   // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
@@ -1447,7 +1448,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             <>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Selecione a forma de pagamento</label>
-                <FormaPagamentoSelector value={formaPagamento} onChange={(v) => { setFormaPagamento(v); if (v === "cartao" && !comprovanteFiles.length) setAddComprovante(true); }} />
+                <FormaPagamentoSelector value={formaPagamento} onChange={(v) => { setFormaPagamento(v); setSemComprovante(false); if (v !== "cartao") setComprovanteFiles([]); }} />
               </div>
               {formaPagamento === "cartao" && (
                 <div className="space-y-2">
@@ -1461,10 +1462,21 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
                       ))}
                     </div>
                   )}
-                  <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Anexe o comprovante do cartão</p>
-                    <Button variant="secondary" size="sm" onClick={() => setAddComprovante(true)}>➕ {comprovanteFiles.length ? "Adicionar outro comprovante" : "Anexar comprovante"}</Button>
-                  </div>
+                  {comprovanteFiles.length > 0 ? (
+                    <div className="flex flex-col items-center gap-2 py-3 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                      <Button variant="secondary" size="sm" onClick={() => setAddComprovante(true)}>➕ Adicionar outro comprovante</Button>
+                    </div>
+                  ) : semComprovante ? (
+                    <p className="text-[12px] text-emerald-600 dark:text-emerald-400 text-center py-2">✓ Pago antecipado — sem comprovante. <button type="button" className="underline" onClick={() => setSemComprovante(false)}>mudar</button></p>
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Tem comprovante do pagamento?</p>
+                      <div className="flex gap-2 flex-wrap justify-center">
+                        <Button size="sm" onClick={() => setAddComprovante(true)}>➕ Anexar comprovante</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setSemComprovante(true)}>Pago antecipado, sem comprovante</Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {formaPagamento && formaPagamento !== "cartao" && (
@@ -1547,7 +1559,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             titulo="Anexar comprovante"
             semManual
             onClose={() => setAddComprovante(false)}
-            onArquivo={(f) => { setAddComprovante(false); setComprovanteFiles((prev) => [...prev, f]); }}
+            onArquivo={(f) => { setAddComprovante(false); setSemComprovante(false); setComprovanteFiles((prev) => [...prev, f]); }}
           />
         )}
       </div>
