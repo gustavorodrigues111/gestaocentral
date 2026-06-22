@@ -22,6 +22,17 @@ import { Modal } from "../../core/ui/Modal";
 import type { RecebimentoNota } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { isDriveConnected, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { authHeader } from "../../core/firebase/idToken";
+
+// Arquivo → base64 (sem o prefixo data:...;base64,).
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result || "").split(",")[1] || "");
+    r.onerror = () => reject(new Error("Falha ao ler o arquivo."));
+    r.readAsDataURL(file);
+  });
+}
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -245,7 +256,32 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [valor, setValor] = useState("");
   const [dataEmissao, setDataEmissao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [lendo, setLendo] = useState(false);
+  const [leuOcr, setLeuOcr] = useState(false);
   const [erro, setErro] = useState("");
+
+  // Ao anexar a nota: arquiva no state e dispara o OCR (Haiku) pra pré-preencher
+  // os campos. O usuário SEMPRE confere/corrige antes de salvar.
+  async function lerNota(file: File) {
+    setLendo(true); setLeuOcr(false);
+    try {
+      const data = await fileToBase64(file);
+      const resp = await fetch("/api/ocr-nota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ data, mediaType: file.type || "image/jpeg" }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (resp.ok) {
+        if (j.emissor) setEmissor(j.emissor);
+        if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
+        if (j.dataEmissao) setDataEmissao(j.dataEmissao);
+        setLeuOcr(true);
+      }
+    } catch { /* OCR é best-effort — se falhar, fica manual */ }
+    finally { setLendo(false); }
+  }
+  function aoAnexar(f: File) { setNotaFile(f); void lerNota(f); }
 
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
@@ -314,9 +350,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
               <button type="button" onClick={() => pdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
             </div>
           )}
-          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) setNotaFile(f); }} />
-          <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) setNotaFile(f); }} />
-          <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) setNotaFile(f); }} />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
+          <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
+          <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar(f); }} />
+          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
+          {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
         </div>
 
         {/* Dados da nota (OCR vai pré-preencher na Fase 2) */}
