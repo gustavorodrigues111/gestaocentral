@@ -137,9 +137,11 @@ export function RecebimentoPage() {
   const podeConfig = can("recebimento", "configurar");
   const temAcesso = canModulo("recebimento");
 
-  const [tab, setTab] = useState<"lista" | "config">("lista");
+  const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
+  const [escolhendoFonte, setEscolhendoFonte] = useState(false);
+  const [arquivoInicial, setArquivoInicial] = useState<File | null>(null);
   const [erro, setErro] = useState("");
   const [exportando, setExportando] = useState<"" | "pdf" | "xlsx">("");
 
@@ -185,56 +187,67 @@ export function RecebimentoPage() {
     );
   }
 
-  // Aba efetiva: sem permissão de ver lista, força "config" (se puder) — senão
-  // mostra só o atalho de novo recebimento.
-  const abaEfetiva = tab === "config" && podeConfig ? "config" : "lista";
+  // Abas disponíveis conforme permissão; a efetiva é a 1ª válida.
+  const abas: Array<"receber" | "notas" | "config"> = [];
+  if (podeReceber) abas.push("receber");
+  if (podeVer) abas.push("notas");
+  if (podeConfig) abas.push("config");
+  const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "receber");
+
+  const abrirNovo = (arquivo: File | null) => { setErro(""); setArquivoInicial(arquivo); setEscolhendoFonte(false); setNovo(true); };
+
+  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "config"; label: string }) => (
+    <button type="button" onClick={() => setTab(k)}
+      className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+      {label}
+    </button>
+  );
 
   return (
     <div className="max-w-5xl space-y-4">
       {/* Abas */}
       <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-800">
-        <button type="button" onClick={() => setTab("lista")}
-          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === "lista" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
-          📋 Recebimentos
-        </button>
-        {podeConfig && (
-          <button type="button" onClick={() => setTab("config")}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === "config" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
-            ⚙️ Configurações
-          </button>
-        )}
-        {abaEfetiva === "lista" && (
+        {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
+        {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
+        {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
+        {abaEfetiva === "notas" && podeVer && (
           <div className="ml-auto flex items-center gap-2">
-            {podeVer && (
-              <>
-                <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
-                  {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
-                </Button>
-                <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
-                  {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
-                </Button>
-              </>
-            )}
-            {podeReceber && <Button size="sm" onClick={() => { setErro(""); setNovo(true); }}>+ Novo recebimento</Button>}
+            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
+              {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
+            </Button>
+            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
+              {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
+            </Button>
           </div>
         )}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
+      {/* Aba Recebimento — botão grande "Nova nota" */}
+      {abaEfetiva === "receber" && podeReceber && (
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <button type="button" onClick={() => { setErro(""); setEscolhendoFonte(true); }}
+            className="flex flex-col items-center justify-center gap-3 w-full max-w-sm py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 transition">
+            <span className="text-5xl">🧾</span>
+            <span className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Nova nota</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">Toque pra dar entrada numa nota</span>
+          </button>
+        </div>
+      )}
+
       {abaEfetiva === "config" && podeConfig && <RecebimentoConfig rid={rid} restaurant={restaurant} />}
 
-      {abaEfetiva === "lista" && (
-        podeVer
-          ? <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
-          : (
-            <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-16 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-              <div className="text-3xl mb-2">🧾</div>
-              {podeReceber
-                ? <>Você pode <strong>dar entrada</strong> em notas. Clique em <strong>+ Novo recebimento</strong> acima.</>
-                : <>Você não tem permissão pra ver a lista de recebimentos.</>}
-            </div>
-          )
+      {abaEfetiva === "notas" && podeVer && (
+        <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+      )}
+
+      {escolhendoFonte && (
+        <EscolhaFonteModal
+          onClose={() => setEscolhendoFonte(false)}
+          onArquivo={(f) => abrirNovo(f)}
+          onManual={() => abrirNovo(null)}
+        />
       )}
 
       {novo && (
@@ -242,11 +255,44 @@ export function RecebimentoPage() {
           rid={rid}
           restaurant={restaurant}
           por={{ id: me?.id || "", nome: me?.nome || "?" }}
-          onClose={() => setNovo(false)}
-          onSalvo={() => setNovo(false)}
+          arquivoInicial={arquivoInicial}
+          onClose={() => { setNovo(false); setArquivoInicial(null); }}
+          onSalvo={() => { setNovo(false); setArquivoInicial(null); }}
         />
       )}
     </div>
+  );
+}
+
+// ─── Modal: escolher fonte da nota (câmera / galeria / arquivo / manual) ─────
+function EscolhaFonteModal({ onClose, onArquivo, onManual }: {
+  onClose: () => void;
+  onArquivo: (f: File) => void;
+  onManual: () => void;
+}) {
+  const camRef = useRef<HTMLInputElement>(null);
+  const galRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
+  const Opcao = ({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) => (
+    <button type="button" onClick={onClick}
+      className="flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
+      <span className="text-3xl">{icon}</span>
+      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
+    </button>
+  );
+  return (
+    <Modal title="Como você quer dar entrada?" onClose={onClose} maxWidth="max-w-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <Opcao icon="📷" label="Câmera" onClick={() => camRef.current?.click()} />
+        <Opcao icon="🖼️" label="Galeria" onClick={() => galRef.current?.click()} />
+        <Opcao icon="📄" label="Arquivo (PDF)" onClick={() => pdfRef.current?.click()} />
+        <Opcao icon="✍️" label="Manual" onClick={onManual} />
+      </div>
+      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
+      <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
+      <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
+      <p className="text-[11px] text-gray-400 mt-3 text-center">Câmera, galeria e PDF fazem a leitura automática. "Manual" abre o formulário em branco.</p>
+    </Modal>
   );
 }
 
@@ -748,10 +794,11 @@ function EditarRecebimentoModal({ nota, onClose, onSaved }: {
 }
 
 // ─── Modal: novo recebimento ────────────────────────────────────────────────
-function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
+function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, onSalvo }: {
   rid: string;
   restaurant: { recebimentoDriveFolderId?: string };
   por: { id: string; nome: string };
+  arquivoInicial?: File | null;
   onClose: () => void;
   onSalvo: () => void;
 }) {
@@ -814,6 +861,10 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   }
   // Anexa página(s) e relê a nota inteira (todas as páginas) pra agregar os itens.
   function aoAnexar(...fs: File[]) { if (!fs.length) return; setNotaFiles((prev) => { const todos = [...prev, ...fs]; void lerNota(todos); return todos; }); }
+
+  // Arquivo vindo do seletor de fonte (câmera/galeria/PDF) → anexa + lê na abertura.
+  useEffect(() => { if (arquivoInicial) aoAnexar(arquivoInicial); // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Ao anexar um boleto: arquiva no state e lê valor/vencimento via OCR, mesclando
   // nas faturas/duplicatas (preenche o que não veio na nota; não duplica).
