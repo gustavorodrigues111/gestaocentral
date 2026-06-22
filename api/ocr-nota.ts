@@ -37,6 +37,15 @@ const PROMPT =
   '  "duplicatas": [<{"numero": str, "valor": num, "vencimento": "YYYY-MM-DD"}>, ...] ou []  (faturas/parcelas da cobrança)\n' +
   "}";
 
+const PROMPT_BOLETO =
+  "Você recebe a imagem/PDF de um BOLETO bancário brasileiro. Extraia os campos abaixo e responda " +
+  "SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais como NÚMERO (ex 1234.56), " +
+  'sem "R$" e sem separador de milhar. Se não tiver certeza de um campo, use null. NÃO invente valores.\n' +
+  "{\n" +
+  '  "emissor": <beneficiário/cedente do boleto (quem recebe), ou null>,\n' +
+  '  "duplicatas": [<{"numero": <número do documento/parcela ou null>, "valor": <valor do boleto>, "vencimento": "YYYY-MM-DD"}>, ...]  (uma entrada por boleto/parcela; normalmente 1)\n' +
+  "}";
+
 function parseNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -97,9 +106,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada nas env vars da Vercel." }); return; }
 
-  const body = (req.body || {}) as { data?: string; mediaType?: string };
+  const body = (req.body || {}) as { data?: string; mediaType?: string; tipo?: string };
   const data = typeof body.data === "string" ? body.data : "";
   const mediaType = String(body.mediaType || "");
+  const isBoleto = body.tipo === "boleto";
   if (!data) { res.status(400).json({ error: "Falta o arquivo (data base64)." }); return; }
 
   const isPdf = mediaType === "application/pdf";
@@ -110,7 +120,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const payload = {
     model: MODEL,
     max_tokens: 512,
-    messages: [{ role: "user", content: [docBlock, { type: "text", text: PROMPT }] }],
+    messages: [{ role: "user", content: [docBlock, { type: "text", text: isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
@@ -134,6 +144,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    if (isBoleto) {
+      res.status(200).json({ emissor: str(p.emissor), duplicatas: parseDuplicatas(p.duplicatas) });
+      return;
+    }
     res.status(200).json({
       emissor: str(p.emissor),
       cnpjEmissor: digits(p.cnpjEmissor),

@@ -4683,6 +4683,11 @@ export type DuplicataNota = {
   valor?: number;
   vencimento?: string;                // YYYY-MM-DD
 };
+export type BoletoNota = {
+  driveFileId: string;
+  driveUrl?: string;
+  nome: string;
+};
 export type RecebimentoNota = {
   id: string;
   restaurantId: string;
@@ -4709,5 +4714,6 @@ export type RecebimentoNota = {
   notaNome?: string;
   fotoDivergenciaDriveFileId?: string;
   fotoDivergenciaUrl?: string;
+  boletos?: BoletoNota[];             // boletos anexados (arquivados no Drive)
   semanaLabel?: string;               // "dd.mm.aa a dd.mm.aa" (nome da subpasta)
 };

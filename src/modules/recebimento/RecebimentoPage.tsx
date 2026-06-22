@@ -19,7 +19,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { DuplicataNota, ItemNota, RecebimentoNota } from "../../core/types";
+import type { BoletoNota, DuplicataNota, ItemNota, RecebimentoNota } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { isDriveConnected, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { authHeader } from "../../core/firebase/idToken";
@@ -227,10 +227,11 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
                   : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Não</span>}
               </td>
               <td className="px-3 py-2 max-w-[220px] truncate text-gray-600 dark:text-gray-300" title={n.divergencia || ""}>{n.conforme ? "—" : (n.divergencia || "—")}</td>
-              <td className="px-3 py-2">
+              <td className="px-3 py-2 whitespace-nowrap">
                 {n.notaDriveUrl
-                  ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline whitespace-nowrap">abrir ↗</a>
+                  ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a>
                   : "—"}
+                {n.boletos && n.boletos.length > 0 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
               </td>
               <td className="px-3 py-2">
                 <button type="button" onClick={() => setDetalhe(n)} className="text-[11px] text-indigo-600 hover:underline whitespace-nowrap">detalhes</button>
@@ -303,6 +304,19 @@ function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () =>
           </div>
         </div>
       )}
+      {nota.boletos && nota.boletos.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Boletos ({nota.boletos.length})</div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.boletos.map((b, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="truncate flex-1">🧾 {b.nome}</span>
+                {b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="flex justify-end gap-2 pt-3">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
@@ -320,6 +334,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   onSalvo: () => void;
 }) {
   const [notaFile, setNotaFile] = useState<File | null>(null);
+  const [boletoFiles, setBoletoFiles] = useState<File[]>([]);
+  const [lendoBoleto, setLendoBoleto] = useState(false);
   const [conforme, setConforme] = useState(true);
   const [divergencia, setDivergencia] = useState("");
   const [fotoDivFile, setFotoDivFile] = useState<File | null>(null);
@@ -374,9 +390,38 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   }
   function aoAnexar(f: File) { setNotaFile(f); void lerNota(f); }
 
+  // Ao anexar um boleto: arquiva no state e lê valor/vencimento via OCR, mesclando
+  // nas faturas/duplicatas (preenche o que não veio na nota; não duplica).
+  async function lerBoleto(file: File) {
+    setLendoBoleto(true);
+    try {
+      const data = await fileToBase64(file);
+      const resp = await fetch("/api/ocr-nota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ data, mediaType: file.type || "image/jpeg", tipo: "boleto" }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
+        const novas = j.duplicatas as DuplicataNota[];
+        setDuplicatas((prev) => {
+          const chave = (d: DuplicataNota) => `${d.vencimento || ""}|${d.valor ?? ""}`;
+          const vistos = new Set(prev.map(chave));
+          const extras = novas.filter((d) => !vistos.has(chave(d)));
+          return [...prev, ...extras];
+        });
+      }
+    } catch { /* best-effort; o usuário pode lançar manualmente */ }
+    finally { setLendoBoleto(false); }
+  }
+  function aoAnexarBoleto(f: File) { setBoletoFiles((prev) => [...prev, f]); void lerBoleto(f); }
+
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
+  const bolCamRef = useRef<HTMLInputElement>(null);
+  const bolGalRef = useRef<HTMLInputElement>(null);
+  const bolPdfRef = useRef<HTMLInputElement>(null);
 
   async function salvar() {
     setErro("");
@@ -390,9 +435,24 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
       const semanaId = await findOrCreateSubfolder(restaurant.recebimentoDriveFolderId, label);
-      const baseNome = `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)} ${(emissor || "nota").replace(/[\\/]/g, "-")} ${pad(agora.getHours())}h${pad(agora.getMinutes())}`;
-      const extNota = (notaFile.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (notaFile.type.includes("pdf") ? ".pdf" : ".jpg");
-      const subidaNota = await uploadFileToFolder(semanaId, new File([notaFile], `${baseNome}${extNota}`, { type: notaFile.type }));
+      // Nome dos arquivos: "<fornecedor> <data emissão> nota" (e ...boleto / boleto1, boleto2…).
+      const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
+      const dataSlug = dataEmissao
+        ? dataEmissao.split("-").reverse().join(".")
+        : `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)}.${String(agora.getFullYear()).slice(2)}`;
+      const baseNome = `${fornecedorSlug} ${dataSlug}`;
+      const ext = (f: File, fallback: string) => (f.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (f.type.includes("pdf") ? ".pdf" : fallback);
+      const extNota = ext(notaFile, ".jpg");
+      const subidaNota = await uploadFileToFolder(semanaId, new File([notaFile], `${baseNome} nota${extNota}`, { type: notaFile.type }));
+      // Boletos: "<base> boleto" se 1 só; "<base> boleto1/2/3…" se mais de um.
+      const boletos: BoletoNota[] = [];
+      for (let i = 0; i < boletoFiles.length; i++) {
+        const bf = boletoFiles[i];
+        const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
+        const nome = `${baseNome} ${sufixo}${ext(bf, ".jpg")}`;
+        const s = await uploadFileToFolder(semanaId, new File([bf], nome, { type: bf.type }));
+        boletos.push({ driveFileId: s.id, nome, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+      }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
@@ -406,7 +466,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         conforme,
         semanaLabel: label,
         notaDriveFileId: subidaNota.id,
-        notaNome: `${baseNome}${extNota}`,
+        notaNome: `${baseNome} nota${extNota}`,
         ...(subidaNota.webViewLink ? { notaDriveUrl: subidaNota.webViewLink } : {}),
         ...(emissor.trim() ? { emissor: emissor.trim() } : {}),
         ...(cnpjEmissor.trim() ? { cnpjEmissor: cnpjEmissor.replace(/\D/g, "") } : {}),
@@ -420,6 +480,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         ...(itens.length ? { itens } : {}),
         ...(duplicatas.length ? { duplicatas } : {}),
         ...(!conforme && divergencia.trim() ? { divergencia: divergencia.trim() } : {}),
+        ...(boletos.length ? { boletos } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
       await addDoc(collection(db, "recebimentos"), nota);
@@ -455,6 +516,31 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
           {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}
+        </div>
+
+        {/* Anexar boleto(s) — opcional. Lê valor/vencimento e mescla nas faturas. */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Boleto(s) <span className="font-normal text-gray-400">— opcional</span></label>
+          {boletoFiles.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {boletoFiles.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
+                  <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
+                  <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => bolCamRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
+            <button type="button" onClick={() => bolGalRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
+            <button type="button" onClick={() => bolPdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
+          </div>
+          <input ref={bolCamRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          <input ref={bolGalRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          <input ref={bolPdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o boleto… valor e vencimento entram nas faturas abaixo.</p>}
+          <p className="text-[10px] text-gray-400 mt-0.5">Anexe se vier boleto junto com a nota — os boletos sobem pro Drive e o vencimento entra nas faturas.</p>
         </div>
 
         {/* Dados da nota (o OCR pré-preenche; confira/corrija) */}
