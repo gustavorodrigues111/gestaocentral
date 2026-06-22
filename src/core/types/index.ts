@@ -4690,7 +4690,7 @@ export type BoletoNota = {
 };
 export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa" | "romaneio";
 export const TIPO_DOCUMENTO_LABEL: Record<TipoDocumento, string> = {
-  nota_fiscal: "Nota fiscal",
+  nota_fiscal: "DANFE",
   cupom_fiscal: "Cupom fiscal",
   conta_fixa: "Conta fixa",
   romaneio: "Romaneio",

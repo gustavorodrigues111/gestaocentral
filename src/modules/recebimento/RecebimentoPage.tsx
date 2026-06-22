@@ -295,7 +295,7 @@ function EscolhaTipoModal({ onClose, onConfirm }: {
   return (
     <Modal title="O que você vai dar entrada?" onClose={onClose} maxWidth="max-w-sm">
       <div className="grid grid-cols-2 gap-3">
-        <Opcao icon="🧾" label="Nota fiscal" t="nota_fiscal" />
+        <Opcao icon="🧾" label="DANFE" t="nota_fiscal" />
         <Opcao icon="🧮" label="Cupom fiscal" t="cupom_fiscal" />
         <Opcao icon="📦" label="Romaneio" t="romaneio" />
         <Opcao icon="💡" label="Conta fixa" t="conta_fixa" />
@@ -918,7 +918,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         if (j.valorTotal != null) setValor(String(j.valorTotal).replace(".", ","));
         if (j.dataEmissao) setDataEmissao(j.dataEmissao);
         if (Array.isArray(j.itens)) setItens(j.itens as ItemNota[]);
-        if (Array.isArray(j.duplicatas)) setDuplicatas(j.duplicatas as DuplicataNota[]);
+        if (Array.isArray(j.duplicatas)) {
+          setDuplicatas(j.duplicatas as DuplicataNota[]);
+          // Nota com fatura/duplicata → cobrança por boleto (não sobrescreve escolha manual).
+          if (j.duplicatas.length) setFormaPagamento((prev) => prev ?? "boleto");
+        }
         setLeuOcr(true);
       } else {
         setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
