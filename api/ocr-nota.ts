@@ -13,7 +13,7 @@
 import { requireUser, AuthError } from "./_auth.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
-const MODEL = "claude-haiku-4-5"; // barato; trocar pra claude-sonnet-4-6 se errar muito
+const MODEL = "claude-sonnet-4-6"; // lê nota fiscal melhor que o Haiku; ~3x o custo (ainda centavos/nota)
 const REQ_TIMEOUT_MS = 30_000;
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
