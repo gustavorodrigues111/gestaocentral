@@ -21,7 +21,7 @@ import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { BoletoNota, DuplicataNota, ItemNota, RecebimentoNota } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
-import { isDriveConnected, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
 import { authHeader } from "../../core/firebase/idToken";
 
 // Arquivo → base64 (sem o prefixo data:...;base64,).
@@ -428,9 +428,11 @@ function NovoRecebimentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     if (!notaFile) { setErro("Anexe a nota (foto ou PDF)."); return; }
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
     if (!restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
-    if (!isDriveConnected()) { setErro("Conecte o Google Drive (nas Configurações do app) pra arquivar a nota."); return; }
     setSalvando(true);
     try {
+      // Garante autorização do Drive (o token vive só em memória e some ao recarregar
+      // a página; aqui o popup do Google reabre se preciso, sem bloquear o fluxo).
+      await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
