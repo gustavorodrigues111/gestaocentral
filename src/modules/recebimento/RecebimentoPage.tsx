@@ -12,7 +12,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -245,6 +245,7 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
   onExcluir: (n: RecebimentoNota) => void;
 }) {
   const [detalhe, setDetalhe] = useState<RecebimentoNota | null>(null);
+  const [editar, setEditar] = useState<RecebimentoNota | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("recebido");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -358,13 +359,14 @@ function RecebimentoTabela({ notas, podeConfig, onExcluir }: {
         </tbody>
       </table>
     </div>
-    {detalhe && <DetalheModal nota={detalhe} onClose={() => setDetalhe(null)} />}
+    {detalhe && <DetalheModal nota={detalhe} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
+    {editar && <EditarRecebimentoModal nota={editar} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
   );
 }
 
 // ─── Modal: detalhes de um recebimento ──────────────────────────────────────
-function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () => void }) {
+function DetalheModal({ nota, onClose, onEditar }: { nota: RecebimentoNota; onClose: () => void; onEditar: (n: RecebimentoNota) => void }) {
   const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
       <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -444,7 +446,168 @@ function DetalheModal({ nota, onClose }: { nota: RecebimentoNota; onClose: () =>
       )}
       <div className="flex justify-end gap-2 pt-3">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
+        <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Modal: editar um recebimento já salvo ──────────────────────────────────
+// Corrige os campos da nota (emissor, valores, data, conformidade e faturas) sem
+// re-anexar arquivos. Salva via updateDoc; campos esvaziados são removidos.
+function EditarRecebimentoModal({ nota, onClose, onSaved }: {
+  nota: RecebimentoNota;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toBR = (v?: number) => v == null ? "" : String(v).replace(".", ",");
+  const [emissor, setEmissor] = useState(nota.emissor || "");
+  const [cnpjEmissor, setCnpjEmissor] = useState(nota.cnpjEmissor || "");
+  const [numeroNota, setNumeroNota] = useState(nota.numeroNota || "");
+  const [serieNota, setSerieNota] = useState(nota.serieNota || "");
+  const [chaveAcesso, setChaveAcesso] = useState(nota.chaveAcesso || "");
+  const [valorProdutos, setValorProdutos] = useState(toBR(nota.valorProdutos));
+  const [valorImpostos, setValorImpostos] = useState(toBR(nota.valorImpostos));
+  const [valor, setValor] = useState(toBR(nota.valorTotal));
+  const [dataEmissao, setDataEmissao] = useState(nota.dataEmissao || "");
+  const [conforme, setConforme] = useState(nota.conforme);
+  const [divergencia, setDivergencia] = useState(nota.divergencia || "");
+  const [dups, setDups] = useState<DuplicataNota[]>((nota.duplicatas || []).map((d) => ({ ...d })));
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  function setDup(i: number, campo: keyof DuplicataNota, valor: string) {
+    setDups((prev) => prev.map((d, j) => j !== i ? d : { ...d, [campo]: campo === "valor" ? (parseBRL(valor) ?? undefined) : (valor || undefined) }));
+  }
+
+  const somaDuplicatas = dups.reduce((s, d) => s + (d.valor || 0), 0);
+  const totalNum = parseBRL(valor);
+  const faturasNaoBatem = totalNum != null && dups.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
+
+  async function salvar() {
+    setErro("");
+    if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
+    setSalvando(true);
+    try {
+      const dupsLimpas = dups
+        .filter((d) => d.valor != null || d.vencimento || d.numero)
+        .map((d) => ({
+          ...(d.numero ? { numero: d.numero } : {}),
+          ...(d.valor != null ? { valor: d.valor } : {}),
+          ...(d.vencimento ? { vencimento: d.vencimento } : {}),
+        }));
+      const patch: Record<string, unknown> = {
+        emissor: emissor.trim() || deleteField(),
+        cnpjEmissor: cnpjEmissor.replace(/\D/g, "") || deleteField(),
+        numeroNota: numeroNota.trim() || deleteField(),
+        serieNota: serieNota.trim() || deleteField(),
+        chaveAcesso: chaveAcesso.replace(/\D/g, "") || deleteField(),
+        valorProdutos: parseBRL(valorProdutos) ?? deleteField(),
+        valorImpostos: parseBRL(valorImpostos) ?? deleteField(),
+        valorTotal: parseBRL(valor) ?? deleteField(),
+        dataEmissao: dataEmissao || deleteField(),
+        conforme,
+        divergencia: (!conforme && divergencia.trim()) ? divergencia.trim() : deleteField(),
+        duplicatas: dupsLimpas.length ? dupsLimpas : deleteField(),
+      };
+      await updateDoc(doc(db, "recebimentos", nota.id), patch);
+      onSaved();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar as alterações.");
+    } finally { setSalvando(false); }
+  }
+
+  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  return (
+    <Modal title="✏️ Editar recebimento" onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+        <p className="text-[11px] text-gray-400">Os arquivos no Drive (nota, páginas e boletos) não mudam — aqui você corrige só os dados.</p>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Emissor</label>
+            <input value={emissor} onChange={(e) => setEmissor(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">CNPJ do emissor</label>
+            <input value={cnpjEmissor} onChange={(e) => setCnpjEmissor(e.target.value)} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº NF</label>
+              <input value={numeroNota} onChange={(e) => setNumeroNota(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Série</label>
+              <input value={serieNota} onChange={(e) => setSerieNota(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Chave de acesso</label>
+            <input value={chaveAcesso} onChange={(e) => setChaveAcesso(e.target.value)} className={`${inputCls} tabular-nums`} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Valor dos produtos</label>
+            <input value={valorProdutos} onChange={(e) => setValorProdutos(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Impostos / tributos</label>
+            <input value={valorImpostos} onChange={(e) => setValorImpostos(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Valor total</label>
+            <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Data de emissão</label>
+            <input type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
+          </div>
+        </div>
+
+        {/* Faturas / duplicatas — editáveis */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Faturas / duplicatas</label>
+            <button type="button" className="text-[11px] text-indigo-600 hover:underline" onClick={() => setDups((prev) => [...prev, {}])}>+ adicionar</button>
+          </div>
+          {dups.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma fatura.</p>}
+          <div className="space-y-2">
+            {dups.map((d, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={d.numero || ""} onChange={(e) => setDup(i, "numero", e.target.value)} placeholder={`Parcela ${i + 1}`} className={`${inputCls} flex-1`} />
+                <input type="date" value={d.vencimento || ""} onChange={(e) => setDup(i, "vencimento", e.target.value)} className={`${inputCls} w-[150px] [color-scheme:light] dark:[color-scheme:dark]`} />
+                <input value={d.valor != null ? String(d.valor).replace(".", ",") : ""} onChange={(e) => setDup(i, "valor", e.target.value)} inputMode="decimal" placeholder="R$" className={`${inputCls} w-24`} />
+                <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" title="Remover" onClick={() => setDups((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+          </div>
+          {dups.length > 1 && <p className="text-[11px] text-gray-500 mt-1">Soma das faturas: <strong>{fmtBRL(somaDuplicatas)}</strong></p>}
+          {faturasNaoBatem && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).</p>
+          )}
+        </div>
+
+        {/* Conformidade */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Conferência</label>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setConforme(true)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${conforme ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>✓ Tudo nos conformes</button>
+            <button type="button" onClick={() => setConforme(false)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${!conforme ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>⚠ Houve divergência</button>
+          </div>
+        </div>
+        {!conforme && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Qual a divergência?</label>
+            <textarea value={divergencia} onChange={(e) => setDivergencia(e.target.value)} rows={2} className={inputCls} />
+          </div>
+        )}
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar alterações"}</Button>
+        </div>
       </div>
     </Modal>
   );
