@@ -206,20 +206,10 @@ export function RecebimentoPage() {
   return (
     <div className="max-w-5xl space-y-4">
       {/* Abas */}
-      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
         {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
-        {abaEfetiva === "notas" && podeVer && (
-          <div className="ml-auto flex items-center gap-2">
-            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("xlsx")}>
-              {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
-            </Button>
-            <Button size="sm" variant="secondary" disabled={!ordenadas.length || !!exportando} onClick={() => void exportar("pdf")}>
-              {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
-            </Button>
-          </div>
-        )}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
@@ -239,7 +229,19 @@ export function RecebimentoPage() {
       {abaEfetiva === "config" && podeConfig && <RecebimentoConfig rid={rid} restaurant={restaurant} />}
 
       {abaEfetiva === "notas" && podeVer && (
-        <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+        <div className="space-y-3">
+          {ordenadas.length > 0 && (
+            <div className="flex justify-end gap-2">
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>
+                {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
+              </Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>
+                {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
+              </Button>
+            </div>
+          )}
+          <RecebimentoTabela notas={ordenadas} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+        </div>
       )}
 
       {escolhendoFonte && (
@@ -825,6 +827,9 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
   const [leuOcr, setLeuOcr] = useState(false);
   const [ocrErro, setOcrErro] = useState("");
   const [erro, setErro] = useState("");
+  // Wizard guiado: páginas → dados → boleto → conferência/salvar → sucesso.
+  const [etapa, setEtapa] = useState<"paginas" | "dados" | "boleto" | "final">("paginas");
+  const [salvo, setSalvo] = useState(false);
 
   // Ao anexar a nota: arquiva no state e dispara o OCR pra pré-preencher os campos.
   // Lê TODAS as páginas juntas (uma nota pode ter várias). Confere antes de salvar.
@@ -917,19 +922,21 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
 
   async function salvar() {
     setErro("");
-    if (!notaFiles.length) { setErro("Anexe a nota (foto ou PDF)."); return; }
+    const temNota = notaFiles.length > 0;
+    const temArquivos = temNota || boletoFiles.length > 0 || (!conforme && !!fotoDivFile);
+    if (!temNota && !emissor.trim() && parseBRL(valor) == null) { setErro("Anexe a nota ou preencha ao menos emissor/valor."); return; }
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
-    if (!restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
+    if (temArquivos && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
     setSalvando(true);
     try {
       // Conta central configurada → sobe pelo backend (operador não conecta Drive).
       // Senão, fluxo antigo: OAuth no navegador (popup reabre se preciso).
-      const central = await centralConfigured();
-      if (!central) await requestAccessToken();
+      const central = temArquivos ? await centralConfigured() : false;
+      if (temArquivos && !central) await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
-      const semanaId = await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId, label);
+      const semanaId = temArquivos ? await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label) : "";
       // Nome dos arquivos: "<fornecedor> <data emissão> nota" (e ...boleto / boleto1, boleto2…).
       const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
       const dataSlug = dataEmissao
@@ -968,10 +975,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
         recebidoPor: por,
         conforme,
         semanaLabel: label,
-        notaDriveFileId: subidaNota.driveFileId,
-        notaNome: subidaNota.nome,
-        notaPaginas,
-        ...(subidaNota.driveUrl ? { notaDriveUrl: subidaNota.driveUrl } : {}),
+        ...(subidaNota ? { notaDriveFileId: subidaNota.driveFileId, notaNome: subidaNota.nome, notaPaginas, ...(subidaNota.driveUrl ? { notaDriveUrl: subidaNota.driveUrl } : {}) } : {}),
         ...(emissor.trim() ? { emissor: emissor.trim() } : {}),
         ...(cnpjEmissor.trim() ? { cnpjEmissor: cnpjEmissor.replace(/\D/g, "") } : {}),
         ...(numeroNota.trim() ? { numeroNota: numeroNota.trim() } : {}),
@@ -989,7 +993,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
       await addDoc(collection(db, "recebimentos"), nota);
-      onSalvo();
+      setSalvo(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o recebimento.");
     } finally { setSalvando(false); }
@@ -1000,14 +1004,28 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
   const totalNum = parseBRL(valor);
   const faturasNaoBatem = totalNum != null && duplicatas.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
 
+  const stepNum = { paginas: 1, dados: 2, boleto: 3, final: 4 }[etapa];
+  const podeAvancar = !lendo && !lendoBoleto;
+  const voltar = () => setEtapa(etapa === "dados" ? "paginas" : etapa === "boleto" ? "dados" : "boleto");
+  const avancar = () => setEtapa(etapa === "paginas" ? "dados" : etapa === "dados" ? "boleto" : "final");
   return (
     <Modal title="🧾 Novo recebimento" onClose={onClose} maxWidth="max-w-lg">
+      {salvo ? (
+        <div className="py-10 flex flex-col items-center text-center gap-3">
+          <div className="text-5xl">✅</div>
+          <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Recebimento salvo!</div>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Está tudo certo — a nota foi registrada{notaFiles.length ? " e arquivada no Drive" : ""}.</p>
+          <Button onClick={onSalvo}>Concluir</Button>
+        </div>
+      ) : (
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+        <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide">Passo {stepNum} de 4 · {["Folhas da nota", "Conferir dados", "Boleto", "Conferência"][stepNum - 1]}</div>
 
-        {/* Anexar nota — câmera / galeria / PDF. Pode ter várias páginas. */}
+        {/* Passo 1 — folha(s) da nota */}
+        {etapa === "paginas" && (
         <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nota fiscal <span className="font-normal text-gray-400">— anexe todas as páginas</span></label>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Folhas da nota <span className="font-normal text-gray-400">— anexe todas as páginas</span></label>
           {notaFiles.length > 0 && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
               {notaFiles.map((f, i) => (
@@ -1030,34 +1048,12 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
           {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos abaixo vão ser pré-preenchidos (confira antes de salvar).</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos — <strong>confira/corrija</strong> antes de salvar.</p>}
           {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha os campos manualmente.</p>}
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Tem mais de uma folha? Adicione todas antes de continuar.</p>
         </div>
+        )}
 
-        {/* Anexar boleto(s) — opcional. Lê valor/vencimento e mescla nas faturas. */}
-        <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Boleto(s) <span className="font-normal text-gray-400">— opcional</span></label>
-          {boletoFiles.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
-              {boletoFiles.map((b, i) => (
-                <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
-                  <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
-                  <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
-                </div>
-              ))}
-            </div>
-          )}
-          <div className="flex gap-2">
-            <button type="button" onClick={() => bolCamRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
-            <button type="button" onClick={() => bolGalRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
-            <button type="button" onClick={() => bolPdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
-          </div>
-          <input ref={bolCamRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
-          <input ref={bolGalRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
-          <input ref={bolPdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
-          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o boleto… valor e vencimento entram nas faturas abaixo.</p>}
-          <p className="text-[10px] text-gray-400 mt-0.5">Anexe se vier boleto junto com a nota — os boletos sobem pro Drive e o vencimento entra nas faturas.</p>
-        </div>
-
-        {/* Forma de pagamento — opcional (boleto vira automático ao anexar boleto) */}
+        {/* Passo 2 — conferir dados */}
+        {etapa === "dados" && (<>
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Forma de pagamento <span className="font-normal text-gray-400">— opcional</span></label>
           <FormaPagamentoSelector value={formaPagamento} onChange={setFormaPagamento} />
@@ -1159,8 +1155,37 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
             )}
           </div>
         )}
+        </>)}
 
-        {/* Conformidade */}
+        {/* Passo 3 — boleto */}
+        {etapa === "boleto" && (
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Recebeu boleto? <span className="font-normal text-gray-400">— opcional</span></label>
+          {boletoFiles.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {boletoFiles.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
+                  <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
+                  <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button type="button" onClick={() => bolCamRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📷 Câmera</button>
+            <button type="button" onClick={() => bolGalRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">🖼️ Galeria</button>
+            <button type="button" onClick={() => bolPdfRef.current?.click()} className="flex-1 text-xs font-medium px-2 py-2 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">📄 PDF</button>
+          </div>
+          <input ref={bolCamRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          <input ref={bolGalRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          <input ref={bolPdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexarBoleto(f); }} />
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
+          <p className="text-[10px] text-gray-400 mt-0.5">Se não veio boleto, é só continuar.</p>
+        </div>
+        )}
+
+        {/* Passo 4 — conferência final */}
+        {etapa === "final" && (<>
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Conferência</label>
           <div className="flex gap-2">
@@ -1186,14 +1211,30 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, onClose, o
           </div>
         )}
 
-        <div className="flex flex-col items-end gap-1 pt-1">
-          {(lendo || lendoBoleto) && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Aguarde a leitura terminar pra salvar…</p>}
-          <div className="flex justify-end gap-2">
-            <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
-            <Button size="sm" disabled={salvando || lendo || lendoBoleto} onClick={() => void salvar()}>{salvando ? "Salvando…" : (lendo || lendoBoleto) ? "Lendo…" : "Salvar recebimento"}</Button>
-          </div>
+        {/* Resumo final */}
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-[12px] space-y-0.5">
+          <div className="flex justify-between"><span className="text-gray-500">Emissor</span><span className="font-medium truncate ml-2">{emissor.trim() || "—"}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Valor total</span><span className="font-medium">{parseBRL(valor) != null ? fmtBRL(parseBRL(valor)) : "—"}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Folhas / boletos</span><span className="font-medium">{notaFiles.length} / {boletoFiles.length}</span></div>
+          {formaPagamento && <div className="flex justify-between"><span className="text-gray-500">Pagamento</span><span className="font-medium">{FORMA_PAGAMENTO_LABEL[formaPagamento]}</span></div>}
+          <div className="flex justify-between"><span className="text-gray-500">Conferência</span><span className={`font-medium ${conforme ? "text-emerald-600" : "text-rose-600"}`}>{conforme ? "Tudo nos conformes" : "Divergência"}</span></div>
+        </div>
+        </>)}
+
+        {/* Navegação do wizard */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={etapa === "paginas" ? onClose : voltar}>
+            {etapa === "paginas" ? "Cancelar" : "← Voltar"}
+          </Button>
+          {(lendo || lendoBoleto) && <span className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo…</span>}
+          {etapa === "final" ? (
+            <Button size="sm" disabled={salvando || !podeAvancar} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
+          ) : (
+            <Button size="sm" disabled={!podeAvancar} onClick={avancar}>Continuar →</Button>
+          )}
         </div>
       </div>
+      )}
     </Modal>
   );
 }
