@@ -39,6 +39,7 @@ const BOTOES: Record<Mode, string> = {
 
 export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
   // Pré-preenche os reais a partir do que já existe e, na falta, do previsto.
+  const [data, setData] = useState(shift.date || "");
   const [entrada, setEntrada] = useState(shift.entrada || shift.entradaPrevista || "");
   const [saida, setSaida] = useState(shift.saida || shift.saidaPrevista || "");
   const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>(
@@ -66,6 +67,7 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
     } else if (mode === "intervalo") {
       // Só registra a(s) pausa(s) — não exige saída. Turno segue aberto.
     } else {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(data)) { setErr("Informe o dia do turno."); return; }
       if (entrada && !horarioValido(entrada)) { setErr("Hora de entrada inválida."); return; }
       if (saida && !horarioValido(saida)) { setErr("Hora de saída inválida."); return; }
     }
@@ -86,6 +88,7 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         updates.intervalo = intervaloTotal;
       } else {
         // fechar / editar: grava saída + intervalos reais + horas.
+        if (mode === "editar" && data && data !== shift.date) updates.date = data;
         if (entrada) updates.entrada = entrada;
         updates.saida = saida;
         updates.intervalos = intervalos;
@@ -121,6 +124,26 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         {mode === "intervalo" && (
           <div className="text-xs text-gray-700 dark:text-gray-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded p-2">
             ⏸️ Registre os intervalos agora. O turno continua <strong>aberto</strong> — você fecha depois com a hora de saída.
+          </div>
+        )}
+
+        {/* Dia do turno — só na edição */}
+        {mode === "editar" && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+              Dia do turno *
+            </label>
+            <input
+              type="date"
+              value={data}
+              onChange={(e) => setData(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]"
+            />
+            {data !== shift.date && (
+              <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                Mudando de {shift.date.split("-").reverse().join("/")} para {data ? data.split("-").reverse().join("/") : "—"}.
+              </span>
+            )}
           </div>
         )}
 
