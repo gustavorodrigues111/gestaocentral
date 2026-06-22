@@ -19,12 +19,18 @@ const REQ_TIMEOUT_MS = 30_000;
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
+const REGRA_DATA =
+  "DATAS: documentos brasileiros usam DD/MM/AAAA (o DIA vem primeiro). Ao converter para YYYY-MM-DD, " +
+  "o 1º número é o DIA e o 2º é o MÊS. Ex: 06/07/2026 = 2026-07-06 (seis de julho), NUNCA 2026-06-07. " +
+  "Nunca trate como data americana (MM/DD).\n";
+
 const PROMPT =
   "Você recebe uma ou mais páginas (imagens/PDF) de UMA MESMA nota fiscal brasileira. " +
   "Junte as páginas: o cabeçalho costuma estar na 1ª e os itens continuam nas seguintes. " +
   "Liste TODOS os itens de TODAS as páginas (não pare na primeira). Extraia os campos abaixo e responda " +
   "SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais como NÚMERO (ex 1234.56), " +
   'sem "R$" e sem separador de milhar. Se não tiver certeza de um campo, use null. NÃO invente valores.\n' +
+  REGRA_DATA +
   "{\n" +
   '  "emissor": <razão social/nome do fornecedor que EMITIU a nota, ou null>,\n' +
   '  "cnpjEmissor": <CNPJ do emissor só com dígitos, ou null>,\n' +
@@ -43,6 +49,7 @@ const PROMPT_BOLETO =
   "Você recebe a imagem/PDF de um BOLETO bancário brasileiro. Extraia os campos abaixo e responda " +
   "SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais como NÚMERO (ex 1234.56), " +
   'sem "R$" e sem separador de milhar. Se não tiver certeza de um campo, use null. NÃO invente valores.\n' +
+  REGRA_DATA +
   "{\n" +
   '  "emissor": <beneficiário/cedente do boleto (quem recebe), ou null>,\n' +
   '  "duplicatas": [<{"numero": <número do documento/parcela ou null>, "valor": <valor do boleto>, "vencimento": "YYYY-MM-DD"}>, ...]  (uma entrada por boleto/parcela; normalmente 1)\n' +
