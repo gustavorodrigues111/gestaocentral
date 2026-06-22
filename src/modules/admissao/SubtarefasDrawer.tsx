@@ -1493,7 +1493,7 @@ function DocumentosConferencia({
   }
 
   return (
-    <details className="rounded-lg border border-indigo-200 dark:border-indigo-900" open>
+    <details className="rounded-lg border border-indigo-200 dark:border-indigo-900">
       <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 select-none">
         📎 Documentos do candidato ({itens.length})
       </summary>
