@@ -73,12 +73,12 @@ const PROMPT_FECHAMENTO =
   "}";
 
 const PROMPT_COMANDA =
-  "Você recebe a imagem/PDF de uma COMANDA de consumo de um restaurante (impressa pelo PDV). " +
-  "Identifique o NÚMERO da comanda/mesa (geralmente em destaque, como 'Mesa 99', 'Comanda 12'). " +
-  'Responda SOMENTE um objeto JSON (sem texto antes ou depois). null se não achar.\n' +
+  "Você recebe a imagem/PDF com UMA OU VÁRIAS COMANDAS de consumo de restaurante (impressas pelo PDV; " +
+  "pode haver várias comandas espalhadas na mesma foto). Identifique o NÚMERO de CADA comanda/mesa " +
+  "(geralmente em destaque, como 'Mesa 99', 'Comanda 12'). " +
+  'Responda SOMENTE um objeto JSON (sem texto antes ou depois).\n' +
   "{\n" +
-  '  "numero": <número da comanda/mesa só com dígitos, como string, ou null>,\n' +
-  '  "valorTotal": <valor total da comanda como NÚMERO (ex 1234.56), ou null>\n' +
+  '  "numeros": [<número de cada comanda/mesa visível, só dígitos, como string>, ...]  (todas que aparecem; [] se nenhuma)\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
@@ -192,7 +192,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
     if (isComanda) {
-      res.status(200).json({ numero: digits(p.numero), valorTotal: parseNum(p.valorTotal) ?? null });
+      const numeros = Array.isArray(p.numeros) ? p.numeros.map((x) => digits(x)).filter((x): x is string => !!x).slice(0, 50) : [];
+      res.status(200).json({ numeros });
       return;
     }
     if (isFechamento) {

@@ -274,16 +274,24 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     if (grupo === "comanda") void lerComanda(f);
   }
 
-  // OCR da comanda → lê o número e associa à comanda cadastrada (se bater).
+  // OCR da comanda → lê TODOS os números da foto e associa às cadastradas.
+  // Não cadastradas são sinalizadas (não bloqueiam — você cadastra/corrige depois).
   async function lerComanda(f: File) {
     try {
       const bloco = await paraOcrBlock(f);
       const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "comanda" }) });
       const j = await resp.json().catch(() => ({}));
-      if (!resp.ok || !j.numero) return;
-      const num = digitos(String(j.numero));
-      const match = comandasCad.find((c) => digitos(c.numero) === num);
-      const rotulo = match ? rotuloComanda(match) : `Comanda ${num}`;
+      const nums: string[] = Array.isArray(j.numeros) ? (j.numeros as string[]).map(digitos).filter(Boolean) : [];
+      if (!resp.ok || !nums.length) return;
+      const matched: string[] = [];
+      const naoCad: string[] = [];
+      for (const n of [...new Set(nums)]) {
+        const m = comandasCad.find((c) => digitos(c.numero) === n);
+        if (m) matched.push(rotuloComanda(m)); else naoCad.push(n);
+      }
+      const partes = [...matched];
+      if (naoCad.length) partes.push(`⚠ não cadastrada${naoCad.length > 1 ? "s" : ""}: ${naoCad.join(", ")}`);
+      const rotulo = partes.join(" · ") || `Comanda(s) ${nums.join(", ")}`;
       setAnexos((prev) => prev.map((a) => a.file === f ? { ...a, rotulo } : a));
     } catch { /* best-effort — usuário identifica manualmente */ }
   }
@@ -309,8 +317,10 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         for (const a of anexos) {
           const n = (contagem[a.grupo] = (contagem[a.grupo] || 0) + 1);
           const ext = (a.file.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (a.file.type.includes("pdf") ? ".pdf" : ".jpg");
-          // Comanda usa o rótulo no nome (ex: "comanda Cortesia (99)"); demais "grupoN".
-          const base = a.grupo === "comanda" && a.rotulo ? `comanda ${a.rotulo}`.replace(/[\\/]/g, "-") : `${a.grupo}${n}`;
+          // Comanda usa o rótulo no nome (limpo de símbolos); demais "grupoN".
+          const base = a.grupo === "comanda" && a.rotulo
+            ? `comanda ${a.rotulo.replace(/[⚠·]/g, "").replace(/[\\/:]/g, "-").replace(/\s+/g, " ").trim()}`
+            : `${a.grupo}${n}`;
           const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, a.grupo !== "outro");
           const s = await uploadFileToFolder(turnoId, alvo);
           anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
