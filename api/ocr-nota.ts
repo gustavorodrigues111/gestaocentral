@@ -91,10 +91,11 @@ const PROMPT_ALTEC_CAIXAS =
   "e um ou dois carimbos de data/hora. Quando a linha mostra DOIS horários (abertura e fechamento), pegue o de " +
   "FECHAMENTO (o segundo / mais recente). Quando mostra só um, use esse. " +
   "Liste TODAS as linhas/caixas visíveis, na ordem em que aparecem. IGNORE a linha de 'Total'. " +
+  "Marque \"aberto\": true quando a linha NÃO tiver horário de fechamento (caixa ainda aberto, só com abertura); nesse caso use a abertura em data/hora. " +
   "Responda SOMENTE um objeto JSON (sem texto antes ou depois).\n" +
   REGRA_DATA +
   "{\n" +
-  '  "caixas": [<{"id": <número do caixa como string>, "data": "YYYY-MM-DD", "hora": "HH:MM:SS"}>, ...]\n' +
+  '  "caixas": [<{"id": <número do caixa como string>, "data": "YYYY-MM-DD", "hora": "HH:MM:SS", "aberto": <true se não houver fechamento, senão false>}>, ...]\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
@@ -218,7 +219,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         const hm = horaRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
         if (!data || !hm) return null;
         const hora = `${hm[1].padStart(2, "0")}:${hm[2]}:${hm[3] || "00"}`;
-        return { ...(id ? { id } : {}), data, hora };
+        return { ...(id ? { id } : {}), data, hora, aberto: o.aberto === true };
       }).filter(Boolean) : [];
       res.status(200).json({ caixas });
       return;

@@ -317,7 +317,7 @@ export function FechamentoCaixaPage() {
 
       {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
 
-      {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes temIfood={!!restaurant?.fechamentoTemIfood} />}
+      {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes rid={rid} temIfood={!!restaurant?.fechamentoTemIfood} me={me} podeConfig={podeConfig} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
@@ -971,7 +971,7 @@ function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: Fecham
 // e a planilha de vendas da Rede; agrupa as vendas de cartão por janela de caixa
 // (do corte anterior até o corte de cada caixa) pra conferir crédito/débito por
 // bandeira na Altec. PIX/dinheiro não vêm da Rede (entram por outro canal).
-type CaixaCorte = { id?: string; data: string; hora: string }; // hora HH:MM:SS
+type CaixaCorte = { id?: string; data: string; hora: string; aberto?: boolean }; // hora HH:MM:SS
 type TxRede = { ts: number; modalidade: "credito" | "debito" | "pix" | "outro"; bandeira: string; valor: number };
 const DIACR = new RegExp("[\\u0300-\\u036f]", "g");
 const normMod = (s: string): TxRede["modalidade"] => {
@@ -1043,7 +1043,18 @@ async function parseIfoodXlsx(file: File): Promise<TxIfood[]> {
   return out;
 }
 
-function ConciliacaoCartoes({ temIfood }: { temIfood: boolean }) {
+type Totais = { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
+type CaixaSalvo = Totais & {
+  id: string; restaurantId: string;
+  caixaId?: string; corteData: string; corteHora: string;
+  prevData?: string; prevHora?: string;
+  conciliadoEm?: string; conciliadoPor?: { id: string; nome: string };
+  criadoEm?: string;
+};
+const chaveSalvo = (s: { corteData: string; corteHora: string; caixaId?: string }) => `${s.corteData}T${s.corteHora}|${s.caixaId || ""}`;
+const assinaturaTotais = (g: Totais) => JSON.stringify([Object.entries(g.credito).sort(), Object.entries(g.debito).sort(), g.pixRede, g.ifood, g.total]);
+
+function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; temIfood: boolean; me: { id?: string; nome?: string } | null; podeConfig: boolean }) {
   const [caixas, setCaixas] = useState<CaixaCorte[]>([]);
   const [txs, setTxs] = useState<TxRede[] | null>(null);
   const [redeNome, setRedeNome] = useState("");
@@ -1052,11 +1063,19 @@ function ConciliacaoCartoes({ temIfood }: { temIfood: boolean }) {
   const [lendoPrint, setLendoPrint] = useState(false);
   const [lendoXlsx, setLendoXlsx] = useState(false);
   const [lendoIfood, setLendoIfood] = useState(false);
-  const [conciliados, setConciliados] = useState<Set<string>>(new Set());
+  const [salvos, setSalvos] = useState<CaixaSalvo[]>([]);
+  const [salvando, setSalvando] = useState(false);
+  const [avisos, setAvisos] = useState<string[]>([]);
   const [erro, setErro] = useState("");
   const printRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
   const ifoodRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "conciliacoesCaixa"), where("restaurantId", "==", rid));
+    return onSnapshot(q, (snap) => setSalvos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as CaixaSalvo)));
+  }, [rid]);
 
   async function lerPrint(files: File[]) {
     if (!files.length) return;
@@ -1127,9 +1146,54 @@ function ConciliacaoCartoes({ temIfood }: { temIfood: boolean }) {
     return { porCaixa, aberto };
   }, [txs, cortes, ifood]);
 
+  // Salva os caixas FECHADOS na lista persistida (aguardando conciliação). Dedup por igualdade exata.
+  async function salvar() {
+    if (!resultado) return;
+    setSalvando(true); setErro(""); const novos: string[] = [];
+    try {
+      for (let i = 0; i < cortes.length; i++) {
+        const c = cortes[i];
+        if (c.aberto) { novos.push(`Caixa ${c.id ? `#${c.id}` : fmtData(c.data)} está aberto — não salvo até fechar.`); continue; }
+        const g = resultado.porCaixa[i];
+        const chave = `${c.data}T${c.hora}|${c.id || ""}`;
+        const existente = salvos.find((s) => chaveSalvo(s) === chave);
+        const rec = {
+          restaurantId: rid, ...(c.id ? { caixaId: c.id } : {}), corteData: c.data, corteHora: c.hora,
+          ...(i > 0 ? { prevData: cortes[i - 1].data, prevHora: cortes[i - 1].hora } : {}),
+          credito: g.credito, debito: g.debito, pixRede: g.pixRede, ifood: g.ifood, nIfood: g.nIfood, nCard: g.nCard, total: g.total,
+        };
+        const rotulo = `Caixa ${c.id ? `#${c.id}` : fmtData(c.data)}`;
+        if (!existente) await addDoc(collection(db, "conciliacoesCaixa"), { ...rec, criadoEm: new Date().toISOString() });
+        else if (existente.conciliadoEm) novos.push(`${rotulo} já está conciliado — ignorado.`);
+        else if (assinaturaTotais(existente) === assinaturaTotais(g)) novos.push(`${rotulo} já estava lançado, idêntico — ignorado.`);
+        else { await updateDoc(doc(db, "conciliacoesCaixa", existente.id), rec); novos.push(`${rotulo} atualizado (valores diferentes do que já estava).`); }
+      }
+      setAvisos(novos);
+      setCaixas([]); setTxs(null); setRedeNome(""); setIfood(null); setIfoodNome(""); // já persistido
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
+    finally { setSalvando(false); }
+  }
+  async function conciliarSalvo(s: CaixaSalvo) {
+    try { await updateDoc(doc(db, "conciliacoesCaixa", s.id), { conciliadoEm: new Date().toISOString(), conciliadoPor: { id: me?.id || "", nome: me?.nome || "?" } }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao conciliar."); }
+  }
+  async function desconciliarSalvo(s: CaixaSalvo) {
+    try { await updateDoc(doc(db, "conciliacoesCaixa", s.id), { conciliadoEm: deleteField(), conciliadoPor: deleteField() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao desfazer."); }
+  }
+  async function removerSalvo(s: CaixaSalvo) {
+    if (!window.confirm(`Remover ${s.caixaId ? `o caixa #${s.caixaId}` : "este caixa"} da lista de conciliação?`)) return;
+    try { await deleteDoc(doc(db, "conciliacoesCaixa", s.id)); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao remover."); }
+  }
+  const totaisDe = (s: CaixaSalvo): Totais => ({ credito: s.credito || {}, debito: s.debito || {}, pixRede: s.pixRede || 0, ifood: s.ifood || 0, nIfood: s.nIfood || 0, nCard: s.nCard || 0, total: s.total || 0 });
+  const tituloSalvo = (s: CaixaSalvo) => `Caixa ${s.caixaId ? `#${s.caixaId}` : fmtData(s.corteData)} · fechou ${fmtData(s.corteData)} ${s.corteHora.slice(0, 5)}`;
+  const janelaSalvo = (s: CaixaSalvo) => `de ${s.prevData ? `${fmtData(s.prevData)} ${(s.prevHora || "").slice(0, 5)}` : "início"} até ${fmtData(s.corteData)} ${s.corteHora.slice(0, 5)}`;
+  const pendentesSalvos = useMemo(() => salvos.filter((s) => !s.conciliadoEm).sort((a, b) => chaveSalvo(a).localeCompare(chaveSalvo(b))), [salvos]);
+  const conciliadosSalvos = useMemo(() => salvos.filter((s) => s.conciliadoEm).sort((a, b) => (b.conciliadoEm || "").localeCompare(a.conciliadoEm || "")), [salvos]);
+
   const filesFrom = (e: ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files || []); e.target.value = ""; return fs; };
   const somaBand = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
-  const keyCorte = (c: CaixaCorte) => `${c.data}T${c.hora}|${c.id || ""}`;
 
   // Duplicados: mesmo nº de caixa repetido, ou cortes a menos de 2min (prints sobrepostos).
   const dups = useMemo(() => {
@@ -1209,62 +1273,76 @@ function ConciliacaoCartoes({ temIfood }: { temIfood: boolean }) {
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-      {/* Caixas lidos (chips) */}
-      {caixas.length > 0 && (
-        <div className="text-[11px] text-gray-500">
-          Caixas lidos: {cortes.map((c) => `${c.id ? `#${c.id} ` : ""}${fmtData(c.data)} ${c.hora.slice(0, 5)}`).join("  ·  ")}
-          <button type="button" onClick={() => setCaixas([])} className="ml-2 text-rose-600 hover:underline">limpar</button>
-        </div>
-      )}
-
-      {/* Aviso de duplicado */}
+      {/* Aviso de duplicado no print */}
       {(dups.ids.length > 0 || dups.near.length > 0) && (
         <div className="text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-900/40 rounded-lg px-3 py-2">
-          ⚠ Possível caixa duplicado{dups.ids.length ? ` — nº ${dups.ids.join(", ")} aparece(m) mais de uma vez` : ""}{dups.near.length ? ` — cortes muito próximos (${dups.near.join(", ")})` : ""}. Confira se colou prints sobrepostos; use "limpar" e refaça se precisar.
+          ⚠ Possível caixa duplicado no print{dups.ids.length ? ` — nº ${dups.ids.join(", ")} aparece(m) mais de uma vez` : ""}{dups.near.length ? ` — cortes muito próximos (${dups.near.join(", ")})` : ""}. Confira se colou prints sobrepostos.
         </div>
       )}
 
-      {!resultado && <div className="text-center text-sm text-gray-400 py-10">Envie o print dos caixas <strong>e</strong> a planilha da Rede pra ver a conciliação por caixa.</div>}
+      {/* Avisos do último salvamento */}
+      {avisos.length > 0 && (
+        <div className="text-[12px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2 space-y-0.5">
+          {avisos.map((a, i) => <div key={i}>• {a}</div>)}
+        </div>
+      )}
 
+      {/* Pré-visualização do que foi lido — salvar pra aguardar conciliação */}
       {resultado && (() => {
-        const pend = cortes.map((c, i) => ({ c, i })).filter((x) => !conciliados.has(keyCorte(x.c)));
-        const conc = cortes.map((c, i) => ({ c, i })).filter((x) => conciliados.has(keyCorte(x.c)));
+        const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · ${c.aberto ? "aberto" : "fechou"} ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
         const janela = (i: number) => `de ${i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início"} até ${fmtData(cortes[i].data)} ${cortes[i].hora.slice(0, 5)}`;
-        const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · fechou ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
         return (
-          <div className="space-y-3">
-            <p className="text-[12px] text-gray-500">Cada caixa soma as vendas de cartão da Rede do <strong>corte anterior até o corte dele</strong>. Confira esses valores de crédito/débito por bandeira na Altec e marque <strong>Conciliado</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
-
-            {/* Pendentes — do mais antigo pro mais novo, em 2 colunas */}
-            <div className="grid sm:grid-cols-2 gap-3 items-start">
-              {pend.map(({ c, i }) => (
-                <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
-                  acoes={<button type="button" onClick={() => setConciliados((s) => new Set(s).add(keyCorte(c)))}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
-                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                    Conciliado na Altec
-                  </button>} />
-              ))}
-              {/* Caixa em aberto (não fechado) — sombreado amarelo, sempre por último */}
-              {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
+          <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/10 rounded-xl p-3">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{cortes.filter((c) => !c.aberto).length}</strong> caixa(s) fechado(s). Confira e salve pra aguardar a conciliação.</div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => { setCaixas([]); setTxs(null); setRedeNome(""); setIfood(null); setIfoodNome(""); }} className="text-[12px] text-gray-500 hover:underline px-1">descartar</button>
+                <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
+              </div>
             </div>
-
-            {/* Histórico de conciliados */}
-            {conc.length > 0 && (
-              <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
-                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conciliados na Altec <span className="text-gray-400 font-normal">({conc.length})</span></summary>
-                <div className="px-3 pb-3 space-y-2">
-                  {conc.map(({ c, i }) => (
-                    <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
-                      acoes={<button type="button" onClick={() => setConciliados((s) => { const n = new Set(s); n.delete(keyCorte(c)); return n; })}
-                        className="text-[12px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline px-1">↩ Desfazer</button>} />
-                  ))}
-                </div>
-              </details>
-            )}
+            <div className="space-y-3">
+              {cortes.map((c, i) => <Card key={i} amber={c.aberto} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
+              {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)}) — não é salvo até fechar`} g={resultado.aberto} />}
+            </div>
           </div>
         );
       })()}
+
+      {/* Lista persistida — Pendentes (aguardando conciliação) */}
+      {!resultado && pendentesSalvos.length === 0 && conciliadosSalvos.length === 0 && (
+        <div className="text-center text-sm text-gray-400 py-10">Envie o print dos caixas <strong>e</strong> a planilha da Rede pra montar a conciliação por caixa.</div>
+      )}
+
+      {pendentesSalvos.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Aguardando conciliação <span className="text-gray-400 font-normal">({pendentesSalvos.length})</span></h3>
+          <p className="text-[12px] text-gray-500">Confira crédito/débito por bandeira na Altec e marque <strong>Conciliado</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
+          {pendentesSalvos.map((s) => (
+            <Card key={s.id} titulo={tituloSalvo(s)} sub={janelaSalvo(s)} g={totaisDe(s)}
+              acoes={<div className="flex items-center gap-3">
+                {podeConfig && <button type="button" onClick={() => void removerSalvo(s)} className="text-[12px] text-rose-600 hover:underline px-1">remover</button>}
+                <button type="button" onClick={() => void conciliarSalvo(s)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  Conciliado na Altec
+                </button>
+              </div>} />
+          ))}
+        </div>
+      )}
+
+      {/* Histórico de conciliados */}
+      {conciliadosSalvos.length > 0 && (
+        <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conciliados na Altec <span className="text-gray-400 font-normal">({conciliadosSalvos.length})</span></summary>
+          <div className="px-3 pb-3 space-y-3">
+            {conciliadosSalvos.map((s) => (
+              <Card key={s.id} titulo={tituloSalvo(s)} sub={`${janelaSalvo(s)} · ✓ ${s.conciliadoEm ? fmtDataHora(s.conciliadoEm) : ""}${s.conciliadoPor?.nome ? ` · ${s.conciliadoPor.nome}` : ""}`} g={totaisDe(s)}
+                acoes={<button type="button" onClick={() => void desconciliarSalvo(s)} className="text-[12px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline px-1">↩ Desfazer</button>} />
+            ))}
+          </div>
+        </details>
+      )}
     </div>
   );
 }
