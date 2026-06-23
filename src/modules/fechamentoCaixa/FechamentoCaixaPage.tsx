@@ -246,7 +246,7 @@ export function FechamentoCaixaPage() {
   );
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
@@ -1063,7 +1063,9 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
                     <span className="text-[11px] text-gray-400 tabular-nums mt-0.5">fechado {fmtDataHora(f.fechadoEm)}</span>
                   </button>
                 </td>
-                <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtBRL(f.totalVendas)}</td>
+                <td className="px-4 py-3 text-right">
+                  <button type="button" onClick={() => setDetalhe(f)} className="tabular-nums font-semibold text-gray-800 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400">{fmtBRL(f.totalVendas)}</button>
+                </td>
                 <td className="px-4 py-3 tabular-nums text-gray-500">{f.numeroLacre || "—"}</td>
                 <td className="px-4 py-3 text-gray-500 max-w-[140px] truncate" title={f.fechadoPor?.nome || ""}>{f.fechadoPor?.nome || "—"}</td>
                 <td className="px-4 py-3 max-w-[200px] truncate text-gray-600 dark:text-gray-300" title={f.observacao || ""}>{f.observacao || "—"}</td>

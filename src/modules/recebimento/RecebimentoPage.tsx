@@ -262,7 +262,7 @@ export function RecebimentoPage() {
   );
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       {/* Abas */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
@@ -708,7 +708,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: Recebimen
     </div>
   ) : null;
   return (
-    <Modal title="🧾 Detalhes do recebimento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title="🧾 Detalhes do recebimento" onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-1">
         {linha("Recebido em", fmtDataHora(nota.recebidoEm))}
         {nota.tipoDocumento && linha("Tipo", tipoLabelDe(nota))}
