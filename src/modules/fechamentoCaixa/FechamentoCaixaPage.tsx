@@ -236,7 +236,7 @@ export function FechamentoCaixaPage() {
 
   // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
   async function excluir(f: FechamentoCaixa) {
-    if (!window.confirm(`Mover o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}) para Excluídos?\n\nDá pra restaurar depois na aba "Excluídos". Nada é apagado de verdade.`)) return;
+    if (!window.confirm(`Mover o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}) para Excluídos?`)) return;
     try {
       await updateDoc(doc(db, "fechamentosCaixa", f.id), { excluidoEm: new Date().toISOString(), excluidoPor: { id: me?.id || "", nome: me?.nome || "?" } });
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }

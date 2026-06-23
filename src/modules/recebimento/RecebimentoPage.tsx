@@ -258,7 +258,7 @@ export function RecebimentoPage() {
 
   // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
   async function excluir(n: RecebimentoNota) {
-    if (!window.confirm(`Mover o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)}) para Excluídos?\n\nDá pra restaurar depois na aba "Excluídos". Nada é apagado de verdade.`)) return;
+    if (!window.confirm(`Mover o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)}) para Excluídos?`)) return;
     try { await updateDoc(doc(db, "recebimentos", n.id), { excluidoEm: new Date().toISOString(), excluidoPor: { id: me?.id || "", nome: me?.nome || "?" } }); }
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
   }
