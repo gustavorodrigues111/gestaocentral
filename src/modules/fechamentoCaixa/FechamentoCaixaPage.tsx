@@ -1107,21 +1107,24 @@ function ConciliacaoCartoes() {
           <div><div className="font-semibold text-gray-800 dark:text-gray-100">{titulo}</div>{sub && <div className="text-[11px] text-gray-400">{sub}</div>}</div>
           <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(g.total)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">cartões · {g.nCard}</div></div>
         </div>
-        <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="space-y-2 pt-1">
           <div>
-            <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-1">Crédito <span className="tabular-nums">{fmtBRL(totCred)}</span></div>
-            {Object.keys(g.credito).length ? Object.entries(g.credito).sort().map(([b, v]) => (
-              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
-            )) : <div className="text-[12px] text-gray-400">—</div>}
+            <div className="flex justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><span>Crédito</span><span className="tabular-nums">{fmtBRL(totCred)}</span></div>
+            {Object.entries(g.credito).sort().map(([b, v]) => (
+              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+            ))}
           </div>
           <div>
-            <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 mb-1">Débito <span className="tabular-nums">{fmtBRL(totDeb)}</span></div>
-            {Object.keys(g.debito).length ? Object.entries(g.debito).sort().map(([b, v]) => (
-              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
-            )) : <div className="text-[12px] text-gray-400">—</div>}
+            <div className="flex justify-between text-[11px] font-semibold text-sky-700 dark:text-sky-300"><span>Débito</span><span className="tabular-nums">{fmtBRL(totDeb)}</span></div>
+            {Object.entries(g.debito).sort().map(([b, v]) => (
+              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+            ))}
+          </div>
+          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+            <div className="flex justify-between text-[11px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
+            <div className="text-[10px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
           </div>
         </div>
-        {g.pixRede > 0 && <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">PIX Rede (maquininha): <span className="tabular-nums">{fmtBRL(g.pixRede)}</span> · o PIX do balcão (QR/banco) não está aqui</div>}
         {acoes && <div className="flex justify-end pt-1">{acoes}</div>}
       </div>
     );
@@ -1175,18 +1178,19 @@ function ConciliacaoCartoes() {
           <div className="space-y-3">
             <p className="text-[12px] text-gray-500">Cada caixa soma as vendas de cartão da Rede do <strong>corte anterior até o corte dele</strong>. Confira esses valores de crédito/débito por bandeira na Altec e marque <strong>Conciliado</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
 
-            {/* Pendentes — do mais antigo pro mais novo */}
-            {pend.map(({ c, i }) => (
-              <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
-                acoes={<button type="button" onClick={() => setConciliados((s) => new Set(s).add(keyCorte(c)))}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                  Conciliado na Altec
-                </button>} />
-            ))}
-
-            {/* Caixa em aberto (não fechado) — sombreado amarelo, sempre por último */}
-            {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
+            {/* Pendentes — do mais antigo pro mais novo, em 2 colunas */}
+            <div className="grid sm:grid-cols-2 gap-3 items-start">
+              {pend.map(({ c, i }) => (
+                <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
+                  acoes={<button type="button" onClick={() => setConciliados((s) => new Set(s).add(keyCorte(c)))}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+                    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                    Conciliado na Altec
+                  </button>} />
+              ))}
+              {/* Caixa em aberto (não fechado) — sombreado amarelo, sempre por último */}
+              {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
+            </div>
 
             {/* Histórico de conciliados */}
             {conc.length > 0 && (
