@@ -20,7 +20,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { AnexoFechamento, ComandaCadastro, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, TurnoCaixa } from "../../core/types";
+import type { AnexoFechamento, ComandaCadastro, ComandaConsumo, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
@@ -50,6 +50,68 @@ const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "comanda", "outro"];
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
+const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0);
+
+// Tabela das maquininhas: colunas crédito/débito/total, soma e conferência com o Altec.
+function MaquininhasView({ maquininhas, creditoAltec, debitoAltec }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number }) {
+  const somaC = maquininhas.reduce((s, m) => s + (m.credito || 0), 0);
+  const somaD = maquininhas.reduce((s, m) => s + (m.debito || 0), 0);
+  const somaT = maquininhas.reduce((s, m) => s + totalMaq(m), 0);
+  const diffC = creditoAltec != null ? somaC - creditoAltec : null;
+  const diffD = debitoAltec != null ? somaD - debitoAltec : null;
+  const bate = (d: number | null) => d == null || Math.abs(d) <= 0.01;
+  return (
+    <div>
+      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+        <table className="w-full text-[11px]">
+          <thead>
+            <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+              <th className="px-2 py-1 font-medium">Maquininha</th>
+              <th className="px-2 py-1 font-medium text-right">Crédito</th>
+              <th className="px-2 py-1 font-medium text-right">Débito</th>
+              <th className="px-2 py-1 font-medium text-right">Total</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {maquininhas.map((m, i) => (
+              <tr key={i}>
+                <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums font-medium">{fmtBRL(totalMaq(m))}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t border-gray-200 dark:border-gray-800 font-semibold bg-gray-50 dark:bg-gray-800/40">
+              <td className="px-2 py-1">Soma maquininhas</td>
+              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaC)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaD)}</td>
+              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaT)}</td>
+            </tr>
+            {(creditoAltec != null || debitoAltec != null) && (
+              <tr className="text-gray-500">
+                <td className="px-2 py-1">Comprovante (Altec)</td>
+                <td className="px-2 py-1 text-right tabular-nums">{creditoAltec != null ? fmtBRL(creditoAltec) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{debitoAltec != null ? fmtBRL(debitoAltec) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{(creditoAltec != null || debitoAltec != null) ? fmtBRL((creditoAltec || 0) + (debitoAltec || 0)) : "—"}</td>
+              </tr>
+            )}
+            {(diffC != null || diffD != null) && !(bate(diffC) && bate(diffD)) && (
+              <tr className="text-amber-600 dark:text-amber-400 font-medium">
+                <td className="px-2 py-1">⚠ Diferença</td>
+                <td className="px-2 py-1 text-right tabular-nums">{diffC != null ? fmtBRL(diffC) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{diffD != null ? fmtBRL(diffD) : "—"}</td>
+                <td className="px-2 py-1 text-right tabular-nums">{fmtBRL((diffC || 0) + (diffD || 0))}</td>
+              </tr>
+            )}
+          </tfoot>
+        </table>
+      </div>
+      {(diffC != null || diffD != null) && bate(diffC) && bate(diffD) && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
+    </div>
+  );
+}
 
 export function FechamentoCaixaPage() {
   const { pessoa: me } = useAuth();
@@ -64,7 +126,7 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
@@ -110,13 +172,14 @@ export function FechamentoCaixaPage() {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "comandas" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
+  if (podeVer) abas.push("comandas");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -126,6 +189,7 @@ export function FechamentoCaixaPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
+        {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -141,6 +205,8 @@ export function FechamentoCaixaPage() {
           </button>
         </div>
       )}
+
+      {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ordenados} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
@@ -229,7 +295,9 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const [grupoFonte, setGrupoFonte] = useState<GrupoAnexoFechamento | null>(null);
   const [comandaManual, setComandaManual] = useState<File | null>(null); // anexo de comanda em correção manual
+  const [comandasConsumo, setComandasConsumo] = useState<ComandaConsumo[]>([]); // consumos lidos/editados
   const comandasCad = restaurant.fechamentoComandas || [];
+  const nomeComanda = (numero: string) => comandasCad.find((c) => digitos(c.numero) === digitos(numero))?.nome;
   const [totalVendas, setTotalVendas] = useState("");
   const [dinheiro, setDinheiro] = useState("");
   const [pix, setPix] = useState("");
@@ -287,18 +355,27 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       const bloco = await paraOcrBlock(f);
       const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "comanda" }) });
       const j = await resp.json().catch(() => ({}));
-      const nums: string[] = Array.isArray(j.numeros) ? (j.numeros as string[]).map(digitos).filter(Boolean) : [];
-      if (!resp.ok || !nums.length) return;
+      const lidas: ComandaConsumo[] = Array.isArray(j.comandas)
+        ? (j.comandas as ComandaConsumo[]).filter((c) => c && digitos(c.numero || "")).map((c) => ({ numero: digitos(c.numero), ...(c.valor != null ? { valor: c.valor } : {}) }))
+        : [];
+      if (!resp.ok || !lidas.length) return;
+      // Rótulo do anexo (matched/não cadastradas)
       const matched: string[] = [];
       const naoCad: string[] = [];
-      for (const n of [...new Set(nums)]) {
-        const m = comandasCad.find((c) => digitos(c.numero) === n);
-        if (m) matched.push(rotuloComanda(m)); else naoCad.push(n);
+      for (const c of lidas) {
+        const m = comandasCad.find((x) => digitos(x.numero) === c.numero);
+        if (m) matched.push(rotuloComanda(m)); else naoCad.push(c.numero);
       }
-      const partes = [...matched];
-      if (naoCad.length) partes.push(`⚠ não cadastrada${naoCad.length > 1 ? "s" : ""}: ${naoCad.join(", ")}`);
-      const rotulo = partes.join(" · ") || `Comanda(s) ${nums.join(", ")}`;
+      const partes = [...new Set(matched)];
+      if (naoCad.length) partes.push(`⚠ não cadastrada${naoCad.length > 1 ? "s" : ""}: ${[...new Set(naoCad)].join(", ")}`);
+      const rotulo = partes.join(" · ") || `Comanda(s) ${lidas.map((c) => c.numero).join(", ")}`;
       setAnexos((prev) => prev.map((a) => a.file === f ? { ...a, rotulo } : a));
+      // Acumula consumos (dedupe por número — o último valor lido prevalece).
+      setComandasConsumo((prev) => {
+        const map = new Map(prev.map((c) => [c.numero, c]));
+        for (const c of lidas) map.set(c.numero, { numero: c.numero, nome: nomeComanda(c.numero), ...(c.valor != null ? { valor: c.valor } : {}) });
+        return [...map.values()];
+      });
     } catch { /* best-effort — usuário identifica manualmente */ }
   }
 
@@ -345,6 +422,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         ...(parseBRL(credito) != null ? { credito: parseBRL(credito) } : {}),
         ...(parseBRL(debito) != null ? { debito: parseBRL(debito) } : {}),
         ...(maquininhas.length ? { maquininhas } : {}),
+        ...(comandasConsumo.length ? { comandas: comandasConsumo.map((c) => ({ numero: c.numero, ...(c.nome ? { nome: c.nome } : {}), ...(c.valor != null ? { valor: c.valor } : {}) })) } : {}),
         ...(parseBRL(fundoCaixa) != null ? { fundoCaixa: parseBRL(fundoCaixa) } : {}),
         ...(numeroLacre.trim() ? { numeroLacre: numeroLacre.trim() } : {}),
         ...(observacao.trim() ? { observacao: observacao.trim() } : {}),
@@ -469,15 +547,27 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         {maquininhas.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
+            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} />
+          </div>
+        )}
+
+        {/* Consumo de cortesias/comandas (lido das comandas) */}
+        {comandasConsumo.length > 0 && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Consumo das comandas ({comandasConsumo.length}) <span className="font-normal text-gray-400">— confira os valores</span></label>
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-              {maquininhas.map((m, i) => (
-                <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
-                  <span className="flex-1 truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>
-                  {m.credito != null && <span className="shrink-0 tabular-nums text-gray-500">créd {fmtBRL(m.credito)}</span>}
-                  {m.debito != null && <span className="shrink-0 tabular-nums text-gray-500">déb {fmtBRL(m.debito)}</span>}
-                  {m.total != null && <span className="shrink-0 tabular-nums font-medium w-20 text-right">{fmtBRL(m.total)}</span>}
+              {comandasConsumo.map((c, i) => (
+                <div key={i} className="px-2 py-1 flex items-center gap-2 text-[12px]">
+                  <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
+                  <input value={c.valor != null ? String(c.valor).replace(".", ",") : ""} onChange={(e) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: parseBRL(e.target.value) } : x))} inputMode="decimal" placeholder="R$"
+                    className="w-24 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                  <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setComandasConsumo((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
+              <div className="px-2 py-1 flex items-center justify-between text-[12px] font-semibold bg-gray-50 dark:bg-gray-800/40">
+                <span>Total consumido</span>
+                <span className="tabular-nums">{fmtBRL(comandasConsumo.reduce((s, c) => s + (c.valor || 0), 0))}</span>
+              </div>
             </div>
           </div>
         )}
@@ -534,6 +624,111 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
     try { await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify({ to, subject, html, text }) }); }
     catch { /* best-effort */ }
   }
+}
+
+// ─── Aba: controle de cortesias / comandas de sócios ────────────────────────
+function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
+  const [dataIni, setDataIni] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [filtroComanda, setFiltroComanda] = useState(""); // "" = todas
+
+  // Achata: cada consumo vira uma linha com data/turno.
+  const linhas = useMemo(() => {
+    const out: Array<{ data: string; turno: TurnoCaixa; numero: string; nome?: string; valor?: number }> = [];
+    for (const f of fechamentos) for (const c of (f.comandas || [])) out.push({ data: f.data, turno: f.turno, numero: c.numero, nome: c.nome, valor: c.valor });
+    return out.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+  }, [fechamentos]);
+
+  // Opções de comanda pro filtro (distintas).
+  const opcoes = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const l of linhas) map.set(l.numero, l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`);
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [linhas]);
+
+  const filtradas = linhas.filter((l) =>
+    (!dataIni || l.data >= dataIni) && (!dataFim || l.data <= dataFim) && (!filtroComanda || l.numero === filtroComanda),
+  );
+  const total = filtradas.reduce((s, l) => s + (l.valor || 0), 0);
+  // Totais por comanda (do filtro).
+  const porComanda = useMemo(() => {
+    const map = new Map<string, { rotulo: string; total: number; qtd: number }>();
+    for (const l of filtradas) {
+      const k = l.numero;
+      const cur = map.get(k) || { rotulo: l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`, total: 0, qtd: 0 };
+      cur.total += l.valor || 0; cur.qtd += 1; map.set(k, cur);
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  }, [filtradas]);
+
+  return (
+    <div className="space-y-3">
+      {/* Filtros */}
+      <div className="flex flex-wrap items-end gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+        <div>
+          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">De</label>
+          <input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">Até</label>
+          <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+        </div>
+        <div className="flex-1 min-w-[160px]">
+          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">Comanda</label>
+          <select value={filtroComanda} onChange={(e) => setFiltroComanda(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            <option value="">Todas</option>
+            {opcoes.map(([num, rot]) => <option key={num} value={num}>{rot}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Resumo por comanda */}
+      {porComanda.length > 0 && (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">Total por comanda · geral <span className="text-emerald-700 dark:text-emerald-300">{fmtBRL(total)}</span></div>
+          <div className="flex flex-wrap gap-2">
+            {porComanda.map((c, i) => (
+              <span key={i} className="text-[12px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700">{c.rotulo}: <strong>{fmtBRL(c.total)}</strong> <span className="text-gray-400">({c.qtd})</span></span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Lançamentos */}
+      {filtradas.length === 0 ? (
+        <div className="text-center text-sm text-gray-400 py-12">Nenhum consumo de comanda no período. As comandas lidas nos fechamentos aparecem aqui.</div>
+      ) : (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200 dark:border-gray-800">
+                <th className="px-3 py-2">Data</th>
+                <th className="px-3 py-2">Turno</th>
+                <th className="px-3 py-2">Comanda</th>
+                <th className="px-3 py-2 text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {filtradas.map((l, i) => (
+                <tr key={i} className="whitespace-nowrap">
+                  <td className="px-3 py-2 tabular-nums text-gray-500">{fmtData(l.data)}</td>
+                  <td className="px-3 py-2">{TURNO_CAIXA_LABEL[l.turno]}</td>
+                  <td className="px-3 py-2">{l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{l.valor != null ? fmtBRL(l.valor) : "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="font-semibold border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+                <td className="px-3 py-2" colSpan={3}>Total ({filtradas.length})</td>
+                <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(total)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
@@ -756,15 +951,22 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
       {f.maquininhas && f.maquininhas.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Maquininhas ({f.maquininhas.length})</div>
+          <MaquininhasView maquininhas={f.maquininhas} creditoAltec={f.credito} debitoAltec={f.debito} />
+        </div>
+      )}
+      {f.comandas && f.comandas.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Comandas / cortesias ({f.comandas.length})</div>
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-            {f.maquininhas.map((m, i) => (
+            {f.comandas.map((c, i) => (
               <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
-                <span className="flex-1 truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>
-                {m.credito != null && <span className="shrink-0 tabular-nums text-gray-500">créd {fmtBRL(m.credito)}</span>}
-                {m.debito != null && <span className="shrink-0 tabular-nums text-gray-500">déb {fmtBRL(m.debito)}</span>}
-                {m.total != null && <span className="shrink-0 tabular-nums font-medium w-20 text-right">{fmtBRL(m.total)}</span>}
+                <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
+                <span className="shrink-0 tabular-nums font-medium">{c.valor != null ? fmtBRL(c.valor) : "—"}</span>
               </div>
             ))}
+            <div className="px-2 py-1 text-[11px] flex items-center justify-between font-semibold bg-gray-50 dark:bg-gray-800/40">
+              <span>Total consumido</span><span className="tabular-nums">{fmtBRL(f.comandas.reduce((s, c) => s + (c.valor || 0), 0))}</span>
+            </div>
           </div>
         </div>
       )}

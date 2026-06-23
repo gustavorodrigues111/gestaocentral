@@ -4717,6 +4717,8 @@ export type AnexoFechamento = {
 export type ComandaCadastro = { numero: string; nome: string };
 // Quebra por maquininha lida do fechamento (OCR).
 export type MaquininhaFechamento = { identificador?: string; credito?: number; debito?: number; total?: number };
+// Consumo de uma comanda (sócio/cortesia) no turno.
+export type ComandaConsumo = { numero: string; nome?: string; valor?: number };
 export type FechamentoCaixa = {
   id: string;
   restaurantId: string;
@@ -4730,6 +4732,7 @@ export type FechamentoCaixa = {
   credito?: number;
   debito?: number;
   maquininhas?: MaquininhaFechamento[];
+  comandas?: ComandaConsumo[];  // consumos de cortesia/sócios do turno
   fundoCaixa?: number;
   numeroLacre?: string;         // nº do lacre do malote
   observacao?: string;
