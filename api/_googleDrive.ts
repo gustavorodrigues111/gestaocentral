@@ -101,14 +101,15 @@ export async function downloadFileBase64(fileId: string, token: string): Promise
 }
 
 // Move uma pasta (ou arquivo) pra dentro de outro pai. O id NÃO muda.
-export async function moveFolder(folderId: string, newParentId: string, token: string): Promise<void> {
+// newName opcional renomeia na mesma operação.
+export async function moveFolder(folderId: string, newParentId: string, token: string, newName?: string): Promise<void> {
   const cur = await driveFetch(`${DRIVE_API}/files/${encodeURIComponent(folderId)}?fields=parents&${ALL_DRIVES}`, { method: "GET" }, token);
   const data = (await cur.json()) as { parents?: string[] };
   const removeParents = (data.parents || []).join(",");
   const url = `${DRIVE_API}/files/${encodeURIComponent(folderId)}?addParents=${encodeURIComponent(newParentId)}`
     + (removeParents ? `&removeParents=${encodeURIComponent(removeParents)}` : "")
     + `&fields=id,parents&${ALL_DRIVES}`;
-  await driveFetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: "{}" }, token);
+  await driveFetch(url, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(newName ? { name: newName } : {}) }, token);
 }
 
 // Lista arquivos (não-pasta, não-lixeira) dentro de uma pasta.

@@ -93,9 +93,15 @@ export function FechamentoCaixaPage() {
   }
 
   async function excluir(f: FechamentoCaixa) {
-    if (!window.confirm(`Excluir o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nOs arquivos no Drive NÃO são apagados.`)) return;
-    try { await deleteDoc(doc(db, "fechamentosCaixa", f.id)); }
-    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
+    if (!window.confirm(`Excluir o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nA pasta de anexos é movida pra "excluídos" no Drive (não é apagada).`)) return;
+    try {
+      const folderId = f.driveFolderUrl ? parseDriveFolderId(f.driveFolderUrl) : null;
+      if (folderId && restaurant?.fechamentoDriveFolderId && (await centralConfigured())) {
+        const excluidosId = await centralEnsureFolder(restaurant.fechamentoDriveFolderId, "excluídos");
+        await centralMoveFolder(folderId, excluidosId, `${diaLabel(f.data)} ${TURNO_CAIXA_LABEL[f.turno]}`);
+      }
+      await deleteDoc(doc(db, "fechamentosCaixa", f.id));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;

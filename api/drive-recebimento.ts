@@ -82,7 +82,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     }
     if (action === "moveFolder") {
       if (!body.folderId || !body.newParentId) { res.status(400).json({ error: "Faltam folderId/newParentId." }); return; }
-      await moveFolder(String(body.folderId), String(body.newParentId), token);
+      await moveFolder(String(body.folderId), String(body.newParentId), token, body.name ? String(body.name) : undefined);
       res.status(200).json({ ok: true });
       return;
     }

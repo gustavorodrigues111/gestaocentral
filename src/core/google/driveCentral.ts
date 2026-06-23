@@ -66,9 +66,9 @@ export async function centralListFolder(folderId: string): Promise<Array<{ id: s
   return files;
 }
 
-// Move uma pasta pra dentro de outro pai (id não muda).
-export async function centralMoveFolder(folderId: string, newParentId: string): Promise<void> {
-  await post("moveFolder", { folderId, newParentId });
+// Move uma pasta pra dentro de outro pai (id não muda). name opcional renomeia.
+export async function centralMoveFolder(folderId: string, newParentId: string, name?: string): Promise<void> {
+  await post("moveFolder", { folderId, newParentId, ...(name ? { name } : {}) });
 }
 
 // Extrai o id de uma pasta a partir de um link do Drive ou de um id cru.
