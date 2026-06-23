@@ -654,9 +654,12 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
     + `Fundo de caixa: ${f.fundoCaixa != null ? fmtBRL(f.fundoCaixa) : "—"}\nLacre: ${f.numeroLacre || "—"}\nFechado por: ${f.fechadoPor?.nome || "—"}\n`
     + (f.observacao ? `Observação: ${f.observacao}\n` : "");
   const subject = `Fechamento ${TURNO_CAIXA_LABEL[f.turno]} ${fmtData(f.data)} — ${restaurantNome}`;
+  // Remetente: override da config OU "<Restaurante> <caixa@planejamento.app>".
+  const nomeRem = restaurantNome.replace(/["<>]/g, "").trim() || "Fechamento";
+  const remetente = (from && from.trim()) || `"${nomeRem}" <caixa@planejamento.app>`;
   const headers = { "Content-Type": "application/json", ...(await authHeader()) };
   for (const to of emails) {
-    try { await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify({ to, subject, html, text, ...(from && from.trim() ? { from: from.trim() } : {}) }) }); }
+    try { await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify({ to, subject, html, text, from: remetente }) }); }
     catch { /* best-effort */ }
   }
 }
@@ -890,8 +893,8 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
           <Button variant="secondary" size="sm" onClick={addEmail}>+ Adicionar</Button>
         </div>
         <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Email remetente <span className="font-normal text-gray-400">— opcional</span></label>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">De qual endereço o email sai. O domínio precisa estar <strong>verificado na Resend</strong>. Vazio = remetente padrão do sistema. Ex: <code>Sororoca &lt;fechamento@sororoca.com.br&gt;</code>.</p>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Email remetente <span className="font-normal text-gray-400">— opcional (override)</span></label>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">Padrão: <code>"{restaurant.nome || "Restaurante"}" &lt;caixa@planejamento.app&gt;</code> (o destinatário vê o nome do restaurante). Só preencha se quiser outro remetente — o domínio precisa estar <strong>verificado na Resend</strong>.</p>
           <div className="flex gap-2 items-center">
             <input value={remetente} onChange={(e) => setRemetente(e.target.value)} placeholder="Nome <email@dominio.com.br>"
               className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />

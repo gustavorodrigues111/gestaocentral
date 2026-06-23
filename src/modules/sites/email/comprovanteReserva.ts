@@ -35,6 +35,7 @@ type Args = {
 export type EmailComprovanteReserva = {
   to: string;
   replyTo?: string;
+  from?: string;
   subject: string;
   html: string;
   text: string;
@@ -196,6 +197,8 @@ export function montarEmailComprovanteReserva(args: Args): EmailComprovanteReser
   return {
     to: args.emailDestinatario,
     replyTo: args.siteConfig.emailContato || undefined,
+    // Remetente: nome do restaurante como display, domínio da plataforma (verificado).
+    from: `"${restNome.replace(/["<>]/g, "").trim() || "Reservas"}" <reservas@planejamento.app>`,
     subject,
     html,
     text,
@@ -216,6 +219,7 @@ export async function enviarEmailComprovanteReserva(
       body: JSON.stringify({
         to: payload.to,
         replyTo: payload.replyTo,
+        ...(payload.from ? { from: payload.from } : {}),
         subject: payload.subject,
         html: payload.html,
         text: payload.text,
