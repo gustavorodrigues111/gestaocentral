@@ -1053,6 +1053,17 @@ function ConciliacaoCartoes() {
     finally { setLendoXlsx(false); }
   }
 
+  // Colar print direto (Cmd/Ctrl+V) — pega imagens da área de transferência.
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const itens = e.clipboardData?.items ? Array.from(e.clipboardData.items) : [];
+      const imgs = itens.filter((it) => it.kind === "file" && it.type.startsWith("image/")).map((it) => it.getAsFile()).filter((f): f is File => !!f);
+      if (imgs.length) { e.preventDefault(); void lerPrint(imgs); }
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  }, []);
+
   // Janelas: cada caixa (ordenado por corte) cobre (corte anterior, corte dele].
   const cortes = useMemo(() => caixas.map((c) => ({ ...c, ts: new Date(`${c.data}T${c.hora}`).getTime() })).filter((c) => !isNaN(c.ts)).sort((a, b) => a.ts - b.ts), [caixas]);
 
@@ -1112,8 +1123,8 @@ function ConciliacaoCartoes() {
       <div className="grid sm:grid-cols-2 gap-3">
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">1 · Print dos caixas (Altec)</div>
-          <p className="text-[12px] text-gray-500 mb-3">A lista de fechamentos do Altec. Os horários definem o intervalo de cada caixa.</p>
-          <Button size="sm" variant="secondary" disabled={lendoPrint} onClick={() => printRef.current?.click()}>{lendoPrint ? "Lendo…" : caixas.length ? `📷 ${caixas.length} caixas · adicionar print` : "📷 Enviar print"}</Button>
+          <p className="text-[12px] text-gray-500 mb-3">A lista de fechamentos do Altec. Os horários definem o intervalo de cada caixa. Pode <strong>colar (Cmd/Ctrl+V)</strong> o print direto.</p>
+          <Button size="sm" variant="secondary" disabled={lendoPrint} onClick={() => printRef.current?.click()}>{lendoPrint ? "Lendo…" : caixas.length ? `📷 ${caixas.length} caixas · adicionar print` : "📷 Enviar ou colar print"}</Button>
         </div>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">2 · Planilha de vendas (Rede)</div>
