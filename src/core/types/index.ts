@@ -689,6 +689,7 @@ export type Restaurant = {
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
   fechamentoSociosEmails?: string[];
+  fechamentoSocios?: SocioComanda[];  // sócios com comanda fixa (nome + nº)
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
@@ -4701,7 +4702,7 @@ export type GrupoAnexoFechamento = "comprovante" | "filipeta" | "comanda" | "din
 export const GRUPO_ANEXO_LABEL: Record<GrupoAnexoFechamento, string> = {
   comprovante: "Comprovante de fechamento (Altec)",
   filipeta: "Filipetas das maquininhas",
-  comanda: "Comandas de sócios",
+  comanda: "Comandas (sócios / cortesia)",
   dinheiro: "Foto do dinheiro",
   outro: "Outros",
 };
@@ -4710,7 +4711,10 @@ export type AnexoFechamento = {
   driveUrl?: string;
   nome: string;
   grupo: GrupoAnexoFechamento;
+  rotulo?: string;              // p/ comandas: "Fulano (12)", "Cortesia (99)"…
 };
+// Sócio com comanda fixa (cadastrável na config do módulo).
+export type SocioComanda = { nome: string; numero: string };
 export type FechamentoCaixa = {
   id: string;
   restaurantId: string;

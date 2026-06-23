@@ -20,7 +20,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { AnexoFechamento, FechamentoCaixa, GrupoAnexoFechamento, TurnoCaixa } from "../../core/types";
+import type { AnexoFechamento, FechamentoCaixa, GrupoAnexoFechamento, SocioComanda, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
@@ -47,6 +47,13 @@ function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
 
 const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "filipeta", "comanda", "dinheiro", "outro"];
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
+// Comandas fixas (mesas especiais) — sempre disponíveis além dos sócios cadastrados.
+const COMANDAS_FIXAS: SocioComanda[] = [
+  { nome: "Cortesia", numero: "99" },
+  { nome: "Perdas", numero: "98" },
+  { nome: "Treinamentos", numero: "97" },
+];
+const rotuloComanda = (c: SocioComanda) => `${c.nome} (${c.numero})`;
 
 export function FechamentoCaixaPage() {
   const { pessoa: me } = useAuth();
@@ -184,11 +191,47 @@ function FonteModal({ titulo, onClose, onArquivo }: { titulo: string; onClose: (
   );
 }
 
+// ─── Modal: escolher de qual comanda é o anexo ──────────────────────────────
+function ComandaModal({ socios, onClose, onPick }: { socios: SocioComanda[]; onClose: () => void; onPick: (rotulo: string) => void }) {
+  const lista = [...socios].sort((a, b) => a.nome.localeCompare(b.nome));
+  return (
+    <Modal title="De qual comanda é?" onClose={onClose} maxWidth="max-w-sm">
+      <div className="space-y-3">
+        {lista.length > 0 && (
+          <div>
+            <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Sócios</div>
+            <div className="grid grid-cols-1 gap-1.5 max-h-60 overflow-auto">
+              {lista.map((c) => (
+                <button key={`${c.nome}-${c.numero}`} type="button" onClick={() => onPick(rotuloComanda(c))}
+                  className="text-left text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  {c.nome} <span className="text-gray-400">· comanda {c.numero}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+        <div>
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Mesas especiais</div>
+          <div className="grid grid-cols-1 gap-1.5">
+            {COMANDAS_FIXAS.map((c) => (
+              <button key={c.numero} type="button" onClick={() => onPick(rotuloComanda(c))}
+                className="text-left text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                {c.nome} <span className="text-gray-400">· comanda {c.numero}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+        {lista.length === 0 && <p className="text-[11px] text-gray-400">Cadastre os sócios na aba Configurações pra escolher pelo nome.</p>}
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Modal: novo fechamento ─────────────────────────────────────────────────
-type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento };
+type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
 function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   rid: string;
-  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[] };
+  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoSocios?: SocioComanda[] };
   por: { id: string; nome: string };
   onClose: () => void;
   onSalvo: () => void;
@@ -198,6 +241,8 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [data, setData] = useState(sug.data);
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const [grupoFonte, setGrupoFonte] = useState<GrupoAnexoFechamento | null>(null);
+  const [comandaPick, setComandaPick] = useState(false);     // escolher qual comanda
+  const [comandaRotulo, setComandaRotulo] = useState<string>(""); // comanda escolhida p/ o próximo anexo
   const [totalVendas, setTotalVendas] = useState("");
   const [dinheiro, setDinheiro] = useState("");
   const [fundoCaixa, setFundoCaixa] = useState("");
@@ -226,8 +271,8 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     finally { if (seq === leituraSeq.current) setLendo(false); }
   }
 
-  function aoAnexar(grupo: GrupoAnexoFechamento, f: File) {
-    setAnexos((prev) => [...prev, { file: f, grupo }]);
+  function aoAnexar(grupo: GrupoAnexoFechamento, f: File, rotulo?: string) {
+    setAnexos((prev) => [...prev, { file: f, grupo, ...(rotulo ? { rotulo } : {}) }]);
     if (grupo === "comprovante") void lerComprovante(f);
   }
 
@@ -252,10 +297,11 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         for (const a of anexos) {
           const n = (contagem[a.grupo] = (contagem[a.grupo] || 0) + 1);
           const ext = (a.file.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (a.file.type.includes("pdf") ? ".pdf" : ".jpg");
-          const nome = `${a.grupo}${n}${ext}`;
-          const alvo = await carimbarImagem(new File([a.file], nome, { type: a.file.type }), carimbo, a.grupo !== "dinheiro");
+          // Comanda usa o rótulo no nome (ex: "comanda Cortesia (99)"); demais "grupoN".
+          const base = a.grupo === "comanda" && a.rotulo ? `comanda ${a.rotulo}`.replace(/[\\/]/g, "-") : `${a.grupo}${n}`;
+          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, a.grupo !== "dinheiro");
           const s = await uploadFileToFolder(turnoId, alvo);
-          anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+          anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
       }
       const emails = (restaurant.fechamentoSociosEmails || []).filter((e) => e.includes("@"));
@@ -331,7 +377,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
               <div key={g} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200">{GRUPO_ICONE[g]} {GRUPO_ANEXO_LABEL[g]}</span>
-                  <Button size="sm" variant="secondary" onClick={() => setGrupoFonte(g)}>➕ Anexar</Button>
+                  <Button size="sm" variant="secondary" onClick={() => { if (g === "comanda") setComandaPick(true); else setGrupoFonte(g); }}>➕ Anexar</Button>
                 </div>
                 {itens.length > 0 && (
                   <div className="mt-1 divide-y divide-gray-100 dark:divide-gray-800">
@@ -339,7 +385,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
                       const idx = anexos.indexOf(a);
                       return (
                         <div key={idx} className="px-1 py-1 text-[11px] flex items-center gap-2">
-                          <span className="truncate flex-1">📎 {a.file.name}</span>
+                          <span className="truncate flex-1">📎 {a.rotulo ? `${a.rotulo} · ` : ""}{a.file.name}</span>
                           <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}>✕</button>
                         </div>
                       );
@@ -383,9 +429,13 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Fechar caixa"}</Button>
         </div>
 
+        {comandaPick && (
+          <ComandaModal socios={restaurant.fechamentoSocios || []} onClose={() => setComandaPick(false)}
+            onPick={(rot) => { setComandaRotulo(rot); setComandaPick(false); setGrupoFonte("comanda"); }} />
+        )}
         {grupoFonte && (
-          <FonteModal titulo={`Anexar — ${GRUPO_ANEXO_LABEL[grupoFonte]}`} onClose={() => setGrupoFonte(null)}
-            onArquivo={(f) => { const g = grupoFonte; setGrupoFonte(null); aoAnexar(g, f); }} />
+          <FonteModal titulo={grupoFonte === "comanda" ? `Anexar comanda — ${comandaRotulo}` : `Anexar — ${GRUPO_ANEXO_LABEL[grupoFonte]}`} onClose={() => setGrupoFonte(null)}
+            onArquivo={(f) => { const g = grupoFonte; const rot = g === "comanda" ? comandaRotulo : undefined; setGrupoFonte(null); aoAnexar(g, f, rot); }} />
         )}
       </div>
     </Modal>
@@ -420,14 +470,30 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[] } }) {
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoSocios?: SocioComanda[] } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [central, setCentral] = useState<boolean | null>(null);
   const [destino, setDestino] = useState("");
   const [emails, setEmails] = useState<string[]>(restaurant.fechamentoSociosEmails || []);
   const [novoEmail, setNovoEmail] = useState("");
+  const [socios, setSocios] = useState<SocioComanda[]>(restaurant.fechamentoSocios || []);
+  const [socNome, setSocNome] = useState("");
+  const [socNumero, setSocNumero] = useState("");
   useEffect(() => { void centralConfigured().then(setCentral); }, []);
+
+  async function salvarSocios(lista: SocioComanda[]) {
+    setSocios(lista);
+    try { await updateDoc(doc(db, "restaurants", rid), { fechamentoSocios: lista.length ? lista : deleteField() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar os sócios."); }
+  }
+  function addSocio() {
+    const nome = socNome.trim(), numero = socNumero.trim();
+    if (!nome || !numero) { setErro("Informe nome e número da comanda."); return; }
+    if (socios.some((s) => s.numero === numero)) { setErro(`Já existe sócio com a comanda ${numero}.`); return; }
+    setErro(""); setSocNome(""); setSocNumero("");
+    void salvarSocios([...socios, { nome, numero }]);
+  }
 
   async function escolherPasta() {
     setErro("");
@@ -518,6 +584,29 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
           <Button variant="secondary" size="sm" onClick={addEmail}>+ Adicionar</Button>
         </div>
       </div>
+
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Sócios e comandas fixas</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Cadastre os sócios (nome + nº fixo da comanda). Na hora de anexar uma comanda você escolhe entre estes e as mesas especiais (Cortesia 99, Perdas 98, Treinamentos 97).</p>
+        {socios.length > 0 && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {socios.map((s) => (
+              <div key={s.numero} className="px-3 py-1.5 text-sm flex items-center gap-2">
+                <span className="flex-1 truncate">📋 {s.nome} <span className="text-gray-400">· comanda {s.numero}</span></span>
+                <button type="button" className="text-[11px] text-gray-500 hover:text-rose-600" onClick={() => void salvarSocios(socios.filter((x) => x.numero !== s.numero))}>remover</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input value={socNome} onChange={(e) => setSocNome(e.target.value)} placeholder="Nome do sócio"
+            className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <input value={socNumero} onChange={(e) => setSocNumero(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addSocio(); }} placeholder="Nº comanda" inputMode="numeric"
+            className="w-28 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <Button variant="secondary" size="sm" onClick={addSocio}>+ Adicionar</Button>
+        </div>
+        <p className="text-[11px] text-gray-400">Mesas fixas sempre disponíveis: Cortesia (99), Perdas (98), Treinamentos (97).</p>
+      </div>
     </div>
   );
 }
@@ -601,7 +690,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-60 overflow-auto">
             {f.anexos.map((a, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">{GRUPO_ICONE[a.grupo]} {GRUPO_ANEXO_LABEL[a.grupo]} · {a.nome}</span>
+                <span className="truncate flex-1">{GRUPO_ICONE[a.grupo]} {a.rotulo ? a.rotulo : GRUPO_ANEXO_LABEL[a.grupo]} · {a.nome}</span>
                 {a.driveUrl && <a href={a.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}
