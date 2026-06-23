@@ -90,12 +90,14 @@ const PROMPT_ALTEC_CAIXAS =
   "restaurante (relatório 'Fechamentos Caixa'). Cada linha é um caixa, com um NÚMERO/ID (coluna à esquerda, ex 170, 171…) " +
   "e um ou dois carimbos de data/hora. Quando a linha mostra DOIS horários (abertura e fechamento), pegue o de " +
   "FECHAMENTO (o segundo / mais recente). Quando mostra só um, use esse. " +
+  "Cada linha tem o NÚMERO/ID e UM ou DOIS carimbos de data/hora (abertura e fechamento). " +
+  "Em \"data\"/\"hora\" devolva o FECHAMENTO: quando a linha mostrar dois horários, use o SEGUNDO (mais recente); quando mostrar só um, use esse. " +
+  "Em \"abertura\" devolva o horário de ABERTURA (o primeiro/mais antigo) APENAS quando a linha mostrar DOIS horários; senão null. " +
   "Liste TODAS as linhas/caixas visíveis, na ordem em que aparecem. IGNORE a linha de 'Total'. " +
-  "Marque \"aberto\": true quando a linha NÃO tiver horário de fechamento (caixa ainda aberto, só com abertura); nesse caso use a abertura em data/hora. " +
   "Responda SOMENTE um objeto JSON (sem texto antes ou depois).\n" +
   REGRA_DATA +
   "{\n" +
-  '  "caixas": [<{"id": <número do caixa como string>, "data": "YYYY-MM-DD", "hora": "HH:MM:SS", "aberto": <true se não houver fechamento, senão false>}>, ...]\n' +
+  '  "caixas": [<{"id": <número do caixa como string>, "data": "YYYY-MM-DD", "hora": "HH:MM:SS", "abertura": "YYYY-MM-DD HH:MM:SS" ou null}>, ...]\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
@@ -219,7 +221,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         const hm = horaRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
         if (!data || !hm) return null;
         const hora = `${hm[1].padStart(2, "0")}:${hm[2]}:${hm[3] || "00"}`;
-        return { ...(id ? { id } : {}), data, hora, aberto: o.aberto === true };
+        const ab = typeof o.abertura === "string" ? o.abertura.trim() : "";
+        const abm = ab.match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        const abertura = abm ? `${abm[1]}-${abm[2]}-${abm[3]}T${abm[4].padStart(2, "0")}:${abm[5]}:${abm[6] || "00"}` : null;
+        return { ...(id ? { id } : {}), data, hora, ...(abertura ? { abertura } : {}) };
       }).filter(Boolean) : [];
       res.status(200).json({ caixas });
       return;

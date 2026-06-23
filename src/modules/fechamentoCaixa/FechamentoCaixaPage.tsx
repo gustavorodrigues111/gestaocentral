@@ -971,7 +971,7 @@ function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: Fecham
 // e a planilha de vendas da Rede; agrupa as vendas de cartão por janela de caixa
 // (do corte anterior até o corte de cada caixa) pra conferir crédito/débito por
 // bandeira na Altec. PIX/dinheiro não vêm da Rede (entram por outro canal).
-type CaixaCorte = { id?: string; data: string; hora: string; aberto?: boolean }; // hora HH:MM:SS
+type CaixaCorte = { id?: string; data: string; hora: string; abertura?: string }; // hora HH:MM:SS; abertura ISO quando há (sessão com abertura+fechamento)
 type TxRede = { ts: number; modalidade: "credito" | "debito" | "pix" | "outro"; bandeira: string; valor: number };
 const DIACR = new RegExp("[\\u0300-\\u036f]", "g");
 const normMod = (s: string): TxRede["modalidade"] => {
@@ -1123,7 +1123,21 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
   }, []);
 
   // Janelas: cada caixa (ordenado por corte) cobre (corte anterior, corte dele].
-  const cortes = useMemo(() => caixas.map((c) => ({ ...c, ts: new Date(`${c.data}T${c.hora}`).getTime() })).filter((c) => !isNaN(c.ts)).sort((a, b) => a.ts - b.ts), [caixas]);
+  // Sessões longas (abertura→fechamento > 24h, ex: caixa esquecido aberto vários dias) são ignoradas:
+  // elas se sobrepõem aos caixas normais e bagunçam a divisão por horário.
+  const SESSAO_LONGA_MS = 24 * 60 * 60 * 1000;
+  const { cortes, ignorados } = useMemo(() => {
+    const parsed = caixas.map((c) => {
+      const ts = new Date(`${c.data}T${c.hora}`).getTime();
+      const abTs = c.abertura ? new Date(c.abertura).getTime() : NaN;
+      const longa = !isNaN(abTs) && ts - abTs > SESSAO_LONGA_MS;
+      return { ...c, ts, longa };
+    }).filter((c) => !isNaN(c.ts));
+    return {
+      cortes: parsed.filter((c) => !c.longa).sort((a, b) => a.ts - b.ts),
+      ignorados: parsed.filter((c) => c.longa).sort((a, b) => a.ts - b.ts),
+    };
+  }, [caixas]);
 
   const resultado = useMemo(() => {
     if (!txs || !cortes.length) return null;
@@ -1153,7 +1167,6 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
     try {
       for (let i = 0; i < cortes.length; i++) {
         const c = cortes[i];
-        if (c.aberto) { novos.push(`Caixa ${c.id ? `#${c.id}` : fmtData(c.data)} está aberto — não salvo até fechar.`); continue; }
         const g = resultado.porCaixa[i];
         const chave = `${c.data}T${c.hora}|${c.id || ""}`;
         const existente = salvos.find((s) => chaveSalvo(s) === chave);
@@ -1289,24 +1302,26 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 
       {/* Pré-visualização do que foi lido — salvar pra aguardar conciliação */}
       {resultado && (() => {
-        const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · ${c.aberto ? "aberto" : "fechou"} ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
+        const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · fechou ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
         const janela = (i: number) => `de ${i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início"} até ${fmtData(cortes[i].data)} ${cortes[i].hora.slice(0, 5)}`;
         // Caixas que já estão conciliados aparecem no print só pelo corte — ocultados aqui.
         const conciliadoChaves = new Set(conciliadosSalvos.map((s) => chaveSalvo(s)));
         const visiveis = cortes.map((c, i) => ({ c, i })).filter(({ c }) => !conciliadoChaves.has(`${c.data}T${c.hora}|${c.id || ""}`));
         const ocultados = cortes.length - visiveis.length;
-        const novosFechados = visiveis.filter(({ c }) => !c.aberto).length;
         return (
           <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/10 rounded-xl p-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{novosFechados}</strong> caixa(s) fechado(s) novo(s){ocultados > 0 ? ` · ${ocultados} já conciliado(s) ocultado(s)` : ""}. Confira e salve pra aguardar a conciliação.</div>
+              <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{visiveis.length}</strong> caixa(s){ocultados > 0 ? ` · ${ocultados} já conciliado(s) ocultado(s)` : ""}{ignorados.length > 0 ? ` · ${ignorados.length} sessão(ões) longa(s) ignorada(s)` : ""}. Confira e salve pra aguardar a conciliação.</div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setCaixas([]); setTxs(null); setRedeNome(""); setIfood(null); setIfoodNome(""); }} className="text-[12px] text-gray-500 hover:underline px-1">descartar</button>
-                <Button size="sm" disabled={salvando || novosFechados === 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
+                <Button size="sm" disabled={salvando || visiveis.length === 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
               </div>
             </div>
+            {ignorados.length > 0 && (
+              <div className="text-[11px] text-gray-400">Ignorados (sessão de vários dias): {ignorados.map((c) => `${c.id ? `#${c.id} ` : ""}${fmtData(c.data)}`).join(", ")}</div>
+            )}
             <div className="space-y-3">
-              {visiveis.map(({ c, i }) => <Card key={i} amber={c.aberto} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
+              {visiveis.map(({ c, i }) => <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
               {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)}) — não é salvo até fechar`} g={resultado.aberto} />}
             </div>
           </div>
