@@ -75,10 +75,14 @@ const PROMPT_FECHAMENTO =
 const PROMPT_COMANDA =
   "Você recebe a imagem/PDF com UMA OU VÁRIAS COMANDAS de consumo de restaurante (impressas pelo PDV; " +
   "pode haver várias comandas espalhadas na mesma foto). Identifique o NÚMERO de CADA comanda/mesa " +
-  "(geralmente em destaque, como 'Mesa 99', 'Comanda 12'). " +
+  "(geralmente em destaque, como 'Mesa 99', 'Comanda 12').\n" +
+  "IMPORTANTE sobre o VALOR: comandas de cortesia/sócios têm um DESCONTO altíssimo (≈99,99%) só pra fins " +
+  "fiscais, então o 'total a pagar' vem quase ZERO. NÃO use o valor a pagar/líquido. Use o TOTAL BRUTO " +
+  "dos itens ANTES do desconto (o subtotal/soma dos produtos pelo preço cheio). Se houver linha de " +
+  "desconto, o valor que você quer é o de ANTES dela.\n" +
   'Responda SOMENTE um objeto JSON (sem texto antes ou depois). Valores em reais como NÚMERO.\n' +
   "{\n" +
-  '  "comandas": [<{"numero": <nº da comanda/mesa só dígitos, string>, "valor": <total consumido na comanda como NÚMERO, ou null>}>, ...]  (uma por comanda visível; [] se nenhuma)\n' +
+  '  "comandas": [<{"numero": <nº da comanda/mesa só dígitos, string>, "valor": <total BRUTO antes do desconto como NÚMERO, ou null>}>, ...]  (uma por comanda visível; [] se nenhuma)\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
