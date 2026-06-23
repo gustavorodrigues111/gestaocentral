@@ -187,12 +187,13 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
   const [exportando, setExportando] = useState<"" | "pdf" | "xlsx">("");
   const purgandoRef = useRef<Set<string>>(new Set());
+  const [detalheHist, setDetalheHist] = useState<FechamentoCaixa | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -278,16 +279,14 @@ export function FechamentoCaixaPage() {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "comandas" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
   if (podeVer) abas.push("comandas");
-  if (podeVer && conferidos.length > 0) abas.push("conferidos");
-  if (podeConfig && excluidos.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -298,8 +297,6 @@ export function FechamentoCaixaPage() {
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
         {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
-        {podeVer && conferidos.length > 0 && <TabBtn k="conferidos" label={`✅ Conferidos (${conferidos.length})`} />}
-        {podeConfig && excluidos.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidos.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -329,58 +326,62 @@ export function FechamentoCaixaPage() {
             </div>
           )}
           <FechamentoTabela fechamentos={pendentes} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+
+          {/* Histórico de conferidos (abaixo da lista, colapsável) */}
+          {conferidos.length > 0 && (
+            <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conferidos <span className="text-gray-400 font-normal">({conferidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
+              <div className="px-3 pb-3 space-y-2">
+                {conferidos.map((f) => (
+                  <div key={f.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                        <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">✓ conferido {f.conferidoEm ? fmtDataHora(f.conferidoEm) : ""}{f.conferidoPor?.nome ? ` · ${f.conferidoPor.nome}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button type="button" onClick={() => setDetalheHist(f)} className="text-[12px] text-indigo-600 hover:underline px-1">detalhes</button>
+                      {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(f)}>↩ Desfazer</Button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Histórico de excluídos (abaixo, colapsável, só config) */}
+          {podeConfig && excluidos.length > 0 && (
+            <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">🗑 Excluídos <span className="text-gray-400 font-normal">({excluidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
+              <div className="px-3 pb-3 space-y-2">
+                <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga na hora e move a pasta do Drive pra "excluídos".</p>
+                {excluidos.map((f) => (
+                  <div key={f.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
+                        <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                        <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">excluído {f.excluidoEm ? fmtDataHora(f.excluidoEm) : ""}{f.excluidoPor?.nome ? ` · ${f.excluidoPor.nome}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button size="sm" variant="secondary" onClick={() => void restaurar(f)}>↩ Restaurar</Button>
+                      <button type="button" onClick={() => void excluirDefinitivo(f)} title="Excluir definitivamente"
+                        className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
-      {abaEfetiva === "conferidos" && podeVer && (
-        <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Fechamentos <strong>conferidos pelo escritório</strong>. Este histórico nunca é apagado. Dá pra desfazer a conferência se precisar revisar.</p>
-          {conferidos.map((f) => (
-            <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
-                  <span className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
-                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
-                </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">✓ conferido {f.conferidoEm ? fmtDataHora(f.conferidoEm) : ""}{f.conferidoPor?.nome ? ` · ${f.conferidoPor.nome}` : ""}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {f.driveFolderUrl && (
-                  <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no Drive"
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 transition-colors">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
-                  </a>
-                )}
-                {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(f)}>↩ Desfazer</Button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {abaEfetiva === "excluidos" && podeConfig && (
-        <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Fechamentos movidos pra cá podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (o registro é apagado; os arquivos no Drive permanecem). A exclusão definitiva apaga o registro na hora e move a pasta do Drive pra "excluídos".</p>
-          {excluidos.map((f) => (
-            <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
-                  <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
-                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
-                </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">excluído {f.excluidoEm ? fmtDataHora(f.excluidoEm) : ""}{f.excluidoPor?.nome ? ` · ${f.excluidoPor.nome}` : ""}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="secondary" onClick={() => void restaurar(f)}>↩ Restaurar</Button>
-                <button type="button" onClick={() => void excluirDefinitivo(f)} title="Excluir definitivamente"
-                  className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {detalheHist && <DetalheFechamentoModal f={detalheHist} podeEditar={podeEditar} onClose={() => setDetalheHist(null)} onEditar={() => setDetalheHist(null)} />}
 
       {novo && (
         <NovoFechamentoModal
@@ -1182,7 +1183,7 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
                       {onConferir && (
-                        <button type="button" onClick={() => onConferir(f)} title="Marcar como conferido pelo escritório"
+                        <button type="button" onClick={() => setDetalhe(f)} title="Abrir pra conferir"
                           className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
                           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                           Conferir
@@ -1227,7 +1228,7 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
                 {onConferir && (
-                  <button type="button" onClick={() => onConferir(f)} title="Marcar como conferido"
+                  <button type="button" onClick={() => setDetalhe(f)} title="Abrir pra conferir"
                     className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                     Conferir
@@ -1250,13 +1251,13 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
           </div>
         ))}
       </div>
-      {detalhe && <DetalheFechamentoModal f={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(x) => { setDetalhe(null); setEditar(x); }} />}
+      {detalhe && <DetalheFechamentoModal f={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(x) => { setDetalhe(null); setEditar(x); }} onConferir={onConferir} />}
       {editar && <EditarFechamentoModal f={editar} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
   );
 }
 
-function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: FechamentoCaixa; podeEditar: boolean; onClose: () => void; onEditar: (f: FechamentoCaixa) => void }) {
+function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar, onConferir }: { f: FechamentoCaixa; podeEditar: boolean; onClose: () => void; onEditar: (f: FechamentoCaixa) => void; onConferir?: (f: FechamentoCaixa) => void }) {
   const linha = (k: string, v?: string | null) => (v != null && v !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm"><span className="text-gray-500 dark:text-gray-400">{k}</span><span className="text-right text-gray-800 dark:text-gray-200 break-all">{v}</span></div>
   ) : null;
@@ -1311,10 +1312,20 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
           </div>
         </div>
       )}
-      <div className="flex justify-end gap-2 pt-3">
+      {f.conferidoEm && (
+        <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(f.conferidoEm)}{f.conferidoPor?.nome ? ` por ${f.conferidoPor.nome}` : ""}</div>
+      )}
+      <div className="flex justify-end items-center gap-2 pt-3">
         {f.driveFolderUrl && <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir pasta no Drive</a>}
         {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(f)}>✏️ Editar</Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
+        {onConferir && !f.conferidoEm && (
+          <button type="button" onClick={() => { onConferir(f); onClose(); }}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+            Conferir
+          </button>
+        )}
       </div>
     </Modal>
   );

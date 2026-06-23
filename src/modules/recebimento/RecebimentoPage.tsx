@@ -192,7 +192,8 @@ export function RecebimentoPage() {
   const podeConfig = can("recebimento", "configurar");
   const temAcesso = canModulo("recebimento");
 
-  const [tab, setTab] = useState<"receber" | "notas" | "conferidos" | "excluidos" | "config">("receber");
+  const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
+  const [detalheHist, setDetalheHist] = useState<RecebimentoNota | null>(null);
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
   const [escolhendoTipo, setEscolhendoTipo] = useState(false);
@@ -299,17 +300,15 @@ export function RecebimentoPage() {
   }
 
   // Abas disponíveis conforme permissão; a efetiva é a 1ª válida.
-  const abas: Array<"receber" | "notas" | "conferidos" | "excluidos" | "config"> = [];
+  const abas: Array<"receber" | "notas" | "config"> = [];
   if (podeReceber) abas.push("receber");
   if (podeVer) abas.push("notas");
-  if (podeVer && conferidas.length > 0) abas.push("conferidos");
-  if (podeConfig && excluidas.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "receber");
 
   const abrirNovo = (arquivo: File | null) => { setErro(""); setArquivoInicial(arquivo); setEscolhendoFonte(false); setNovo(true); };
 
-  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "conferidos" | "excluidos" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
       {label}
@@ -322,8 +321,6 @@ export function RecebimentoPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
         {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
-        {podeVer && conferidas.length > 0 && <TabBtn k="conferidos" label={`✅ Conferidas (${conferidas.length})`} />}
-        {podeConfig && excluidas.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidas.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -356,56 +353,60 @@ export function RecebimentoPage() {
             </div>
           )}
           <RecebimentoTabela notas={pendentes} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+
+          {/* Histórico de conferidas (abaixo da lista, colapsável) */}
+          {conferidas.length > 0 && (
+            <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conferidas <span className="text-gray-400 font-normal">({conferidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
+              <div className="px-3 pb-3 space-y-2">
+                {conferidas.map((n) => (
+                  <div key={n.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                        <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · ✓ conferido {n.conferidoEm ? fmtDataHora(n.conferidoEm) : ""}{n.conferidoPor?.nome ? ` · ${n.conferidoPor.nome}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button type="button" onClick={() => setDetalheHist(n)} className="text-[12px] text-indigo-600 hover:underline px-1">detalhes</button>
+                      {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(n)}>↩ Desfazer</Button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+
+          {/* Histórico de excluídos (abaixo, colapsável, só config) */}
+          {podeConfig && excluidas.length > 0 && (
+            <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">🗑 Excluídos <span className="text-gray-400 font-normal">({excluidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
+              <div className="px-3 pb-3 space-y-2">
+                <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga na hora e move os arquivos do Drive pra "excluídos".</p>
+                {excluidas.map((n) => (
+                  <div key={n.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                        <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · excluído {n.excluidoEm ? fmtDataHora(n.excluidoEm) : ""}{n.excluidoPor?.nome ? ` · ${n.excluidoPor.nome}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Button size="sm" variant="secondary" onClick={() => void restaurar(n)}>↩ Restaurar</Button>
+                      <button type="button" onClick={() => void excluirDefinitivo(n)} title="Excluir definitivamente"
+                        className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
       )}
 
-      {abaEfetiva === "conferidos" && podeVer && (
-        <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Notas <strong>conferidas pelo escritório</strong>. Este histórico nunca é apagado. Dá pra desfazer a conferência se precisar revisar.</p>
-          {conferidas.map((n) => (
-            <div key={n.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
-                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
-                </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · ✓ conferido {n.conferidoEm ? fmtDataHora(n.conferidoEm) : ""}{n.conferidoPor?.nome ? ` · ${n.conferidoPor.nome}` : ""}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {n.notaDriveUrl && (
-                  <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
-                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 transition-colors">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
-                  </a>
-                )}
-                {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(n)}>↩ Desfazer</Button>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {abaEfetiva === "excluidos" && podeConfig && (
-        <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Recebimentos movidos pra cá podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (o registro é apagado; os arquivos no Drive permanecem). A exclusão definitiva apaga o registro na hora e move os arquivos do Drive pra "excluídos".</p>
-          {excluidas.map((n) => (
-            <div key={n.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
-                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
-                </div>
-                <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · excluído {n.excluidoEm ? fmtDataHora(n.excluidoEm) : ""}{n.excluidoPor?.nome ? ` · ${n.excluidoPor.nome}` : ""}</div>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="secondary" onClick={() => void restaurar(n)}>↩ Restaurar</Button>
-                <button type="button" onClick={() => void excluirDefinitivo(n)} title="Excluir definitivamente"
-                  className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      {detalheHist && <DetalheModal nota={detalheHist} podeEditar={podeEditar} onClose={() => setDetalheHist(null)} onEditar={() => setDetalheHist(null)} />}
 
       {escolhendoTipo && (
         <EscolhaTipoModal
@@ -750,7 +751,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
                     {onConferir && (
-                      <button type="button" onClick={() => onConferir(n)} title="Marcar como conferido pelo escritório"
+                      <button type="button" onClick={() => setDetalhe(n)} title="Abrir pra conferir"
                         className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
                         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                         Conferir
@@ -794,7 +795,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {onConferir && (
-                <button type="button" onClick={() => onConferir(n)} title="Marcar como conferido"
+                <button type="button" onClick={() => setDetalhe(n)} title="Abrir pra conferir"
                   className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
                   <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                   Conferir
@@ -818,14 +819,14 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
       ); })}
     </div>
     <p className="text-[11px] text-gray-400 mt-2 px-1">Versão resumida. Baixe <strong>XLSX</strong> ou <strong>PDF</strong> para a tabela completa (CNPJ, quem recebeu, divergência, todas as parcelas e semana).</p>
-    {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
+    {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} onConferir={onConferir} />}
     {editar && <EditarRecebimentoModal nota={editar} restaurant={restaurant} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
   );
 }
 
 // ─── Modal: detalhes de um recebimento ──────────────────────────────────────
-function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void }) {
+function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void; onConferir?: (n: RecebimentoNota) => void }) {
   const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
       <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -918,10 +919,20 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar }: { nota: Recebimen
           </div>
         </div>
       )}
-      <div className="flex justify-end gap-2 pt-3">
+      {nota.conferidoEm && (
+        <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(nota.conferidoEm)}{nota.conferidoPor?.nome ? ` por ${nota.conferidoPor.nome}` : ""}</div>
+      )}
+      <div className="flex justify-end items-center gap-2 pt-3">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
+        {onConferir && !nota.conferidoEm && (
+          <button type="button" onClick={() => { onConferir(nota); onClose(); }}
+            className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+            Conferir
+          </button>
+        )}
       </div>
     </Modal>
   );
