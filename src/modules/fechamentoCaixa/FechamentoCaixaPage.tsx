@@ -52,8 +52,23 @@ const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
 const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0) + (m.pix || 0);
 
+// Chave pra detectar maquininha duplicada: mesmo identificador (terminal) ou,
+// na falta dele, mesma combinação de valores.
+const chaveMaq = (m: MaquininhaFechamento): string => {
+  const id = (m.identificador || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  return id ? `id:${id}` : `v:${m.credito || 0}|${m.debito || 0}|${m.pix || 0}|${totalMaq(m)}`;
+};
+// Índices que são repetição de uma maquininha anterior.
+function indicesDuplicados(maquininhas: MaquininhaFechamento[]): Set<number> {
+  const dup = new Set<number>(); const visto = new Set<string>();
+  maquininhas.forEach((m, i) => { const k = chaveMaq(m); if (visto.has(k)) dup.add(i); else visto.add(k); });
+  return dup;
+}
+
 // Tabela das maquininhas: colunas crédito/débito/pix/total, soma e conferência com o Altec.
-function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number }) {
+// Com onRemove, fica editável (remove linha) e sinaliza duplicadas.
+function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onRemove }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number; onRemove?: (index: number) => void }) {
+  const dup = indicesDuplicados(maquininhas);
   const somaC = maquininhas.reduce((s, m) => s + (m.credito || 0), 0);
   const somaD = maquininhas.reduce((s, m) => s + (m.debito || 0), 0);
   const somaP = maquininhas.reduce((s, m) => s + (m.pix || 0), 0);
@@ -64,6 +79,12 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec }: {
   const bate = (d: number | null) => d == null || Math.abs(d) <= 0.01;
   const temPix = somaP > 0 || pixAltec != null || maquininhas.some((m) => m.pix != null);
   const cell = (v?: number) => <td className="px-2 py-1 text-right tabular-nums">{v != null ? fmtBRL(v) : "—"}</td>;
+  // Soma interna de cada filipeta: crédito+débito+pix deve bater com o total lido.
+  const mismatch = (m: MaquininhaFechamento) => {
+    const temParte = m.credito != null || m.debito != null || m.pix != null;
+    return m.total != null && temParte && Math.abs(m.total - ((m.credito || 0) + (m.debito || 0) + (m.pix || 0))) > 0.01;
+  };
+  const algumMismatch = maquininhas.some(mismatch);
   return (
     <div>
       <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-x-auto">
@@ -75,40 +96,44 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec }: {
               <th className="px-2 py-1 font-medium text-right">Débito</th>
               {temPix && <th className="px-2 py-1 font-medium text-right">PIX</th>}
               <th className="px-2 py-1 font-medium text-right">Total</th>
+              {onRemove && <th className="px-1 py-1" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {maquininhas.map((m, i) => (
-              <tr key={i}>
-                <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}</td>
+              <tr key={i} className={dup.has(i) ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
+                <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}{dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400">· ⚠ duplicada?</span>}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>
                 {temPix && <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>}
-                <td className="px-2 py-1 text-right tabular-nums font-medium">{fmtBRL(totalMaq(m))}</td>
+                <td className={`px-2 py-1 text-right tabular-nums font-medium ${mismatch(m) ? "text-amber-600 dark:text-amber-400" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{fmtBRL(totalMaq(m))}{mismatch(m) && " ⚠"}</td>
+                {onRemove && <td className="px-1 py-1 text-center"><button type="button" className="text-gray-400 hover:text-rose-600" title="Remover" onClick={() => onRemove(i)}>✕</button></td>}
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="border-t border-gray-200 dark:border-gray-800 font-semibold bg-gray-50 dark:bg-gray-800/40">
               <td className="px-2 py-1">Soma maquininhas</td>
-              {cell(somaC)}{cell(somaD)}{temPix && cell(somaP)}{cell(somaT)}
+              {cell(somaC)}{cell(somaD)}{temPix && cell(somaP)}{cell(somaT)}{onRemove && <td />}
             </tr>
             {(creditoAltec != null || debitoAltec != null || pixAltec != null) && (
               <tr className="text-gray-500">
                 <td className="px-2 py-1">Comprovante (Altec)</td>
-                {cell(creditoAltec)}{cell(debitoAltec)}{temPix && cell(pixAltec)}{cell((creditoAltec || 0) + (debitoAltec || 0) + (pixAltec || 0))}
+                {cell(creditoAltec)}{cell(debitoAltec)}{temPix && cell(pixAltec)}{cell((creditoAltec || 0) + (debitoAltec || 0) + (pixAltec || 0))}{onRemove && <td />}
               </tr>
             )}
             {(diffC != null || diffD != null || diffP != null) && !(bate(diffC) && bate(diffD) && bate(diffP)) && (
               <tr className="text-amber-600 dark:text-amber-400 font-medium">
                 <td className="px-2 py-1">⚠ Diferença</td>
-                {cell(diffC ?? undefined)}{cell(diffD ?? undefined)}{temPix && cell(diffP ?? undefined)}{cell((diffC || 0) + (diffD || 0) + (diffP || 0))}
+                {cell(diffC ?? undefined)}{cell(diffD ?? undefined)}{temPix && cell(diffP ?? undefined)}{cell((diffC || 0) + (diffD || 0) + (diffP || 0))}{onRemove && <td />}
               </tr>
             )}
           </tfoot>
         </table>
       </div>
-      {(diffC != null || diffD != null || diffP != null) && bate(diffC) && bate(diffD) && bate(diffP) && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
+      {dup.size > 0 && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ {dup.size} maquininha(s) possivelmente duplicada(s){onRemove ? " — remova as repetidas (✕) antes de salvar." : "."}</p>}
+      {algumMismatch && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Em alguma filipeta, crédito+débito+PIX não bate com o total impresso — confira a leitura.</p>}
+      {(diffC != null || diffD != null || diffP != null) && bate(diffC) && bate(diffD) && bate(diffP) && dup.size === 0 && !algumMismatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
     </div>
   );
 }
@@ -383,6 +408,8 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     setErro("");
     if (!data) { setErro("Informe a data."); return; }
     if (!anexos.length && parseBRL(totalVendas) == null) { setErro("Anexe ao menos um documento ou preencha o total de vendas."); return; }
+    const nDup = indicesDuplicados(maquininhas).size;
+    if (nDup > 0 && !window.confirm(`Há ${nDup} maquininha(s) possivelmente duplicada(s) na lista. Salvar mesmo assim?\n\n(Cancele e remova as repetidas com o ✕ se for o caso.)`)) return;
     if (anexos.length && !restaurant.fechamentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de fechar."); return; }
     setSalvando(true);
     try {
@@ -547,7 +574,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         {maquininhas.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
-            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)} />
+            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)} onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))} />
           </div>
         )}
 
