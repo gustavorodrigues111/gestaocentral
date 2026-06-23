@@ -20,7 +20,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { AnexoFechamento, FechamentoCaixa, GrupoAnexoFechamento, SocioComanda, TurnoCaixa } from "../../core/types";
+import type { AnexoFechamento, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, SocioComanda, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
@@ -45,7 +45,8 @@ function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
   return { data: ymd(now), turno: h < 17 ? "almoco" : "jantar" };
 }
 
-const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "filipeta", "comanda", "dinheiro", "outro"];
+// Dinheiro virou só valor (sem foto); filipetas entram junto do comprovante (1 grupo, IA lê tudo).
+const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "comanda", "outro"];
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 // Comandas fixas (mesas especiais) — sempre disponíveis além dos sócios cadastrados.
 const COMANDAS_FIXAS: SocioComanda[] = [
@@ -245,6 +246,10 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [comandaRotulo, setComandaRotulo] = useState<string>(""); // comanda escolhida p/ o próximo anexo
   const [totalVendas, setTotalVendas] = useState("");
   const [dinheiro, setDinheiro] = useState("");
+  const [pix, setPix] = useState("");
+  const [credito, setCredito] = useState("");
+  const [debito, setDebito] = useState("");
+  const [maquininhas, setMaquininhas] = useState<MaquininhaFechamento[]>([]);
   const [fundoCaixa, setFundoCaixa] = useState("");
   const [numeroLacre, setNumeroLacre] = useState("");
   const [observacao, setObservacao] = useState("");
@@ -254,26 +259,35 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [erro, setErro] = useState("");
   const leituraSeq = useRef(0);
 
-  // OCR do comprovante de fechamento → pré-preenche total de vendas + dinheiro.
-  async function lerComprovante(file: File) {
+  // OCR do(s) comprovante(s) + filipetas (todas as fotos juntas) → pré-preenche
+  // total, dinheiro, PIX, crédito, débito e a quebra por maquininha.
+  async function lerComprovantes(files: File[]) {
+    if (!files.length) return;
     const seq = ++leituraSeq.current;
     setLendo(true);
     try {
-      const bloco = await paraOcrBlock(file);
-      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "fechamento" }) });
+      const blocos = await Promise.all(files.map(paraOcrBlock));
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: blocos, tipo: "fechamento" }) });
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return;
       if (resp.ok) {
         if (j.totalVendas != null) setTotalVendas((p) => p || String(j.totalVendas).replace(".", ","));
         if (j.dinheiro != null) setDinheiro((p) => p || String(j.dinheiro).replace(".", ","));
+        if (j.pix != null) setPix((p) => p || String(j.pix).replace(".", ","));
+        if (j.credito != null) setCredito((p) => p || String(j.credito).replace(".", ","));
+        if (j.debito != null) setDebito((p) => p || String(j.debito).replace(".", ","));
+        if (Array.isArray(j.maquininhas) && j.maquininhas.length) setMaquininhas(j.maquininhas as MaquininhaFechamento[]);
       }
     } catch { /* best-effort */ }
     finally { if (seq === leituraSeq.current) setLendo(false); }
   }
 
   function aoAnexar(grupo: GrupoAnexoFechamento, f: File, rotulo?: string) {
-    setAnexos((prev) => [...prev, { file: f, grupo, ...(rotulo ? { rotulo } : {}) }]);
-    if (grupo === "comprovante") void lerComprovante(f);
+    setAnexos((prev) => {
+      const next = [...prev, { file: f, grupo, ...(rotulo ? { rotulo } : {}) }];
+      if (grupo === "comprovante") void lerComprovantes(next.filter((a) => a.grupo === "comprovante").map((a) => a.file));
+      return next;
+    });
   }
 
   async function salvar() {
@@ -299,7 +313,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           const ext = (a.file.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (a.file.type.includes("pdf") ? ".pdf" : ".jpg");
           // Comanda usa o rótulo no nome (ex: "comanda Cortesia (99)"); demais "grupoN".
           const base = a.grupo === "comanda" && a.rotulo ? `comanda ${a.rotulo}`.replace(/[\\/]/g, "-") : `${a.grupo}${n}`;
-          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, a.grupo !== "dinheiro");
+          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, a.grupo !== "outro");
           const s = await uploadFileToFolder(turnoId, alvo);
           anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
@@ -313,6 +327,10 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         fechadoPor: por,
         ...(parseBRL(totalVendas) != null ? { totalVendas: parseBRL(totalVendas) } : {}),
         ...(parseBRL(dinheiro) != null ? { dinheiro: parseBRL(dinheiro) } : {}),
+        ...(parseBRL(pix) != null ? { pix: parseBRL(pix) } : {}),
+        ...(parseBRL(credito) != null ? { credito: parseBRL(credito) } : {}),
+        ...(parseBRL(debito) != null ? { debito: parseBRL(debito) } : {}),
+        ...(maquininhas.length ? { maquininhas } : {}),
         ...(parseBRL(fundoCaixa) != null ? { fundoCaixa: parseBRL(fundoCaixa) } : {}),
         ...(numeroLacre.trim() ? { numeroLacre: numeroLacre.trim() } : {}),
         ...(observacao.trim() ? { observacao: observacao.trim() } : {}),
@@ -392,7 +410,8 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
                     })}
                   </div>
                 )}
-                {g === "comprovante" && lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo o comprovante… total e dinheiro vão ser pré-preenchidos.</p>}
+                {g === "comprovante" && <p className="text-[10px] text-gray-400 mt-1">Anexe o comprovante Altec + as filipetas (pode ser uma foto só com tudo). A IA lê os valores, as maquininhas e a quebra por tipo.</p>}
+                {g === "comprovante" && lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo… total, dinheiro, PIX, crédito, débito e maquininhas vão ser pré-preenchidos.</p>}
               </div>
             );
           })}
@@ -409,6 +428,18 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
             <input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">PIX</label>
+            <input value={pix} onChange={(e) => setPix(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Crédito</label>
+            <input value={credito} onChange={(e) => setCredito(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Débito</label>
+            <input value={debito} onChange={(e) => setDebito(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+          </div>
+          <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Fundo de caixa</label>
             <input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
@@ -417,6 +448,23 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
             <input value={numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} placeholder="ex: h3141345" className={inputCls} />
           </div>
         </div>
+
+        {/* Maquininhas lidas pela IA */}
+        {maquininhas.length > 0 && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+              {maquininhas.map((m, i) => (
+                <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
+                  <span className="flex-1 truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>
+                  {m.credito != null && <span className="shrink-0 tabular-nums text-gray-500">créd {fmtBRL(m.credito)}</span>}
+                  {m.debito != null && <span className="shrink-0 tabular-nums text-gray-500">déb {fmtBRL(m.debito)}</span>}
+                  {m.total != null && <span className="shrink-0 tabular-nums font-medium w-20 text-right">{fmtBRL(m.total)}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação / ocorrência <span className="font-normal text-gray-400">— opcional</span></label>
           <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} placeholder="Ex: dinheiro do caixa não existe no malote, foi…"
@@ -452,6 +500,9 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
     `<table style="font-size:14px;border-collapse:collapse">` +
     linha("Total de vendas", f.totalVendas != null ? fmtBRL(f.totalVendas) : undefined) +
     linha("Dinheiro", f.dinheiro != null ? fmtBRL(f.dinheiro) : undefined) +
+    linha("PIX", f.pix != null ? fmtBRL(f.pix) : undefined) +
+    linha("Crédito", f.credito != null ? fmtBRL(f.credito) : undefined) +
+    linha("Débito", f.debito != null ? fmtBRL(f.debito) : undefined) +
     linha("Fundo de caixa", f.fundoCaixa != null ? fmtBRL(f.fundoCaixa) : undefined) +
     linha("Nº do lacre", f.numeroLacre) +
     linha("Fechado por", f.fechadoPor?.nome) +
@@ -679,11 +730,29 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
         {linha("Fechado por", f.fechadoPor?.nome)}
         {linha("Total de vendas", f.totalVendas != null ? fmtBRL(f.totalVendas) : null)}
         {linha("Dinheiro", f.dinheiro != null ? fmtBRL(f.dinheiro) : null)}
+        {linha("PIX", f.pix != null ? fmtBRL(f.pix) : null)}
+        {linha("Crédito", f.credito != null ? fmtBRL(f.credito) : null)}
+        {linha("Débito", f.debito != null ? fmtBRL(f.debito) : null)}
         {linha("Fundo de caixa", f.fundoCaixa != null ? fmtBRL(f.fundoCaixa) : null)}
         {linha("Nº do lacre", f.numeroLacre)}
         {linha("Observação", f.observacao)}
         {linha("Email enviado a", f.emailEnviadoPara?.join(", "))}
       </div>
+      {f.maquininhas && f.maquininhas.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Maquininhas ({f.maquininhas.length})</div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {f.maquininhas.map((m, i) => (
+              <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
+                <span className="flex-1 truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>
+                {m.credito != null && <span className="shrink-0 tabular-nums text-gray-500">créd {fmtBRL(m.credito)}</span>}
+                {m.debito != null && <span className="shrink-0 tabular-nums text-gray-500">déb {fmtBRL(m.debito)}</span>}
+                {m.total != null && <span className="shrink-0 tabular-nums font-medium w-20 text-right">{fmtBRL(m.total)}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {f.anexos && f.anexos.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Anexos ({f.anexos.length})</div>

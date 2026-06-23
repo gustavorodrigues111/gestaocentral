@@ -56,12 +56,17 @@ const PROMPT_BOLETO =
   "}";
 
 const PROMPT_FECHAMENTO =
-  "Você recebe a imagem/PDF de um COMPROVANTE DE FECHAMENTO DE CAIXA de restaurante (sistema Altec/PDV). " +
-  "Extraia os totais do turno e responda SOMENTE um objeto JSON (sem texto antes ou depois). Números em reais " +
-  'como NÚMERO (ex 1234.56), sem "R$" e sem separador de milhar. null se não achar. NÃO invente.\n' +
+  "Você recebe uma ou mais imagens/PDF do fechamento de caixa de um restaurante: o COMPROVANTE de fechamento " +
+  "(sistema Altec/PDV, com os totais consolidados) e as FILIPETAS de fechamento de cada maquininha de cartão " +
+  "(podem estar todas numa mesma foto). Junte tudo e responda SOMENTE um objeto JSON (sem texto antes ou depois). " +
+  'Números em reais como NÚMERO (ex 1234.56), sem "R$" e sem separador de milhar. null/[] se não achar. NÃO invente.\n' +
   "{\n" +
-  '  "totalVendas": <valor TOTAL de vendas do turno (faturamento/total apurado), ou null>,\n' +
-  '  "dinheiro": <total recebido em DINHEIRO, ou null>\n' +
+  '  "totalVendas": <valor TOTAL de vendas do turno, ou null>,\n' +
+  '  "dinheiro": <total recebido em DINHEIRO, ou null>,\n' +
+  '  "pix": <total recebido em PIX, ou null>,\n' +
+  '  "credito": <total em cartão de CRÉDITO somando todas as maquininhas, ou null>,\n' +
+  '  "debito": <total em cartão de DÉBITO somando todas as maquininhas, ou null>,\n' +
+  '  "maquininhas": [<{"identificador": <nome/bandeira da maquininha, ex "Stone","Cielo","TON","Rede", ou null>, "credito": <num ou null>, "debito": <num ou null>, "total": <num ou null>}>, ...]  (uma por filipeta; [] se não houver)\n' +
   "}";
 
 function parseNum(v: unknown): number | undefined {
@@ -174,7 +179,24 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
     if (isFechamento) {
-      res.status(200).json({ totalVendas: parseNum(p.totalVendas) ?? null, dinheiro: parseNum(p.dinheiro) ?? null });
+      const maquininhas = Array.isArray(p.maquininhas) ? p.maquininhas.slice(0, 30).map((m) => {
+        if (!m || typeof m !== "object") return null;
+        const o = m as Record<string, unknown>;
+        const out: { identificador?: string; credito?: number; debito?: number; total?: number } = {};
+        const id = str(o.identificador); if (id) out.identificador = id;
+        const cr = parseNum(o.credito); if (cr != null) out.credito = cr;
+        const de = parseNum(o.debito); if (de != null) out.debito = de;
+        const to = parseNum(o.total); if (to != null) out.total = to;
+        return Object.keys(out).length ? out : null;
+      }).filter(Boolean) : [];
+      res.status(200).json({
+        totalVendas: parseNum(p.totalVendas) ?? null,
+        dinheiro: parseNum(p.dinheiro) ?? null,
+        pix: parseNum(p.pix) ?? null,
+        credito: parseNum(p.credito) ?? null,
+        debito: parseNum(p.debito) ?? null,
+        maquininhas,
+      });
       return;
     }
     if (isBoleto) {

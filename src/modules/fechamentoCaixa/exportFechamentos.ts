@@ -7,16 +7,20 @@ const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.
 const fmtData = (s?: string) => s ? s.split("-").reverse().join("/") : "";
 const brl = (v?: number) => v == null ? "" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const COLS = ["Fechado em", "Data", "Turno", "Total vendas", "Dinheiro", "Fundo caixa", "Nº lacre", "Fechou", "Observação"];
+const COLS = ["Fechado em", "Data", "Turno", "Total vendas", "Dinheiro", "PIX", "Crédito", "Débito", "Fundo caixa", "Nº lacre", "Fechou", "Observação"];
 
 function linha(f: FechamentoCaixa, brlValor: boolean): (string | number)[] {
+  const v = (n?: number) => brlValor ? brl(n) : (n ?? "");
   return [
     fmtDataHora(f.fechadoEm),
     fmtData(f.data),
     TURNO_CAIXA_LABEL[f.turno],
-    brlValor ? brl(f.totalVendas) : (f.totalVendas ?? ""),
-    brlValor ? brl(f.dinheiro) : (f.dinheiro ?? ""),
-    brlValor ? brl(f.fundoCaixa) : (f.fundoCaixa ?? ""),
+    v(f.totalVendas),
+    v(f.dinheiro),
+    v(f.pix),
+    v(f.credito),
+    v(f.debito),
+    v(f.fundoCaixa),
     f.numeroLacre || "",
     f.fechadoPor?.nome || "",
     f.observacao || "",
@@ -55,13 +59,13 @@ export async function exportarFechamentosPDF(itens: FechamentoCaixa[], restauran
     startY: 22,
     head: [COLS],
     body: itens.map((f) => linha(f, true).map(String)),
-    foot: [[{ content: "TOTAL", colSpan: 3, styles: { halign: "right" as const, fontStyle: "bold" as const } }, { content: brl(total), styles: { halign: "right" as const, fontStyle: "bold" as const } }, "", "", "", "", ""]],
+    foot: [[{ content: "TOTAL", colSpan: 3, styles: { halign: "right" as const, fontStyle: "bold" as const } }, { content: brl(total), styles: { halign: "right" as const, fontStyle: "bold" as const } }, ...Array.from({ length: COLS.length - 4 }, () => "")]],
     theme: "grid",
     margin: { left: MARGIN_X, right: MARGIN_X },
     styles: { fontSize: 7, cellPadding: { top: 1.2, bottom: 1.2, left: 1.5, right: 1.5 }, lineWidth: 0.1, lineColor: [200, 200, 200], valign: "middle", textColor: [30, 30, 30], overflow: "ellipsize" },
     headStyles: { fillColor: [233, 226, 209], textColor: [30, 30, 30], fontStyle: "bold", fontSize: 7 },
     footStyles: { fillColor: [248, 248, 248], textColor: [30, 30, 30] },
-    columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" } },
+    columnStyles: { 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" }, 6: { halign: "right" }, 7: { halign: "right" }, 8: { halign: "right" } },
   });
   doc.save(nomeArquivo(restaurantNome, "pdf"));
 }

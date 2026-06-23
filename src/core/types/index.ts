@@ -4700,7 +4700,7 @@ export const TURNO_CAIXA_LABEL: Record<TurnoCaixa, string> = { almoco: "Almoço"
 // Grupos de anexo do fechamento (organização/rótulo).
 export type GrupoAnexoFechamento = "comprovante" | "filipeta" | "comanda" | "dinheiro" | "outro";
 export const GRUPO_ANEXO_LABEL: Record<GrupoAnexoFechamento, string> = {
-  comprovante: "Comprovante de fechamento (Altec)",
+  comprovante: "Comprovante + filipetas (IA lê os valores)",
   filipeta: "Filipetas das maquininhas",
   comanda: "Comandas (sócios / cortesia)",
   dinheiro: "Foto do dinheiro",
@@ -4715,6 +4715,8 @@ export type AnexoFechamento = {
 };
 // Sócio com comanda fixa (cadastrável na config do módulo).
 export type SocioComanda = { nome: string; numero: string };
+// Quebra por maquininha lida do fechamento (OCR).
+export type MaquininhaFechamento = { identificador?: string; credito?: number; debito?: number; total?: number };
 export type FechamentoCaixa = {
   id: string;
   restaurantId: string;
@@ -4724,6 +4726,10 @@ export type FechamentoCaixa = {
   fechadoPor: { id: string; nome: string };
   totalVendas?: number;
   dinheiro?: number;
+  pix?: number;
+  credito?: number;
+  debito?: number;
+  maquininhas?: MaquininhaFechamento[];
   fundoCaixa?: number;
   numeroLacre?: string;         // nº do lacre do malote
   observacao?: string;
