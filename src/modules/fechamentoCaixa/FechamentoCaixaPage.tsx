@@ -75,8 +75,13 @@ function indicesDuplicados(maquininhas: MaquininhaFechamento[]): Set<number> {
 
 // Tabela das maquininhas: colunas crédito/débito/pix/total, soma e conferência com o Altec.
 // Com onRemove, fica editável (remove linha) e sinaliza duplicadas.
-function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onRemove }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number; onRemove?: (index: number) => void }) {
+function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onRemove, onEdit }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number; onRemove?: (index: number) => void; onEdit?: (index: number, patch: Partial<MaquininhaFechamento>) => void }) {
   const dup = indicesDuplicados(maquininhas);
+  // Input numérico editável (R$) pra corrigir leitura da IA.
+  const numIn = (v: number | undefined, on: (n: number | undefined) => void) => (
+    <input value={v != null ? String(v).replace(".", ",") : ""} onChange={(e) => on(parseBRL(e.target.value))} inputMode="decimal" placeholder="—"
+      className="w-[72px] text-right tabular-nums text-[11px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+  );
   const somaC = maquininhas.reduce((s, m) => s + (m.credito || 0), 0);
   const somaD = maquininhas.reduce((s, m) => s + (m.debito || 0), 0);
   const somaP = maquininhas.reduce((s, m) => s + (m.pix || 0), 0);
@@ -111,10 +116,12 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
             {maquininhas.map((m, i) => (
               <tr key={i} className={dup.has(i) ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
                 <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}{dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400">· ⚠ duplicada?</span>}</td>
-                <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>
-                <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>
-                {temPix && <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>}
-                <td className={`px-2 py-1 text-right tabular-nums font-medium ${mismatch(m) ? "text-amber-600 dark:text-amber-400" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{fmtBRL(totalMaq(m))}{mismatch(m) && " ⚠"}</td>
+                {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.credito, (n) => onEdit(i, { credito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>}
+                {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.debito, (n) => onEdit(i, { debito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>}
+                {temPix && (onEdit ? <td className="px-1 py-1 text-right">{numIn(m.pix, (n) => onEdit(i, { pix: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>)}
+                {onEdit
+                  ? <td className={`px-1 py-1 text-right ${mismatch(m) ? "bg-amber-50 dark:bg-amber-950/20" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{numIn(m.total, (n) => onEdit(i, { total: n }))}{mismatch(m) && <span className="text-amber-600 dark:text-amber-400"> ⚠</span>}</td>
+                  : <td className={`px-2 py-1 text-right tabular-nums font-medium ${mismatch(m) ? "text-amber-600 dark:text-amber-400" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{fmtBRL(totalMaq(m))}{mismatch(m) && " ⚠"}</td>}
                 {onRemove && <td className="px-1 py-1 text-center"><button type="button" className="text-gray-400 hover:text-rose-600" title="Remover" onClick={() => onRemove(i)}>✕</button></td>}
               </tr>
             ))}
@@ -456,7 +463,13 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         ...(parseBRL(pix) != null ? { pix: parseBRL(pix) } : {}),
         ...(parseBRL(credito) != null ? { credito: parseBRL(credito) } : {}),
         ...(parseBRL(debito) != null ? { debito: parseBRL(debito) } : {}),
-        ...(maquininhas.length ? { maquininhas } : {}),
+        ...(maquininhas.length ? { maquininhas: maquininhas.map((m) => ({
+          ...(m.identificador ? { identificador: m.identificador } : {}),
+          ...(m.credito != null ? { credito: m.credito } : {}),
+          ...(m.debito != null ? { debito: m.debito } : {}),
+          ...(m.pix != null ? { pix: m.pix } : {}),
+          ...(m.total != null ? { total: m.total } : {}),
+        })) } : {}),
         ...(comandasConsumo.length ? { comandas: comandasConsumo.map((c) => ({ numero: c.numero, ...(c.nome ? { nome: c.nome } : {}), ...(c.valor != null ? { valor: c.valor } : {}) })) } : {}),
         ...(parseBRL(fundoCaixa) != null ? { fundoCaixa: parseBRL(fundoCaixa) } : {}),
         ...(numeroLacre.trim() ? { numeroLacre: numeroLacre.trim() } : {}),
@@ -582,7 +595,9 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         {maquininhas.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
-            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)} onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))} />
+            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)}
+              onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))}
+              onEdit={(i, patch) => setMaquininhas((prev) => prev.map((m, j) => j === i ? { ...m, ...patch } : m))} />
           </div>
         )}
 
