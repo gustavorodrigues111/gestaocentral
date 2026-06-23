@@ -144,6 +144,7 @@ function TabIdentidade({
     email: pessoa?.email || "",
     cpf: pessoa?.cpf || "",
     whatsapp: pessoa?.whatsapp || "",
+    pix: pessoa?.pix || "",
   });
   const [vinculoNovo, setVinculoNovo] = useState<VinculoLogico | "">("");
   const [saving, setSaving] = useState(false);
@@ -205,6 +206,7 @@ function TabIdentidade({
           nome: form.nome.trim(),
           cpf: cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
+          pix: form.pix.trim() || null,
           isMaster: false,
           restaurantIds: [restaurantId],
           permissions: { [restaurantId]: {} },
@@ -239,6 +241,7 @@ function TabIdentidade({
           nome: form.nome.trim(),
           cpf: cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
+          pix: form.pix.trim() || null,
           cadastroIncompleto: false,  // CPF preenchido manualmente → completo
         };
         await updateDoc(doc(db, "pessoas", pessoa.id), update);
@@ -361,6 +364,12 @@ function TabIdentidade({
           value={form.whatsapp}
           onChange={(e) => setForm({ ...form, whatsapp: e.target.value })}
           placeholder="(11) 99999-9999"
+        />
+        <Input
+          label="Chave PIX (p/ freela)"
+          value={form.pix}
+          onChange={(e) => setForm({ ...form, pix: e.target.value })}
+          placeholder="CPF, e-mail, telefone ou chave aleatória"
         />
       </div>
 
