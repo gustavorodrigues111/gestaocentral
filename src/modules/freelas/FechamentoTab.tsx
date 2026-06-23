@@ -789,18 +789,24 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
 
   async function marcarPago() {
     if (!me) return;
-    const forma = prompt("Forma de pagamento (PIX, dinheiro, etc.) — opcional:") || "";
-    if (!confirm(`Confirmar PAGAMENTO do lote ${lote.numero} (${fmtBR(lote.totalGeral)})?`)) return;
+    const p2 = (n: number) => String(n).padStart(2, "0");
+    const h = new Date();
+    const entrada = prompt("Data do pagamento (DD/MM/AAAA):", `${p2(h.getDate())}/${p2(h.getMonth() + 1)}/${h.getFullYear()}`);
+    if (entrada === null) return; // cancelou
+    const m = entrada.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!m) { alert("Data inválida. Use DD/MM/AAAA."); return; }
+    const pagoEm = new Date(+m[3], +m[2] - 1, +m[1], 12, 0, 0).toISOString(); // meio-dia local evita virar o dia por fuso
+    if (isNaN(new Date(pagoEm).getTime())) { alert("Data inválida."); return; }
+    if (!confirm(`Confirmar PAGAMENTO do lote ${lote.numero} (${fmtBR(lote.totalGeral)}) em ${entrada.trim()}?`)) return;
     setSalvando(true);
     try {
       const now = new Date().toISOString();
       await updateDoc(doc(db, "freelaPagamentos", lote.id), {
-        status: "pago", pagoEm: now, pagoPor: me.id, pagoPorNome: me.nome,
-        ...(forma.trim() ? { formaPagamento: forma.trim() } : {}),
+        status: "pago", pagoEm, pagoPor: me.id, pagoPorNome: me.nome,
       });
       const batch = writeBatch(db);
       for (const sid of lote.shiftIds) {
-        batch.update(doc(db, "freelaShifts", sid), { status: "pago", pagoEm: now, updatedAt: now });
+        batch.update(doc(db, "freelaShifts", sid), { status: "pago", pagoEm, updatedAt: now });
       }
       await batch.commit();
     } catch (e) { console.error(e); alert("Erro ao confirmar pagamento."); }
