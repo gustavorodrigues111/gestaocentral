@@ -11,7 +11,7 @@
 //  Reaproveita a infra do Recebimento: conta Drive central (driveShared), carimbo
 //  e filtro scanner (processarImagem), e o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -187,7 +187,7 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "conciliacao" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
@@ -279,14 +279,15 @@ export function FechamentoCaixaPage() {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "comandas" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "comandas" | "conciliacao" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
   if (podeVer) abas.push("comandas");
+  if (podeVer) abas.push("conciliacao");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "conciliacao" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -297,6 +298,7 @@ export function FechamentoCaixaPage() {
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
         {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
+        {podeVer && <TabBtn k="conciliacao" label="💳 Conciliação de Cartões" />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -314,6 +316,8 @@ export function FechamentoCaixaPage() {
       )}
 
       {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
+
+      {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
@@ -957,6 +961,189 @@ function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: Fecham
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ─── Conciliação de Cartões (Rede × Altec) ──────────────────────────────────
+// Lê o print do Altec (lista de fechamentos → horários de corte de cada caixa)
+// e a planilha de vendas da Rede; agrupa as vendas de cartão por janela de caixa
+// (do corte anterior até o corte de cada caixa) pra conferir crédito/débito por
+// bandeira na Altec. PIX/dinheiro não vêm da Rede (entram por outro canal).
+type CaixaCorte = { id?: string; data: string; hora: string }; // hora HH:MM:SS
+type TxRede = { ts: number; modalidade: "credito" | "debito" | "pix" | "outro"; bandeira: string; valor: number };
+const DIACR = new RegExp("[\\u0300-\\u036f]", "g");
+const normMod = (s: string): TxRede["modalidade"] => {
+  const t = (s || "").toLowerCase().normalize("NFD").replace(DIACR, "");
+  if (t.includes("cred")) return "credito";
+  if (t.includes("deb")) return "debito";
+  if (t.includes("pix")) return "pix";
+  return "outro";
+};
+
+async function parseRedeXlsx(file: File): Promise<TxRede[]> {
+  const XLSX = await import("xlsx");
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const ws = wb.Sheets["vendas"] || wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false }) as unknown[][];
+  const hi = aoa.findIndex((r) => Array.isArray(r) && r.some((c) => String(c).toLowerCase().trim() === "data da venda"));
+  if (hi < 0) throw new Error("Planilha não parece o relatório de vendas da Rede (cabeçalho 'data da venda' não encontrado).");
+  const header = (aoa[hi] as unknown[]).map((c) => String(c).toLowerCase().trim());
+  const idx = (n: string) => header.indexOf(n);
+  const ciData = idx("data da venda"), ciHora = idx("hora da venda"), ciStatus = idx("status da venda"),
+    ciVal = idx("valor da venda original"), ciMod = idx("modalidade"), ciBand = idx("bandeira"), ciCanc = idx("cancelada pelo estabelecimento");
+  const out: TxRede[] = [];
+  for (const r of aoa.slice(hi + 1)) {
+    if (!Array.isArray(r) || r[ciData] == null) continue;
+    const status = String(r[ciStatus] ?? "").toLowerCase().trim();
+    if (status !== "aprovada" && status !== "pago") continue;                 // ignora negada/expirado
+    if (String(r[ciCanc] ?? "").toLowerCase().trim().startsWith("s")) continue; // ignora cancelada (sim)
+    const d = r[ciData], h = r[ciHora];
+    let dt: Date | null = null;
+    if (d instanceof Date) {
+      const hh = h instanceof Date ? h : null;
+      dt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh ? hh.getHours() : 0, hh ? hh.getMinutes() : 0, hh ? hh.getSeconds() : 0);
+    } else if (typeof d === "string") {
+      const md = d.match(/(\d{2})\/(\d{2})\/(\d{4})/); const mh = String(h ?? "").match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (md) dt = new Date(+md[3], +md[2] - 1, +md[1], mh ? +mh[1] : 0, mh ? +mh[2] : 0, mh && mh[3] ? +mh[3] : 0);
+    }
+    if (!dt || isNaN(dt.getTime())) continue;
+    const valor = typeof r[ciVal] === "number" ? (r[ciVal] as number) : parseBRL(String(r[ciVal] ?? "")) ?? 0;
+    out.push({ ts: dt.getTime(), modalidade: normMod(String(r[ciMod] ?? "")), bandeira: String(r[ciBand] ?? "").trim() || "—", valor });
+  }
+  return out;
+}
+
+function ConciliacaoCartoes() {
+  const [caixas, setCaixas] = useState<CaixaCorte[]>([]);
+  const [txs, setTxs] = useState<TxRede[] | null>(null);
+  const [redeNome, setRedeNome] = useState("");
+  const [lendoPrint, setLendoPrint] = useState(false);
+  const [lendoXlsx, setLendoXlsx] = useState(false);
+  const [erro, setErro] = useState("");
+  const printRef = useRef<HTMLInputElement>(null);
+  const xlsxRef = useRef<HTMLInputElement>(null);
+
+  async function lerPrint(files: File[]) {
+    if (!files.length) return;
+    setErro(""); setLendoPrint(true);
+    try {
+      const blocos = await Promise.all(files.map(paraOcrBlock));
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: blocos, tipo: "altec_caixas" }) });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok) { setErro(j.error || "Falha ao ler o print."); return; }
+      const lidas: CaixaCorte[] = Array.isArray(j.caixas) ? j.caixas : [];
+      if (!lidas.length) { setErro("Não consegui ler os caixas do print. Tente uma imagem mais nítida."); return; }
+      // Acumula (vários prints) e dedup por data+hora.
+      setCaixas((prev) => {
+        const map = new Map<string, CaixaCorte>();
+        for (const c of [...prev, ...lidas]) map.set(`${c.data}T${c.hora}`, c);
+        return [...map.values()].sort((a, b) => `${a.data}T${a.hora}`.localeCompare(`${b.data}T${b.hora}`));
+      });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao ler o print."); }
+    finally { setLendoPrint(false); }
+  }
+
+  async function lerXlsx(file: File) {
+    setErro(""); setLendoXlsx(true);
+    try { setTxs(await parseRedeXlsx(file)); setRedeNome(file.name); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao ler a planilha."); setTxs(null); }
+    finally { setLendoXlsx(false); }
+  }
+
+  // Janelas: cada caixa (ordenado por corte) cobre (corte anterior, corte dele].
+  const cortes = useMemo(() => caixas.map((c) => ({ ...c, ts: new Date(`${c.data}T${c.hora}`).getTime() })).filter((c) => !isNaN(c.ts)).sort((a, b) => a.ts - b.ts), [caixas]);
+
+  const resultado = useMemo(() => {
+    if (!txs || !cortes.length) return null;
+    type Grupo = { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number };
+    const novo = (): Grupo => ({ credito: {}, debito: {}, pixRede: 0, nCard: 0, total: 0 });
+    const porCaixa = cortes.map(() => novo());
+    const aberto = novo(); // vendas após o último corte (caixa ainda aberto)
+    for (const t of txs) {
+      let gi = cortes.findIndex((c, i) => t.ts <= c.ts && (i === 0 || t.ts > cortes[i - 1].ts));
+      const g = gi >= 0 ? porCaixa[gi] : (t.ts > cortes[cortes.length - 1].ts ? aberto : null);
+      if (!g) continue;
+      if (t.modalidade === "credito") { g.credito[t.bandeira] = (g.credito[t.bandeira] || 0) + t.valor; g.nCard++; g.total += t.valor; }
+      else if (t.modalidade === "debito") { g.debito[t.bandeira] = (g.debito[t.bandeira] || 0) + t.valor; g.nCard++; g.total += t.valor; }
+      else if (t.modalidade === "pix") { g.pixRede += t.valor; }
+    }
+    return { porCaixa, aberto };
+  }, [txs, cortes]);
+
+  const filesFrom = (e: ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files || []); e.target.value = ""; return fs; };
+  const somaBand = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
+
+  const Card = ({ titulo, sub, g }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number } }) => {
+    const totCred = somaBand(g.credito), totDeb = somaBand(g.debito);
+    return (
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <div><div className="font-semibold text-gray-800 dark:text-gray-100">{titulo}</div>{sub && <div className="text-[11px] text-gray-400">{sub}</div>}</div>
+          <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(g.total)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">cartões · {g.nCard}</div></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 pt-1">
+          <div>
+            <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-1">Crédito <span className="tabular-nums">{fmtBRL(totCred)}</span></div>
+            {Object.keys(g.credito).length ? Object.entries(g.credito).sort().map(([b, v]) => (
+              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+            )) : <div className="text-[12px] text-gray-400">—</div>}
+          </div>
+          <div>
+            <div className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 mb-1">Débito <span className="tabular-nums">{fmtBRL(totDeb)}</span></div>
+            {Object.keys(g.debito).length ? Object.entries(g.debito).sort().map(([b, v]) => (
+              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+            )) : <div className="text-[12px] text-gray-400">—</div>}
+          </div>
+        </div>
+        {g.pixRede > 0 && <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">PIX Rede (maquininha): <span className="tabular-nums">{fmtBRL(g.pixRede)}</span> · o PIX do balcão (QR/banco) não está aqui</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-4">
+      <input ref={printRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => void lerPrint(filesFrom(e))} />
+      <input ref={xlsxRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const fs = filesFrom(e); if (fs[0]) void lerXlsx(fs[0]); }} />
+
+      {/* Passos de upload */}
+      <div className="grid sm:grid-cols-2 gap-3">
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">1 · Print dos caixas (Altec)</div>
+          <p className="text-[12px] text-gray-500 mb-3">A lista de fechamentos do Altec. Os horários definem o intervalo de cada caixa.</p>
+          <Button size="sm" variant="secondary" disabled={lendoPrint} onClick={() => printRef.current?.click()}>{lendoPrint ? "Lendo…" : caixas.length ? `📷 ${caixas.length} caixas · adicionar print` : "📷 Enviar print"}</Button>
+        </div>
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+          <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">2 · Planilha de vendas (Rede)</div>
+          <p className="text-[12px] text-gray-500 mb-3">O relatório de vendas da Rede em Excel (.xlsx).</p>
+          <Button size="sm" variant="secondary" disabled={lendoXlsx} onClick={() => xlsxRef.current?.click()}>{lendoXlsx ? "Lendo…" : txs ? `📊 ${txs.length} vendas · trocar` : "📊 Enviar planilha"}</Button>
+          {redeNome && <div className="text-[11px] text-gray-400 mt-1 truncate">{redeNome}</div>}
+        </div>
+      </div>
+
+      {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+
+      {/* Caixas lidos (chips) */}
+      {caixas.length > 0 && (
+        <div className="text-[11px] text-gray-500">
+          Caixas lidos: {cortes.map((c) => `${c.id ? `#${c.id} ` : ""}${fmtData(c.data)} ${c.hora.slice(0, 5)}`).join("  ·  ")}
+          <button type="button" onClick={() => setCaixas([])} className="ml-2 text-rose-600 hover:underline">limpar</button>
+        </div>
+      )}
+
+      {!resultado && <div className="text-center text-sm text-gray-400 py-10">Envie o print dos caixas <strong>e</strong> a planilha da Rede pra ver a conciliação por caixa.</div>}
+
+      {resultado && (
+        <div className="space-y-3">
+          <p className="text-[12px] text-gray-500">Cada caixa soma as vendas de cartão da Rede do <strong>corte anterior até o corte dele</strong>. Confira esses valores de crédito/débito por bandeira na Altec. Dinheiro e o PIX do balcão não vêm da Rede.</p>
+          {resultado.aberto.total > 0 && <Card titulo="Caixa em aberto" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
+          {cortes.map((c, i) => {
+            const ini = i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início";
+            return <Card key={i} titulo={`Caixa ${c.id ? `#${c.id}` : i + 1} · fechou ${fmtData(c.data)} ${c.hora.slice(0, 5)}`} sub={`de ${ini} até ${fmtData(c.data)} ${c.hora.slice(0, 5)}`} g={resultado.porCaixa[i]} />;
+          }).reverse()}
+        </div>
       )}
     </div>
   );

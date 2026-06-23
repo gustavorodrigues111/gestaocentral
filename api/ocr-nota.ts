@@ -85,6 +85,18 @@ const PROMPT_COMANDA =
   '  "comandas": [<{"numero": <nº da comanda/mesa só dígitos, string>, "valor": <total BRUTO antes do desconto como NÚMERO, ou null>}>, ...]  (uma por comanda visível; [] se nenhuma)\n' +
   "}";
 
+const PROMPT_ALTEC_CAIXAS =
+  "Você recebe uma ou mais imagens/PDF de uma TELA do sistema Altec: a lista de FECHAMENTOS DE CAIXA de um " +
+  "restaurante (relatório 'Fechamentos Caixa'). Cada linha é um caixa, com um NÚMERO/ID (coluna à esquerda, ex 170, 171…) " +
+  "e um ou dois carimbos de data/hora. Quando a linha mostra DOIS horários (abertura e fechamento), pegue o de " +
+  "FECHAMENTO (o segundo / mais recente). Quando mostra só um, use esse. " +
+  "Liste TODAS as linhas/caixas visíveis, na ordem em que aparecem. IGNORE a linha de 'Total'. " +
+  "Responda SOMENTE um objeto JSON (sem texto antes ou depois).\n" +
+  REGRA_DATA +
+  "{\n" +
+  '  "caixas": [<{"id": <número do caixa como string>, "data": "YYYY-MM-DD", "hora": "HH:MM:SS"}>, ...]\n' +
+  "}";
+
 function parseNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -152,6 +164,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const isBoleto = body.tipo === "boleto";
   const isFechamento = body.tipo === "fechamento";
   const isComanda = body.tipo === "comanda";
+  const isAltec = body.tipo === "altec_caixas";
 
   // Aceita 1 arquivo (data/mediaType) OU vários (files[]) — notas de várias páginas.
   const arquivos: Array<{ data: string; mediaType: string }> = [];
@@ -171,7 +184,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const payload = {
     model: MODEL,
     max_tokens: 8000, // notas grandes (ex: Heineken, 6 páginas) têm muitos itens
-    messages: [{ role: "user", content: [...blocks, { type: "text", text: isComanda ? PROMPT_COMANDA : isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: isAltec ? PROMPT_ALTEC_CAIXAS : isComanda ? PROMPT_COMANDA : isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
@@ -195,6 +208,21 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    if (isAltec) {
+      const caixas = Array.isArray(p.caixas) ? p.caixas.slice(0, 200).map((c) => {
+        if (!c || typeof c !== "object") return null;
+        const o = c as Record<string, unknown>;
+        const id = str(o.id) ?? (parseNum(o.id) != null ? String(parseNum(o.id)) : null);
+        const data = typeof o.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(o.data) ? o.data : null;
+        const horaRaw = typeof o.hora === "string" ? o.hora.trim() : "";
+        const hm = horaRaw.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+        if (!data || !hm) return null;
+        const hora = `${hm[1].padStart(2, "0")}:${hm[2]}:${hm[3] || "00"}`;
+        return { ...(id ? { id } : {}), data, hora };
+      }).filter(Boolean) : [];
+      res.status(200).json({ caixas });
+      return;
+    }
     if (isComanda) {
       const comandas = Array.isArray(p.comandas) ? p.comandas.slice(0, 50).map((c) => {
         if (!c || typeof c !== "object") return null;
