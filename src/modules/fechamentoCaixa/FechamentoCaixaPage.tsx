@@ -309,7 +309,7 @@ function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro
 type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
 function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   rid: string;
-  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoComandas?: ComandaCadastro[] };
+  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[] };
   por: { id: string; nome: string };
   onClose: () => void;
   onSalvo: () => void;
@@ -459,7 +459,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       };
       await addDoc(collection(db, "fechamentosCaixa"), fechamento);
       // Email de resumo pros sócios (best-effort — não trava o save).
-      if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento);
+      if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, restaurant.fechamentoEmailRemetente);
       setSalvo(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o fechamento.");
@@ -624,7 +624,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
 }
 
 // Envia email de resumo pros sócios (1 por email, via Resend).
-async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Omit<FechamentoCaixa, "id">) {
+async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Omit<FechamentoCaixa, "id">, from?: string) {
   const linha = (k: string, v?: string) => v ? `<tr><td style="padding:4px 12px 4px 0;color:#666">${k}</td><td style="padding:4px 0;font-weight:600">${v}</td></tr>` : "";
   const html =
     `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:480px">` +
@@ -648,7 +648,7 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
   const subject = `Fechamento ${TURNO_CAIXA_LABEL[f.turno]} ${fmtData(f.data)} — ${restaurantNome}`;
   const headers = { "Content-Type": "application/json", ...(await authHeader()) };
   for (const to of emails) {
-    try { await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify({ to, subject, html, text }) }); }
+    try { await fetch("/api/send-email", { method: "POST", headers, body: JSON.stringify({ to, subject, html, text, ...(from && from.trim() ? { from: from.trim() } : {}) }) }); }
     catch { /* best-effort */ }
   }
 }
@@ -759,13 +759,15 @@ function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoComandas?: ComandaCadastro[] } }) {
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[] } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [central, setCentral] = useState<boolean | null>(null);
   const [destino, setDestino] = useState("");
   const [emails, setEmails] = useState<string[]>(restaurant.fechamentoSociosEmails || []);
   const [novoEmail, setNovoEmail] = useState("");
+  const [remetente, setRemetente] = useState(restaurant.fechamentoEmailRemetente || "");
+  const [remetenteMsg, setRemetenteMsg] = useState("");
   const [comandas, setComandas] = useState<ComandaCadastro[]>(restaurant.fechamentoComandas || []);
   const [cmdNome, setCmdNome] = useState("");
   const [cmdNumero, setCmdNumero] = useState("");
@@ -828,6 +830,13 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
     setErro(""); setNovoEmail("");
     void salvarEmails([...emails, e]);
   }
+  async function salvarRemetente() {
+    setRemetenteMsg("");
+    try {
+      await updateDoc(doc(db, "restaurants", rid), { fechamentoEmailRemetente: remetente.trim() || deleteField() });
+      setRemetenteMsg("✓ Remetente salvo.");
+    } catch (e) { setRemetenteMsg("❌ " + (e instanceof Error ? e.message : "Erro")); }
+  }
 
   return (
     <div className="space-y-4 max-w-2xl">
@@ -871,6 +880,16 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
           <input value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addEmail(); }} placeholder="socio@email.com" type="email"
             className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
           <Button variant="secondary" size="sm" onClick={addEmail}>+ Adicionar</Button>
+        </div>
+        <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Email remetente <span className="font-normal text-gray-400">— opcional</span></label>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">De qual endereço o email sai. O domínio precisa estar <strong>verificado na Resend</strong>. Vazio = remetente padrão do sistema. Ex: <code>Sororoca &lt;fechamento@sororoca.com.br&gt;</code>.</p>
+          <div className="flex gap-2 items-center">
+            <input value={remetente} onChange={(e) => setRemetente(e.target.value)} placeholder="Nome <email@dominio.com.br>"
+              className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            <Button variant="secondary" size="sm" onClick={() => void salvarRemetente()}>Salvar</Button>
+            {remetenteMsg && <span className="text-[11px]">{remetenteMsg}</span>}
+          </div>
         </div>
       </div>
 

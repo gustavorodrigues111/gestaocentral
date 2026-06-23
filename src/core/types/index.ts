@@ -689,6 +689,7 @@ export type Restaurant = {
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
   fechamentoSociosEmails?: string[];
+  fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
