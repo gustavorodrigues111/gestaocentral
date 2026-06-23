@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
@@ -40,6 +40,24 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   const [obs, setObs] = useState("");
   const [salvando, setSalvando] = useState(false);
+
+  // PIX ao vivo das pessoas do restaurante — o snapshot do turno pode estar
+  // vazio (turno criado antes da chave ser cadastrada). Resolve por id/CPF.
+  const [pixMap, setPixMap] = useState<{ byId: Record<string, string>; byCpf: Record<string, string> }>({ byId: {}, byCpf: {} });
+  useEffect(() => {
+    if (!restaurantId) return;
+    const q = query(collection(db, "pessoas"), where("restaurantIds", "array-contains", restaurantId));
+    return onSnapshot(q, (snap) => {
+      const byId: Record<string, string> = {}, byCpf: Record<string, string> = {};
+      snap.forEach((d) => {
+        const p = d.data() as { pix?: string; cpf?: string };
+        if (p.pix) { byId[d.id] = p.pix; if (p.cpf) byCpf[String(p.cpf).replace(/\D/g, "")] = p.pix; }
+      });
+      setPixMap({ byId, byCpf });
+    });
+  }, [restaurantId]);
+  const pixDe = (s: FreelaShift): string =>
+    s.pixSnapshot || (s.pessoaId ? pixMap.byId[s.pessoaId] : "") || (s.cpfSnapshot ? pixMap.byCpf[String(s.cpfSnapshot).replace(/\D/g, "")] : "") || "";
 
   // Aguardando precificação: operacional fechou (tem entrada+saída) e DP ainda
   // não confirmou. Status="aberto".
@@ -132,7 +150,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           pessoaId: s.pessoaId || null,
           empregadoId: s.empregadoId || null,
           nome: s.nomeSnapshot,
-          pix: s.pixSnapshot ?? null,
+          pix: pixDe(s) || null,
           cpf: s.cpfSnapshot ?? null,
           whatsapp: s.whatsappSnapshot ?? null,
           qtdShifts: 0, totalHoras: 0, totalValor: 0,
@@ -232,8 +250,8 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         ) : (
           <AreaGroups
             shifts={aPrecificar}
-            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} />}
-            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} />}
+            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} />}
+            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} />}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
                 <th className="px-4 py-2 w-24">Data</th>
@@ -587,7 +605,7 @@ function TarifaPicker({
   );
 }
 
-function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
+function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -596,7 +614,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: Freel
       <td className="px-4 py-3 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
       <td className="px-2 py-3">
         <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</div>
-        {!shift.pixSnapshot && (
+        {semPix && (
           <div className="text-[10px] text-red-600">⚠ sem PIX</div>
         )}
       </td>
@@ -634,7 +652,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts }: { shift: Freel
   );
 }
 
-function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[] }) {
+function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -644,7 +662,7 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts }: { shift: Freela
         <div className="min-w-0 flex-1">
           <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
           <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 break-words">{shift.nomeSnapshot}</div>
-          {!shift.pixSnapshot && <div className="text-[10px] text-red-600">⚠ sem PIX</div>}
+          {semPix && <div className="text-[10px] text-red-600">⚠ sem PIX</div>}
         </div>
         <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">{fmtBR(s.total)}</div>
       </div>
