@@ -530,7 +530,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
 
   const porGrupo = (g: GrupoAnexoFechamento) => anexos.filter((a) => a.grupo === g);
   return (
-    <Modal title="💵 Novo fechamento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title="💵 Novo fechamento" onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
@@ -1034,7 +1034,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm"><span className="text-gray-500 dark:text-gray-400">{k}</span><span className="text-right text-gray-800 dark:text-gray-200 break-all">{v}</span></div>
   ) : null;
   return (
-    <Modal title="💵 Detalhes do fechamento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title="💵 Detalhes do fechamento" onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-1">
         {linha("Fechado em", fmtDataHora(f.fechadoEm))}
         {linha("Data / turno", `${fmtData(f.data)} · ${TURNO_CAIXA_LABEL[f.turno]}`)}
@@ -1138,7 +1138,7 @@ function EditarFechamentoModal({ f, onClose, onSaved }: { f: FechamentoCaixa; on
     finally { setSalvando(false); }
   }
   return (
-    <Modal title="✏️ Editar fechamento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title="✏️ Editar fechamento" onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         <p className="text-[11px] text-gray-400">Os anexos no Drive não mudam — aqui você corrige os dados e pode lançar uma maquininha que faltou na foto.</p>
