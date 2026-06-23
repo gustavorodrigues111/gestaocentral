@@ -52,16 +52,24 @@ const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
 const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0) + (m.pix || 0);
 
-// Chave pra detectar maquininha duplicada: mesmo identificador (terminal) ou,
-// na falta dele, mesma combinação de valores.
-const chaveMaq = (m: MaquininhaFechamento): string => {
-  const id = (m.identificador || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-  return id ? `id:${id}` : `v:${m.credito || 0}|${m.debito || 0}|${m.pix || 0}|${totalMaq(m)}`;
+// Código do terminal (ex: SD182312) extraído do identificador, ignorando
+// sufixos de horário que a IA às vezes acrescenta.
+const codigoTerminal = (m: MaquininhaFechamento): string | null => {
+  const id = m.identificador || "";
+  const mt = id.match(/[A-Z]{1,3}\s?\d{4,}/i) || id.match(/\b\d{5,}\b/);
+  return mt ? mt[0].toUpperCase().replace(/\s+/g, "") : null;
 };
-// Índices que são repetição de uma maquininha anterior.
+// Chave de valores (mesmos crédito/débito/pix/total = provável duplicata).
+const valKeyMaq = (m: MaquininhaFechamento): string => `${m.credito || 0}|${m.debito || 0}|${m.pix || 0}|${m.total ?? ""}`;
+// Índices que repetem uma maquininha anterior: mesmo terminal OU mesmos valores.
 function indicesDuplicados(maquininhas: MaquininhaFechamento[]): Set<number> {
-  const dup = new Set<number>(); const visto = new Set<string>();
-  maquininhas.forEach((m, i) => { const k = chaveMaq(m); if (visto.has(k)) dup.add(i); else visto.add(k); });
+  const dup = new Set<number>(); const terms = new Set<string>(); const vals = new Set<string>();
+  maquininhas.forEach((m, i) => {
+    const t = codigoTerminal(m); const v = valKeyMaq(m);
+    if ((t && terms.has(t)) || vals.has(v)) dup.add(i);
+    if (t) terms.add(t);
+    vals.add(v);
+  });
   return dup;
 }
 
