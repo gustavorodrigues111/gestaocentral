@@ -1220,11 +1220,12 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 
   const Card = ({ titulo, sub, g, amber, acoes }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number }; amber?: boolean; acoes?: ReactNode }) => {
     const totCred = somaBand(g.credito), totDeb = somaBand(g.debito);
+    const totGeral = totCred + totDeb + g.pixRede + (temIfood ? g.ifood : 0);
     return (
       <div className={`border rounded-xl p-4 space-y-2 ${amber ? "border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
         <div className="flex items-baseline justify-between gap-2">
           <div><div className="font-semibold text-gray-800 dark:text-gray-100">{titulo}</div>{sub && <div className="text-[11px] text-gray-400">{sub}</div>}</div>
-          <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(g.total)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">cartões · {g.nCard}</div></div>
+          <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(totGeral)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">total {temIfood ? "(cartão+pix+ifood)" : "(cartão+pix)"}</div></div>
         </div>
         <div className="space-y-2 pt-1">
           <div>
