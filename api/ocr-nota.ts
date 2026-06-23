@@ -60,7 +60,10 @@ const PROMPT_FECHAMENTO =
   "(sistema Altec/PDV, com os totais consolidados) e as FILIPETAS de fechamento de cada maquininha de cartão " +
   "(podem estar todas numa mesma foto). Junte tudo e responda SOMENTE um objeto JSON (sem texto antes ou depois). " +
   'Números em reais como NÚMERO (ex 1234.56), sem "R$" e sem separador de milhar. null/[] se não achar. NÃO invente.\n' +
+  REGRA_DATA +
   "{\n" +
+  '  "data": <data do fechamento em YYYY-MM-DD (use a data inicial/de abertura do caixa), ou null>,\n' +
+  '  "turno": <"almoco" se o caixa foi do período de dia/tarde (abertura por volta de 11h-13h), "jantar" se da noite (abertura por volta de 18h-20h); ou null>,\n' +
   '  "totalVendas": <valor TOTAL de vendas do turno, ou null>,\n' +
   '  "dinheiro": <total recebido em DINHEIRO, ou null>,\n' +
   '  "pix": <total recebido em PIX, ou null>,\n' +
@@ -189,7 +192,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         const to = parseNum(o.total); if (to != null) out.total = to;
         return Object.keys(out).length ? out : null;
       }).filter(Boolean) : [];
+      const turno = p.turno === "almoco" || p.turno === "jantar" ? p.turno : null;
       res.status(200).json({
+        data: typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) ? p.data : null,
+        turno,
         totalVendas: parseNum(p.totalVendas) ?? null,
         dinheiro: parseNum(p.dinheiro) ?? null,
         pix: parseNum(p.pix) ?? null,

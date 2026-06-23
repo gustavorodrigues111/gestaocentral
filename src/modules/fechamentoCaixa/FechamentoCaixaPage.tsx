@@ -271,6 +271,9 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return;
       if (resp.ok) {
+        // Data/turno: o comprovante é autoritativo — sobrescreve o palpite do horário.
+        if (typeof j.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(j.data)) setData(j.data);
+        if (j.turno === "almoco" || j.turno === "jantar") setTurno(j.turno);
         if (j.totalVendas != null) setTotalVendas((p) => p || String(j.totalVendas).replace(".", ","));
         if (j.dinheiro != null) setDinheiro((p) => p || String(j.dinheiro).replace(".", ","));
         if (j.pix != null) setPix((p) => p || String(j.pix).replace(".", ","));
