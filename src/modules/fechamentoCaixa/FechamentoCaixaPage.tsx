@@ -131,7 +131,12 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {maquininhas.map((m, i) => (
               <tr key={i} className={dup.has(i) ? "bg-amber-50 dark:bg-amber-950/20" : ""}>
-                <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}{dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400">· ⚠ duplicada?</span>}</td>
+                <td className="px-2 py-1 max-w-[180px]">
+                  {onEdit
+                    ? <input value={m.identificador || ""} onChange={(e) => onEdit(i, { identificador: e.target.value || undefined })} placeholder={`Maquininha ${i + 1}`} className="w-full text-[11px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                    : <span className="truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>}
+                  {dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400 text-[10px]">⚠ dup?</span>}
+                </td>
                 {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.credito, (n) => onEdit(i, { credito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>}
                 {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.debito, (n) => onEdit(i, { debito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>}
                 {temPix && (onEdit ? <td className="px-1 py-1 text-right">{numIn(m.pix, (n) => onEdit(i, { pix: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>)}
@@ -1092,34 +1097,51 @@ function EditarFechamentoModal({ f, onClose, onSaved }: { f: FechamentoCaixa; on
   const toBR = (v?: number) => v == null ? "" : String(v).replace(".", ",");
   const [totalVendas, setTotalVendas] = useState(toBR(f.totalVendas));
   const [dinheiro, setDinheiro] = useState(toBR(f.dinheiro));
+  const [pix, setPix] = useState(toBR(f.pix));
+  const [credito, setCredito] = useState(toBR(f.credito));
+  const [debito, setDebito] = useState(toBR(f.debito));
   const [fundoCaixa, setFundoCaixa] = useState(toBR(f.fundoCaixa));
   const [numeroLacre, setNumeroLacre] = useState(f.numeroLacre || "");
   const [observacao, setObservacao] = useState(f.observacao || "");
   const [data, setData] = useState(f.data);
   const [turno, setTurno] = useState<TurnoCaixa>(f.turno);
+  const [maquininhas, setMaquininhas] = useState<MaquininhaFechamento[]>((f.maquininhas || []).map((m) => ({ ...m })));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   async function salvar() {
     setErro(""); setSalvando(true);
     try {
+      const maqClean = maquininhas
+        .filter((m) => m.identificador || m.credito != null || m.debito != null || m.pix != null || m.total != null)
+        .map((m) => ({
+          ...(m.identificador ? { identificador: m.identificador } : {}),
+          ...(m.credito != null ? { credito: m.credito } : {}),
+          ...(m.debito != null ? { debito: m.debito } : {}),
+          ...(m.pix != null ? { pix: m.pix } : {}),
+          ...(m.total != null ? { total: m.total } : {}),
+        }));
       await updateDoc(doc(db, "fechamentosCaixa", f.id), {
         data, turno,
         totalVendas: parseBRL(totalVendas) ?? deleteField(),
         dinheiro: parseBRL(dinheiro) ?? deleteField(),
+        pix: parseBRL(pix) ?? deleteField(),
+        credito: parseBRL(credito) ?? deleteField(),
+        debito: parseBRL(debito) ?? deleteField(),
         fundoCaixa: parseBRL(fundoCaixa) ?? deleteField(),
         numeroLacre: numeroLacre.trim() || deleteField(),
         observacao: observacao.trim() || deleteField(),
+        maquininhas: maqClean.length ? maqClean : deleteField(),
       });
       onSaved();
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
     finally { setSalvando(false); }
   }
   return (
-    <Modal title="✏️ Editar fechamento" onClose={onClose} maxWidth="max-w-md">
+    <Modal title="✏️ Editar fechamento" onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
-        <p className="text-[11px] text-gray-400">Os anexos no Drive não mudam — aqui você corrige só os dados.</p>
+        <p className="text-[11px] text-gray-400">Os anexos no Drive não mudam — aqui você corrige os dados e pode lançar uma maquininha que faltou na foto.</p>
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
@@ -1133,11 +1155,28 @@ function EditarFechamentoModal({ f, onClose, onSaved }: { f: FechamentoCaixa; on
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
             <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
           </div>
-          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Total de vendas</label><input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} inputMode="decimal" className={inputCls} /></div>
-          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Dinheiro</label><input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} inputMode="decimal" className={inputCls} /></div>
-          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Fundo de caixa</label><input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Total de vendas</label><input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Dinheiro</label><input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} onBlur={() => setDinheiro(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">PIX</label><input value={pix} onChange={(e) => setPix(e.target.value)} onBlur={() => setPix(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Crédito</label><input value={credito} onChange={(e) => setCredito(e.target.value)} onBlur={() => setCredito(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Débito</label><input value={debito} onChange={(e) => setDebito(e.target.value)} onBlur={() => setDebito(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
+          <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Fundo de caixa</label><input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} onBlur={() => setFundoCaixa(fmtMilhar)} inputMode="decimal" className={inputCls} /></div>
           <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre</label><input value={numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} className={inputCls} /></div>
         </div>
+
+        {/* Maquininhas — editáveis + adicionar a que faltou */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Maquininhas</label>
+            <Button variant="secondary" size="sm" onClick={() => setMaquininhas((prev) => [...prev, {}])}>+ Adicionar maquininha</Button>
+          </div>
+          {maquininhas.length > 0
+            ? <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)}
+                onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))}
+                onEdit={(i, patch) => setMaquininhas((prev) => prev.map((m, j) => j === i ? { ...m, ...patch } : m))} />
+            : <p className="text-[11px] text-gray-400">Nenhuma maquininha. Use "+ Adicionar maquininha" pra lançar a que faltou na foto.</p>}
+        </div>
+
         <div><label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação</label><textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} /></div>
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
