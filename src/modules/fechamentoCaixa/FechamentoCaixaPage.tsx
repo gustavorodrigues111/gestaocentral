@@ -11,7 +11,7 @@
 //  Reaproveita a infra do Recebimento: conta Drive central (driveShared), carimbo
 //  e filtro scanner (processarImagem), e o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -1066,6 +1066,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
   const [salvos, setSalvos] = useState<CaixaSalvo[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [avisos, setAvisos] = useState<string[]>([]);
+  const [modal, setModal] = useState<{ titulo: string; sub?: string; g: Totais; kind: "preview" | "pendente" | "conciliado"; item?: CaixaSalvo } | null>(null);
   const [erro, setErro] = useState("");
   const printRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
@@ -1218,43 +1219,45 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
     return { ids, near };
   }, [cortes]);
 
-  const Card = ({ titulo, sub, g, amber, acoes }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number }; amber?: boolean; acoes?: ReactNode }) => {
-    const totCred = somaBand(g.credito), totDeb = somaBand(g.debito);
-    const totGeral = totCred + totDeb + g.pixRede + (temIfood ? g.ifood : 0);
-    return (
-      <div className={`border rounded-xl p-4 space-y-2 ${amber ? "border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
-        <div className="flex items-baseline justify-between gap-2">
-          <div><div className="font-semibold text-gray-800 dark:text-gray-100">{titulo}</div>{sub && <div className="text-[11px] text-gray-400">{sub}</div>}</div>
-          <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(totGeral)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">total {temIfood ? "(cartão+pix+ifood)" : "(cartão+pix)"}</div></div>
-        </div>
-        <div className="space-y-2 pt-1">
-          <div>
-            <div className="flex justify-between text-[11px] font-semibold text-emerald-700 dark:text-emerald-300"><span>Crédito</span><span className="tabular-nums">{fmtBRL(totCred)}</span></div>
-            {Object.entries(g.credito).sort().map(([b, v]) => (
-              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
-            ))}
-          </div>
-          <div>
-            <div className="flex justify-between text-[11px] font-semibold text-sky-700 dark:text-sky-300"><span>Débito</span><span className="tabular-nums">{fmtBRL(totDeb)}</span></div>
-            {Object.entries(g.debito).sort().map(([b, v]) => (
-              <div key={b} className="flex justify-between text-[12px] text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
-            ))}
-          </div>
-          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
-            <div className="flex justify-between text-[11px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
-            <div className="text-[10px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
-          </div>
-          {temIfood && (
-            <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
-              <div className="flex justify-between text-[11px] font-semibold text-rose-700 dark:text-rose-300"><span>iFood</span><span className="tabular-nums">{fmtBRL(g.ifood)}</span></div>
-              <div className="text-[10px] text-gray-400">{g.nIfood} pedido(s) · valor dos itens{ifood == null ? " — envie a planilha do iFood" : ""}</div>
-            </div>
-          )}
-        </div>
-        {acoes && <div className="flex justify-end pt-1">{acoes}</div>}
+  const totalDe = (g: Totais) => somaBand(g.credito) + somaBand(g.debito) + g.pixRede + (temIfood ? g.ifood : 0);
+
+  // Linha compacta (só cabeçalho) — clicável, abre o modal de detalhe.
+  const LinhaCaixa = ({ titulo, sub, g, amber, onClick }: { titulo: string; sub?: string; g: Totais; amber?: boolean; onClick: () => void }) => (
+    <button type="button" onClick={onClick}
+      className={`w-full text-left border rounded-xl p-4 flex items-center justify-between gap-3 transition-colors hover:border-indigo-300 dark:hover:border-indigo-700 ${amber ? "border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+      <div className="min-w-0"><div className="font-semibold text-gray-800 dark:text-gray-100 truncate">{titulo}</div>{sub && <div className="text-[11px] text-gray-400 truncate">{sub}</div>}</div>
+      <div className="text-right shrink-0"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(totalDe(g))}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">total {temIfood ? "(cartão+pix+ifood)" : "(cartão+pix)"}</div></div>
+    </button>
+  );
+
+  // Detalhamento (crédito/débito/pix/ifood) — usado dentro do modal.
+  const Breakdown = ({ g }: { g: Totais }) => (
+    <div className="space-y-2">
+      <div>
+        <div className="flex justify-between text-[12px] font-semibold text-emerald-700 dark:text-emerald-300"><span>Crédito</span><span className="tabular-nums">{fmtBRL(somaBand(g.credito))}</span></div>
+        {Object.entries(g.credito).sort().map(([b, v]) => (
+          <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+        ))}
       </div>
-    );
-  };
+      <div>
+        <div className="flex justify-between text-[12px] font-semibold text-sky-700 dark:text-sky-300"><span>Débito</span><span className="tabular-nums">{fmtBRL(somaBand(g.debito))}</span></div>
+        {Object.entries(g.debito).sort().map(([b, v]) => (
+          <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+        ))}
+      </div>
+      <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex justify-between text-[12px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
+        <div className="text-[11px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
+      </div>
+      {temIfood && (
+        <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex justify-between text-[12px] font-semibold text-rose-700 dark:text-rose-300"><span>iFood</span><span className="tabular-nums">{fmtBRL(g.ifood)}</span></div>
+          <div className="text-[11px] text-gray-400">{g.nIfood} pedido(s) · valor dos itens</div>
+        </div>
+      )}
+      <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-200 dark:border-gray-700"><span>Total</span><span className="tabular-nums">{fmtBRL(totalDe(g))}</span></div>
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -1321,9 +1324,9 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
             {ignorados.length > 0 && (
               <div className="text-[11px] text-gray-400">Ignorados (sessão de vários dias): {ignorados.map((c) => `${c.id ? `#${c.id} ` : ""}${fmtData(c.data)}`).join(", ")}</div>
             )}
-            <div className="space-y-3">
-              {visiveis.map(({ c, i }) => <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
-              {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)}) — não é salvo até fechar`} g={resultado.aberto} />}
+            <div className="space-y-2">
+              {visiveis.map(({ c, i }) => <LinhaCaixa key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} onClick={() => setModal({ titulo: titulo(c, i), sub: janela(i), g: resultado.porCaixa[i], kind: "preview" })} />)}
+              {resultado.aberto.total > 0 && <LinhaCaixa amber titulo="Caixa em aberto (não fechado)" sub={`após o último corte — não é salvo até fechar`} g={resultado.aberto} onClick={() => setModal({ titulo: "Caixa em aberto (não fechado)", sub: `vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`, g: resultado.aberto, kind: "preview" })} />}
             </div>
           </div>
         );
@@ -1337,17 +1340,9 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       {pendentesSalvos.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Aguardando conciliação <span className="text-gray-400 font-normal">({pendentesSalvos.length})</span></h3>
-          <p className="text-[12px] text-gray-500">Confira crédito/débito por bandeira na Altec e marque <strong>Conciliado</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
+          <p className="text-[12px] text-gray-500">Toque num caixa pra ver o detalhe e marcar <strong>Conciliado na Altec</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
           {pendentesSalvos.map((s) => (
-            <Card key={s.id} titulo={tituloSalvo(s)} sub={janelaSalvo(s)} g={totaisDe(s)}
-              acoes={<div className="flex items-center gap-3">
-                {podeConfig && <button type="button" onClick={() => void removerSalvo(s)} className="text-[12px] text-rose-600 hover:underline px-1">remover</button>}
-                <button type="button" onClick={() => void conciliarSalvo(s)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
-                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                  Conciliado na Altec
-                </button>
-              </div>} />
+            <LinhaCaixa key={s.id} titulo={tituloSalvo(s)} sub={janelaSalvo(s)} g={totaisDe(s)} onClick={() => setModal({ titulo: tituloSalvo(s), sub: janelaSalvo(s), g: totaisDe(s), kind: "pendente", item: s })} />
           ))}
         </div>
       )}
@@ -1356,13 +1351,33 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       {conciliadosSalvos.length > 0 && (
         <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conciliados na Altec <span className="text-gray-400 font-normal">({conciliadosSalvos.length})</span></summary>
-          <div className="px-3 pb-3 space-y-3">
+          <div className="px-3 pb-3 space-y-2">
             {conciliadosSalvos.map((s) => (
-              <Card key={s.id} titulo={tituloSalvo(s)} sub={`${janelaSalvo(s)} · ✓ ${s.conciliadoEm ? fmtDataHora(s.conciliadoEm) : ""}${s.conciliadoPor?.nome ? ` · ${s.conciliadoPor.nome}` : ""}`} g={totaisDe(s)}
-                acoes={<button type="button" onClick={() => void desconciliarSalvo(s)} className="text-[12px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline px-1">↩ Desfazer</button>} />
+              <LinhaCaixa key={s.id} titulo={tituloSalvo(s)} sub={`✓ ${s.conciliadoEm ? fmtDataHora(s.conciliadoEm) : ""}${s.conciliadoPor?.nome ? ` · ${s.conciliadoPor.nome}` : ""}`} g={totaisDe(s)} onClick={() => setModal({ titulo: tituloSalvo(s), sub: janelaSalvo(s), g: totaisDe(s), kind: "conciliado", item: s })} />
             ))}
           </div>
         </details>
+      )}
+
+      {modal && (
+        <Modal title={`💳 ${modal.titulo}`} onClose={() => setModal(null)} maxWidth="max-w-lg">
+          <div className="space-y-3">
+            {modal.sub && <div className="text-[12px] text-gray-400">{modal.sub}</div>}
+            <Breakdown g={modal.g} />
+            <div className="flex justify-end items-center gap-3 pt-2">
+              {modal.kind === "pendente" && (<>
+                {podeConfig && modal.item && <button type="button" onClick={() => { const it = modal.item!; setModal(null); void removerSalvo(it); }} className="text-[12px] text-rose-600 hover:underline px-1">remover</button>}
+                <button type="button" onClick={() => { const it = modal.item!; setModal(null); void conciliarSalvo(it); }}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  Conciliado na Altec
+                </button>
+              </>)}
+              {modal.kind === "conciliado" && modal.item && <button type="button" onClick={() => { const it = modal.item!; setModal(null); void desconciliarSalvo(it); }} className="text-[12px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline px-1">↩ Desfazer conciliação</button>}
+              <Button size="sm" variant="secondary" onClick={() => setModal(null)}>Fechar</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
