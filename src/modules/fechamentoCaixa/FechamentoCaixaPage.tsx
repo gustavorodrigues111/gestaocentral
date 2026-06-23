@@ -54,6 +54,20 @@ const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
 const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0) + (m.pix || 0);
 
+// Input de dinheiro: mostra "XX.XXX,XX" quando sem foco; ao focar vira editável
+// (sem separador, pra digitar sem o cursor pular).
+function MoneyInput({ value, onChange, className, placeholder }: { value?: number; onChange: (n: number | undefined) => void; className?: string; placeholder?: string }) {
+  const [foco, setFoco] = useState(false);
+  const [raw, setRaw] = useState("");
+  const display = foco ? raw : (value != null ? value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "");
+  return (
+    <input value={display} placeholder={placeholder} inputMode="decimal" className={className}
+      onFocus={() => { setRaw(value != null ? String(value).replace(".", ",") : ""); setFoco(true); }}
+      onChange={(e) => { setRaw(e.target.value); onChange(parseBRL(e.target.value)); }}
+      onBlur={() => setFoco(false)} />
+  );
+}
+
 // Código do terminal (ex: SD182312) extraído do identificador, ignorando
 // sufixos de horário que a IA às vezes acrescenta.
 const codigoTerminal = (m: MaquininhaFechamento): string | null => {
@@ -79,10 +93,10 @@ function indicesDuplicados(maquininhas: MaquininhaFechamento[]): Set<number> {
 // Com onRemove, fica editável (remove linha) e sinaliza duplicadas.
 function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onRemove, onEdit }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number; onRemove?: (index: number) => void; onEdit?: (index: number, patch: Partial<MaquininhaFechamento>) => void }) {
   const dup = indicesDuplicados(maquininhas);
-  // Input numérico editável (R$) pra corrigir leitura da IA.
+  // Input numérico editável (R$, formatado XX.XXX,XX) pra corrigir leitura da IA.
   const numIn = (v: number | undefined, on: (n: number | undefined) => void) => (
-    <input value={v != null ? String(v).replace(".", ",") : ""} onChange={(e) => on(parseBRL(e.target.value))} inputMode="decimal" placeholder="—"
-      className="w-[72px] text-right tabular-nums text-[11px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+    <MoneyInput value={v} onChange={on} placeholder="—"
+      className="w-[88px] text-right tabular-nums text-[11px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
   );
   const somaC = maquininhas.reduce((s, m) => s + (m.credito || 0), 0);
   const somaD = maquininhas.reduce((s, m) => s + (m.debito || 0), 0);
@@ -619,8 +633,8 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
               {comandasConsumo.map((c, i) => (
                 <div key={i} className="px-2 py-1 flex items-center gap-2 text-[12px]">
                   <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
-                  <input value={c.valor != null ? String(c.valor).replace(".", ",") : ""} onChange={(e) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: parseBRL(e.target.value) } : x))} inputMode="decimal" placeholder="R$"
-                    className="w-24 px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                  <MoneyInput value={c.valor} onChange={(n) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: n } : x))} placeholder="R$"
+                    className="w-24 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                   <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setComandasConsumo((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
