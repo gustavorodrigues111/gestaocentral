@@ -35,6 +35,8 @@ const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { s
 const fmtData = (s?: string) => s ? s.split("-").reverse().join("/") : "—";
 const fmtDataHora = (iso: string) => { const d = new Date(iso); return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 const parseBRL = (s: string): number | undefined => { const t = (s || "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."); const n = parseFloat(t); return Number.isFinite(n) ? n : undefined; };
+// Formata pra "XX.XXX,XX" (milhares com ponto). Vazio/ inválido volta como está.
+const fmtMilhar = (raw: string): string => { const n = parseBRL(raw); return n != null ? n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : raw; };
 const diaLabel = (s: string) => s.split("-").reverse().join("."); // dd.mm.aaaa
 
 // Sugestão de turno/data pelo horário: almoço (<17h), jantar (≥17h); madrugada
@@ -348,6 +350,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [numeroLacre, setNumeroLacre] = useState("");
   const [observacao, setObservacao] = useState("");
   const [lendo, setLendo] = useState(false);
+  const [lendoComandas, setLendoComandas] = useState(0); // comandas em leitura (OCR)
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
   const [erro, setErro] = useState("");
@@ -368,11 +371,11 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         // Data/turno: o comprovante é autoritativo — sobrescreve o palpite do horário.
         if (typeof j.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(j.data)) setData(j.data);
         if (j.turno === "almoco" || j.turno === "jantar") setTurno(j.turno);
-        if (j.totalVendas != null) setTotalVendas((p) => p || String(j.totalVendas).replace(".", ","));
-        if (j.dinheiro != null) setDinheiro((p) => p || String(j.dinheiro).replace(".", ","));
-        if (j.pix != null) setPix((p) => p || String(j.pix).replace(".", ","));
-        if (j.credito != null) setCredito((p) => p || String(j.credito).replace(".", ","));
-        if (j.debito != null) setDebito((p) => p || String(j.debito).replace(".", ","));
+        if (j.totalVendas != null) setTotalVendas((p) => p || fmtMilhar(String(j.totalVendas)));
+        if (j.dinheiro != null) setDinheiro((p) => p || fmtMilhar(String(j.dinheiro)));
+        if (j.pix != null) setPix((p) => p || fmtMilhar(String(j.pix)));
+        if (j.credito != null) setCredito((p) => p || fmtMilhar(String(j.credito)));
+        if (j.debito != null) setDebito((p) => p || fmtMilhar(String(j.debito)));
         if (Array.isArray(j.maquininhas) && j.maquininhas.length) setMaquininhas(j.maquininhas as MaquininhaFechamento[]);
       }
     } catch { /* best-effort */ }
@@ -391,6 +394,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   // OCR da comanda → lê TODOS os números da foto e associa às cadastradas.
   // Não cadastradas são sinalizadas (não bloqueiam — você cadastra/corrige depois).
   async function lerComanda(f: File) {
+    setLendoComandas((c) => c + 1);
     try {
       const bloco = await paraOcrBlock(f);
       const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "comanda" }) });
@@ -417,6 +421,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         return [...map.values()];
       });
     } catch { /* best-effort — usuário identifica manualmente */ }
+    finally { setLendoComandas((c) => Math.max(0, c - 1)); }
   }
 
   async function salvar() {
@@ -563,27 +568,27 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Total de vendas</label>
-            <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Dinheiro</label>
-            <input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} onBlur={() => setDinheiro(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">PIX</label>
-            <input value={pix} onChange={(e) => setPix(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={pix} onChange={(e) => setPix(e.target.value)} onBlur={() => setPix(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Crédito</label>
-            <input value={credito} onChange={(e) => setCredito(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={credito} onChange={(e) => setCredito(e.target.value)} onBlur={() => setCredito(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Débito</label>
-            <input value={debito} onChange={(e) => setDebito(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={debito} onChange={(e) => setDebito(e.target.value)} onBlur={() => setDebito(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Fundo de caixa</label>
-            <input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
+            <input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} onBlur={() => setFundoCaixa(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre do malote</label>
@@ -595,6 +600,11 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         {maquininhas.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
+            {indicesDuplicados(maquininhas).size > 0 && (
+              <div className="mb-2 text-[12px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-lg px-3 py-2">
+                ⚠ <strong>Filipeta duplicada na foto:</strong> {indicesDuplicados(maquininhas).size} maquininha(s) aparecem repetidas (mesmo terminal/valores). Remova a(s) repetida(s) no ✕ antes de salvar.
+              </div>
+            )}
             <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)}
               onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))}
               onEdit={(i, patch) => setMaquininhas((prev) => prev.map((m, j) => j === i ? { ...m, ...patch } : m))} />
@@ -628,9 +638,9 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         </div>
 
         <div className="flex justify-end gap-2 pt-1">
-          {lendo && <span className="text-[11px] text-indigo-600 dark:text-indigo-300 self-center mr-auto">🔍 Lendo…</span>}
+          {(lendo || lendoComandas > 0) && <span className="text-[11px] text-indigo-600 dark:text-indigo-300 self-center mr-auto">🔍 Aguarde a leitura dos documentos terminar…</span>}
           <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Fechar caixa"}</Button>
+          <Button size="sm" disabled={salvando || lendo || lendoComandas > 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : (lendo || lendoComandas > 0) ? "Lendo…" : "Fechar caixa"}</Button>
         </div>
 
         {grupoFonte && (
