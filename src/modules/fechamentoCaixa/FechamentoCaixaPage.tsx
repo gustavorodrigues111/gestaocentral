@@ -1291,17 +1291,22 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       {resultado && (() => {
         const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · ${c.aberto ? "aberto" : "fechou"} ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
         const janela = (i: number) => `de ${i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início"} até ${fmtData(cortes[i].data)} ${cortes[i].hora.slice(0, 5)}`;
+        // Caixas que já estão conciliados aparecem no print só pelo corte — ocultados aqui.
+        const conciliadoChaves = new Set(conciliadosSalvos.map((s) => chaveSalvo(s)));
+        const visiveis = cortes.map((c, i) => ({ c, i })).filter(({ c }) => !conciliadoChaves.has(`${c.data}T${c.hora}|${c.id || ""}`));
+        const ocultados = cortes.length - visiveis.length;
+        const novosFechados = visiveis.filter(({ c }) => !c.aberto).length;
         return (
           <div className="space-y-3 border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-950/10 rounded-xl p-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{cortes.filter((c) => !c.aberto).length}</strong> caixa(s) fechado(s). Confira e salve pra aguardar a conciliação.</div>
+              <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{novosFechados}</strong> caixa(s) fechado(s) novo(s){ocultados > 0 ? ` · ${ocultados} já conciliado(s) ocultado(s)` : ""}. Confira e salve pra aguardar a conciliação.</div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setCaixas([]); setTxs(null); setRedeNome(""); setIfood(null); setIfoodNome(""); }} className="text-[12px] text-gray-500 hover:underline px-1">descartar</button>
-                <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
+                <Button size="sm" disabled={salvando || novosFechados === 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
               </div>
             </div>
             <div className="space-y-3">
-              {cortes.map((c, i) => <Card key={i} amber={c.aberto} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
+              {visiveis.map(({ c, i }) => <Card key={i} amber={c.aberto} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]} />)}
               {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)}) — não é salvo até fechar`} g={resultado.aberto} />}
             </div>
           </div>
