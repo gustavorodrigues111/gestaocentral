@@ -187,7 +187,7 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "excluidos" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
@@ -200,10 +200,12 @@ export function FechamentoCaixaPage() {
     return () => unsub();
   }, [rid]);
 
-  const ordenados = useMemo(
+  const ordenadosTodos = useMemo(
     () => [...fechamentos].sort((a, b) => (b.fechadoEm || "").localeCompare(a.fechadoEm || "")),
     [fechamentos],
   );
+  const ordenados = useMemo(() => ordenadosTodos.filter((f) => !f.excluidoEm), [ordenadosTodos]);
+  const excluidos = useMemo(() => ordenadosTodos.filter((f) => f.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadosTodos]);
 
   async function exportar(tipo: "pdf" | "xlsx") {
     if (!ordenados.length) return;
@@ -215,8 +217,24 @@ export function FechamentoCaixaPage() {
     finally { setExportando(""); }
   }
 
+  // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
   async function excluir(f: FechamentoCaixa) {
-    if (!window.confirm(`Excluir o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nA pasta de anexos é movida pra "excluídos" no Drive (não é apagada).`)) return;
+    if (!window.confirm(`Mover o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}) para Excluídos?\n\nDá pra restaurar depois na aba "Excluídos". Nada é apagado de verdade.`)) return;
+    try {
+      await updateDoc(doc(db, "fechamentosCaixa", f.id), { excluidoEm: new Date().toISOString(), excluidoPor: { id: me?.id || "", nome: me?.nome || "?" } });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
+  }
+
+  // Restaura um fechamento excluído.
+  async function restaurar(f: FechamentoCaixa) {
+    try {
+      await updateDoc(doc(db, "fechamentosCaixa", f.id), { excluidoEm: deleteField(), excluidoPor: deleteField() });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao restaurar."); }
+  }
+
+  // Exclusão definitiva (só config): move a pasta pra "excluídos" no Drive + apaga o doc.
+  async function excluirDefinitivo(f: FechamentoCaixa) {
+    if (!window.confirm(`Excluir DEFINITIVAMENTE o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nO registro é apagado e a pasta vai pra "excluídos" no Drive. Não dá pra desfazer.`)) return;
     try {
       const folderId = f.driveFolderUrl ? parseDriveFolderId(f.driveFolderUrl) : null;
       if (folderId && restaurant?.fechamentoDriveFolderId && (await centralConfigured())) {
@@ -224,7 +242,7 @@ export function FechamentoCaixaPage() {
         await centralMoveFolder(folderId, excluidosId, `${diaLabel(f.data)} ${TURNO_CAIXA_LABEL[f.turno]}`);
       }
       await deleteDoc(doc(db, "fechamentosCaixa", f.id));
-    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir definitivamente."); }
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -233,14 +251,15 @@ export function FechamentoCaixaPage() {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "comandas" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "comandas" | "excluidos" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
   if (podeVer) abas.push("comandas");
+  if (podeConfig && excluidos.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "excluidos" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -251,6 +270,7 @@ export function FechamentoCaixaPage() {
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
         {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
+        {podeConfig && excluidos.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidos.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -280,6 +300,29 @@ export function FechamentoCaixaPage() {
             </div>
           )}
           <FechamentoTabela fechamentos={ordenados} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+        </div>
+      )}
+
+      {abaEfetiva === "excluidos" && podeConfig && (
+        <div className="space-y-2">
+          <p className="text-[12px] text-gray-500">Fechamentos movidos pra cá podem ser <strong>restaurados</strong>. A exclusão definitiva apaga o registro e move a pasta do Drive pra "excluídos".</p>
+          {excluidos.map((f) => (
+            <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
+                  <span className="inline-flex items-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5">excluído {f.excluidoEm ? fmtDataHora(f.excluidoEm) : ""}{f.excluidoPor?.nome ? ` · ${f.excluidoPor.nome}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" variant="secondary" onClick={() => void restaurar(f)}>↩ Restaurar</Button>
+                <button type="button" onClick={() => void excluirDefinitivo(f)} title="Excluir definitivamente"
+                  className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

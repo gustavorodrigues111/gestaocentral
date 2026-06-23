@@ -192,7 +192,7 @@ export function RecebimentoPage() {
   const podeConfig = can("recebimento", "configurar");
   const temAcesso = canModulo("recebimento");
 
-  const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
+  const [tab, setTab] = useState<"receber" | "notas" | "excluidos" | "config">("receber");
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
   const [escolhendoTipo, setEscolhendoTipo] = useState(false);
@@ -212,10 +212,12 @@ export function RecebimentoPage() {
     return () => unsub();
   }, [rid]);
 
-  const ordenadas = useMemo(
+  const ordenadasTodas = useMemo(
     () => [...notas].sort((a, b) => (b.recebidoEm || "").localeCompare(a.recebidoEm || "")),
     [notas],
   );
+  const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);
+  const excluidas = useMemo(() => ordenadasTodas.filter((n) => n.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadasTodas]);
 
   async function exportar(tipo: "pdf" | "xlsx") {
     if (!ordenadas.length) return;
@@ -228,10 +230,36 @@ export function RecebimentoPage() {
     } finally { setExportando(""); }
   }
 
+  // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
   async function excluir(n: RecebimentoNota) {
-    if (!window.confirm(`Excluir o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)})?\n\nO arquivo no Drive NÃO é apagado.`)) return;
-    try { await deleteDoc(doc(db, "recebimentos", n.id)); }
+    if (!window.confirm(`Mover o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)}) para Excluídos?\n\nDá pra restaurar depois na aba "Excluídos". Nada é apagado de verdade.`)) return;
+    try { await updateDoc(doc(db, "recebimentos", n.id), { excluidoEm: new Date().toISOString(), excluidoPor: { id: me?.id || "", nome: me?.nome || "?" } }); }
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
+  }
+
+  // Restaura uma nota excluída.
+  async function restaurar(n: RecebimentoNota) {
+    try { await updateDoc(doc(db, "recebimentos", n.id), { excluidoEm: deleteField(), excluidoPor: deleteField() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao restaurar."); }
+  }
+
+  // Exclusão definitiva (só config): move os arquivos pra "excluídos" no Drive + apaga o doc.
+  async function excluirDefinitivo(n: RecebimentoNota) {
+    if (!window.confirm(`Excluir DEFINITIVAMENTE o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)})?\n\nO registro é apagado e os arquivos (nota, páginas, boletos) vão pra "excluídos" no Drive. Não dá pra desfazer.`)) return;
+    try {
+      const fileIds = [
+        n.notaDriveFileId,
+        n.fotoDivergenciaDriveFileId,
+        ...(n.notaPaginas || []).map((p) => p.driveFileId),
+        ...(n.boletos || []).map((b) => b.driveFileId),
+        ...(n.comprovantes || []).map((c) => c.driveFileId),
+      ].filter((x): x is string => !!x);
+      if (fileIds.length && restaurant?.recebimentoDriveFolderId && (await centralConfigured())) {
+        const excluidosId = await centralEnsureFolder(restaurant.recebimentoDriveFolderId, "excluídos");
+        for (const fid of fileIds) { try { await centralMoveFolder(fid, excluidosId); } catch { /* segue — best-effort */ } }
+      }
+      await deleteDoc(doc(db, "recebimentos", n.id));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir definitivamente."); }
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -246,15 +274,16 @@ export function RecebimentoPage() {
   }
 
   // Abas disponíveis conforme permissão; a efetiva é a 1ª válida.
-  const abas: Array<"receber" | "notas" | "config"> = [];
+  const abas: Array<"receber" | "notas" | "excluidos" | "config"> = [];
   if (podeReceber) abas.push("receber");
   if (podeVer) abas.push("notas");
+  if (podeConfig && excluidas.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "receber");
 
   const abrirNovo = (arquivo: File | null) => { setErro(""); setArquivoInicial(arquivo); setEscolhendoFonte(false); setNovo(true); };
 
-  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "excluidos" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
       {label}
@@ -267,6 +296,7 @@ export function RecebimentoPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
         {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
+        {podeConfig && excluidas.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidas.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
 
@@ -299,6 +329,28 @@ export function RecebimentoPage() {
             </div>
           )}
           <RecebimentoTabela notas={ordenadas} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+        </div>
+      )}
+
+      {abaEfetiva === "excluidos" && podeConfig && (
+        <div className="space-y-2">
+          <p className="text-[12px] text-gray-500">Recebimentos movidos pra cá podem ser <strong>restaurados</strong>. A exclusão definitiva apaga o registro e move os arquivos do Drive pra "excluídos".</p>
+          {excluidas.map((n) => (
+            <div key={n.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · excluído {n.excluidoEm ? fmtDataHora(n.excluidoEm) : ""}{n.excluidoPor?.nome ? ` · ${n.excluidoPor.nome}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Button size="sm" variant="secondary" onClick={() => void restaurar(n)}>↩ Restaurar</Button>
+                <button type="button" onClick={() => void excluirDefinitivo(n)} title="Excluir definitivamente"
+                  className="text-[12px] text-rose-600 hover:text-rose-700 hover:underline px-1">Excluir definitivo</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

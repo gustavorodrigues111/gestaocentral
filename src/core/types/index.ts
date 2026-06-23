@@ -4740,6 +4740,8 @@ export type FechamentoCaixa = {
   anexos?: AnexoFechamento[];
   driveFolderUrl?: string;      // pasta do turno no Drive
   emailEnviadoPara?: string[];  // emails dos sócios notificados
+  excluidoEm?: string;          // ISO — soft delete (vai pra "Excluídos", restaurável)
+  excluidoPor?: { id: string; nome: string };
 };
 export type TipoDocumento = "nota_fiscal" | "cupom_fiscal" | "conta_fixa" | "romaneio";
 export const TIPO_DOCUMENTO_LABEL: Record<TipoDocumento, string> = {
@@ -4790,4 +4792,6 @@ export type RecebimentoNota = {
   boletos?: BoletoNota[];             // boletos anexados (arquivados no Drive)
   comprovantes?: BoletoNota[];        // comprovantes de pagamento (ex: cartão) no Drive
   semanaLabel?: string;               // "dd.mm.aa a dd.mm.aa" (nome da subpasta)
+  excluidoEm?: string;                // ISO — soft delete (vai pra "Excluídos", restaurável)
+  excluidoPor?: { id: string; nome: string };
 };
