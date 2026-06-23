@@ -27,7 +27,7 @@ import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/dri
 import { centralConfigured, centralEnsureTopFolder, centralEnsureFolder, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 import { authHeader } from "../../core/firebase/idToken";
 import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem";
-import { exportarFechamentosPDF, exportarFechamentosXLSX } from "./exportFechamentos";
+import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -267,7 +267,7 @@ export function FechamentoCaixaPage() {
         </div>
       )}
 
-      {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ordenados} />}
+      {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ordenados} restaurantNome={restaurant?.nome || ""} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
@@ -709,10 +709,13 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
 }
 
 // ─── Aba: controle de cortesias / comandas de sócios ────────────────────────
-function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
-  const [dataIni, setDataIni] = useState("");
-  const [dataFim, setDataFim] = useState("");
+function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: FechamentoCaixa[]; restaurantNome: string }) {
+  // Pré-preenche: dia 1 do mês corrente → hoje.
+  const hoje = useMemo(() => new Date(), []);
+  const [dataIni, setDataIni] = useState(() => ymd(new Date(hoje.getFullYear(), hoje.getMonth(), 1)));
+  const [dataFim, setDataFim] = useState(() => ymd(hoje));
   const [filtroComanda, setFiltroComanda] = useState(""); // "" = todas
+  const [exportando, setExportando] = useState<"" | "xlsx" | "pdf">("");
 
   // Achata: cada consumo vira uma linha com data/turno.
   const linhas = useMemo(() => {
@@ -721,7 +724,7 @@ function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
     return out.sort((a, b) => (b.data || "").localeCompare(a.data || ""));
   }, [fechamentos]);
 
-  // Opções de comanda pro filtro (distintas).
+  // Opções de comanda pro filtro (distintas) — viram chips.
   const opcoes = useMemo(() => {
     const map = new Map<string, string>();
     for (const l of linhas) map.set(l.numero, l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`);
@@ -743,25 +746,52 @@ function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
     return [...map.values()].sort((a, b) => b.total - a.total);
   }, [filtradas]);
 
+  async function exportar(tipo: "xlsx" | "pdf") {
+    if (exportando) return;
+    setExportando(tipo);
+    try {
+      const periodo = `${fmtData(dataIni)} a ${fmtData(dataFim)}` + (filtroComanda ? ` · ${opcoes.find(([n]) => n === filtroComanda)?.[1] || ""}` : "");
+      if (tipo === "pdf") await exportarComandasPDF(filtradas, restaurantNome, periodo);
+      else await exportarComandasXLSX(filtradas, restaurantNome);
+    } finally { setExportando(""); }
+  }
+
   return (
     <div className="space-y-3">
       {/* Filtros */}
-      <div className="flex flex-wrap items-end gap-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-        <div>
-          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">De</label>
-          <input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 space-y-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">De</label>
+            <input type="date" value={dataIni} onChange={(e) => setDataIni(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div>
+            <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">Até</label>
+            <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div className="flex-1" />
+          {filtradas.length > 0 && (
+            <div className="flex gap-2">
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}</Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : "⬇ PDF"}</Button>
+            </div>
+          )}
         </div>
-        <div>
-          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">Até</label>
-          <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
-        </div>
-        <div className="flex-1 min-w-[160px]">
-          <label className="text-[11px] font-semibold text-gray-500 block mb-0.5">Comanda</label>
-          <select value={filtroComanda} onChange={(e) => setFiltroComanda(e.target.value)} className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-            <option value="">Todas</option>
-            {opcoes.map(([num, rot]) => <option key={num} value={num}>{rot}</option>)}
-          </select>
-        </div>
+        {/* Chips de comanda */}
+        {opcoes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            <button type="button" onClick={() => setFiltroComanda("")}
+              className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors ${filtroComanda === "" ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+              Todas
+            </button>
+            {opcoes.map(([num, rot]) => (
+              <button key={num} type="button" onClick={() => setFiltroComanda((c) => c === num ? "" : num)}
+                className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors ${filtroComanda === num ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                {rot}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Resumo por comanda */}
@@ -780,34 +810,53 @@ function ControleComandas({ fechamentos }: { fechamentos: FechamentoCaixa[] }) {
       {filtradas.length === 0 ? (
         <div className="text-center text-sm text-gray-400 py-12">Nenhum consumo de comanda no período. As comandas lidas nos fechamentos aparecem aqui.</div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200 dark:border-gray-800">
-                <th className="px-3 py-2">Data</th>
-                <th className="px-3 py-2">Turno</th>
-                <th className="px-3 py-2">Comanda</th>
-                <th className="px-3 py-2 text-right">Valor</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {filtradas.map((l, i) => (
-                <tr key={i} className="whitespace-nowrap">
-                  <td className="px-3 py-2 tabular-nums text-gray-500">{fmtData(l.data)}</td>
-                  <td className="px-3 py-2">{TURNO_CAIXA_LABEL[l.turno]}</td>
-                  <td className="px-3 py-2">{l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{l.valor != null ? fmtBRL(l.valor) : "—"}</td>
+        <>
+          {/* Desktop: tabela */}
+          <div className="hidden sm:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800">
+                  <th className="px-4 py-2.5 font-medium">Data</th>
+                  <th className="px-4 py-2.5 font-medium">Turno</th>
+                  <th className="px-4 py-2.5 font-medium">Comanda</th>
+                  <th className="px-4 py-2.5 font-medium text-right">Valor</th>
                 </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr className="font-semibold border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
-                <td className="px-3 py-2" colSpan={3}>Total ({filtradas.length})</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(total)}</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {filtradas.map((l, i) => (
+                  <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                    <td className="px-4 py-2.5 tabular-nums text-gray-500">{fmtData(l.data)}</td>
+                    <td className="px-4 py-2.5"><span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[l.turno]}</span></td>
+                    <td className="px-4 py-2.5 text-gray-700 dark:text-gray-200">{l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{l.valor != null ? fmtBRL(l.valor) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr className="font-semibold border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+                  <td className="px-4 py-2.5" colSpan={3}>Total ({filtradas.length})</td>
+                  <td className="px-4 py-2.5 text-right tabular-nums">{fmtBRL(total)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+          {/* Mobile: cards */}
+          <div className="sm:hidden space-y-2">
+            {filtradas.map((l, i) => (
+              <div key={i} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="font-medium text-gray-800 dark:text-gray-100 truncate">{l.nome ? `${l.nome} (${l.numero})` : `Comanda ${l.numero}`}</div>
+                  <div className="text-[11px] text-gray-400 tabular-nums">{fmtData(l.data)} · {TURNO_CAIXA_LABEL[l.turno]}</div>
+                </div>
+                <div className="shrink-0 tabular-nums font-semibold text-gray-800 dark:text-gray-100">{l.valor != null ? fmtBRL(l.valor) : "—"}</div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-3 py-2.5 font-semibold bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl">
+              <span>Total ({filtradas.length})</span>
+              <span className="tabular-nums">{fmtBRL(total)}</span>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -987,7 +1036,8 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
   }
   return (
     <>
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+      {/* Desktop: tabela */}
+      <div className="hidden sm:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800">
@@ -1037,6 +1087,47 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
             ))}
           </tbody>
         </table>
+      </div>
+      {/* Mobile: cards */}
+      <div className="sm:hidden space-y-2">
+        {fechamentos.map((f) => (
+          <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+            <button type="button" onClick={() => setDetalhe(f)} className="w-full flex items-start justify-between gap-3 text-left">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
+                  <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                </div>
+                <div className="text-[11px] text-gray-400 tabular-nums mt-0.5">fechado {fmtDataHora(f.fechadoEm)}</div>
+              </div>
+              <div className="shrink-0 text-right">
+                <div className="text-base font-bold text-gray-800 dark:text-gray-100 tabular-nums">{fmtBRL(f.totalVendas)}</div>
+                <div className="text-[10px] uppercase tracking-wide text-gray-400">vendas</div>
+              </div>
+            </button>
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
+              <div className="flex flex-col gap-0.5 min-w-0">
+                {f.fechadoPor?.nome && <span className="truncate">👤 {f.fechadoPor.nome}</span>}
+                {f.numeroLacre && <span className="tabular-nums">🔒 {f.numeroLacre}</span>}
+                {f.observacao && <span className="truncate text-gray-400 italic">{f.observacao}</span>}
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                {f.driveFolderUrl && (
+                  <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no Drive"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 active:bg-indigo-50 transition-colors">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                  </a>
+                )}
+                {podeConfig && (
+                  <button type="button" onClick={() => onExcluir(f)} title="Excluir fechamento"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 bg-gray-50 dark:bg-gray-800 hover:text-rose-600 active:bg-rose-50 transition-colors">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
       {detalhe && <DetalheFechamentoModal f={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(x) => { setDetalhe(null); setEditar(x); }} />}
       {editar && <EditarFechamentoModal f={editar} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}

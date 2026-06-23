@@ -587,7 +587,8 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
 
   return (
     <>
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+    {/* Desktop: tabela */}
+    <div className="hidden sm:block bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800">
@@ -650,6 +651,46 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
           ); })}
         </tbody>
       </table>
+    </div>
+    {/* Mobile: cards */}
+    <div className="sm:hidden space-y-2">
+      {ordenadas.map((n) => { const vs = vencimentosDe(n); return (
+        <div key={n.id} className={`rounded-xl border p-3 ${n.conforme ? "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800" : "bg-rose-50/60 dark:bg-rose-950/15 border-rose-200 dark:border-rose-900/40"}`}>
+          <button type="button" onClick={() => setDetalhe(n)} className="w-full flex items-start justify-between gap-3 text-left">
+            <div className="min-w-0">
+              <div className="font-semibold text-gray-800 dark:text-gray-100 truncate" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</div>
+              <div className="text-[11px] text-gray-400 truncate">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}${n.serieNota ? `/${n.serieNota}` : ""}` : ""}</div>
+            </div>
+            <div className="shrink-0 text-right">
+              <div className="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{fmtBRL(n.valorTotal)}</div>
+              {n.conforme
+                ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Conforme</span>
+                : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Divergência</span>}
+            </div>
+          </button>
+          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
+            <div className="flex flex-col gap-0.5 min-w-0">
+              <span className="tabular-nums">📅 emissão {fmtDataBR(n.dataEmissao) || "—"}</span>
+              {vs.length > 0 && <span className="tabular-nums">💳 venc. {fmtDataBR(vs[0])}{vs.length > 1 ? ` +${vs.length - 1}` : ""}</span>}
+              {n.formaPagamento && <span>{FORMA_PAGAMENTO_ICONE[n.formaPagamento]} {FORMA_PAGAMENTO_LABEL[n.formaPagamento]}</span>}
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              {n.notaDriveUrl && (
+                <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 active:bg-indigo-50 transition-colors">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                </a>
+              )}
+              {podeConfig && (
+                <button type="button" onClick={() => onExcluir(n)} title="Excluir recebimento"
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-400 bg-gray-50 dark:bg-gray-800 hover:text-rose-600 active:bg-rose-50 transition-colors">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ); })}
     </div>
     <p className="text-[11px] text-gray-400 mt-2 px-1">Versão resumida. Baixe <strong>XLSX</strong> ou <strong>PDF</strong> para a tabela completa (CNPJ, quem recebeu, divergência, todas as parcelas e semana).</p>
     {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
