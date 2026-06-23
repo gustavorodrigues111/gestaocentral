@@ -187,11 +187,12 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "excluidos" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
   const [exportando, setExportando] = useState<"" | "pdf" | "xlsx">("");
+  const purgandoRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (!rid) return;
@@ -204,17 +205,32 @@ export function FechamentoCaixaPage() {
     () => [...fechamentos].sort((a, b) => (b.fechadoEm || "").localeCompare(a.fechadoEm || "")),
     [fechamentos],
   );
-  const ordenados = useMemo(() => ordenadosTodos.filter((f) => !f.excluidoEm), [ordenadosTodos]);
+  const ativos = useMemo(() => ordenadosTodos.filter((f) => !f.excluidoEm), [ordenadosTodos]);          // não-excluídos (export + comandas)
+  const pendentes = useMemo(() => ativos.filter((f) => !f.conferidoEm), [ativos]);                       // a conferir (lista principal)
+  const conferidos = useMemo(() => ativos.filter((f) => f.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ativos]);
   const excluidos = useMemo(() => ordenadosTodos.filter((f) => f.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadosTodos]);
 
   async function exportar(tipo: "pdf" | "xlsx") {
-    if (!ordenados.length) return;
+    if (!ativos.length) return;
     setErro(""); setExportando(tipo);
     try {
-      if (tipo === "pdf") await exportarFechamentosPDF(ordenados, restaurant?.nome || "");
-      else await exportarFechamentosXLSX(ordenados, restaurant?.nome || "");
+      if (tipo === "pdf") await exportarFechamentosPDF(ativos, restaurant?.nome || "");
+      else await exportarFechamentosXLSX(ativos, restaurant?.nome || "");
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao exportar."); }
     finally { setExportando(""); }
+  }
+
+  // Conferido pelo escritório → vai pro histórico de Conferidos (nunca apaga). Reversível.
+  async function conferir(f: FechamentoCaixa) {
+    try {
+      await updateDoc(doc(db, "fechamentosCaixa", f.id), { conferidoEm: new Date().toISOString(), conferidoPor: { id: me?.id || "", nome: me?.nome || "?" } });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao conferir."); }
+  }
+  // Desfaz a conferência → volta pra lista de pendentes.
+  async function desconferir(f: FechamentoCaixa) {
+    try {
+      await updateDoc(doc(db, "fechamentosCaixa", f.id), { conferidoEm: deleteField(), conferidoPor: deleteField() });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao desfazer conferência."); }
   }
 
   // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
@@ -245,21 +261,33 @@ export function FechamentoCaixaPage() {
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir definitivamente."); }
   }
 
+  // Purga automática: excluídos há mais de 60 dias somem de vez (o registro é apagado; arquivos no Drive permanecem).
+  useEffect(() => {
+    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    for (const f of excluidos) {
+      if (!f.excluidoEm || new Date(f.excluidoEm).getTime() > limite) continue;
+      if (purgandoRef.current.has(f.id)) continue;
+      purgandoRef.current.add(f.id);
+      deleteDoc(doc(db, "fechamentosCaixa", f.id)).catch(() => purgandoRef.current.delete(f.id));
+    }
+  }, [excluidos]);
+
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
   if (!temAcesso) {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "comandas" | "excluidos" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
   if (podeVer) abas.push("comandas");
+  if (podeVer && conferidos.length > 0) abas.push("conferidos");
   if (podeConfig && excluidos.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "excluidos" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "conferidos" | "excluidos" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -270,6 +298,7 @@ export function FechamentoCaixaPage() {
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
         {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
+        {podeVer && conferidos.length > 0 && <TabBtn k="conferidos" label={`✅ Conferidos (${conferidos.length})`} />}
         {podeConfig && excluidos.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidos.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
@@ -287,25 +316,52 @@ export function FechamentoCaixaPage() {
         </div>
       )}
 
-      {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ordenados} restaurantNome={restaurant?.nome || ""} />}
+      {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
       {abaEfetiva === "lista" && podeVer && (
         <div className="space-y-3">
-          {ordenados.length > 0 && (
+          {ativos.length > 0 && (
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}</Button>
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : "⬇ PDF"}</Button>
             </div>
           )}
-          <FechamentoTabela fechamentos={ordenados} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+          <FechamentoTabela fechamentos={pendentes} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+        </div>
+      )}
+
+      {abaEfetiva === "conferidos" && podeVer && (
+        <div className="space-y-2">
+          <p className="text-[12px] text-gray-500">Fechamentos <strong>conferidos pelo escritório</strong>. Este histórico nunca é apagado. Dá pra desfazer a conferência se precisar revisar.</p>
+          {conferidos.map((f) => (
+            <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{fmtData(f.data)}</span>
+                  <span className="inline-flex items-center rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(f.totalVendas)}</span>
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5">✓ conferido {f.conferidoEm ? fmtDataHora(f.conferidoEm) : ""}{f.conferidoPor?.nome ? ` · ${f.conferidoPor.nome}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {f.driveFolderUrl && (
+                  <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no Drive"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 transition-colors">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                  </a>
+                )}
+                {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(f)}>↩ Desfazer</Button>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {abaEfetiva === "excluidos" && podeConfig && (
         <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Fechamentos movidos pra cá podem ser <strong>restaurados</strong>. A exclusão definitiva apaga o registro e move a pasta do Drive pra "excluídos".</p>
+          <p className="text-[12px] text-gray-500">Fechamentos movidos pra cá podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (o registro é apagado; os arquivos no Drive permanecem). A exclusão definitiva apaga o registro na hora e move a pasta do Drive pra "excluídos".</p>
           {excluidos.map((f) => (
             <div key={f.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -1066,16 +1122,18 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
 }
 
 // ─── Tabela de fechamentos ──────────────────────────────────────────────────
-function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
+function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onConferir }: {
   fechamentos: FechamentoCaixa[];
   podeEditar: boolean;
   podeConfig: boolean;
   onExcluir: (f: FechamentoCaixa) => void;
+  onConferir?: (f: FechamentoCaixa) => void;
 }) {
   const [detalhe, setDetalhe] = useState<FechamentoCaixa | null>(null);
   const [editar, setEditar] = useState<FechamentoCaixa | null>(null);
+  const temAcoes = !!onConferir || podeConfig;
   if (fechamentos.length === 0) {
-    return <div className="text-center text-sm text-gray-400 py-12">Nenhum fechamento ainda. Clique em <strong>💵 Novo fechamento</strong>.</div>;
+    return <div className="text-center text-sm text-gray-400 py-12">Tudo conferido! Nenhum fechamento pendente.</div>;
   }
   return (
     <>
@@ -1090,7 +1148,7 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
               <th className="px-4 py-2.5 font-medium">Fechou</th>
               <th className="px-4 py-2.5 font-medium">Obs.</th>
               <th className="px-4 py-2.5 font-medium text-center">Pasta</th>
-              {podeConfig && <th className="px-4 py-2.5" />}
+              {temAcoes && <th className="px-4 py-2.5 font-medium text-right">Ações</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1120,12 +1178,23 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
                     </a>
                   ) : <span className="text-gray-300">—</span>}
                 </td>
-                {podeConfig && (
-                  <td className="px-4 py-3 text-right">
-                    <button type="button" onClick={() => onExcluir(f)} title="Excluir fechamento"
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
-                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
-                    </button>
+                {temAcoes && (
+                  <td className="px-4 py-3">
+                    <div className="flex items-center justify-end gap-2">
+                      {onConferir && (
+                        <button type="button" onClick={() => onConferir(f)} title="Marcar como conferido pelo escritório"
+                          className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
+                          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                          Conferir
+                        </button>
+                      )}
+                      {podeConfig && (
+                        <button type="button" onClick={() => onExcluir(f)} title="Excluir fechamento"
+                          className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                        </button>
+                      )}
+                    </div>
                   </td>
                 )}
               </tr>
@@ -1156,7 +1225,14 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
                 {f.numeroLacre && <span className="tabular-nums">🔒 {f.numeroLacre}</span>}
                 {f.observacao && <span className="truncate text-gray-400 italic">{f.observacao}</span>}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
+              <div className="flex items-center gap-1.5 shrink-0">
+                {onConferir && (
+                  <button type="button" onClick={() => onConferir(f)} title="Marcar como conferido"
+                    className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                    Conferir
+                  </button>
+                )}
                 {f.driveFolderUrl && (
                   <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no Drive"
                     className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 active:bg-indigo-50 transition-colors">

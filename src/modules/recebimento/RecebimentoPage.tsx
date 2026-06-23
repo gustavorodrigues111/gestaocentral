@@ -192,7 +192,7 @@ export function RecebimentoPage() {
   const podeConfig = can("recebimento", "configurar");
   const temAcesso = canModulo("recebimento");
 
-  const [tab, setTab] = useState<"receber" | "notas" | "excluidos" | "config">("receber");
+  const [tab, setTab] = useState<"receber" | "notas" | "conferidos" | "excluidos" | "config">("receber");
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
   const [escolhendoTipo, setEscolhendoTipo] = useState(false);
@@ -216,18 +216,43 @@ export function RecebimentoPage() {
     () => [...notas].sort((a, b) => (b.recebidoEm || "").localeCompare(a.recebidoEm || "")),
     [notas],
   );
-  const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);
+  const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);      // não-excluídas (export)
+  const pendentes = useMemo(() => ordenadas.filter((n) => !n.conferidoEm), [ordenadas]);               // a conferir (lista principal)
+  const conferidas = useMemo(() => ordenadas.filter((n) => n.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ordenadas]);
   const excluidas = useMemo(() => ordenadasTodas.filter((n) => n.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadasTodas]);
+  const purgandoRef = useRef<Set<string>>(new Set());
+
+  // Purga automática: excluídas há mais de 60 dias somem de vez (registro apagado; arquivos no Drive permanecem).
+  useEffect(() => {
+    const limite = Date.now() - 60 * 24 * 60 * 60 * 1000;
+    for (const n of excluidas) {
+      if (!n.excluidoEm || new Date(n.excluidoEm).getTime() > limite) continue;
+      if (purgandoRef.current.has(n.id)) continue;
+      purgandoRef.current.add(n.id);
+      deleteDoc(doc(db, "recebimentos", n.id)).catch(() => purgandoRef.current.delete(n.id));
+    }
+  }, [excluidas]);
 
   async function exportar(tipo: "pdf" | "xlsx") {
     if (!ordenadas.length) return;
     setErro(""); setExportando(tipo);
     try {
-      if (tipo === "pdf") await exportarRecebimentosPDF(ordenadas, restaurant?.nome || "");
+      if (tipo === "pdf") await exportarRecebimentosPDF(ordenadas, restaurant?.nome || "");   // inclui pendentes + conferidas
       else await exportarRecebimentosXLSX(ordenadas, restaurant?.nome || "");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao exportar.");
     } finally { setExportando(""); }
+  }
+
+  // Conferido pelo escritório → vai pro histórico de Conferidos (nunca apaga). Reversível.
+  async function conferir(n: RecebimentoNota) {
+    try { await updateDoc(doc(db, "recebimentos", n.id), { conferidoEm: new Date().toISOString(), conferidoPor: { id: me?.id || "", nome: me?.nome || "?" } }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao conferir."); }
+  }
+  // Desfaz a conferência → volta pra lista de pendentes.
+  async function desconferir(n: RecebimentoNota) {
+    try { await updateDoc(doc(db, "recebimentos", n.id), { conferidoEm: deleteField(), conferidoPor: deleteField() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao desfazer conferência."); }
   }
 
   // Soft delete: vai pra "Excluídos" (restaurável). Os arquivos no Drive ficam onde estão.
@@ -274,16 +299,17 @@ export function RecebimentoPage() {
   }
 
   // Abas disponíveis conforme permissão; a efetiva é a 1ª válida.
-  const abas: Array<"receber" | "notas" | "excluidos" | "config"> = [];
+  const abas: Array<"receber" | "notas" | "conferidos" | "excluidos" | "config"> = [];
   if (podeReceber) abas.push("receber");
   if (podeVer) abas.push("notas");
+  if (podeVer && conferidas.length > 0) abas.push("conferidos");
   if (podeConfig && excluidas.length > 0) abas.push("excluidos");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "receber");
 
   const abrirNovo = (arquivo: File | null) => { setErro(""); setArquivoInicial(arquivo); setEscolhendoFonte(false); setNovo(true); };
 
-  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "excluidos" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "conferidos" | "excluidos" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
       {label}
@@ -296,6 +322,7 @@ export function RecebimentoPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
         {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
+        {podeVer && conferidas.length > 0 && <TabBtn k="conferidos" label={`✅ Conferidas (${conferidas.length})`} />}
         {podeConfig && excluidas.length > 0 && <TabBtn k="excluidos" label={`🗑 Excluídos (${excluidas.length})`} />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
       </div>
@@ -328,13 +355,39 @@ export function RecebimentoPage() {
               </Button>
             </div>
           )}
-          <RecebimentoTabela notas={ordenadas} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} />
+          <RecebimentoTabela notas={pendentes} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+        </div>
+      )}
+
+      {abaEfetiva === "conferidos" && podeVer && (
+        <div className="space-y-2">
+          <p className="text-[12px] text-gray-500">Notas <strong>conferidas pelo escritório</strong>. Este histórico nunca é apagado. Dá pra desfazer a conferência se precisar revisar.</p>
+          {conferidas.map((n) => (
+            <div key={n.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[260px]" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                  <span className="tabular-nums font-semibold text-gray-700 dark:text-gray-200">{fmtBRL(n.valorTotal)}</span>
+                </div>
+                <div className="text-[11px] text-gray-400 mt-0.5">{tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}` : ""} · ✓ conferido {n.conferidoEm ? fmtDataHora(n.conferidoEm) : ""}{n.conferidoPor?.nome ? ` · ${n.conferidoPor.nome}` : ""}</div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {n.notaDriveUrl && (
+                  <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 transition-colors">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                  </a>
+                )}
+                {podeEditar && <Button size="sm" variant="secondary" onClick={() => void desconferir(n)}>↩ Desfazer</Button>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {abaEfetiva === "excluidos" && podeConfig && (
         <div className="space-y-2">
-          <p className="text-[12px] text-gray-500">Recebimentos movidos pra cá podem ser <strong>restaurados</strong>. A exclusão definitiva apaga o registro e move os arquivos do Drive pra "excluídos".</p>
+          <p className="text-[12px] text-gray-500">Recebimentos movidos pra cá podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (o registro é apagado; os arquivos no Drive permanecem). A exclusão definitiva apaga o registro na hora e move os arquivos do Drive pra "excluídos".</p>
           {excluidas.map((n) => (
             <div key={n.id} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -575,13 +628,15 @@ type SortKey = "recebido" | "tipo" | "emissao" | "nf" | "emissor" | "valor" | "r
 const tipoLabelDe = (n: RecebimentoNota): string => n.tipoDocumento
   ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
   : "—";
-function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExcluir }: {
+function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExcluir, onConferir }: {
   notas: RecebimentoNota[];
   restaurant: { recebimentoDriveFolderId?: string };
   podeEditar: boolean;
   podeConfig: boolean;
   onExcluir: (n: RecebimentoNota) => void;
+  onConferir?: (n: RecebimentoNota) => void;
 }) {
+  const temAcoes = !!onConferir || podeConfig;
   const [detalhe, setDetalhe] = useState<RecebimentoNota | null>(null);
   const [editar, setEditar] = useState<RecebimentoNota | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("recebido");
@@ -624,7 +679,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
   }, [notas, sortKey, sortDir]);
 
   if (notas.length === 0) {
-    return <div className="text-center text-sm text-gray-400 py-12">Nenhum recebimento ainda. Clique em <strong>+ Novo recebimento</strong>.</div>;
+    return <div className="text-center text-sm text-gray-400 py-12">Tudo conferido! Nenhuma nota pendente.</div>;
   }
 
   const seta = (k: SortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
@@ -651,7 +706,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
             <Th k="venc:0" label="Vencimento" />
             <Th k="pgto" label="Pgto" />
             <th className="px-4 py-2.5 font-medium text-center">Nota</th>
-            {podeConfig && <th className="px-4 py-2.5" />}
+            {temAcoes && <th className="px-4 py-2.5 font-medium text-right">Ações</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -691,12 +746,23 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
                   </span>
                 ) : <span className="text-gray-300">—</span>}
               </td>
-              {podeConfig && (
-                <td className="px-4 py-3 text-right">
-                  <button type="button" onClick={() => onExcluir(n)} title="Excluir recebimento"
-                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
-                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
-                  </button>
+              {temAcoes && (
+                <td className="px-4 py-3">
+                  <div className="flex items-center justify-end gap-2">
+                    {onConferir && (
+                      <button type="button" onClick={() => onConferir(n)} title="Marcar como conferido pelo escritório"
+                        className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                        Conferir
+                      </button>
+                    )}
+                    {podeConfig && (
+                      <button type="button" onClick={() => onExcluir(n)} title="Excluir recebimento"
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </td>
               )}
             </tr>
@@ -726,7 +792,14 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
               {vs.length > 0 && <span className="tabular-nums">💳 venc. {fmtDataBR(vs[0])}{vs.length > 1 ? ` +${vs.length - 1}` : ""}</span>}
               {n.formaPagamento && <span>{FORMA_PAGAMENTO_ICONE[n.formaPagamento]} {FORMA_PAGAMENTO_LABEL[n.formaPagamento]}</span>}
             </div>
-            <div className="flex items-center gap-1 shrink-0">
+            <div className="flex items-center gap-1.5 shrink-0">
+              {onConferir && (
+                <button type="button" onClick={() => onConferir(n)} title="Marcar como conferido"
+                  className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  Conferir
+                </button>
+              )}
               {n.notaDriveUrl && (
                 <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
                   className="inline-flex items-center justify-center w-9 h-9 rounded-lg text-gray-500 bg-gray-50 dark:bg-gray-800 hover:text-indigo-600 active:bg-indigo-50 transition-colors">
