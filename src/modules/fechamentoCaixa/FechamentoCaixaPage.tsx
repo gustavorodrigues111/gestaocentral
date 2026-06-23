@@ -11,7 +11,7 @@
 //  Reaproveita a infra do Recebimento: conta Drive central (driveShared), carimbo
 //  e filtro scanner (processarImagem), e o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -1022,6 +1022,7 @@ function ConciliacaoCartoes() {
   const [redeNome, setRedeNome] = useState("");
   const [lendoPrint, setLendoPrint] = useState(false);
   const [lendoXlsx, setLendoXlsx] = useState(false);
+  const [conciliados, setConciliados] = useState<Set<string>>(new Set());
   const [erro, setErro] = useState("");
   const printRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
@@ -1086,11 +1087,22 @@ function ConciliacaoCartoes() {
 
   const filesFrom = (e: ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files || []); e.target.value = ""; return fs; };
   const somaBand = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
+  const keyCorte = (c: CaixaCorte) => `${c.data}T${c.hora}|${c.id || ""}`;
 
-  const Card = ({ titulo, sub, g }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number } }) => {
+  // Duplicados: mesmo nº de caixa repetido, ou cortes a menos de 2min (prints sobrepostos).
+  const dups = useMemo(() => {
+    const byId = new Map<string, number>();
+    for (const c of cortes) if (c.id) byId.set(c.id, (byId.get(c.id) || 0) + 1);
+    const ids = [...byId.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+    const near: string[] = [];
+    for (let i = 1; i < cortes.length; i++) if (cortes[i].ts - cortes[i - 1].ts < 120000) near.push(`${fmtData(cortes[i].data)} ${cortes[i].hora.slice(0, 5)}`);
+    return { ids, near };
+  }, [cortes]);
+
+  const Card = ({ titulo, sub, g, amber, acoes }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number }; amber?: boolean; acoes?: ReactNode }) => {
     const totCred = somaBand(g.credito), totDeb = somaBand(g.debito);
     return (
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
+      <div className={`border rounded-xl p-4 space-y-2 ${amber ? "border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
         <div className="flex items-baseline justify-between gap-2">
           <div><div className="font-semibold text-gray-800 dark:text-gray-100">{titulo}</div>{sub && <div className="text-[11px] text-gray-400">{sub}</div>}</div>
           <div className="text-right"><div className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmtBRL(g.total)}</div><div className="text-[10px] uppercase tracking-wide text-gray-400">cartões · {g.nCard}</div></div>
@@ -1110,6 +1122,7 @@ function ConciliacaoCartoes() {
           </div>
         </div>
         {g.pixRede > 0 && <div className="text-[11px] text-gray-400 pt-1 border-t border-gray-100 dark:border-gray-800">PIX Rede (maquininha): <span className="tabular-nums">{fmtBRL(g.pixRede)}</span> · o PIX do balcão (QR/banco) não está aqui</div>}
+        {acoes && <div className="flex justify-end pt-1">{acoes}</div>}
       </div>
     );
   };
@@ -1144,18 +1157,53 @@ function ConciliacaoCartoes() {
         </div>
       )}
 
-      {!resultado && <div className="text-center text-sm text-gray-400 py-10">Envie o print dos caixas <strong>e</strong> a planilha da Rede pra ver a conciliação por caixa.</div>}
-
-      {resultado && (
-        <div className="space-y-3">
-          <p className="text-[12px] text-gray-500">Cada caixa soma as vendas de cartão da Rede do <strong>corte anterior até o corte dele</strong>. Confira esses valores de crédito/débito por bandeira na Altec. Dinheiro e o PIX do balcão não vêm da Rede.</p>
-          {resultado.aberto.total > 0 && <Card titulo="Caixa em aberto" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
-          {cortes.map((c, i) => {
-            const ini = i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início";
-            return <Card key={i} titulo={`Caixa ${c.id ? `#${c.id}` : i + 1} · fechou ${fmtData(c.data)} ${c.hora.slice(0, 5)}`} sub={`de ${ini} até ${fmtData(c.data)} ${c.hora.slice(0, 5)}`} g={resultado.porCaixa[i]} />;
-          }).reverse()}
+      {/* Aviso de duplicado */}
+      {(dups.ids.length > 0 || dups.near.length > 0) && (
+        <div className="text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-900/40 rounded-lg px-3 py-2">
+          ⚠ Possível caixa duplicado{dups.ids.length ? ` — nº ${dups.ids.join(", ")} aparece(m) mais de uma vez` : ""}{dups.near.length ? ` — cortes muito próximos (${dups.near.join(", ")})` : ""}. Confira se colou prints sobrepostos; use "limpar" e refaça se precisar.
         </div>
       )}
+
+      {!resultado && <div className="text-center text-sm text-gray-400 py-10">Envie o print dos caixas <strong>e</strong> a planilha da Rede pra ver a conciliação por caixa.</div>}
+
+      {resultado && (() => {
+        const pend = cortes.map((c, i) => ({ c, i })).filter((x) => !conciliados.has(keyCorte(x.c)));
+        const conc = cortes.map((c, i) => ({ c, i })).filter((x) => conciliados.has(keyCorte(x.c)));
+        const janela = (i: number) => `de ${i > 0 ? `${fmtData(cortes[i - 1].data)} ${cortes[i - 1].hora.slice(0, 5)}` : "início"} até ${fmtData(cortes[i].data)} ${cortes[i].hora.slice(0, 5)}`;
+        const titulo = (c: CaixaCorte, i: number) => `Caixa ${c.id ? `#${c.id}` : i + 1} · fechou ${fmtData(c.data)} ${c.hora.slice(0, 5)}`;
+        return (
+          <div className="space-y-3">
+            <p className="text-[12px] text-gray-500">Cada caixa soma as vendas de cartão da Rede do <strong>corte anterior até o corte dele</strong>. Confira esses valores de crédito/débito por bandeira na Altec e marque <strong>Conciliado</strong>. Dinheiro e o PIX do balcão não vêm da Rede.</p>
+
+            {/* Pendentes — do mais antigo pro mais novo */}
+            {pend.map(({ c, i }) => (
+              <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
+                acoes={<button type="button" onClick={() => setConciliados((s) => new Set(s).add(keyCorte(c)))}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 transition-colors">
+                  <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+                  Conciliado na Altec
+                </button>} />
+            ))}
+
+            {/* Caixa em aberto (não fechado) — sombreado amarelo, sempre por último */}
+            {resultado.aberto.total > 0 && <Card amber titulo="Caixa em aberto (não fechado)" sub={`vendas após o último corte (${fmtData(cortes[cortes.length - 1].data)} ${cortes[cortes.length - 1].hora.slice(0, 5)})`} g={resultado.aberto} />}
+
+            {/* Histórico de conciliados */}
+            {conc.length > 0 && (
+              <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
+                <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conciliados na Altec <span className="text-gray-400 font-normal">({conc.length})</span></summary>
+                <div className="px-3 pb-3 space-y-2">
+                  {conc.map(({ c, i }) => (
+                    <Card key={i} titulo={titulo(c, i)} sub={janela(i)} g={resultado.porCaixa[i]}
+                      acoes={<button type="button" onClick={() => setConciliados((s) => { const n = new Set(s); n.delete(keyCorte(c)); return n; })}
+                        className="text-[12px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline px-1">↩ Desfazer</button>} />
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
