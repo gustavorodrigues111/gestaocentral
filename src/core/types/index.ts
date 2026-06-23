@@ -4716,7 +4716,7 @@ export type AnexoFechamento = {
 // Comanda cadastrável (sócio, cortesia, perdas, treinamento…). nome = finalidade.
 export type ComandaCadastro = { numero: string; nome: string };
 // Quebra por maquininha lida do fechamento (OCR).
-export type MaquininhaFechamento = { identificador?: string; credito?: number; debito?: number; total?: number };
+export type MaquininhaFechamento = { identificador?: string; credito?: number; debito?: number; pix?: number; total?: number };
 // Consumo de uma comanda (sócio/cortesia) no turno.
 export type ComandaConsumo = { numero: string; nome?: string; valor?: number };
 export type FechamentoCaixa = {

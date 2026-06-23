@@ -50,25 +50,30 @@ const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "comanda", "outro"];
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
-const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0);
+const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0) + (m.pix || 0);
 
-// Tabela das maquininhas: colunas crédito/débito/total, soma e conferência com o Altec.
-function MaquininhasView({ maquininhas, creditoAltec, debitoAltec }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number }) {
+// Tabela das maquininhas: colunas crédito/débito/pix/total, soma e conferência com o Altec.
+function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec }: { maquininhas: MaquininhaFechamento[]; creditoAltec?: number; debitoAltec?: number; pixAltec?: number }) {
   const somaC = maquininhas.reduce((s, m) => s + (m.credito || 0), 0);
   const somaD = maquininhas.reduce((s, m) => s + (m.debito || 0), 0);
+  const somaP = maquininhas.reduce((s, m) => s + (m.pix || 0), 0);
   const somaT = maquininhas.reduce((s, m) => s + totalMaq(m), 0);
   const diffC = creditoAltec != null ? somaC - creditoAltec : null;
   const diffD = debitoAltec != null ? somaD - debitoAltec : null;
+  const diffP = pixAltec != null ? somaP - pixAltec : null;
   const bate = (d: number | null) => d == null || Math.abs(d) <= 0.01;
+  const temPix = somaP > 0 || pixAltec != null || maquininhas.some((m) => m.pix != null);
+  const cell = (v?: number) => <td className="px-2 py-1 text-right tabular-nums">{v != null ? fmtBRL(v) : "—"}</td>;
   return (
     <div>
-      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-x-auto">
         <table className="w-full text-[11px]">
           <thead>
             <tr className="text-left text-gray-500 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
               <th className="px-2 py-1 font-medium">Maquininha</th>
               <th className="px-2 py-1 font-medium text-right">Crédito</th>
               <th className="px-2 py-1 font-medium text-right">Débito</th>
+              {temPix && <th className="px-2 py-1 font-medium text-right">PIX</th>}
               <th className="px-2 py-1 font-medium text-right">Total</th>
             </tr>
           </thead>
@@ -78,6 +83,7 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec }: { maquininh
                 <td className="px-2 py-1 truncate max-w-[160px]">💳 {m.identificador || `Maquininha ${i + 1}`}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>
                 <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>
+                {temPix && <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>}
                 <td className="px-2 py-1 text-right tabular-nums font-medium">{fmtBRL(totalMaq(m))}</td>
               </tr>
             ))}
@@ -85,30 +91,24 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec }: { maquininh
           <tfoot>
             <tr className="border-t border-gray-200 dark:border-gray-800 font-semibold bg-gray-50 dark:bg-gray-800/40">
               <td className="px-2 py-1">Soma maquininhas</td>
-              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaC)}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaD)}</td>
-              <td className="px-2 py-1 text-right tabular-nums">{fmtBRL(somaT)}</td>
+              {cell(somaC)}{cell(somaD)}{temPix && cell(somaP)}{cell(somaT)}
             </tr>
-            {(creditoAltec != null || debitoAltec != null) && (
+            {(creditoAltec != null || debitoAltec != null || pixAltec != null) && (
               <tr className="text-gray-500">
                 <td className="px-2 py-1">Comprovante (Altec)</td>
-                <td className="px-2 py-1 text-right tabular-nums">{creditoAltec != null ? fmtBRL(creditoAltec) : "—"}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{debitoAltec != null ? fmtBRL(debitoAltec) : "—"}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{(creditoAltec != null || debitoAltec != null) ? fmtBRL((creditoAltec || 0) + (debitoAltec || 0)) : "—"}</td>
+                {cell(creditoAltec)}{cell(debitoAltec)}{temPix && cell(pixAltec)}{cell((creditoAltec || 0) + (debitoAltec || 0) + (pixAltec || 0))}
               </tr>
             )}
-            {(diffC != null || diffD != null) && !(bate(diffC) && bate(diffD)) && (
+            {(diffC != null || diffD != null || diffP != null) && !(bate(diffC) && bate(diffD) && bate(diffP)) && (
               <tr className="text-amber-600 dark:text-amber-400 font-medium">
                 <td className="px-2 py-1">⚠ Diferença</td>
-                <td className="px-2 py-1 text-right tabular-nums">{diffC != null ? fmtBRL(diffC) : "—"}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{diffD != null ? fmtBRL(diffD) : "—"}</td>
-                <td className="px-2 py-1 text-right tabular-nums">{fmtBRL((diffC || 0) + (diffD || 0))}</td>
+                {cell(diffC ?? undefined)}{cell(diffD ?? undefined)}{temPix && cell(diffP ?? undefined)}{cell((diffC || 0) + (diffD || 0) + (diffP || 0))}
               </tr>
             )}
           </tfoot>
         </table>
       </div>
-      {(diffC != null || diffD != null) && bate(diffC) && bate(diffD) && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
+      {(diffC != null || diffD != null || diffP != null) && bate(diffC) && bate(diffD) && bate(diffP) && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
     </div>
   );
 }
@@ -547,7 +547,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         {maquininhas.length > 0 && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
-            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} />
+            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)} />
           </div>
         )}
 
@@ -951,7 +951,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar }: { f: Fecha
       {f.maquininhas && f.maquininhas.length > 0 && (
         <div className="mt-3">
           <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Maquininhas ({f.maquininhas.length})</div>
-          <MaquininhasView maquininhas={f.maquininhas} creditoAltec={f.credito} debitoAltec={f.debito} />
+          <MaquininhasView maquininhas={f.maquininhas} creditoAltec={f.credito} debitoAltec={f.debito} pixAltec={f.pix} />
         </div>
       )}
       {f.comandas && f.comandas.length > 0 && (

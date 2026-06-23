@@ -69,7 +69,7 @@ const PROMPT_FECHAMENTO =
   '  "pix": <total recebido em PIX, ou null>,\n' +
   '  "credito": <total em cartão de CRÉDITO somando todas as maquininhas, ou null>,\n' +
   '  "debito": <total em cartão de DÉBITO somando todas as maquininhas, ou null>,\n' +
-  '  "maquininhas": [<{"identificador": <nome/bandeira da maquininha, ex "Stone","Cielo","TON","Rede", ou null>, "credito": <num ou null>, "debito": <num ou null>, "total": <num ou null>}>, ...]  (uma por filipeta; [] se não houver)\n' +
+  '  "maquininhas": [<{"identificador": <nome/bandeira da maquininha, ex "Stone","Cielo","TON","Rede", ou null>, "credito": <num ou null>, "debito": <num ou null>, "pix": <num ou null>, "total": <num ou null>}>, ...]  (uma por filipeta; [] se não houver)\n' +
   "}";
 
 const PROMPT_COMANDA =
@@ -207,10 +207,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       const maquininhas = Array.isArray(p.maquininhas) ? p.maquininhas.slice(0, 30).map((m) => {
         if (!m || typeof m !== "object") return null;
         const o = m as Record<string, unknown>;
-        const out: { identificador?: string; credito?: number; debito?: number; total?: number } = {};
+        const out: { identificador?: string; credito?: number; debito?: number; pix?: number; total?: number } = {};
         const id = str(o.identificador); if (id) out.identificador = id;
         const cr = parseNum(o.credito); if (cr != null) out.credito = cr;
         const de = parseNum(o.debito); if (de != null) out.debito = de;
+        const px = parseNum(o.pix); if (px != null) out.pix = px;
         const to = parseNum(o.total); if (to != null) out.total = to;
         return Object.keys(out).length ? out : null;
       }).filter(Boolean) : [];
