@@ -13,6 +13,7 @@ import {
 } from "./helpers";
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 import { HorarioModal } from "./HorarioModal";
+import { Modal } from "../../core/ui/Modal";
 
 type Props = {
   restaurantId: string;
@@ -781,23 +782,21 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
   const { pessoa: me } = useAuth();
   const [salvando, setSalvando] = useState(false);
   const [previewAberto, setPreviewAberto] = useState(false);
+  const [pagarAberto, setPagarAberto] = useState(false);
+  const p2 = (n: number) => String(n).padStart(2, "0");
+  const hojeYmd = () => { const h = new Date(); return `${h.getFullYear()}-${p2(h.getMonth() + 1)}-${p2(h.getDate())}`; };
+  const [dataPag, setDataPag] = useState(hojeYmd);
 
   const shiftsDoLote = useMemo(
     () => shifts.filter((s) => lote.shiftIds.includes(s.id)),
     [shifts, lote.shiftIds],
   );
 
-  async function marcarPago() {
+  async function confirmarPagamento() {
     if (!me) return;
-    const p2 = (n: number) => String(n).padStart(2, "0");
-    const h = new Date();
-    const entrada = prompt("Data do pagamento (DD/MM/AAAA):", `${p2(h.getDate())}/${p2(h.getMonth() + 1)}/${h.getFullYear()}`);
-    if (entrada === null) return; // cancelou
-    const m = entrada.trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-    if (!m) { alert("Data inválida. Use DD/MM/AAAA."); return; }
-    const pagoEm = new Date(+m[3], +m[2] - 1, +m[1], 12, 0, 0).toISOString(); // meio-dia local evita virar o dia por fuso
-    if (isNaN(new Date(pagoEm).getTime())) { alert("Data inválida."); return; }
-    if (!confirm(`Confirmar PAGAMENTO do lote ${lote.numero} (${fmtBR(lote.totalGeral)}) em ${entrada.trim()}?`)) return;
+    const m = dataPag.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) { alert("Selecione uma data válida."); return; }
+    const pagoEm = new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0).toISOString(); // meio-dia local evita virar o dia por fuso
     setSalvando(true);
     try {
       const now = new Date().toISOString();
@@ -809,6 +808,7 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
         batch.update(doc(db, "freelaShifts", sid), { status: "pago", pagoEm, updatedAt: now });
       }
       await batch.commit();
+      setPagarAberto(false);
     } catch (e) { console.error(e); alert("Erro ao confirmar pagamento."); }
     finally { setSalvando(false); }
   }
@@ -845,7 +845,7 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
             📄 PDF
           </button>
           <button type="button" onClick={reabrirTurnos} disabled={salvando} className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50">↩ Reabrir turnos</button>
-          <button type="button" onClick={marcarPago} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
+          <button type="button" onClick={() => { setDataPag(hojeYmd()); setPagarAberto(true); }} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
         </div>
       )}
       {previewAberto && restaurant && (
@@ -855,6 +855,22 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
           restaurant={restaurant}
           onClose={() => setPreviewAberto(false)}
         />
+      )}
+      {pagarAberto && (
+        <Modal title="✅ Marcar lote como pago" onClose={() => !salvando && setPagarAberto(false)} maxWidth="max-w-sm">
+          <div className="space-y-4">
+            <div className="text-sm text-gray-600 dark:text-gray-300">Lote <strong>{lote.numero}</strong> · {lote.qtdPessoas} pessoa(s) · {lote.qtdShifts} turno(s) · <strong>{fmtBR(lote.totalGeral)}</strong></div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data do pagamento</label>
+              <input type="date" value={dataPag} onChange={(e) => setDataPag(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="secondary" size="sm" disabled={salvando} onClick={() => setPagarAberto(false)}>Cancelar</Button>
+              <Button size="sm" disabled={salvando} onClick={() => void confirmarPagamento()}>{salvando ? "Salvando…" : "Confirmar pagamento"}</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
