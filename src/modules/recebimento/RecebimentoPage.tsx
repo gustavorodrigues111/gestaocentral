@@ -571,17 +571,15 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
     return arr;
   }, [notas, sortKey, sortDir]);
 
-  const maxVenc = useMemo(() => notas.reduce((m, n) => Math.max(m, vencimentosDe(n).length), 0), [notas]);
-
   if (notas.length === 0) {
     return <div className="text-center text-sm text-gray-400 py-12">Nenhum recebimento ainda. Clique em <strong>+ Novo recebimento</strong>.</div>;
   }
 
   const seta = (k: SortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
-  const Th = ({ k, label, alinhar }: { k: SortKey; label: string; alinhar?: "right" }) => (
-    <th className={`px-3 py-2 ${alinhar === "right" ? "text-right" : ""}`}>
+  const Th = ({ k, label, alinhar }: { k: SortKey; label: string; alinhar?: "right" | "center" }) => (
+    <th className={`px-4 py-2.5 ${alinhar === "right" ? "text-right" : alinhar === "center" ? "text-center" : ""}`}>
       <button type="button" onClick={() => ordenarPor(k)}
-        className={`uppercase tracking-wide hover:text-gray-700 dark:hover:text-gray-200 ${sortKey === k ? "text-gray-800 dark:text-gray-100 font-semibold" : ""}`}>
+        className={`font-medium hover:text-gray-700 dark:hover:text-gray-200 ${sortKey === k ? "text-gray-800 dark:text-gray-100 font-semibold" : ""}`}>
         {label}{seta(k)}
       </button>
     </th>
@@ -592,65 +590,68 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-[11px] text-gray-500 border-b border-gray-200 dark:border-gray-800">
-            <Th k="recebido" label="Recebido em" />
-            <Th k="tipo" label="Tipo" />
-            <Th k="emissao" label="Emissão" />
-            <Th k="nf" label="Nº NF" />
+          <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800">
             <Th k="emissor" label="Emissor" />
+            <Th k="emissao" label="Emissão" />
             <Th k="valor" label="Valor" alinhar="right" />
-            <Th k="recebeu" label="Recebeu" />
-            <Th k="conforme" label="Conforme?" />
+            <Th k="conforme" label="Conforme?" alinhar="center" />
+            <Th k="venc:0" label="Vencimento" />
             <Th k="pgto" label="Pgto" />
-            <th className="px-3 py-2 uppercase tracking-wide">Divergência</th>
-            {Array.from({ length: maxVenc }, (_, i) => (
-              <Th key={i} k={`venc:${i}`} label={i === 0 ? "Vencimento" : `${i + 1}º venc.`} />
-            ))}
-            <th className="px-3 py-2 uppercase tracking-wide">Nota</th>
-            <th className="px-3 py-2" />
-            {podeConfig && <th className="px-3 py-2" />}
+            <th className="px-4 py-2.5 font-medium text-center">Nota</th>
+            {podeConfig && <th className="px-4 py-2.5" />}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-          {ordenadas.map((n) => (
-            <tr key={n.id} className={`whitespace-nowrap ${n.conforme ? "" : "bg-rose-50/50 dark:bg-rose-950/10"}`}>
-              <td className="px-3 py-2 tabular-nums">{fmtDataHora(n.recebidoEm)}</td>
-              <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{tipoLabelDe(n)}</td>
-              <td className="px-3 py-2 tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao)}</td>
-              <td className="px-3 py-2 tabular-nums text-gray-500">{n.numeroNota || "—"}{n.serieNota ? `/${n.serieNota}` : ""}</td>
-              <td className="px-3 py-2 max-w-[260px] truncate" title={n.emissor || ""}>{n.emissor || "—"}</td>
-              <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(n.valorTotal)}</td>
-              <td className="px-3 py-2 text-gray-500 max-w-[160px] truncate" title={n.recebidoPor?.nome || ""}>{n.recebidoPor?.nome || "—"}</td>
-              <td className="px-3 py-2">
+          {ordenadas.map((n) => { const vs = vencimentosDe(n); return (
+            <tr key={n.id} className={`group transition-colors ${n.conforme ? "hover:bg-gray-50 dark:hover:bg-gray-800/40" : "bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20"}`}>
+              {/* Emissor — clicável abre detalhes; tipo · NF · recebido em na sublinha */}
+              <td className="px-4 py-3">
+                <button type="button" onClick={() => setDetalhe(n)} className="flex flex-col items-start text-left max-w-[280px] group/btn">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[280px] group-hover/btn:text-indigo-600 dark:group-hover/btn:text-indigo-400" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                  <span className="text-[11px] text-gray-400 truncate max-w-[280px]">
+                    {tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}${n.serieNota ? `/${n.serieNota}` : ""}` : ""} · {fmtDataHora(n.recebidoEm)}
+                  </span>
+                </button>
+              </td>
+              <td className="px-4 py-3 tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao) || "—"}</td>
+              <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtBRL(n.valorTotal)}</td>
+              <td className="px-4 py-3 text-center">
                 {n.conforme
-                  ? <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Sim</span>
-                  : <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Não</span>}
+                  ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Sim</span>
+                  : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" title={n.divergencia || ""}>⚠ Não</span>}
               </td>
-              <td className="px-3 py-2 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? `${FORMA_PAGAMENTO_ICONE[n.formaPagamento]} ${FORMA_PAGAMENTO_LABEL[n.formaPagamento]}` : "—"}</td>
-              <td className="px-3 py-2 max-w-[220px] truncate text-gray-600 dark:text-gray-300" title={n.divergencia || ""}>{n.conforme ? "—" : (n.divergencia || "—")}</td>
-              {maxVenc > 0 && (() => { const vs = vencimentosDe(n); return Array.from({ length: maxVenc }, (_, i) => (
-                <td key={i} className="px-3 py-2 tabular-nums text-gray-500">{vs[i] ? fmtDataBR(vs[i]) : "—"}</td>
-              )); })()}
-              <td className="px-3 py-2">
-                {n.notaDriveUrl
-                  ? <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a>
-                  : "—"}
-                {n.notaPaginas && n.notaPaginas.length > 1 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.notaPaginas.length} páginas`}>📄{n.notaPaginas.length}</span>}
-                {n.boletos && n.boletos.length > 0 && <span className="ml-1.5 text-[10px] text-gray-500" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
+              <td className="px-4 py-3 tabular-nums text-gray-500 whitespace-nowrap">
+                {vs.length === 0 ? "—" : (
+                  <>{fmtDataBR(vs[0])}{vs.length > 1 && <span className="ml-1.5 text-[10px] text-gray-400" title={`${vs.length} parcelas: ${vs.map(fmtDataBR).join(", ")}`}>+{vs.length - 1}</span>}</>
+                )}
               </td>
-              <td className="px-3 py-2">
-                <button type="button" onClick={() => setDetalhe(n)} className="text-[11px] text-indigo-600 hover:underline">detalhes</button>
+              <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? `${FORMA_PAGAMENTO_ICONE[n.formaPagamento]} ${FORMA_PAGAMENTO_LABEL[n.formaPagamento]}` : "—"}</td>
+              <td className="px-4 py-3 text-center">
+                {n.notaDriveUrl ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                    </a>
+                    {n.notaPaginas && n.notaPaginas.length > 1 && <span className="text-[10px] text-gray-400" title={`${n.notaPaginas.length} páginas`}>📄{n.notaPaginas.length}</span>}
+                    {n.boletos && n.boletos.length > 0 && <span className="text-[10px] text-gray-400" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
+                  </span>
+                ) : <span className="text-gray-300">—</span>}
               </td>
               {podeConfig && (
-                <td className="px-3 py-2 text-right">
-                  <button type="button" onClick={() => onExcluir(n)} className="text-[11px] text-rose-600 hover:underline">excluir</button>
+                <td className="px-4 py-3 text-right">
+                  <button type="button" onClick={() => onExcluir(n)} title="Excluir recebimento"
+                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                    <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                  </button>
                 </td>
               )}
             </tr>
-          ))}
+          ); })}
         </tbody>
       </table>
     </div>
+    <p className="text-[11px] text-gray-400 mt-2 px-1">Versão resumida. Baixe <strong>XLSX</strong> ou <strong>PDF</strong> para a tabela completa (CNPJ, quem recebeu, divergência, todas as parcelas e semana).</p>
     {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} />}
     {editar && <EditarRecebimentoModal nota={editar} restaurant={restaurant} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
     </>
