@@ -317,7 +317,7 @@ export function FechamentoCaixaPage() {
 
       {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
 
-      {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes />}
+      {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes temIfood={!!restaurant?.fechamentoTemIfood} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} />}
 
@@ -1016,16 +1016,47 @@ async function parseRedeXlsx(file: File): Promise<TxRede[]> {
   return out;
 }
 
-function ConciliacaoCartoes() {
+type TxIfood = { ts: number; valor: number };
+async function parseIfoodXlsx(file: File): Promise<TxIfood[]> {
+  const XLSX = await import("xlsx");
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, blankrows: false }) as unknown[][];
+  const hi = aoa.findIndex((r) => Array.isArray(r) && r.some((c) => String(c).toLowerCase().includes("data e hora do pedido")));
+  if (hi < 0) throw new Error("Planilha não parece o relatório de pedidos do iFood (coluna 'DATA E HORA DO PEDIDO' não encontrada).");
+  const header = (aoa[hi] as unknown[]).map((c) => String(c).toLowerCase().trim());
+  const find = (sub: string) => header.findIndex((h) => h.includes(sub));
+  const ciDt = find("data e hora do pedido"), ciStatus = find("status final do pedido"), ciItens = find("valor dos itens");
+  const out: TxIfood[] = [];
+  for (const r of aoa.slice(hi + 1)) {
+    if (!Array.isArray(r) || r[ciDt] == null) continue;
+    if (String(r[ciStatus] ?? "").toUpperCase().trim() !== "CONCLUIDO") continue; // só pedidos concluídos
+    const raw = r[ciDt];
+    let dt: Date | null = null;
+    if (raw instanceof Date) dt = raw;
+    else if (typeof raw === "string") { const m = raw.match(/(\d{2})\/(\d{2})\/(\d{4})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/); if (m) dt = new Date(+m[3], +m[2] - 1, +m[1], +m[4], +m[5], m[6] ? +m[6] : 0); }
+    if (!dt || isNaN(dt.getTime())) continue;
+    const valor = typeof r[ciItens] === "number" ? (r[ciItens] as number) : parseBRL(String(r[ciItens] ?? "")) ?? 0;
+    out.push({ ts: dt.getTime(), valor });
+  }
+  return out;
+}
+
+function ConciliacaoCartoes({ temIfood }: { temIfood: boolean }) {
   const [caixas, setCaixas] = useState<CaixaCorte[]>([]);
   const [txs, setTxs] = useState<TxRede[] | null>(null);
   const [redeNome, setRedeNome] = useState("");
+  const [ifood, setIfood] = useState<TxIfood[] | null>(null);
+  const [ifoodNome, setIfoodNome] = useState("");
   const [lendoPrint, setLendoPrint] = useState(false);
   const [lendoXlsx, setLendoXlsx] = useState(false);
+  const [lendoIfood, setLendoIfood] = useState(false);
   const [conciliados, setConciliados] = useState<Set<string>>(new Set());
   const [erro, setErro] = useState("");
   const printRef = useRef<HTMLInputElement>(null);
   const xlsxRef = useRef<HTMLInputElement>(null);
+  const ifoodRef = useRef<HTMLInputElement>(null);
 
   async function lerPrint(files: File[]) {
     if (!files.length) return;
@@ -1054,6 +1085,13 @@ function ConciliacaoCartoes() {
     finally { setLendoXlsx(false); }
   }
 
+  async function lerIfood(file: File) {
+    setErro(""); setLendoIfood(true);
+    try { setIfood(await parseIfoodXlsx(file)); setIfoodNome(file.name); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao ler a planilha do iFood."); setIfood(null); }
+    finally { setLendoIfood(false); }
+  }
+
   // Colar print direto (Cmd/Ctrl+V) — pega imagens da área de transferência.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -1070,20 +1108,24 @@ function ConciliacaoCartoes() {
 
   const resultado = useMemo(() => {
     if (!txs || !cortes.length) return null;
-    type Grupo = { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number };
-    const novo = (): Grupo => ({ credito: {}, debito: {}, pixRede: 0, nCard: 0, total: 0 });
+    type Grupo = { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
+    const novo = (): Grupo => ({ credito: {}, debito: {}, pixRede: 0, ifood: 0, nIfood: 0, nCard: 0, total: 0 });
     const porCaixa = cortes.map(() => novo());
     const aberto = novo(); // vendas após o último corte (caixa ainda aberto)
+    const grupoDe = (ts: number): Grupo | null => {
+      const gi = cortes.findIndex((c, i) => ts <= c.ts && (i === 0 || ts > cortes[i - 1].ts));
+      return gi >= 0 ? porCaixa[gi] : (ts > cortes[cortes.length - 1].ts ? aberto : null);
+    };
     for (const t of txs) {
-      let gi = cortes.findIndex((c, i) => t.ts <= c.ts && (i === 0 || t.ts > cortes[i - 1].ts));
-      const g = gi >= 0 ? porCaixa[gi] : (t.ts > cortes[cortes.length - 1].ts ? aberto : null);
+      const g = grupoDe(t.ts);
       if (!g) continue;
       if (t.modalidade === "credito") { g.credito[t.bandeira] = (g.credito[t.bandeira] || 0) + t.valor; g.nCard++; g.total += t.valor; }
       else if (t.modalidade === "debito") { g.debito[t.bandeira] = (g.debito[t.bandeira] || 0) + t.valor; g.nCard++; g.total += t.valor; }
       else if (t.modalidade === "pix") { g.pixRede += t.valor; }
     }
+    for (const o of (ifood || [])) { const g = grupoDe(o.ts); if (g) { g.ifood += o.valor; g.nIfood++; } }
     return { porCaixa, aberto };
-  }, [txs, cortes]);
+  }, [txs, cortes, ifood]);
 
   const filesFrom = (e: ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files || []); e.target.value = ""; return fs; };
   const somaBand = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
@@ -1099,7 +1141,7 @@ function ConciliacaoCartoes() {
     return { ids, near };
   }, [cortes]);
 
-  const Card = ({ titulo, sub, g, amber, acoes }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; nCard: number; total: number }; amber?: boolean; acoes?: ReactNode }) => {
+  const Card = ({ titulo, sub, g, amber, acoes }: { titulo: string; sub?: string; g: { credito: Record<string, number>; debito: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number }; amber?: boolean; acoes?: ReactNode }) => {
     const totCred = somaBand(g.credito), totDeb = somaBand(g.debito);
     return (
       <div className={`border rounded-xl p-4 space-y-2 ${amber ? "border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
@@ -1124,6 +1166,12 @@ function ConciliacaoCartoes() {
             <div className="flex justify-between text-[11px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
             <div className="text-[10px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
           </div>
+          {temIfood && (
+            <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+              <div className="flex justify-between text-[11px] font-semibold text-rose-700 dark:text-rose-300"><span>iFood</span><span className="tabular-nums">{fmtBRL(g.ifood)}</span></div>
+              <div className="text-[10px] text-gray-400">{g.nIfood} pedido(s) · valor dos itens{ifood == null ? " — envie a planilha do iFood" : ""}</div>
+            </div>
+          )}
         </div>
         {acoes && <div className="flex justify-end pt-1">{acoes}</div>}
       </div>
@@ -1134,9 +1182,10 @@ function ConciliacaoCartoes() {
     <div className="space-y-4">
       <input ref={printRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={(e) => void lerPrint(filesFrom(e))} />
       <input ref={xlsxRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const fs = filesFrom(e); if (fs[0]) void lerXlsx(fs[0]); }} />
+      <input ref={ifoodRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(e) => { const fs = filesFrom(e); if (fs[0]) void lerIfood(fs[0]); }} />
 
       {/* Passos de upload */}
-      <div className="grid sm:grid-cols-2 gap-3">
+      <div className={`grid gap-3 ${temIfood ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">1 · Print dos caixas (Altec)</div>
           <p className="text-[12px] text-gray-500 mb-3">A lista de fechamentos do Altec. Os horários definem o intervalo de cada caixa. Pode <strong>colar (Cmd/Ctrl+V)</strong> o print direto.</p>
@@ -1148,6 +1197,14 @@ function ConciliacaoCartoes() {
           <Button size="sm" variant="secondary" disabled={lendoXlsx} onClick={() => xlsxRef.current?.click()}>{lendoXlsx ? "Lendo…" : txs ? `📊 ${txs.length} vendas · trocar` : "📊 Enviar planilha"}</Button>
           {redeNome && <div className="text-[11px] text-gray-400 mt-1 truncate">{redeNome}</div>}
         </div>
+        {temIfood && (
+          <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+            <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">3 · Planilha de pedidos (iFood)</div>
+            <p className="text-[12px] text-gray-500 mb-3">O relatório de pedidos do iFood em Excel (.xlsx). Conta só os concluídos.</p>
+            <Button size="sm" variant="secondary" disabled={lendoIfood} onClick={() => ifoodRef.current?.click()}>{lendoIfood ? "Lendo…" : ifood ? `🍔 ${ifood.length} pedidos · trocar` : "🍔 Enviar planilha"}</Button>
+            {ifoodNome && <div className="text-[11px] text-gray-400 mt-1 truncate">{ifoodNome}</div>}
+          </div>
+        )}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
@@ -1213,9 +1270,15 @@ function ConciliacaoCartoes() {
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[] } }) {
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [temIfood, setTemIfood] = useState(!!restaurant.fechamentoTemIfood);
+  async function salvarTemIfood(v: boolean) {
+    setTemIfood(v);
+    try { await updateDoc(doc(db, "restaurants", rid), { fechamentoTemIfood: v }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
+  }
   const [central, setCentral] = useState<boolean | null>(null);
   const [destino, setDestino] = useState("");
   const [emails, setEmails] = useState<string[]>(restaurant.fechamentoSociosEmails || []);
@@ -1367,6 +1430,15 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
             className="w-24 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
           <Button variant="secondary" size="sm" onClick={addComanda}>+ Adicionar</Button>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">iFood</h3>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={temIfood} onChange={(e) => void salvarTemIfood(e.target.checked)} className="w-4 h-4 accent-rose-600" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">Este restaurante tem iFood</span>
+        </label>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Quando marcado, a aba <strong>Conciliação de Cartões</strong> passa a aceitar também a planilha de pedidos do iFood, somando os pedidos concluídos por caixa pra você conferir na Altec.</p>
       </div>
     </div>
   );
