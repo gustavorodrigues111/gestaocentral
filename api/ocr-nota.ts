@@ -72,6 +72,15 @@ const PROMPT_FECHAMENTO =
   '  "maquininhas": [<{"identificador": <nome/bandeira da maquininha, ex "Stone","Cielo","TON","Rede", ou null>, "credito": <num ou null>, "debito": <num ou null>, "total": <num ou null>}>, ...]  (uma por filipeta; [] se não houver)\n' +
   "}";
 
+const PROMPT_COMANDA =
+  "Você recebe a imagem/PDF de uma COMANDA de consumo de um restaurante (impressa pelo PDV). " +
+  "Identifique o NÚMERO da comanda/mesa (geralmente em destaque, como 'Mesa 99', 'Comanda 12'). " +
+  'Responda SOMENTE um objeto JSON (sem texto antes ou depois). null se não achar.\n' +
+  "{\n" +
+  '  "numero": <número da comanda/mesa só com dígitos, como string, ou null>,\n' +
+  '  "valorTotal": <valor total da comanda como NÚMERO (ex 1234.56), ou null>\n' +
+  "}";
+
 function parseNum(v: unknown): number | undefined {
   if (typeof v === "number" && Number.isFinite(v)) return v;
   if (typeof v === "string") {
@@ -138,6 +147,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   };
   const isBoleto = body.tipo === "boleto";
   const isFechamento = body.tipo === "fechamento";
+  const isComanda = body.tipo === "comanda";
 
   // Aceita 1 arquivo (data/mediaType) OU vários (files[]) — notas de várias páginas.
   const arquivos: Array<{ data: string; mediaType: string }> = [];
@@ -157,7 +167,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const payload = {
     model: MODEL,
     max_tokens: 8000, // notas grandes (ex: Heineken, 6 páginas) têm muitos itens
-    messages: [{ role: "user", content: [...blocks, { type: "text", text: isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: isComanda ? PROMPT_COMANDA : isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
@@ -181,6 +191,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    if (isComanda) {
+      res.status(200).json({ numero: digits(p.numero), valorTotal: parseNum(p.valorTotal) ?? null });
+      return;
+    }
     if (isFechamento) {
       const maquininhas = Array.isArray(p.maquininhas) ? p.maquininhas.slice(0, 30).map((m) => {
         if (!m || typeof m !== "object") return null;

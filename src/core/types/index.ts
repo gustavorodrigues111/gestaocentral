@@ -689,7 +689,7 @@ export type Restaurant = {
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
   fechamentoSociosEmails?: string[];
-  fechamentoSocios?: SocioComanda[];  // sócios com comanda fixa (nome + nº)
+  fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
@@ -4713,8 +4713,8 @@ export type AnexoFechamento = {
   grupo: GrupoAnexoFechamento;
   rotulo?: string;              // p/ comandas: "Fulano (12)", "Cortesia (99)"…
 };
-// Sócio com comanda fixa (cadastrável na config do módulo).
-export type SocioComanda = { nome: string; numero: string };
+// Comanda cadastrável (sócio, cortesia, perdas, treinamento…). nome = finalidade.
+export type ComandaCadastro = { numero: string; nome: string };
 // Quebra por maquininha lida do fechamento (OCR).
 export type MaquininhaFechamento = { identificador?: string; credito?: number; debito?: number; total?: number };
 export type FechamentoCaixa = {
