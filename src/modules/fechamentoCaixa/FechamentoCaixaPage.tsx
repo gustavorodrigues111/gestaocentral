@@ -990,34 +990,49 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir }: {
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-[11px] uppercase tracking-wide text-gray-500 border-b border-gray-200 dark:border-gray-800">
-              <th className="px-3 py-2">Fechado em</th>
-              <th className="px-3 py-2">Data</th>
-              <th className="px-3 py-2">Turno</th>
-              <th className="px-3 py-2 text-right">Total vendas</th>
-              <th className="px-3 py-2 text-right">Dinheiro</th>
-              <th className="px-3 py-2">Lacre</th>
-              <th className="px-3 py-2">Fechou</th>
-              <th className="px-3 py-2">Obs.</th>
-              <th className="px-3 py-2">Pasta</th>
-              <th className="px-3 py-2" />
-              {podeConfig && <th className="px-3 py-2" />}
+            <tr className="text-left text-[11px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800">
+              <th className="px-4 py-2.5 font-medium">Data / turno</th>
+              <th className="px-4 py-2.5 font-medium text-right">Total vendas</th>
+              <th className="px-4 py-2.5 font-medium">Lacre</th>
+              <th className="px-4 py-2.5 font-medium">Fechou</th>
+              <th className="px-4 py-2.5 font-medium">Obs.</th>
+              <th className="px-4 py-2.5 font-medium text-center">Pasta</th>
+              {podeConfig && <th className="px-4 py-2.5" />}
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {fechamentos.map((f) => (
-              <tr key={f.id} className="whitespace-nowrap">
-                <td className="px-3 py-2 tabular-nums">{fmtDataHora(f.fechadoEm)}</td>
-                <td className="px-3 py-2 tabular-nums text-gray-500">{fmtData(f.data)}</td>
-                <td className="px-3 py-2">{TURNO_CAIXA_LABEL[f.turno]}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{fmtBRL(f.totalVendas)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-gray-500">{fmtBRL(f.dinheiro)}</td>
-                <td className="px-3 py-2 tabular-nums text-gray-500">{f.numeroLacre || "—"}</td>
-                <td className="px-3 py-2 text-gray-500 max-w-[140px] truncate" title={f.fechadoPor?.nome || ""}>{f.fechadoPor?.nome || "—"}</td>
-                <td className="px-3 py-2 max-w-[200px] truncate text-gray-600 dark:text-gray-300" title={f.observacao || ""}>{f.observacao || "—"}</td>
-                <td className="px-3 py-2">{f.driveFolderUrl ? <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">abrir ↗</a> : "—"}</td>
-                <td className="px-3 py-2"><button type="button" onClick={() => setDetalhe(f)} className="text-[11px] text-indigo-600 hover:underline">detalhes</button></td>
-                {podeConfig && <td className="px-3 py-2 text-right"><button type="button" onClick={() => onExcluir(f)} className="text-[11px] text-rose-600 hover:underline">excluir</button></td>}
+              <tr key={f.id} className="group hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                {/* Data / turno — clicável abre detalhes */}
+                <td className="px-4 py-3">
+                  <button type="button" onClick={() => setDetalhe(f)} className="flex flex-col items-start text-left group/btn">
+                    <span className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-800 dark:text-gray-100 tabular-nums group-hover/btn:text-indigo-600 dark:group-hover/btn:text-indigo-400">{fmtData(f.data)}</span>
+                      <span className="inline-flex items-center rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[11px] font-medium px-2 py-0.5">{TURNO_CAIXA_LABEL[f.turno]}</span>
+                    </span>
+                    <span className="text-[11px] text-gray-400 tabular-nums mt-0.5">fechado {fmtDataHora(f.fechadoEm)}</span>
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtBRL(f.totalVendas)}</td>
+                <td className="px-4 py-3 tabular-nums text-gray-500">{f.numeroLacre || "—"}</td>
+                <td className="px-4 py-3 text-gray-500 max-w-[140px] truncate" title={f.fechadoPor?.nome || ""}>{f.fechadoPor?.nome || "—"}</td>
+                <td className="px-4 py-3 max-w-[200px] truncate text-gray-600 dark:text-gray-300" title={f.observacao || ""}>{f.observacao || "—"}</td>
+                <td className="px-4 py-3 text-center">
+                  {f.driveFolderUrl ? (
+                    <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" title="Abrir pasta no Drive"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                    </a>
+                  ) : <span className="text-gray-300">—</span>}
+                </td>
+                {podeConfig && (
+                  <td className="px-4 py-3 text-right">
+                    <button type="button" onClick={() => onExcluir(f)} title="Excluir fechamento"
+                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100">
+                      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2m2 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /></svg>
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
