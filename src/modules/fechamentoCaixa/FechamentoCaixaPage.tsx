@@ -471,6 +471,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
   const [maquininhas, setMaquininhas] = useState<MaquininhaFechamento[]>([]);
   const [fundoCaixa, setFundoCaixa] = useState("");
   const [numeroLacre, setNumeroLacre] = useState("");
+  const [naoLacrado, setNaoLacrado] = useState(false);
   const [observacao, setObservacao] = useState("");
   const [lendo, setLendo] = useState(false);
   const [lendoComandas, setLendoComandas] = useState(0); // comandas em leitura (OCR)
@@ -554,6 +555,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
     const nDup = indicesDuplicados(maquininhas).size;
     if (nDup > 0 && !window.confirm(`Há ${nDup} maquininha(s) possivelmente duplicada(s) na lista. Salvar mesmo assim?\n\n(Cancele e remova as repetidas com o ✕ se for o caso.)`)) return;
     if (anexos.length && !restaurant.fechamentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de fechar."); return; }
+    if (!naoLacrado && !numeroLacre.trim()) { setErro("Informe o número do lacre ou marque \"Não foi lacrado\"."); return; }
     setSalvando(true);
     try {
       const agora = new Date();
@@ -600,7 +602,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
         })) } : {}),
         ...(comandasConsumo.length ? { comandas: comandasConsumo.map((c) => ({ numero: c.numero, ...(c.nome ? { nome: c.nome } : {}), ...(c.valor != null ? { valor: c.valor } : {}) })) } : {}),
         ...(parseBRL(fundoCaixa) != null ? { fundoCaixa: parseBRL(fundoCaixa) } : {}),
-        ...(numeroLacre.trim() ? { numeroLacre: numeroLacre.trim() } : {}),
+        numeroLacre: naoLacrado ? "Não lacrado" : numeroLacre.trim(),
         ...(observacao.trim() ? { observacao: observacao.trim() } : {}),
         ...(anexosSalvos.length ? { anexos: anexosSalvos } : {}),
         ...(driveFolderUrl ? { driveFolderUrl } : {}),
@@ -715,7 +717,11 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
           </div>
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre do malote</label>
-            <input value={numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} placeholder="ex: h3141345" className={inputCls} />
+            <input value={naoLacrado ? "" : numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} disabled={naoLacrado} placeholder={naoLacrado ? "—" : "ex: h3141345"} className={`${inputCls} disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800`} />
+            <label className="flex items-center gap-2 mt-1.5 cursor-pointer text-[12px] text-gray-600 dark:text-gray-400">
+              <input type="checkbox" checked={naoLacrado} onChange={(e) => setNaoLacrado(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+              Não foi lacrado
+            </label>
           </div>
         </div>
 
