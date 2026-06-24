@@ -68,7 +68,13 @@ async function solidesFetch(url: string, init: RequestInit, token: string): Prom
     const text = await resp.text();
     let json: unknown = null;
     try { json = text ? JSON.parse(text) : null; } catch { json = text; }
-    if (!resp.ok) throw new HttpError(502, `Sólides retornou HTTP ${resp.status}. ${String(text).slice(0, 200)}`);
+    if (!resp.ok) {
+      // Extrai a "message" do JSON de erro da Sólides (mais útil que o corpo cru);
+      // fallback pro texto. Limite alto pra não cortar a instrução do novo fluxo.
+      let msg = String(text);
+      try { const j = JSON.parse(text) as { message?: string }; if (j && typeof j.message === "string" && j.message) msg = j.message; } catch { /* texto cru */ }
+      throw new HttpError(502, `Sólides retornou HTTP ${resp.status}. ${msg.slice(0, 1500)}`);
+    }
     return json;
   } catch (e) {
     if (e instanceof HttpError) throw e;
