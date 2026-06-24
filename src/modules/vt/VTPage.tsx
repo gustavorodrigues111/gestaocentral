@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -90,7 +90,7 @@ export function VTPage() {
   // Filtro de unidade (multi-unidades) — "" = todas
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
   // Modal de exportar PDF
-  const [showExportPDF, setShowExportPDF] = useState(false);
+  const [pdfData, setPdfData] = useState<{ statusLabel: string; linhas: VTPDFLinha[] } | null>(null);
   // Modal master: aplicar auxílio fixo mensal em lote
   const [showAuxFixoLote, setShowAuxFixoLote] = useState(false);
 
@@ -212,22 +212,22 @@ export function VTPage() {
     return () => unsub();
   }, [rid]);
 
-  // O lote "ativo" do mês: priorizando ordem rascunho → pago → cancelado.
-  const loteAtivo = useMemo<VTLote | null>(() => {
-    if (lotesDoMes.length === 0) return null;
-    const rascunho = lotesDoMes.find(l => l.status === "rascunho");
-    if (rascunho) return rascunho;
-    const pago = lotesDoMes.find(l => l.status === "pago");
-    if (pago) return pago;
-    // Só tem lote(s) cancelado(s): NÃO é "ativo" — assim o botão
-    // "Lançar pra pagamento" volta a aparecer e o user pode criar
-    // um novo lote pro mês.
-    return null;
+
+  // Empregados que já estão em algum lote NÃO-cancelado do mês (não entram no "a pagar").
+  const empregadosLancados = useMemo(() => {
+    const s = new Set<string>();
+    for (const l of lotesDoMes) if (l.status !== "cancelado") for (const li of l.linhas) s.add(li.empregadoId);
+    return s;
   }, [lotesDoMes]);
 
-  // Linhas preview (quando não há lote ainda) — calcula do empregado + escala
+  // Lotes visíveis do mês (não-cancelados), rascunho primeiro, depois por criação.
+  const lotesVisiveis = useMemo(() =>
+    lotesDoMes.filter(l => l.status !== "cancelado")
+      .sort((a, b) => (a.status === b.status ? 0 : a.status === "rascunho" ? -1 : 1) || (b.criadoEm || "").localeCompare(a.criadoEm || "")),
+    [lotesDoMes]);
+
+  // Linhas preview — calcula sempre do empregado + escala (base de "a pagar").
   const linhasPreview = useMemo(() => {
-    if (loteAtivo) return null; // já tem lote, mostra dele
     const base = montarLinhasLote(empregadosProjetados, cargos, escalaLote, escalaRef, ano, mes);
     // Aplica overrides do usuário (toggle, descontos, auxPontual)
     return base.map(l => {
@@ -245,7 +245,13 @@ export function VTPage() {
       });
       return { ...l, descontoSugeridoAtivo: ativo, descontoManual, auxPontual, total };
     });
-  }, [loteAtivo, empregadosProjetados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
+  }, [empregadosProjetados, cargos, escalaLote, escalaRef, ano, mes, overrides]);
+
+  // "A pagar" = preview menos quem já está em lote (não-cancelado).
+  const linhasAPagar = useMemo(
+    () => linhasPreview.filter(l => !empregadosLancados.has(l.empregadoId)),
+    [linhasPreview, empregadosLancados],
+  );
 
   // Unidades ativas do restaurante (pra badge + filtro)
   const unidadesAtivas = useMemo(
@@ -265,13 +271,13 @@ export function VTPage() {
   // Linhas a renderizar: se há lote, usa as do lote; senão, preview.
   // Aplica filtro de unidade (pela unidadePadraoId do empregado) quando há filtro ativo.
   const linhas: (VTLoteLinha & { semConfig?: boolean; semBeneficioCadastrado?: boolean; fonteDias?: "snapshot" | "preview" | "vazio" })[] = useMemo(() => {
-    const base = loteAtivo ? loteAtivo.linhas : (linhasPreview || []);
+    const base = linhasAPagar;
     if (!filtroUnidadeId) return base;
     return base.filter(l => {
       const emp = empregadosById[l.empregadoId];
       return emp?.unidadePadraoId === filtroUnidadeId;
     });
-  }, [loteAtivo, linhasPreview, filtroUnidadeId, empregadosById]);
+  }, [linhasAPagar, filtroUnidadeId, empregadosById]);
 
   // Linhas pro PDF — enriquece cada linha com a forma de pagamento (Caju/PIX)
   // do cadastro do empregado. Usa as mesmas linhas já filtradas da tela.
@@ -301,29 +307,7 @@ export function VTPage() {
     [porArea]
   );
 
-  const totais = useMemo(() => {
-    if (loteAtivo) return { porArea: loteAtivo.totalPorArea, geral: loteAtivo.totalGeral };
-    return totaisPorAreaELote(linhas);
-  }, [loteAtivo, linhas]);
-
-  // Resumos auxiliares (só rascunho/preview pra visão financeira)
-  const resumos = useMemo(() => {
-    let auxFixoTotal = 0, vtBaseTotal = 0, descSugTotal = 0, descManualTotal = 0, auxPontualTotal = 0;
-    for (const l of linhas) {
-      auxFixoTotal     += l.auxFixoMensal || 0;
-      vtBaseTotal      += l.vtBase || 0;
-      if (l.descontoSugeridoAtivo) descSugTotal += l.descontoSugerido || 0;
-      descManualTotal  += l.descontoManual || 0;
-      auxPontualTotal  += l.auxPontual || 0;
-    }
-    return {
-      auxFixo: round2(auxFixoTotal),
-      vtBase: round2(vtBaseTotal),
-      descSug: round2(descSugTotal),
-      descManual: round2(descManualTotal),
-      auxPontual: round2(auxPontualTotal),
-    };
-  }, [linhas]);
+  const totais = useMemo(() => totaisPorAreaELote(linhas), [linhas]);
 
   // Edição inline de valorPassagem foi removida — pra editar o cadastro do
   // empregado, vá em Pessoas. A coluna "Pass/dia" do VT é só visualização.
@@ -553,27 +537,23 @@ export function VTPage() {
     }
   }
 
-  // ─── Edição de linhas DENTRO DE UM LOTE EM RASCUNHO ────────────────────────
-  async function editarLinhaDoLote(empId: string, patch: { ativo?: boolean; descontoManual?: number; auxPontual?: number }) {
-    if (!loteAtivo || loteAtivo.status !== "rascunho") return;
-    const novasLinhas = loteAtivo.linhas.map(l => {
-      if (l.empregadoId !== empId) return l;
-      const novo: VTLoteLinha = {
-        ...l,
-        descontoSugeridoAtivo: patch.ativo ?? l.descontoSugeridoAtivo,
-        descontoManual: patch.descontoManual ?? l.descontoManual,
-        auxPontual: patch.auxPontual ?? l.auxPontual,
-      };
-      novo.total = recalcularTotalLinha(novo);
-      return novo;
-    });
-    const tot = totaisPorAreaELote(novasLinhas);
-    await updateDoc(doc(db, "vtLotes", loteAtivo.id), {
-      linhas: novasLinhas,
-      totalGeral: tot.geral,
-      totalPorArea: tot.porArea,
-      updatedAt: new Date().toISOString(),
-    });
+  // Cancelar/excluir um lote em RASCUNHO — apaga o doc e devolve as pessoas
+  // pro "a pagar". (Pago só master cancela, via cancelarLote.)
+  async function cancelarRascunho(lote: VTLote) {
+    if (!podeConfig) return;
+    if (!confirm(`Cancelar o lote em rascunho (${lote.linhas.length} pessoa(s) · ${fmtBR(lote.totalGeral)})?\n\nAs pessoas voltam pra "A pagar".`)) return;
+    try { await deleteDoc(doc(db, "vtLotes", lote.id)); }
+    catch (e) { console.error(e); alert("Erro ao cancelar lote: " + (e instanceof Error ? e.message : "?")); }
+  }
+
+  // Exporta o CSV do Caju de UM lote específico.
+  function exportarCajuDe(lote: VTLote) {
+    const slug = (activeRestaurant?.nome || "restaurante").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const r = exportarLoteCaju({ lote, empregados, restaurantSlug: slug });
+    baixarCsvCaju(r);
+    const totalBR = r.totalValor.toFixed(2).replace(".", ",");
+    const ignoradasTxt = r.ignoradas.length === 0 ? "Nenhuma linha ignorada." : `${r.ignoradas.length} linha(s) ignorada(s):\n` + r.ignoradas.map(i => `  • ${i.nome}: ${i.motivo}`).join("\n");
+    alert(`✅ CSV exportado: ${r.filename}\n\n${r.qtdLinhasOk} colaborador(es) — R$ ${totalBR}\n\n${ignoradasTxt}\n\nConfirme o total no Caju (Pedidos → Importar planilha).`);
   }
 
   function navegarMes(delta: number) {
@@ -599,11 +579,10 @@ export function VTPage() {
     );
   }
 
-  const podeEditarLinhas = loteAtivo ? (loteAtivo.status === "rascunho" && podeConfig) : podeConfig;
-  const statusLote = loteAtivo?.status || null;
+  const podeEditarLinhas = podeConfig; // a tabela "a pagar" é sempre preview editável
   const previstaFechada = !!escalaLote?.previstaFechadaEm;
-  // Pode lançar lote? Exige prevista fechada (snapshot oficial) e nenhum lote ativo
-  const podeLancarLote = !loteAtivo && previstaFechada;
+  // Pode gerar lote? Exige prevista fechada (snapshot oficial) e gente a pagar.
+  const podeLancarLote = previstaFechada && linhasAPagar.length > 0;
 
   return (
     <div className="max-w-6xl">
@@ -655,15 +634,6 @@ export function VTPage() {
             {nomeMes(mes)} {ano}
           </div>
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-          {statusLote && (
-            <div className={`text-xs px-2 py-1 rounded-full font-medium ${
-              statusLote === "rascunho" ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" :
-              statusLote === "pago" ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" :
-              "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-400"
-            }`}>
-              {VT_LOTE_STATUS_LABEL[statusLote]}
-            </div>
-          )}
           {isMaster && (
             <Button variant="secondary" size="sm" onClick={() => setShowAuxFixoLote(true)} title="Definir o mesmo auxílio fixo mensal em todos os empregados">
               🧪 Auxílio fixo em lote
@@ -706,7 +676,7 @@ export function VTPage() {
           </div>
 
           {/* Aviso quando a prevista ainda não foi fechada */}
-          {!loteAtivo && !previstaFechada && (
+          {!previstaFechada && (
             <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-2">
               <span className="text-base">⚠️</span>
               <div>
@@ -720,103 +690,39 @@ export function VTPage() {
             </div>
           )}
 
-          {/* Cards de resumo */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-            <Card label="VT base" value={fmtBR(resumos.vtBase)} />
-            <Card label="Auxílio fixo" value={fmtBR(resumos.auxFixo)} />
-            <Card label="Desc. sugerido" value={`-${fmtBR(resumos.descSug)}`} variant="warn" />
-            <Card label="Desc. manual" value={`-${fmtBR(resumos.descManual)}`} variant="warn" />
-            <Card label="Aux. pontual" value={`+${fmtBR(resumos.auxPontual)}`} variant="ok" />
-          </div>
-
+          {/* ── A PAGAR (prévia da escala) ─────────────────────────────────── */}
           <div className="rounded-xl border-2 border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
             <div>
-              <div className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-300 tracking-wider">Total geral do mês</div>
-              <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totais.geral)}</div>
+              <div className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-300 tracking-wider">A pagar — da escala prevista</div>
+              <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totais.geral)} <span className="text-sm font-medium text-indigo-700/70 dark:text-indigo-300/70">· {linhas.length} pessoa(s)</span></div>
             </div>
-            {!loteAtivo && podeConfig && linhasPreview && linhasPreview.length > 0 && (
-              <Button
-                onClick={() => setConfirmandoLote(true)}
-                disabled={!podeLancarLote}
-                title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : undefined}
-              >
-                💸 Lançar pra pagamento
-              </Button>
-            )}
-            {loteAtivo && loteAtivo.status === "rascunho" && podeConfig && (
-              <div className="flex gap-2 flex-wrap">
-                <Button onClick={() => marcarPago(loteAtivo)}>✓ Marcar como pago</Button>
-                <Button variant="secondary" onClick={() => reabrirLote(loteAtivo)}>↶ Cancelar lote</Button>
-              </div>
-            )}
-            {loteAtivo && loteAtivo.status === "pago" && (
-              <div className="flex gap-2 flex-wrap">
-                {podeConfig && (
-                  <Button variant="secondary" onClick={() => setAjusteAberto(true)} title="Comparar com o esperado agora e lançar só as diferenças (admissões, troca de valor, etc.)">🧮 Criar lote de ajuste</Button>
-                )}
-                {isMaster && (
-                  <Button variant="secondary" onClick={() => reabrirLote(loteAtivo)}>↶ Reabrir (master)</Button>
-                )}
-                {isMaster && (
-                  <Button variant="danger" onClick={() => cancelarLote(loteAtivo)}>✕ Cancelar (master)</Button>
-                )}
-              </div>
-            )}
-            {/* Exportar PDF — funciona no preview ou em qualquer lote. Gera
-                relatório por área com a forma de pagamento (Caju/PIX). */}
-            {linhas.length > 0 && podeConfig && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => setShowExportPDF(true)}
-                title="Exportar PDF do VT (por área, com forma de pagamento) e pré-visualizar"
-              >
-                📄 Exportar PDF
-              </Button>
-            )}
-            {/* Exportar CSV pra Caju — disponível em qualquer lote (rascunho
-                ou pago). Pago: pra re-baixar caso precise reenviar. Rascunho:
-                pra validar números antes de marcar como pago. */}
-            {loteAtivo && loteAtivo.status !== "cancelado" && podeConfig && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={() => {
-                  const slug = (activeRestaurant?.nome || "restaurante")
-                    .toLowerCase()
-                    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-                    .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-                  const r = exportarLoteCaju({ lote: loteAtivo, empregados, restaurantSlug: slug });
-                  baixarCsvCaju(r);
-                  // Resumo + lista de ignorados (se houver).
-                  const totalBR = r.totalValor.toFixed(2).replace(".", ",");
-                  const ignoradasTxt = r.ignoradas.length === 0
-                    ? "Nenhuma linha ignorada."
-                    : `${r.ignoradas.length} linha(s) ignorada(s):\n` +
-                      r.ignoradas.map(i => `  • ${i.nome}: ${i.motivo}`).join("\n");
-                  alert(
-                    `✅ CSV exportado: ${r.filename}\n\n` +
-                    `${r.qtdLinhasOk} colaborador(es) — R$ ${totalBR}\n\n` +
-                    ignoradasTxt + "\n\n" +
-                    `Confirme o total no Caju (Pedidos → Importar planilha).`
-                  );
-                }}
-                title="Gera CSV no formato do Caju (CPF;;Mobilidade;0)"
-              >
-                📥 Exportar CSV pra Caju
-              </Button>
-            )}
+            <div className="flex gap-2 flex-wrap">
+              {podeConfig && (
+                <Button
+                  onClick={() => setConfirmandoLote(true)}
+                  disabled={!podeLancarLote}
+                  title={!previstaFechada ? "Feche a prevista de " + nomeMes(mes) + " em /escala primeiro" : linhasAPagar.length === 0 ? "Ninguém pendente — todos já estão em lotes" : undefined}
+                >
+                  + Gerar lote
+                </Button>
+              )}
+              {linhas.length > 0 && podeConfig && (
+                <Button variant="secondary" size="sm" onClick={() => setPdfData({ statusLabel: "A pagar (prévia)", linhas: linhasPdf })} title="Exportar PDF da prévia a pagar">
+                  📄 PDF
+                </Button>
+              )}
+            </div>
           </div>
 
           {loading ? (
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : linhas.length === 0 ? (
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">🚌</div>
-              <p className="text-gray-700 dark:text-gray-300 font-medium">Ninguém com VT ativo neste mês</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                Marque empregados como "VT ativo" ou defina "Auxílio fixo mensal" no cadastro.
-              </p>
+            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-center">
+              <div className="text-3xl mb-2">{lotesVisiveis.length > 0 ? "✅" : "🚌"}</div>
+              <p className="text-gray-700 dark:text-gray-300 font-medium">{lotesVisiveis.length > 0 ? "Todos já estão em lotes — nada pendente a pagar." : "Ninguém com VT ativo neste mês"}</p>
+              {lotesVisiveis.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Marque empregados como "VT ativo" ou defina "Auxílio fixo mensal" no cadastro.</p>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -883,6 +789,39 @@ export function VTPage() {
             </div>
           )}
 
+          {/* ── LOTES DO MÊS ───────────────────────────────────────────────── */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">Lotes de {nomeMes(mes)} <span className="font-normal text-gray-400">({lotesVisiveis.length})</span></h3>
+              {podeConfig && lotesVisiveis.length > 0 && (
+                <Button variant="secondary" size="sm" onClick={() => setAjusteAberto(true)} title="Lançar só as diferenças (admissões, troca de valor) em relação ao que já foi pago">🧮 Lote de ajuste</Button>
+              )}
+            </div>
+            {lotesVisiveis.length === 0 ? (
+              <div className="text-sm text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 text-center">Nenhum lote gerado ainda. Use <strong>+ Gerar lote</strong> acima pra lançar os VTs pra pagamento.</div>
+            ) : (
+              <div className="space-y-2">
+                {lotesVisiveis.map(lote => (
+                  <LoteCard
+                    key={lote.id}
+                    lote={lote}
+                    isMaster={isMaster}
+                    podeConfig={podeConfig}
+                    onMarcarPago={() => marcarPago(lote)}
+                    onCancelarRascunho={() => cancelarRascunho(lote)}
+                    onReabrir={() => reabrirLote(lote)}
+                    onCancelarMaster={() => cancelarLote(lote)}
+                    onExportarCaju={() => exportarCajuDe(lote)}
+                    onExportarPdf={() => setPdfData({
+                      statusLabel: VT_LOTE_STATUS_LABEL[lote.status],
+                      linhas: lote.linhas.map(l => ({ ...l, recebePeloCaju: empregadosById[l.empregadoId]?.vtRecebePeloCaju !== false })),
+                    })}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Sheet/modal por linha (mobile + desktop) — 2 tabs: editar valores e lançar ajuste */}
           {editandoMobileEmpId && (() => {
             const linha = linhas.find(x => x.empregadoId === editandoMobileEmpId);
@@ -893,27 +832,18 @@ export function VTPage() {
                 podeEditarValores={podeEditarLinhas}
                 podeLancarAjuste={podeConfig}
                 onClose={() => setEditandoMobileEmpId(null)}
-                onChangeDescAtivo={(ativo) => {
-                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { ativo });
-                  else setOverride(linha.empregadoId, { ativo });
-                }}
-                onChangeDescManual={(v) => {
-                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { descontoManual: v });
-                  else setOverride(linha.empregadoId, { descontoManual: v });
-                }}
-                onChangeAuxPontual={(v) => {
-                  if (loteAtivo) editarLinhaDoLote(linha.empregadoId, { auxPontual: v });
-                  else setOverride(linha.empregadoId, { auxPontual: v });
-                }}
+                onChangeDescAtivo={(ativo) => setOverride(linha.empregadoId, { ativo })}
+                onChangeDescManual={(v) => setOverride(linha.empregadoId, { descontoManual: v })}
+                onChangeAuxPontual={(v) => setOverride(linha.empregadoId, { auxPontual: v })}
                 onLancarAjuste={(valor, just) => criarLoteAjuste(linha.empregadoId, valor, just)}
               />
             );
           })()}
 
           {/* Modal de confirmação de lançamento */}
-          {confirmandoLote && linhasPreview && (
+          {confirmandoLote && (
             <ConfirmacaoLoteModal
-              linhasPreview={linhasPreview}
+              linhasPreview={linhasAPagar}
               empregados={empregados}
               escalaLote={escalaLote}
               lotesExistentes={lotesDoMes}
@@ -961,14 +891,14 @@ export function VTPage() {
         />
       )}
 
-      {showExportPDF && (
+      {pdfData && (
         <ExportarVTModal
           ano={ano}
           mes={mes}
           restaurantNome={activeRestaurant?.nome || "Restaurante"}
-          statusLabel={loteAtivo ? VT_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização"}
-          linhas={linhasPdf}
-          onClose={() => setShowExportPDF(false)}
+          statusLabel={pdfData.statusLabel}
+          linhas={pdfData.linhas}
+          onClose={() => setPdfData(null)}
         />
       )}
 
@@ -1874,17 +1804,44 @@ function HistoricoTab(props: HistoricoTabProps) {
 // Card de resumo
 // ────────────────────────────────────────────────────────────────────────────
 
-function Card({ label, value, variant }: { label: string; value: string; variant?: "ok" | "warn" }) {
-  const cls =
-    variant === "ok"
-      ? "border-emerald-200 bg-emerald-50/50 dark:bg-emerald-900/10 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300"
-      : variant === "warn"
-      ? "border-rose-200 bg-rose-50/50 dark:bg-rose-900/10 dark:border-rose-900 text-rose-700 dark:text-rose-300"
-      : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100";
+// Card de um lote do mês — resumo + ações conforme status.
+function LoteCard({ lote, isMaster, podeConfig, onMarcarPago, onCancelarRascunho, onReabrir, onCancelarMaster, onExportarCaju, onExportarPdf }: {
+  lote: VTLote;
+  isMaster: boolean;
+  podeConfig: boolean;
+  onMarcarPago: () => void;
+  onCancelarRascunho: () => void;
+  onReabrir: () => void;
+  onCancelarMaster: () => void;
+  onExportarCaju: () => void;
+  onExportarPdf: () => void;
+}) {
+  const isAjuste = lote.tipo === "ajuste";
+  const isRascunho = lote.status === "rascunho";
+  const statusCls = isRascunho
+    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
   return (
-    <div className={`rounded-lg border p-2.5 ${cls}`}>
-      <div className="text-[10px] font-semibold uppercase tracking-wider opacity-70 mb-0.5">{label}</div>
-      <div className="text-sm font-bold tabular-nums">{value}</div>
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          {isAjuste && <span className="text-[10px] bg-violet-100 dark:bg-violet-900/40 text-violet-800 dark:text-violet-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">Ajuste</span>}
+          <span className="font-semibold text-gray-800 dark:text-gray-100">{lote.linhas.length} pessoa(s)</span>
+          <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{(lote.totalGeral || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusCls}`}>{VT_LOTE_STATUS_LABEL[lote.status]}</span>
+        </div>
+        <div className="text-[11px] text-gray-400 mt-0.5">
+          {isRascunho ? `criado por ${lote.criadoPorNome || "—"}` : `pago${lote.pagoEm ? ` em ${new Date(lote.pagoEm).toLocaleDateString("pt-BR")}` : ""}${lote.pagoPorNome ? ` · ${lote.pagoPorNome}` : ""}`}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju">📥 Caju</Button>
+        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote">📄 PDF</Button>
+        {isRascunho && podeConfig && <Button size="sm" onClick={onMarcarPago}>✓ Marcar pago</Button>}
+        {isRascunho && podeConfig && <Button variant="danger" size="sm" onClick={onCancelarRascunho} title="Cancela o rascunho e devolve as pessoas pra 'A pagar'">✕ Cancelar</Button>}
+        {!isRascunho && isMaster && <Button variant="secondary" size="sm" onClick={onReabrir}>↶ Reabrir</Button>}
+        {!isRascunho && isMaster && <Button variant="danger" size="sm" onClick={onCancelarMaster}>✕ Cancelar</Button>}
+      </div>
     </div>
   );
 }
