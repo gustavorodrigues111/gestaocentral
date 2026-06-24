@@ -12,6 +12,7 @@ import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVTModal } from "./ExportarVTModal";
 import { AplicarAuxFixoLoteModal } from "./AplicarAuxFixoLoteModal";
+import { LoteAjusteModal, type LinhaAjuste } from "./LoteAjusteModal";
 import type { VTPDFLinha } from "./gerarVTPDF";
 import type { Empregado, EscalaMes, Cargo, VTLote, VTLoteLinha, VTLoteEvento, Area, MudancaAgendada } from "../../core/types";
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
@@ -83,6 +84,7 @@ export function VTPage() {
 
   // Modal de confirmação de lançamento
   const [confirmandoLote, setConfirmandoLote] = useState(false);
+  const [ajusteAberto, setAjusteAberto] = useState(false);
   // Bottom-sheet/modal de edição por linha — guarda o empregadoId
   const [editandoMobileEmpId, setEditandoMobileEmpId] = useState<string | null>(null);
   // Filtro de unidade (multi-unidades) — "" = todas
@@ -441,6 +443,35 @@ export function VTPage() {
     setEditandoMobileEmpId(null);
   }
 
+  // Criar lote de AJUSTE a partir das diferenças escolhidas (multi-linha).
+  async function criarLoteAjusteDiff(linhasSel: LinhaAjuste[]) {
+    if (!rid || !me || linhasSel.length === 0) return;
+    setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      const linhas: VTLoteLinha[] = linhasSel.map(s => ({
+        empregadoId: s.empregadoId, nome: s.nome, cargoNome: s.cargoNome, area: s.area,
+        passagensPorDia: 0, valorPassagem: 0, diasTrabalhados: 0, auxFixoMensal: 0, vtBase: 0,
+        descontoSugeridoAtivo: false, descontoSugerido: 0, descontoManual: 0, auxPontual: 0,
+        total: round2(s.valor), modo: "ajuste", justificativa: s.justificativa,
+      }));
+      const tot = totaisPorAreaELote(linhas);
+      const evento: VTLoteEvento = { acao: "criado", em: now, por: me.id, porNome: me.nome, motivo: "Lote de ajuste (diferenças)" };
+      const lote: Omit<VTLote, "id"> = {
+        restaurantId: rid, ano, mes, status: "rascunho", tipo: "ajuste",
+        linhas, totalGeral: tot.geral, totalPorArea: tot.porArea,
+        criadoEm: now, criadoPor: me.id, criadoPorNome: me.nome, historico: [evento], updatedAt: now,
+      };
+      await addDoc(collection(db, "vtLotes"), lote);
+      setAjusteAberto(false);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao criar lote de ajuste: " + (e instanceof Error ? e.message : "?"));
+    } finally {
+      setSalvando(false);
+    }
+  }
+
   // Marcar lote como pago
   async function marcarPago(lote: VTLote) {
     if (!me) return;
@@ -720,6 +751,9 @@ export function VTPage() {
             )}
             {loteAtivo && loteAtivo.status === "pago" && (
               <div className="flex gap-2 flex-wrap">
+                {podeConfig && (
+                  <Button variant="secondary" onClick={() => setAjusteAberto(true)} title="Comparar com o esperado agora e lançar só as diferenças (admissões, troca de valor, etc.)">🧮 Criar lote de ajuste</Button>
+                )}
                 {isMaster && (
                   <Button variant="secondary" onClick={() => reabrirLote(loteAtivo)}>↶ Reabrir (master)</Button>
                 )}
@@ -888,6 +922,22 @@ export function VTPage() {
               onConfirm={criarLote}
               onClose={() => setConfirmandoLote(false)}
               salvando={salvando}
+            />
+          )}
+
+          {ajusteAberto && (
+            <LoteAjusteModal
+              empregadosProjetados={empregadosProjetados}
+              cargos={cargos}
+              escalaLote={escalaLote}
+              escalaRef={escalaRef}
+              ano={ano}
+              mes={mes}
+              mesLabel={`${nomeMes(mes)}/${ano}`}
+              lotesDoMes={lotesDoMes}
+              salvando={salvando}
+              onClose={() => setAjusteAberto(false)}
+              onCriar={criarLoteAjusteDiff}
             />
           )}
 
