@@ -209,6 +209,22 @@ export async function lancarAfastamento(
   return json as { ok: boolean };
 }
 
+// Cria afastamento no MÓDULO NOVO (timeoffwork) — atestado médico/licenças.
+// timeOffWork = id do tipo; esocialReason = código eSocial (ex COD_02).
+export async function criarAfastamentoNovo(
+  restaurantKey: string,
+  params: { employee: number; timeOffWork: number; esocialReason: string; startDate: string; endDate: string },
+): Promise<{ ok: boolean }> {
+  const resp = await fetch(`/api/solides-afastamento-criar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(await authHeader()) },
+    body: JSON.stringify({ restaurant: restaurantKey, recordType: "DAYS", ...params }),
+  });
+  const json = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((json as { error?: string }).error || `Erro HTTP ${resp.status}`);
+  return json as { ok: boolean };
+}
+
 // Editar batida (modify/punch). oldMs = batida atual, newMs = nova — ambos ms epoch.
 export async function editarBatida(
   restaurantKey: string,

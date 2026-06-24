@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
-import { fetchMotivosAfastamento, lancarAfastamento, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
+import { fetchMotivosAfastamento, lancarAfastamento, criarAfastamentoNovo, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 
 // Converte qualquer YYYY-MM-DD (inclusive dentro de "X a Y") → DD/MM/YYYY.
@@ -46,16 +46,45 @@ export function AfastamentoModal({
 
   const empNome = (id: number) => roster.find((r) => r.id === id)?.name || prefill.colaborador || "?";
 
-  // Atestados médicos e licenças mudaram de rotina na Sólides: agora só pelo
-  // "módulo de Afastamentos" (timeoffwork) — o /adjustment/register recusa (400).
-  // Detecta pelo nome do motivo e bloqueia com orientação (integração nova é projeto à parte).
+  // Atestados/licenças mudaram de rotina na Sólides: vão pelo módulo novo
+  // (timeoffwork) — o /adjustment/register antigo recusa (400).
+  //  - `mapNovo`: motivo JÁ integrado aqui (lança via /api/solides-afastamento-criar).
+  //  - `motivoBloqueado`: motivo do fluxo novo ainda NÃO integrado → orienta usar a Sólides.
+  // timeOffWork/esocialReason vêm das listas capturadas (POST real da Sólides).
   const motivoSel = motivos.find((m) => m.id === motivoId);
-  const motivoNovoFluxo = !!motivoSel && /atestad|licen|m[eé]dic|[oó]bito|matern|patern|afastament|inss|acidente/i.test(motivoSel.description || "");
+  const mapNovo = motivoSel && /atestad|doen[çc]a n[ãa]o relacionada/i.test(motivoSel.description || "")
+    ? { timeOffWork: 4, esocialReason: "COD_02", rotulo: "Acidente/Doença não relacionada ao trabalho (atestado médico) · eSocial COD_02" }
+    : null;
+  const motivoBloqueado = !!motivoSel && !mapNovo && /licen[çc]a|matern|patern|[oó]bito|afastament|inss|acidente|doen[çc]a do trabalho/i.test(motivoSel.description || "");
 
   async function confirmar() {
     if (!empId) { setErro("Escolha o colaborador."); return; }
     if (!motivoId) { setErro("Escolha o motivo."); return; }
-    if (motivoNovoFluxo) { setErro("Atestados e licenças agora são lançados no módulo de Afastamentos da Sólides — lance por lá. A integração automática aqui está em desenvolvimento."); return; }
+    if (motivoBloqueado) { setErro("Esse tipo (licença/afastamento) ainda não está integrado aqui — lance no módulo de Afastamentos da Sólides. Atestado médico já funciona por aqui."); return; }
+    if (mapNovo) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
+      if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
+      if (!window.confirm(`Lançar ATESTADO MÉDICO para ${empNome(Number(empId))}\nde ${fmtBR(inicio)} a ${fmtBR(fim)}?\n\nVai pro módulo de Afastamentos da Sólides (eSocial: ${mapNovo.esocialReason}). Sem anexo.`)) return;
+      setErro(""); setSalvando(true);
+      try {
+        await criarAfastamentoNovo(shortCode, { employee: Number(empId), timeOffWork: mapNovo.timeOffWork, esocialReason: mapNovo.esocialReason, startDate: inicio, endDate: fim });
+        try {
+          await addDoc(collection(db, "pontoAuditoria"), {
+            restaurantId, tipo: "afastamento_novo",
+            por: { id: por.id, nome: por.nome },
+            employeeId: Number(empId), colaborador: empNome(Number(empId)),
+            motivoId: Number(motivoId), motivo: motivoSel?.description || "Atestado médico",
+            timeOffWork: mapNovo.timeOffWork, esocialReason: mapNovo.esocialReason,
+            inicio, fim, diaInteiro: true, em: new Date().toISOString(),
+          });
+        } catch { /* auditoria não bloqueia */ }
+        alert(`Atestado lançado no módulo de Afastamentos da Sólides ✓ (${fmtBR(inicio)}–${fmtBR(fim)}). Reanalisando…`);
+        onDone();
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : "Falha ao lançar o atestado.");
+      } finally { setSalvando(false); }
+      return;
+    }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
     if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
     const motivo = motivos.find((m) => m.id === motivoId);
@@ -112,9 +141,14 @@ export function AfastamentoModal({
             <option value="">{motivos.length ? "— escolha —" : "— carregando —"}</option>
             {motivos.map((m) => <option key={m.id} value={m.id}>{m.description}</option>)}
           </select>
-          {motivoNovoFluxo && (
+          {mapNovo && (
+            <div className="text-[11px] text-emerald-800 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded px-2 py-1.5">
+              ✓ Vai pelo <strong>módulo de Afastamentos</strong> da Sólides — {mapNovo.rotulo}. Sem anexo.
+            </div>
+          )}
+          {motivoBloqueado && (
             <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
-              ⚠ Atestados médicos e licenças mudaram na Sólides — agora só pelo <strong>módulo de Afastamentos</strong> dela. Lance por lá; a integração automática aqui está em desenvolvimento. Os demais motivos (inversão de folga, etc.) funcionam normal por aqui.
+              ⚠ Licenças/afastamentos (maternidade, paternidade, etc.) ainda não estão integrados aqui — lance no <strong>módulo de Afastamentos</strong> da Sólides. <strong>Atestado médico</strong> já funciona por aqui.
             </div>
           )}
         </div>
@@ -137,10 +171,10 @@ export function AfastamentoModal({
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} disabled={salvando}
             className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">Cancelar</button>
-          <button type="button" onClick={() => void confirmar()} disabled={salvando || motivoNovoFluxo}
-            title={motivoNovoFluxo ? "Atestado/licença: lance pelo módulo de Afastamentos da Sólides" : undefined}
+          <button type="button" onClick={() => void confirmar()} disabled={salvando || motivoBloqueado}
+            title={motivoBloqueado ? "Licença/afastamento: lance pelo módulo de Afastamentos da Sólides" : undefined}
             className="px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50">
-            {salvando ? "Lançando…" : "Lançar afastamento"}
+            {salvando ? "Lançando…" : mapNovo ? "Lançar atestado" : "Lançar afastamento"}
           </button>
         </div>
       </div>
