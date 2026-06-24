@@ -741,15 +741,15 @@ export function VTPage() {
                       </div>
                     </div>
 
-                    <div className="hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800">
-                      <div>Empregado</div>
-                      <div className="text-right">Aux. fixo</div>
-                      <div className="text-right">Pass/dia</div>
-                      <div className="text-right">Dias</div>
-                      <div className="text-right">Desc. sug.</div>
-                      <div className="text-right">Desconto</div>
-                      <div className="text-right">Aux. pontual</div>
-                      <div className="text-right">Total</div>
+                    <div className="hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800">
+                      <div className="px-3 flex items-center">Empregado</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Aux. fixo</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Pass/dia</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Dias</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Desc. sug.</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Desconto</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Aux. pontual</div>
+                      <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Total</div>
                     </div>
 
                     {linhasArea.map(l => (
@@ -946,90 +946,65 @@ type LinhaVTProps = {
 function LinhaVT(props: LinhaVTProps) {
   const { l, unidadeNome, recebePeloCaju } = props;
 
+  const cell = "px-2 flex items-center justify-center text-center tabular-nums border-l border-gray-100 dark:border-gray-800";
   return (
-    <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] items-center px-3 py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : l.semBeneficioCadastrado ? "bg-gray-50/40 dark:bg-gray-900/10" : ""}`}>
-      <div className={`font-medium truncate ${l.semBeneficioCadastrado ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
-        {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}{" "}
-        {l.nome}
-        {l.semConfig && <span className="ml-2 text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+    <div className={`hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] py-2 text-sm border-t border-gray-100 dark:border-gray-800 ${l.semConfig ? "bg-amber-50/40 dark:bg-amber-900/10" : l.semBeneficioCadastrado ? "bg-gray-50/40 dark:bg-gray-900/10" : ""}`}>
+      <div className={`px-3 flex items-center flex-wrap gap-x-1.5 gap-y-0.5 min-w-0 font-medium ${l.semBeneficioCadastrado ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+        {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}
+        <span className="truncate">{l.nome}</span>
+        {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
         {l.semBeneficioCadastrado && (
-          <span className="ml-2 text-[10px] italic text-gray-500 dark:text-gray-400">— sem vale transporte cadastrado</span>
+          <span className="text-[10px] italic text-gray-500 dark:text-gray-400">— sem vale transporte cadastrado</span>
         )}
         {l.modo === "parcial" && l.periodoInicio && l.periodoFim && (
-          <span className="ml-2 text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+          <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
             Parcial {l.periodoInicio.slice(8)}-{l.periodoFim.slice(8)}/{l.periodoFim.slice(5, 7)}
           </span>
         )}
-        <span className="ml-2 text-[10px] text-gray-400">{l.cargoNome}</span>
+        <span className="text-[10px] text-gray-400">{l.cargoNome}</span>
         {unidadeNome && (
-          <span className="ml-2 text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
+          <span className="text-[9px] bg-sky-100 dark:bg-sky-900/40 text-sky-800 dark:text-sky-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
             {unidadeNome}
           </span>
         )}
       </div>
 
-      <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">
+      <div className={`${cell} text-gray-700 dark:text-gray-300`}>
         {l.auxFixoMensal > 0 ? fmtBR(l.auxFixoMensal) : "—"}
       </div>
 
-      <div className="text-right tabular-nums text-gray-700 dark:text-gray-300">
+      <div className={`${cell} text-gray-700 dark:text-gray-300`}>
         {l.passagensPorDia > 0 ? (
-          <span>
-            {l.passagensPorDia}x{" "}
-            <span className="text-gray-400">{fmtBR(l.valorPassagem)}</span>
-          </span>
-        ) : (
-          "—"
-        )}
+          <span>{l.passagensPorDia}x <span className="text-gray-400">{fmtBR(l.valorPassagem)}</span></span>
+        ) : "—"}
       </div>
 
-      <div className="text-right tabular-nums">
-        {l.diasTrabalhados}
-      </div>
+      <div className={cell}>{l.diasTrabalhados}</div>
 
-      <div className="text-right">
+      <div className={cell}>
         {l.descontoSugerido > 0 ? (
-          <span className="inline-flex items-center gap-1 justify-end">
-            <span
-              className={`tabular-nums text-xs ${l.descontoSugeridoAtivo ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400 line-through"}`}
-              title={l.descontoSugeridoJustificativa || ""}
-            >
+          <span className="inline-flex items-center gap-1 justify-center">
+            <span className={`tabular-nums text-xs ${l.descontoSugeridoAtivo ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400 line-through"}`} title={l.descontoSugeridoJustificativa || ""}>
               -{fmtBR(l.descontoSugerido)}
             </span>
-            <span
-              className="text-[10px] text-gray-400 cursor-help"
-              title={l.descontoSugeridoJustificativa || ""}
-            >
-              ⓘ
-            </span>
+            <span className="text-[10px] text-gray-400 cursor-help" title={l.descontoSugeridoJustificativa || ""}>ⓘ</span>
           </span>
-        ) : (
-          <span className="text-gray-400 text-xs">—</span>
-        )}
+        ) : <span className="text-gray-400 text-xs">—</span>}
       </div>
 
-      <div className={`text-right text-xs tabular-nums ${l.descontoManual > 0 ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400"}`}>
+      <div className={`${cell} text-xs ${l.descontoManual > 0 ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400"}`}>
         {l.descontoManual > 0 ? `-${fmtBR(l.descontoManual)}` : "—"}
       </div>
 
-      <div className={`text-right text-xs tabular-nums ${l.auxPontual > 0 ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-gray-400"}`}>
+      <div className={`${cell} text-xs ${l.auxPontual > 0 ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-gray-400"}`}>
         {l.auxPontual > 0 ? `+${fmtBR(l.auxPontual)}` : "—"}
       </div>
 
-      <div className="text-right font-bold tabular-nums text-gray-900 dark:text-gray-100">
-        <span className="inline-flex items-center gap-1.5 justify-end">
-          {fmtBR(l.total)}
-          {props.onAbrirSheet && (
-            <button
-              type="button"
-              onClick={props.onAbrirSheet}
-              title="Editar valores ou lançar ajuste"
-              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm px-1"
-            >
-              ✏️
-            </button>
-          )}
-        </span>
+      <div className={`${cell} font-bold text-gray-900 dark:text-gray-100 gap-1.5`}>
+        {fmtBR(l.total)}
+        {props.onAbrirSheet && (
+          <button type="button" onClick={props.onAbrirSheet} title="Editar valores ou lançar ajuste" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm">✏️</button>
+        )}
       </div>
     </div>
   );
