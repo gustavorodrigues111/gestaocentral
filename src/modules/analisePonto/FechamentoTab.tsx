@@ -370,13 +370,18 @@ export function FechamentoTab({
     return m;
   }, [punches]);
 
-  // Afastamento lançado na Sólides (pela nossa tela) por dia: employeeId|date → motivo.
+  // Afastamento lançado na Sólides (pela nossa tela) por dia: employeeId|date →
+  // { motivo, detalhe }. detalhe diz QUEM lançou, QUANDO e o PERÍODO — pra não
+  // parecer que "apareceu sozinho" (o período inteiro é pintado a partir de UM lançamento).
   const afastamentoPorDia = useMemo(() => {
-    const m = new Map<string, string>();
+    const m = new Map<string, { motivo: string; detalhe: string }>();
     for (const a of afastamentos) {
       if (!a.inicio || !a.fim || typeof a.employeeId !== "number") continue;
+      const motivo = a.motivo || "Afastamento";
+      const quando = a.em ? new Date(a.em).toLocaleDateString("pt-BR") : "—";
+      const detalhe = `"${motivo}" — lançado pela nossa tela em ${quando}, cobrindo ${fmtDataBR(a.inicio)} a ${fmtDataBR(a.fim)} (1 lançamento pinta o período todo). Confirmado na Sólides.`;
       for (const d of diasDoMes(mes)) {
-        if (d >= a.inicio && d <= a.fim) m.set(`${a.employeeId}|${d}`, a.motivo || "Afastamento");
+        if (d >= a.inicio && d <= a.fim) m.set(`${a.employeeId}|${d}`, { motivo, detalhe });
       }
     }
     return m;
@@ -799,7 +804,7 @@ export function FechamentoTab({
                     {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
                   </div>
                   {afastLancado && (
-                    <span title={`Afastamento lançado na Sólides pela nossa tela: ${afastLancado}`} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado} · Sólides ✓</span>
+                    <span title={afastLancado.detalhe} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado.motivo} · Sólides ✓</span>
                   )}
                   {!afastLancado && inc.estado === "aprovar" && (
                     <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
