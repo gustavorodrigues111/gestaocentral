@@ -30,8 +30,10 @@ function resolveTokens(restaurantKey: string): { tokens: Tokens } | { error: str
   let map: Record<string, Tokens>;
   try { map = JSON.parse(mapRaw) as Record<string, Tokens>; }
   catch { return { error: "SOLIDES_TIMEOFFWORK_TOKENS com JSON inválido.", status: 500 }; }
+  const chaves = Object.keys(map);
   const t = map[restaurantKey];
-  if (!t || !t.web || !t.client) return { error: `Sem tokens timeoffwork pra "${restaurantKey}".`, status: 400 };
+  if (!t) return { error: `Sem tokens timeoffwork pra "${restaurantKey}". Chaves configuradas: [${chaves.join(", ") || "nenhuma"}].`, status: 400 };
+  if (!t.web || !t.client) return { error: `Tokens timeoffwork de "${restaurantKey}" incompletos (falta ${!t.web ? "web" : ""}${!t.web && !t.client ? " e " : ""}${!t.client ? "client" : ""}).`, status: 400 };
   return { tokens: t };
 }
 
