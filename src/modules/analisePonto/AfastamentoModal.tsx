@@ -3,6 +3,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { fetchMotivosAfastamento, lancarAfastamento, criarAfastamentoNovo, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
+import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 
 // Converte qualquer YYYY-MM-DD (inclusive dentro de "X a Y") → DD/MM/YYYY.
@@ -57,13 +58,32 @@ export function AfastamentoModal({
     : null;
   const motivoBloqueado = !!motivoSel && !mapNovo && /licen[çc]a|matern|patern|[oó]bito|afastament|inss|acidente|doen[çc]a do trabalho/i.test(motivoSel.description || "");
 
+  // Checa se o colaborador TEM batida em algum dia do período [inicio, fim].
+  // Não costuma fazer sentido lançar afastamento em dia trabalhado — avisa.
+  // Retorna false se o usuário cancelar diante do aviso; true pra seguir.
+  async function passouChecagemBatidas(): Promise<boolean> {
+    try {
+      const r = await fetchPunches(inicio, fim, shortCode, true);
+      const dias = [...new Set(
+        r.punches
+          .filter((p) => p.employeeId === Number(empId) && !p.excluded && !!p.dateIn && p.date >= inicio && p.date <= fim)
+          .map((p) => p.date),
+      )].sort();
+      if (dias.length) {
+        return window.confirm(`⚠ ${empNome(Number(empId))} TEM BATIDA em ${dias.map(fmtBR).join(", ")} dentro do período.\n\nNão costuma fazer sentido lançar afastamento em dia trabalhado. Lançar mesmo assim?`);
+      }
+    } catch { /* checagem best-effort — não trava se a Sólides falhar */ }
+    return true;
+  }
+
   async function confirmar() {
     if (!empId) { setErro("Escolha o colaborador."); return; }
     if (!motivoId) { setErro("Escolha o motivo."); return; }
     if (motivoBloqueado) { setErro("Esse tipo (licença/afastamento) ainda não está integrado aqui — lance no módulo de Afastamentos da Sólides. Atestado médico já funciona por aqui."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
+    if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
     if (mapNovo) {
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
-      if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
+      if (!(await passouChecagemBatidas())) return;
       if (!window.confirm(`Lançar ATESTADO MÉDICO para ${empNome(Number(empId))}\nde ${fmtBR(inicio)} a ${fmtBR(fim)}?\n\nVai pro módulo de Afastamentos da Sólides (eSocial: ${mapNovo.esocialReason}). Sem anexo.`)) return;
       setErro(""); setSalvando(true);
       try {
@@ -85,9 +105,8 @@ export function AfastamentoModal({
       } finally { setSalvando(false); }
       return;
     }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(inicio) || !/^\d{4}-\d{2}-\d{2}$/.test(fim)) { setErro("Informe o período (início e fim)."); return; }
-    if (inicio > fim) { setErro("O início não pode ser depois do fim."); return; }
     const motivo = motivos.find((m) => m.id === motivoId);
+    if (!(await passouChecagemBatidas())) return;
     if (!window.confirm(`Lançar ${motivo?.description || "afastamento"} para ${empNome(Number(empId))}\nde ${fmtBR(inicio)} a ${fmtBR(fim)}?\n\nGrava na Sólides como APROVADO.`)) return;
     setErro(""); setSalvando(true);
     try {
