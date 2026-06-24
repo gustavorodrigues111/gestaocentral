@@ -44,6 +44,7 @@ const STATUS_VIS: Record<ScheduleStatus, { short: string; badge: string; row: st
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 const pad = (n: number) => String(n).padStart(2, "0");
+const fmtDataBR = (ymd: string) => ymd ? ymd.slice(8, 10) + "/" + ymd.slice(5, 7) : "—";
 const DIAS_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 function nomeMes(ym: string): string {
@@ -171,6 +172,11 @@ export function FechamentoTab({
   por: { id: string; nome: string };
 }) {
   const [mes, setMes] = useState(mesInicial);
+  // Faixa de dias dentro do mês (padrão = mês inteiro). Permite conferir "todo
+  // mundo fechado até o dia X" (ex.: pra pagar gorjeta/rescisão até certo dia).
+  const [diaIni, setDiaIni] = useState(`${mesInicial}-01`);
+  const [diaFim, setDiaFim] = useState("");
+  useEffect(() => { const ds = diasDoMes(mes); setDiaIni(ds[0]); setDiaFim(ds[ds.length - 1]); }, [mes]);
   const [roster, setRoster] = useState<PontoColaborador[]>([]);
   const [punches, setPunches] = useState<SolidesPunch[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
@@ -285,14 +291,19 @@ export function FechamentoTab({
   // Status de fechamento por colaborador (pros chips). "fechado" = todos os dias
   // do contrato até hoje já fechados (solides_sync); "aberto" = ainda tem dias a
   // fechar; "sem_vinculo" = sem empregado no app (não dá pra fechar).
+  // Dias do mês dentro da faixa selecionada [diaIni, diaFim].
+  const diasPeriodo = useMemo(
+    () => diasDoMes(mes).filter((d) => (!diaIni || d >= diaIni) && (!diaFim || d <= diaFim)),
+    [mes, diaIni, diaFim],
+  );
+
   const statusFechCol = useMemo(() => {
     const map = new Map<number, "fechado" | "aberto" | "sem_vinculo">();
-    const dias = diasDoMes(mes);
     for (const c of colaboradores) {
       if (!c.emp) { map.set(c.solId, "sem_vinculo"); continue; }
       const aj = escala?.realAjustes?.[c.emp.id] || {};
       let pendentes = 0;
-      for (const d of dias) {
+      for (const d of diasPeriodo) {
         if (c.demissao && d > c.demissao) continue;  // fora do contrato
         if (d >= hojeYmd) continue;                  // hoje (em curso) e futuro não contam — verde = fechado até ontem
         if ((aj[d] as AjusteEscalaMeta | undefined)?.origem === "solides_sync") continue;
@@ -301,7 +312,17 @@ export function FechamentoTab({
       map.set(c.solId, pendentes === 0 ? "fechado" : "aberto");
     }
     return map;
-  }, [colaboradores, escala, mes, hojeYmd]);
+  }, [colaboradores, escala, diasPeriodo, hojeYmd]);
+
+  // Agregado do período: todos fechados? (ignora sem_vínculo)
+  const resumoFech = useMemo(() => {
+    let fechados = 0, abertos = 0, semVinculo = 0;
+    for (const c of colaboradores) {
+      const st = statusFechCol.get(c.solId);
+      if (st === "fechado") fechados++; else if (st === "aberto") abertos++; else semVinculo++;
+    }
+    return { fechados, abertos, semVinculo, total: colaboradores.length };
+  }, [colaboradores, statusFechCol]);
 
   // Colaboradores agrupados por área (coluna por área) pros chips.
   const colaboradoresPorArea = useMemo(() => {
@@ -600,6 +621,21 @@ export function FechamentoTab({
               {mesesOpcoes.map((ym) => <option key={ym} value={ym}>{nomeMes(ym)}</option>)}
             </select>
           </div>
+          {/* Faixa de dias dentro do mês (padrão = mês inteiro) */}
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">De</label>
+            <input type="date" value={diaIni} min={`${mes}-01`} max={diaFim || undefined} onChange={(e) => setDiaIni(e.target.value)}
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          <div className="flex flex-col gap-1 shrink-0">
+            <label className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Até</label>
+            <input type="date" value={diaFim} min={diaIni || `${mes}-01`} max={diasDoMes(mes).at(-1)} onChange={(e) => setDiaFim(e.target.value)}
+              className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+          </div>
+          {(() => { const ds = diasDoMes(mes); const cheio = diaIni === ds[0] && diaFim === ds[ds.length - 1]; return !cheio ? (
+            <button type="button" onClick={() => { setDiaIni(ds[0]); setDiaFim(ds[ds.length - 1]); }}
+              className="h-9 px-3 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 self-end">Mês inteiro</button>
+          ) : null; })()}
           <div className="flex-1" />
           <button type="button" onClick={() => void carregar()} disabled={carregando}
             title="Recarregar batidas, escala e inconsistências do mês"
@@ -617,6 +653,19 @@ export function FechamentoTab({
           Escolha um colaborador pelo chip. <span className="text-emerald-700 dark:text-emerald-300 font-semibold">✓ verde</span> = período fechado · <span className="text-amber-700 dark:text-amber-300 font-semibold">● amarelo</span> = ainda tem dias a fechar · <span className="text-gray-400 font-semibold">○ cinza</span> = sem vínculo no app.
         </p>
       </div>
+
+      {/* Banner agregado do período */}
+      {colaboradores.length > 0 && (
+        resumoFech.abertos === 0 ? (
+          <div className="text-sm rounded-xl px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 font-medium">
+            ✓ Todos fechados de {fmtDataBR(diaIni)} a {fmtDataBR(diaFim)} — {resumoFech.fechados} colaborador(es){resumoFech.semVinculo > 0 ? ` · ${resumoFech.semVinculo} sem vínculo no app` : ""}.
+          </div>
+        ) : (
+          <div className="text-sm rounded-xl px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 font-medium">
+            ● {resumoFech.abertos} colaborador(es) com dias a fechar de {fmtDataBR(diaIni)} a {fmtDataBR(diaFim)} ({resumoFech.fechados} já fechados{resumoFech.semVinculo > 0 ? ` · ${resumoFech.semVinculo} sem vínculo` : ""}).
+          </div>
+        )
+      )}
 
       {/* Chips por área — visão geral de quem já está fechado */}
       {colaboradores.length > 0 && (
