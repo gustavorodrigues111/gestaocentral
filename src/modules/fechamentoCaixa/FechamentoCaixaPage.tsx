@@ -741,16 +741,22 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
 }
 
 // Envia email de resumo pros sócios (1 por email, via Resend).
+const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Omit<FechamentoCaixa, "id">, recentes: FechamentoCaixa[], from?: string) {
   // E-mail = painel de faturamento (mesmo da aba Painel): dia, mês e últimos 7 dias.
   const dados = montarPainel([...recentes, f as FechamentoCaixa], f.data);
-  const html = painelEmailHtml(dados, restaurantNome);
-  const text = `Faturamento — ${restaurantNome} (${fmtData(f.data)})\n`
-    + `Faturamento do dia: ${fmtBRL(dados.diaTotal)}\n`
+  // Destaque: o turno recém fechado (dia + turno explícitos).
+  const turnoLabel = TURNO_CAIXA_LABEL[f.turno];
+  const diaSemana = DIAS_SEMANA[new Date(`${f.data}T12:00:00`).getDay()] || "";
+  const destaque = { titulo: `Venda do ${turnoLabel.toLowerCase()} · ${diaSemana}, ${fmtData(f.data)}`, valor: f.totalVendas || 0 };
+  const html = painelEmailHtml(dados, restaurantNome, destaque);
+  const text = `${destaque.titulo} — ${restaurantNome}\n`
+    + `Venda do ${turnoLabel.toLowerCase()}: ${fmtBRL(f.totalVendas)}\n`
+    + `Total do dia: ${fmtBRL(dados.diaTotal)}\n`
     + `Últimos ${dados.ultimos7.length} dia(s): ${fmtBRL(dados.total7)}\n`
     + `Total do mês (${dados.mesLabel}): ${fmtBRL(dados.mesTotal)}\n`
     + `Últimos dias: ${dados.ultimos7.map((x) => `${fmtData(x.ymd)} ${fmtBRL(x.total)}`).join(" · ")}`;
-  const subject = `Faturamento ${fmtData(f.data)} — ${restaurantNome}`;
+  const subject = `${turnoLabel} ${fmtData(f.data)}: ${fmtBRL(f.totalVendas)} — ${restaurantNome}`;
   // Remetente: override da config OU "<Restaurante> <caixa@planejamento.app>".
   const nomeRem = restaurantNome.replace(/["<>]/g, "").trim() || "Fechamento";
   const remetente = (from && from.trim()) || `"${nomeRem}" <caixa@planejamento.app>`;

@@ -34,20 +34,37 @@ export function montarPainel(fechamentos: FechMin[], refData: string): PainelDad
   return { refData, diaTotal, ultimos7, mesTotal, mesLabel: nomeMesAno(ym), total7 };
 }
 
-// HTML do e-mail (inline styles, à prova de cliente de e-mail). Espelha o
-// painel mobile do app: 3 cards grandes empilhados + card branco com barras.
-export function painelEmailHtml(d: PainelDados, restaurantNome: string): string {
+// Destaque do e-mail: o fechamento (turno) que acabou de ser registrado.
+export type DestaqueFechamento = {
+  titulo: string;     // "Venda do almoço · quinta, 25/06"
+  valor: number;      // faturamento desse turno
+};
+
+// HTML do e-mail (inline styles, à prova de cliente de e-mail). O turno recém
+// fechado vem em destaque grande (hero); dia/semana/mês entram como cards menores.
+export function painelEmailHtml(d: PainelDados, restaurantNome: string, destaque?: DestaqueFechamento): string {
   const FONT = "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif";
   const max = Math.max(1, ...d.ultimos7.map((x) => x.total));
 
-  // Card grande full-width (empilhado, igual ao mobile).
-  const card = (label: string, valor: string, cor: string) =>
-    `<tr><td style="padding:6px 0;">
-      <div style="background:${cor};border-radius:18px;padding:18px 22px;">
-        <div style="font:600 12px ${FONT};text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.82);">${label}</div>
-        <div style="font:800 30px ${FONT};color:#fff;margin-top:4px;line-height:1.1;">${valor}</div>
+  // Hero — o turno recém fechado, em destaque máximo.
+  const hero = destaque
+    ? `<div style="background:#4f46e5;background:linear-gradient(135deg,#4f46e5,#6366f1);border-radius:20px;padding:24px 26px;margin:6px 0 4px;">
+        <div style="font:700 13px ${FONT};text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.9);">${destaque.titulo}</div>
+        <div style="font:800 42px ${FONT};color:#fff;margin-top:6px;line-height:1.02;">${fmtBRLp(destaque.valor)}</div>
+      </div>`
+    : `<div style="background:#4f46e5;border-radius:20px;padding:22px 26px;margin:6px 0 4px;">
+        <div style="font:700 13px ${FONT};text-transform:uppercase;letter-spacing:.7px;color:rgba(255,255,255,.9);">Faturamento do dia · ${fmtDiaCurto(d.refData)}</div>
+        <div style="font:800 42px ${FONT};color:#fff;margin-top:6px;line-height:1.02;">${fmtBRLp(d.diaTotal)}</div>
+      </div>`;
+
+  // Cards secundários menores (lado a lado).
+  const cardSm = (label: string, valor: string, cor: string) =>
+    `<td width="33.33%" style="padding:5px;vertical-align:top;">
+      <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:12px 14px;">
+        <div style="font:600 10px ${FONT};text-transform:uppercase;letter-spacing:.4px;color:#64748b;line-height:1.3;">${label}</div>
+        <div style="font:800 18px ${FONT};color:${cor};margin-top:4px;line-height:1.1;">${valor}</div>
       </div>
-    </td></tr>`;
+    </td>`;
 
   // Linha de barra dentro do card branco.
   const barras = d.ultimos7.map((x) => {
@@ -67,12 +84,15 @@ export function painelEmailHtml(d: PainelDados, restaurantNome: string): string 
   return `<div style="max-width:600px;margin:0 auto;padding:8px;font-family:${FONT};background:#f8fafc;">
     <div style="padding:6px 4px 0;">
       <div style="font:800 20px ${FONT};color:#0f172a;margin:0 0 2px;">📊 Faturamento — ${restaurantNome}</div>
-      <div style="font:400 14px ${FONT};color:#64748b;margin-bottom:8px;">Referência: ${fmtDiaCurto(d.refData)} · ${d.mesLabel}</div>
+      <div style="font:400 14px ${FONT};color:#64748b;margin-bottom:6px;">${d.mesLabel}</div>
     </div>
-    <table role="presentation" width="100%" style="border-collapse:collapse;">
-      ${card("Faturamento do dia", fmtBRLp(d.diaTotal), "#4f46e5")}
-      ${card(`Últimos ${d.ultimos7.length} dia(s)`, fmtBRLp(d.total7), "#0ea5e9")}
-      ${card("Total do mês", fmtBRLp(d.mesTotal), "#10b981")}
+    ${hero}
+    <table role="presentation" width="100%" style="border-collapse:collapse;margin-top:2px;">
+      <tr>
+        ${cardSm("Total do dia", fmtBRLp(d.diaTotal), "#4f46e5")}
+        ${cardSm(`Últimos ${d.ultimos7.length} dia(s)`, fmtBRLp(d.total7), "#0ea5e9")}
+        ${cardSm("Total do mês", fmtBRLp(d.mesTotal), "#10b981")}
+      </tr>
     </table>
     <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;margin-top:12px;">
       <div style="font:700 15px ${FONT};color:#334155;margin-bottom:10px;">Últimos ${d.ultimos7.length} dia(s)</div>
