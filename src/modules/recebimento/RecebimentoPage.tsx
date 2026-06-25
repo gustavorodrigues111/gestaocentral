@@ -688,7 +688,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
 
   const seta = (k: SortKey) => sortKey === k ? (sortDir === "asc" ? " ▲" : " ▼") : "";
   const Th = ({ k, label, alinhar }: { k: SortKey; label: string; alinhar?: "right" | "center" }) => (
-    <th className={`px-4 py-2.5 ${alinhar === "right" ? "text-right" : alinhar === "center" ? "text-center" : ""}`}>
+    <th className={`px-2.5 py-2.5 ${alinhar === "right" ? "text-right" : alinhar === "center" ? "text-center" : ""}`}>
       <button type="button" onClick={() => ordenarPor(k)}
         className={`font-medium hover:text-gray-700 dark:hover:text-gray-200 ${sortKey === k ? "text-gray-800 dark:text-gray-100 font-semibold" : ""}`}>
         {label}{seta(k)}
@@ -709,41 +709,41 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
             <Th k="conforme" label="Conforme?" alinhar="center" />
             <Th k="venc:0" label="Vencimento" />
             <Th k="pgto" label="Pgto" />
-            <th className="px-4 py-2.5 font-medium text-center">Nota</th>
-            {temAcoes && <th className="px-4 py-2.5 font-medium text-right">Ações</th>}
+            <th className="px-2.5 py-2.5 font-medium text-center">Nota</th>
+            {temAcoes && <th className="px-2.5 py-2.5 font-medium text-right">Ações</th>}
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {ordenadas.map((n) => { const vs = vencimentosDe(n); return (
             <tr key={n.id} className={`group transition-colors ${n.conforme ? "hover:bg-gray-50 dark:hover:bg-gray-800/40" : "bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20"}`}>
               {/* Emissor — clicável abre detalhes; tipo · NF · recebido em na sublinha */}
-              <td className="px-4 py-3">
-                <button type="button" onClick={() => setDetalhe(n)} className="flex flex-col items-start text-left max-w-[280px] group/btn">
-                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[280px] group-hover/btn:text-indigo-600 dark:group-hover/btn:text-indigo-400" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
-                  <span className="text-[11px] text-gray-400 truncate max-w-[280px]">
+              <td className="px-2.5 py-3">
+                <button type="button" onClick={() => setDetalhe(n)} className="flex flex-col items-start text-left max-w-[200px] group/btn">
+                  <span className="font-semibold text-gray-800 dark:text-gray-100 truncate max-w-[200px] group-hover/btn:text-indigo-600 dark:group-hover/btn:text-indigo-400" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</span>
+                  <span className="text-[11px] text-gray-400 truncate max-w-[200px]">
                     {tipoLabelDe(n)}{n.numeroNota ? ` · NF ${n.numeroNota}${n.serieNota ? `/${n.serieNota}` : ""}` : ""} · {fmtDataHora(n.recebidoEm)}
                   </span>
                 </button>
               </td>
-              <td className="px-4 py-3 tabular-nums text-gray-500">{fmtDataBR(n.dataEmissao) || "—"}</td>
-              <td className="px-4 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtBRL(n.valorTotal)}</td>
-              <td className="px-4 py-3 text-center">
+              <td className="px-2.5 py-3 tabular-nums text-gray-500 whitespace-nowrap">{fmtDataBR(n.dataEmissao) || "—"}</td>
+              <td className="px-2.5 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">{fmtBRL(n.valorTotal)}</td>
+              <td className="px-2.5 py-3 text-center">
                 {n.conforme
                   ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Sim</span>
                   : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" title={n.divergencia || ""}>⚠ Não</span>}
               </td>
-              <td className="px-4 py-3 tabular-nums text-gray-500 whitespace-nowrap">
+              <td className="px-2.5 py-3 tabular-nums text-gray-500 whitespace-nowrap">
                 {vs.length === 0 ? "—" : (
                   <>{fmtDataBR(vs[0])}{vs.length > 1 && <span className="ml-1.5 text-[10px] text-gray-400" title={`${vs.length} parcelas: ${vs.map(fmtDataBR).join(", ")}`}>+{vs.length - 1}</span>}</>
                 )}
               </td>
-              <td className="px-4 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? `${FORMA_PAGAMENTO_ICONE[n.formaPagamento]} ${FORMA_PAGAMENTO_LABEL[n.formaPagamento]}` : "—"}</td>
-              <td className="px-4 py-3 text-center">
+              <td className="px-2.5 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? `${FORMA_PAGAMENTO_ICONE[n.formaPagamento]} ${FORMA_PAGAMENTO_LABEL[n.formaPagamento]}` : "—"}</td>
+              <td className="px-2.5 py-3 text-center">
                 {n.notaDriveUrl ? (
-                  <span className="inline-flex items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1">
                     <a href={n.notaDriveUrl} target="_blank" rel="noreferrer" title="Abrir nota no Drive"
-                      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
+                      className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
+                      <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
                     </a>
                     {n.notaPaginas && n.notaPaginas.length > 1 && <span className="text-[10px] text-gray-400" title={`${n.notaPaginas.length} páginas`}>📄{n.notaPaginas.length}</span>}
                     {n.boletos && n.boletos.length > 0 && <span className="text-[10px] text-gray-400" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
@@ -751,19 +751,18 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
                 ) : <span className="text-gray-300">—</span>}
               </td>
               {temAcoes && (
-                <td className="px-4 py-3">
-                  <div className="flex items-center justify-end gap-2">
+                <td className="px-2.5 py-3">
+                  <div className="flex items-center justify-end gap-1.5">
                     {podeEditar && ehRomaneio(n) && (
                       <button type="button" onClick={() => setIncluirDanfe(n)} title="Incluir a DANFE recebida deste romaneio"
-                        className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors">
-                        📄 Incluir DANFE
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors">
+                        📄
                       </button>
                     )}
                     {onConferir && (
                       <button type="button" onClick={() => setDetalhe(n)} title="Abrir pra conferir"
-                        className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
-                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
-                        Conferir
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                       </button>
                     )}
                     {podeConfig && (
