@@ -73,16 +73,29 @@ const PROMPT_FECHAMENTO =
   "}";
 
 const PROMPT_COMANDA =
-  "Você recebe a imagem/PDF com UMA OU VÁRIAS COMANDAS de consumo de restaurante (impressas pelo PDV; " +
-  "pode haver várias comandas espalhadas na mesma foto). Identifique o NÚMERO de CADA comanda/mesa " +
-  "(geralmente em destaque, como 'Mesa 99', 'Comanda 12').\n" +
+  "Você recebe a imagem/PDF com UMA OU VÁRIAS COMANDAS/cupons de consumo de restaurante (impressos pelo PDV; " +
+  "pode haver vários espalhados na mesma foto). \n" +
+  "NÚMERO da comanda = o NÚMERO DA MESA. No rodapé do cupom costuma aparecer assim: '=> Mesa 94 (ID 12836) <='. " +
+  "Use APENAS o número da MESA (no exemplo, 94). NUNCA use o 'ID' interno (no exemplo, 12836) — ele NÃO é o número da comanda. " +
+  "Cada cupom = UMA comanda (pelo nº da mesa). Não devolva o mesmo cupom duas vezes (nem como mesa, nem como ID).\n" +
   "IMPORTANTE sobre o VALOR: comandas de cortesia/sócios têm um DESCONTO altíssimo (≈99,99%) só pra fins " +
-  "fiscais, então o 'total a pagar' vem quase ZERO. NÃO use o valor a pagar/líquido. Use o TOTAL BRUTO " +
-  "dos itens ANTES do desconto (o subtotal/soma dos produtos pelo preço cheio). Se houver linha de " +
-  "desconto, o valor que você quer é o de ANTES dela.\n" +
+  "fiscais, então o 'total a pagar' vem quase ZERO. NÃO use o valor a pagar/líquido/TOTAL. Use o VALOR BRUTO " +
+  "(o 'Valor Bruto R$' do cupom, ou a soma dos itens pelo preço cheio ANTES do desconto).\n" +
   'Responda SOMENTE um objeto JSON (sem texto antes ou depois). Valores em reais como NÚMERO.\n' +
   "{\n" +
-  '  "comandas": [<{"numero": <nº da comanda/mesa só dígitos, string>, "valor": <total BRUTO antes do desconto como NÚMERO, ou null>}>, ...]  (uma por comanda visível; [] se nenhuma)\n' +
+  '  "comandas": [<{"numero": <nº da MESA só dígitos, string>, "valor": <valor BRUTO antes do desconto como NÚMERO, ou null>}>, ...]  (uma por cupom/mesa; [] se nenhuma)\n' +
+  "}";
+
+const PROMPT_COMPROVANTE_TOTAL =
+  "Você recebe a foto/PDF do COMPROVANTE de fechamento de caixa de um restaurante (sistema Altec/PDV, com os totais " +
+  "consolidados do turno). Extraia APENAS o FATURAMENTO TOTAL (total de vendas do turno) e a data. NÃO leia maquininhas, " +
+  "formas de pagamento nem quebra por tipo. Responda SOMENTE um objeto JSON (sem texto antes ou depois). " +
+  'Número em reais como NÚMERO (ex 1234.56), sem "R$" e sem separador de milhar. null se não achar.\n' +
+  REGRA_DATA +
+  "{\n" +
+  '  "totalVendas": <faturamento TOTAL de vendas do turno, ou null>,\n' +
+  '  "data": <data do fechamento em YYYY-MM-DD, ou null>,\n' +
+  '  "turno": <"almoco" (dia/tarde) ou "jantar" (noite), ou null>\n' +
   "}";
 
 const PROMPT_ALTEC_CAIXAS =

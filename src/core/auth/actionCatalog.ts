@@ -180,6 +180,7 @@ export const CATALOGO: CatalogoModulo[] = [
     acoes: [
       { id: "fechar",     label: "Fazer fechamento (dar entrada)" },
       { id: "ver",        label: "Ver fechamentos enviados (lista completa)", sensivel: true },
+      { id: "painel",     label: "Ver Painel de faturamento (dashboard)", sensivel: true },
       { id: "editar",     label: "Editar fechamentos" },
       { id: "configurar", label: "Configurações (pasta do Drive, sócios)" },
     ],

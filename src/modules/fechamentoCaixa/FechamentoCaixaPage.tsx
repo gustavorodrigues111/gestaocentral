@@ -28,6 +28,7 @@ import { centralConfigured, centralEnsureTopFolder, centralEnsureFolder, central
 import { authHeader } from "../../core/firebase/idToken";
 import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem";
 import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
+import { montarPainel, painelEmailHtml, fmtBRLp, fmtDiaCurto } from "./painelFechamento";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -183,11 +184,12 @@ export function FechamentoCaixaPage() {
   const { can, canModulo, loading: permLoading } = useCanAcao(rid);
   const podeFechar = can("fechamentoCaixa", "fechar");
   const podeVer = can("fechamentoCaixa", "ver");
+  const podePainel = can("fechamentoCaixa", "painel");
   const podeEditar = can("fechamentoCaixa", "editar");
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "comandas" | "conciliacao" | "config">("novo");
+  const [tab, setTab] = useState<"novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config">("novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");
@@ -279,15 +281,16 @@ export function FechamentoCaixaPage() {
     return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
-  const abas: Array<"novo" | "lista" | "comandas" | "conciliacao" | "config"> = [];
+  const abas: Array<"novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config"> = [];
   if (podeFechar) abas.push("novo");
   if (podeVer) abas.push("lista");
+  if (podePainel) abas.push("painel");
   if (podeVer) abas.push("comandas");
   if (podeVer) abas.push("conciliacao");
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "comandas" | "conciliacao" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config"; label: string }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -297,6 +300,7 @@ export function FechamentoCaixaPage() {
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
+        {podePainel && <TabBtn k="painel" label="📊 Painel" />}
         {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
         {podeVer && <TabBtn k="conciliacao" label="💳 Conciliação de Cartões" />}
         {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
@@ -314,6 +318,8 @@ export function FechamentoCaixaPage() {
           </button>
         </div>
       )}
+
+      {abaEfetiva === "painel" && podePainel && <PainelTab fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
 
       {abaEfetiva === "comandas" && podeVer && <ControleComandas fechamentos={ativos} restaurantNome={restaurant?.nome || ""} />}
 
@@ -392,6 +398,7 @@ export function FechamentoCaixaPage() {
           rid={rid}
           restaurant={restaurant}
           por={{ id: me?.id || "", nome: me?.nome || "?" }}
+          recentes={ativos}
           onClose={() => setNovo(false)}
           onSalvo={() => setNovo(false)}
         />
@@ -447,10 +454,11 @@ function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro
 
 // ─── Modal: novo fechamento ─────────────────────────────────────────────────
 type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
-function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
+function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo }: {
   rid: string;
   restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[] };
   por: { id: string; nome: string };
+  recentes: FechamentoCaixa[];
   onClose: () => void;
   onSalvo: () => void;
 }) {
@@ -610,7 +618,7 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
       };
       await addDoc(collection(db, "fechamentosCaixa"), fechamento);
       // Email de resumo pros sócios (best-effort — não trava o save).
-      if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, restaurant.fechamentoEmailRemetente);
+      if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
       setSalvo(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o fechamento.");
@@ -786,28 +794,16 @@ function NovoFechamentoModal({ rid, restaurant, por, onClose, onSalvo }: {
 }
 
 // Envia email de resumo pros sócios (1 por email, via Resend).
-async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Omit<FechamentoCaixa, "id">, from?: string) {
-  const linha = (k: string, v?: string) => v ? `<tr><td style="padding:4px 12px 4px 0;color:#666">${k}</td><td style="padding:4px 0;font-weight:600">${v}</td></tr>` : "";
-  const html =
-    `<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:480px">` +
-    `<h2 style="margin:0 0 4px">Fechamento de Caixa — ${restaurantNome}</h2>` +
-    `<p style="color:#666;margin:0 0 12px">${TURNO_CAIXA_LABEL[f.turno]} · ${fmtData(f.data)}</p>` +
-    `<table style="font-size:14px;border-collapse:collapse">` +
-    linha("Total de vendas", f.totalVendas != null ? fmtBRL(f.totalVendas) : undefined) +
-    linha("Dinheiro", f.dinheiro != null ? fmtBRL(f.dinheiro) : undefined) +
-    linha("PIX", f.pix != null ? fmtBRL(f.pix) : undefined) +
-    linha("Crédito", f.credito != null ? fmtBRL(f.credito) : undefined) +
-    linha("Débito", f.debito != null ? fmtBRL(f.debito) : undefined) +
-    linha("Fundo de caixa", f.fundoCaixa != null ? fmtBRL(f.fundoCaixa) : undefined) +
-    linha("Nº do lacre", f.numeroLacre) +
-    linha("Fechado por", f.fechadoPor?.nome) +
-    linha("Observação", f.observacao) +
-    `</table></div>`;
-  const text = `Fechamento de Caixa — ${restaurantNome}\n${TURNO_CAIXA_LABEL[f.turno]} · ${fmtData(f.data)}\n`
-    + `Total de vendas: ${f.totalVendas != null ? fmtBRL(f.totalVendas) : "—"}\nDinheiro: ${f.dinheiro != null ? fmtBRL(f.dinheiro) : "—"}\n`
-    + `Fundo de caixa: ${f.fundoCaixa != null ? fmtBRL(f.fundoCaixa) : "—"}\nLacre: ${f.numeroLacre || "—"}\nFechado por: ${f.fechadoPor?.nome || "—"}\n`
-    + (f.observacao ? `Observação: ${f.observacao}\n` : "");
-  const subject = `Fechamento ${TURNO_CAIXA_LABEL[f.turno]} ${fmtData(f.data)} — ${restaurantNome}`;
+async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Omit<FechamentoCaixa, "id">, recentes: FechamentoCaixa[], from?: string) {
+  // E-mail = painel de faturamento (mesmo da aba Painel): dia, mês e últimos 7 dias.
+  const dados = montarPainel([...recentes, f as FechamentoCaixa], f.data);
+  const html = painelEmailHtml(dados, restaurantNome);
+  const text = `Faturamento — ${restaurantNome} (${fmtData(f.data)})\n`
+    + `Faturamento do dia: ${fmtBRL(dados.diaTotal)}\n`
+    + `Total do mês (${dados.mesLabel}): ${fmtBRL(dados.mesTotal)}\n`
+    + `Média/dia no mês: ${fmtBRL(dados.mediaDia)}\n`
+    + `Últimos dias: ${dados.ultimos7.map((x) => `${fmtData(x.ymd)} ${fmtBRL(x.total)}`).join(" · ")}`;
+  const subject = `Faturamento ${fmtData(f.data)} — ${restaurantNome}`;
   // Remetente: override da config OU "<Restaurante> <caixa@planejamento.app>".
   const nomeRem = restaurantNome.replace(/["<>]/g, "").trim() || "Fechamento";
   const remetente = (from && from.trim()) || `"${nomeRem}" <caixa@planejamento.app>`;
@@ -819,6 +815,50 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
 }
 
 // ─── Aba: controle de cortesias / comandas de sócios ────────────────────────
+// ─── Painel de faturamento (dashboard in-app, espelha o e-mail) ─────────────
+function PainelTab({ fechamentos, restaurantNome }: { fechamentos: FechamentoCaixa[]; restaurantNome: string }) {
+  const hoje = useMemo(() => ymd(new Date()), []);
+  const d = useMemo(() => montarPainel(fechamentos, hoje), [fechamentos, hoje]);
+  const max = Math.max(1, ...d.ultimos7.map((x) => x.total));
+  const Card = ({ label, valor, cor }: { label: string; valor: string; cor: string }) => (
+    <div className="rounded-2xl p-4 text-white" style={{ background: cor }}>
+      <div className="text-[11px] uppercase tracking-wide opacity-85">{label}</div>
+      <div className="text-2xl font-extrabold tabular-nums mt-0.5">{valor}</div>
+    </div>
+  );
+  if (fechamentos.length === 0) {
+    return <div className="text-center text-sm text-gray-400 py-12">Sem fechamentos ainda. O painel aparece quando houver faturamento registrado.</div>;
+  }
+  return (
+    <div className="space-y-4">
+      <div className="text-[12px] text-gray-500">Faturamento de <strong>{restaurantNome}</strong> · referência {fmtDiaCurto(hoje)} · {d.mesLabel}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <Card label="Faturamento do dia" valor={fmtBRLp(d.diaTotal)} cor="#4f46e5" />
+        <Card label="Total do mês" valor={fmtBRLp(d.mesTotal)} cor="#0ea5e9" />
+        <Card label="Média/dia no mês" valor={fmtBRLp(d.mediaDia)} cor="#10b981" />
+      </div>
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Últimos {d.ultimos7.length} dia(s)</div>
+        <div className="space-y-1.5">
+          {d.ultimos7.map((x) => {
+            const ehHoje = x.ymd === hoje;
+            return (
+              <div key={x.ymd} className="flex items-center gap-3">
+                <div className={`w-12 text-[12px] tabular-nums shrink-0 ${ehHoje ? "font-bold text-indigo-600 dark:text-indigo-400" : "text-gray-500"}`}>{fmtDiaCurto(x.ymd)}</div>
+                <div className="flex-1 bg-indigo-50 dark:bg-indigo-950/30 rounded-md h-5 overflow-hidden">
+                  <div className="h-full rounded-md" style={{ width: `${Math.round((x.total / max) * 100)}%`, background: ehHoje ? "#4f46e5" : "#a5b4fc" }} />
+                </div>
+                <div className="w-28 text-right text-[13px] font-semibold tabular-nums text-gray-800 dark:text-gray-100 shrink-0">{fmtBRLp(x.total)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <p className="text-[11px] text-gray-400">Este mesmo painel vai no e-mail enviado aos sócios a cada fechamento.</p>
+    </div>
+  );
+}
+
 function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: FechamentoCaixa[]; restaurantNome: string }) {
   // Pré-preenche: dia 1 do mês corrente → hoje.
   const hoje = useMemo(() => new Date(), []);

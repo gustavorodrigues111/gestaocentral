@@ -73,7 +73,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       receber: true, ver: true, editar: true, configurar: true,
     },
     fechamentoCaixa: {
-      fechar: true, ver: true, editar: true, configurar: true,
+      fechar: true, ver: true, painel: true, editar: true, configurar: true,
     },
     escala: {
       verPropria: true, verTime: true,
