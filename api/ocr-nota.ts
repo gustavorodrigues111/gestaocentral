@@ -181,6 +181,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const isFechamento = body.tipo === "fechamento";
   const isComanda = body.tipo === "comanda";
   const isAltec = body.tipo === "altec_caixas";
+  const isComprovanteTotal = body.tipo === "comprovante_total";
 
   // Aceita 1 arquivo (data/mediaType) OU vários (files[]) — notas de várias páginas.
   const arquivos: Array<{ data: string; mediaType: string }> = [];
@@ -200,7 +201,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const payload = {
     model: MODEL,
     max_tokens: 8000, // notas grandes (ex: Heineken, 6 páginas) têm muitos itens
-    messages: [{ role: "user", content: [...blocks, { type: "text", text: isAltec ? PROMPT_ALTEC_CAIXAS : isComanda ? PROMPT_COMANDA : isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: isComprovanteTotal ? PROMPT_COMPROVANTE_TOTAL : isAltec ? PROMPT_ALTEC_CAIXAS : isComanda ? PROMPT_COMANDA : isFechamento ? PROMPT_FECHAMENTO : isBoleto ? PROMPT_BOLETO : PROMPT }] }],
   };
 
   const ctrl = new AbortController();
@@ -224,6 +225,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     if (!m) { res.status(200).json({ emissor: null, valorTotal: null, dataEmissao: null, itens: [], duplicatas: [], _raw: textOut.slice(0, 200) }); return; }
     let p: Record<string, unknown> = {};
     try { p = JSON.parse(m[0]) as Record<string, unknown>; } catch { /* devolve vazio abaixo */ }
+    if (isComprovanteTotal) {
+      const turno = p.turno === "almoco" || p.turno === "jantar" ? p.turno : null;
+      res.status(200).json({
+        totalVendas: parseNum(p.totalVendas) ?? null,
+        data: typeof p.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.data) ? p.data : null,
+        turno,
+      });
+      return;
+    }
     if (isAltec) {
       const caixas = Array.isArray(p.caixas) ? p.caixas.slice(0, 200).map((c) => {
         if (!c || typeof c !== "object") return null;

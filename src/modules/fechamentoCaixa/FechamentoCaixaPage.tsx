@@ -48,8 +48,6 @@ function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
   return { data: ymd(now), turno: h < 17 ? "almoco" : "jantar" };
 }
 
-// Dinheiro virou só valor (sem foto); filipetas entram junto do comprovante (1 grupo, IA lê tudo).
-const GRUPOS: GrupoAnexoFechamento[] = ["comprovante", "comanda", "outro"];
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
@@ -407,30 +405,6 @@ export function FechamentoCaixaPage() {
   );
 }
 
-// ─── Seletor de fonte (câmera / galeria / arquivo) ──────────────────────────
-function FonteModal({ titulo, onClose, onArquivo }: { titulo: string; onClose: () => void; onArquivo: (f: File) => void }) {
-  const camRef = useRef<HTMLInputElement>(null);
-  const galRef = useRef<HTMLInputElement>(null);
-  const pdfRef = useRef<HTMLInputElement>(null);
-  const Op = ({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) => (
-    <button type="button" onClick={onClick} className="flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-      <span className="text-3xl">{icon}</span><span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
-    </button>
-  );
-  return (
-    <Modal title={titulo} onClose={onClose} maxWidth="max-w-sm">
-      <div className="grid grid-cols-3 gap-3">
-        <Op icon="📷" label="Câmera" onClick={() => camRef.current?.click()} />
-        <Op icon="🖼️" label="Galeria" onClick={() => galRef.current?.click()} />
-        <Op icon="📄" label="PDF" onClick={() => pdfRef.current?.click()} />
-      </div>
-      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
-      <input ref={galRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { const fs = Array.from(e.target.files || []); e.currentTarget.value = ""; fs.forEach(onArquivo); }} />
-      <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
-    </Modal>
-  );
-}
-
 // ─── Modal: escolher/corrigir de qual comanda é o anexo ─────────────────────
 function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro[]; onClose: () => void; onPick: (rotulo: string) => void }) {
   const lista = [...comandas].sort((a, b) => a.nome.localeCompare(b.nome));
@@ -466,21 +440,19 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   const [turno, setTurno] = useState<TurnoCaixa>(sug.turno);
   const [data, setData] = useState(sug.data);
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
-  const [grupoFonte, setGrupoFonte] = useState<GrupoAnexoFechamento | null>(null);
   const [comandaManual, setComandaManual] = useState<File | null>(null); // anexo de comanda em correção manual
+  const compRef = useRef<HTMLInputElement>(null);
+  const filiRef = useRef<HTMLInputElement>(null);
+  const cmdRef = useRef<HTMLInputElement>(null);
   const [comandasConsumo, setComandasConsumo] = useState<ComandaConsumo[]>([]); // consumos lidos/editados
   const comandasCad = restaurant.fechamentoComandas || [];
   const nomeComanda = (numero: string) => comandasCad.find((c) => digitos(c.numero) === digitos(numero))?.nome;
   const [totalVendas, setTotalVendas] = useState("");
-  const [dinheiro, setDinheiro] = useState("");
-  const [pix, setPix] = useState("");
-  const [credito, setCredito] = useState("");
-  const [debito, setDebito] = useState("");
-  const [maquininhas, setMaquininhas] = useState<MaquininhaFechamento[]>([]);
-  const [fundoCaixa, setFundoCaixa] = useState("");
   const [numeroLacre, setNumeroLacre] = useState("");
   const [naoLacrado, setNaoLacrado] = useState(false);
   const [observacao, setObservacao] = useState("");
+  // Wizard: comprovante → filipetas → comandas → conferência.
+  const [etapa, setEtapa] = useState<"comprovante" | "filipetas" | "comandas" | "conferencia">("comprovante");
   const [lendo, setLendo] = useState(false);
   const [lendoComandas, setLendoComandas] = useState(0); // comandas em leitura (OCR)
   const [salvando, setSalvando] = useState(false);
@@ -488,40 +460,31 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   const [erro, setErro] = useState("");
   const leituraSeq = useRef(0);
 
-  // OCR do(s) comprovante(s) + filipetas (todas as fotos juntas) → pré-preenche
-  // total, dinheiro, PIX, crédito, débito e a quebra por maquininha.
-  async function lerComprovantes(files: File[]) {
-    if (!files.length) return;
+  // OCR do comprovante Altec → lê SÓ o faturamento total (+ data/turno).
+  async function lerTotal(f: File) {
     const seq = ++leituraSeq.current;
     setLendo(true);
     try {
-      const blocos = await Promise.all(files.map(paraOcrBlock));
-      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: blocos, tipo: "fechamento" }) });
+      const bloco = await paraOcrBlock(f);
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "comprovante_total" }) });
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return;
       if (resp.ok) {
-        // Data/turno: o comprovante é autoritativo — sobrescreve o palpite do horário.
         if (typeof j.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(j.data)) setData(j.data);
         if (j.turno === "almoco" || j.turno === "jantar") setTurno(j.turno);
-        if (j.totalVendas != null) setTotalVendas((p) => p || fmtMilhar(String(j.totalVendas)));
-        if (j.dinheiro != null) setDinheiro((p) => p || fmtMilhar(String(j.dinheiro)));
-        if (j.pix != null) setPix((p) => p || fmtMilhar(String(j.pix)));
-        if (j.credito != null) setCredito((p) => p || fmtMilhar(String(j.credito)));
-        if (j.debito != null) setDebito((p) => p || fmtMilhar(String(j.debito)));
-        if (Array.isArray(j.maquininhas) && j.maquininhas.length) setMaquininhas(j.maquininhas as MaquininhaFechamento[]);
+        if (j.totalVendas != null) setTotalVendas(fmtMilhar(String(j.totalVendas)));
       }
-    } catch { /* best-effort */ }
+    } catch { /* best-effort — usuário digita */ }
     finally { if (seq === leituraSeq.current) setLendo(false); }
   }
 
-  function aoAnexar(grupo: GrupoAnexoFechamento, f: File, rotulo?: string) {
-    setAnexos((prev) => {
-      const next = [...prev, { file: f, grupo, ...(rotulo ? { rotulo } : {}) }];
-      if (grupo === "comprovante") void lerComprovantes(next.filter((a) => a.grupo === "comprovante").map((a) => a.file));
-      return next;
-    });
+  function aoAnexar(grupo: GrupoAnexoFechamento, f: File) {
+    setAnexos((prev) => [...prev, { file: f, grupo }]);
+    if (grupo === "comprovante") void lerTotal(f);
     if (grupo === "comanda") void lerComanda(f);
   }
+  function removerAnexo(file: File) { setAnexos((prev) => prev.filter((a) => a.file !== file)); }
+  const anexosDe = (g: GrupoAnexoFechamento) => anexos.filter((a) => a.grupo === g);
 
   // OCR da comanda → lê TODOS os números da foto e associa às cadastradas.
   // Não cadastradas são sinalizadas (não bloqueiam — você cadastra/corrige depois).
@@ -559,9 +522,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   async function salvar() {
     setErro("");
     if (!data) { setErro("Informe a data."); return; }
-    if (!anexos.length && parseBRL(totalVendas) == null) { setErro("Anexe ao menos um documento ou preencha o total de vendas."); return; }
-    const nDup = indicesDuplicados(maquininhas).size;
-    if (nDup > 0 && !window.confirm(`Há ${nDup} maquininha(s) possivelmente duplicada(s) na lista. Salvar mesmo assim?\n\n(Cancele e remova as repetidas com o ✕ se for o caso.)`)) return;
+    if (parseBRL(totalVendas) == null) { setErro("Informe o faturamento total."); return; }
     if (anexos.length && !restaurant.fechamentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de fechar."); return; }
     if (!naoLacrado && !numeroLacre.trim()) { setErro("Informe o número do lacre ou marque \"Não foi lacrado\"."); return; }
     setSalvando(true);
@@ -597,19 +558,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
         fechadoEm,
         fechadoPor: por,
         ...(parseBRL(totalVendas) != null ? { totalVendas: parseBRL(totalVendas) } : {}),
-        ...(parseBRL(dinheiro) != null ? { dinheiro: parseBRL(dinheiro) } : {}),
-        ...(parseBRL(pix) != null ? { pix: parseBRL(pix) } : {}),
-        ...(parseBRL(credito) != null ? { credito: parseBRL(credito) } : {}),
-        ...(parseBRL(debito) != null ? { debito: parseBRL(debito) } : {}),
-        ...(maquininhas.length ? { maquininhas: maquininhas.map((m) => ({
-          ...(m.identificador ? { identificador: m.identificador } : {}),
-          ...(m.credito != null ? { credito: m.credito } : {}),
-          ...(m.debito != null ? { debito: m.debito } : {}),
-          ...(m.pix != null ? { pix: m.pix } : {}),
-          ...(m.total != null ? { total: m.total } : {}),
-        })) } : {}),
         ...(comandasConsumo.length ? { comandas: comandasConsumo.map((c) => ({ numero: c.numero, ...(c.nome ? { nome: c.nome } : {}), ...(c.valor != null ? { valor: c.valor } : {}) })) } : {}),
-        ...(parseBRL(fundoCaixa) != null ? { fundoCaixa: parseBRL(fundoCaixa) } : {}),
         numeroLacre: naoLacrado ? "Não lacrado" : numeroLacre.trim(),
         ...(observacao.trim() ? { observacao: observacao.trim() } : {}),
         ...(anexosSalvos.length ? { anexos: anexosSalvos } : {}),
@@ -642,148 +591,146 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     );
   }
 
-  const porGrupo = (g: GrupoAnexoFechamento) => anexos.filter((a) => a.grupo === g);
+  const STEPS = [
+    { id: "comprovante" as const, n: 1, label: "Comprovante" },
+    { id: "filipetas" as const, n: 2, label: "Filipetas" },
+    { id: "comandas" as const, n: 3, label: "Comandas" },
+    { id: "conferencia" as const, n: 4, label: "Conferência" },
+  ];
+  const stepAtual = STEPS.find((s) => s.id === etapa)!.n;
+  const totalComandas = comandasConsumo.reduce((s, c) => s + (c.valor || 0), 0);
+  const temComprovante = anexosDe("comprovante").length > 0;
+  const podeAvancarComprovante = temComprovante && parseBRL(totalVendas) != null && !lendo;
   return (
-    <Modal title="💵 Novo fechamento" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title="💵 Fechamento de caixa" onClose={onClose} maxWidth="max-w-lg">
+      <input ref={compRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("comprovante", f); }} />
+      <input ref={filiRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("filipeta", f); }} />
+      <input ref={cmdRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("comanda", f); }} />
       <div className="space-y-4">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-        {/* Turno + data (pré-preenchidos pelo horário) */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
-            <div className="flex gap-2">
-              {(["almoco", "jantar"] as TurnoCaixa[]).map((t) => (
-                <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${turno === t ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>{TURNO_CAIXA_LABEL[t]}</button>
-              ))}
+        {/* Stepper */}
+        <div className="flex items-center gap-1 text-[11px]">
+          {STEPS.map((s) => (
+            <div key={s.id} className={`flex-1 text-center px-1 py-1 rounded-md ${s.n === stepAtual ? "bg-indigo-600 text-white font-semibold" : s.n < stepAtual ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-gray-100 text-gray-400 dark:bg-gray-800"}`}>
+              {s.n < stepAtual ? "✓ " : `${s.n}. `}{s.label}
             </div>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
-            <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
-          </div>
+          ))}
         </div>
 
-        {/* Anexos por grupo */}
-        <div className="space-y-2">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Documentos do fechamento</label>
-          {GRUPOS.map((g) => {
-            const itens = porGrupo(g);
-            return (
-              <div key={g} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-[13px] font-medium text-gray-700 dark:text-gray-200">{GRUPO_ICONE[g]} {GRUPO_ANEXO_LABEL[g]}</span>
-                  <Button size="sm" variant="secondary" onClick={() => setGrupoFonte(g)}>➕ Anexar</Button>
-                </div>
-                {itens.length > 0 && (
-                  <div className="mt-1 divide-y divide-gray-100 dark:divide-gray-800">
-                    {itens.map((a) => {
-                      const idx = anexos.indexOf(a);
-                      return (
-                        <div key={idx} className="px-1 py-1 text-[11px] flex items-center gap-2">
-                          <span className="truncate flex-1">📎 {a.grupo === "comanda" ? (a.rotulo || "❓ não identificada") + " · " : a.rotulo ? `${a.rotulo} · ` : ""}{a.file.name}</span>
-                          {a.grupo === "comanda" && <button type="button" className="text-[10px] text-indigo-600 hover:underline" onClick={() => setComandaManual(a.file)}>{a.rotulo ? "trocar" : "identificar"}</button>}
-                          <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setAnexos((prev) => prev.filter((_, i) => i !== idx))}>✕</button>
-                        </div>
-                      );
-                    })}
+        {/* 1 — COMPROVANTE */}
+        {etapa === "comprovante" && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 1.</strong> Tire a foto do <strong>comprovante de fechamento do Altec</strong>. A IA lê o faturamento total — você confirma.</p>
+            {!temComprovante ? (
+              <button type="button" onClick={() => compRef.current?.click()} className="w-full py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 flex flex-col items-center gap-2 transition">
+                <span className="text-4xl">📷</span><span className="font-semibold text-indigo-700 dark:text-indigo-300">Tirar foto do comprovante</span>
+              </button>
+            ) : (
+              <div className="space-y-3">
+                {lendo ? (
+                  <div className="text-center text-sm text-indigo-600 dark:text-indigo-300 py-4">🔍 Lendo o faturamento total…</div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Faturamento total — confira o valor</label>
+                    <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={`${inputCls} text-lg font-bold`} />
+                    <p className="text-[11px] text-gray-400 mt-1">Confira com o valor impresso no comprovante antes de continuar.</p>
                   </div>
                 )}
-                {g === "comanda" && <p className="text-[10px] text-gray-400 mt-1">A IA tenta ler o número e associar à comanda cadastrada. Se errar, toque em "identificar/trocar".</p>}
-                {g === "comprovante" && <p className="text-[10px] text-gray-400 mt-1">Anexe o comprovante Altec + as filipetas (pode ser uma foto só com tudo). A IA lê os valores, as maquininhas e a quebra por tipo.</p>}
-                {g === "comprovante" && lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo… total, dinheiro, PIX, crédito, débito e maquininhas vão ser pré-preenchidos.</p>}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Dados conferidos */}
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Total de vendas</label>
-            <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Dinheiro</label>
-            <input value={dinheiro} onChange={(e) => setDinheiro(e.target.value)} onBlur={() => setDinheiro(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">PIX</label>
-            <input value={pix} onChange={(e) => setPix(e.target.value)} onBlur={() => setPix(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Crédito</label>
-            <input value={credito} onChange={(e) => setCredito(e.target.value)} onBlur={() => setCredito(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Débito</label>
-            <input value={debito} onChange={(e) => setDebito(e.target.value)} onBlur={() => setDebito(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Fundo de caixa</label>
-            <input value={fundoCaixa} onChange={(e) => setFundoCaixa(e.target.value)} onBlur={() => setFundoCaixa(fmtMilhar)} inputMode="decimal" placeholder="R$ 0,00" className={inputCls} />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre do malote</label>
-            <input value={naoLacrado ? "" : numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} disabled={naoLacrado} placeholder={naoLacrado ? "—" : "ex: h3141345"} className={`${inputCls} disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800`} />
-            <label className="flex items-center gap-2 mt-1.5 cursor-pointer text-[12px] text-gray-600 dark:text-gray-400">
-              <input type="checkbox" checked={naoLacrado} onChange={(e) => setNaoLacrado(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
-              Não foi lacrado
-            </label>
-          </div>
-        </div>
-
-        {/* Maquininhas lidas pela IA */}
-        {maquininhas.length > 0 && (
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Maquininhas ({maquininhas.length}) <span className="font-normal text-gray-400">— lidas pela IA</span></label>
-            {indicesDuplicados(maquininhas).size > 0 && (
-              <div className="mb-2 text-[12px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 rounded-lg px-3 py-2">
-                ⚠ <strong>Filipeta duplicada na foto:</strong> {indicesDuplicados(maquininhas).size} maquininha(s) aparecem repetidas (mesmo terminal/valores). Remova a(s) repetida(s) no ✕ antes de salvar.
+                <div className="flex items-center justify-between">
+                  <button type="button" onClick={() => { removerAnexo(anexosDe("comprovante")[0].file); setTotalVendas(""); }} className="text-[12px] text-gray-500 hover:underline">↺ Refazer foto</button>
+                  <Button disabled={!podeAvancarComprovante} onClick={() => setEtapa("filipetas")}>Confirmar e continuar →</Button>
+                </div>
               </div>
             )}
-            <MaquininhasView maquininhas={maquininhas} creditoAltec={parseBRL(credito)} debitoAltec={parseBRL(debito)} pixAltec={parseBRL(pix)}
-              onRemove={(i) => setMaquininhas((prev) => prev.filter((_, j) => j !== i))}
-              onEdit={(i, patch) => setMaquininhas((prev) => prev.map((m, j) => j === i ? { ...m, ...patch } : m))} />
           </div>
         )}
 
-        {/* Consumo de cortesias/comandas (lido das comandas) */}
-        {comandasConsumo.length > 0 && (
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Consumo das comandas ({comandasConsumo.length}) <span className="font-normal text-gray-400">— confira os valores</span></label>
-            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-              {comandasConsumo.map((c, i) => (
-                <div key={i} className="px-2 py-1 flex items-center gap-2 text-[12px]">
-                  <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
-                  <MoneyInput value={c.valor} onChange={(n) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: n } : x))} placeholder="R$"
-                    className="w-24 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                  <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setComandasConsumo((prev) => prev.filter((_, j) => j !== i))}>✕</button>
-                </div>
-              ))}
-              <div className="px-2 py-1 flex items-center justify-between text-[12px] font-semibold bg-gray-50 dark:bg-gray-800/40">
-                <span>Total consumido</span>
-                <span className="tabular-nums">{fmtBRL(comandasConsumo.reduce((s, c) => s + (c.valor || 0), 0))}</span>
+        {/* 2 — FILIPETAS */}
+        {etapa === "filipetas" && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 2.</strong> Tire foto das <strong>filipetas das maquininhas</strong> (uma ou mais). Só são anexadas — sem digitar valor.</p>
+            <button type="button" onClick={() => filiRef.current?.click()} className="w-full py-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex flex-col items-center gap-1 transition">
+              <span className="text-3xl">📷</span><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("filipeta").length ? "Adicionar outra filipeta" : "Tirar foto das filipetas"}</span>
+            </button>
+            {anexosDe("filipeta").length > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                {anexosDe("filipeta").map((a, i) => (
+                  <div key={i} className="px-2 py-1.5 text-[12px] flex items-center gap-2"><span className="flex-1 truncate">💳 Filipeta {i + 1}</span><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between"><Button variant="secondary" size="sm" onClick={() => setEtapa("comprovante")}>← Voltar</Button><Button onClick={() => setEtapa("comandas")}>Continuar →</Button></div>
+          </div>
+        )}
+
+        {/* 3 — COMANDAS */}
+        {etapa === "comandas" && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 3.</strong> Tire foto das <strong>comandas de cortesia</strong> (uma ou mais fotos). A IA lê o nº da mesa e o valor — confira cada uma.</p>
+            <button type="button" onClick={() => cmdRef.current?.click()} className="w-full py-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex flex-col items-center gap-1 transition">
+              <span className="text-3xl">📷</span><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("comanda").length ? "Adicionar outra foto" : "Tirar foto das comandas"}</span>
+            </button>
+            {lendoComandas > 0 && <div className="text-center text-[12px] text-indigo-600 dark:text-indigo-300">🔍 Lendo comandas…</div>}
+            {comandasConsumo.length > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                {comandasConsumo.map((c, i) => (
+                  <div key={i} className="px-2 py-1.5 flex items-center gap-2 text-[12px]">
+                    <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Mesa ${c.numero}`}</span>
+                    <MoneyInput value={c.valor} onChange={(n) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: n } : x))} placeholder="R$"
+                      className="w-24 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                    <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setComandasConsumo((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+                ))}
+                <div className="px-2 py-1.5 flex items-center justify-between text-[12px] font-semibold bg-gray-50 dark:bg-gray-800/40"><span>Total cortesias</span><span className="tabular-nums">{fmtBRL(totalComandas)}</span></div>
+              </div>
+            )}
+            {anexosDe("comanda").length > 0 && (
+              <div className="text-[11px] space-y-0.5">
+                {anexosDe("comanda").map((a, i) => (
+                  <div key={i} className="flex items-center gap-2 px-1"><span className="flex-1 truncate text-gray-500">📎 {a.rotulo || "❓ não identificada"}</span><button type="button" className="text-indigo-600 hover:underline" onClick={() => setComandaManual(a.file)}>{a.rotulo ? "trocar" : "identificar"}</button><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
+                ))}
+              </div>
+            )}
+            <div className="flex justify-between"><Button variant="secondary" size="sm" onClick={() => setEtapa("filipetas")}>← Voltar</Button><Button onClick={() => setEtapa("conferencia")}>{(comandasConsumo.length || anexosDe("comanda").length) ? "Continuar →" : "Sem cortesias — pular →"}</Button></div>
+          </div>
+        )}
+
+        {/* 4 — CONFERÊNCIA */}
+        {etapa === "conferencia" && (
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 4.</strong> Confira tudo e feche o caixa.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
+                <div className="flex gap-2">{(["almoco", "jantar"] as TurnoCaixa[]).map((t) => (
+                  <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${turno === t ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>{TURNO_CAIXA_LABEL[t]}</button>
+                ))}</div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
+                <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
               </div>
             </div>
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-3 flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-300">Faturamento total</span>
+              <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" className="w-36 text-right text-lg font-bold bg-transparent outline-none text-indigo-900 dark:text-indigo-100" />
+            </div>
+            <div className="text-[12px] text-gray-500 flex justify-between"><span>💳 Filipetas anexadas</span><span className="font-semibold">{anexosDe("filipeta").length}</span></div>
+            {comandasConsumo.length > 0 && <div className="text-[12px] text-gray-500 flex justify-between"><span>📋 Cortesias ({comandasConsumo.length})</span><span className="tabular-nums font-semibold">{fmtBRL(totalComandas)}</span></div>}
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre do malote</label>
+              <input value={naoLacrado ? "" : numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} disabled={naoLacrado} placeholder={naoLacrado ? "—" : "ex: h3141345"} className={`${inputCls} disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800`} />
+              <label className="flex items-center gap-2 mt-1.5 cursor-pointer text-[12px] text-gray-600 dark:text-gray-400"><input type="checkbox" checked={naoLacrado} onChange={(e) => setNaoLacrado(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Não foi lacrado</label>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação <span className="font-normal text-gray-400">— opcional</span></label>
+              <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
+            </div>
+            <div className="flex justify-between pt-1"><Button variant="secondary" size="sm" disabled={salvando} onClick={() => setEtapa("comandas")}>← Voltar</Button><Button disabled={salvando} onClick={() => void salvar()}>{salvando ? "Fechando…" : "✓ Fechar caixa"}</Button></div>
           </div>
         )}
-        <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação / ocorrência <span className="font-normal text-gray-400">— opcional</span></label>
-          <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} placeholder="Ex: dinheiro do caixa não existe no malote, foi…"
-            className={inputCls} />
-        </div>
 
-        <div className="flex justify-end gap-2 pt-1">
-          {(lendo || lendoComandas > 0) && <span className="text-[11px] text-indigo-600 dark:text-indigo-300 self-center mr-auto">🔍 Aguarde a leitura dos documentos terminar…</span>}
-          <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
-          <Button size="sm" disabled={salvando || lendo || lendoComandas > 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : (lendo || lendoComandas > 0) ? "Lendo…" : "Fechar caixa"}</Button>
-        </div>
-
-        {grupoFonte && (
-          <FonteModal titulo={`Anexar — ${GRUPO_ANEXO_LABEL[grupoFonte]}`} onClose={() => setGrupoFonte(null)}
-            onArquivo={(f) => { const g = grupoFonte; setGrupoFonte(null); aoAnexar(g, f); }} />
-        )}
         {comandaManual && (
           <ComandaModal comandas={comandasCad} onClose={() => setComandaManual(null)}
             onPick={(rot) => { const f = comandaManual; setComandaManual(null); setAnexos((prev) => prev.map((a) => a.file === f ? { ...a, rotulo: rot } : a)); }} />
