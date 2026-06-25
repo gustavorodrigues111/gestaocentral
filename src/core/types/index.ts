@@ -4790,6 +4790,12 @@ export type RecebimentoNota = {
   notaDriveUrl?: string;
   notaNome?: string;
   notaPaginas?: BoletoNota[];         // todas as páginas da nota (1+), arquivadas no Drive
+  // Romaneio → DANFE: o fornecedor entrega com romaneio e manda a nota fiscal depois.
+  // Ao incluir a DANFE, o tipo vira nota_fiscal/cupom_fiscal, as páginas da DANFE viram
+  // `notaPaginas` e o romaneio original é preservado aqui pra auditoria.
+  romaneioPaginas?: BoletoNota[];     // páginas do romaneio original (preservadas na conversão)
+  romaneioConvertidoEm?: string;      // ISO — quando a DANFE foi incluída sobre o romaneio
+  romaneioConvertidoPor?: { id: string; nome: string };
   fotoDivergenciaDriveFileId?: string;
   fotoDivergenciaUrl?: string;
   boletos?: BoletoNota[];             // boletos anexados (arquivados no Drive)

@@ -352,7 +352,7 @@ export function RecebimentoPage() {
               </Button>
             </div>
           )}
-          <RecebimentoTabela notas={pendentes} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+          <RecebimentoTabela notas={pendentes} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} por={{ id: me?.id || "", nome: me?.nome || "?" }} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
 
           {/* Histórico de conferidas (abaixo da lista, colapsável) */}
           {conferidas.length > 0 && (
@@ -629,17 +629,20 @@ type SortKey = "recebido" | "tipo" | "emissao" | "nf" | "emissor" | "valor" | "r
 const tipoLabelDe = (n: RecebimentoNota): string => n.tipoDocumento
   ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
   : "—";
-function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExcluir, onConferir }: {
+function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onExcluir, onConferir }: {
   notas: RecebimentoNota[];
   restaurant: { recebimentoDriveFolderId?: string };
   podeEditar: boolean;
   podeConfig: boolean;
+  por: { id: string; nome: string };
   onExcluir: (n: RecebimentoNota) => void;
   onConferir?: (n: RecebimentoNota) => void;
 }) {
   const temAcoes = !!onConferir || podeConfig;
   const [detalhe, setDetalhe] = useState<RecebimentoNota | null>(null);
   const [editar, setEditar] = useState<RecebimentoNota | null>(null);
+  const [incluirDanfe, setIncluirDanfe] = useState<RecebimentoNota | null>(null);
+  const ehRomaneio = (n: RecebimentoNota) => n.tipoDocumento === "romaneio";
   const [sortKey, setSortKey] = useState<SortKey>("recebido");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
@@ -750,6 +753,12 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
               {temAcoes && (
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
+                    {podeEditar && ehRomaneio(n) && (
+                      <button type="button" onClick={() => setIncluirDanfe(n)} title="Incluir a DANFE recebida deste romaneio"
+                        className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors">
+                        📄 Incluir DANFE
+                      </button>
+                    )}
                     {onConferir && (
                       <button type="button" onClick={() => setDetalhe(n)} title="Abrir pra conferir"
                         className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
@@ -794,6 +803,12 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
               {n.formaPagamento && <span>{FORMA_PAGAMENTO_ICONE[n.formaPagamento]} {FORMA_PAGAMENTO_LABEL[n.formaPagamento]}</span>}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
+              {podeEditar && ehRomaneio(n) && (
+                <button type="button" onClick={() => setIncluirDanfe(n)} title="Incluir a DANFE recebida deste romaneio"
+                  className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 active:bg-amber-100 transition-colors">
+                  📄 DANFE
+                </button>
+              )}
               {onConferir && (
                 <button type="button" onClick={() => setDetalhe(n)} title="Abrir pra conferir"
                   className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
@@ -819,14 +834,15 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, onExclui
       ); })}
     </div>
     <p className="text-[11px] text-gray-400 mt-2 px-1">Versão resumida. Baixe <strong>XLSX</strong> ou <strong>PDF</strong> para a tabela completa (CNPJ, quem recebeu, divergência, todas as parcelas e semana).</p>
-    {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} onConferir={onConferir} />}
+    {detalhe && <DetalheModal nota={detalhe} podeEditar={podeEditar} onClose={() => setDetalhe(null)} onEditar={(n) => { setDetalhe(null); setEditar(n); }} onConferir={onConferir} onIncluirDanfe={podeEditar ? (n) => { setDetalhe(null); setIncluirDanfe(n); } : undefined} />}
     {editar && <EditarRecebimentoModal nota={editar} restaurant={restaurant} onClose={() => setEditar(null)} onSaved={() => setEditar(null)} />}
+    {incluirDanfe && <IncluirDanfeModal nota={incluirDanfe} restaurant={restaurant} por={por} onClose={() => setIncluirDanfe(null)} onSaved={() => setIncluirDanfe(null)} />}
     </>
   );
 }
 
 // ─── Modal: detalhes de um recebimento ──────────────────────────────────────
-function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void; onConferir?: (n: RecebimentoNota) => void }) {
+function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onIncluirDanfe }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void; onConferir?: (n: RecebimentoNota) => void; onIncluirDanfe?: (n: RecebimentoNota) => void }) {
   const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
       <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -919,11 +935,31 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir }: { not
           </div>
         </div>
       )}
+      {nota.romaneioPaginas && nota.romaneioPaginas.length > 0 && (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">📦 Romaneio original ({nota.romaneioPaginas.length}) <span className="font-normal text-gray-400">— substituído pela DANFE</span></div>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {nota.romaneioPaginas.map((p, i) => (
+              <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                <span className="truncate flex-1">📦 {p.nome}</span>
+                {p.driveUrl && <a href={p.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {nota.romaneioConvertidoEm && (
+        <div className="mt-3 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2">📄 DANFE incluída em {fmtDataHora(nota.romaneioConvertidoEm)}{nota.romaneioConvertidoPor?.nome ? ` por ${nota.romaneioConvertidoPor.nome}` : ""} — recebido originalmente como romaneio.</div>
+      )}
       {nota.conferidoEm && (
         <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(nota.conferidoEm)}{nota.conferidoPor?.nome ? ` por ${nota.conferidoPor.nome}` : ""}</div>
       )}
-      <div className="flex justify-end items-center gap-2 pt-3">
+      <div className="flex justify-end items-center gap-2 pt-3 flex-wrap">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
+        {onIncluirDanfe && nota.tipoDocumento === "romaneio" && (
+          <button type="button" onClick={() => onIncluirDanfe(nota)}
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40">📄 Incluir DANFE recebida</button>
+        )}
         {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
         {onConferir && !nota.conferidoEm && (
@@ -1193,6 +1229,329 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
             onArquivo={(f) => void aoAnexarBoletoEdit(f)}
           />
         )}
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Modal: incluir DANFE sobre um romaneio ─────────────────────────────────
+// O fornecedor entregou com romaneio e mandou a nota fiscal depois. Aqui o
+// usuário anexa a DANFE (ou cupom fiscal) + boleto: o OCR pré-preenche os dados
+// fiscais, o romaneio original é preservado e o tipo do recebimento é promovido.
+function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
+  nota: RecebimentoNota;
+  restaurant: { recebimentoDriveFolderId?: string };
+  por: { id: string; nome: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toBR = (v?: number) => v == null ? "" : String(v).replace(".", ",");
+  const [tipoFiscal, setTipoFiscal] = useState<"nota_fiscal" | "cupom_fiscal">("nota_fiscal");
+  const [danfeFiles, setDanfeFiles] = useState<File[]>([]);
+  const [boletoFiles, setBoletoFiles] = useState<File[]>([]);
+  const [emissor, setEmissor] = useState(nota.emissor || "");
+  const [cnpjEmissor, setCnpjEmissor] = useState(nota.cnpjEmissor || "");
+  const [numeroNota, setNumeroNota] = useState(nota.numeroNota || "");
+  const [serieNota, setSerieNota] = useState(nota.serieNota || "");
+  const [chaveAcesso, setChaveAcesso] = useState(nota.chaveAcesso || "");
+  const [valorProdutos, setValorProdutos] = useState(toBR(nota.valorProdutos));
+  const [valorImpostos, setValorImpostos] = useState(toBR(nota.valorImpostos));
+  const [valor, setValor] = useState(toBR(nota.valorTotal));
+  const [dataEmissao, setDataEmissao] = useState(nota.dataEmissao || "");
+  const [itens, setItens] = useState<ItemNota[]>(nota.itens ? nota.itens.map((i) => ({ ...i })) : []);
+  const [dups, setDups] = useState<DuplicataNota[]>((nota.duplicatas || []).map((d) => ({ ...d })));
+  const [formaPagamento, setFormaPagamento] = useState<FormaPagamento | undefined>(nota.formaPagamento);
+  const [addDanfe, setAddDanfe] = useState(false);
+  const [addBoleto, setAddBoleto] = useState(false);
+  const [lendo, setLendo] = useState(false);
+  const [lendoBoleto, setLendoBoleto] = useState(false);
+  const [leuOcr, setLeuOcr] = useState(false);
+  const [ocrErro, setOcrErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  const leituraSeq = useRef(0);
+
+  function setDup(i: number, campo: keyof DuplicataNota, v: string) {
+    setDups((prev) => prev.map((d, j) => j !== i ? d : { ...d, [campo]: campo === "valor" ? (parseBRL(v) ?? undefined) : (v || undefined) }));
+  }
+  // Mescla faturas lidas (boleto/DANFE) por valor em centavos — completa em vez de duplicar.
+  function mesclarDups(novas: DuplicataNota[]) {
+    setDups((prev) => {
+      const cents = (d: DuplicataNota) => d.valor != null ? Math.round(d.valor * 100) : null;
+      const result = prev.map((d) => ({ ...d }));
+      for (const nova of novas) {
+        const c = cents(nova);
+        const alvo = c != null ? result.find((d) => cents(d) === c) : undefined;
+        if (alvo) { if (!alvo.vencimento && nova.vencimento) alvo.vencimento = nova.vencimento; if (!alvo.numero && nova.numero) alvo.numero = nova.numero; }
+        else result.push(nova);
+      }
+      return result;
+    });
+  }
+
+  // Anexa página(s) da DANFE e relê todas juntas pra pré-preencher os dados fiscais.
+  async function lerDanfe(files: File[]) {
+    if (!files.length) return;
+    const seq = ++leituraSeq.current;
+    setLendo(true); setLeuOcr(false); setOcrErro("");
+    try {
+      const blocos = await Promise.all(files.map(paraOcrBlock));
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: blocos }) });
+      const j = await resp.json().catch(() => ({}));
+      if (seq !== leituraSeq.current) return;
+      if (resp.ok) {
+        // Preenche só o que está vazio — não sobrescreve o que veio do romaneio/usuário.
+        if (j.emissor) setEmissor((p) => p || j.emissor);
+        if (j.cnpjEmissor) setCnpjEmissor((p) => p || j.cnpjEmissor);
+        if (j.numeroNota) setNumeroNota((p) => p || j.numeroNota);
+        if (j.serieNota) setSerieNota((p) => p || j.serieNota);
+        if (j.chaveAcesso) setChaveAcesso((p) => p || j.chaveAcesso);
+        if (j.valorProdutos != null) setValorProdutos((p) => p || String(j.valorProdutos).replace(".", ","));
+        if (j.valorImpostos != null) setValorImpostos((p) => p || String(j.valorImpostos).replace(".", ","));
+        if (j.valorTotal != null) setValor((p) => p || String(j.valorTotal).replace(".", ","));
+        if (j.dataEmissao) setDataEmissao((p) => p || j.dataEmissao);
+        if (Array.isArray(j.itens) && j.itens.length) setItens((p) => p.length ? p : (j.itens as ItemNota[]));
+        if (Array.isArray(j.duplicatas) && j.duplicatas.length) { mesclarDups(j.duplicatas as DuplicataNota[]); setFormaPagamento((prev) => prev ?? "boleto"); }
+        setLeuOcr(true);
+      } else {
+        setOcrErro((j as { error?: string }).error || `Leitura indisponível (HTTP ${resp.status}).`);
+      }
+    } catch (e) {
+      if (seq === leituraSeq.current) setOcrErro(e instanceof Error ? e.message : "Falha ao ler a DANFE.");
+    } finally { if (seq === leituraSeq.current) setLendo(false); }
+  }
+  function aoAnexarDanfe(...fs: File[]) { if (!fs.length) return; setAddDanfe(false); setDanfeFiles((prev) => { const todos = [...prev, ...fs]; void lerDanfe(todos); return todos; }); }
+
+  async function aoAnexarBoleto(file: File) {
+    setAddBoleto(false);
+    setBoletoFiles((prev) => [...prev, file]);
+    setFormaPagamento((prev) => prev ?? "boleto");
+    setLendoBoleto(true);
+    try {
+      const bloco = await paraOcrBlock(file);
+      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "boleto" }) });
+      const j = await resp.json().catch(() => ({}));
+      if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) mesclarDups(j.duplicatas as DuplicataNota[]);
+    } catch { /* best-effort */ }
+    finally { setLendoBoleto(false); }
+  }
+
+  const somaDuplicatas = dups.reduce((s, d) => s + (d.valor || 0), 0);
+  const totalNum = parseBRL(valor);
+  const faturasNaoBatem = totalNum != null && dups.length > 0 && Math.abs(somaDuplicatas - totalNum) > 0.01;
+  const podeSalvar = danfeFiles.length > 0 || numeroNota.trim() !== "" || chaveAcesso.trim() !== "";
+
+  async function salvar() {
+    setErro("");
+    if (!podeSalvar) { setErro("Anexe a DANFE (ou informe o nº da nota / chave de acesso)."); return; }
+    if ((danfeFiles.length || boletoFiles.length) && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações pra anexar os arquivos."); return; }
+    setSalvando(true);
+    try {
+      const central = (danfeFiles.length || boletoFiles.length) ? await centralConfigured() : false;
+      if ((danfeFiles.length || boletoFiles.length) && !central) await requestAccessToken();
+      const agora = new Date();
+      const label = nota.semanaLabel || semanaDe(agora).label; // mantém os arquivos junto do romaneio
+      const semanaId = (danfeFiles.length || boletoFiles.length) ? await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label) : "";
+      const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
+      const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)}.${String(agora.getFullYear()).slice(2)}`;
+      const baseNome = `${fornecedorSlug} ${dataSlug}`;
+      const ext = (f: File, fb: string) => (f.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (f.type.includes("pdf") ? ".pdf" : fb);
+      const carimbo = [`DANFE incluída por ${por.nome}`, fmtDataHora(agora.toISOString())];
+
+      // Páginas da DANFE → viram as novas notaPaginas.
+      const danfePaginas: BoletoNota[] = [];
+      for (let i = 0; i < danfeFiles.length; i++) {
+        const df = danfeFiles[i];
+        const sufixo = danfeFiles.length > 1 ? `nota${i + 1}` : "nota";
+        const alvo = await carimbarImagem(new File([df], `${baseNome} ${sufixo}${ext(df, ".jpg")}`, { type: df.type }), carimbo, true);
+        const s = await subirArquivo(central, semanaId, alvo);
+        danfePaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+      }
+      // Boletos → subpasta "boletos da semana <label>", anexados aos já existentes.
+      let boletosFinais: BoletoNota[] | undefined = nota.boletos ? [...nota.boletos] : undefined;
+      if (boletoFiles.length) {
+        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
+        const jaExistentes = nota.boletos?.length || 0;
+        const acc: BoletoNota[] = [];
+        for (let i = 0; i < boletoFiles.length; i++) {
+          const bf = boletoFiles[i];
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
+          const s = await subirArquivo(central, boletosFolderId, alvo);
+          acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
+        }
+        boletosFinais = [...(boletosFinais || []), ...acc];
+      }
+
+      // Romaneio original preservado; DANFE assume o lugar de "nota".
+      const romaneioPaginasExist = nota.notaPaginas && nota.notaPaginas.length ? nota.notaPaginas : (nota.notaDriveFileId ? [{ driveFileId: nota.notaDriveFileId, nome: nota.notaNome || "romaneio", ...(nota.notaDriveUrl ? { driveUrl: nota.notaDriveUrl } : {}) }] : []);
+      const danfePrincipal = danfePaginas[0];
+      const dupsLimpas = dups
+        .filter((d) => d.valor != null || d.vencimento || d.numero)
+        .map((d) => ({ ...(d.numero ? { numero: d.numero } : {}), ...(d.valor != null ? { valor: d.valor } : {}), ...(d.vencimento ? { vencimento: d.vencimento } : {}) }));
+
+      const patch: Record<string, unknown> = {
+        tipoDocumento: tipoFiscal,
+        romaneioConvertidoEm: agora.toISOString(),
+        romaneioConvertidoPor: por,
+        ...(romaneioPaginasExist.length ? { romaneioPaginas: romaneioPaginasExist } : {}),
+        ...(danfePrincipal
+          ? { notaDriveFileId: danfePrincipal.driveFileId, notaNome: danfePrincipal.nome, notaPaginas: danfePaginas, ...(danfePrincipal.driveUrl ? { notaDriveUrl: danfePrincipal.driveUrl } : { notaDriveUrl: deleteField() }) }
+          : {}),
+        emissor: emissor.trim() || deleteField(),
+        cnpjEmissor: cnpjEmissor.replace(/\D/g, "") || deleteField(),
+        numeroNota: numeroNota.trim() || deleteField(),
+        serieNota: serieNota.trim() || deleteField(),
+        chaveAcesso: chaveAcesso.replace(/\D/g, "") || deleteField(),
+        valorProdutos: parseBRL(valorProdutos) ?? deleteField(),
+        valorImpostos: parseBRL(valorImpostos) ?? deleteField(),
+        valorTotal: parseBRL(valor) ?? deleteField(),
+        dataEmissao: dataEmissao || deleteField(),
+        itens: itens.length ? itens : deleteField(),
+        duplicatas: dupsLimpas.length ? dupsLimpas : deleteField(),
+        formaPagamento: formaPagamento || deleteField(),
+        ...(boletosFinais && boletosFinais.length ? { boletos: boletosFinais } : {}),
+      };
+      await updateDoc(doc(db, "recebimentos", nota.id), patch);
+      onSaved();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao incluir a DANFE.");
+    } finally { setSalvando(false); }
+  }
+
+  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  return (
+    <Modal title="📄 Incluir DANFE do romaneio" onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+        <div className="text-[12px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
+          📦 Romaneio de <strong>{nota.emissor || "fornecedor"}</strong>{nota.valorTotal != null ? ` · ${fmtBRL(nota.valorTotal)}` : ""} · recebido {fmtDataHora(nota.recebidoEm)}.
+          O romaneio original fica preservado; ao salvar, o recebimento passa a ser a nota fiscal.
+        </div>
+
+        {/* Tipo do documento fiscal */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Tipo do documento fiscal</label>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => setTipoFiscal("nota_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "nota_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>🧾 DANFE</button>
+            <button type="button" onClick={() => setTipoFiscal("cupom_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "cupom_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>🧮 Cupom fiscal</button>
+          </div>
+        </div>
+
+        {/* Anexar DANFE */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Documento fiscal</label>
+          {danfeFiles.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
+              {danfeFiles.map((f, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
+                  <span className="truncate flex-1">📄 {f.name}</span>
+                  <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setDanfeFiles((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo a DANFE…</p>}
+          {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mb-1">✓ Dados pré-preenchidos pela leitura — confira abaixo.</p>}
+          {ocrErro && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {ocrErro} Você pode preencher manualmente.</p>}
+          <Button variant="secondary" size="sm" onClick={() => setAddDanfe(true)}>{danfeFiles.length ? "➕ Adicionar página" : "📷 Anexar DANFE"}</Button>
+        </div>
+
+        {/* Dados fiscais */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Emissor</label>
+            <input value={emissor} onChange={(e) => setEmissor(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">CNPJ do emissor</label>
+            <input value={cnpjEmissor} onChange={(e) => setCnpjEmissor(e.target.value)} className={inputCls} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº NF</label>
+              <input value={numeroNota} onChange={(e) => setNumeroNota(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Série</label>
+              <input value={serieNota} onChange={(e) => setSerieNota(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+          <div className="col-span-2">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Chave de acesso</label>
+            <input value={chaveAcesso} onChange={(e) => setChaveAcesso(e.target.value)} className={`${inputCls} tabular-nums`} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Valor dos produtos</label>
+            <input value={valorProdutos} onChange={(e) => setValorProdutos(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Impostos / tributos</label>
+            <input value={valorImpostos} onChange={(e) => setValorImpostos(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Valor total</label>
+            <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Data de emissão</label>
+            <input type="date" value={dataEmissao} onChange={(e) => setDataEmissao(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
+          </div>
+        </div>
+
+        {/* Faturas / duplicatas */}
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Faturas / duplicatas</label>
+            <button type="button" className="text-[11px] text-indigo-600 hover:underline" onClick={() => setDups((prev) => [...prev, {}])}>+ adicionar</button>
+          </div>
+          {dups.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma fatura.</p>}
+          <div className="space-y-2">
+            {dups.map((d, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={d.numero || ""} onChange={(e) => setDup(i, "numero", e.target.value)} placeholder={`Parcela ${i + 1}`} className={`${inputCls} flex-1`} />
+                <input type="date" value={d.vencimento || ""} onChange={(e) => setDup(i, "vencimento", e.target.value)} className={`${inputCls} w-[150px] [color-scheme:light] dark:[color-scheme:dark]`} />
+                <input value={d.valor != null ? String(d.valor).replace(".", ",") : ""} onChange={(e) => setDup(i, "valor", e.target.value)} inputMode="decimal" placeholder="R$" className={`${inputCls} w-24`} />
+                <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" title="Remover" onClick={() => setDups((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+              </div>
+            ))}
+          </div>
+          {faturasNaoBatem && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total ({fmtBRL(totalNum ?? undefined)}).</p>}
+        </div>
+
+        {/* Boletos */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Boletos</label>
+          {(nota.boletos && nota.boletos.length > 0) && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {nota.boletos.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1">🧾 {b.nome}</span>{b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}</div>
+              ))}
+            </div>
+          )}
+          {boletoFiles.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
+              {boletoFiles.map((b, i) => (
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1">🧾 {b.name} <span className="text-emerald-600">(novo)</span></span><button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>✕</button></div>
+              ))}
+            </div>
+          )}
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo o boleto…</p>}
+          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}>➕ Anexar boleto</Button>
+        </div>
+
+        {/* Forma de pagamento */}
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Forma de pagamento <span className="font-normal text-gray-400">— opcional</span></label>
+          <FormaPagamentoSelector value={formaPagamento} onChange={setFormaPagamento} />
+        </div>
+
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={salvando || lendo || lendoBoleto || !podeSalvar} onClick={() => void salvar()}>{salvando ? "Incluindo…" : "Incluir DANFE"}</Button>
+        </div>
+
+        {addDanfe && <EscolhaFonteModal titulo="Anexar DANFE" semManual onClose={() => setAddDanfe(false)} onArquivo={(f) => aoAnexarDanfe(f)} />}
+        {addBoleto && <EscolhaFonteModal titulo="Anexar boleto" semManual onClose={() => setAddBoleto(false)} onArquivo={(f) => void aoAnexarBoleto(f)} />}
       </div>
     </Modal>
   );
