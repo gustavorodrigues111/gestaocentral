@@ -13,7 +13,7 @@ export type PainelDados = {
   ultimos7: { ymd: string; total: number }[]; // até 7 dias com fechamento, ordem crescente
   mesTotal: number;         // soma do mês corrente do refData
   mesLabel: string;         // "junho/2026"
-  mediaDia: number;         // média dos dias com faturamento no mês
+  total7: number;           // soma dos últimos 7 dias com faturamento
 };
 
 type FechMin = Pick<FechamentoCaixa, "data" | "turno" | "totalVendas" | "excluidoEm">;
@@ -27,11 +27,11 @@ export function montarPainel(fechamentos: FechMin[], refData: string): PainelDad
   const diaTotal = porDia.get(refData) || 0;
   const diasAteRef = [...porDia.keys()].filter((d) => d <= refData).sort();
   const ultimos7 = diasAteRef.slice(-7).map((ymd) => ({ ymd, total: porDia.get(ymd) || 0 }));
+  const total7 = ultimos7.reduce((s, x) => s + x.total, 0);
   const ym = refData.slice(0, 7);
   const diasDoMes = [...porDia.entries()].filter(([d]) => d.startsWith(ym));
   const mesTotal = diasDoMes.reduce((s, [, v]) => s + v, 0);
-  const mediaDia = diasDoMes.length ? mesTotal / diasDoMes.length : 0;
-  return { refData, diaTotal, ultimos7, mesTotal, mesLabel: nomeMesAno(ym), mediaDia };
+  return { refData, diaTotal, ultimos7, mesTotal, mesLabel: nomeMesAno(ym), total7 };
 }
 
 // HTML do e-mail (inline styles, à prova de cliente de e-mail). Barras via tabela.
@@ -60,8 +60,8 @@ export function painelEmailHtml(d: PainelDados, restaurantNome: string): string 
     <div style="font-size:13px;color:#64748b;margin-bottom:14px;">Referência: ${fmtDiaCurto(d.refData)} · ${d.mesLabel}</div>
     <table role="presentation" width="100%" style="border-collapse:collapse;"><tr>
       ${card("Faturamento do dia", fmtBRLp(d.diaTotal), "#4f46e5")}
-      ${card("Total do mês", fmtBRLp(d.mesTotal), "#0ea5e9")}
-      ${card("Média/dia no mês", fmtBRLp(d.mediaDia), "#10b981")}
+      ${card(`Últimos ${d.ultimos7.length} dia(s)`, fmtBRLp(d.total7), "#0ea5e9")}
+      ${card("Total do mês", fmtBRLp(d.mesTotal), "#10b981")}
     </tr></table>
     <div style="font:12px -apple-system,Segoe UI,Roboto,sans-serif;font-weight:700;color:#334155;margin:18px 0 6px;">Últimos ${d.ultimos7.length} dia(s)</div>
     <table role="presentation" width="100%" style="border-collapse:collapse;">${barras}</table>

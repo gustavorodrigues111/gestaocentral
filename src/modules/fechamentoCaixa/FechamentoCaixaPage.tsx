@@ -747,8 +747,8 @@ async function enviarEmailResumo(emails: string[], restaurantNome: string, f: Om
   const html = painelEmailHtml(dados, restaurantNome);
   const text = `Faturamento — ${restaurantNome} (${fmtData(f.data)})\n`
     + `Faturamento do dia: ${fmtBRL(dados.diaTotal)}\n`
+    + `Últimos ${dados.ultimos7.length} dia(s): ${fmtBRL(dados.total7)}\n`
     + `Total do mês (${dados.mesLabel}): ${fmtBRL(dados.mesTotal)}\n`
-    + `Média/dia no mês: ${fmtBRL(dados.mediaDia)}\n`
     + `Últimos dias: ${dados.ultimos7.map((x) => `${fmtData(x.ymd)} ${fmtBRL(x.total)}`).join(" · ")}`;
   const subject = `Faturamento ${fmtData(f.data)} — ${restaurantNome}`;
   // Remetente: override da config OU "<Restaurante> <caixa@planejamento.app>".
@@ -781,8 +781,8 @@ function PainelTab({ fechamentos, restaurantNome }: { fechamentos: FechamentoCai
       <div className="text-[12px] text-gray-500">Faturamento de <strong>{restaurantNome}</strong> · referência {fmtDiaCurto(hoje)} · {d.mesLabel}</div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <Card label="Faturamento do dia" valor={fmtBRLp(d.diaTotal)} cor="#4f46e5" />
-        <Card label="Total do mês" valor={fmtBRLp(d.mesTotal)} cor="#0ea5e9" />
-        <Card label="Média/dia no mês" valor={fmtBRLp(d.mediaDia)} cor="#10b981" />
+        <Card label={`Últimos ${d.ultimos7.length} dia(s)`} valor={fmtBRLp(d.total7)} cor="#0ea5e9" />
+        <Card label="Total do mês" valor={fmtBRLp(d.mesTotal)} cor="#10b981" />
       </div>
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
         <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">Últimos {d.ultimos7.length} dia(s)</div>
