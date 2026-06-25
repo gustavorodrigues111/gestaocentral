@@ -34,37 +34,50 @@ export function montarPainel(fechamentos: FechMin[], refData: string): PainelDad
   return { refData, diaTotal, ultimos7, mesTotal, mesLabel: nomeMesAno(ym), total7 };
 }
 
-// HTML do e-mail (inline styles, à prova de cliente de e-mail). Barras via tabela.
+// HTML do e-mail (inline styles, à prova de cliente de e-mail). Espelha o
+// painel mobile do app: 3 cards grandes empilhados + card branco com barras.
 export function painelEmailHtml(d: PainelDados, restaurantNome: string): string {
+  const FONT = "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif";
   const max = Math.max(1, ...d.ultimos7.map((x) => x.total));
+
+  // Card grande full-width (empilhado, igual ao mobile).
+  const card = (label: string, valor: string, cor: string) =>
+    `<tr><td style="padding:6px 0;">
+      <div style="background:${cor};border-radius:18px;padding:18px 22px;">
+        <div style="font:600 12px ${FONT};text-transform:uppercase;letter-spacing:.6px;color:rgba(255,255,255,.82);">${label}</div>
+        <div style="font:800 30px ${FONT};color:#fff;margin-top:4px;line-height:1.1;">${valor}</div>
+      </div>
+    </td></tr>`;
+
+  // Linha de barra dentro do card branco.
   const barras = d.ultimos7.map((x) => {
     const pct = Math.round((x.total / max) * 100);
     const hoje = x.ymd === d.refData;
     return `<tr>
-      <td style="padding:4px 8px;font:13px -apple-system,Segoe UI,Roboto,sans-serif;color:#475569;white-space:nowrap;${hoje ? "font-weight:700;color:#4f46e5;" : ""}">${fmtDiaCurto(x.ymd)}</td>
-      <td style="padding:4px 8px;width:100%;">
-        <div style="background:#eef2ff;border-radius:6px;overflow:hidden;">
-          <div style="background:${hoje ? "#4f46e5" : "#a5b4fc"};height:18px;width:${pct}%;border-radius:6px;"></div>
+      <td style="padding:6px 8px 6px 0;font:${hoje ? "700" : "400"} 14px ${FONT};color:${hoje ? "#4f46e5" : "#64748b"};white-space:nowrap;vertical-align:middle;">${fmtDiaCurto(x.ymd)}</td>
+      <td style="padding:6px 8px;width:100%;vertical-align:middle;">
+        <div style="background:#eef2ff;border-radius:8px;overflow:hidden;height:22px;">
+          <div style="background:${hoje ? "#4f46e5" : "#a5b4fc"};height:22px;width:${pct}%;border-radius:8px;"></div>
         </div>
       </td>
-      <td style="padding:4px 8px;font:13px -apple-system,Segoe UI,Roboto,sans-serif;color:#0f172a;font-weight:600;white-space:nowrap;text-align:right;">${fmtBRLp(x.total)}</td>
+      <td style="padding:6px 0 6px 8px;font:700 15px ${FONT};color:#0f172a;white-space:nowrap;text-align:right;vertical-align:middle;">${fmtBRLp(x.total)}</td>
     </tr>`;
   }).join("");
-  const card = (label: string, valor: string, cor: string) =>
-    `<td style="padding:6px;"><div style="background:${cor};border-radius:12px;padding:14px 16px;">
-      <div style="font:11px -apple-system,Segoe UI,Roboto,sans-serif;text-transform:uppercase;letter-spacing:.5px;color:rgba(255,255,255,.85);">${label}</div>
-      <div style="font:22px -apple-system,Segoe UI,Roboto,sans-serif;font-weight:800;color:#fff;margin-top:2px;">${valor}</div>
-    </div></td>`;
-  return `<div style="max-width:560px;margin:0 auto;font-family:-apple-system,Segoe UI,Roboto,sans-serif;">
-    <h2 style="font-size:18px;color:#0f172a;margin:0 0 2px;">📊 Faturamento — ${restaurantNome}</h2>
-    <div style="font-size:13px;color:#64748b;margin-bottom:14px;">Referência: ${fmtDiaCurto(d.refData)} · ${d.mesLabel}</div>
-    <table role="presentation" width="100%" style="border-collapse:collapse;"><tr>
+
+  return `<div style="max-width:600px;margin:0 auto;padding:8px;font-family:${FONT};background:#f8fafc;">
+    <div style="padding:6px 4px 0;">
+      <div style="font:800 20px ${FONT};color:#0f172a;margin:0 0 2px;">📊 Faturamento — ${restaurantNome}</div>
+      <div style="font:400 14px ${FONT};color:#64748b;margin-bottom:8px;">Referência: ${fmtDiaCurto(d.refData)} · ${d.mesLabel}</div>
+    </div>
+    <table role="presentation" width="100%" style="border-collapse:collapse;">
       ${card("Faturamento do dia", fmtBRLp(d.diaTotal), "#4f46e5")}
       ${card(`Últimos ${d.ultimos7.length} dia(s)`, fmtBRLp(d.total7), "#0ea5e9")}
       ${card("Total do mês", fmtBRLp(d.mesTotal), "#10b981")}
-    </tr></table>
-    <div style="font:12px -apple-system,Segoe UI,Roboto,sans-serif;font-weight:700;color:#334155;margin:18px 0 6px;">Últimos ${d.ultimos7.length} dia(s)</div>
-    <table role="presentation" width="100%" style="border-collapse:collapse;">${barras}</table>
-    <div style="font-size:11px;color:#94a3b8;margin-top:16px;">Resumo automático do fechamento de caixa · planejamento.app</div>
+    </table>
+    <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:16px;padding:18px;margin-top:12px;">
+      <div style="font:700 15px ${FONT};color:#334155;margin-bottom:10px;">Últimos ${d.ultimos7.length} dia(s)</div>
+      <table role="presentation" width="100%" style="border-collapse:collapse;">${barras}</table>
+    </div>
+    <div style="font:400 12px ${FONT};color:#94a3b8;margin:14px 4px 4px;">Resumo automático do fechamento de caixa · planejamento.app</div>
   </div>`;
 }
