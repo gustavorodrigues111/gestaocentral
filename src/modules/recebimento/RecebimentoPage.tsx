@@ -629,6 +629,18 @@ type SortKey = "recebido" | "tipo" | "emissao" | "nf" | "emissor" | "valor" | "r
 const tipoLabelDe = (n: RecebimentoNota): string => n.tipoDocumento
   ? TIPO_DOCUMENTO_LABEL[n.tipoDocumento] + (n.tipoDocumento === "conta_fixa" && n.contaCategoria ? ` · ${n.contaCategoria}` : "")
   : "—";
+// Sombreamento da linha: divergência = vermelho (prioridade), romaneio aguardando
+// nota = amarelo, documento fiscal (DANFE/cupom/conta fixa) = verde.
+function tintLinha(n: RecebimentoNota): string {
+  if (!n.conforme) return "bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20";
+  if (n.tipoDocumento === "romaneio") return "bg-amber-50/70 dark:bg-amber-950/15 hover:bg-amber-100/70 dark:hover:bg-amber-950/25";
+  return "bg-emerald-50/50 dark:bg-emerald-950/10 hover:bg-emerald-50 dark:hover:bg-emerald-950/20";
+}
+function tintCard(n: RecebimentoNota): string {
+  if (!n.conforme) return "bg-rose-50/60 dark:bg-rose-950/15 border-rose-200 dark:border-rose-900/40";
+  if (n.tipoDocumento === "romaneio") return "bg-amber-50/70 dark:bg-amber-950/15 border-amber-200 dark:border-amber-900/40";
+  return "bg-emerald-50/50 dark:bg-emerald-950/12 border-emerald-200 dark:border-emerald-900/40";
+}
 function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onExcluir, onConferir }: {
   notas: RecebimentoNota[];
   restaurant: { recebimentoDriveFolderId?: string };
@@ -715,7 +727,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
         </thead>
         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
           {ordenadas.map((n) => { const vs = vencimentosDe(n); return (
-            <tr key={n.id} className={`group transition-colors ${n.conforme ? "hover:bg-gray-50 dark:hover:bg-gray-800/40" : "bg-rose-50/50 dark:bg-rose-950/10 hover:bg-rose-50 dark:hover:bg-rose-950/20"}`}>
+            <tr key={n.id} className={`group transition-colors ${tintLinha(n)}`}>
               {/* Emissor — clicável abre detalhes; tipo · NF · recebido em na sublinha */}
               <td className="px-2.5 py-3">
                 <button type="button" onClick={() => setDetalhe(n)} className="flex flex-col items-start text-left max-w-[200px] group/btn">
@@ -782,7 +794,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
     {/* Mobile: cards */}
     <div className="sm:hidden space-y-2">
       {ordenadas.map((n) => { const vs = vencimentosDe(n); return (
-        <div key={n.id} className={`rounded-xl border p-3 ${n.conforme ? "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800" : "bg-rose-50/60 dark:bg-rose-950/15 border-rose-200 dark:border-rose-900/40"}`}>
+        <div key={n.id} className={`rounded-xl border p-3 ${tintCard(n)}`}>
           <button type="button" onClick={() => setDetalhe(n)} className="w-full flex items-start justify-between gap-3 text-left">
             <div className="min-w-0">
               <div className="font-semibold text-gray-800 dark:text-gray-100 truncate" title={n.emissor || ""}>{n.emissor || "— sem emissor —"}</div>
