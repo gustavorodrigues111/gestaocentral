@@ -6,6 +6,7 @@ import type { SiteConfig } from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
 import { hostDoSlug } from "./shared/customDomain";
 import { slugAtalho, montarAtalhos, normalizaAtalho } from "./shared/cardapioAtalhos";
+import { gerarQrCardapioJpeg } from "./shared/gerarQrCardapio";
 
 type Props = {
   rid: string;
@@ -90,6 +91,7 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
   const [slugPt, setSlugPt] = useState(slugAtalho(config, "pt"));
   const [slugEn, setSlugEn] = useState(slugAtalho(config, "en"));
   const [copiado, setCopiado] = useState<"pt" | "en" | "">("");
+  const [gerando, setGerando] = useState<"pt" | "en" | "">("");
   const host = hostDoSlug(config.slug);
   const base = host ? `https://${host}` : null;
 
@@ -102,6 +104,21 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
     void navigator.clipboard?.writeText(`${base}/${path}`);
     setCopiado(idioma);
     setTimeout(() => setCopiado(""), 2000);
+  }
+
+  async function gerarQr(idioma: "pt" | "en", path: string) {
+    if (!base) return;
+    setGerando(idioma);
+    try {
+      await gerarQrCardapioJpeg({
+        url: `${base}/${path}`,
+        idioma,
+        logoUrl: config.logoUrl,
+        corTexto: config.tema?.corPrimaria,
+        nomeArquivo: `${config.slug}-${idioma === "pt" ? "cardapio" : "menu"}.jpg`,
+      });
+    } catch { /* navegador sem canvas — ignora */ }
+    finally { setGerando(""); }
   }
 
   const Linha = ({ idioma, bandeira, label, slug, setSlug, temPdf }: {
@@ -127,6 +144,12 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
           <button type="button" onClick={() => copiar(idioma, path)}
             className="text-[12px] px-2 py-0.5 rounded border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
             {copiado === idioma ? "✓ copiado" : "copiar"}
+          </button>
+        )}
+        {base && (
+          <button type="button" disabled={gerando === idioma} onClick={() => void gerarQr(idioma, path)}
+            className="text-[12px] px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50">
+            {gerando === idioma ? "gerando…" : "⬇ QR"}
           </button>
         )}
         {!temPdf && <span className="text-[11px] text-amber-600 dark:text-amber-400">⚠ sem PDF nesse idioma</span>}
