@@ -55,7 +55,7 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
       </div>
 
       {modo === "editor" ? (
-        <CardapioEditor rid={rid} podeEditar={podeEditar} nomeRestaurante={nomeRestaurante} corPrimaria={config.tema?.corPrimaria} />
+        <CardapioEditor rid={rid} podeEditar={podeEditar} nomeRestaurante={nomeRestaurante} />
       ) : (
       <div className="space-y-4">
       <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-900 dark:text-indigo-200">

@@ -7,7 +7,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
-import { gerarCardapioPdf, gerarCardapioPdfSororoca } from "./shared/gerarCardapioPdf";
+import { CardapioVisual } from "./CardapioVisual";
 import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -61,7 +61,7 @@ function seedSororoca(): SecaoCardapio[] {
   }));
 }
 
-export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; corPrimaria?: string }) {
+export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: string; podeEditar: boolean; nomeRestaurante?: string }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -70,8 +70,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }
   const [traduzindo, setTraduzindo] = useState(false);
   const [lang, setLang] = useState<"pt" | "en">("pt");
   const [erroTrad, setErroTrad] = useState("");
-  const [gerandoPdf, setGerandoPdf] = useState(false);
-  const [preview, setPreview] = useState<{ url: string; nome: string } | null>(null);
+  const [mostrarVisual, setMostrarVisual] = useState(false);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -172,22 +171,6 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }
 
   const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-60";
 
-  async function abrirPreviewPdf() {
-    setGerandoPdf(true);
-    try {
-      const nomeArq = `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${lang === "en" ? "-en" : ""}.pdf`;
-      const r = /soror/i.test(nomeRestaurante || "")
-        ? await gerarCardapioPdfSororoca({ secoes, idioma: lang, nomeArquivo: nomeArq })
-        : await gerarCardapioPdf({ secoes, titulo: nomeRestaurante || "Cardápio", corPrimaria, idioma: lang, nomeArquivo: nomeArq });
-      setPreview({ url: r.url, nome: r.nomeArquivo });
-    } catch { /* ignora */ }
-    finally { setGerandoPdf(false); }
-  }
-  function fecharPreview() {
-    if (preview) URL.revokeObjectURL(preview.url);
-    setPreview(null);
-  }
-
   const en = lang === "en";
   const refCls = "text-[11px] text-gray-400 dark:text-gray-500 px-1";
 
@@ -206,9 +189,9 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }
             {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
           </span>
           {podeEditar && secoes.length > 0 && (
-            <button type="button" disabled={gerandoPdf} onClick={() => void abrirPreviewPdf()}
-              className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
-              {gerandoPdf ? "gerando…" : `🖨️ PDF impressão${en ? " (EN)" : ""}`}
+            <button type="button" onClick={() => setMostrarVisual(true)}
+              className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+              🎨 PDF / Visual{en ? " (EN)" : ""}
             </button>
           )}
         </div>
@@ -316,19 +299,8 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }
         <button type="button" onClick={() => addSecao()} className="text-sm px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">+ Adicionar seção</button>
       )}
 
-      {preview && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={fecharPreview}>
-          <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
-              <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">🖨️ Pré-visualização do PDF{en ? " (EN)" : ""}</span>
-              <div className="flex items-center gap-2">
-                <a href={preview.url} download={preview.nome} className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">⬇ Baixar</a>
-                <button type="button" onClick={fecharPreview} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
-              </div>
-            </div>
-            <iframe title="Preview do cardápio" src={preview.url} className="flex-1 w-full" />
-          </div>
-        </div>
+      {mostrarVisual && (
+        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} lang={lang} onClose={() => setMostrarVisual(false)} />
       )}
     </div>
   );

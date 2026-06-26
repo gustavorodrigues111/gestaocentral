@@ -1,0 +1,185 @@
+// Designer interativo do PDF do cardápio: escolhe fontes (Google, mesma lista
+// do site), regula espaçamentos e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO
+// preview (html2canvas → jsPDF), então a fonte sai idêntica à da tela.
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { FONTES_SITE, findFonte, googleFontsUrl } from "./templates/fontesDisponiveis";
+import type { CardapioLayout, SecaoCardapio } from "../../core/types";
+
+const TEAL = "#1d3c4b";
+const PAGE_W = 460, PAGE_H = 651; // A4 retrato (proporção √2) em px de preview
+const CAPA = "/cardapio-capa-sororoca.png";
+const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
+
+const PADROES: Required<CardapioLayout> = {
+  fonteTitulos: "dm-serif-display", fonteCorpo: "inter",
+  espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamSecao: 17,
+};
+
+export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: {
+  rid: string;
+  secoes: SecaoCardapio[];
+  nomeRestaurante?: string;
+  lang: "pt" | "en";
+  onClose: () => void;
+}) {
+  const ehSororoca = /soror/i.test(nomeRestaurante || "");
+  const [lay, setLay] = useState<Required<CardapioLayout>>(PADROES);
+  const [baixando, setBaixando] = useState(false);
+  const timer = useRef<number | undefined>(undefined);
+  const paginasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
+      const l = s.exists() ? (s.data().layout as CardapioLayout | undefined) : undefined;
+      if (l) setLay({ ...PADROES, ...l });
+    });
+  }, [rid]);
+
+  // Carrega as fontes Google escolhidas.
+  useEffect(() => {
+    const url = googleFontsUrl([lay.fonteTitulos, lay.fonteCorpo]);
+    if (!url) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet"; link.href = url;
+    document.head.appendChild(link);
+    return () => { link.remove(); };
+  }, [lay.fonteTitulos, lay.fonteCorpo]);
+
+  function setCampo<K extends keyof CardapioLayout>(k: K, v: CardapioLayout[K]) {
+    setLay((prev) => {
+      const next = { ...prev, [k]: v };
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = window.setTimeout(() => { void updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: next })).catch(() => {}); }, 500);
+      return next;
+    });
+  }
+
+  const fTit = findFonte(lay.fonteTitulos)?.cssFamily || "Georgia, serif";
+  const fCorpo = findFonte(lay.fonteCorpo)?.cssFamily || "system-ui, sans-serif";
+  const en = lang === "en";
+  const achar = (chave: string) => secoes.find((s) => norm(s.nome).includes(chave));
+
+  // Render de uma seção (cabeçalho + pratos) com as fontes/espaçamentos atuais.
+  const Secao = ({ s }: { s: SecaoCardapio }) => {
+    const nome = (en && s.nomeEn) || s.nome;
+    const obs = (en && s.obsEn) || s.obs;
+    return (
+      <div style={{ marginBottom: lay.espacoSecoes }}>
+        <div style={{ textAlign: "center", marginBottom: 9 }}>
+          <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
+        </div>
+        {obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo - 3.5, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
+        {s.pratos.map((p) => {
+          const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
+          const subt = (en && p.subtituloEn) || p.subtitulo;
+          const preco = (p.preco || "").trim();
+          const ehNota = /[a-zA-Z]/.test(preco);
+          const precoTxt = preco ? (ehNota ? preco : `R$ ${preco}`) : "";
+          return (
+            <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+                <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222" }}>{titulo}</span>
+                {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamTitulo - 3 : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
+              </div>
+              {subt && <div style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo - 3.5, color: "#777", marginTop: 1 }}>{subt}</div>}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const pageStyle: CSSProperties = { width: PAGE_W, height: PAGE_H, background: "#fff", position: "relative", boxShadow: "0 1px 8px rgba(0,0,0,.15)", overflow: "hidden", flexShrink: 0 };
+  const pad = 30;
+
+  const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
+  const colW = (PAGE_W - pad * 2 - 22) / 2;
+
+  // Páginas (HTML) — viram o PDF.
+  const paginas = ehSororoca ? (
+    <>
+      <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
+        <div style={{ position: "absolute", top: 132, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: 13, letterSpacing: 3, color: TEAL, fontWeight: 600 }}>{(en ? "FOOD" : "COMIDAS")}</div>
+        <div style={{ position: "absolute", top: 150, left: pad, width: colW }}>{sobremesas && <Secao s={sobremesas} />}</div>
+      </div>
+      <div className="pagina-pdf" style={{ ...pageStyle, display: "flex", gap: 22, padding: pad, boxSizing: "border-box" }}>
+        <div style={{ width: colW }}>{frios && <Secao s={frios} />}{quentes && <Secao s={quentes} />}</div>
+        <div style={{ width: colW }}>{brasa && <Secao s={brasa} />}{acomp && <Secao s={acomp} />}</div>
+      </div>
+    </>
+  ) : (
+    <div className="pagina-pdf" style={{ ...pageStyle, padding: pad, boxSizing: "border-box", columnCount: 2, columnGap: 22 }}>
+      {secoes.map((s) => <div key={s.id} style={{ breakInside: "avoid" }}><Secao s={s} /></div>)}
+    </div>
+  );
+
+  async function baixar() {
+    setBaixando(true);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "pt", format: "a4" });
+      const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
+      const nodes = Array.from(paginasRef.current?.querySelectorAll<HTMLDivElement>(".pagina-pdf") || []);
+      for (let i = 0; i < nodes.length; i++) {
+        const canvas = await html2canvas(nodes[i]!, { scale: 3, backgroundColor: "#ffffff", useCORS: true });
+        const img = canvas.toDataURL("image/jpeg", 0.94);
+        if (i > 0) pdf.addPage();
+        pdf.addImage(img, "JPEG", 0, 0, W, H);
+      }
+      pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
+    } catch { /* ignora */ }
+    finally { setBaixando(false); }
+  }
+
+  const fontesPorCat = useMemo(() => FONTES_SITE, []);
+  const SelectFonte = ({ label, val, onChange }: { label: string; val: string; onChange: (id: string) => void }) => (
+    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#555" }}>{label}
+      <select value={val} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+        {fontesPorCat.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
+      </select>
+    </label>
+  );
+  const Slider = ({ label, k, min, max }: { label: string; k: keyof CardapioLayout; min: number; max: number }) => (
+    <label style={{ display: "block", fontSize: 12, color: "#555" }}>
+      <span style={{ fontWeight: 600 }}>{label}: {lay[k]}</span>
+      <input type="range" min={min} max={max} value={lay[k]} onChange={(e) => setCampo(k, Number(e.target.value))} className="w-full" />
+    </label>
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        {/* Controles */}
+        <div className="w-64 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
+          </div>
+          <SelectFonte label="Fonte dos títulos/seções" val={lay.fonteTitulos} onChange={(id) => setCampo("fonteTitulos", id)} />
+          <SelectFonte label="Fonte do corpo" val={lay.fonteCorpo} onChange={(id) => setCampo("fonteCorpo", id)} />
+          <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
+          <Slider label="Tamanho do prato" k="tamTitulo" min={9} max={20} />
+          <Slider label="Espaço entre pratos" k="espacoPratos" min={2} max={28} />
+          <Slider label="Espaço entre seções" k="espacoSecoes" min={6} max={50} />
+          <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
+        </div>
+        {/* Preview + ações */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pré-visualização{en ? " (EN)" : ""}</span>
+            <div className="flex items-center gap-2">
+              <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{baixando ? "gerando…" : "⬇ Baixar PDF"}</button>
+              <button type="button" onClick={onClose} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-5">
+            <div ref={paginasRef} className="flex flex-col items-center gap-5">{paginas}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

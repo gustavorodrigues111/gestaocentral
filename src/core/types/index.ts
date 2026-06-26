@@ -3289,10 +3289,20 @@ export type SecaoCardapio = {
   obsEn?: string;
   pratos: PratoCardapio[];
 };
+// Ajustes visuais do PDF/preview do cardápio (fontes Google + espaçamentos).
+export type CardapioLayout = {
+  fonteTitulos?: string;   // id de FONTES_SITE
+  fonteCorpo?: string;     // id de FONTES_SITE
+  espacoPratos?: number;   // px entre um prato e o próximo
+  espacoSecoes?: number;   // px entre seções
+  tamTitulo?: number;      // px do nome do prato
+  tamSecao?: number;       // px do cabeçalho da seção
+};
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId
   restaurantId: string;
   secoes: SecaoCardapio[];
+  layout?: CardapioLayout;
   traduzidoEm?: string;              // ISO da última tradução EN
   atualizadoEm: string;
   atualizadoPor?: string;
