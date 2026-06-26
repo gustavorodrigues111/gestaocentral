@@ -303,8 +303,9 @@ export type WorkSchedule = {
 };
 
 // Escala nomeada/reutilizável: UM padrão semanal cadastrado uma vez e atribuído
-// a vários empregados. Mesma forma de dias do WorkSchedule (sem alternância — a
-// alternância é composta no cadastro do empregado, escolhendo N escalas + ciclo).
+// a vários empregados. Mesma forma de dias do WorkSchedule. SEM alternância e SEM
+// ciclo de domingo — pra alternar (inclusive folga de domingo) cadastra-se uma
+// escala por padrão e compõe-se a alternância no cadastro do empregado.
 // A atribuição faz SNAPSHOT dos dias numa vigência de `empregado.workSchedules[]`
 // (editar a escala depois NÃO mexe em quem já está vinculado — nova vigência manual).
 export type EscalaNomeada = {
@@ -314,7 +315,6 @@ export type EscalaNomeada = {
   descricao?: string;
   totalContract: number;        // minutos somados dos dias ativos
   days: { [key: number]: HorarioDia };  // 0..6
-  sundayCycle?: SundayCycle | null;
   ativo: boolean;               // false = arquivada (não aparece na seleção)
   criadoEm: string;             // ISO
   criadoPor: string;            // pessoaId

@@ -10,8 +10,8 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
-import { WEEKDAYS, calcDayHours, fmtHHMM, emptyDays, validateWorkScheduleDays, isSunday } from "../../core/escala/horarios";
-import type { EscalaNomeada, HorarioDia, SundayCycle } from "../../core/types";
+import { WEEKDAYS, calcDayHours, fmtHHMM, emptyDays, validateWorkScheduleDays } from "../../core/escala/horarios";
+import type { EscalaNomeada, HorarioDia } from "../../core/types";
 
 type Days = { [k: number]: HorarioDia };
 const totalDias = (days: Days): number =>
@@ -105,7 +105,6 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
   const [nome, setNome] = useState(escala?.nome || "");
   const [descricao, setDescricao] = useState(escala?.descricao || "");
   const [days, setDays] = useState<Days>(() => escala?.days || emptyDays());
-  const [ciclo, setCiclo] = useState<SundayCycle | null>(escala?.sundayCycle ?? null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -122,7 +121,7 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
       const agora = new Date().toISOString();
       const payload: Omit<EscalaNomeada, "id"> = {
         restaurantId, nome: nome.trim(), descricao: descricao.trim() || undefined,
-        totalContract: totalDias(days), days, sundayCycle: ciclo || undefined,
+        totalContract: totalDias(days), days,
         ativo: escala?.ativo ?? true,
         criadoEm: escala?.criadoEm || agora, criadoPor: escala?.criadoPor || me?.id || "", atualizadoEm: agora,
       };
@@ -139,7 +138,7 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
     <Modal title={escala ? "✏️ Editar escala" : "📆 Nova escala"} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
-        <p className="text-[12px] text-gray-500 dark:text-gray-400">Uma escala = um padrão semanal. Pra alternar escalas, isso é feito no cadastro do empregado (escolhendo mais de uma escala + o ciclo de alternância).</p>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400">Uma escala = um padrão semanal fixo. Pra alternar escalas (inclusive folga de domingo em ciclo), cadastre uma escala por padrão e componha a alternância no cadastro do empregado.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Nome da escala *" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex: Comercial 8h–17h" />
           <Input label="Descrição (opcional)" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="ex: Cozinha — folga aos domingos" />
@@ -149,8 +148,6 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
         {erros.length > 0 && (
           <div className="text-[11px] text-amber-700 dark:text-amber-400 space-y-0.5">{erros.map((er, i) => <div key={i}>⚠ {er.mensagem} <span className="opacity-60">({er.artigo})</span></div>)}</div>
         )}
-
-        <CicloDomingo ciclo={ciclo} onChange={setCiclo} />
 
         <div className="flex items-center justify-between pt-1">
           <span className="text-[12px] text-gray-500">Carga semanal: <strong className="tabular-nums">{fmtHHMM(totalDias(days))}</strong></span>
@@ -192,31 +189,3 @@ function DiasGrid({ days, onPatch, onLimpar }: { days: Days; onPatch: (idx: numb
   );
 }
 
-// ─── Ciclo de domingos (folga 1 a cada N) ───────────────────────────────────
-function CicloDomingo({ ciclo, onChange }: { ciclo: SundayCycle | null; onChange: (c: SundayCycle | null) => void }) {
-  const ativo = !!ciclo;
-  const workCount = ciclo?.workCount ?? 3;
-  const refDate = ciclo?.refDate ?? "";
-  const refValido = refDate && isSunday(refDate);
-  return (
-    <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10 p-3">
-      <label className="flex items-center gap-2 text-sm cursor-pointer">
-        <input type="checkbox" checked={ativo} onChange={(e) => onChange(e.target.checked ? { workCount: 3, offCount: 1, refDate: "" } : null)} />
-        <span className="font-medium text-amber-900 dark:text-amber-300">🔁 Folga em ciclo de domingos</span>
-      </label>
-      {ativo && (
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Trabalha N domingos seguidos *</label>
-            <input type="number" min="0" step="1" value={workCount} onChange={(e) => onChange({ ...ciclo!, workCount: parseInt(e.target.value, 10) || 0 })} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-            <p className="text-[11px] text-gray-500 mt-1">Trabalha {workCount} domingos · folga 1</p>
-          </div>
-          <div>
-            <Input label="Primeiro domingo de FOLGA *" type="date" value={refDate} onChange={(e) => onChange({ ...ciclo!, refDate: e.target.value })} />
-            {refDate && !refValido && <p className="text-[11px] text-rose-600 mt-1">⚠ A data tem que ser um domingo</p>}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
