@@ -19,7 +19,7 @@ type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos">> & { fonte
 const TOP_SLOTS = new Set(["sobremesa", "frio", "brasa"]);
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
-  espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
+  espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40,
 };
@@ -92,7 +92,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPra
     const nome = (en && s.nomeEn) || s.nome;
     const obs = (en && s.obsEn) || s.obs;
     return (
-      <div style={{ marginBottom: lay.espacoSecoes }}>
+      <div>
         <div style={{ textAlign: "center", marginBottom: 9 }}>
           <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
         </div>
@@ -115,7 +115,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPra
               </div>
               <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
                 onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
-                style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: 1, whiteSpace: "pre-line", outline: "none", minHeight: subt ? undefined : lay.tamDescricao }}>{subt || ""}</div>
+                style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none", minHeight: subt ? undefined : lay.tamDescricao }}>{subt || ""}</div>
             </div>
           );
         })}
@@ -207,8 +207,8 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPra
           <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
           <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
           <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
-          <Slider label="Espaço entre pratos" k="espacoPratos" min={2} max={28} />
-          <Slider label="Espaço entre seções" k="espacoSecoes" min={6} max={50} />
+          <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
+          <Slider label="Espaço título → descrição" k="espacoDescricao" min={-4} max={16} />
 
           <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
             <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />

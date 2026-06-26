@@ -3308,7 +3308,8 @@ export type CardapioLayout = {
   fonteCorpo?: string;     // id de FONTES_SITE (ou família custom)
   fontesCustom?: string[]; // famílias Google adicionadas pelo usuário
   espacoPratos?: number;   // px entre um prato e o próximo
-  espacoSecoes?: number;   // px entre seções
+  espacoDescricao?: number; // px entre o título do prato e a descrição
+  espacoSecoes?: number;   // px entre seções (legado — seções agora têm posição absoluta)
   tamTitulo?: number;      // px do nome do prato
   tamDescricao?: number;   // px da descrição do prato
   tamSecao?: number;       // px do cabeçalho da seção
