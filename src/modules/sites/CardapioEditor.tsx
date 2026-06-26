@@ -231,12 +231,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId }: { r
         <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl space-y-3">
           <p className="text-sm text-gray-400">Nenhuma seção ainda.</p>
           {podeEditar && (
-            <div className="flex flex-wrap gap-2 justify-center">
-              <button type="button" onClick={() => addSecao()} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white">+ Adicionar seção</button>
-              <button type="button" onClick={() => commit(seedSororoca())} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">
-                📥 Carregar cardápio do Sororoca (teste)
-              </button>
-            </div>
+            <button type="button" onClick={() => addSecao()} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white">+ Adicionar seção</button>
           )}
         </div>
       )}
