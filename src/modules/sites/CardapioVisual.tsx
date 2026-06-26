@@ -20,7 +20,7 @@ const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
-  margemTopo: 34, margemBaixo: 40,
+  margemTopo: 34, margemBaixo: 40, colGap: 22,
 };
 
 export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, onClose }: {
@@ -39,7 +39,15 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
+  const [alturas, setAlturas] = useState<Record<string, number>>({});
   const paginasRef = useRef<HTMLDivElement>(null);
+
+  // Mede a altura natural de cada seção (pra calcular a posição-padrão empilhada).
+  const medir = (id: string) => (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const h = el.offsetHeight;
+    setAlturas((prev) => prev[id] === h ? prev : { ...prev, [id]: h });
+  };
 
   useEffect(() => {
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
@@ -118,9 +126,10 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   };
 
   const pageStyle: CSSProperties = { width: PAGE_W, height: PAGE_H, background: "#fff", position: "relative", boxShadow: "0 1px 8px rgba(0,0,0,.15)", overflow: "hidden", flexShrink: 0 };
-  const pad = 30, gutter = 22;
+  const pad = 30, gutter = lay.colGap;
   const colW = (PAGE_W - pad * 2 - gutter) / 2;
   const xEsq = pad, xDir = pad + colW + gutter;
+  const maxPos = Math.max(0, PAGE_H - lay.margemTopo - lay.margemBaixo);
 
   // ── Distribuição generalizada: cada seção tem página (1..N) e coluna (0=esq, 1=dir).
   // Dentro de uma coluna, empilha na ordem do array `secoes`. Sem valor explícito,
@@ -154,15 +163,20 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     </>
   );
 
-  const Coluna = ({ p, c, x }: { p: number; c: number; x: number }) => {
-    const lista = secoes.map((s, i) => ({ s, i })).filter(({ s, i }) => efPag(s, i) === p && efCol(s, i) === c);
-    if (!lista.length) return null;
-    return (
-      <div style={{ position: "absolute", top: lay.margemTopo, left: x, width: colW, display: "flex", flexDirection: "column", gap: lay.espacoSecoes }}>
-        {lista.map(({ s }) => <div key={s.id} style={{ marginTop: s.posTop || 0 }}><Secao s={s} /></div>)}
-      </div>
-    );
-  };
+  // Posição ABSOLUTA por seção: cada uma fica em margemTopo + (posTop OU o empilhamento
+  // padrão calculado pela altura das anteriores na mesma coluna). Mover uma NÃO mexe nas
+  // outras — o empilhamento só define o ponto de partida quando posTop não foi definido.
+  const layoutSec: Record<string, { p: number; c: number; def: number; eff: number; top: number }> = {};
+  {
+    const flow: Record<string, number> = {};
+    secoes.forEach((s, i) => {
+      const p = efPag(s, i), c = efCol(s, i), key = `${p}:${c}`;
+      const def = flow[key] || 0;
+      flow[key] = def + (alturas[s.id] || 180) + lay.espacoSecoes;
+      const eff = s.posTop ?? def;
+      layoutSec[s.id] = { p, c, def, eff, top: lay.margemTopo + eff };
+    });
+  }
 
   const tituloCapaMenu = (tCapa || (nomeMenu || "").toUpperCase()) || "";
   const Pagina = ({ p }: { p: number }) => {
@@ -173,8 +187,14 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
         {capa && tituloCapaMenu && (
           <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
-        <Coluna p={p} c={0} x={xEsq} />
-        <Coluna p={p} c={1} x={xDir} />
+        {secoes.filter((s) => layoutSec[s.id]!.p === p).map((s) => {
+          const L = layoutSec[s.id]!;
+          return (
+            <div key={s.id} style={{ position: "absolute", top: L.top, left: L.c === 0 ? xEsq : xDir, width: colW }}>
+              <div ref={medir(s.id)}><Secao s={s} /></div>
+            </div>
+          );
+        })}
       </div>
     );
   };
@@ -247,6 +267,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
             <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Margens</div>
             <Slider label="Margem superior" k="margemTopo" min={10} max={120} />
             <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
+            <Slider label="Espaço entre colunas" k="colGap" min={8} max={90} />
           </div>
 
           {onSecoes && (
@@ -255,7 +276,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
               <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
               {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
               {secoes.map((s, i) => {
-                const p = efPag(s, i), c = efCol(s, i), pos = s.posTop || 0;
+                const p = efPag(s, i), c = efCol(s, i), pos = Math.round(layoutSec[s.id]?.eff ?? 0);
                 return (
                   <div key={s.id} className="border border-gray-100 dark:border-gray-800 rounded-lg px-2.5 py-2 space-y-1.5">
                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200 truncate">{s.nome || "—"}</div>
@@ -275,7 +296,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
                     </div>
                     <label className="flex items-center gap-2">
                       <span className="text-[10px] text-gray-400 shrink-0 w-12">↕ {pos}px</span>
-                      <input type="range" min={0} max={320} value={pos} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1" />
+                      <input type="range" min={0} max={maxPos} value={Math.min(pos, maxPos)} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1" />
                     </label>
                   </div>
                 );

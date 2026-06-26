@@ -3329,6 +3329,7 @@ export type CardapioLayout = {
   mostrarCifrao?: boolean;  // mostra "$" antes do preço numérico (default true)
   margemTopo?: number;      // px (na página de preview)
   margemBaixo?: number;     // px
+  colGap?: number;          // px entre as duas colunas (gutter) — default 22
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId
