@@ -74,7 +74,9 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
   const [erroTrad, setErroTrad] = useState("");
   const [mostrarVisual, setMostrarVisual] = useState(false);
   const [iconePrato, setIconePrato] = useState<{ si: number; pi: number } | null>(null);
+  const [tituloCapaMenu, setTituloCapaMenu] = useState("");
   const timer = useRef<number | undefined>(undefined);
+  const tituloTimer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
     let cancel = false;
@@ -84,6 +86,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
         const d = snap.data() as CardapioEstruturado;
         if (menuId) {
           const m = (d.cardapios || []).find((c) => c.id === menuId);
+          setTituloCapaMenu(m?.tituloCapa ?? "");
           const secs = m?.secoes || [];
           // Pré-preenche Bebidas/Vinhos do Sororoca na 1ª abertura (cardápio vazio).
           const seed = (!secs.length && podeEditar && /soror/i.test(nomeRestaurante || "")) ? seedSororocaPorNome(nomeMenu || "") : null;
@@ -186,6 +189,19 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
     if (j < 0 || j >= pratos.length) return;
     [pratos[pi], pratos[j]] = [pratos[j]!, pratos[pi]!]; setSec(si, { pratos });
   };
+  // Salva o título da capa POR cardápio (não no layout compartilhado).
+  function salvarTituloCapa(v: string) {
+    setTituloCapaMenu(v);
+    if (!menuId || !podeEditar) return;
+    if (tituloTimer.current) clearTimeout(tituloTimer.current);
+    tituloTimer.current = window.setTimeout(async () => {
+      const ref = doc(db, "cardapioEstruturado", rid);
+      const snap = await getDoc(ref);
+      const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+      const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, tituloCapa: v.trim() || undefined } : c);
+      await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
+    }, 600);
+  }
   // Edição direta de um prato pelo id (usada pela edição inline no preview do PDF).
   const editarPratoPorId = (pratoId: string, campo: keyof PratoCardapio, valor: string) =>
     commit(secoes.map((s) => ({ ...s, pratos: s.pratos.map((p) => p.id === pratoId ? { ...p, [campo]: valor.trim() || undefined } : p) })));
@@ -336,7 +352,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
+        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
       )}
       {iconePrato && (() => {
         const p = secoes[iconePrato.si]?.pratos[iconePrato.pi];

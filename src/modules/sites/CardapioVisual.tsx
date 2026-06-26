@@ -24,12 +24,15 @@ const PADROES: Lay = {
   margemTopo: 34, margemBaixo: 40,
 };
 
-export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, lang, onEditarPrato, onClose }: {
-  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string; lang: "pt" | "en";
+export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onClose }: {
+  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
+  tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onClose: () => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
+  const [tCapa, setTCapa] = useState(tituloCapa ?? "");
+  useEffect(() => { setTCapa(tituloCapa ?? ""); }, [tituloCapa]);
   const [lay, setLay] = useState<Lay>(PADROES);
   const [baixando, setBaixando] = useState(false);
   const [addFonte, setAddFonte] = useState(false);
@@ -145,7 +148,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, lang, o
   );
 
   const ehComidas = ehSororoca && !!(sobremesas || frios || quentes || brasa || acomp);
-  const tituloCapaMenu = (ehComidas ? lay.tituloCapa : (nomeMenu || "").toUpperCase()) || "";
+  const tituloCapaMenu = (tCapa || (nomeMenu || "").toUpperCase()) || "";
   const Capa = () => (
     <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
       <GuiaMargens />
@@ -238,7 +241,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, lang, o
           {ehSororoca && (
             <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-3">
               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Título da capa
-                <input value={lay.tituloCapa} onChange={(e) => setCampo("tituloCapa", e.target.value)} placeholder="ex: COMIDAS" className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                <input value={tCapa} onChange={(e) => { setTCapa(e.target.value); onTituloCapa?.(e.target.value); }} placeholder={(nomeMenu || "").toUpperCase() || "ex: COMIDAS"} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
               </label>
               <Slider label="Tamanho do título da capa" k="tamTituloCapa" min={8} max={28} />
               <Slider label="Posição vertical (↑ ↓)" k="offsetTituloCapa" min={-80} max={120} />
