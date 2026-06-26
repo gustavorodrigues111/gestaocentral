@@ -167,6 +167,9 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
     if (j < 0 || j >= pratos.length) return;
     [pratos[pi], pratos[j]] = [pratos[j]!, pratos[pi]!]; setSec(si, { pratos });
   };
+  // Edição direta de um prato pelo id (usada pela edição inline no preview do PDF).
+  const editarPratoPorId = (pratoId: string, campo: keyof PratoCardapio, valor: string) =>
+    commit(secoes.map((s) => ({ ...s, pratos: s.pratos.map((p) => p.id === pratoId ? { ...p, [campo]: valor.trim() || undefined } : p) })));
 
   if (carregando) return <div className="text-sm text-gray-500">Carregando cardápio…</div>;
 
@@ -268,7 +271,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
                     </div>
                     <input value={p.tituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="English — title" className={`${inp} w-full font-semibold`} />
                     {p.subtitulo && <div className={refCls}>{p.subtitulo}</div>}
-                    <input value={p.subtituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description" className={`${inp} w-full text-[12px] text-gray-500`} />
+                    <textarea value={p.subtituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description (Enter = quebra de linha)" className={`${inp} w-full text-[12px] text-gray-500 resize-y`} />
                   </>
                 ) : (
                   <>
@@ -283,7 +286,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
                         </div>
                       )}
                     </div>
-                    <input value={p.subtitulo || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Subtítulo / descrição (opcional)" className={`${inp} w-full text-[12px] text-gray-500`} />
+                    <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Subtítulo / descrição (Enter = quebra de linha)" className={`${inp} w-full text-[12px] text-gray-500 resize-y`} />
                   </>
                 )}
               </div>
@@ -301,7 +304,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} lang={lang} onClose={() => setMostrarVisual(false)} />
+        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
       )}
     </div>
   );

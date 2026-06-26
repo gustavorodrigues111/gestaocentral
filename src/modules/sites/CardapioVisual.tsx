@@ -14,17 +14,20 @@ const PAGE_W = 460, PAGE_H = 651;
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
+type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
 type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos">> & { fontesCustom: string[]; secaoPos: { [k: string]: number } };
-// Posição vertical default por seção (topo alinhado; baixo mais pra baixo).
-const POS_PADRAO: { [k: string]: number } = { sobremesa: 40, frio: 40, brasa: 40, quente: 330, acompanhamento: 330 };
+const TOP_SLOTS = new Set(["sobremesa", "frio", "brasa"]);
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
+  margemTopo: 34, margemBaixo: 40,
 };
 
-export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: {
-  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; lang: "pt" | "en"; onClose: () => void;
+export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPrato, onClose }: {
+  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; lang: "pt" | "en";
+  onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
+  onClose: () => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
   const [lay, setLay] = useState<Lay>(PADROES);
@@ -33,6 +36,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
+  const [alturas, setAlturas] = useState<Record<string, number>>({});
   const paginasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,6 +45,13 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
       if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
     });
   }, [rid]);
+
+  // Mede a altura de cada bloco (pra travar na margem inferior).
+  const medir = (chave: string) => (el: HTMLDivElement | null) => {
+    if (!el) return;
+    const h = el.offsetHeight;
+    setAlturas((prev) => prev[chave] === h ? prev : { ...prev, [chave]: h });
+  };
 
   // Carrega TODAS as opções de fonte (curadas + custom) — pro preview do dropdown.
   useEffect(() => {
@@ -92,13 +103,19 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
           const preco = (p.preco || "").trim();
           const ehNota = /[a-zA-Z]/.test(preco);
           const precoTxt = preco ? (ehNota ? preco : (lay.mostrarCifrao ? `$ ${preco}` : preco)) : "";
+          const campoTit: CampoPrato = en ? "tituloEn" : "titulo";
+          const campoSub: CampoPrato = en ? "subtituloEn" : "subtitulo";
           return (
             <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
-                <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222" }}>{titulo}</span>
+                <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                  onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
+                  style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
               </div>
-              {subt && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: 1 }}>{subt}</div>}
+              <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
+                style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: 1, whiteSpace: "pre-line", outline: "none", minHeight: subt ? undefined : lay.tamDescricao }}>{subt || ""}</div>
             </div>
           );
         })}
@@ -111,20 +128,33 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   const colW = (PAGE_W - pad * 2 - gutter) / 2;
   const xEsq = pad, xDir = pad + colW + gutter;
   const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
-  const pos = (chave: string) => lay.secaoPos[chave] ?? POS_PADRAO[chave] ?? 40;
+  const posDefault = (chave: string) => TOP_SLOTS.has(chave) ? lay.margemTopo : lay.margemTopo + 290;
+  const posRaw = (chave: string) => lay.secaoPos[chave] ?? posDefault(chave);
+  const maxTop = (chave: string) => Math.max(lay.margemTopo, PAGE_H - lay.margemBaixo - (alturas[chave] || 0));
+  const topAplic = (chave: string) => Math.min(Math.max(posRaw(chave), lay.margemTopo), maxTop(chave)); // trava na margem
   const Bloco = ({ s, chave, x }: { s: SecaoCardapio; chave: string; x: number }) => (
-    <div style={{ position: "absolute", top: pos(chave), left: x, width: colW }}><Secao s={s} /></div>
+    <div style={{ position: "absolute", top: topAplic(chave), left: x, width: colW }}>
+      <div ref={medir(chave)}><Secao s={s} /></div>
+    </div>
+  );
+  const GuiaMargens = () => (
+    <>
+      <div className="guia-margem" style={{ position: "absolute", left: 0, right: 0, top: lay.margemTopo, borderTop: "1px dashed #c4b59060", pointerEvents: "none" }} />
+      <div className="guia-margem" style={{ position: "absolute", left: 0, right: 0, top: PAGE_H - lay.margemBaixo, borderTop: "1px dashed #c4b59060", pointerEvents: "none" }} />
+    </>
   );
 
   const paginas = ehSororoca ? (
     <>
       <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
+        <GuiaMargens />
         {lay.tituloCapa && (
           <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{lay.tituloCapa}</div>
         )}
         {sobremesas && <Bloco s={sobremesas} chave="sobremesa" x={xEsq} />}
       </div>
       <div className="pagina-pdf" style={pageStyle}>
+        <GuiaMargens />
         {frios && <Bloco s={frios} chave="frio" x={xEsq} />}
         {quentes && <Bloco s={quentes} chave="quente" x={xEsq} />}
         {brasa && <Bloco s={brasa} chave="brasa" x={xDir} />}
@@ -146,7 +176,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
       const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
       const nodes = Array.from(paginasRef.current?.querySelectorAll<HTMLDivElement>(".pagina-pdf") || []);
       for (let i = 0; i < nodes.length; i++) {
-        const canvas = await html2canvas(nodes[i]!, { scale: 3, backgroundColor: "#ffffff", useCORS: true });
+        const canvas = await html2canvas(nodes[i]!, { scale: 3, backgroundColor: "#ffffff", useCORS: true, ignoreElements: (el) => el.classList?.contains("guia-margem") });
         const img = canvas.toDataURL("image/jpeg", 0.94);
         if (i > 0) pdf.addPage();
         pdf.addImage(img, "JPEG", 0, 0, W, H);
@@ -195,6 +225,12 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
             </div>
           )}
 
+          <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Margens</div>
+            <Slider label="Margem superior" k="margemTopo" min={10} max={120} />
+            <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
+          </div>
+
           {ehSororoca && (
             <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
               <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Posição vertical das seções</div>
@@ -202,11 +238,11 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
                 .filter(([, s]) => s)
                 .map(([chave, s]) => (
                   <label key={chave} style={{ display: "block", fontSize: 12, color: "#555" }}>
-                    <span style={{ fontWeight: 600 }}>{s!.nome}: {pos(chave)}</span>
-                    <input type="range" min={10} max={560} value={pos(chave)} onChange={(e) => setPos(chave, Number(e.target.value))} className="w-full" />
+                    <span style={{ fontWeight: 600 }}>{s!.nome}: {topAplic(chave)}</span>
+                    <input type="range" min={lay.margemTopo} max={maxTop(chave)} value={topAplic(chave)} onChange={(e) => setPos(chave, Number(e.target.value))} className="w-full" />
                   </label>
                 ))}
-              <p className="text-[11px] text-gray-400">Topo = seções de cima (Sobremesas/Frios/Brasa, alinhadas). Aumente pra descer Quentes/Acompanhamentos.</p>
+              <p className="text-[11px] text-gray-400">Trava na margem inferior — o bloco não passa dela. Topo alinhado por padrão; desça Quentes/Acompanhamentos como quiser.</p>
             </div>
           )}
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
