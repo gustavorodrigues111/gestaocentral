@@ -423,6 +423,11 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if authed();
     }
+    // Cardápio estruturado (editor) — read público (site lê sem auth) + write authed.
+    match /cardapioEstruturado/{id} {
+      allow read: if true;
+      allow create, update, delete: if authed();
+    }
     // Candidaturas "Trabalhe Conosco": create público + read/update authed.
     // Guards: status inicial deve ser "nova" e origem "publico".
     match /candidaturasTrabalhe/{id} {

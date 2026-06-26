@@ -3270,6 +3270,34 @@ export type LinkDelivery = {
   label?: string;
 };
 
+// ── Cardápio estruturado (editor no app, doc /cardapioEstruturado/{rid}) ─────
+// Seção → pratos. Cada prato: título (nome) + subtítulo (descrição) + preço
+// (string pra aceitar "44 | 74", "Mkt", etc.). Campos *En = tradução por IA.
+export type PratoCardapio = {
+  id: string;
+  titulo: string;
+  subtitulo?: string;
+  preco?: string;
+  tituloEn?: string;
+  subtituloEn?: string;
+};
+export type SecaoCardapio = {
+  id: string;
+  nome: string;
+  nomeEn?: string;
+  obs?: string;                      // ex: "consulte as opções do dia na lousa"
+  obsEn?: string;
+  pratos: PratoCardapio[];
+};
+export type CardapioEstruturado = {
+  id: string;                        // = restaurantId
+  restaurantId: string;
+  secoes: SecaoCardapio[];
+  traduzidoEm?: string;              // ISO da última tradução EN
+  atualizadoEm: string;
+  atualizadoPor?: string;
+};
+
 export type SiteConfig = {
   id: string;                        // = restaurantId
   restaurantId: string;
@@ -3307,6 +3335,9 @@ export type SiteConfig = {
   // → PDF PT, /menu → PDF EN). Editável por restaurante. Vazio = padrão
   // (cardapio→pt, menu→en). Resolvido em runtime → redireciona pro PDF.
   cardapioAtalhos?: { path: string; idioma: "pt" | "en" }[];
+  // Modo do cardápio: "pdf" (sobe PDF, default) ou "editor" (monta no app,
+  // doc em /cardapioEstruturado/{rid} — site renderiza ao vivo).
+  cardapioModo?: "pdf" | "editor";
   // Redes
   redes: RedeSocial[];
   // Features (controla seções no site)
