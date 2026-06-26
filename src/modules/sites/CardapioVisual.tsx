@@ -3,11 +3,11 @@
 // título da capa, e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO preview
 // (html2canvas → jsPDF) — a fonte sai idêntica à da tela.
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { opcoesFonte, resolverFonte, urlsCss2, fonteCustom, FONTES_GOOGLE_POPULARES } from "./shared/cardapioFontes";
-import type { CardapioLayout, SecaoCardapio } from "../../core/types";
+import type { CardapioEstruturado, CardapioLayout, SecaoCardapio } from "../../core/types";
 
 const TEAL = "#1d3c4b";
 const PAGE_W = 460, PAGE_H = 651;
@@ -23,8 +23,8 @@ const PADROES: Lay = {
   margemTopo: 34, margemBaixo: 40, colGap: 22,
 };
 
-export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, onClose }: {
-  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
+export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, onClose }: {
+  rid: string; menuId?: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onSecoes?: (next: SecaoCardapio[]) => void;
@@ -40,6 +40,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
   const [alturas, setAlturas] = useState<Record<string, number>>({});
+  const [layoutProprio, setLayoutProprio] = useState(false);
   const paginasRef = useRef<HTMLDivElement>(null);
 
   // Mede a altura natural de cada seção (pra calcular a posição-padrão empilhada).
@@ -49,12 +50,19 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     setAlturas((prev) => prev[id] === h ? prev : { ...prev, [id]: h });
   };
 
+  // Carrega o layout efetivo: por padrão o COMPARTILHADO do restaurante; se este
+  // cardápio tem `layoutProprio`, carrega o layout dele.
   useEffect(() => {
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
-      const l = s.exists() ? (s.data().layout as CardapioLayout | undefined) : undefined;
+      const d = s.exists() ? (s.data() as CardapioEstruturado) : null;
+      const menu = menuId ? (d?.cardapios || []).find((c) => c.id === menuId) : null;
+      const proprio = !!menu?.layoutProprio;
+      setLayoutProprio(proprio);
+      const l = (proprio ? menu?.layout : d?.layout) as CardapioLayout | undefined;
       if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
+      else setLay(PADROES);
     });
-  }, [rid]);
+  }, [rid, menuId]);
 
   // Carrega TODAS as opções de fonte (curadas + custom) — um <link> por família,
   // pra que uma família inválida não impeça as outras de carregar.
@@ -76,10 +84,41 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   async function salvarLayout() {
     setSalvando(true);
     try {
-      await updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: lay }));
+      const ref = doc(db, "cardapioEstruturado", rid);
+      if (layoutProprio && menuId) {
+        // Layout SÓ deste cardápio.
+        const snap = await getDoc(ref);
+        const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+        const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, layoutProprio: true, layout: lay } : c);
+        await setDoc(ref, sanitizeForFirestore({ cardapios }), { merge: true });
+      } else {
+        // Layout COMPARTILHADO entre todos os cardápios do restaurante.
+        await updateDoc(ref, sanitizeForFirestore({ layout: lay }));
+      }
       setDirty(false); setSalvoFlash(true); setTimeout(() => setSalvoFlash(false), 2200);
     } catch { /* mantém dirty */ }
     finally { setSalvando(false); }
+  }
+
+  // Liga/desliga o "formatar este cardápio diferente dos demais".
+  async function toggleProprio(v: boolean) {
+    setLayoutProprio(v);
+    if (!menuId) return;
+    const ref = doc(db, "cardapioEstruturado", rid);
+    const snap = await getDoc(ref);
+    const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+    if (v) {
+      // Vira próprio: parte de uma cópia do que está na tela (idêntico ao compartilhado).
+      const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, layoutProprio: true, layout: lay } : c);
+      await setDoc(ref, sanitizeForFirestore({ cardapios }), { merge: true }).catch(() => {});
+    } else {
+      // Volta a usar o compartilhado: limpa o próprio e recarrega o compartilhado na tela.
+      const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, layoutProprio: false } : c);
+      await setDoc(ref, sanitizeForFirestore({ cardapios }), { merge: true }).catch(() => {});
+      const compart = d?.layout as CardapioLayout | undefined;
+      setLay(compart ? { ...PADROES, ...compart, fontesCustom: compart.fontesCustom || [], secaoPos: compart.secaoPos || {} } : PADROES);
+      setDirty(false);
+    }
   }
   function tentarFechar() {
     if (dirty && !window.confirm("Você tem alterações de formatação não salvas. Fechar sem salvar?")) return;
@@ -237,6 +276,22 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
         {/* Controles */}
         <div className="w-72 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
           <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
+
+          {menuId && (
+            <div className={`rounded-lg border p-2.5 ${layoutProprio ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50" : "border-gray-200 dark:border-gray-800"}`}>
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" checked={layoutProprio} onChange={(e) => void toggleProprio(e.target.checked)} className="w-4 h-4 mt-0.5 accent-amber-600" />
+                <span className="text-[12px] text-gray-700 dark:text-gray-200">
+                  <span className="font-semibold">Formatar este cardápio diferente dos demais</span>
+                  <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                    {layoutProprio
+                      ? "Fonte/tamanhos/espaçamentos valem só para este cardápio."
+                      : "A formatação é única: editar aqui aplica em todos os cardápios."}
+                  </span>
+                </span>
+              </label>
+            </div>
+          )}
 
           <FontePicker label="Fonte dos títulos/seções" value={lay.fonteTitulos} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteTitulos", id)} onAdicionar={() => setAddFonte(true)} />
           <FontePicker label="Fonte do corpo" value={lay.fonteCorpo} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteCorpo", id)} onAdicionar={() => setAddFonte(true)} />

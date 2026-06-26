@@ -3307,6 +3307,10 @@ export type CardapioMenu = {
   temCapa?: boolean;                 // usa a página de capa (arte)
   secoes: SecaoCardapio[];
   traduzidoEm?: string;
+  // Formatação (fontes/tamanhos/espaçamentos/margens): por padrão usa o layout
+  // COMPARTILHADO do restaurante. Se `layoutProprio`, usa o `layout` próprio abaixo.
+  layoutProprio?: boolean;
+  layout?: CardapioLayout;
 };
 // Ajustes visuais do PDF/preview do cardápio (fontes Google + espaçamentos).
 export type CardapioLayout = {

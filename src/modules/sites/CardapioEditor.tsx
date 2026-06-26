@@ -352,7 +352,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)} onClose={() => setMostrarVisual(false)} />
+        <CardapioVisual rid={rid} menuId={menuId} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)} onClose={() => setMostrarVisual(false)} />
       )}
       {iconePrato && (() => {
         const p = secoes[iconePrato.si]?.pratos[iconePrato.pi];
