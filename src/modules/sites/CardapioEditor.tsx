@@ -7,7 +7,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
-import { gerarCardapioPdf } from "./shared/gerarCardapioPdf";
+import { gerarCardapioPdf, gerarCardapioPdfSororoca } from "./shared/gerarCardapioPdf";
 import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -188,7 +188,11 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }
             {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
           </span>
           {podeEditar && secoes.length > 0 && (
-            <button type="button" onClick={() => void gerarCardapioPdf({ secoes, titulo: nomeRestaurante || "Cardápio", corPrimaria, idioma: lang, nomeArquivo: `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf` })}
+            <button type="button" onClick={() => {
+              const nomeArq = `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`;
+              if (/soror/i.test(nomeRestaurante || "")) void gerarCardapioPdfSororoca({ secoes, idioma: lang, nomeArquivo: nomeArq });
+              else void gerarCardapioPdf({ secoes, titulo: nomeRestaurante || "Cardápio", corPrimaria, idioma: lang, nomeArquivo: nomeArq });
+            }}
               className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
               ⬇ PDF impressão{en ? " (EN)" : ""}
             </button>
