@@ -14,11 +14,13 @@ const PAGE_W = 460, PAGE_H = 651;
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
-type Lay = Required<Omit<CardapioLayout, "fontesCustom">> & { fontesCustom: string[] };
+type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos">> & { fontesCustom: string[]; secaoPos: { [k: string]: number } };
+// Posição vertical default por seção (topo alinhado; baixo mais pra baixo).
+const POS_PADRAO: { [k: string]: number } = { sobremesa: 40, frio: 40, brasa: 40, quente: 330, acompanhamento: 330 };
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
-  tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0,
+  tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {},
 };
 
 export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: {
@@ -34,7 +36,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   useEffect(() => {
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
       const l = s.exists() ? (s.data().layout as CardapioLayout | undefined) : undefined;
-      if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [] });
+      if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
     });
   }, [rid]);
 
@@ -56,6 +58,9 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   function adicionarFonte(family: string) {
     const f = family.trim(); if (!f) return;
     setLay((p) => { const n = { ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }; salvar(n); return n; });
+  }
+  function setPos(chave: string, v: number) {
+    setLay((p) => { const n = { ...p, secaoPos: { ...p.secaoPos, [chave]: v } }; salvar(n); return n; });
   }
 
   const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom).cssFamily;
@@ -93,9 +98,14 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   };
 
   const pageStyle: CSSProperties = { width: PAGE_W, height: PAGE_H, background: "#fff", position: "relative", boxShadow: "0 1px 8px rgba(0,0,0,.15)", overflow: "hidden", flexShrink: 0 };
-  const pad = 30;
-  const colW = (PAGE_W - pad * 2 - 22) / 2;
+  const pad = 30, gutter = 22;
+  const colW = (PAGE_W - pad * 2 - gutter) / 2;
+  const xEsq = pad, xDir = pad + colW + gutter;
   const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
+  const pos = (chave: string) => lay.secaoPos[chave] ?? POS_PADRAO[chave] ?? 40;
+  const Bloco = ({ s, chave, x }: { s: SecaoCardapio; chave: string; x: number }) => (
+    <div style={{ position: "absolute", top: pos(chave), left: x, width: colW }}><Secao s={s} /></div>
+  );
 
   const paginas = ehSororoca ? (
     <>
@@ -103,11 +113,13 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
         {lay.tituloCapa && (
           <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{lay.tituloCapa}</div>
         )}
-        <div style={{ position: "absolute", top: 150, left: pad, width: colW }}>{sobremesas && <Secao s={sobremesas} />}</div>
+        {sobremesas && <Bloco s={sobremesas} chave="sobremesa" x={xEsq} />}
       </div>
-      <div className="pagina-pdf" style={{ ...pageStyle, display: "flex", gap: 22, padding: pad, boxSizing: "border-box" }}>
-        <div style={{ width: colW }}>{frios && <Secao s={frios} />}{quentes && <Secao s={quentes} />}</div>
-        <div style={{ width: colW }}>{brasa && <Secao s={brasa} />}{acomp && <Secao s={acomp} />}</div>
+      <div className="pagina-pdf" style={pageStyle}>
+        {frios && <Bloco s={frios} chave="frio" x={xEsq} />}
+        {quentes && <Bloco s={quentes} chave="quente" x={xEsq} />}
+        {brasa && <Bloco s={brasa} chave="brasa" x={xDir} />}
+        {acomp && <Bloco s={acomp} chave="acompanhamento" x={xDir} />}
       </div>
     </>
   ) : (
@@ -165,6 +177,21 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
               </label>
               <Slider label="Tamanho do título da capa" k="tamTituloCapa" min={8} max={28} />
               <Slider label="Posição vertical (↑ ↓)" k="offsetTituloCapa" min={-80} max={120} />
+            </div>
+          )}
+
+          {ehSororoca && (
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Posição vertical das seções</div>
+              {([["sobremesa", sobremesas], ["frio", frios], ["quente", quentes], ["brasa", brasa], ["acompanhamento", acomp]] as const)
+                .filter(([, s]) => s)
+                .map(([chave, s]) => (
+                  <label key={chave} style={{ display: "block", fontSize: 12, color: "#555" }}>
+                    <span style={{ fontWeight: 600 }}>{s!.nome}: {pos(chave)}</span>
+                    <input type="range" min={10} max={560} value={pos(chave)} onChange={(e) => setPos(chave, Number(e.target.value))} className="w-full" />
+                  </label>
+                ))}
+              <p className="text-[11px] text-gray-400">Topo = seções de cima (Sobremesas/Frios/Brasa, alinhadas). Aumente pra descer Quentes/Acompanhamentos.</p>
             </div>
           )}
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>

@@ -3303,6 +3303,9 @@ export type CardapioLayout = {
   tituloCapa?: string;
   tamTituloCapa?: number;  // px
   offsetTituloCapa?: number; // deslocamento vertical em relação à logo (px, +desce)
+  // Posição vertical (top, px na página de preview) por seção — chave normalizada
+  // (sobremesa, frio, quente, brasa, acompanhamento). Layout Sororoca.
+  secaoPos?: { [chave: string]: number };
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId
