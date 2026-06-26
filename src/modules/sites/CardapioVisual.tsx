@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { opcoesFonte, resolverFonte, urlCss2, fonteCustom, FONTES_GOOGLE_POPULARES } from "./shared/cardapioFontes";
+import { opcoesFonte, resolverFonte, urlsCss2, fonteCustom, FONTES_GOOGLE_POPULARES } from "./shared/cardapioFontes";
 import type { CardapioLayout, SecaoCardapio } from "../../core/types";
 
 const TEAL = "#1d3c4b";
@@ -48,14 +48,16 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     });
   }, [rid]);
 
-  // Carrega TODAS as opções de fonte (curadas + custom) — pro preview do dropdown.
+  // Carrega TODAS as opções de fonte (curadas + custom) — um <link> por família,
+  // pra que uma família inválida não impeça as outras de carregar.
   useEffect(() => {
-    const url = urlCss2(opcoesFonte(lay.fontesCustom));
-    if (!url) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet"; link.href = url;
-    document.head.appendChild(link);
-    return () => { link.remove(); };
+    const links = urlsCss2(opcoesFonte(lay.fontesCustom)).map((href) => {
+      const l = document.createElement("link");
+      l.rel = "stylesheet"; l.href = href;
+      document.head.appendChild(l);
+      return l;
+    });
+    return () => { links.forEach((l) => l.remove()); };
   }, [lay.fontesCustom]);
 
   function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setDirty(true); setLay((p) => ({ ...p, [k]: v })); }
@@ -182,6 +184,9 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   async function baixar() {
     setBaixando(true);
     try {
+      // Garante que as fontes do Google terminaram de baixar antes do print —
+      // senão o html2canvas captura no fallback e o PDF sai com fonte errada.
+      try { await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready; } catch { /* ok */ }
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
@@ -369,11 +374,13 @@ function AdicionarFonteModal({ onClose, onAdd }: { onClose: () => void; onAdd: (
   useEffect(() => {
     if (!visiveis.length) return;
     const t = window.setTimeout(() => {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = urlCss2(visiveis.slice(0, 60).map(fonteCustom)) || "";
-      link.dataset.fontePreview = "1";
-      document.head.appendChild(link);
+      urlsCss2(visiveis.slice(0, 60).map(fonteCustom)).forEach((href) => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = href;
+        link.dataset.fontePreview = "1";
+        document.head.appendChild(link);
+      });
     }, 250);
     return () => {
       clearTimeout(t);

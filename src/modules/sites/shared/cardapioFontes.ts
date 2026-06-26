@@ -8,9 +8,12 @@ const curadas = (): FonteOpcao[] =>
   FONTES_SITE.map((f) => ({ id: f.id, nome: f.nome, cssFamily: f.cssFamily, googleFamily: f.googleFamily, pesos: f.pesos }));
 
 // Família avulsa do Google (ex: "Bebas Neue") → opção.
+// pesos = "" (sem eixo): muitas famílias têm só peso 400 (Bebas Neue, Sacramento…),
+// e pedir wght@600;700 que não existe faz o Google devolver 400 e a fonte não
+// carregar. Sem eixo, carrega o padrão da família (o navegador faz faux-bold).
 export function fonteCustom(family: string): FonteOpcao {
   const nome = family.trim();
-  return { id: nome, nome, cssFamily: `'${nome}', sans-serif`, googleFamily: nome.replace(/\s+/g, "+"), pesos: "wght@400;600;700" };
+  return { id: nome, nome, cssFamily: `'${nome}', sans-serif`, googleFamily: nome.replace(/\s+/g, "+"), pesos: "" };
 }
 
 export function opcoesFonte(custom: string[] = []): FonteOpcao[] {
@@ -60,4 +63,18 @@ export function urlCss2(opcoes: FonteOpcao[]): string | null {
   const fams = [...new Set(opcoes.map((o) => `${o.googleFamily}:${o.pesos}`))];
   if (!fams.length) return null;
   return `https://fonts.googleapis.com/css2?${fams.map((f) => `family=${f}`).join("&")}&display=swap`;
+}
+
+// UMA url por família — evita que uma família inválida (peso inexistente, nome
+// errado) derrube o stylesheet inteiro (CSS2 devolve 400 pra requisição toda).
+export function urlsCss2(opcoes: FonteOpcao[]): string[] {
+  const vistos = new Set<string>();
+  const urls: string[] = [];
+  for (const o of opcoes) {
+    if (!o.googleFamily || vistos.has(o.googleFamily)) continue;
+    vistos.add(o.googleFamily);
+    const fam = o.pesos ? `${o.googleFamily}:${o.pesos}` : o.googleFamily;
+    urls.push(`https://fonts.googleapis.com/css2?family=${fam}&display=swap`);
+  }
+  return urls;
 }
