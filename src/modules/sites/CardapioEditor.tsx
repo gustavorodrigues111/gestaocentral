@@ -336,7 +336,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
+        <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
       )}
       {iconePrato && (() => {
         const p = secoes[iconePrato.si]?.pratos[iconePrato.pi];

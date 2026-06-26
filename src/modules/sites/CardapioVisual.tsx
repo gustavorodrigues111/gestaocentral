@@ -24,8 +24,8 @@ const PADROES: Lay = {
   margemTopo: 34, margemBaixo: 40,
 };
 
-export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPrato, onClose }: {
-  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; lang: "pt" | "en";
+export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, lang, onEditarPrato, onClose }: {
+  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onClose: () => void;
 }) {
@@ -144,12 +144,23 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPra
     </>
   );
 
-  const paginas = ehSororoca ? (
+  const ehComidas = ehSororoca && !!(sobremesas || frios || quentes || brasa || acomp);
+  const tituloCapaMenu = (ehComidas ? lay.tituloCapa : (nomeMenu || "").toUpperCase()) || "";
+  const Capa = () => (
+    <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
+      <GuiaMargens />
+      {tituloCapaMenu && (
+        <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
+      )}
+    </div>
+  );
+
+  const paginas = ehComidas ? (
     <>
       <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
         <GuiaMargens />
-        {lay.tituloCapa && (
-          <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{lay.tituloCapa}</div>
+        {tituloCapaMenu && (
+          <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
         {sobremesas && <Bloco s={sobremesas} chave="sobremesa" x={xEsq} />}
       </div>
@@ -159,6 +170,15 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onEditarPra
         {quentes && <Bloco s={quentes} chave="quente" x={xEsq} />}
         {brasa && <Bloco s={brasa} chave="brasa" x={xDir} />}
         {acomp && <Bloco s={acomp} chave="acompanhamento" x={xDir} />}
+      </div>
+    </>
+  ) : ehSororoca ? (
+    // Bebidas/Vinhos: capa + seções em 2 colunas (use os controles de fonte/
+    // espaçamento/margem pra compactar e caber). Posicionamento livre = Fase 2.
+    <>
+      <Capa />
+      <div className="pagina-pdf" style={{ ...pageStyle, paddingTop: lay.margemTopo, paddingBottom: lay.margemBaixo, paddingLeft: pad, paddingRight: pad, boxSizing: "border-box", columnCount: 2, columnGap: gutter }}>
+        {secoes.map((s) => <div key={s.id} style={{ breakInside: "avoid", marginBottom: 14 }}><Secao s={s} /></div>)}
       </div>
     </>
   ) : (
