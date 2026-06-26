@@ -31,25 +31,36 @@ export async function gerarCardapioPdf(opts: {
   const tit = (p: { titulo: string; tituloEn?: string }) => (en && p.tituloEn) || p.titulo;
   const sub = (p: { subtitulo?: string; subtituloEn?: string }) => (en && p.subtituloEn) || p.subtitulo;
 
-  let col = 0;
-  let y = topY;
-  const novaColuna = () => { if (col === 0) { col = 1; y = topY; } else { doc.addPage(); col = 0; y = topY; } };
-  const garantir = (h: number) => { if (y + h > bottomY) novaColuna(); };
+  // Título centralizado no topo da página 1 (serifa).
+  doc.setFont("times", "bold"); doc.setFontSize(26); doc.setTextColor(cor.r, cor.g, cor.b);
+  doc.text((opts.titulo || "Cardápio").toUpperCase(), W / 2, topY + 20, { align: "center" });
+  const yInicioColunas = topY + 52; // colunas começam abaixo do título (só na pág 1)
 
-  // Título no topo da 1ª coluna.
-  doc.setFont("helvetica", "bold"); doc.setFontSize(24); doc.setTextColor(cor.r, cor.g, cor.b);
-  doc.text(opts.titulo || "Cardápio", colX[0], y + 18);
-  y += 46;
+  let col = 0;
+  let pagina = 1;
+  let y = yInicioColunas;
+  const colTop = () => (pagina === 1 ? yInicioColunas : topY);
+  const avancaColuna = () => {
+    if (col === 0) { col = 1; y = colTop(); }
+    else { doc.addPage(); pagina++; col = 0; y = colTop(); }
+  };
+  const garantir = (h: number) => { if (y + h > bottomY) avancaColuna(); };
 
   for (const s of opts.secoes) {
     const nome = nomeSec(s); const obs = obsSec(s);
     garantir(58); // cabeçalho + 1 prato
-    doc.setFont("helvetica", "bold"); doc.setFontSize(15); doc.setTextColor(cor.r, cor.g, cor.b);
-    doc.text((nome || "").toUpperCase(), colX[col], y);
-    y += 7;
-    doc.setDrawColor(cor.r, cor.g, cor.b); doc.setLineWidth(0.8);
-    doc.line(colX[col], y, colX[col] + colW, y);
-    y += 15;
+    // Cabeçalho de seção: serifa, centralizado, com filete dos dois lados.
+    doc.setFont("times", "bold"); doc.setFontSize(15); doc.setTextColor(cor.r, cor.g, cor.b);
+    const cx = colX[col] + colW / 2;
+    doc.text((nome || "").toUpperCase(), cx, y + 4, { align: "center" });
+    const tw = doc.getTextWidth((nome || "").toUpperCase());
+    doc.setDrawColor(cor.r, cor.g, cor.b); doc.setLineWidth(0.6);
+    const lineY = y; const pad = 10;
+    if (colW / 2 - tw / 2 - pad > 6) {
+      doc.line(colX[col], lineY, cx - tw / 2 - pad, lineY);
+      doc.line(cx + tw / 2 + pad, lineY, colX[col] + colW, lineY);
+    }
+    y += 17;
     if (obs) {
       doc.setFont("helvetica", "italic"); doc.setFontSize(9); doc.setTextColor(120, 120, 120);
       const lines = doc.splitTextToSize(obs, colW) as string[];
