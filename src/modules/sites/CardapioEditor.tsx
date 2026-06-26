@@ -193,32 +193,35 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
   if (carregando) return <div className="text-sm text-gray-500">Carregando cardápio…</div>;
 
   const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-60";
+  // Inputs com cor por tipo: seção = vermelho, prato = verde, descrição = azul.
+  const inpBase = "px-2 py-1.5 text-sm rounded-lg border dark:text-gray-100 disabled:opacity-60";
+  const inpSecao = `${inpBase} bg-rose-50 dark:bg-rose-950/25 border-rose-200 dark:border-rose-900/50`;
+  const inpTitulo = `${inpBase} bg-emerald-50 dark:bg-emerald-950/25 border-emerald-200 dark:border-emerald-900/50`;
+  const inpDesc = `${inpBase} bg-sky-50 dark:bg-sky-950/25 border-sky-200 dark:border-sky-900/50`;
 
   const en = lang === "en";
   const refCls = "text-[11px] text-gray-400 dark:text-gray-500 px-1";
 
   return (
     <div className="space-y-3">
-      {/* Seletor de idioma + ações */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        {secoes.length > 0 ? (
-          <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
-            <button type="button" onClick={() => setLang("pt")} className={`text-sm px-3 py-1.5 font-medium ${!en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇧🇷 Português</button>
-            <button type="button" onClick={() => setLang("en")} className={`text-sm px-3 py-1.5 font-medium ${en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇺🇸 English</button>
-          </div>
-        ) : <span />}
+      {/* Idioma + PDF na mesma linha (compacto pro mobile) */}
+      {secoes.length > 0 && (
         <div className="flex items-center gap-2">
-          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 min-w-14 text-right">
-            {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
-          </span>
-          {podeEditar && secoes.length > 0 && (
+          <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden shrink-0">
+            <button type="button" onClick={() => setLang("pt")} className={`text-[13px] px-2.5 py-1.5 font-medium ${!en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇧🇷 PT</button>
+            <button type="button" onClick={() => setLang("en")} className={`text-[13px] px-2.5 py-1.5 font-medium ${en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇺🇸 EN</button>
+          </div>
+          {podeEditar && (
             <button type="button" onClick={() => setMostrarVisual(true)}
-              className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-              🎨 PDF / Visual{en ? " (EN)" : ""}
+              className="text-[13px] px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0">
+              🎨 PDF
             </button>
           )}
+          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 ml-auto text-right">
+            {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
+          </span>
         </div>
-      </div>
+      )}
 
       {/* Banner do modo inglês: traduz a partir do português */}
       {en && podeEditar && secoes.length > 0 && (
@@ -249,7 +252,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           {en ? (
             <div>
               <div className={refCls}>{sec.nome || "—"}</div>
-              <input value={sec.nomeEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { nomeEn: e.target.value || undefined })} placeholder="English — section name" className={`${inp} w-full font-bold`} />
+              <input value={sec.nomeEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { nomeEn: e.target.value || undefined })} placeholder="English — section name" className={`${inpSecao} w-full font-bold`} />
               {sec.obs && (
                 <>
                   <div className={`${refCls} mt-1 italic`}>{sec.obs}</div>
@@ -260,7 +263,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <input value={sec.nome} disabled={!podeEditar} onChange={(e) => setSec(si, { nome: e.target.value })} placeholder="Nome da seção (ex: Frios)" className={`${inp} flex-1 font-bold`} />
+                <input value={sec.nome} disabled={!podeEditar} onChange={(e) => setSec(si, { nome: e.target.value })} placeholder="Nome da seção (ex: Frios)" className={`${inpSecao} flex-1 font-bold`} />
                 {podeEditar && (
                   <div className="flex items-center gap-0.5 shrink-0 text-gray-400">
                     <button type="button" title="Subir" onClick={() => moveSecao(si, -1)} className="px-1.5 hover:text-gray-700">↑</button>
@@ -283,30 +286,35 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                       <div className={`${refCls} flex-1 truncate`}>{p.titulo || "—"}</div>
                       {p.preco && <span className="text-[12px] text-gray-400 shrink-0">{p.preco}</span>}
                     </div>
-                    <input value={p.tituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="English — title" className={`${inp} w-full font-semibold`} />
+                    <input value={p.tituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="English — title" className={`${inpTitulo} w-full font-semibold`} />
                     {p.subtitulo && <div className={refCls}>{p.subtitulo}</div>}
-                    <textarea value={p.subtituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description (Enter = quebra de linha)" className={`${inp} w-full text-[12px] text-gray-500 resize-y`} />
+                    <textarea value={p.subtituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                   </>
                 ) : (
                   <>
-                    <div className="flex items-center gap-2">
+                    {/* Linha 1: ícone + título (verde) */}
+                    <div className="flex items-center gap-1.5">
                       {podeEditar && (
                         <button type="button" title="Ícone do item" onClick={() => setIconePrato({ si, pi })}
-                          className="shrink-0 w-7 h-7 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                           {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <span className="text-gray-300 text-xs">🖼</span>}
                         </button>
                       )}
-                      <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Título do prato" className={`${inp} flex-1 font-semibold`} />
-                      <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="Preço" className={`${inp} w-24 text-right`} />
+                      <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Título do prato" className={`${inpTitulo} flex-1 font-semibold min-w-0`} />
+                    </div>
+                    {/* Linha 2: preço + reordenar (cabe no mobile) */}
+                    <div className="flex items-center gap-2">
+                      <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="Preço" className={`${inpTitulo} w-28 text-right`} />
                       {podeEditar && (
-                        <div className="flex items-center gap-0.5 shrink-0 text-gray-400">
-                          <button type="button" title="Subir" onClick={() => movePrato(si, pi, -1)} className="px-1 hover:text-gray-700">↑</button>
-                          <button type="button" title="Descer" onClick={() => movePrato(si, pi, 1)} className="px-1 hover:text-gray-700">↓</button>
-                          <button type="button" title="Remover" onClick={() => removePrato(si, pi)} className="px-1 hover:text-rose-600">✕</button>
+                        <div className="flex items-center gap-1 ml-auto text-gray-400">
+                          <button type="button" title="Subir" onClick={() => movePrato(si, pi, -1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↑</button>
+                          <button type="button" title="Descer" onClick={() => movePrato(si, pi, 1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↓</button>
+                          <button type="button" title="Remover prato" onClick={() => removePrato(si, pi)} className="w-7 h-7 rounded hover:bg-rose-50 dark:hover:bg-rose-900/30 hover:text-rose-600">✕</button>
                         </div>
                       )}
                     </div>
-                    <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Subtítulo / descrição (Enter = quebra de linha)" className={`${inp} w-full text-[12px] text-gray-500 resize-y`} />
+                    {/* Descrição (azul) */}
+                    <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Descrição (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                   </>
                 )}
               </div>
