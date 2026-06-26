@@ -30,7 +30,9 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   const [lay, setLay] = useState<Lay>(PADROES);
   const [baixando, setBaixando] = useState(false);
   const [addFonte, setAddFonte] = useState(false);
-  const timer = useRef<number | undefined>(undefined);
+  const [dirty, setDirty] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [salvoFlash, setSalvoFlash] = useState(false);
   const paginasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -50,17 +52,24 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
     return () => { link.remove(); };
   }, [lay.fontesCustom]);
 
-  function salvar(next: Lay) {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = window.setTimeout(() => { void updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: next })).catch(() => {}); }, 500);
-  }
-  function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setLay((p) => { const n = { ...p, [k]: v }; salvar(n); return n; }); }
+  function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setDirty(true); setLay((p) => ({ ...p, [k]: v })); }
   function adicionarFonte(family: string) {
     const f = family.trim(); if (!f) return;
-    setLay((p) => { const n = { ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }; salvar(n); return n; });
+    setDirty(true); setLay((p) => ({ ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }));
   }
-  function setPos(chave: string, v: number) {
-    setLay((p) => { const n = { ...p, secaoPos: { ...p.secaoPos, [chave]: v } }; salvar(n); return n; });
+  function setPos(chave: string, v: number) { setDirty(true); setLay((p) => ({ ...p, secaoPos: { ...p.secaoPos, [chave]: v } })); }
+
+  async function salvarLayout() {
+    setSalvando(true);
+    try {
+      await updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: lay }));
+      setDirty(false); setSalvoFlash(true); setTimeout(() => setSalvoFlash(false), 2200);
+    } catch { /* mantém dirty */ }
+    finally { setSalvando(false); }
+  }
+  function tentarFechar() {
+    if (dirty && !window.confirm("Você tem alterações de formatação não salvas. Fechar sem salvar?")) return;
+    onClose();
   }
 
   const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom).cssFamily;
@@ -155,8 +164,9 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
   );
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex overflow-hidden" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={tentarFechar}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Controles */}
         <div className="w-72 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
           <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
@@ -202,19 +212,31 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
         </div>
 
-        {/* Preview + ações */}
+        {/* Preview */}
         <div className="flex-1 flex flex-col min-w-0">
-          <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
+          <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pré-visualização{en ? " (EN)" : ""}</span>
-            <div className="flex items-center gap-2">
-              <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50">{baixando ? "gerando…" : "⬇ Baixar PDF"}</button>
-              <button type="button" onClick={onClose} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
-            </div>
           </div>
           <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-5">
             <div ref={paginasRef} className="flex flex-col items-center gap-5">{paginas}</div>
           </div>
         </div>
+       </div>
+
+       {/* Rodapé: status + salvar + baixar + fechar */}
+       <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
+         <span className="text-[13px]">
+           {salvando ? <span className="text-gray-500">salvando…</span>
+             : salvoFlash ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ Formatação salva</span>
+             : dirty ? <span className="text-amber-600 dark:text-amber-400">● Alterações não salvas</span>
+             : <span className="text-gray-400">Tudo salvo</span>}
+         </span>
+         <div className="flex items-center gap-2">
+           <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">{baixando ? "gerando…" : "⬇ Baixar PDF"}</button>
+           <button type="button" disabled={!dirty || salvando} onClick={() => void salvarLayout()} className="text-[13px] font-semibold px-4 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50">💾 Salvar</button>
+           <button type="button" onClick={tentarFechar} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
+         </div>
+       </div>
       </div>
 
       {addFonte && <AdicionarFonteModal onClose={() => setAddFonte(false)} onAdd={(f) => { adicionarFonte(f); setAddFonte(false); }} />}
