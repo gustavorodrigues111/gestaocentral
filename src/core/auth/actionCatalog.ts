@@ -214,6 +214,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "publicar",        label: "Publicar mês pra time ver" },
       { id: "exportar",        label: "Exportar/imprimir escala" },
       { id: "planejarPrevista",label: "Planejar escala prevista" },
+      { id: "configurarEscalas",label: "Cadastrar escalas nomeadas (catálogo)", sensivel: true },
     ],
   },
   {

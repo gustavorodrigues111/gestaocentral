@@ -297,6 +297,34 @@ export type WorkSchedule = {
   registradoEm: string;         // ISO
   registradoPor: string;        // pessoaId
   motivo?: string;
+  // Se a vigência veio de uma escala nomeada (snapshot dos dias na atribuição):
+  escalaId?: string;            // id da EscalaNomeada de origem
+  escalaNome?: string;          // nome no momento da atribuição (rótulo)
+};
+
+// Escala nomeada/reutilizável: cadastrada uma vez e atribuída a vários
+// empregados. Mesma forma de dias do WorkSchedule. A atribuição faz SNAPSHOT
+// dos dias numa vigência de `empregado.workSchedules[]` (editar a escala depois
+// NÃO mexe em quem já está vinculado — gera nova vigência manual).
+export type EscalaNomeada = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  descricao?: string;
+  type: "single" | "alternating";
+  totalContract: number;        // minutos (single: dos days; alternating: média A/B)
+  // Se type === "single":
+  days?: { [key: number]: HorarioDia };
+  sundayCycle?: SundayCycle | null;
+  // Se type === "alternating":
+  weeks?: {
+    A: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
+    B: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
+  };
+  ativo: boolean;               // false = arquivada (não aparece na seleção)
+  criadoEm: string;             // ISO
+  criadoPor: string;            // pessoaId
+  atualizadoEm?: string;        // ISO
 };
 
 // Status do dia na escala

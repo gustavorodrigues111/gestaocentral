@@ -2,17 +2,18 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canVer } from "../../core/auth/permissions";
+import { canVer, canAcao } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
 import { AlteracoesTab } from "./AlteracoesTab";
+import { EscalasTab } from "./EscalasTab";
 import { ImportLoteHorariosModal } from "./ImportLoteHorariosModal";
 
 // Tab "🎯 Templates" foi removida — templates de permissão eram do sistema
 // antigo (presets de ver/configurar pra clonar). Substituído pela Pagina
 // /perfis (master only) onde se cria perfis reutilizáveis.
-type Tab = "pessoas" | "cargos" | "alteracoes";
+type Tab = "pessoas" | "cargos" | "escalas" | "alteracoes";
 
 export function PessoasPage() {
   const { pessoa: me } = useAuth();
@@ -23,6 +24,7 @@ export function PessoasPage() {
   const [tab, setTab] = useState<Tab>("pessoas");
   const [showImportHorarios, setShowImportHorarios] = useState(false);
   const podeVer = canVer(me, rid, "pessoas");
+  const podeEscalas = canAcao(me, rid, "escala", "configurarEscalas");
   const isMaster = !!me?.isMaster;
 
   if (!activeRestaurant) {
@@ -40,6 +42,7 @@ export function PessoasPage() {
   const tabs: { id: Tab; label: string; icon: string }[] = [
     { id: "pessoas",    label: "Pessoas",    icon: "👤" },
     { id: "cargos",     label: "Cargos",     icon: "🏷️" },
+    ...(podeEscalas ? [{ id: "escalas" as Tab, label: "Escalas", icon: "📆" }] : []),
     { id: "alteracoes", label: "Alterações", icon: "📋" },
   ];
 
@@ -74,6 +77,7 @@ export function PessoasPage() {
 
       {tab === "pessoas"    && <PessoasList    restaurantId={rid} />}
       {tab === "cargos"     && <CargosTab      restaurantId={rid} />}
+      {tab === "escalas"    && podeEscalas && <EscalasTab restaurantId={rid} />}
       {tab === "alteracoes" && <AlteracoesTab  restaurantId={rid} />}
 
       {showImportHorarios && (

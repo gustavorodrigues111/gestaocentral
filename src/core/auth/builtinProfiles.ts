@@ -78,7 +78,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     escala: {
       verPropria: true, verTime: true,
       editar: true, aprovarTrocas: true, publicar: true, exportar: true,
-      planejarPrevista: true,
+      planejarPrevista: true, configurarEscalas: true,
     },
     fechamentoEscala: {
       ver: true, fechar: true,
