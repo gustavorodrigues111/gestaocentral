@@ -3306,6 +3306,7 @@ export type CardapioLayout = {
   // Posição vertical (top, px na página de preview) por seção — chave normalizada
   // (sobremesa, frio, quente, brasa, acompanhamento). Layout Sororoca.
   secaoPos?: { [chave: string]: number };
+  mostrarCifrao?: boolean;  // mostra "$" antes do preço numérico (default true)
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId

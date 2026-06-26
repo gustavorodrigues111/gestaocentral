@@ -20,7 +20,7 @@ const POS_PADRAO: { [k: string]: number } = { sobremesa: 40, frio: 40, brasa: 40
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
-  tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {},
+  tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
 };
 
 export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: {
@@ -82,7 +82,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
           const subt = (en && p.subtituloEn) || p.subtitulo;
           const preco = (p.preco || "").trim();
           const ehNota = /[a-zA-Z]/.test(preco);
-          const precoTxt = preco ? (ehNota ? preco : `R$ ${preco}`) : "";
+          const precoTxt = preco ? (ehNota ? preco : (lay.mostrarCifrao ? `$ ${preco}` : preco)) : "";
           return (
             <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
@@ -169,6 +169,11 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
           <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
           <Slider label="Espaço entre pratos" k="espacoPratos" min={2} max={28} />
           <Slider label="Espaço entre seções" k="espacoSecoes" min={6} max={50} />
+
+          <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
+            <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+            Mostrar cifrão <span className="font-semibold">$</span> antes do preço
+          </label>
 
           {ehSororoca && (
             <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-3">
