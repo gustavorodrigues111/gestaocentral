@@ -49,7 +49,6 @@ export function EscalasTab({ restaurantId }: { restaurantId: string }) {
       <button type="button" onClick={() => setEditar(e)} className="min-w-0 text-left flex-1">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-semibold text-gray-800 dark:text-gray-100 truncate">{e.nome}</span>
-          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">{e.type === "alternating" ? "Alternada A·B" : "Fixa"}</span>
           <span className="text-[11px] text-gray-500 tabular-nums">{fmtHHMM(e.totalContract)}/sem</span>
         </div>
         {e.descricao && <div className="text-[11px] text-gray-400 truncate mt-0.5">{e.descricao}</div>}
@@ -95,7 +94,7 @@ export function EscalasTab({ restaurantId }: { restaurantId: string }) {
   );
 }
 
-// ─── Modal: criar/editar escala nomeada ─────────────────────────────────────
+// ─── Modal: criar/editar escala nomeada (1 padrão semanal) ──────────────────
 function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
   restaurantId: string;
   escala: EscalaNomeada | null;
@@ -105,57 +104,28 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
   const { pessoa: me } = useAuth();
   const [nome, setNome] = useState(escala?.nome || "");
   const [descricao, setDescricao] = useState(escala?.descricao || "");
-  const [tipo, setTipo] = useState<"single" | "alternating">(escala?.type || "single");
-  const [daysSingle, setDaysSingle] = useState<Days>(() => (escala?.type !== "alternating" && escala?.days) || emptyDays());
-  const [cicloSingle, setCicloSingle] = useState<SundayCycle | null>(escala?.type !== "alternating" ? (escala?.sundayCycle ?? null) : null);
-  const [daysA, setDaysA] = useState<Days>(() => (escala?.type === "alternating" && escala?.weeks?.A?.days) || emptyDays());
-  const [daysB, setDaysB] = useState<Days>(() => (escala?.type === "alternating" && escala?.weeks?.B?.days) || emptyDays());
-  const [cicloA, setCicloA] = useState<SundayCycle | null>((escala?.type === "alternating" ? escala?.weeks?.A?.sundayCycle : null) ?? null);
-  const [cicloB, setCicloB] = useState<SundayCycle | null>((escala?.type === "alternating" ? escala?.weeks?.B?.sundayCycle : null) ?? null);
-  const [editWeek, setEditWeek] = useState<"A" | "B">("A");
+  const [days, setDays] = useState<Days>(() => escala?.days || emptyDays());
+  const [ciclo, setCiclo] = useState<SundayCycle | null>(escala?.sundayCycle ?? null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
-  const days = tipo === "single" ? daysSingle : (editWeek === "A" ? daysA : daysB);
-  const setDays = (updater: (d: Days) => Days) => {
-    if (tipo === "single") setDaysSingle(updater);
-    else if (editWeek === "A") setDaysA(updater);
-    else setDaysB(updater);
-  };
   const patchDia = (idx: number, patch: Partial<HorarioDia>) => setDays((d) => ({ ...d, [idx]: { ...(d[idx] || { active: false }), ...patch } }));
   const limparDia = (idx: number) => setDays((d) => ({ ...d, [idx]: { active: false } }));
-
-  const validSingle = useMemo(() => validateWorkScheduleDays(daysSingle, 0, 99999), [daysSingle]);
-  const validA = useMemo(() => validateWorkScheduleDays(daysA, 0, 99999), [daysA]);
-  const validB = useMemo(() => validateWorkScheduleDays(daysB, 0, 99999), [daysB]);
-  const errosAtuais = tipo === "single" ? validSingle.errors : (editWeek === "A" ? validA.errors : validB.errors);
+  const erros = useMemo(() => validateWorkScheduleDays(days, 0, 99999).errors, [days]);
 
   async function salvar() {
     setErro("");
     if (!nome.trim()) { setErro("Dê um nome pra escala."); return; }
-    if (tipo === "single" && !algumDiaAtivo(daysSingle)) { setErro("Marque ao menos um dia ativo."); return; }
-    if (tipo === "alternating" && (!algumDiaAtivo(daysA) || !algumDiaAtivo(daysB))) { setErro("As duas semanas (A e B) precisam de ao menos um dia ativo."); return; }
+    if (!algumDiaAtivo(days)) { setErro("Marque ao menos um dia ativo."); return; }
     setSalvando(true);
     try {
       const agora = new Date().toISOString();
-      const base = {
+      const payload: Omit<EscalaNomeada, "id"> = {
         restaurantId, nome: nome.trim(), descricao: descricao.trim() || undefined,
-        type: tipo, ativo: escala?.ativo ?? true,
+        totalContract: totalDias(days), days, sundayCycle: ciclo || undefined,
+        ativo: escala?.ativo ?? true,
         criadoEm: escala?.criadoEm || agora, criadoPor: escala?.criadoPor || me?.id || "", atualizadoEm: agora,
       };
-      let payload: Omit<EscalaNomeada, "id">;
-      if (tipo === "single") {
-        payload = { ...base, totalContract: totalDias(daysSingle), days: daysSingle, sundayCycle: cicloSingle || undefined };
-      } else {
-        const tA = totalDias(daysA), tB = totalDias(daysB);
-        payload = {
-          ...base, totalContract: Math.round((tA + tB) / 2),
-          weeks: {
-            A: { days: daysA, sundayCycle: cicloA || undefined, totalContract: tA },
-            B: { days: daysB, sundayCycle: cicloB || undefined, totalContract: tB },
-          },
-        };
-      }
       const limpo = sanitizeForFirestore(payload);
       if (escala) await updateDoc(doc(db, "escalasNomeadas", escala.id), limpo as Record<string, unknown>);
       else await addDoc(collection(db, "escalasNomeadas"), limpo);
@@ -165,44 +135,25 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
     } finally { setSalvando(false); }
   }
 
-  const cargaAtual = tipo === "single" ? totalDias(daysSingle) : (totalDias(daysA) + totalDias(daysB)) / 2;
   return (
     <Modal title={escala ? "✏️ Editar escala" : "📆 Nova escala"} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+        <p className="text-[12px] text-gray-500 dark:text-gray-400">Uma escala = um padrão semanal. Pra alternar escalas, isso é feito no cadastro do empregado (escolhendo mais de uma escala + o ciclo de alternância).</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Nome da escala *" value={nome} onChange={(e) => setNome(e.target.value)} placeholder="ex: Comercial 8h–17h" />
           <Input label="Descrição (opcional)" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="ex: Cozinha — folga aos domingos" />
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Tipo</label>
-          <div className="flex gap-2">
-            <button type="button" onClick={() => setTipo("single")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipo === "single" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>Fixa (toda semana igual)</button>
-            <button type="button" onClick={() => setTipo("alternating")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipo === "alternating" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>Alternada (semana A / semana B)</button>
-          </div>
-        </div>
-
-        {tipo === "alternating" && (
-          <div className="flex gap-2">
-            {(["A", "B"] as const).map((w) => (
-              <button key={w} type="button" onClick={() => setEditWeek(w)} className={`px-4 py-1.5 text-sm font-semibold rounded-lg border ${editWeek === w ? "border-indigo-400 bg-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>Semana {w} <span className="font-normal opacity-80">({fmtHHMM(totalDias(w === "A" ? daysA : daysB))})</span></button>
-            ))}
-          </div>
-        )}
-
         <DiasGrid days={days} onPatch={patchDia} onLimpar={limparDia} />
-        {errosAtuais.length > 0 && (
-          <div className="text-[11px] text-amber-700 dark:text-amber-400 space-y-0.5">{errosAtuais.map((er, i) => <div key={i}>⚠ {er.mensagem} <span className="opacity-60">({er.artigo})</span></div>)}</div>
+        {erros.length > 0 && (
+          <div className="text-[11px] text-amber-700 dark:text-amber-400 space-y-0.5">{erros.map((er, i) => <div key={i}>⚠ {er.mensagem} <span className="opacity-60">({er.artigo})</span></div>)}</div>
         )}
 
-        <CicloDomingo
-          ciclo={tipo === "single" ? cicloSingle : (editWeek === "A" ? cicloA : cicloB)}
-          onChange={(c) => { if (tipo === "single") setCicloSingle(c); else if (editWeek === "A") setCicloA(c); else setCicloB(c); }}
-        />
+        <CicloDomingo ciclo={ciclo} onChange={setCiclo} />
 
         <div className="flex items-center justify-between pt-1">
-          <span className="text-[12px] text-gray-500">Carga semanal: <strong className="tabular-nums">{fmtHHMM(Math.round(cargaAtual))}</strong></span>
+          <span className="text-[12px] text-gray-500">Carga semanal: <strong className="tabular-nums">{fmtHHMM(totalDias(days))}</strong></span>
           <div className="flex gap-2">
             <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
             <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar escala"}</Button>

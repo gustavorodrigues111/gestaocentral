@@ -302,25 +302,19 @@ export type WorkSchedule = {
   escalaNome?: string;          // nome no momento da atribuição (rótulo)
 };
 
-// Escala nomeada/reutilizável: cadastrada uma vez e atribuída a vários
-// empregados. Mesma forma de dias do WorkSchedule. A atribuição faz SNAPSHOT
-// dos dias numa vigência de `empregado.workSchedules[]` (editar a escala depois
-// NÃO mexe em quem já está vinculado — gera nova vigência manual).
+// Escala nomeada/reutilizável: UM padrão semanal cadastrado uma vez e atribuído
+// a vários empregados. Mesma forma de dias do WorkSchedule (sem alternância — a
+// alternância é composta no cadastro do empregado, escolhendo N escalas + ciclo).
+// A atribuição faz SNAPSHOT dos dias numa vigência de `empregado.workSchedules[]`
+// (editar a escala depois NÃO mexe em quem já está vinculado — nova vigência manual).
 export type EscalaNomeada = {
   id: string;
   restaurantId: string;
   nome: string;
   descricao?: string;
-  type: "single" | "alternating";
-  totalContract: number;        // minutos (single: dos days; alternating: média A/B)
-  // Se type === "single":
-  days?: { [key: number]: HorarioDia };
+  totalContract: number;        // minutos somados dos dias ativos
+  days: { [key: number]: HorarioDia };  // 0..6
   sundayCycle?: SundayCycle | null;
-  // Se type === "alternating":
-  weeks?: {
-    A: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
-    B: { days: { [key: number]: HorarioDia }; sundayCycle?: SundayCycle | null; totalContract: number };
-  };
   ativo: boolean;               // false = arquivada (não aparece na seleção)
   criadoEm: string;             // ISO
   criadoPor: string;            // pessoaId
