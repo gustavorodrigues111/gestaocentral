@@ -204,22 +204,22 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
 
   return (
     <div className="space-y-3">
-      {/* Idioma + PDF na mesma linha (compacto pro mobile) */}
+      {/* Idiomas à esquerda · Ver PDF à direita */}
       {secoes.length > 0 && (
         <div className="flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden shrink-0">
             <button type="button" onClick={() => setLang("pt")} className={`text-[13px] px-2.5 py-1.5 font-medium ${!en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇧🇷 PT</button>
             <button type="button" onClick={() => setLang("en")} className={`text-[13px] px-2.5 py-1.5 font-medium ${en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇺🇸 EN</button>
           </div>
-          {podeEditar && (
-            <button type="button" onClick={() => setMostrarVisual(true)}
-              className="text-[13px] px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0">
-              🎨 PDF
-            </button>
-          )}
-          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 ml-auto text-right">
+          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 ml-auto">
             {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
           </span>
+          {podeEditar && (
+            <button type="button" onClick={() => setMostrarVisual(true)}
+              className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0 font-medium">
+              🎨 Ver PDF
+            </button>
+          )}
         </div>
       )}
 
@@ -252,7 +252,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           {en ? (
             <div>
               <div className={refCls}>{sec.nome || "—"}</div>
-              <input value={sec.nomeEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { nomeEn: e.target.value || undefined })} placeholder="English — section name" className={`${inpSecao} w-full font-bold`} />
+              <input value={sec.nomeEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { nomeEn: e.target.value || undefined })} placeholder="English — section name" className={`${inpSecao} w-full text-base font-bold`} />
               {sec.obs && (
                 <>
                   <div className={`${refCls} mt-1 italic`}>{sec.obs}</div>
@@ -263,7 +263,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           ) : (
             <>
               <div className="flex items-center gap-2">
-                <input value={sec.nome} disabled={!podeEditar} onChange={(e) => setSec(si, { nome: e.target.value })} placeholder="Nome da seção (ex: Frios)" className={`${inpSecao} flex-1 font-bold`} />
+                <input value={sec.nome} disabled={!podeEditar} onChange={(e) => setSec(si, { nome: e.target.value })} placeholder="Nome da seção (ex: Frios)" className={`${inpSecao} flex-1 text-base font-bold`} />
                 {podeEditar && (
                   <div className="flex items-center gap-0.5 shrink-0 text-gray-400">
                     <button type="button" title="Subir" onClick={() => moveSecao(si, -1)} className="px-1.5 hover:text-gray-700">↑</button>
@@ -291,31 +291,35 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     <textarea value={p.subtituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                   </>
                 ) : (
-                  <>
-                    {/* Linha 1: ícone + título (verde) */}
-                    <div className="flex items-center gap-1.5">
-                      {podeEditar && (
-                        <button type="button" title="Ícone do item" onClick={() => setIconePrato({ si, pi })}
-                          className="shrink-0 w-8 h-8 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                          {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <span className="text-gray-300 text-xs">🖼</span>}
-                        </button>
-                      )}
-                      <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Título do prato" className={`${inpTitulo} flex-1 font-semibold min-w-0`} />
-                    </div>
-                    {/* Linha 2: preço + reordenar (cabe no mobile) */}
-                    <div className="flex items-center gap-2">
-                      <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="Preço" className={`${inpTitulo} w-28 text-right`} />
-                      {podeEditar && (
-                        <div className="flex items-center gap-1 ml-auto text-gray-400">
-                          <button type="button" title="Subir" onClick={() => movePrato(si, pi, -1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↑</button>
-                          <button type="button" title="Descer" onClick={() => movePrato(si, pi, 1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↓</button>
-                          <button type="button" title="Remover prato" onClick={() => removePrato(si, pi)} className="w-7 h-7 rounded hover:bg-rose-50 dark:hover:bg-rose-900/30 hover:text-rose-600">✕</button>
+                  // Coluna do ícone (à esquerda) + coluna do conteúdo (alinhada).
+                  <div className="flex gap-2">
+                    {podeEditar && (
+                      <button type="button" title="Ícone do item" onClick={() => setIconePrato({ si, pi })}
+                        className="shrink-0 w-9 h-9 mt-px flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                        {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <span className="text-gray-300 text-sm">🖼</span>}
+                      </button>
+                    )}
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      {/* Título (verde) */}
+                      <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato" className={`${inpTitulo} w-full font-semibold`} />
+                      {/* Preço (com $) + reordenar */}
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-28 shrink-0">
+                          <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
+                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="preço" className={`${inpTitulo} w-full text-right pl-6`} />
                         </div>
-                      )}
+                        {podeEditar && (
+                          <div className="flex items-center gap-1 ml-auto text-gray-400">
+                            <button type="button" title="Subir" onClick={() => movePrato(si, pi, -1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↑</button>
+                            <button type="button" title="Descer" onClick={() => movePrato(si, pi, 1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↓</button>
+                            <button type="button" title="Remover prato" onClick={() => removePrato(si, pi)} className="w-7 h-7 rounded hover:bg-rose-50 dark:hover:bg-rose-900/30 hover:text-rose-600">✕</button>
+                          </div>
+                        )}
+                      </div>
+                      {/* Descrição (azul) */}
+                      <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Descrição (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                     </div>
-                    {/* Descrição (azul) */}
-                    <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Descrição (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
-                  </>
+                  </div>
                 )}
               </div>
             ))}
