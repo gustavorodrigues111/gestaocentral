@@ -12,9 +12,11 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { CardapioEditor } from "../sites/CardapioEditor";
+import { seedSororocaPorNome } from "./seedsSororoca";
 import type { CardapioEstruturado, CardapioMenu } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
+const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
 export function CardapioPage() {
   const { pessoa: me } = useAuth();
@@ -38,6 +40,14 @@ export function CardapioPage() {
     if (!cards.length && d?.secoes?.length) {
       cards = [{ id: uid(), nome: "Comidas", temCapa: /soror/i.test(restaurant?.nome || ""), tituloCapa: d.layout?.tituloCapa || "COMIDAS", secoes: d.secoes, ...(d.traduzidoEm ? { traduzidoEm: d.traduzidoEm } : {}) }];
       if (podeEditar) await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios: cards, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
+    }
+    // Piloto Sororoca: cria Bebidas e Vinhos já preenchidos (1x).
+    if (podeEditar && /soror/i.test(restaurant?.nome || "") && !d?.cardapiosSeedSororoca) {
+      const novos = (["Bebidas", "Vinhos"] as const)
+        .filter((nome) => !cards.some((c) => norm(c.nome).includes(norm(nome))))
+        .map((nome) => ({ id: uid(), nome, temCapa: true, tituloCapa: nome.toUpperCase(), secoes: seedSororocaPorNome(nome) || [] }));
+      cards = [...cards, ...novos];
+      await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios: cards, cardapiosSeedSororoca: true, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
     }
     setCardapios(cards);
     setSel((s) => (s && cards.some((c) => c.id === s) ? s : cards[0]?.id || ""));

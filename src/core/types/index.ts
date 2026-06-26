@@ -3334,6 +3334,7 @@ export type CardapioEstruturado = {
   id: string;                        // = restaurantId
   restaurantId: string;
   cardapios?: CardapioMenu[];        // múltiplos cardápios (Comidas/Bebidas/Vinhos)
+  cardapiosSeedSororoca?: boolean;   // piloto: Bebidas/Vinhos já criados (não recriar)
   layout?: CardapioLayout;           // visual COMPARTILHADO entre os cardápios do restaurante
   secoes?: SecaoCardapio[];          // legado (1 cardápio) — migrado p/ cardapios na carga
   traduzidoEm?: string;
