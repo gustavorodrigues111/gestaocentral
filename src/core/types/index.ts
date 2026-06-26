@@ -3280,6 +3280,12 @@ export type PratoCardapio = {
   preco?: string;
   tituloEn?: string;
   subtituloEn?: string;
+  // Ícone à esquerda do item (coquetéis etc.): da biblioteca embutida (iconeId)
+  // ou imagem própria (iconeUrl). tipo "imagem" = item que é só uma logo
+  // centralizada (ex: logo de cerveja entre itens), sem nome/preço.
+  iconeId?: string;
+  iconeUrl?: string;
+  tipo?: "item" | "imagem";
 };
 export type SecaoCardapio = {
   id: string;

@@ -9,6 +9,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { CardapioVisual } from "./CardapioVisual";
 import { seedSororocaPorNome } from "../cardapio/seedsSororoca";
+import { IconePickerModal, IconeCardapioView } from "../cardapio/iconesCardapio";
 import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -72,6 +73,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
   const [lang, setLang] = useState<"pt" | "en">("pt");
   const [erroTrad, setErroTrad] = useState("");
   const [mostrarVisual, setMostrarVisual] = useState(false);
+  const [iconePrato, setIconePrato] = useState<{ si: number; pi: number } | null>(null);
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -288,6 +290,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                 ) : (
                   <>
                     <div className="flex items-center gap-2">
+                      {podeEditar && (
+                        <button type="button" title="Ícone do item" onClick={() => setIconePrato({ si, pi })}
+                          className="shrink-0 w-7 h-7 flex items-center justify-center rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <span className="text-gray-300 text-xs">🖼</span>}
+                        </button>
+                      )}
                       <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Título do prato" className={`${inp} flex-1 font-semibold`} />
                       <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="Preço" className={`${inp} w-24 text-right`} />
                       {podeEditar && (
@@ -318,6 +326,13 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       {mostrarVisual && (
         <CardapioVisual rid={rid} secoes={secoes} nomeRestaurante={nomeRestaurante} lang={lang} onEditarPrato={editarPratoPorId} onClose={() => setMostrarVisual(false)} />
       )}
+      {iconePrato && (() => {
+        const p = secoes[iconePrato.si]?.pratos[iconePrato.pi];
+        if (!p) return null;
+        return <IconePickerModal rid={rid} pratoId={p.id} value={{ iconeId: p.iconeId, iconeUrl: p.iconeUrl }}
+          onChange={(v) => setPrato(iconePrato.si, iconePrato.pi, { iconeId: v.iconeId, iconeUrl: v.iconeUrl })}
+          onClose={() => setIconePrato(null)} />;
+      })()}
     </div>
   );
 }

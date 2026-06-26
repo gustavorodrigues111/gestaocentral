@@ -18,6 +18,7 @@ import { Link } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../../../core/firebase/config";
 import type { SiteConfig, CardapioEstruturado } from "../../../../core/types";
+import { IconeCardapioView } from "../../../cardapio/iconesCardapio";
 import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
 import { formatarTelefoneExibicao } from "../../shared/telefoneUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl } from "../../shared/enderecoUtils";
@@ -1373,12 +1374,21 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
           <div style={{ marginTop: 10 }}>
             {s.pratos.filter((p) => tituloPr(p)).map((p) => (
-              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22` }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                  <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
-                  {p.preco && <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>}
+              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "center", gap: 10 }}>
+                {(p.iconeUrl || p.iconeId) && (
+                  <div style={{ flexShrink: 0, width: txCorpo(28), display: "flex", justifyContent: "center" }}>
+                    {p.iconeUrl
+                      ? <img src={p.iconeUrl} alt="" style={{ width: txCorpo(26), height: txCorpo(26), objectFit: "contain" }} />
+                      : <IconeCardapioView id={p.iconeId!} size={txCorpo(24)} color={corPrimaria} />}
+                  </div>
+                )}
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                    <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
+                    {p.preco && <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>}
+                  </div>
+                  {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div>}
                 </div>
-                {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div>}
               </div>
             ))}
           </div>
