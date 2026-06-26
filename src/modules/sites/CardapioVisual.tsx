@@ -16,7 +16,6 @@ const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").repl
 
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
 type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos">> & { fontesCustom: string[]; secaoPos: { [k: string]: number } };
-const TOP_SLOTS = new Set(["sobremesa", "frio", "brasa"]);
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
@@ -24,10 +23,11 @@ const PADROES: Lay = {
   margemTopo: 34, margemBaixo: 40,
 };
 
-export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onClose }: {
+export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, onClose }: {
   rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
+  onSecoes?: (next: SecaoCardapio[]) => void;
   onClose: () => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
@@ -39,7 +39,6 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
-  const [alturas, setAlturas] = useState<Record<string, number>>({});
   const paginasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -48,13 +47,6 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
       if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
     });
   }, [rid]);
-
-  // Mede a altura de cada bloco (pra travar na margem inferior).
-  const medir = (chave: string) => (el: HTMLDivElement | null) => {
-    if (!el) return;
-    const h = el.offsetHeight;
-    setAlturas((prev) => prev[chave] === h ? prev : { ...prev, [chave]: h });
-  };
 
   // Carrega TODAS as opções de fonte (curadas + custom) — pro preview do dropdown.
   useEffect(() => {
@@ -71,8 +63,6 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     const f = family.trim(); if (!f) return;
     setDirty(true); setLay((p) => ({ ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }));
   }
-  function setPos(chave: string, v: number) { setDirty(true); setLay((p) => ({ ...p, secaoPos: { ...p.secaoPos, [chave]: v } })); }
-
   async function salvarLayout() {
     setSalvando(true);
     try {
@@ -89,7 +79,6 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom).cssFamily;
   const fCorpo = resolverFonte(lay.fonteCorpo, lay.fontesCustom).cssFamily;
   const en = lang === "en";
-  const achar = (chave: string) => secoes.find((s) => norm(s.nome).includes(chave));
 
   const Secao = ({ s }: { s: SecaoCardapio }) => {
     const nome = (en && s.nomeEn) || s.nome;
@@ -130,16 +119,32 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
   const pad = 30, gutter = 22;
   const colW = (PAGE_W - pad * 2 - gutter) / 2;
   const xEsq = pad, xDir = pad + colW + gutter;
-  const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
-  const posDefault = (chave: string) => TOP_SLOTS.has(chave) ? lay.margemTopo : lay.margemTopo + 290;
-  const posRaw = (chave: string) => lay.secaoPos[chave] ?? posDefault(chave);
-  const maxTop = (chave: string) => Math.max(lay.margemTopo, PAGE_H - lay.margemBaixo - (alturas[chave] || 0));
-  const topAplic = (chave: string) => Math.min(Math.max(posRaw(chave), lay.margemTopo), maxTop(chave)); // trava na margem
-  const Bloco = ({ s, chave, x }: { s: SecaoCardapio; chave: string; x: number }) => (
-    <div style={{ position: "absolute", top: topAplic(chave), left: x, width: colW }}>
-      <div ref={medir(chave)}><Secao s={s} /></div>
-    </div>
-  );
+
+  // ── Distribuição generalizada: cada seção tem página (1..N) e coluna (0=esq, 1=dir).
+  // Dentro de uma coluna, empilha na ordem do array `secoes`. Sem valor explícito,
+  // usa um padrão sensato (Comidas-Sororoca preserva o layout antigo; demais = pág de
+  // conteúdo dividida meio-a-meio). Página 1 = capa quando o restaurante tem arte.
+  const COMIDAS_DEF: Record<string, [number, number]> = { sobremesa: [1, 0], frio: [2, 0], quente: [2, 0], brasa: [2, 1], acompanhamento: [2, 1] };
+  const defAtrib = (s: SecaoCardapio, i: number): [number, number] => {
+    const k = Object.keys(COMIDAS_DEF).find((c) => norm(s.nome).includes(c));
+    if (k) return COMIDAS_DEF[k]!;
+    return [ehSororoca ? 2 : 1, i < Math.ceil(secoes.length / 2) ? 0 : 1];
+  };
+  const efPag = (s: SecaoCardapio, i: number) => s.pagina ?? defAtrib(s, i)[0];
+  const efCol = (s: SecaoCardapio, i: number) => s.coluna ?? defAtrib(s, i)[1];
+  const numPag = Math.max(1, ...secoes.map((s, i) => efPag(s, i)));
+
+  // Materializa as atribuições efetivas (torna explícito) e aplica patch/troca.
+  const materializar = () => secoes.map((s, i) => ({ ...s, pagina: efPag(s, i), coluna: efCol(s, i) }));
+  const setAtrib = (i: number, patch: Partial<SecaoCardapio>) => { const m = materializar(); m[i] = { ...m[i]!, ...patch }; onSecoes?.(m); };
+  const moverNaColuna = (i: number, dir: -1 | 1) => {
+    const p = efPag(secoes[i]!, i), c = efCol(secoes[i]!, i);
+    let j = i + dir;
+    while (j >= 0 && j < secoes.length && !(efPag(secoes[j]!, j) === p && efCol(secoes[j]!, j) === c)) j += dir;
+    if (j < 0 || j >= secoes.length) return;
+    const m = materializar(); [m[i], m[j]] = [m[j]!, m[i]!]; onSecoes?.(m);
+  };
+
   const GuiaMargens = () => (
     <>
       <div className="guia-margem" style={{ position: "absolute", left: 0, right: 0, top: lay.margemTopo, borderTop: "1px dashed #c4b59060", pointerEvents: "none" }} />
@@ -147,48 +152,32 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     </>
   );
 
-  const ehComidas = ehSororoca && !!(sobremesas || frios || quentes || brasa || acomp);
-  const tituloCapaMenu = (tCapa || (nomeMenu || "").toUpperCase()) || "";
-  const Capa = () => (
-    <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
-      <GuiaMargens />
-      {tituloCapaMenu && (
-        <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
-      )}
-    </div>
-  );
+  const Coluna = ({ p, c, x }: { p: number; c: number; x: number }) => {
+    const lista = secoes.map((s, i) => ({ s, i })).filter(({ s, i }) => efPag(s, i) === p && efCol(s, i) === c);
+    if (!lista.length) return null;
+    return (
+      <div style={{ position: "absolute", top: lay.margemTopo, left: x, width: colW, display: "flex", flexDirection: "column", gap: lay.espacoSecoes }}>
+        {lista.map(({ s }) => <Secao key={s.id} s={s} />)}
+      </div>
+    );
+  };
 
-  const paginas = ehComidas ? (
-    <>
-      <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
+  const tituloCapaMenu = (tCapa || (nomeMenu || "").toUpperCase()) || "";
+  const Pagina = ({ p }: { p: number }) => {
+    const capa = ehSororoca && p === 1;
+    return (
+      <div className="pagina-pdf" style={{ ...pageStyle, ...(capa ? { backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" } : {}) }}>
         <GuiaMargens />
-        {tituloCapaMenu && (
+        {capa && tituloCapaMenu && (
           <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
-        {sobremesas && <Bloco s={sobremesas} chave="sobremesa" x={xEsq} />}
+        <Coluna p={p} c={0} x={xEsq} />
+        <Coluna p={p} c={1} x={xDir} />
       </div>
-      <div className="pagina-pdf" style={pageStyle}>
-        <GuiaMargens />
-        {frios && <Bloco s={frios} chave="frio" x={xEsq} />}
-        {quentes && <Bloco s={quentes} chave="quente" x={xEsq} />}
-        {brasa && <Bloco s={brasa} chave="brasa" x={xDir} />}
-        {acomp && <Bloco s={acomp} chave="acompanhamento" x={xDir} />}
-      </div>
-    </>
-  ) : ehSororoca ? (
-    // Bebidas/Vinhos: capa + seções em 2 colunas (use os controles de fonte/
-    // espaçamento/margem pra compactar e caber). Posicionamento livre = Fase 2.
-    <>
-      <Capa />
-      <div className="pagina-pdf" style={{ ...pageStyle, paddingTop: lay.margemTopo, paddingBottom: lay.margemBaixo, paddingLeft: pad, paddingRight: pad, boxSizing: "border-box", columnCount: 2, columnGap: gutter }}>
-        {secoes.map((s) => <div key={s.id} style={{ breakInside: "avoid", marginBottom: 14 }}><Secao s={s} /></div>)}
-      </div>
-    </>
-  ) : (
-    <div className="pagina-pdf" style={{ ...pageStyle, padding: pad, boxSizing: "border-box", columnCount: 2, columnGap: 22 }}>
-      {secoes.map((s) => <div key={s.id} style={{ breakInside: "avoid" }}><Secao s={s} /></div>)}
-    </div>
-  );
+    );
+  };
+
+  const paginas = <>{Array.from({ length: numPag }, (_, k) => <Pagina key={k} p={k + 1} />)}</>;
 
   async function baixar() {
     setBaixando(true);
@@ -232,6 +221,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
           <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
           <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
           <Slider label="Espaço título → descrição" k="espacoDescricao" min={-4} max={16} />
+          <Slider label="Espaço entre seções" k="espacoSecoes" min={0} max={60} />
 
           <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
             <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
@@ -254,18 +244,30 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
             <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
           </div>
 
-          {ehSororoca && (
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
-              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Posição vertical das seções</div>
-              {([["sobremesa", sobremesas], ["frio", frios], ["quente", quentes], ["brasa", brasa], ["acompanhamento", acomp]] as const)
-                .filter(([, s]) => s)
-                .map(([chave, s]) => (
-                  <label key={chave} style={{ display: "block", fontSize: 12, color: "#555" }}>
-                    <span style={{ fontWeight: 600 }}>{s!.nome}: {topAplic(chave)}</span>
-                    <input type="range" min={lay.margemTopo} max={maxTop(chave)} value={topAplic(chave)} onChange={(e) => setPos(chave, Number(e.target.value))} className="w-full" />
-                  </label>
-                ))}
-              <p className="text-[11px] text-gray-400">Trava na margem inferior — o bloco não passa dela. Topo alinhado por padrão; desça Quentes/Acompanhamentos como quiser.</p>
+          {onSecoes && (
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1.5">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Distribuição das seções</div>
+              <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
+              {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
+              {secoes.map((s, i) => {
+                const p = efPag(s, i), c = efCol(s, i);
+                return (
+                  <div key={s.id} className="flex items-center gap-1 border border-gray-100 dark:border-gray-800 rounded-lg px-2 py-1.5">
+                    <span className="flex-1 truncate text-[12px] font-medium text-gray-700 dark:text-gray-200">{s.nome || "—"}</span>
+                    <select value={p} onChange={(e) => setAtrib(i, { pagina: Number(e.target.value) })}
+                      className="text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-1 py-0.5">
+                      {Array.from({ length: numPag }, (_, k) => k + 1).map((n) => <option key={n} value={n}>pg {n}</option>)}
+                      <option value={numPag + 1}>+ pg {numPag + 1}</option>
+                    </select>
+                    <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700">
+                      <button type="button" onClick={() => setAtrib(i, { coluna: 0 })} className={`px-1.5 py-0.5 text-[11px] ${c === 0 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Esq</button>
+                      <button type="button" onClick={() => setAtrib(i, { coluna: 1 })} className={`px-1.5 py-0.5 text-[11px] ${c === 1 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Dir</button>
+                    </div>
+                    <button type="button" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
+                    <button type="button" onClick={() => moverNaColuna(i, 1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↓</button>
+                  </div>
+                );
+              })}
             </div>
           )}
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
