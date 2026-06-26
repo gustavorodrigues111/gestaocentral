@@ -87,7 +87,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
         setSecoes(seed);
         void setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({
           id: rid, restaurantId: rid, secoes: seed, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
-        })).catch(() => {});
+        }), { merge: true }).catch(() => {});
       } else {
         setSecoes([]);
       }
@@ -110,7 +110,8 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
           atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
           ...(stamp ? { traduzidoEm: stamp } : {}),
         };
-        await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore(payload));
+        // merge: preserva o `layout` (configs visuais) salvo pelo designer.
+        await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore(payload), { merge: true });
         setEstado("salvo");
         setTimeout(() => setEstado(""), 1800);
       } catch { setEstado(""); }
