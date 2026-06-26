@@ -157,7 +157,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
     if (!lista.length) return null;
     return (
       <div style={{ position: "absolute", top: lay.margemTopo, left: x, width: colW, display: "flex", flexDirection: "column", gap: lay.espacoSecoes }}>
-        {lista.map(({ s }) => <Secao key={s.id} s={s} />)}
+        {lista.map(({ s }) => <div key={s.id} style={{ marginTop: s.posTop || 0 }}><Secao s={s} /></div>)}
       </div>
     );
   };
@@ -250,21 +250,28 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, nomeMenu, tituloC
               <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
               {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
               {secoes.map((s, i) => {
-                const p = efPag(s, i), c = efCol(s, i);
+                const p = efPag(s, i), c = efCol(s, i), pos = s.posTop || 0;
                 return (
-                  <div key={s.id} className="flex items-center gap-1 border border-gray-100 dark:border-gray-800 rounded-lg px-2 py-1.5">
-                    <span className="flex-1 truncate text-[12px] font-medium text-gray-700 dark:text-gray-200">{s.nome || "—"}</span>
-                    <select value={p} onChange={(e) => setAtrib(i, { pagina: Number(e.target.value) })}
-                      className="text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-1 py-0.5">
-                      {Array.from({ length: numPag }, (_, k) => k + 1).map((n) => <option key={n} value={n}>pg {n}</option>)}
-                      <option value={numPag + 1}>+ pg {numPag + 1}</option>
-                    </select>
-                    <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700">
-                      <button type="button" onClick={() => setAtrib(i, { coluna: 0 })} className={`px-1.5 py-0.5 text-[11px] ${c === 0 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Esq</button>
-                      <button type="button" onClick={() => setAtrib(i, { coluna: 1 })} className={`px-1.5 py-0.5 text-[11px] ${c === 1 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Dir</button>
+                  <div key={s.id} className="border border-gray-100 dark:border-gray-800 rounded-lg px-2.5 py-2 space-y-1.5">
+                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200 truncate">{s.nome || "—"}</div>
+                    <div className="flex items-center gap-1.5">
+                      <select value={p} onChange={(e) => setAtrib(i, { pagina: Number(e.target.value) })}
+                        className="text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-1 py-0.5">
+                        {Array.from({ length: numPag }, (_, k) => k + 1).map((n) => <option key={n} value={n}>pg {n}</option>)}
+                        <option value={numPag + 1}>+ pg {numPag + 1}</option>
+                      </select>
+                      <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                        <button type="button" onClick={() => setAtrib(i, { coluna: 0 })} className={`px-2 py-0.5 text-[11px] ${c === 0 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Esq</button>
+                        <button type="button" onClick={() => setAtrib(i, { coluna: 1 })} className={`px-2 py-0.5 text-[11px] ${c === 1 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Dir</button>
+                      </div>
+                      <span className="flex-1" />
+                      <button type="button" title="Subir na coluna" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
+                      <button type="button" title="Descer na coluna" onClick={() => moverNaColuna(i, 1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↓</button>
                     </div>
-                    <button type="button" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
-                    <button type="button" onClick={() => moverNaColuna(i, 1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↓</button>
+                    <label className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 shrink-0 w-12">↕ {pos}px</span>
+                      <input type="range" min={0} max={320} value={pos} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1" />
+                    </label>
                   </div>
                 );
               })}
