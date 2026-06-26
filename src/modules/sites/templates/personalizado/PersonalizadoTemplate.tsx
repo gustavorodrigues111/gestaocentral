@@ -15,7 +15,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import type { SiteConfig } from "../../../../core/types";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../../../core/firebase/config";
+import type { SiteConfig, CardapioEstruturado } from "../../../../core/types";
 import { agruparHorarios, proximasExcecoes } from "../../shared/horarioUtils";
 import { formatarTelefoneExibicao } from "../../shared/telefoneUtils";
 import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl } from "../../shared/enderecoUtils";
@@ -446,9 +448,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             titulo: t("historiaTitulo", "A nossa história"),
             conteudo: <HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} fontSizeCorpo={txCorpo(17)} />,
           } : null,
-          cardapio: () => (cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
+          cardapio: () => (cfg.cardapioModo === "editor" || cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
-            conteudo: <CardapioPreview cfg={cfg} isMobile={isMobile} corPrimaria={corPrimaria} corSecundaria={corSecundaria} corFundo={corFundo} menuButton={menuButton} />,
+            conteudo: cfg.cardapioModo === "editor"
+              ? <CardapioEstruturadoView rid={cfg.restaurantId} corPrimaria={corPrimaria} corSecundaria={corSecundaria} txCorpo={txCorpo} />
+              : <CardapioPreview cfg={cfg} isMobile={isMobile} corPrimaria={corPrimaria} corSecundaria={corSecundaria} corFundo={corFundo} menuButton={menuButton} />,
           } : null,
           horario: () => {
             // Cards de exceção — mesmo render usado em mobile (lista cheia)
@@ -1293,6 +1297,72 @@ function CtaConteudo({
       <div style={{ marginTop: "auto" }}>
         <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>
       </div>
+    </div>
+  );
+}
+
+// ─── CardapioEstruturadoView ──────────────────────────────────────────
+// Cardápio montado no editor (modo "editor"): lê /cardapioEstruturado/{rid}
+// e renderiza ao vivo. Idioma PT/EN (EN só aparece quando há tradução).
+function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
+  rid: string;
+  corPrimaria: string;
+  corSecundaria: string;
+  txCorpo: (px: number) => number;
+}) {
+  const [menu, setMenu] = useState<CardapioEstruturado | null>(null);
+  const [idioma, setIdioma] = useState<"pt" | "en">("pt");
+
+  useEffect(() => {
+    let cancel = false;
+    void getDoc(doc(db, "cardapioEstruturado", rid)).then((snap) => {
+      if (cancel) return;
+      setMenu(snap.exists() ? (snap.data() as CardapioEstruturado) : { id: rid, restaurantId: rid, secoes: [], atualizadoEm: "" });
+    });
+    return () => { cancel = true; };
+  }, [rid]);
+
+  if (!menu) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Carregando cardápio…</div>;
+  const secoes = (menu.secoes || []).filter((s) => s.nome || s.pratos.length);
+  if (!secoes.length) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Cardápio em breve.</div>;
+
+  const en = idioma === "en";
+  const temEn = secoes.some((s) => s.nomeEn || s.pratos.some((p) => p.tituloEn));
+  const nomeSec = (s: typeof secoes[number]) => (en && s.nomeEn) || s.nome;
+  const obsSec = (s: typeof secoes[number]) => (en && s.obsEn) || s.obs;
+  const tituloPr = (p: { titulo: string; tituloEn?: string }) => (en && p.tituloEn) || p.titulo;
+  const subPr = (p: { subtitulo?: string; subtituloEn?: string }) => (en && p.subtituloEn) || p.subtitulo;
+
+  return (
+    <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      {temEn && (
+        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18 }}>
+          {(["pt", "en"] as const).map((l) => (
+            <button key={l} type="button" onClick={() => setIdioma(l)}
+              style={{ fontSize: txCorpo(12), fontWeight: 600, padding: "5px 14px", borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${corPrimaria}`, background: idioma === l ? corPrimaria : "transparent", color: idioma === l ? "#fff" : corPrimaria }}>
+              {l === "pt" ? "Português" : "English"}
+            </button>
+          ))}
+        </div>
+      )}
+      {secoes.map((s) => (
+        <div key={s.id} style={{ marginBottom: 30 }}>
+          <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 4px", letterSpacing: 0.3 }}>{nomeSec(s)}</h3>
+          {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
+          <div style={{ marginTop: 10 }}>
+            {s.pratos.filter((p) => tituloPr(p)).map((p) => (
+              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22` }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                  <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1 }}>{tituloPr(p)}</span>
+                  {p.preco && <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>}
+                </div>
+                {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35 }}>{subPr(p)}</div>}
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
