@@ -1310,21 +1310,27 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   corSecundaria: string;
   txCorpo: (px: number) => number;
 }) {
-  const [menu, setMenu] = useState<CardapioEstruturado | null>(null);
+  const [docData, setDocData] = useState<CardapioEstruturado | null>(null);
   const [idioma, setIdioma] = useState<"pt" | "en">("pt");
+  const [menuSel, setMenuSel] = useState<string>("");
 
   useEffect(() => {
     let cancel = false;
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((snap) => {
       if (cancel) return;
-      setMenu(snap.exists() ? (snap.data() as CardapioEstruturado) : { id: rid, restaurantId: rid, secoes: [], atualizadoEm: "" });
+      setDocData(snap.exists() ? (snap.data() as CardapioEstruturado) : { id: rid, restaurantId: rid, secoes: [], atualizadoEm: "" });
     });
     return () => { cancel = true; };
   }, [rid]);
 
-  if (!menu) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Carregando cardápio…</div>;
-  const secoes = (menu.secoes || []).filter((s) => s.nome || s.pratos.length);
-  if (!secoes.length) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Cardápio em breve.</div>;
+  if (!docData) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Carregando cardápio…</div>;
+  // Múltiplos cardápios (novo) ou 1 legado (campo secoes).
+  const cardapios = (docData.cardapios && docData.cardapios.length)
+    ? docData.cardapios
+    : (docData.secoes && docData.secoes.length ? [{ id: "_legacy", nome: "Cardápio", secoes: docData.secoes }] : []);
+  if (!cardapios.length) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Cardápio em breve.</div>;
+  const menuAtual = cardapios.find((c) => c.id === menuSel) || cardapios[0]!;
+  const secoes = (menuAtual.secoes || []).filter((s) => s.nome || s.pratos.length);
 
   const en = idioma === "en";
   const temEn = secoes.some((s) => s.nomeEn || s.pratos.some((p) => p.tituloEn));
@@ -1335,6 +1341,21 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      {cardapios.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+          {cardapios.map((c) => {
+            const ativo = c.id === menuAtual.id;
+            return (
+              <button key={c.id} type="button" onClick={() => setMenuSel(c.id)}
+                style={{ fontSize: txCorpo(13), fontWeight: 600, padding: "6px 16px", borderRadius: 999, cursor: "pointer",
+                  border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria }}>
+                {c.nome}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {!secoes.length && <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "16px 0" }}>Cardápio em breve.</div>}
       {temEn && (
         <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18 }}>
           {(["pt", "en"] as const).map((l) => (

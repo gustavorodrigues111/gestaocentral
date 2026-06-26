@@ -41,6 +41,7 @@ import { AnalisePontoPage } from "../../modules/analisePonto/AnalisePontoPage";
 import { AdmissaoPage } from "../../modules/admissao/AdmissaoPage";
 import { EventosPage } from "../../modules/eventos/EventosPage";
 import { SitesPage } from "../../modules/sites/SitesPage";
+import { CardapioPage } from "../../modules/cardapio/CardapioPage";
 import { UniformesPage } from "../../modules/uniformes/UniformesPage";
 import { ArquiteturaPage } from "../../modules/arquitetura/ArquiteturaPage";
 import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
@@ -92,6 +93,7 @@ function ModuleRouter() {
     case "admissao":      return <AdmissaoPage key={k} />;
     case "eventos":       return <EventosPage key={k} />;
     case "sites":         return <SitesPage key={k} />;
+    case "cardapio":      return <CardapioPage key={k} />;
     case "uniformes":     return <UniformesPage key={k} />;
     case "tarefas":       return <TarefasPage key={k} />;
     case "contasFixas":   return <ContasFixasPage key={k} />;

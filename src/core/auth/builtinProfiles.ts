@@ -49,6 +49,9 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       uploadAssets: false,              // logo/favicon = master
       publicar: false,                  // publicar/despublicar = master
     },
+    cardapio: {
+      ver: true, editar: true,
+    },
     ocorrencias: {
       criar: true, ver: true, editar: true, estatistics: true,
     },

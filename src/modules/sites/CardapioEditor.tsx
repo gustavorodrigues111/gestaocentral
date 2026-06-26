@@ -61,7 +61,7 @@ function seedSororoca(): SecaoCardapio[] {
   }));
 }
 
-export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: string; podeEditar: boolean; nomeRestaurante?: string }) {
+export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -79,10 +79,14 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
       if (cancel) return;
       if (snap.exists()) {
         const d = snap.data() as CardapioEstruturado;
-        setSecoes(d.secoes || []);
-        setTraduzidoEm(d.traduzidoEm);
-      } else if (podeEditar && /soror/i.test(nomeRestaurante || "")) {
-        // Piloto Sororoca: já carrega o cardápio atual na primeira abertura.
+        if (menuId) {
+          const m = (d.cardapios || []).find((c) => c.id === menuId);
+          setSecoes(m?.secoes || []); setTraduzidoEm(m?.traduzidoEm);
+        } else {
+          setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm);
+        }
+      } else if (!menuId && podeEditar && /soror/i.test(nomeRestaurante || "")) {
+        // Legado (sem menu): piloto Sororoca carrega o cardápio atual.
         const seed = seedSororoca();
         setSecoes(seed);
         void setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({
@@ -95,7 +99,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
     });
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rid]);
+  }, [rid, menuId]);
 
   function commit(next: SecaoCardapio[], stampTraducao?: string) {
     setSecoes(next);
@@ -105,13 +109,21 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
     if (timer.current) clearTimeout(timer.current);
     timer.current = window.setTimeout(async () => {
       try {
-        const payload: CardapioEstruturado = {
-          id: rid, restaurantId: rid, secoes: next,
-          atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
-          ...(stamp ? { traduzidoEm: stamp } : {}),
-        };
-        // merge: preserva o `layout` (configs visuais) salvo pelo designer.
-        await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore(payload), { merge: true });
+        const ref = doc(db, "cardapioEstruturado", rid);
+        if (menuId) {
+          // Atualiza só ESTE cardápio dentro do array (read-modify-write).
+          const snap = await getDoc(ref);
+          const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+          const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, secoes: next, ...(stamp ? { traduzidoEm: stamp } : {}) } : c);
+          await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true });
+        } else {
+          const payload: CardapioEstruturado = {
+            id: rid, restaurantId: rid, secoes: next,
+            atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
+            ...(stamp ? { traduzidoEm: stamp } : {}),
+          };
+          await setDoc(ref, sanitizeForFirestore(payload), { merge: true });
+        }
         setEstado("salvo");
         setTimeout(() => setEstado(""), 1800);
       } catch { setEstado(""); }

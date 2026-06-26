@@ -49,7 +49,7 @@ export type ModuleId =
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites"
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites" | "cardapio"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
@@ -3288,6 +3288,19 @@ export type SecaoCardapio = {
   obs?: string;                      // ex: "consulte as opções do dia na lousa"
   obsEn?: string;
   pratos: PratoCardapio[];
+  // Posicionamento no PDF (generalizado): página, coluna e topo (px no preview).
+  pagina?: number;                   // 1..N
+  coluna?: number;                   // 0 = esquerda, 1 = direita
+  posTop?: number;                   // px na página de preview
+};
+// Um cardápio (ex: Comidas, Bebidas, Vinhos) dentro do restaurante.
+export type CardapioMenu = {
+  id: string;
+  nome: string;                      // "Comidas"
+  tituloCapa?: string;               // rótulo na capa ("COMIDAS")
+  temCapa?: boolean;                 // usa a página de capa (arte)
+  secoes: SecaoCardapio[];
+  traduzidoEm?: string;
 };
 // Ajustes visuais do PDF/preview do cardápio (fontes Google + espaçamentos).
 export type CardapioLayout = {
@@ -3313,9 +3326,10 @@ export type CardapioLayout = {
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId
   restaurantId: string;
-  secoes: SecaoCardapio[];
-  layout?: CardapioLayout;
-  traduzidoEm?: string;              // ISO da última tradução EN
+  cardapios?: CardapioMenu[];        // múltiplos cardápios (Comidas/Bebidas/Vinhos)
+  layout?: CardapioLayout;           // visual COMPARTILHADO entre os cardápios do restaurante
+  secoes?: SecaoCardapio[];          // legado (1 cardápio) — migrado p/ cardapios na carga
+  traduzidoEm?: string;
   atualizadoEm: string;
   atualizadoPor?: string;
 };

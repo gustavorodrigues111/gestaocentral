@@ -91,6 +91,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "cardapio",
+    icon: "📋",
+    label: "Cardápio",
+    desc: "Elaboração dos cardápios (comidas, bebidas, vinhos) — itens, preços, layout do PDF",
+    area: "operacao",
+    acoes: [
+      { id: "ver",     label: "Ver cardápios" },
+      { id: "editar",  label: "Editar cardápios (itens, preços, layout)" },
+    ],
+  },
+  {
     id: "ocorrencias",
     icon: "🚨",
     label: "Ocorrências",
