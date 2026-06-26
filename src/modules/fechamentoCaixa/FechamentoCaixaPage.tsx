@@ -51,6 +51,8 @@ function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
+// Número de comanda normalizado pra casar "093" com "93" (tira zeros à esquerda).
+const numComanda = (s: string) => digitos(s).replace(/^0+(?=\d)/, "");
 const totalMaq = (m: MaquininhaFechamento) => m.total != null ? m.total : (m.credito || 0) + (m.debito || 0) + (m.pix || 0);
 
 // Input de dinheiro: mostra "XX.XXX,XX" quando sem foco; ao focar vira editável
@@ -446,7 +448,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   const cmdRef = useRef<HTMLInputElement>(null);
   const [comandasConsumo, setComandasConsumo] = useState<ComandaConsumo[]>([]); // consumos lidos/editados
   const comandasCad = restaurant.fechamentoComandas || [];
-  const nomeComanda = (numero: string) => comandasCad.find((c) => digitos(c.numero) === digitos(numero))?.nome;
+  const nomeComanda = (numero: string) => comandasCad.find((c) => numComanda(c.numero) === numComanda(numero))?.nome;
   const [totalVendas, setTotalVendas] = useState("");
   const [numeroLacre, setNumeroLacre] = useState("");
   const [naoLacrado, setNaoLacrado] = useState(false);
@@ -495,14 +497,14 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
       const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "comanda" }) });
       const j = await resp.json().catch(() => ({}));
       const lidas: ComandaConsumo[] = Array.isArray(j.comandas)
-        ? (j.comandas as ComandaConsumo[]).filter((c) => c && digitos(c.numero || "")).map((c) => ({ numero: digitos(c.numero), ...(c.valor != null ? { valor: c.valor } : {}) }))
+        ? (j.comandas as ComandaConsumo[]).filter((c) => c && digitos(c.numero || "")).map((c) => ({ numero: numComanda(c.numero), ...(c.valor != null ? { valor: c.valor } : {}) }))
         : [];
       if (!resp.ok || !lidas.length) return;
       // Rótulo do anexo (matched/não cadastradas)
       const matched: string[] = [];
       const naoCad: string[] = [];
       for (const c of lidas) {
-        const m = comandasCad.find((x) => digitos(x.numero) === c.numero);
+        const m = comandasCad.find((x) => numComanda(x.numero) === c.numero);
         if (m) matched.push(rotuloComanda(m)); else naoCad.push(c.numero);
       }
       const partes = [...new Set(matched)];
