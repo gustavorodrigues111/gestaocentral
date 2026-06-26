@@ -262,7 +262,12 @@ export type HorarioDia = {
   active: boolean;
   in?: string;       // "HH:MM" — entrada
   out?: string;      // "HH:MM" — saída (pode ser do dia seguinte se overnight)
-  break?: number;    // intervalo intra-jornada em minutos
+  break?: number;    // intervalo intra-jornada em minutos (= duração da janela, quando há janela)
+  // Janela do intervalo (entrada do intervalo / volta) — espelha a Sólides, que
+  // fixa início E fim do intervalo. Quando presentes, `break` = intervalOut−intervalIn.
+  // Opcionais p/ retrocompat: dados antigos têm só `break` (duração, sem janela).
+  intervalIn?: string;   // "HH:MM" — início do intervalo
+  intervalOut?: string;  // "HH:MM" — fim do intervalo (volta)
   // Multi-unidades: override de unidade pra esse dia. Vazio = usa
   // empregado.unidadePadraoId. Útil pra alternância semanal recorrente
   // (ex: toda quinta atua na Filial em vez da Matriz).
