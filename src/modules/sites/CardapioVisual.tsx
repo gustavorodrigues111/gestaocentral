@@ -1,68 +1,68 @@
-// Designer interativo do PDF do cardápio: escolhe fontes (Google, mesma lista
-// do site), regula espaçamentos e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO
-// preview (html2canvas → jsPDF), então a fonte sai idêntica à da tela.
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+// Designer interativo do PDF do cardápio: escolhe fontes (Google, com preview na
+// própria fonte + adicionar qualquer família), regula tamanhos/espaçamentos e o
+// título da capa, e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO preview
+// (html2canvas → jsPDF) — a fonte sai idêntica à da tela.
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { FONTES_SITE, findFonte, googleFontsUrl } from "./templates/fontesDisponiveis";
+import { opcoesFonte, resolverFonte, urlCss2, fonteCustom } from "./shared/cardapioFontes";
 import type { CardapioLayout, SecaoCardapio } from "../../core/types";
 
 const TEAL = "#1d3c4b";
-const PAGE_W = 460, PAGE_H = 651; // A4 retrato (proporção √2) em px de preview
+const PAGE_W = 460, PAGE_H = 651;
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
-const PADROES: Required<CardapioLayout> = {
-  fonteTitulos: "dm-serif-display", fonteCorpo: "inter",
-  espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamSecao: 17,
+type Lay = Required<Omit<CardapioLayout, "fontesCustom">> & { fontesCustom: string[] };
+const PADROES: Lay = {
+  fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
+  espacoPratos: 11, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
+  tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0,
 };
 
 export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: {
-  rid: string;
-  secoes: SecaoCardapio[];
-  nomeRestaurante?: string;
-  lang: "pt" | "en";
-  onClose: () => void;
+  rid: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; lang: "pt" | "en"; onClose: () => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
-  const [lay, setLay] = useState<Required<CardapioLayout>>(PADROES);
+  const [lay, setLay] = useState<Lay>(PADROES);
   const [baixando, setBaixando] = useState(false);
+  const [addFonte, setAddFonte] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const paginasRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
       const l = s.exists() ? (s.data().layout as CardapioLayout | undefined) : undefined;
-      if (l) setLay({ ...PADROES, ...l });
+      if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [] });
     });
   }, [rid]);
 
-  // Carrega as fontes Google escolhidas.
+  // Carrega TODAS as opções de fonte (curadas + custom) — pro preview do dropdown.
   useEffect(() => {
-    const url = googleFontsUrl([lay.fonteTitulos, lay.fonteCorpo]);
+    const url = urlCss2(opcoesFonte(lay.fontesCustom));
     if (!url) return;
     const link = document.createElement("link");
     link.rel = "stylesheet"; link.href = url;
     document.head.appendChild(link);
     return () => { link.remove(); };
-  }, [lay.fonteTitulos, lay.fonteCorpo]);
+  }, [lay.fontesCustom]);
 
-  function setCampo<K extends keyof CardapioLayout>(k: K, v: CardapioLayout[K]) {
-    setLay((prev) => {
-      const next = { ...prev, [k]: v };
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = window.setTimeout(() => { void updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: next })).catch(() => {}); }, 500);
-      return next;
-    });
+  function salvar(next: Lay) {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => { void updateDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ layout: next })).catch(() => {}); }, 500);
+  }
+  function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setLay((p) => { const n = { ...p, [k]: v }; salvar(n); return n; }); }
+  function adicionarFonte(family: string) {
+    const f = family.trim(); if (!f) return;
+    setLay((p) => { const n = { ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }; salvar(n); return n; });
   }
 
-  const fTit = findFonte(lay.fonteTitulos)?.cssFamily || "Georgia, serif";
-  const fCorpo = findFonte(lay.fonteCorpo)?.cssFamily || "system-ui, sans-serif";
+  const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom).cssFamily;
+  const fCorpo = resolverFonte(lay.fonteCorpo, lay.fontesCustom).cssFamily;
   const en = lang === "en";
   const achar = (chave: string) => secoes.find((s) => norm(s.nome).includes(chave));
 
-  // Render de uma seção (cabeçalho + pratos) com as fontes/espaçamentos atuais.
   const Secao = ({ s }: { s: SecaoCardapio }) => {
     const nome = (en && s.nomeEn) || s.nome;
     const obs = (en && s.obsEn) || s.obs;
@@ -71,7 +71,7 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
         <div style={{ textAlign: "center", marginBottom: 9 }}>
           <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
         </div>
-        {obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo - 3.5, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
+        {obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
         {s.pratos.map((p) => {
           const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
           const subt = (en && p.subtituloEn) || p.subtitulo;
@@ -82,9 +82,9 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
             <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                 <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222" }}>{titulo}</span>
-                {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamTitulo - 3 : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
+                {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
               </div>
-              {subt && <div style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo - 3.5, color: "#777", marginTop: 1 }}>{subt}</div>}
+              {subt && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: 1 }}>{subt}</div>}
             </div>
           );
         })}
@@ -94,15 +94,15 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
 
   const pageStyle: CSSProperties = { width: PAGE_W, height: PAGE_H, background: "#fff", position: "relative", boxShadow: "0 1px 8px rgba(0,0,0,.15)", overflow: "hidden", flexShrink: 0 };
   const pad = 30;
-
-  const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
   const colW = (PAGE_W - pad * 2 - 22) / 2;
+  const sobremesas = achar("sobremesa"), frios = achar("frio"), quentes = achar("quente"), brasa = achar("brasa"), acomp = achar("acompanhamento");
 
-  // Páginas (HTML) — viram o PDF.
   const paginas = ehSororoca ? (
     <>
       <div className="pagina-pdf" style={{ ...pageStyle, backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" }}>
-        <div style={{ position: "absolute", top: 132, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: 13, letterSpacing: 3, color: TEAL, fontWeight: 600 }}>{(en ? "FOOD" : "COMIDAS")}</div>
+        {lay.tituloCapa && (
+          <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{lay.tituloCapa}</div>
+        )}
         <div style={{ position: "absolute", top: 150, left: pad, width: colW }}>{sobremesas && <Secao s={sobremesas} />}</div>
       </div>
       <div className="pagina-pdf" style={{ ...pageStyle, display: "flex", gap: 22, padding: pad, boxSizing: "border-box" }}>
@@ -135,18 +135,10 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
     finally { setBaixando(false); }
   }
 
-  const fontesPorCat = useMemo(() => FONTES_SITE, []);
-  const SelectFonte = ({ label, val, onChange }: { label: string; val: string; onChange: (id: string) => void }) => (
-    <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#555" }}>{label}
-      <select value={val} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-        {fontesPorCat.map((f) => <option key={f.id} value={f.id}>{f.nome}</option>)}
-      </select>
-    </label>
-  );
-  const Slider = ({ label, k, min, max }: { label: string; k: keyof CardapioLayout; min: number; max: number }) => (
+  const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => (
     <label style={{ display: "block", fontSize: 12, color: "#555" }}>
-      <span style={{ fontWeight: 600 }}>{label}: {lay[k]}</span>
-      <input type="range" min={min} max={max} value={lay[k]} onChange={(e) => setCampo(k, Number(e.target.value))} className="w-full" />
+      <span style={{ fontWeight: 600 }}>{label}: {lay[k] as number}</span>
+      <input type="range" min={min} max={max} value={lay[k] as number} onChange={(e) => setCampo(k, Number(e.target.value) as never)} className="w-full" />
     </label>
   );
 
@@ -154,18 +146,30 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Controles */}
-        <div className="w-64 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
-          </div>
-          <SelectFonte label="Fonte dos títulos/seções" val={lay.fonteTitulos} onChange={(id) => setCampo("fonteTitulos", id)} />
-          <SelectFonte label="Fonte do corpo" val={lay.fonteCorpo} onChange={(id) => setCampo("fonteCorpo", id)} />
+        <div className="w-72 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
+          <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
+
+          <FontePicker label="Fonte dos títulos/seções" value={lay.fonteTitulos} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteTitulos", id)} onAdicionar={() => setAddFonte(true)} />
+          <FontePicker label="Fonte do corpo" value={lay.fonteCorpo} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteCorpo", id)} onAdicionar={() => setAddFonte(true)} />
+
           <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
-          <Slider label="Tamanho do prato" k="tamTitulo" min={9} max={20} />
+          <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
+          <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
           <Slider label="Espaço entre pratos" k="espacoPratos" min={2} max={28} />
           <Slider label="Espaço entre seções" k="espacoSecoes" min={6} max={50} />
+
+          {ehSororoca && (
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-3">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Título da capa
+                <input value={lay.tituloCapa} onChange={(e) => setCampo("tituloCapa", e.target.value)} placeholder="ex: COMIDAS" className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+              </label>
+              <Slider label="Tamanho do título da capa" k="tamTituloCapa" min={8} max={28} />
+              <Slider label="Posição vertical (↑ ↓)" k="offsetTituloCapa" min={-80} max={120} />
+            </div>
+          )}
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
         </div>
+
         {/* Preview + ações */}
         <div className="flex-1 flex flex-col min-w-0">
           <div className="flex items-center justify-between gap-2 px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
@@ -177,6 +181,109 @@ export function CardapioVisual({ rid, secoes, nomeRestaurante, lang, onClose }: 
           </div>
           <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-5">
             <div ref={paginasRef} className="flex flex-col items-center gap-5">{paginas}</div>
+          </div>
+        </div>
+      </div>
+
+      {addFonte && <AdicionarFonteModal onClose={() => setAddFonte(false)} onAdd={(f) => { adicionarFonte(f); setAddFonte(false); }} />}
+    </div>
+  );
+}
+
+// ─── Dropdown de fonte: cada opção renderizada na sua própria fonte ──────────
+function FontePicker({ label, value, custom, onChange, onAdicionar }: {
+  label: string; value: string; custom: string[]; onChange: (id: string) => void; onAdicionar: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const opcoes = opcoesFonte(custom);
+  const atual = resolverFonte(value, custom);
+  useEffect(() => {
+    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false); };
+    document.addEventListener("mousedown", fora);
+    return () => document.removeEventListener("mousedown", fora);
+  }, []);
+  return (
+    <div ref={ref} className="relative">
+      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">{label}</label>
+      <button type="button" onClick={() => setAberto((v) => !v)}
+        className="w-full text-left px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex items-center justify-between gap-2">
+        <span style={{ fontFamily: atual.cssFamily }} className="truncate">{atual.nome}</span>
+        <span className="text-gray-400">▾</span>
+      </button>
+      {aberto && (
+        <div className="absolute z-10 mt-1 w-full max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+          {opcoes.map((o) => (
+            <button key={o.id} type="button" onClick={() => { onChange(o.id); setAberto(false); }}
+              className={`block w-full text-left px-3 py-2 text-[15px] hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${o.id === value ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}
+              style={{ fontFamily: o.cssFamily }}>
+              {o.nome}
+            </button>
+          ))}
+          <button type="button" onClick={() => { setAberto(false); onAdicionar(); }}
+            className="block w-full text-left px-3 py-2 text-[13px] font-semibold text-indigo-600 border-t border-gray-100 dark:border-gray-800">
+            + Adicionar fonte do Google
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Modal: adicionar qualquer fonte do Google ───────────────────────────────
+function AdicionarFonteModal({ onClose, onAdd }: { onClose: () => void; onAdd: (family: string) => void }) {
+  const [busca, setBusca] = useState("");
+  const [lista, setLista] = useState<string[]>([]);
+  const previewFamily = busca.trim();
+
+  // Lista completa do Google (sem chave) — pra busca. Se falhar, usa só o input.
+  useEffect(() => {
+    let cancel = false;
+    void fetch("https://gwfh.mranftl.com/api/fonts").then((r) => r.ok ? r.json() : []).then((arr) => {
+      if (cancel || !Array.isArray(arr)) return;
+      setLista(arr.map((f: { family?: string }) => f.family || "").filter(Boolean));
+    }).catch(() => {});
+    return () => { cancel = true; };
+  }, []);
+
+  // Carrega a fonte digitada pra preview.
+  useEffect(() => {
+    if (!previewFamily) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = urlCss2([fonteCustom(previewFamily)]) || "";
+    document.head.appendChild(link);
+    return () => { link.remove(); };
+  }, [previewFamily]);
+
+  const filtradas = busca.trim().length >= 2
+    ? lista.filter((f) => f.toLowerCase().includes(busca.trim().toLowerCase())).slice(0, 40)
+    : [];
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-md p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-gray-800 dark:text-gray-100">Adicionar fonte do Google</h3>
+        <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Digite o nome (ex: Bebas Neue, Poppins…)"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        {previewFamily && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <div className="text-[10px] uppercase text-gray-400">Prévia</div>
+            <div style={{ fontFamily: `'${previewFamily}', sans-serif`, fontSize: 22 }}>{previewFamily}</div>
+          </div>
+        )}
+        {filtradas.length > 0 && (
+          <div className="max-h-48 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {filtradas.map((f) => (
+              <button key={f} type="button" onClick={() => setBusca(f)} className="block w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20">{f}</button>
+            ))}
+          </div>
+        )}
+        <div className="flex justify-between items-center gap-2 pt-1">
+          <a href="https://fonts.google.com" target="_blank" rel="noreferrer" className="text-[11px] text-gray-400 hover:underline">ver no Google Fonts ↗</a>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+            <button type="button" disabled={!previewFamily} onClick={() => onAdd(previewFamily)} className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50">Adicionar</button>
           </div>
         </div>
       </div>

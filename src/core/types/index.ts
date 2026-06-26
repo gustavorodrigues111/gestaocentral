@@ -3291,12 +3291,18 @@ export type SecaoCardapio = {
 };
 // Ajustes visuais do PDF/preview do cardápio (fontes Google + espaçamentos).
 export type CardapioLayout = {
-  fonteTitulos?: string;   // id de FONTES_SITE
-  fonteCorpo?: string;     // id de FONTES_SITE
+  fonteTitulos?: string;   // id de FONTES_SITE (ou família custom)
+  fonteCorpo?: string;     // id de FONTES_SITE (ou família custom)
+  fontesCustom?: string[]; // famílias Google adicionadas pelo usuário
   espacoPratos?: number;   // px entre um prato e o próximo
   espacoSecoes?: number;   // px entre seções
   tamTitulo?: number;      // px do nome do prato
+  tamDescricao?: number;   // px da descrição do prato
   tamSecao?: number;       // px do cabeçalho da seção
+  // Título da capa (ex: "COMIDAS") — editável
+  tituloCapa?: string;
+  tamTituloCapa?: number;  // px
+  offsetTituloCapa?: number; // deslocamento vertical em relação à logo (px, +desce)
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId
