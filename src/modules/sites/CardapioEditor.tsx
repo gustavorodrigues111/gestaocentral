@@ -8,6 +8,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { CardapioVisual } from "./CardapioVisual";
+import { seedSororocaPorNome } from "../cardapio/seedsSororoca";
 import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -61,7 +62,7 @@ function seedSororoca(): SecaoCardapio[] {
   }));
 }
 
-export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string }) {
+export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeMenu }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string; nomeMenu?: string }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -81,7 +82,11 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId }: { r
         const d = snap.data() as CardapioEstruturado;
         if (menuId) {
           const m = (d.cardapios || []).find((c) => c.id === menuId);
-          setSecoes(m?.secoes || []); setTraduzidoEm(m?.traduzidoEm);
+          const secs = m?.secoes || [];
+          // Pré-preenche Bebidas/Vinhos do Sororoca na 1ª abertura (cardápio vazio).
+          const seed = (!secs.length && podeEditar && /soror/i.test(nomeRestaurante || "")) ? seedSororocaPorNome(nomeMenu || "") : null;
+          if (seed) { commit(seed); }
+          else { setSecoes(secs); setTraduzidoEm(m?.traduzidoEm); }
         } else {
           setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm);
         }

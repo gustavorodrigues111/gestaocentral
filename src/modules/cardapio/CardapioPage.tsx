@@ -107,7 +107,7 @@ export function CardapioPage() {
               <button type="button" onClick={() => excluir(atual.id)} className="text-[12px] text-rose-600 hover:underline">excluir</button>
             </div>
           )}
-          <CardapioEditor key={atual.id} rid={rid} menuId={atual.id} podeEditar={podeEditar} nomeRestaurante={restaurant.nome} />
+          <CardapioEditor key={atual.id} rid={rid} menuId={atual.id} nomeMenu={atual.nome} podeEditar={podeEditar} nomeRestaurante={restaurant.nome} />
         </div>
       ) : null}
     </div>
