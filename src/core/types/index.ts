@@ -3303,6 +3303,10 @@ export type SiteConfig = {
   cardapioPdfEnUrl?: string;
   cardapioPdfEnAtualizadoEm?: string;
   cardapioPdfEnAtualizadoPor?: string;
+  // Atalhos de URL do cardápio no domínio próprio (ex: lobozo.com.br/cardapio
+  // → PDF PT, /menu → PDF EN). Editável por restaurante. Vazio = padrão
+  // (cardapio→pt, menu→en). Resolvido em runtime → redireciona pro PDF.
+  cardapioAtalhos?: { path: string; idioma: "pt" | "en" }[];
   // Redes
   redes: RedeSocial[];
   // Features (controla seções no site)

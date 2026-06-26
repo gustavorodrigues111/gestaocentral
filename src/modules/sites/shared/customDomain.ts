@@ -40,3 +40,13 @@ export function getSlugFromHost(): string | null {
   if (host.endsWith(".vercel.app")) return null;
   return RESTAURANT_HOSTS[host] || null;
 }
+
+// Reverso: domínio próprio (sem www) de um slug, se houver. Usado pra montar
+// os links rápidos do cardápio na aba (ex: "lobozo.com.br"). null se o
+// restaurante ainda não tem domínio próprio mapeado.
+export function hostDoSlug(slug: string): string | null {
+  const semWww = Object.entries(RESTAURANT_HOSTS).find(([h, s]) => s === slug && !h.startsWith("www."));
+  if (semWww) return semWww[0];
+  const qualquer = Object.entries(RESTAURANT_HOSTS).find(([, s]) => s === slug);
+  return qualquer ? qualquer[0] : null;
+}

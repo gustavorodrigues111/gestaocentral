@@ -4,6 +4,8 @@ import { storage } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import type { SiteConfig } from "../../core/types";
 import { useSiteConfig } from "./useSiteConfig";
+import { hostDoSlug } from "./shared/customDomain";
+import { slugAtalho, montarAtalhos, normalizaAtalho } from "./shared/cardapioAtalhos";
 
 type Props = {
   rid: string;
@@ -68,6 +70,85 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
         meId={me?.id || ""}
         onSave={async (parcial) => { if (me) await save(parcial, me.id); }}
       />
+
+      <AtalhosCardapio
+        config={config}
+        podeEditar={podeEditar}
+        onSave={async (parcial) => { if (me) await save(parcial, me.id); }}
+      />
+    </div>
+  );
+}
+
+// Links rápidos do cardápio no domínio próprio (ex: lobozo.com.br/cardapio →
+// PDF PT, /menu → PDF EN). A palavra do caminho é editável por restaurante.
+function AtalhosCardapio({ config, podeEditar, onSave }: {
+  config: SiteConfig;
+  podeEditar: boolean;
+  onSave: (parcial: Partial<SiteConfig>) => Promise<void>;
+}) {
+  const [slugPt, setSlugPt] = useState(slugAtalho(config, "pt"));
+  const [slugEn, setSlugEn] = useState(slugAtalho(config, "en"));
+  const [copiado, setCopiado] = useState<"pt" | "en" | "">("");
+  const host = hostDoSlug(config.slug);
+  const base = host ? `https://${host}` : null;
+
+  async function salvar(nextPt: string, nextEn: string) {
+    await onSave({ cardapioAtalhos: montarAtalhos(nextPt, nextEn) });
+  }
+
+  function copiar(idioma: "pt" | "en", path: string) {
+    if (!base) return;
+    void navigator.clipboard?.writeText(`${base}/${path}`);
+    setCopiado(idioma);
+    setTimeout(() => setCopiado(""), 2000);
+  }
+
+  const Linha = ({ idioma, bandeira, label, slug, setSlug, temPdf }: {
+    idioma: "pt" | "en"; bandeira: string; label: string;
+    slug: string; setSlug: (s: string) => void; temPdf: boolean;
+  }) => {
+    const path = normalizaAtalho(slug) || (idioma === "pt" ? "cardapio" : "menu");
+    return (
+      <div className="flex items-center gap-2 flex-wrap py-1.5">
+        <span className="text-lg">{bandeira}</span>
+        <span className="text-[13px] font-medium text-gray-700 dark:text-gray-300 w-16">{label}</span>
+        <div className="flex items-center gap-1 text-[13px] text-gray-500 dark:text-gray-400 font-mono">
+          <span>{host || "seu-dominio.com.br"}/</span>
+          <input
+            value={slug}
+            disabled={!podeEditar}
+            onChange={(e) => setSlug(e.target.value)}
+            onBlur={() => salvar(idioma === "pt" ? slug : slugPt, idioma === "en" ? slug : slugEn)}
+            className="w-28 px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-100 disabled:opacity-60"
+          />
+        </div>
+        {base && (
+          <button type="button" onClick={() => copiar(idioma, path)}
+            className="text-[12px] px-2 py-0.5 rounded border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+            {copiado === idioma ? "✓ copiado" : "copiar"}
+          </button>
+        )}
+        {!temPdf && <span className="text-[11px] text-amber-600 dark:text-amber-400">⚠ sem PDF nesse idioma</span>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
+      <div>
+        <h3 className="font-bold text-gray-900 dark:text-gray-100">🔗 Links rápidos do cardápio</h3>
+        <p className="text-[12px] text-gray-500 dark:text-gray-400">
+          Atalhos no domínio do site que abrem o PDF direto — ótimos pra QR code na mesa. A palavra é personalizável.
+        </p>
+      </div>
+      <Linha idioma="pt" bandeira="🇧🇷" label="Português" slug={slugPt} setSlug={setSlugPt} temPdf={!!config.cardapioPdfPtUrl} />
+      <Linha idioma="en" bandeira="🇺🇸" label="English" slug={slugEn} setSlug={setSlugEn} temPdf={!!config.cardapioPdfEnUrl} />
+      {!host && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
+          ⚠ Este restaurante ainda não tem domínio próprio ativo — os atalhos passam a funcionar quando o domínio for plugado.
+        </p>
+      )}
     </div>
   );
 }

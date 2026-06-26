@@ -11,6 +11,7 @@ import { ReservasPublicaPage } from "./modules/sites/ReservasPublicaPage";
 import { PoliticaPrivacidadePage } from "./modules/sites/PoliticaPrivacidadePage";
 import { ExcluirDadosPage } from "./modules/sites/ExcluirDadosPage";
 import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
+import { CardapioRedirect } from "./modules/sites/CardapioRedirect";
 import { getSlugFromHost } from "./modules/sites/shared/customDomain";
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
 
@@ -70,7 +71,13 @@ function App() {
 //   3) admin.planejamento.app (ou qualquer outro) → app normal (login admin).
 function RootOrShell() {
   const slugDoHost = getSlugFromHost();
-  if (slugDoHost) return <SitePublicaPage slugFromHost={slugDoHost} />;
+  if (slugDoHost) {
+    // Domínio próprio. Raiz → site; sub-path (ex: /cardapio, /menu) → tenta
+    // atalho de cardápio (redireciona pro PDF) ou cai no site.
+    const sub = window.location.pathname.replace(/^\/+|\/+$/g, "");
+    if (sub) return <CardapioRedirect slug={slugDoHost} sub={sub} />;
+    return <SitePublicaPage slugFromHost={slugDoHost} />;
+  }
   if (isWelcomePageHost()) return <WelcomePage />;
   return (
     <Suspense fallback={<ShellSuspenseFallback />}>
