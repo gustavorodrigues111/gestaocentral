@@ -6,6 +6,8 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
+import { authHeader } from "../../core/firebase/idToken";
+import { gerarCardapioPdf } from "./shared/gerarCardapioPdf";
 import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -59,11 +61,15 @@ function seedSororoca(): SecaoCardapio[] {
   }));
 }
 
-export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: string; podeEditar: boolean; nomeRestaurante?: string }) {
+export function CardapioEditor({ rid, podeEditar, nomeRestaurante, corPrimaria }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; corPrimaria?: string }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [estado, setEstado] = useState<"" | "salvando" | "salvo">("");
+  const [traduzidoEm, setTraduzidoEm] = useState<string | undefined>(undefined);
+  const [traduzindo, setTraduzindo] = useState(false);
+  const [mostrarEn, setMostrarEn] = useState(false);
+  const [erroTrad, setErroTrad] = useState("");
   const timer = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -71,7 +77,9 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((snap) => {
       if (cancel) return;
       if (snap.exists()) {
-        setSecoes((snap.data() as CardapioEstruturado).secoes || []);
+        const d = snap.data() as CardapioEstruturado;
+        setSecoes(d.secoes || []);
+        setTraduzidoEm(d.traduzidoEm);
       } else if (podeEditar && /soror/i.test(nomeRestaurante || "")) {
         // Piloto Sororoca: já carrega o cardápio atual na primeira abertura.
         const seed = seedSororoca();
@@ -88,9 +96,10 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid]);
 
-  function commit(next: SecaoCardapio[]) {
+  function commit(next: SecaoCardapio[], stampTraducao?: string) {
     setSecoes(next);
     if (!podeEditar) return;
+    const stamp = stampTraducao ?? traduzidoEm; // preserva (setDoc sobrescreve o doc todo)
     setEstado("salvando");
     if (timer.current) clearTimeout(timer.current);
     timer.current = window.setTimeout(async () => {
@@ -98,12 +107,45 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
         const payload: CardapioEstruturado = {
           id: rid, restaurantId: rid, secoes: next,
           atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
+          ...(stamp ? { traduzidoEm: stamp } : {}),
         };
         await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore(payload));
         setEstado("salvo");
         setTimeout(() => setEstado(""), 1800);
       } catch { setEstado(""); }
     }, 700);
+  }
+
+  async function traduzir() {
+    setErroTrad(""); setTraduzindo(true);
+    try {
+      const resp = await fetch("/api/traduzir-cardapio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ secoes: secoes.map((s) => ({ nome: s.nome, obs: s.obs, pratos: s.pratos.map((p) => ({ titulo: p.titulo, subtitulo: p.subtitulo })) })) }),
+      });
+      const j = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error((j as { error?: string }).error || `HTTP ${resp.status}`);
+      const tr = (j as { secoes?: Array<{ nomeEn?: string; obsEn?: string; pratos?: Array<{ tituloEn?: string; subtituloEn?: string }> }> }).secoes || [];
+      const next = secoes.map((s, si) => {
+        const ts = tr[si] || {};
+        return {
+          ...s,
+          nomeEn: ts.nomeEn || undefined,
+          obsEn: ts.obsEn || undefined,
+          pratos: s.pratos.map((p, pi) => {
+            const tp = (ts.pratos || [])[pi] || {};
+            return { ...p, tituloEn: tp.tituloEn || undefined, subtituloEn: tp.subtituloEn || undefined };
+          }),
+        };
+      });
+      const now = new Date().toISOString();
+      setTraduzidoEm(now);
+      commit(next, now);
+      setMostrarEn(true);
+    } catch (e) {
+      setErroTrad(e instanceof Error ? e.message : "Falha ao traduzir.");
+    } finally { setTraduzindo(false); }
   }
 
   // ── mutators ──────────────────────────────────────────────────────────────
@@ -130,12 +172,34 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[12px] text-gray-500 dark:text-gray-400">Monte o cardápio por seções. Cada prato tem <strong>título</strong> (nome), <strong>subtítulo</strong> (descrição) e <strong>preço</strong>. Salva sozinho.</p>
-        <span className="text-[12px] text-emerald-600 dark:text-emerald-400 min-w-16 text-right">
-          {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
-        </span>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <p className="text-[12px] text-gray-500 dark:text-gray-400">Cada prato: <strong>título</strong> + <strong>subtítulo</strong> + <strong>preço</strong>. Salva sozinho.</p>
+        <div className="flex items-center gap-2">
+          <span className="text-[12px] text-emerald-600 dark:text-emerald-400 min-w-14 text-right">
+            {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
+          </span>
+          {podeEditar && secoes.length > 0 && (
+            <>
+              <button type="button" disabled={traduzindo} onClick={() => void traduzir()}
+                className="text-[12px] px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50">
+                {traduzindo ? "traduzindo…" : "🌐 Traduzir pro inglês"}
+              </button>
+              {(traduzidoEm || mostrarEn) && (
+                <button type="button" onClick={() => setMostrarEn((v) => !v)}
+                  className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">
+                  {mostrarEn ? "ocultar EN" : "mostrar EN"}
+                </button>
+              )}
+              <button type="button" onClick={() => void gerarCardapioPdf({ secoes, titulo: nomeRestaurante || "Cardápio", corPrimaria, nomeArquivo: `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio.pdf` })}
+                className="text-[12px] px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                ⬇ PDF impressão
+              </button>
+            </>
+          )}
+        </div>
       </div>
+      {erroTrad && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erroTrad}</div>}
+      {traduzidoEm && <p className="text-[11px] text-gray-400">🌐 Inglês traduzido em {new Date(traduzidoEm).toLocaleString("pt-BR")} — revise nos campos EN (toggle "mostrar EN").</p>}
 
       {secoes.length === 0 && (
         <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl space-y-3">
@@ -163,7 +227,13 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
               </div>
             )}
           </div>
+          {mostrarEn && (
+            <input value={sec.nomeEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { nomeEn: e.target.value || undefined })} placeholder="EN — nome da seção" className={`${inp} w-full text-[12px] border-l-2 border-l-indigo-400`} />
+          )}
           <input value={sec.obs || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { obs: e.target.value || undefined })} placeholder="Observação da seção (opcional) — ex: consulte as opções do dia na lousa" className={`${inp} w-full text-[12px] text-gray-500`} />
+          {mostrarEn && (
+            <input value={sec.obsEn || ""} disabled={!podeEditar} onChange={(e) => setSec(si, { obsEn: e.target.value || undefined })} placeholder="EN — observação" className={`${inp} w-full text-[11px] text-gray-500 border-l-2 border-l-indigo-400`} />
+          )}
 
           <div className="space-y-1.5">
             {sec.pratos.map((p, pi) => (
@@ -179,7 +249,13 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante }: { rid: stri
                     </div>
                   )}
                 </div>
+                {mostrarEn && (
+                  <input value={p.tituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="EN — título" className={`${inp} w-full text-[12px] font-semibold border-l-2 border-l-indigo-400`} />
+                )}
                 <input value={p.subtitulo || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Subtítulo / descrição (opcional)" className={`${inp} w-full text-[12px] text-gray-500`} />
+                {mostrarEn && (
+                  <input value={p.subtituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="EN — descrição" className={`${inp} w-full text-[11px] text-gray-500 border-l-2 border-l-indigo-400`} />
+                )}
               </div>
             ))}
           </div>
