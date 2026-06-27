@@ -152,9 +152,13 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
               </div>
-              <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
-                onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
-                style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none", minHeight: subt ? undefined : lay.tamDescricao }}>{subt || ""}</div>
+              {/* Só renderiza a descrição quando existe — assim o "espaço nome→descrição"
+                  não mexe nos pratos sem descrição (pra adicionar uma, use o campo do editor). */}
+              {subt && (
+                <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                  onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
+                  style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
+              )}
             </div>
           );
         })}
@@ -314,7 +318,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
           <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
           <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
           <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
-          <Slider label="Espaço título → descrição" k="espacoDescricao" min={-4} max={16} />
+          <Slider label="Espaço entre o nome do prato e descrição" k="espacoDescricao" min={-4} max={16} />
 
           <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
             <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
