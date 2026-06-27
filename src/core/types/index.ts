@@ -3334,7 +3334,16 @@ export type CardapioLayout = {
   mostrarCifrao?: boolean;  // mostra "$" antes do preço numérico (default true)
   margemTopo?: number;      // px (na página de preview)
   margemBaixo?: number;     // px
-  colGap?: number;          // px entre as duas colunas (gutter) — default 22
+  colGap?: number;          // px entre as colunas (gutter) — default 22
+  // Arte do cardápio (PNG por restaurante). Capa = fundo da pág 1; miolo = fundo
+  // das demais. Sem capa, a pág 1 vira página de conteúdo normal.
+  capaUrl?: string;
+  mioloUrl?: string;
+  capaTitLeftPct?: number;  // posição horizontal do título da capa (% da largura) — default 54
+  capaTitTopPct?: number;   // posição vertical do título da capa (% da altura) — default ~20
+  // Colunas: padrão pra todas as páginas + override por página (1..3).
+  colsPadrao?: number;
+  colsPorPagina?: { [pagina: number]: number };
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId

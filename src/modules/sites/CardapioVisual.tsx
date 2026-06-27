@@ -16,14 +16,15 @@ const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
-type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos">> & { fontesCustom: string[]; secaoPos: { [k: string]: number } };
+type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number } };
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40, colGap: 22,
+  capaUrl: "", mioloUrl: "", capaTitLeftPct: 54, capaTitTopPct: 20, colsPadrao: 2, colsPorPagina: {},
 };
-const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} } : PADROES;
+const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {}, colsPorPagina: l.colsPorPagina || {} } : PADROES;
 
 export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
   rid: string; menuId?: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
@@ -169,11 +170,21 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
 
   const pageStyle: CSSProperties = { width: PAGE_W, height: PAGE_H, background: "#fff", position: "relative", boxShadow: "0 1px 8px rgba(0,0,0,.15)", overflow: "hidden", flexShrink: 0 };
   const pad = 30, gutter = lay.colGap;
-  const colW = (PAGE_W - pad * 2 - gutter) / 2;
-  const xEsq = pad, xDir = pad + colW + gutter;
   const maxPos = Math.max(0, PAGE_H - lay.margemTopo - lay.margemBaixo);
+  // Arte: capa (pág 1) e miolo (demais). Mantém a do Sororoca como fallback.
+  const capaSrc = lay.capaUrl || (ehSororoca ? CAPA : "");
+  const mioloSrc = lay.mioloUrl || "";
 
-  // ── Distribuição generalizada: cada seção tem página (1..N) e coluna (0=esq, 1=dir).
+  // Nº de colunas de uma página (1..3): override por página > padrão > 2.
+  const colsDe = (p: number) => Math.min(3, Math.max(1, lay.colsPorPagina[p] ?? lay.colsPadrao ?? 2));
+  // Geometria de uma coluna c (0-based) numa página de n colunas.
+  const colGeo = (p: number, c: number) => {
+    const n = colsDe(p);
+    const w = (PAGE_W - pad * 2 - gutter * (n - 1)) / n;
+    return { w, x: pad + Math.min(c, n - 1) * (w + gutter) };
+  };
+
+  // ── Distribuição generalizada: cada seção tem página (1..N) e coluna (0-based).
   // Dentro de uma coluna, empilha na ordem do array `secoes`. Sem valor explícito,
   // usa um padrão sensato (Comidas-Sororoca preserva o layout antigo; demais = pág de
   // conteúdo dividida meio-a-meio). Página 1 = capa quando o restaurante tem arte.
@@ -181,10 +192,11 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const defAtrib = (s: SecaoCardapio, i: number): [number, number] => {
     const k = Object.keys(COMIDAS_DEF).find((c) => norm(s.nome).includes(c));
     if (k) return COMIDAS_DEF[k]!;
-    return [ehSororoca ? 2 : 1, i < Math.ceil(secoes.length / 2) ? 0 : 1];
+    return [capaSrc ? 2 : 1, i < Math.ceil(secoes.length / 2) ? 0 : 1];
   };
   const efPag = (s: SecaoCardapio, i: number) => s.pagina ?? defAtrib(s, i)[0];
-  const efCol = (s: SecaoCardapio, i: number) => s.coluna ?? defAtrib(s, i)[1];
+  // Coluna efetiva travada ao nº de colunas da página da seção.
+  const efCol = (s: SecaoCardapio, i: number) => Math.min((s.coluna ?? defAtrib(s, i)[1]), colsDe(efPag(s, i)) - 1);
   const numPag = Math.max(1, ...secoes.map((s, i) => efPag(s, i)));
 
   // Materializa as atribuições efetivas (torna explícito) e aplica patch/troca.
@@ -222,17 +234,19 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
 
   const tituloCapaMenu = (tCapa || (nomeMenu || "").toUpperCase()) || "";
   const Pagina = ({ p }: { p: number }) => {
-    const capa = ehSororoca && p === 1;
+    const capa = !!capaSrc && p === 1;
+    const bg = capa ? capaSrc : mioloSrc;
     return (
-      <div className="pagina-pdf" style={{ ...pageStyle, ...(capa ? { backgroundImage: `url(${CAPA})`, backgroundSize: "100% 100%" } : {}) }}>
+      <div className="pagina-pdf" style={{ ...pageStyle, ...(bg ? { backgroundImage: `url(${bg})`, backgroundSize: "100% 100%" } : {}) }}>
         <GuiaMargens />
         {capa && tituloCapaMenu && (
-          <div style={{ position: "absolute", top: 132 + lay.offsetTituloCapa, left: "54%", width: "42%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
+          <div style={{ position: "absolute", top: `${lay.capaTitTopPct}%`, left: `${lay.capaTitLeftPct}%`, transform: "translateX(-50%)", width: "60%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
         {secoes.filter((s) => layoutSec[s.id]!.p === p).map((s) => {
           const L = layoutSec[s.id]!;
+          const g = colGeo(p, L.c);
           return (
-            <div key={s.id} style={{ position: "absolute", top: L.top, left: L.c === 0 ? xEsq : xDir, width: colW }}>
+            <div key={s.id} style={{ position: "absolute", top: L.top, left: g.x, width: g.w }}>
               <div ref={medir(s.id)}><Secao s={s} /></div>
             </div>
           );
@@ -336,13 +350,14 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
             </label>
           </PainelGrupo>
 
-          {ehSororoca && (
-            <PainelGrupo titulo="Capa" icone="🖼️">
-              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Título da capa
+          {!!capaSrc && (
+            <PainelGrupo titulo="Título da capa" icone="🖼️">
+              <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Texto
                 <input value={tCapa} onChange={(e) => { setTCapa(e.target.value); onTituloCapa?.(e.target.value); }} placeholder={(nomeMenu || "").toUpperCase() || "ex: COMIDAS"} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
               </label>
-              <Slider label="Tamanho do título da capa" k="tamTituloCapa" min={8} max={28} />
-              <Slider label="Posição vertical (↑ ↓)" k="offsetTituloCapa" min={-80} max={120} />
+              <Slider label="Tamanho" k="tamTituloCapa" min={8} max={36} />
+              <Slider label="Posição horizontal (%)" k="capaTitLeftPct" min={0} max={100} />
+              <Slider label="Posição vertical (%)" k="capaTitTopPct" min={0} max={100} />
             </PainelGrupo>
           )}
 
@@ -350,6 +365,20 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
             <Slider label="Margem superior" k="margemTopo" min={10} max={120} />
             <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
             <Slider label="Espaço entre colunas" k="colGap" min={8} max={90} />
+            <div className="pt-1 space-y-1.5">
+              <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">Colunas por página</div>
+              {Array.from({ length: numPag }, (_, k) => k + 1).map((p) => (
+                <div key={p} className="flex items-center justify-between gap-2">
+                  <span className="text-[12px] text-gray-600 dark:text-gray-300">Página {p}{capaSrc && p === 1 ? " (capa)" : ""}</span>
+                  <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                    {[1, 2, 3].map((n) => (
+                      <button key={n} type="button" onClick={() => setCampo("colsPorPagina", { ...lay.colsPorPagina, [p]: n })}
+                        className={`px-2.5 py-0.5 text-[11px] ${colsDe(p) === n ? "bg-indigo-600 text-white" : "text-gray-500"}`}>{n}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </PainelGrupo>
 
           {onSecoes && (
@@ -368,8 +397,11 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                         <option value={numPag + 1}>+ pg {numPag + 1}</option>
                       </select>
                       <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                        <button type="button" onClick={() => setAtrib(i, { coluna: 0 })} className={`px-2 py-0.5 text-[11px] ${c === 0 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Esq</button>
-                        <button type="button" onClick={() => setAtrib(i, { coluna: 1 })} className={`px-2 py-0.5 text-[11px] ${c === 1 ? "bg-indigo-600 text-white" : "text-gray-500"}`}>Dir</button>
+                        {Array.from({ length: colsDe(p) }, (_, k) => k).map((cn) => (
+                          <button key={cn} type="button" onClick={() => setAtrib(i, { coluna: cn })}
+                            className={`px-2 py-0.5 text-[11px] ${c === cn ? "bg-indigo-600 text-white" : "text-gray-500"}`}
+                            title={`Coluna ${cn + 1}`}>{colsDe(p) === 2 ? (cn === 0 ? "Esq" : "Dir") : cn + 1}</button>
+                        ))}
                       </div>
                       <span className="flex-1" />
                       <button type="button" title="Subir na coluna" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
