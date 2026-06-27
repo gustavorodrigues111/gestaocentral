@@ -267,17 +267,17 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => {
     const v = lay[k] as number;
     const set = (n: number) => setCampo(k, Math.min(max, Math.max(min, n)) as never);
-    const btn = "w-6 h-6 flex items-center justify-center text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 select-none";
+    const btn = "w-7 h-6 shrink-0 flex items-center justify-center text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 select-none";
     return (
       <div style={{ fontSize: 12, color: "#555" }}>
         <div className="flex items-center justify-between gap-2 mb-1">
-          <span style={{ fontWeight: 600 }}>{label}</span>
-          <div className="flex items-stretch rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <span className="flex-1 min-w-0" style={{ fontWeight: 600 }}>{label}</span>
+          <div className="flex items-stretch rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden w-28 shrink-0">
             <button type="button" disabled={v <= min} onClick={() => set(v - 1)} className={`${btn} border-r border-gray-200 dark:border-gray-700`}>−</button>
             <input type="number" min={min} max={max} value={v}
               onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setCampo(k, Math.min(max, n) as never); }}
               onBlur={() => set(v)}
-              className="w-11 h-6 text-center bg-white dark:bg-gray-900 dark:text-gray-100 text-[12px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+              className="flex-1 w-full min-w-0 h-6 text-center bg-white dark:bg-gray-900 dark:text-gray-100 text-[12px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
             <button type="button" disabled={v >= max} onClick={() => set(v + 1)} className={`${btn} border-l border-gray-200 dark:border-gray-700`}>+</button>
           </div>
         </div>
