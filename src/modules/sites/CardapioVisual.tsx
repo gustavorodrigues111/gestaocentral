@@ -324,7 +324,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
             Fontes definidas em <span className="font-semibold">⚙️ Configurações</span> (valem pra todos os cardápios).
           </div>
 
-          <PainelGrupo titulo="Tamanhos & espaçamentos" icone="📏" defaultOpen>
+          <PainelGrupo titulo="Tamanhos & espaçamentos" icone="📏">
             <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
             <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
             <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
@@ -353,7 +353,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
           </PainelGrupo>
 
           {onSecoes && (
-            <PainelGrupo titulo="Distribuição das seções" icone="🧩" defaultOpen>
+            <PainelGrupo titulo="Distribuição das seções" icone="🧩">
               <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
               {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
               {secoes.map((s, i) => {
