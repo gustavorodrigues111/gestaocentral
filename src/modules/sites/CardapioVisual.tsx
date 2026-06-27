@@ -2,7 +2,7 @@
 // própria fonte + adicionar qualquer família), regula tamanhos/espaçamentos e o
 // título da capa, e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO preview
 // (html2canvas → jsPDF) — a fonte sai idêntica à da tela.
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -314,37 +314,36 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
             Fontes definidas em <span className="font-semibold">⚙️ Configurações</span> (valem pra todos os cardápios).
           </div>
 
-          <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
-          <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
-          <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
-          <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
-          <Slider label="Espaço entre o nome do prato e descrição" k="espacoDescricao" min={-4} max={16} />
-
-          <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
-            <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
-            Mostrar cifrão <span className="font-semibold">$</span> antes do preço
-          </label>
+          <PainelGrupo titulo="Tamanhos & espaçamentos" icone="📏" defaultOpen>
+            <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
+            <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
+            <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
+            <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
+            <Slider label="Espaço entre o nome do prato e descrição" k="espacoDescricao" min={-4} max={16} />
+            <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer pt-1">
+              <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+              Mostrar cifrão <span className="font-semibold">$</span> antes do preço
+            </label>
+          </PainelGrupo>
 
           {ehSororoca && (
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-3">
+            <PainelGrupo titulo="Capa" icone="🖼️">
               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Título da capa
                 <input value={tCapa} onChange={(e) => { setTCapa(e.target.value); onTituloCapa?.(e.target.value); }} placeholder={(nomeMenu || "").toUpperCase() || "ex: COMIDAS"} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
               </label>
               <Slider label="Tamanho do título da capa" k="tamTituloCapa" min={8} max={28} />
               <Slider label="Posição vertical (↑ ↓)" k="offsetTituloCapa" min={-80} max={120} />
-            </div>
+            </PainelGrupo>
           )}
 
-          <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2">
-            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Margens</div>
+          <PainelGrupo titulo="Margens & colunas" icone="📐">
             <Slider label="Margem superior" k="margemTopo" min={10} max={120} />
             <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
             <Slider label="Espaço entre colunas" k="colGap" min={8} max={90} />
-          </div>
+          </PainelGrupo>
 
           {onSecoes && (
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-1.5">
-              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Distribuição das seções</div>
+            <PainelGrupo titulo="Distribuição das seções" icone="🧩" defaultOpen>
               <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
               {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
               {secoes.map((s, i) => {
@@ -376,7 +375,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   </div>
                 );
               })}
-            </div>
+            </PainelGrupo>
           )}
           <p className="text-[11px] text-gray-400">Ajuste e veja ao vivo. O PDF baixa exatamente como no preview.</p>
         </div>
@@ -407,6 +406,23 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
          </div>
        </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Grupo colapsável do painel de controles ─────────────────────────────────
+function PainelGrupo({ titulo, icone, defaultOpen = false, children }: { titulo: string; icone?: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <button type="button" onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+        <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
+          {icone && <span>{icone}</span>}{titulo}
+        </span>
+        <span className={`text-gray-400 text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+      </button>
+      {open && <div className="p-3 space-y-3">{children}</div>}
     </div>
   );
 }
