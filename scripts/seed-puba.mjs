@@ -3,15 +3,18 @@
 // do Firestore exige auth pra escrever) e grava `cardapioEstruturado/{rid}.cardapios`.
 //
 // USO (na raiz do projeto):
-//   SEED_EMAIL="seu@email" SEED_PASSWORD="suasenha" node --env-file=.env.local scripts/seed-puba.mjs
-//   (se não tiver .env.local, use .env — o script também tenta carregar sozinho)
-//   Já existe cardápio e quer sobrescrever? Acrescente FORCE=1
+//   node scripts/seed-puba.mjs
+//   → ele pergunta o e-mail e a SENHA na hora (senha não aparece e não passa
+//     pelo shell, então não tem problema de aspas/caractere especial).
+//   As chaves do Firebase ele lê do .env.local / .env sozinho.
+//   Já existe cardápio e quer sobrescrever? Rode com FORCE=1.
 //
 // Idempotente: IDs determinísticos — rodar de novo re-grava no mesmo lugar.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import readline from "node:readline";
 import { initializeApp } from "firebase/app";
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { getFirestore, collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
@@ -30,6 +33,21 @@ async function carregarEnv() {
       }
     } catch { /* arquivo pode não existir */ }
   }
+}
+
+// ── perguntas no terminal ────────────────────────────────────────────────────
+function pergunta(label, padrao = "") {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((res) => rl.question(`${label}${padrao ? ` [${padrao}]` : ""}: `, (a) => { rl.close(); res((a || padrao).trim()); }));
+}
+// Senha SEM eco: escreve o prompt, muta a saída e lê a linha via readline.
+function perguntaSenha(label) {
+  return new Promise((res) => {
+    process.stdout.write(label + ": ");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
+    rl._writeToOutput = () => {}; // não ecoa o que for digitado
+    rl.question("", (ans) => { rl.close(); process.stdout.write("\n"); res(ans); });
+  });
 }
 
 // ── dados dos cardápios (seção = [nome, [[titulo, subtitulo, preco], ...]]) ───
@@ -135,6 +153,15 @@ function montarCardapio(menuId, nome, secoesRaw) {
   };
 }
 
+// Tira espaços e um par de aspas em volta (retas OU curvas — editores trocam " por “”).
+function unquote(v) {
+  let s = (v || "").trim();
+  for (const [a, b] of [['"', '"'], ["'", "'"], ["“", "”"], ["‘", "’"]]) {
+    if (s.length >= 2 && s[0] === a && s[s.length - 1] === b) { s = s.slice(1, -1); break; }
+  }
+  return s.trim();
+}
+
 async function main() {
   await carregarEnv();
   const cfg = {
@@ -145,17 +172,12 @@ async function main() {
     messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.VITE_FIREBASE_APP_ID,
   };
-  // Tira espaços e um par de aspas em volta (retas OU curvas — editores trocam " por “”).
-  const unquote = (v) => {
-    let s = (v || "").trim();
-    for (const [a, b] of [['"', '"'], ["'", "'"], ["“", "”"], ["‘", "’"]]) {
-      if (s.length >= 2 && s[0] === a && s[s.length - 1] === b) { s = s.slice(1, -1); break; }
-    }
-    return s.trim();
-  };
-  const email = unquote(process.env.SEED_EMAIL), senha = unquote(process.env.SEED_PASSWORD);
-  if (!cfg.apiKey) throw new Error("VITE_FIREBASE_API_KEY ausente (rode com --env-file=.env.local ou tenha .env na raiz).");
-  if (!email || !senha) throw new Error("Defina SEED_EMAIL e SEED_PASSWORD (credenciais de admin) no ambiente.");
+  if (!cfg.apiKey) throw new Error("VITE_FIREBASE_API_KEY ausente — rode na raiz do projeto (que tem .env.local).");
+
+  // E-mail e senha: do ambiente, senão pergunta na hora.
+  const email = unquote(process.env.SEED_EMAIL) || await pergunta("E-mail do admin", "gustavo@quibebe.com.br");
+  const senha = unquote(process.env.SEED_PASSWORD) || await perguntaSenha("Senha do admin");
+  if (!email || !senha) throw new Error("E-mail/senha vazios.");
 
   const app = initializeApp(cfg);
   const auth = getAuth(app);
@@ -202,4 +224,13 @@ async function main() {
   process.exit(0);
 }
 
-main().catch((e) => { console.error("\n✗ Erro:", e.message || e); process.exit(1); });
+main().catch((e) => {
+  const code = e?.code || "";
+  console.error("\n✗ Erro:", e.message || e);
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) {
+    console.error("  → Senha ou e-mail não conferem. Teste o MESMO login no /adm do app pra confirmar.");
+  } else if (code.includes("app-check")) {
+    console.error("  → App Check está bloqueando. Me avise que eu troco pra outra abordagem.");
+  }
+  process.exit(1);
+});
