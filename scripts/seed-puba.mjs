@@ -35,19 +35,10 @@ async function carregarEnv() {
   }
 }
 
-// ── perguntas no terminal ────────────────────────────────────────────────────
+// ── pergunta no terminal (visível) ───────────────────────────────────────────
 function pergunta(label, padrao = "") {
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   return new Promise((res) => rl.question(`${label}${padrao ? ` [${padrao}]` : ""}: `, (a) => { rl.close(); res((a || padrao).trim()); }));
-}
-// Senha SEM eco: escreve o prompt, muta a saída e lê a linha via readline.
-function perguntaSenha(label) {
-  return new Promise((res) => {
-    process.stdout.write(label + ": ");
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-    rl._writeToOutput = () => {}; // não ecoa o que for digitado
-    rl.question("", (ans) => { rl.close(); process.stdout.write("\n"); res(ans); });
-  });
 }
 
 // ── dados dos cardápios (seção = [nome, [[titulo, subtitulo, preco], ...]]) ───
@@ -176,7 +167,7 @@ async function main() {
 
   // E-mail e senha: do ambiente, senão pergunta na hora.
   const email = unquote(process.env.SEED_EMAIL) || await pergunta("E-mail do admin", "gustavo@quibebe.com.br");
-  const senha = unquote(process.env.SEED_PASSWORD) || await perguntaSenha("Senha do admin");
+  const senha = unquote(process.env.SEED_PASSWORD) || await pergunta("Senha do admin (vai aparecer na tela)");
   if (!email || !senha) throw new Error("E-mail/senha vazios.");
 
   const app = initializeApp(cfg);
