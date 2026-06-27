@@ -34,7 +34,7 @@ export function CardapioPage() {
 
   const [cardapios, setCardapios] = useState<CardapioMenu[] | null>(null);
   const [sel, setSel] = useState<string>("");
-  const [layoutFontes, setLayoutFontes] = useState<Pick<CardapioLayout, "fonteTitulos" | "fonteCorpo" | "fontesCustom"> | null>(null);
+  const [sharedLayout, setSharedLayout] = useState<CardapioLayout | null>(null);
 
   async function carregar() {
     const ref = doc(db, "cardapioEstruturado", rid);
@@ -55,7 +55,7 @@ export function CardapioPage() {
       await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios: cards, cardapiosSeedSororoca: true, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
     }
     setCardapios(cards);
-    setLayoutFontes({ fonteTitulos: d?.layout?.fonteTitulos, fonteCorpo: d?.layout?.fonteCorpo, fontesCustom: d?.layout?.fontesCustom || [] });
+    setSharedLayout(d?.layout || {});
     setSel((s) => (s && (s === CONFIG || cards.some((c) => c.id === s)) ? s : cards[0]?.id || ""));
   }
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [rid]);
@@ -63,9 +63,9 @@ export function CardapioPage() {
   // Pré-carrega as 2 fontes do restaurante assim que o módulo abre — deixa em cache
   // pra que o preview do PDF já abra na fonte certa, sem os ~5s de antes.
   useEffect(() => {
-    if (!layoutFontes) return;
-    return carregarFontesCardapio(layoutFontes.fonteTitulos, layoutFontes.fonteCorpo, layoutFontes.fontesCustom || []);
-  }, [layoutFontes]);
+    if (!sharedLayout) return;
+    return carregarFontesCardapio(sharedLayout.fonteTitulos, sharedLayout.fonteCorpo, sharedLayout.fontesCustom || []);
+  }, [sharedLayout]);
 
   // Salva só a LISTA (nome/add/remove/capa) — preserva as seções de cada cardápio.
   async function salvarLista(next: CardapioMenu[]) {
@@ -137,7 +137,8 @@ export function CardapioPage() {
               <button type="button" onClick={() => excluir(atual.id)} className="text-[12px] text-rose-600 hover:underline">excluir</button>
             </div>
           )}
-          <CardapioEditor key={atual.id} rid={rid} menuId={atual.id} nomeMenu={atual.nome} podeEditar={podeEditar} nomeRestaurante={restaurant.nome} />
+          <CardapioEditor key={atual.id} rid={rid} menuId={atual.id} nomeMenu={atual.nome} podeEditar={podeEditar} nomeRestaurante={restaurant.nome}
+            sharedLayout={sharedLayout || undefined} menuLayoutProprio={!!atual.layoutProprio} menuLayout={atual.layout} />
         </div>
       ) : null}
     </div>

@@ -23,26 +23,31 @@ const PADROES: Lay = {
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40, colGap: 22,
 };
+const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} } : PADROES;
 
-export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, onClose }: {
+export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
   rid: string; menuId?: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onSecoes?: (next: SecaoCardapio[]) => void;
+  sharedLayout?: CardapioLayout; menuLayoutProprio?: boolean; menuLayout?: CardapioLayout;
   onClose: () => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
   const [tCapa, setTCapa] = useState(tituloCapa ?? "");
   useEffect(() => { setTCapa(tituloCapa ?? ""); }, [tituloCapa]);
-  const [lay, setLay] = useState<Lay>(PADROES);
+  // Inicializa JÁ com o layout vindo por props (carregado pelo CardapioPage) — abre
+  // instantâneo, sem esperar o getDoc. O getDoc abaixo só confirma/atualiza depois.
+  const [lay, setLay] = useState<Lay>(() => montarLay(menuLayoutProprio && menuLayout ? menuLayout : sharedLayout));
   const [baixando, setBaixando] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
   const [alturas, setAlturas] = useState<Record<string, number>>({});
-  const [layoutProprio, setLayoutProprio] = useState(false);
+  const [layoutProprio, setLayoutProprio] = useState(!!menuLayoutProprio);
   // Fontes vêm SEMPRE do restaurante (aba Configurações). O designer não troca fonte.
-  const [fontes, setFontes] = useState<{ titulos?: string; corpo?: string; custom: string[] }>({ custom: [] });
+  const [fontes, setFontes] = useState<{ titulos?: string; corpo?: string; custom: string[] }>(
+    () => ({ titulos: sharedLayout?.fonteTitulos, corpo: sharedLayout?.fonteCorpo, custom: sharedLayout?.fontesCustom || [] }));
   const paginasRef = useRef<HTMLDivElement>(null);
 
   // Mede a altura natural de cada seção (pra calcular a posição-padrão empilhada).
@@ -60,9 +65,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       const menu = menuId ? (d?.cardapios || []).find((c) => c.id === menuId) : null;
       const proprio = !!menu?.layoutProprio;
       setLayoutProprio(proprio);
-      const l = (proprio ? menu?.layout : d?.layout) as CardapioLayout | undefined;
-      if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
-      else setLay(PADROES);
+      setLay(montarLay((proprio ? menu?.layout : d?.layout) as CardapioLayout | undefined));
       // Fontes: sempre as do restaurante (layout compartilhado), independente de override.
       const compart = d?.layout as CardapioLayout | undefined;
       setFontes({ titulos: compart?.fonteTitulos, corpo: compart?.fonteCorpo, custom: compart?.fontesCustom || [] });
@@ -259,16 +262,22 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
 
   const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => {
     const v = lay[k] as number;
+    const set = (n: number) => setCampo(k, Math.min(max, Math.max(min, n)) as never);
+    const btn = "w-6 h-6 flex items-center justify-center text-gray-500 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 select-none";
     return (
       <div style={{ fontSize: 12, color: "#555" }}>
-        <div className="flex items-center justify-between gap-2 mb-0.5">
+        <div className="flex items-center justify-between gap-2 mb-1">
           <span style={{ fontWeight: 600 }}>{label}</span>
-          <input type="number" min={min} max={max} value={v}
-            onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setCampo(k, Math.min(max, n) as never); }}
-            onBlur={() => setCampo(k, Math.min(max, Math.max(min, v)) as never)}
-            className="w-14 text-right px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[12px]" />
+          <div className="flex items-stretch rounded-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button type="button" disabled={v <= min} onClick={() => set(v - 1)} className={`${btn} border-r border-gray-200 dark:border-gray-700`}>−</button>
+            <input type="number" min={min} max={max} value={v}
+              onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setCampo(k, Math.min(max, n) as never); }}
+              onBlur={() => set(v)}
+              className="w-11 h-6 text-center bg-white dark:bg-gray-900 dark:text-gray-100 text-[12px] outline-none [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none" />
+            <button type="button" disabled={v >= max} onClick={() => set(v + 1)} className={`${btn} border-l border-gray-200 dark:border-gray-700`}>+</button>
+          </div>
         </div>
-        <input type="range" min={min} max={max} value={v} onChange={(e) => setCampo(k, Number(e.target.value) as never)} className="w-full" />
+        <input type="range" min={min} max={max} value={v} onChange={(e) => setCampo(k, Number(e.target.value) as never)} className="w-full h-1.5 accent-indigo-600 cursor-pointer" />
       </div>
     );
   };
@@ -355,7 +364,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-gray-400 shrink-0">↕</span>
-                      <input type="range" min={0} max={maxPos} value={Math.min(pos, maxPos)} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1" />
+                      <input type="range" min={0} max={maxPos} value={Math.min(pos, maxPos)} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1 h-1.5 accent-indigo-600 cursor-pointer" />
                       <input type="number" min={0} max={maxPos} value={pos}
                         onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setAtrib(i, { posTop: Math.max(0, Math.min(maxPos, n)) }); }}
                         className="w-14 text-right px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[11px]" />

@@ -10,7 +10,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { CardapioVisual } from "./CardapioVisual";
 import { seedSororocaPorNome } from "../cardapio/seedsSororoca";
 import { IconePickerModal, IconeCardapioView } from "../cardapio/iconesCardapio";
-import type { CardapioEstruturado, SecaoCardapio, PratoCardapio } from "../../core/types";
+import type { CardapioEstruturado, CardapioLayout, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
@@ -73,7 +73,7 @@ function sigPt(secoes: SecaoCardapio[]): string {
   return (h >>> 0).toString(36);
 }
 
-export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeMenu }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string; nomeMenu?: string }) {
+export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeMenu, sharedLayout, menuLayoutProprio, menuLayout }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string; nomeMenu?: string; sharedLayout?: CardapioLayout; menuLayoutProprio?: boolean; menuLayout?: CardapioLayout }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -373,7 +373,8 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} menuId={menuId} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)} onClose={() => setMostrarVisual(false)} />
+        <CardapioVisual rid={rid} menuId={menuId} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)}
+          sharedLayout={sharedLayout} menuLayoutProprio={menuLayoutProprio} menuLayout={menuLayout} onClose={() => setMostrarVisual(false)} />
       )}
       {iconePrato && (() => {
         const p = secoes[iconePrato.si]?.pratos[iconePrato.pi];
