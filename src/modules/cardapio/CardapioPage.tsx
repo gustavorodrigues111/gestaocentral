@@ -15,6 +15,7 @@ import { CardapioEditor } from "../sites/CardapioEditor";
 import { CardapioConfig } from "./CardapioConfig";
 import { carregarFontesCardapio } from "../sites/shared/FontePicker";
 import { seedSororocaPorNome } from "./seedsSororoca";
+import { buildCardapiosPuba } from "./seedPuba"; // TEMPORÁRIO — remover após import do Puba
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
 
 const CONFIG = "__config__";
@@ -95,6 +96,21 @@ export function CardapioPage() {
     void salvarLista(next); if (sel === id) setSel(next[0]?.id || "");
   }
 
+  // TEMPORÁRIO — input inicial dos cardápios do Puba (grava com a sessão logada).
+  const ehPuba = /puba/i.test(restaurant?.nome || "");
+  async function importarPuba() {
+    if (!window.confirm("Importar os cardápios do Puba (Comidas, Bebidas, Vinhos)? Grava/sobrescreve esses 3 cardápios.")) return;
+    const novos = buildCardapiosPuba();
+    const ref = doc(db, "cardapioEstruturado", rid);
+    try {
+      await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios: novos, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true });
+      await carregar();
+      window.alert("✓ Cardápios do Puba importados! Pode editar à vontade.");
+    } catch (e) {
+      window.alert("Falha ao importar: " + (e instanceof Error ? e.message : "erro"));
+    }
+  }
+
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Cardápio.</p></div>;
   if (cardapios === null) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
@@ -105,6 +121,13 @@ export function CardapioPage() {
     <div className="max-w-5xl mx-auto py-4 space-y-4">
       <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📋 Cardápios — {restaurant.nome}</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400">Monte aqui os cardápios do restaurante. O site puxa estas informações — atualizou aqui, atualiza lá.</p>
+
+      {ehPuba && podeEditar && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50 px-3 py-2">
+          <span className="text-[12px] text-amber-900 dark:text-amber-200">Import inicial dos cardápios do Puba (Comidas, Bebidas, Vinhos).</span>
+          <button type="button" onClick={() => void importarPuba()} className="shrink-0 text-[12px] font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white">Importar cardápios do Puba</button>
+        </div>
+      )}
 
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto whitespace-nowrap">
         {cardapios.map((c) => (
