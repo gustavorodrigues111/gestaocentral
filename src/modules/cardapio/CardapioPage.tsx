@@ -12,8 +12,12 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { CardapioEditor } from "../sites/CardapioEditor";
+import { CardapioConfig } from "./CardapioConfig";
+import { carregarFontesCardapio } from "../sites/shared/FontePicker";
 import { seedSororocaPorNome } from "./seedsSororoca";
-import type { CardapioEstruturado, CardapioMenu } from "../../core/types";
+import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
+
+const CONFIG = "__config__";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
@@ -30,6 +34,7 @@ export function CardapioPage() {
 
   const [cardapios, setCardapios] = useState<CardapioMenu[] | null>(null);
   const [sel, setSel] = useState<string>("");
+  const [layoutFontes, setLayoutFontes] = useState<Pick<CardapioLayout, "fonteTitulos" | "fonteCorpo" | "fontesCustom"> | null>(null);
 
   async function carregar() {
     const ref = doc(db, "cardapioEstruturado", rid);
@@ -50,9 +55,17 @@ export function CardapioPage() {
       await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios: cards, cardapiosSeedSororoca: true, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
     }
     setCardapios(cards);
-    setSel((s) => (s && cards.some((c) => c.id === s) ? s : cards[0]?.id || ""));
+    setLayoutFontes({ fonteTitulos: d?.layout?.fonteTitulos, fonteCorpo: d?.layout?.fonteCorpo, fontesCustom: d?.layout?.fontesCustom || [] });
+    setSel((s) => (s && (s === CONFIG || cards.some((c) => c.id === s)) ? s : cards[0]?.id || ""));
   }
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [rid]);
+
+  // Pré-carrega as 2 fontes do restaurante assim que o módulo abre — deixa em cache
+  // pra que o preview do PDF já abra na fonte certa, sem os ~5s de antes.
+  useEffect(() => {
+    if (!layoutFontes) return;
+    return carregarFontesCardapio(layoutFontes.fonteTitulos, layoutFontes.fonteCorpo, layoutFontes.fontesCustom || []);
+  }, [layoutFontes]);
 
   // Salva só a LISTA (nome/add/remove/capa) — preserva as seções de cada cardápio.
   async function salvarLista(next: CardapioMenu[]) {
@@ -101,9 +114,16 @@ export function CardapioPage() {
           </button>
         ))}
         {podeEditar && <button type="button" onClick={addMenu} className="px-3 py-2 text-sm font-medium text-indigo-600">+ Novo cardápio</button>}
+        <span className="flex-1" />
+        <button type="button" onClick={() => setSel(CONFIG)}
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${sel === CONFIG ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+          ⚙️ Configurações
+        </button>
       </div>
 
-      {cardapios.length === 0 ? (
+      {sel === CONFIG ? (
+        <CardapioConfig rid={rid} podeEditar={podeEditar} atualizadoPor={me?.id} />
+      ) : cardapios.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
           <p className="text-sm text-gray-400">Nenhum cardápio ainda.</p>
           {podeEditar && <button type="button" onClick={addMenu} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 text-white">+ Criar primeiro cardápio</button>}

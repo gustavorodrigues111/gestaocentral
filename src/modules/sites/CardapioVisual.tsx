@@ -6,7 +6,8 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { opcoesFonte, resolverFonte, urlsCss2, fonteCustom, FONTES_GOOGLE_POPULARES } from "./shared/cardapioFontes";
+import { resolverFonte } from "./shared/cardapioFontes";
+import { carregarFontesCardapio } from "./shared/FontePicker";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio } from "../../core/types";
 
 const TEAL = "#1d3c4b";
@@ -35,12 +36,13 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   useEffect(() => { setTCapa(tituloCapa ?? ""); }, [tituloCapa]);
   const [lay, setLay] = useState<Lay>(PADROES);
   const [baixando, setBaixando] = useState(false);
-  const [addFonte, setAddFonte] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
   const [alturas, setAlturas] = useState<Record<string, number>>({});
   const [layoutProprio, setLayoutProprio] = useState(false);
+  // Fontes vêm SEMPRE do restaurante (aba Configurações). O designer não troca fonte.
+  const [fontes, setFontes] = useState<{ titulos?: string; corpo?: string; custom: string[] }>({ custom: [] });
   const paginasRef = useRef<HTMLDivElement>(null);
 
   // Mede a altura natural de cada seção (pra calcular a posição-padrão empilhada).
@@ -61,26 +63,19 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       const l = (proprio ? menu?.layout : d?.layout) as CardapioLayout | undefined;
       if (l) setLay({ ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {} });
       else setLay(PADROES);
+      // Fontes: sempre as do restaurante (layout compartilhado), independente de override.
+      const compart = d?.layout as CardapioLayout | undefined;
+      setFontes({ titulos: compart?.fonteTitulos, corpo: compart?.fonteCorpo, custom: compart?.fontesCustom || [] });
     });
   }, [rid, menuId]);
 
-  // Carrega TODAS as opções de fonte (curadas + custom) — um <link> por família,
-  // pra que uma família inválida não impeça as outras de carregar.
+  // Carrega SÓ as 2 fontes do restaurante (título + corpo) — rápido (2 requests),
+  // sem o catálogo inteiro. É o que o preview/PDF precisa.
   useEffect(() => {
-    const links = urlsCss2(opcoesFonte(lay.fontesCustom)).map((href) => {
-      const l = document.createElement("link");
-      l.rel = "stylesheet"; l.href = href;
-      document.head.appendChild(l);
-      return l;
-    });
-    return () => { links.forEach((l) => l.remove()); };
-  }, [lay.fontesCustom]);
+    return carregarFontesCardapio(fontes.titulos, fontes.corpo, fontes.custom);
+  }, [fontes]);
 
   function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setDirty(true); setLay((p) => ({ ...p, [k]: v })); }
-  function adicionarFonte(family: string) {
-    const f = family.trim(); if (!f) return;
-    setDirty(true); setLay((p) => ({ ...p, fontesCustom: [...new Set([...p.fontesCustom, f])] }));
-  }
   async function salvarLayout() {
     setSalvando(true);
     try {
@@ -125,8 +120,8 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
     onClose();
   }
 
-  const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom).cssFamily;
-  const fCorpo = resolverFonte(lay.fonteCorpo, lay.fontesCustom).cssFamily;
+  const fTit = resolverFonte(fontes.titulos, fontes.custom).cssFamily;
+  const fCorpo = resolverFonte(fontes.corpo, fontes.custom).cssFamily;
   const en = lang === "en";
 
   const Secao = ({ s }: { s: SecaoCardapio }) => {
@@ -293,8 +288,9 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
             </div>
           )}
 
-          <FontePicker label="Fonte dos títulos/seções" value={lay.fonteTitulos} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteTitulos", id)} onAdicionar={() => setAddFonte(true)} />
-          <FontePicker label="Fonte do corpo" value={lay.fonteCorpo} custom={lay.fontesCustom} onChange={(id) => setCampo("fonteCorpo", id)} onAdicionar={() => setAddFonte(true)} />
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-lg px-2.5 py-2">
+            Fontes definidas em <span className="font-semibold">⚙️ Configurações</span> (valem pra todos os cardápios).
+          </div>
 
           <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
           <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
@@ -386,113 +382,6 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
            <button type="button" onClick={tentarFechar} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
          </div>
        </div>
-      </div>
-
-      {addFonte && <AdicionarFonteModal onClose={() => setAddFonte(false)} onAdd={(f) => { adicionarFonte(f); setAddFonte(false); }} />}
-    </div>
-  );
-}
-
-// ─── Dropdown de fonte: cada opção renderizada na sua própria fonte ──────────
-function FontePicker({ label, value, custom, onChange, onAdicionar }: {
-  label: string; value: string; custom: string[]; onChange: (id: string) => void; onAdicionar: () => void;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const opcoes = opcoesFonte(custom);
-  const atual = resolverFonte(value, custom);
-  useEffect(() => {
-    const fora = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setAberto(false); };
-    document.addEventListener("mousedown", fora);
-    return () => document.removeEventListener("mousedown", fora);
-  }, []);
-  return (
-    <div ref={ref} className="relative">
-      <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">{label}</label>
-      <button type="button" onClick={() => setAberto((v) => !v)}
-        className="w-full text-left px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex items-center justify-between gap-2">
-        <span style={{ fontFamily: atual.cssFamily }} className="truncate">{atual.nome}</span>
-        <span className="text-gray-400">▾</span>
-      </button>
-      {aberto && (
-        <div className="absolute z-10 mt-1 w-full max-h-72 overflow-auto rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
-          {opcoes.map((o) => (
-            <button key={o.id} type="button" onClick={() => { onChange(o.id); setAberto(false); }}
-              className={`block w-full text-left px-3 py-2 text-[15px] hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${o.id === value ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}
-              style={{ fontFamily: o.cssFamily }}>
-              {o.nome}
-            </button>
-          ))}
-          <button type="button" onClick={() => { setAberto(false); onAdicionar(); }}
-            className="block w-full text-left px-3 py-2 text-[13px] font-semibold text-indigo-600 border-t border-gray-100 dark:border-gray-800">
-            + Adicionar fonte do Google
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Modal: adicionar qualquer fonte do Google ───────────────────────────────
-function AdicionarFonteModal({ onClose, onAdd }: { onClose: () => void; onAdd: (family: string) => void }) {
-  const [busca, setBusca] = useState("");
-  const q = busca.trim().toLowerCase();
-  const digitada = busca.trim();
-
-  // Filtra a lista embutida (sem rede). Sempre mostra algo: sem busca = lista toda.
-  const filtradas = (q.length === 0 ? FONTES_GOOGLE_POPULARES : FONTES_GOOGLE_POPULARES.filter((f) => f.toLowerCase().includes(q))).slice(0, 80);
-  // Permite adicionar uma família digitada que não está na lista (qualquer fonte do Google).
-  const mostrarDigitada = digitada.length >= 2 && !FONTES_GOOGLE_POPULARES.some((f) => f.toLowerCase() === digitada.toLowerCase());
-  const visiveis = [...(mostrarDigitada ? [digitada] : []), ...filtradas];
-
-  // Carrega as fontes visíveis (cada linha renderiza na própria fonte). Recarrega
-  // num pequeno debounce conforme o usuário digita.
-  useEffect(() => {
-    if (!visiveis.length) return;
-    const t = window.setTimeout(() => {
-      urlsCss2(visiveis.slice(0, 60).map(fonteCustom)).forEach((href) => {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = href;
-        link.dataset.fontePreview = "1";
-        document.head.appendChild(link);
-      });
-    }, 250);
-    return () => {
-      clearTimeout(t);
-      document.head.querySelectorAll('link[data-fonte-preview="1"]').forEach((l) => l.remove());
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [busca]);
-
-  return (
-    <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-md p-4 space-y-3 flex flex-col max-h-[80vh]" onClick={(e) => e.stopPropagation()}>
-        <h3 className="font-bold text-gray-800 dark:text-gray-100">Adicionar fonte do Google</h3>
-        <input autoFocus value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Pesquise a fonte (ex: Bebas Neue, Playfair…)"
-          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-        <p className="text-[11px] text-gray-400">Clique numa fonte pra adicioná-la. A prévia aparece na própria fonte.</p>
-        <div className="flex-1 min-h-0 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-          {mostrarDigitada && (
-            <button type="button" onClick={() => onAdd(digitada)}
-              className="flex items-center justify-between gap-3 w-full text-left px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-              <span style={{ fontFamily: `'${digitada}', sans-serif`, fontSize: 20 }} className="truncate text-gray-900 dark:text-gray-100">{digitada}</span>
-              <span className="text-[11px] text-indigo-600 shrink-0">usar esta ↵</span>
-            </button>
-          )}
-          {filtradas.map((f) => (
-            <button key={f} type="button" onClick={() => onAdd(f)}
-              className="flex items-center justify-between gap-3 w-full text-left px-3 py-2.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-              <span style={{ fontFamily: `'${f}', sans-serif`, fontSize: 20 }} className="truncate text-gray-900 dark:text-gray-100">{f}</span>
-              <span className="text-[11px] text-gray-400 shrink-0">{f}</span>
-            </button>
-          ))}
-          {!visiveis.length && <div className="px-3 py-6 text-center text-[13px] text-gray-400">Nenhuma fonte encontrada. Digite o nome exato pra adicionar mesmo assim.</div>}
-        </div>
-        <div className="flex justify-between items-center gap-2">
-          <a href="https://fonts.google.com" target="_blank" rel="noreferrer" className="text-[11px] text-gray-400 hover:underline">ver no Google Fonts ↗</a>
-          <button type="button" onClick={onClose} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
-        </div>
       </div>
     </div>
   );
