@@ -143,16 +143,21 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const fCorpo = resolverFonte(fontes.corpo, fontes.custom).cssFamily;
   const en = lang === "en";
 
-  const Secao = ({ s }: { s: SecaoCardapio }) => {
+  // `fatia` renderiza só um intervalo dos pratos; `semCabecalho` oculta o título/obs
+  // (usado na continuação de uma seção quebrada pra outra coluna).
+  const Secao = ({ s, fatia, semCabecalho }: { s: SecaoCardapio; fatia?: [number, number]; semCabecalho?: boolean }) => {
     const nome = (en && s.nomeEn) || s.nome;
     const obs = (en && s.obsEn) || s.obs;
+    const pratos = fatia ? s.pratos.slice(fatia[0], fatia[1]) : s.pratos;
     return (
       <div>
-        <div style={{ textAlign: "center", marginBottom: 9 }}>
-          <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
-        </div>
-        {obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
-        {s.pratos.map((p) => {
+        {!semCabecalho && (
+          <div style={{ textAlign: "center", marginBottom: 9 }}>
+            <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
+          </div>
+        )}
+        {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
+        {pratos.map((p) => {
           const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
           const subt = (en && p.subtituloEn) || p.subtitulo;
           const preco = (p.preco || "").trim();
@@ -231,18 +236,31 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
     </>
   );
 
-  // Posição ABSOLUTA por seção: cada uma fica em margemTopo + (posTop OU o empilhamento
-  // padrão calculado pela altura das anteriores na mesma coluna). Mover uma NÃO mexe nas
-  // outras — o empilhamento só define o ponto de partida quando posTop não foi definido.
-  const layoutSec: Record<string, { p: number; c: number; def: number; eff: number; top: number }> = {};
+  // Coluna efetiva da PARTE 2 (quebra): default = coluna seguinte, travada ao nº de colunas.
+  const efColB = (s: SecaoCardapio, i: number) => Math.min(s.colB ?? Math.min(efCol(s, i) + 1, colsDe(efPag(s, i)) - 1), colsDe(efPag(s, i)) - 1);
+  const temQuebra = (s: SecaoCardapio) => typeof s.quebraIdx === "number" && s.quebraIdx > 0 && s.quebraIdx < s.pratos.length;
+
+  // Posição ABSOLUTA por bloco. Cada seção vira 1 bloco; se tiver quebra, vira 2
+  // (parte A na coluna assignada + parte B, sem cabeçalho, na coluna/posição da quebra).
+  // O empilhamento padrão (altura das anteriores na mesma coluna) só dá o ponto de partida.
+  type Bloco = { id: string; s: SecaoCardapio; p: number; c: number; fatia: [number, number]; semCabecalho: boolean; eff: number; top: number };
+  const blocos: Bloco[] = [];
+  const effA: Record<string, number> = {}, effB: Record<string, number> = {};
   {
     const flow: Record<string, number> = {};
+    const empilha = (p: number, c: number, h: number) => { const k = `${p}:${c}`; const def = flow[k] || 0; flow[k] = def + h + lay.espacoSecoes; return def; };
     secoes.forEach((s, i) => {
-      const p = efPag(s, i), c = efCol(s, i), key = `${p}:${c}`;
-      const def = flow[key] || 0;
-      flow[key] = def + (alturas[s.id] || 180) + lay.espacoSecoes;
-      const eff = s.posTop ?? def;
-      layoutSec[s.id] = { p, c, def, eff, top: lay.margemTopo + eff };
+      const p = efPag(s, i), c = efCol(s, i), q = temQuebra(s);
+      const fimA = q ? s.quebraIdx! : s.pratos.length;
+      const defA = empilha(p, c, alturas[s.id] || 180);
+      const eA = s.posTop ?? defA; effA[s.id] = eA;
+      blocos.push({ id: s.id, s, p, c, fatia: [0, fimA], semCabecalho: false, eff: eA, top: lay.margemTopo + eA });
+      if (q) {
+        const cB = efColB(s, i);
+        const defB = empilha(p, cB, alturas[`${s.id}#b`] || 180);
+        const eB = s.posTopB ?? defB; effB[s.id] = eB;
+        blocos.push({ id: `${s.id}#b`, s, p, c: cB, fatia: [s.quebraIdx!, s.pratos.length], semCabecalho: true, eff: eB, top: lay.margemTopo + eB });
+      }
     });
   }
 
@@ -256,12 +274,11 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
         {capa && tituloCapaMenu && (
           <div style={{ position: "absolute", top: `${lay.capaTitTopPct}%`, left: `${lay.capaTitLeftPct}%`, transform: "translateX(-50%)", width: "60%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
-        {secoes.filter((s) => layoutSec[s.id]!.p === p).map((s) => {
-          const L = layoutSec[s.id]!;
-          const g = colGeo(p, L.c);
+        {blocos.filter((b) => b.p === p).map((b) => {
+          const g = colGeo(p, b.c);
           return (
-            <div key={s.id} style={{ position: "absolute", top: L.top, left: g.x, width: g.w }}>
-              <div ref={medir(s.id)}><Secao s={s} /></div>
+            <div key={b.id} style={{ position: "absolute", top: b.top, left: g.x, width: g.w }}>
+              <div ref={medir(b.id)}><Secao s={b.s} fatia={b.fatia} semCabecalho={b.semCabecalho} /></div>
             </div>
           );
         })}
@@ -400,7 +417,13 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
               <p className="text-[11px] text-gray-400">Página e lado de cada seção. Dentro da coluna, ↑ ↓ define a ordem de empilhamento.</p>
               {secoes.length === 0 && <p className="text-[11px] text-gray-400">Nenhuma seção ainda.</p>}
               {secoes.map((s, i) => {
-                const p = efPag(s, i), c = efCol(s, i), pos = Math.round(layoutSec[s.id]?.eff ?? 0);
+                const p = efPag(s, i), c = efCol(s, i), pos = Math.round(effA[s.id] ?? 0);
+                const q = temQuebra(s), cB = efColB(s, i), posB = Math.round(effB[s.id] ?? 0);
+                const colBtn = (cn: number, sel: boolean, on: () => void) => (
+                  <button key={cn} type="button" onClick={on} className={`px-2 py-0.5 text-[11px] ${sel ? "bg-indigo-600 text-white" : "text-gray-500"}`} title={`Coluna ${cn + 1}`}>
+                    {colsDe(p) === 2 ? (cn === 0 ? "Esq" : "Dir") : cn + 1}
+                  </button>
+                );
                 return (
                   <div key={s.id} className="border border-gray-100 dark:border-gray-800 rounded-lg px-2.5 py-2 space-y-1.5">
                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200 truncate">{s.nome || "—"}</div>
@@ -411,11 +434,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                         <option value={numPag + 1}>+ pg {numPag + 1}</option>
                       </select>
                       <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                        {Array.from({ length: colsDe(p) }, (_, k) => k).map((cn) => (
-                          <button key={cn} type="button" onClick={() => setAtrib(i, { coluna: cn })}
-                            className={`px-2 py-0.5 text-[11px] ${c === cn ? "bg-indigo-600 text-white" : "text-gray-500"}`}
-                            title={`Coluna ${cn + 1}`}>{colsDe(p) === 2 ? (cn === 0 ? "Esq" : "Dir") : cn + 1}</button>
-                        ))}
+                        {Array.from({ length: colsDe(p) }, (_, k) => k).map((cn) => colBtn(cn, c === cn, () => setAtrib(i, { coluna: cn })))}
                       </div>
                       <span className="flex-1" />
                       <button type="button" title="Subir na coluna" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
@@ -428,6 +447,32 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                         onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setAtrib(i, { posTop: Math.max(0, Math.min(maxPos, n)) }); }}
                         className="w-14 text-right px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[11px]" />
                     </div>
+                    {/* Quebra de coluna: continua a partir de um item em outra coluna */}
+                    {s.pratos.length > 1 && (
+                      <div className="pt-1 border-t border-dashed border-gray-200 dark:border-gray-800 space-y-1.5">
+                        <label className="flex items-center gap-1.5 text-[11px] text-gray-600 dark:text-gray-300">
+                          <span className="shrink-0">↪ continuar a partir de:</span>
+                          <select value={q ? s.quebraIdx : 0}
+                            onChange={(e) => { const v = Number(e.target.value); setAtrib(i, v > 0 ? { quebraIdx: v } : { quebraIdx: undefined, colB: undefined, posTopB: undefined }); }}
+                            className="flex-1 min-w-0 text-[11px] rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-1 py-0.5">
+                            <option value={0}>(não quebrar)</option>
+                            {s.pratos.map((pr, k) => k > 0 ? <option key={pr.id} value={k}>{(pr.titulo || `item ${k + 1}`).slice(0, 28)}</option> : null)}
+                          </select>
+                        </label>
+                        {q && (
+                          <div className="flex items-center gap-2 pl-3">
+                            <span className="text-[10px] text-gray-400">parte 2:</span>
+                            <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                              {Array.from({ length: colsDe(p) }, (_, k) => k).map((cn) => colBtn(cn, cB === cn, () => setAtrib(i, { colB: cn })))}
+                            </div>
+                            <input type="range" min={0} max={maxPos} value={Math.min(posB, maxPos)} onChange={(e) => setAtrib(i, { posTopB: Number(e.target.value) })} className="flex-1 h-1.5 accent-indigo-600 cursor-pointer" />
+                            <input type="number" min={0} max={maxPos} value={posB}
+                              onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setAtrib(i, { posTopB: Math.max(0, Math.min(maxPos, n)) }); }}
+                              className="w-12 text-right px-1 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[11px]" />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

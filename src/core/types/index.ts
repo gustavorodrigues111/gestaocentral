@@ -3298,6 +3298,11 @@ export type SecaoCardapio = {
   pagina?: number;                   // 1..N
   coluna?: number;                   // 0 = esquerda, 1 = direita
   posTop?: number;                   // px na página de preview
+  // Quebra de coluna: a partir do item `quebraIdx`, a seção continua em outra
+  // coluna (colB) na posição posTopB — sem repetir o cabeçalho.
+  quebraIdx?: number;                // índice do 1º item da parte 2 (1..len-1)
+  colB?: number;                     // coluna da parte 2
+  posTopB?: number;                  // px da parte 2
 };
 // Um cardápio (ex: Comidas, Bebidas, Vinhos) dentro do restaurante.
 export type CardapioMenu = {
