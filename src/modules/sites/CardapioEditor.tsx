@@ -63,12 +63,23 @@ function seedSororoca(): SecaoCardapio[] {
   }));
 }
 
+// Assinatura do conteúdo PT (nome/obs da seção + título/subtítulo dos pratos).
+// Usada pra saber se a tradução está em dia: traduziu → guarda a assinatura;
+// mudou o PT → assinatura difere → reabilita o botão de traduzir.
+function sigPt(secoes: SecaoCardapio[]): string {
+  const txt = secoes.map((s) => [s.nome || "", s.obs || "", ...s.pratos.flatMap((p) => [p.titulo || "", p.subtitulo || ""])].join("")).join("");
+  let h = 5381;
+  for (let i = 0; i < txt.length; i++) h = ((h << 5) + h + txt.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+
 export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeMenu }: { rid: string; podeEditar: boolean; nomeRestaurante?: string; menuId?: string; nomeMenu?: string }) {
   const { pessoa: me } = useAuth();
   const [secoes, setSecoes] = useState<SecaoCardapio[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [estado, setEstado] = useState<"" | "salvando" | "salvo">("");
   const [traduzidoEm, setTraduzidoEm] = useState<string | undefined>(undefined);
+  const [traduzidoSig, setTraduzidoSig] = useState<string | undefined>(undefined);
   const [traduzindo, setTraduzindo] = useState(false);
   const [lang, setLang] = useState<"pt" | "en">("pt");
   const [erroTrad, setErroTrad] = useState("");
@@ -91,9 +102,9 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           // Pré-preenche Bebidas/Vinhos do Sororoca na 1ª abertura (cardápio vazio).
           const seed = (!secs.length && podeEditar && /soror/i.test(nomeRestaurante || "")) ? seedSororocaPorNome(nomeMenu || "") : null;
           if (seed) { commit(seed); }
-          else { setSecoes(secs); setTraduzidoEm(m?.traduzidoEm); }
+          else { setSecoes(secs); setTraduzidoEm(m?.traduzidoEm); setTraduzidoSig(m?.traduzidoSig); }
         } else {
-          setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm);
+          setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm); setTraduzidoSig(d.traduzidoSig);
         }
       } else if (!menuId && podeEditar && /soror/i.test(nomeRestaurante || "")) {
         // Legado (sem menu): piloto Sororoca carrega o cardápio atual.
@@ -111,10 +122,11 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rid, menuId]);
 
-  function commit(next: SecaoCardapio[], stampTraducao?: string) {
+  function commit(next: SecaoCardapio[], stampTraducao?: string, sigTraducao?: string) {
     setSecoes(next);
     if (!podeEditar) return;
     const stamp = stampTraducao ?? traduzidoEm; // preserva (setDoc sobrescreve o doc todo)
+    const sig = sigTraducao ?? traduzidoSig;    // idem — só muda quando traduz
     setEstado("salvando");
     if (timer.current) clearTimeout(timer.current);
     timer.current = window.setTimeout(async () => {
@@ -124,13 +136,14 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           // Atualiza só ESTE cardápio dentro do array (read-modify-write).
           const snap = await getDoc(ref);
           const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
-          const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, secoes: next, ...(stamp ? { traduzidoEm: stamp } : {}) } : c);
+          const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, secoes: next, ...(stamp ? { traduzidoEm: stamp } : {}), ...(sig ? { traduzidoSig: sig } : {}) } : c);
           await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true });
         } else {
           const payload: CardapioEstruturado = {
             id: rid, restaurantId: rid, secoes: next,
             atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
             ...(stamp ? { traduzidoEm: stamp } : {}),
+            ...(sig ? { traduzidoSig: sig } : {}),
           };
           await setDoc(ref, sanitizeForFirestore(payload), { merge: true });
         }
@@ -164,8 +177,10 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
         };
       });
       const now = new Date().toISOString();
+      const novaSig = sigPt(secoes);
       setTraduzidoEm(now);
-      commit(next, now);
+      setTraduzidoSig(novaSig);
+      commit(next, now, novaSig);
       setLang("en");
     } catch (e) {
       setErroTrad(e instanceof Error ? e.message : "Falha ao traduzir.");
@@ -240,17 +255,23 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {/* Banner do modo inglês: traduz a partir do português */}
-      {en && podeEditar && secoes.length > 0 && (
-        <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[12px] text-indigo-900 dark:text-indigo-200">
-            Versão em inglês. {traduzidoEm ? `Traduzido em ${new Date(traduzidoEm).toLocaleString("pt-BR")}.` : "Ainda não traduzido."} Gere automático a partir do português e revise abaixo.
-          </p>
-          <button type="button" disabled={traduzindo} onClick={() => void traduzir()}
-            className="text-[12px] px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50 shrink-0">
-            {traduzindo ? "traduzindo…" : "🌐 Traduzir a partir do português"}
-          </button>
-        </div>
-      )}
+      {en && podeEditar && secoes.length > 0 && (() => {
+        const emDia = !!traduzidoEm && traduzidoSig === sigPt(secoes);
+        return (
+          <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-[12px] text-indigo-900 dark:text-indigo-200">
+              Versão em inglês. {!traduzidoEm ? "Ainda não traduzido."
+                : emDia ? `Tradução em dia (${new Date(traduzidoEm).toLocaleString("pt-BR")}).`
+                : "O português mudou desde a última tradução — gere de novo."} Gere automático a partir do português e revise abaixo.
+            </p>
+            <button type="button" disabled={traduzindo || emDia} onClick={() => void traduzir()}
+              title={emDia ? "Nada mudou no português desde a última tradução" : undefined}
+              className="text-[12px] px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50 shrink-0">
+              {traduzindo ? "traduzindo…" : emDia ? "✓ Tradução atualizada" : "🌐 Traduzir a partir do português"}
+            </button>
+          </div>
+        );
+      })()}
       {erroTrad && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erroTrad}</div>}
 
       {secoes.length === 0 && (

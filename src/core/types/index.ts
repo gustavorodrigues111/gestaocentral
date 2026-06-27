@@ -3307,6 +3307,7 @@ export type CardapioMenu = {
   temCapa?: boolean;                 // usa a página de capa (arte)
   secoes: SecaoCardapio[];
   traduzidoEm?: string;
+  traduzidoSig?: string;             // assinatura do conteúdo PT no momento da tradução
   // Formatação (fontes/tamanhos/espaçamentos/margens): por padrão usa o layout
   // COMPARTILHADO do restaurante. Se `layoutProprio`, usa o `layout` próprio abaixo.
   layoutProprio?: boolean;
@@ -3343,6 +3344,7 @@ export type CardapioEstruturado = {
   layout?: CardapioLayout;           // visual COMPARTILHADO entre os cardápios do restaurante
   secoes?: SecaoCardapio[];          // legado (1 cardápio) — migrado p/ cardapios na carga
   traduzidoEm?: string;
+  traduzidoSig?: string;             // legado: assinatura PT da última tradução
   atualizadoEm: string;
   atualizadoPor?: string;
 };
