@@ -145,7 +145,15 @@ async function main() {
     messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
     appId: process.env.VITE_FIREBASE_APP_ID,
   };
-  const email = process.env.SEED_EMAIL, senha = process.env.SEED_PASSWORD;
+  // Tira espaços e um par de aspas em volta (retas OU curvas — editores trocam " por “”).
+  const unquote = (v) => {
+    let s = (v || "").trim();
+    for (const [a, b] of [['"', '"'], ["'", "'"], ["“", "”"], ["‘", "’"]]) {
+      if (s.length >= 2 && s[0] === a && s[s.length - 1] === b) { s = s.slice(1, -1); break; }
+    }
+    return s.trim();
+  };
+  const email = unquote(process.env.SEED_EMAIL), senha = unquote(process.env.SEED_PASSWORD);
   if (!cfg.apiKey) throw new Error("VITE_FIREBASE_API_KEY ausente (rode com --env-file=.env.local ou tenha .env na raiz).");
   if (!email || !senha) throw new Error("Defina SEED_EMAIL e SEED_PASSWORD (credenciais de admin) no ambiente.");
 
