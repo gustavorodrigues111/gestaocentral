@@ -3403,6 +3403,10 @@ export type SiteConfig = {
   // Modo do cardápio: "pdf" (sobe PDF, default) ou "editor" (monta no app,
   // doc em /cardapioEstruturado/{rid} — site renderiza ao vivo).
   cardapioModo?: "pdf" | "editor";
+  // Reservas: "interno" (default) usa o módulo de Reservas do app (/reservas/:rid);
+  // "externo" leva os CTAs de reserva pra um sistema externo (ex: Get In) via URL.
+  reservasModo?: "interno" | "externo";
+  reservasUrlExterna?: string;
   // Redes
   redes: RedeSocial[];
   // Features (controla seções no site)

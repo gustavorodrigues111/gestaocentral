@@ -527,6 +527,32 @@ export function GeralTab({
           <CheckRow label="Delivery" checked={form.features.hasDelivery} onChange={(v) => atualizarFeature("hasDelivery", v)} disabled={inputDisabled} />
           <CheckRow label="Galeria de fotos" checked={form.features.hasGaleria} onChange={(v) => atualizarFeature("hasGaleria", v)} disabled={inputDisabled} />
         </div>
+
+        {/* Reservas: módulo interno × sistema externo (Get In) */}
+        {form.features.hasReservas && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 space-y-2">
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Para onde o botão de reservas leva</div>
+            <div className="flex flex-wrap gap-2">
+              {([["interno", "Módulo interno do app"], ["externo", "Sistema externo (Get In)"]] as const).map(([modo, label]) => (
+                <button key={modo} type="button" disabled={inputDisabled}
+                  onClick={() => atualizar("reservasModo", modo)}
+                  className={`text-[13px] px-3 py-1.5 rounded-lg border ${ (form.reservasModo || "interno") === modo ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {(form.reservasModo || "interno") === "externo" ? (
+              <label className="block text-xs text-gray-500 dark:text-gray-400">
+                Link do Get In (o CTA "Faça sua reserva" abre este endereço em nova aba)
+                <input type="url" value={form.reservasUrlExterna || ""} onChange={(e) => atualizar("reservasUrlExterna", e.target.value)}
+                  placeholder="https://reservas.getinapp.com.br/..." disabled={inputDisabled}
+                  className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+              </label>
+            ) : (
+              <p className="text-[11px] text-gray-400">Os botões de reserva abrem o formulário interno do app (/reservas).</p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* DELIVERY links */}

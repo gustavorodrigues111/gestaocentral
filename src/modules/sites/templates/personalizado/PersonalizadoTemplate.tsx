@@ -166,6 +166,12 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     ? `linear-gradient(rgba(0,0,0,0.45), rgba(0,0,0,0.65)), url(${cfg.heroImagemUrl}) center/cover`
     : corPrimaria;
 
+  // Destino dos CTAs de reserva: módulo interno (/reservas/:rid) ou sistema
+  // externo (Get In) quando configurado. Externo abre em nova aba.
+  const reservasUrlExt = cfg.reservasModo === "externo" ? (cfg.reservasUrlExterna || "").trim() : "";
+  const reservasExterno = !!reservasUrlExt;
+  const reservasHref = reservasUrlExt || `/reservas/${cfg.restaurantId}`;
+
   const grupos = agruparHorarios(cfg.horarios);
   const excecoes = proximasExcecoes(cfg.excecoes, 3);
 
@@ -334,7 +340,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 <NavLink href="#cardapio" cor={corTexto}>Cardápio</NavLink>
                 <NavLink href="#horario" cor={corTexto}>Horário</NavLink>
                 {cfg.features.hasLaje && <NavLink href="#laje" cor={corTexto}>Laje</NavLink>}
-                {cfg.features.hasReservas && <NavLink href={`/reservas/${cfg.restaurantId}`} cor={corTexto}>Reservas</NavLink>}
+                {cfg.features.hasReservas && <NavLink href={reservasHref} externo={reservasExterno} cor={corTexto}>Reservas</NavLink>}
                 {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && <NavLink href="#delivery" cor={corTexto}>Delivery</NavLink>}
                 <NavLink href="#contato" cor={corTexto}>Contato</NavLink>
               </nav>
@@ -368,7 +374,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 </MobileMenuLink>
               )}
               {cfg.features.hasReservas && (
-                <MobileMenuLink href={`/reservas/${cfg.restaurantId}`} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                <MobileMenuLink href={reservasHref} externo={reservasExterno} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                   Reservas
                 </MobileMenuLink>
               )}
@@ -427,9 +433,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           {/* CTA do hero: leva pra reservas. Instagram + WhatsApp vivem
               nos botões flutuantes no canto inferior — não duplica aqui. */}
           {cfg.features.hasReservas && (
-            <Link to={`/reservas/${cfg.restaurantId}`} style={primaryButton(corSecundaria)}>
-              {t("heroCtaLabel", "Faça sua reserva")}
-            </Link>
+            reservasExterno
+              ? <a href={reservasHref} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>{t("heroCtaLabel", "Faça sua reserva")}</a>
+              : <Link to={reservasHref} style={primaryButton(corSecundaria)}>{t("heroCtaLabel", "Faça sua reserva")}</Link>
           )}
         </div>
       </section>
@@ -581,7 +587,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             conteudo: (
               <CtaConteudo
                 texto={t("reservasTexto", "Recebemos com e sem reserva. Pra grupos a partir de 6 pessoas, recomendamos reservar.")}
-                ctaTo={`/reservas/${cfg.restaurantId}`}
+                ctaTo={reservasHref}
+                externo={reservasExterno}
                 ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
@@ -1019,9 +1026,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
 
   // ─── Helpers internos (closure sobre cores dinâmicas) ─────────────────────
 
-  function NavLink({ href, children, cor }: { href: string; children: React.ReactNode; cor?: string }) {
+  function NavLink({ href, children, cor, externo }: { href: string; children: React.ReactNode; cor?: string; externo?: boolean }) {
     return (
-      <a href={href} style={{
+      <a href={href} {...(externo ? { target: "_blank", rel: "noreferrer" } : {})} style={{
         color: cor ?? corTexto, textDecoration: "none",
         // Escala "Menu desktop" — controla tamanho do nav superior.
         fontSize: txMenuDesktop(14), fontWeight: 500,
@@ -1035,16 +1042,18 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     );
   }
 
-  function MobileMenuLink({ href, onClick, children, cor, corBorda }: {
+  function MobileMenuLink({ href, onClick, children, cor, corBorda, externo }: {
     href: string;
     onClick: () => void;
     children: React.ReactNode;
     cor: string;
     corBorda: string;
+    externo?: boolean;
   }) {
     return (
       <a
         href={href}
+        {...(externo ? { target: "_blank", rel: "noreferrer" } : {})}
         onClick={onClick}
         style={{
           color: cor,
@@ -1269,7 +1278,7 @@ function HistoriaExpansivel({
 // rodapé quando essas seções entram em pares no desktop (mesmo com textos
 // de tamanhos diferentes).
 function CtaConteudo({
-  texto, ctaTo, ctaLabel, primaryButton, corPrimaria, fontSizeCorpo,
+  texto, ctaTo, ctaLabel, primaryButton, corPrimaria, fontSizeCorpo, externo,
 }: {
   texto: string;
   ctaTo: string;
@@ -1277,6 +1286,7 @@ function CtaConteudo({
   primaryButton: (cor: string) => React.CSSProperties;
   corPrimaria: string;
   fontSizeCorpo?: number;          // se omitido, usa default 17
+  externo?: boolean;               // ctaTo é URL externa → abre em nova aba
 }) {
   return (
     <div style={{
@@ -1296,7 +1306,9 @@ function CtaConteudo({
         {texto}
       </p>
       <div style={{ marginTop: "auto" }}>
-        <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>
+        {externo
+          ? <a href={ctaTo} target="_blank" rel="noreferrer" style={primaryButton(corPrimaria)}>{ctaLabel}</a>
+          : <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>}
       </div>
     </div>
   );
