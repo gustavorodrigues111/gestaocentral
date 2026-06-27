@@ -8,60 +8,10 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { CardapioVisual } from "./CardapioVisual";
-import { seedSororocaPorNome } from "../cardapio/seedsSororoca";
 import { IconePickerModal, IconeCardapioView } from "../cardapio/iconesCardapio";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio, PratoCardapio } from "../../core/types";
 
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
-
-// Cardápio atual do Sororoca (parse do PDF Canva — confira/ajuste, as colunas
-// do PDF embaralham um pouco a ordem e a seção de alguns pratos).
-const DADOS_SOROROCA: { nome: string; obs?: string; pratos: [string, string, string][] }[] = [
-  { nome: "Frios", pratos: [
-    ["ceviche de pescado", "e frutos do mar com leite de tigre de pipoca", "83"],
-    ["tiradito com ovas de salmão", "e molho cítrico", "97"],
-    ["crudo de peixe", "com gema de ovo e conserva de cogumelo e lula à dorê", "79"],
-    ["salada de batata com polvo", "", "88"],
-    ["peixe cru", "com laranja champanhe", "86"],
-  ] },
-  { nome: "Quentes", pratos: [
-    ["caldinho de peixe", "", "24"],
-    ["mini pastéis", "de palmito pupunha com tucupi · 4 und", "34"],
-    ["bao de açaí", "servido com tucupi", "49"],
-    ["guioza de camarão", "", "74"],
-    ["arroz de tomate", "", "59"],
-    ["bobó de camarão", "acompanha arroz e farofa da casa", "135"],
-    ["mexilhões à escabeche", "com molho secreto · 2 ou 4 und", "46"],
-    ["ostra no vapor", "com laranja champanhe", "44 | 74"],
-  ] },
-  { nome: "Brasa", pratos: [
-    ["peixes na brasa", "", "consulte na lousa"],
-    ["cogumelos grelhados na brasa", "com picles de limão, farofa de castanha e tomilho", "69"],
-    ["palmito na brasa", "com azeite de alho e gema de ovo marinada", "78"],
-    ["adicional de molho de tucupi com cogumelos e arroz", "", "46"],
-    ["adicional de molho de moqueca e arroz", "", "46"],
-  ] },
-  { nome: "Acompanhamentos", pratos: [
-    ["pirão de peixe", "", "29"],
-    ["cuscuz de farinha d'água", "", "36"],
-    ["salada de feijão manteiguinha", "", "38"],
-    ["farofa da casa", "", "29"],
-  ] },
-  { nome: "Sobremesas", pratos: [
-    ["mousse de chocolate", "com praliné de castanha de cajú e flor de sal", "46"],
-    ["pavê de cupuaçu", "com crocante de chocolate", "42"],
-    ["bolo maria isabel", "com creme de bacuri", "42"],
-    ["ribeirinho araújo", "bananada com açaí, creme diplomata e merengue", "46"],
-  ] },
-];
-function seedSororoca(): SecaoCardapio[] {
-  return DADOS_SOROROCA.map((s) => ({
-    id: uid(), nome: s.nome, ...(s.obs ? { obs: s.obs } : {}),
-    pratos: s.pratos.map(([titulo, sub, preco]) => ({
-      id: uid(), titulo, ...(sub ? { subtitulo: sub } : {}), ...(preco ? { preco } : {}),
-    })),
-  }));
-}
 
 // Assinatura do conteúdo PT (nome/obs da seção + título/subtítulo dos pratos).
 // Usada pra saber se a tradução está em dia: traduziu → guarda a assinatura;
@@ -98,21 +48,10 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
         if (menuId) {
           const m = (d.cardapios || []).find((c) => c.id === menuId);
           setTituloCapaMenu(m?.tituloCapa ?? "");
-          const secs = m?.secoes || [];
-          // Pré-preenche Bebidas/Vinhos do Sororoca na 1ª abertura (cardápio vazio).
-          const seed = (!secs.length && podeEditar && /soror/i.test(nomeRestaurante || "")) ? seedSororocaPorNome(nomeMenu || "") : null;
-          if (seed) { commit(seed); }
-          else { setSecoes(secs); setTraduzidoEm(m?.traduzidoEm); setTraduzidoSig(m?.traduzidoSig); }
+          setSecoes(m?.secoes || []); setTraduzidoEm(m?.traduzidoEm); setTraduzidoSig(m?.traduzidoSig);
         } else {
           setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm); setTraduzidoSig(d.traduzidoSig);
         }
-      } else if (!menuId && podeEditar && /soror/i.test(nomeRestaurante || "")) {
-        // Legado (sem menu): piloto Sororoca carrega o cardápio atual.
-        const seed = seedSororoca();
-        setSecoes(seed);
-        void setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({
-          id: rid, restaurantId: rid, secoes: seed, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
-        }), { merge: true }).catch(() => {});
       } else {
         setSecoes([]);
       }
