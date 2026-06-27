@@ -257,12 +257,21 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
     finally { setBaixando(false); }
   }
 
-  const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => (
-    <label style={{ display: "block", fontSize: 12, color: "#555" }}>
-      <span style={{ fontWeight: 600 }}>{label}: {lay[k] as number}</span>
-      <input type="range" min={min} max={max} value={lay[k] as number} onChange={(e) => setCampo(k, Number(e.target.value) as never)} className="w-full" />
-    </label>
-  );
+  const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => {
+    const v = lay[k] as number;
+    return (
+      <div style={{ fontSize: 12, color: "#555" }}>
+        <div className="flex items-center justify-between gap-2 mb-0.5">
+          <span style={{ fontWeight: 600 }}>{label}</span>
+          <input type="number" min={min} max={max} value={v}
+            onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setCampo(k, Math.min(max, n) as never); }}
+            onBlur={() => setCampo(k, Math.min(max, Math.max(min, v)) as never)}
+            className="w-14 text-right px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[12px]" />
+        </div>
+        <input type="range" min={min} max={max} value={v} onChange={(e) => setCampo(k, Number(e.target.value) as never)} className="w-full" />
+      </div>
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={tentarFechar}>
@@ -297,7 +306,6 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
           <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
           <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
           <Slider label="Espaço título → descrição" k="espacoDescricao" min={-4} max={16} />
-          <Slider label="Espaço entre seções" k="espacoSecoes" min={0} max={60} />
 
           <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer">
             <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
@@ -345,10 +353,13 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                       <button type="button" title="Subir na coluna" onClick={() => moverNaColuna(i, -1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↑</button>
                       <button type="button" title="Descer na coluna" onClick={() => moverNaColuna(i, 1)} className="px-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">↓</button>
                     </div>
-                    <label className="flex items-center gap-2">
-                      <span className="text-[10px] text-gray-400 shrink-0 w-12">↕ {pos}px</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-gray-400 shrink-0">↕</span>
                       <input type="range" min={0} max={maxPos} value={Math.min(pos, maxPos)} onChange={(e) => setAtrib(i, { posTop: Number(e.target.value) })} className="flex-1" />
-                    </label>
+                      <input type="number" min={0} max={maxPos} value={pos}
+                        onChange={(e) => { const n = Number(e.target.value); if (!Number.isNaN(n)) setAtrib(i, { posTop: Math.max(0, Math.min(maxPos, n)) }); }}
+                        className="w-14 text-right px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 text-[11px]" />
+                    </div>
                   </div>
                 );
               })}
