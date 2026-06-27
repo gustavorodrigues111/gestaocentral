@@ -257,8 +257,8 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       blocos.push({ id: s.id, s, p, c, fatia: [0, fimA], semCabecalho: false, eff: eA, top: lay.margemTopo + eA });
       if (q) {
         const cB = efColB(s, i);
-        const defB = empilha(p, cB, alturas[`${s.id}#b`] || 180);
-        const eB = s.posTopB ?? defB; effB[s.id] = eB;
+        empilha(p, cB, alturas[`${s.id}#b`] || 180); // registra altura no fluxo da coluna
+        const eB = s.posTopB ?? 0; effB[s.id] = eB; // continuação começa no TOPO da coluna por padrão
         blocos.push({ id: `${s.id}#b`, s, p, c: cB, fatia: [s.quebraIdx!, s.pratos.length], semCabecalho: true, eff: eB, top: lay.margemTopo + eB });
       }
     });
