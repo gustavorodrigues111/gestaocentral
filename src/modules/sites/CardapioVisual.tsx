@@ -47,6 +47,8 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const [alturas, setAlturas] = useState<Record<string, number>>({});
   const [layoutProprio, setLayoutProprio] = useState(!!menuLayoutProprio);
   const [aba, setAba] = useState<"ajustes" | "previa">("ajustes"); // só no mobile
+  const [escala, setEscala] = useState(1); // encaixa o A4 na largura do preview
+  const scrollRef = useRef<HTMLDivElement>(null);
   // Fontes vêm SEMPRE do restaurante (aba Configurações). O designer não troca fonte.
   const [fontes, setFontes] = useState<{ titulos?: string; corpo?: string; custom: string[] }>(
     () => ({ titulos: sharedLayout?.fonteTitulos, corpo: sharedLayout?.fonteCorpo, custom: sharedLayout?.fontesCustom || [] }));
@@ -79,6 +81,18 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   useEffect(() => {
     return carregarFontesCardapio(fontes.titulos, fontes.corpo, fontes.custom);
   }, [fontes]);
+
+  // Escala o A4 (460px) pra caber na largura disponível do preview (mobile).
+  useEffect(() => {
+    const calc = () => {
+      const el = scrollRef.current; if (!el) return;
+      const avail = el.clientWidth - 24; // desconta o padding
+      if (avail > 60) setEscala(Math.min(1, avail / PAGE_W));
+    };
+    calc();
+    window.addEventListener("resize", calc);
+    return () => window.removeEventListener("resize", calc);
+  }, [aba]);
 
   function setCampo<K extends keyof Lay>(k: K, v: Lay[K]) { setDirty(true); setLay((p) => ({ ...p, [k]: v })); }
   async function salvarLayout() {
@@ -427,8 +441,12 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
           <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800 hidden sm:block">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pré-visualização{en ? " (EN)" : ""}</span>
           </div>
-          <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-5">
-            <div ref={paginasRef} className="flex flex-col items-center gap-5">{paginas}</div>
+          <div ref={scrollRef} className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-3 sm:p-5">
+            {/* Caixa dimensionada pela escala (some o scroll horizontal no mobile).
+                A escala é só visual — o html2canvas captura cada página no tamanho real. */}
+            <div style={{ position: "relative", width: PAGE_W * escala, height: (numPag * PAGE_H + (numPag - 1) * 20) * escala, margin: "0 auto" }}>
+              <div ref={paginasRef} style={{ position: "absolute", top: 0, left: 0, width: PAGE_W, transform: `scale(${escala})`, transformOrigin: "top left" }} className="flex flex-col items-center gap-5">{paginas}</div>
+            </div>
           </div>
         </div>
        </div>
