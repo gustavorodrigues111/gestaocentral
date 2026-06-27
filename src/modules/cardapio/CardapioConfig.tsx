@@ -14,6 +14,7 @@ export function CardapioConfig({ rid, podeEditar, atualizadoPor }: { rid: string
   const [addFonte, setAddFonte] = useState(false);
   const [estado, setEstado] = useState<"" | "salvando" | "salvo">("");
   const [subindo, setSubindo] = useState<"capa" | "miolo" | "">("");
+  const [erroArte, setErroArte] = useState("");
 
   useEffect(() => {
     void getDoc(doc(db, "cardapioEstruturado", rid)).then((s) => {
@@ -55,16 +56,18 @@ export function CardapioConfig({ rid, podeEditar, atualizadoPor }: { rid: string
 
   async function subirArte(tipo: "capa" | "miolo", file: File) {
     if (!podeEditar) return;
-    setSubindo(tipo);
+    setErroArte(""); setSubindo(tipo);
     try {
       const { ref, uploadBytes, getDownloadURL } = await import("firebase/storage");
       const { storage } = await import("../../core/firebase/config");
-      const r = ref(storage, `cardapios/${rid}/${tipo}-${Date.now()}`);
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const r = ref(storage, `cardapios/${rid}/${tipo}-${Date.now()}.${ext}`);
       await uploadBytes(r, file, { contentType: file.type });
       const url = await getDownloadURL(r);
       await salvar(tipo === "capa" ? { capaUrl: url } : { mioloUrl: url });
-    } catch { /* ignora */ }
-    finally { setSubindo(""); }
+    } catch (e) {
+      setErroArte(`Falha ao enviar a arte: ${e instanceof Error ? e.message : "erro desconhecido"}`);
+    } finally { setSubindo(""); }
   }
 
   const fTit = resolverFonte(lay.fonteTitulos, lay.fontesCustom || []);
@@ -103,6 +106,7 @@ export function CardapioConfig({ rid, podeEditar, atualizadoPor }: { rid: string
           <ArteUpload titulo="Miolo (demais páginas)" url={lay.mioloUrl} subindo={subindo === "miolo"} podeEditar={podeEditar}
             onPick={(f) => void subirArte("miolo", f)} onRemover={() => void salvar({ mioloUrl: "" })} />
         </div>
+        {erroArte && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erroArte}</div>}
       </section>
 
       {/* Colunas */}
