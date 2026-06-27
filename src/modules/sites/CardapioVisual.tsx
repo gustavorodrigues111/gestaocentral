@@ -45,6 +45,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const [salvoFlash, setSalvoFlash] = useState(false);
   const [alturas, setAlturas] = useState<Record<string, number>>({});
   const [layoutProprio, setLayoutProprio] = useState(!!menuLayoutProprio);
+  const [aba, setAba] = useState<"ajustes" | "previa">("ajustes"); // só no mobile
   // Fontes vêm SEMPRE do restaurante (aba Configurações). O designer não troca fonte.
   const [fontes, setFontes] = useState<{ titulos?: string; corpo?: string; custom: string[] }>(
     () => ({ titulos: sharedLayout?.fonteTitulos, corpo: sharedLayout?.fonteCorpo, custom: sharedLayout?.fontesCustom || [] }));
@@ -245,6 +246,10 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   async function baixar() {
     setBaixando(true);
     try {
+      // No mobile o preview pode estar escondido (aba Ajustes) → html2canvas
+      // capturaria em branco. Garante a aba Prévia e espera pintar.
+      setAba("previa");
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       // Garante que as fontes do Google terminaram de baixar antes do print —
       // senão o html2canvas captura no fallback e o PDF sai com fonte errada.
       try { await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready; } catch { /* ok */ }
@@ -289,9 +294,14 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={tentarFechar}>
       <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+       {/* Alternador de abas — só no mobile */}
+       <div className="sm:hidden flex border-b border-gray-200 dark:border-gray-800 shrink-0">
+         <button type="button" onClick={() => setAba("ajustes")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "ajustes" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}>🎨 Ajustes</button>
+         <button type="button" onClick={() => setAba("previa")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "previa" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}>👁 Prévia</button>
+       </div>
        <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Controles */}
-        <div className="w-72 shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto">
+        <div className={`w-full sm:w-72 sm:shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto ${aba === "ajustes" ? "" : "hidden"} sm:block`}>
           <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
 
           {menuId && (
@@ -381,8 +391,8 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
         </div>
 
         {/* Preview */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800">
+        <div className={`flex-1 flex-col min-w-0 ${aba === "previa" ? "flex" : "hidden"} sm:flex`}>
+          <div className="px-4 py-2.5 border-b border-gray-200 dark:border-gray-800 hidden sm:block">
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Pré-visualização{en ? " (EN)" : ""}</span>
           </div>
           <div className="flex-1 overflow-auto bg-gray-100 dark:bg-gray-950 p-5">
