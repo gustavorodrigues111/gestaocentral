@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -82,7 +82,11 @@ export function EscalaPage() {
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
   // Aba do módulo: grade da escala ou ajustes solicitados pelos empregados.
-  const [aba, setAba] = useState<"grade" | "ajustes">("grade");
+  // Deep-link via ?aba=ajustes (usado pela Central de Avisos do Chat).
+  const [searchParams] = useSearchParams();
+  const [aba, setAba] = useState<"grade" | "ajustes">(
+    searchParams.get("aba") === "ajustes" ? "ajustes" : "grade",
+  );
   const [numPendentes, setNumPendentes] = useState(0);
   useEffect(() => {
     if (!rid || !acaoAprovarSolic) { setNumPendentes(0); return; }
