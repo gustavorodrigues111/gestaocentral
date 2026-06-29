@@ -47,6 +47,10 @@ function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
   if (h >= 0 && h < 5) { const o = new Date(now); o.setDate(now.getDate() - 1); return { data: ymd(o), turno: "jantar" }; }
   return { data: ymd(now), turno: h < 17 ? "almoco" : "jantar" };
 }
+function medianN(xs: number[]): number {
+  const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
+}
 
 const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
@@ -432,7 +436,7 @@ function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro
 type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
 function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo }: {
   rid: string;
-  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[] };
+  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoPedirObsTurno?: boolean };
   por: { id: string; nome: string };
   recentes: FechamentoCaixa[];
   onClose: () => void;
@@ -453,6 +457,22 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   const [numeroLacre, setNumeroLacre] = useState("");
   const [naoLacrado, setNaoLacrado] = useState(false);
   const [observacao, setObservacao] = useState("");
+  const [semOcorrencia, setSemOcorrencia] = useState(false);
+
+  // Percepção do turno: direção do movimento vs. mediana do mesmo dia-da-semana/turno.
+  const pedirObs = !!restaurant.fechamentoPedirObsTurno;
+  const diaSemana = DIAS_SEMANA[new Date(`${data}T12:00:00`).getDay()] || "";
+  const movDir = useMemo<"abaixo" | "normal" | "acima">(() => {
+    const wd = new Date(`${data}T12:00:00`).getDay();
+    const vals = recentes
+      .filter((f) => f.turno === turno && typeof f.totalVendas === "number" && (f.totalVendas as number) > 0 && new Date(`${f.data}T12:00:00`).getDay() === wd)
+      .map((f) => f.totalVendas as number);
+    const tot = parseBRL(totalVendas);
+    if (vals.length < 3 || tot == null) return "normal";       // sem histórico/total → trata como normal
+    const med = medianN(vals);
+    return tot < med * 0.85 ? "abaixo" : tot > med * 1.15 ? "acima" : "normal";
+  }, [recentes, turno, data, totalVendas]);
+  const movForaDaMedia = movDir !== "normal";
   // Wizard: comprovante → filipetas → comandas → conferência.
   const [etapa, setEtapa] = useState<"comprovante" | "filipetas" | "comandas" | "conferencia">("comprovante");
   const [lendo, setLendo] = useState(false);
@@ -527,6 +547,10 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     if (parseBRL(totalVendas) == null) { setErro("Informe o faturamento total."); return; }
     if (anexos.length && !restaurant.fechamentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de fechar."); return; }
     if (!naoLacrado && !numeroLacre.trim()) { setErro("Informe o número do lacre ou marque \"Não foi lacrado\"."); return; }
+    if (pedirObs) {
+      if (movForaDaMedia && !observacao.trim()) { setErro(`O ${TURNO_CAIXA_LABEL[turno].toLowerCase()} veio fora da média — conte rapidamente o que aconteceu nesse turno.`); return; }
+      if (!movForaDaMedia && !semOcorrencia && !observacao.trim()) { setErro('Marque "Foi tudo normal" ou escreva uma observação sobre o turno.'); return; }
+    }
     setSalvando(true);
     try {
       const agora = new Date();
@@ -563,6 +587,8 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
         ...(comandasConsumo.length ? { comandas: comandasConsumo.map((c) => ({ numero: c.numero, ...(c.nome ? { nome: c.nome } : {}), ...(c.valor != null ? { valor: c.valor } : {}) })) } : {}),
         numeroLacre: naoLacrado ? "Não lacrado" : numeroLacre.trim(),
         ...(observacao.trim() ? { observacao: observacao.trim() } : {}),
+        ...(pedirObs ? { movimentoTurno: movDir } : {}),
+        ...(pedirObs && semOcorrencia ? { semOcorrencia: true } : {}),
         ...(anexosSalvos.length ? { anexos: anexosSalvos } : {}),
         ...(driveFolderUrl ? { driveFolderUrl } : {}),
         ...(emails.length ? { emailEnviadoPara: emails } : {}),
@@ -725,10 +751,38 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
               <input value={naoLacrado ? "" : numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} disabled={naoLacrado} placeholder={naoLacrado ? "—" : "ex: h3141345"} className={`${inputCls} disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800`} />
               <label className="flex items-center gap-2 mt-1.5 cursor-pointer text-[12px] text-gray-600 dark:text-gray-400"><input type="checkbox" checked={naoLacrado} onChange={(e) => setNaoLacrado(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Não foi lacrado</label>
             </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação <span className="font-normal text-gray-400">— opcional</span></label>
-              <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
-            </div>
+            {pedirObs ? (
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-3 space-y-2">
+                <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">Como foi o turno?</div>
+                {movForaDaMedia ? (
+                  <>
+                    <p className="text-[12px] text-amber-700 dark:text-amber-300">
+                      O {TURNO_CAIXA_LABEL[turno].toLowerCase()} veio <strong>{movDir === "abaixo" ? "abaixo" : "acima"}</strong> do normal pra {diaSemana}. Conte rapidamente o que aconteceu.
+                    </p>
+                    <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} placeholder="ex: choveu forte no rush · faltou cozinheiro · grupo de 30 · evento na região…" className={inputCls} />
+                    <p className="text-[11px] text-gray-400">Obrigatório quando o movimento foge da média.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-[12px] text-gray-500 dark:text-gray-400">{diaSemana.charAt(0).toUpperCase() + diaSemana.slice(1)} dentro do normal. Algo a destacar?</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={() => { setSemOcorrencia(true); setObservacao(""); }}
+                        className={`text-[12px] px-3 py-1.5 rounded-lg border ${semOcorrencia ? "bg-emerald-600 text-white border-emerald-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>✓ Foi tudo normal</button>
+                      <button type="button" onClick={() => setSemOcorrencia(false)}
+                        className={`text-[12px] px-3 py-1.5 rounded-lg border ${!semOcorrencia ? "bg-indigo-600 text-white border-indigo-600" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Teve algo a relatar</button>
+                    </div>
+                    {!semOcorrencia && (
+                      <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} placeholder="ex: grupo grande, promoção, evento na região…" className={inputCls} />
+                    )}
+                  </>
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Observação <span className="font-normal text-gray-400">— opcional</span></label>
+                <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
+              </div>
+            )}
             <div className="flex justify-between pt-1"><Button variant="secondary" size="sm" disabled={salvando} onClick={() => setEtapa("comandas")}>← Voltar</Button><Button disabled={salvando} onClick={() => void salvar()}>{salvando ? "Fechando…" : "✓ Fechar caixa"}</Button></div>
           </div>
         )}
@@ -1385,13 +1439,19 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean } }) {
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean; fechamentoPedirObsTurno?: boolean } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [temIfood, setTemIfood] = useState(!!restaurant.fechamentoTemIfood);
   async function salvarTemIfood(v: boolean) {
     setTemIfood(v);
     try { await updateDoc(doc(db, "restaurants", rid), { fechamentoTemIfood: v }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
+  }
+  const [pedirObs, setPedirObs] = useState(!!restaurant.fechamentoPedirObsTurno);
+  async function salvarPedirObs(v: boolean) {
+    setPedirObs(v);
+    try { await updateDoc(doc(db, "restaurants", rid), { fechamentoPedirObsTurno: v }); }
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
   }
   const [central, setCentral] = useState<boolean | null>(null);
@@ -1554,6 +1614,15 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
           <span className="text-sm text-gray-700 dark:text-gray-300">Este restaurante tem iFood</span>
         </label>
         <p className="text-sm text-gray-500 dark:text-gray-400">Quando marcado, a aba <strong>Conciliação de Cartões</strong> passa a aceitar também a planilha de pedidos do iFood, somando os pedidos concluídos por caixa pra você conferir na Altec.</p>
+      </div>
+
+      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100">Observação do turno</h3>
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={pedirObs} onChange={(e) => void salvarPedirObs(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+          <span className="text-sm text-gray-700 dark:text-gray-300">Pedir observação do turno ao fechar o caixa</span>
+        </label>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Quando marcado, ao fechar o caixa o app compara o faturamento com a média daquele dia da semana e turno. Se ficou <strong>dentro do normal</strong>, basta um toque em "Foi tudo normal". Se veio <strong>acima ou abaixo</strong>, pede uma observação curta do que aconteceu (chuva, evento, grupo grande, problema…) — pra alimentar a análise depois.</p>
       </div>
     </div>
   );

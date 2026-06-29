@@ -719,6 +719,7 @@ export type Restaurant = {
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   fechamentoTemIfood?: boolean;            // restaurante tem iFood → conciliação aceita planilha do iFood
+  fechamentoPedirObsTurno?: boolean;       // pede observação do turno ao fechar (ancorada no movimento vs. média)
   // Signatário fixo da empresa no Clicksign (representante que assina os
   // contratos de admissão junto com o empregado). Configurado 1x por empresa.
   clicksignEmpresaNome?: string;
@@ -4869,6 +4870,10 @@ export type FechamentoCaixa = {
   fundoCaixa?: number;
   numeroLacre?: string;         // nº do lacre do malote
   observacao?: string;
+  // Percepção do turno (quando fechamentoPedirObsTurno): direção do movimento
+  // vs. mediana do mesmo dia-da-semana/turno, e "sem ocorrência".
+  movimentoTurno?: "abaixo" | "normal" | "acima";
+  semOcorrencia?: boolean;
   anexos?: AnexoFechamento[];
   driveFolderUrl?: string;      // pasta do turno no Drive
   emailEnviadoPara?: string[];  // emails dos sócios notificados
