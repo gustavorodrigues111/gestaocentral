@@ -13,7 +13,7 @@ import type { VRPDFLinha } from "./gerarVRPDF";
 import { calcularTotais, montarLinhasLote, recalcularTotal } from "./calc";
 import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha, MudancaAgendada } from "../../core/types";
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
-import { VR_LOTE_STATUS_LABEL } from "../../core/types";
+import { VR_LOTE_STATUS_LABEL, AREAS } from "../../core/types";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -29,6 +29,10 @@ function parseMoneyInput(s: string): number {
   const clean = (s || "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
   return parseFloat(clean) || 0;
 }
+const round2 = (n: number) => Math.round(n * 100) / 100;
+const fmtMoneyInput = (n: number) => (n > 0 ? n.toFixed(2).replace(".", ",") : "");
+
+type OverrideVR = { descontoSugeridoAtivo?: boolean; descontoManual?: number; auxPontual?: number };
 
 export function VRPage() {
   const { pessoa: me } = useAuth();
@@ -54,12 +58,10 @@ export function VRPage() {
   const [lotes, setLotes] = useState<VRLote[]>([]);
   const [loading, setLoading] = useState(true);
   const [showExportPDF, setShowExportPDF] = useState(false);
+  // Sheet de edição por linha (mobile + desktop)
+  const [editandoEmpId, setEditandoEmpId] = useState<string | null>(null);
 
-  // Overrides locais do PREVIEW (antes de lançar o lote) — mesma lógica do VT:
-  // o usuário edita desconto sugerido (toggle), desconto manual e aux pontual
-  // direto no preview; aplicamos sobre o cálculo-base e embutimos no lote ao
-  // lançar. Some ao trocar de mês/restaurante.
-  type OverrideVR = { descontoSugeridoAtivo?: boolean; descontoManual?: number; auxPontual?: number };
+  // Overrides locais do PREVIEW (antes de lançar o lote) — mesma lógica do VT.
   const [overrides, setOverrides] = useState<Record<string, OverrideVR>>({});
   function setOverride(empId: string, patch: OverrideVR) {
     setOverrides((prev) => ({ ...prev, [empId]: { ...prev[empId], ...patch } }));
@@ -69,8 +71,6 @@ export function VRPage() {
   // mês de referência pro desconto = lote.mes − 2
   const ref = useMemo(() => shiftMonth(ano, mes, -2), [ano, mes]);
 
-  // Mudanças agendadas (ex: "desligar VR/VT a partir de 1/6") — pra projetar o
-  // estado do empregado no mês do lote antes da data chegar.
   useEffect(() => {
     const q = query(collection(db, "mudancasAgendadas"), where("entityType", "==", "empregado"));
     return onSnapshot(q, (snap) => {
@@ -81,8 +81,6 @@ export function VRPage() {
     });
   }, []);
 
-  // Empregados projetados pro mês do lote (aplica mudanças agendadas vigentes
-  // até o 1º dia do mês).
   const empregadosProjetados = useMemo(
     () => projetarEmpregadosParaData(empregados, mudancasAgendadas, `${ano}-${pad2(mes)}-01`),
     [empregados, mudancasAgendadas, ano, mes],
@@ -106,9 +104,6 @@ export function VRPage() {
 
   useEffect(() => {
     if (!rid) return;
-    // ID canônico da escala: `${rid}_${ano}-${mes}` (igual Escala/VT). Antes
-    // usava "_" no lugar do "-", lendo um doc que não existe → escala sempre
-    // null → dias trabalhados zerados no VR.
     const escalaId = `${rid}_${ano}-${pad2(mes)}`;
     return onSnapshot(doc(db, "escalas", escalaId), (snap) => {
       setEscala(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null);
@@ -126,9 +121,6 @@ export function VRPage() {
   useEffect(() => {
     if (!rid) return;
     setLoading(true);
-    // Sem orderBy: a combinação where×3 + orderBy exige índice composto no
-    // Firestore. Se faltar o índice, o onSnapshot dá erro e o loading nunca
-    // sai (tela travada em "Carregando…"). Ordenamos por criadoEm no cliente.
     const q = query(
       collection(db, "vrLotes"),
       where("restaurantId", "==", rid),
@@ -147,15 +139,12 @@ export function VRPage() {
     });
   }, [rid, ano, mes]);
 
-  // Lote "ativo" do mês = rascunho ou pago mais recente (não cancelado)
   const loteAtivo = useMemo(
     () => lotes.find((l) => l.status !== "cancelado") || null,
     [lotes],
   );
 
-  // Preview das linhas (quando ainda não há lote). Aplica os overrides locais
-  // do usuário (toggle desconto, desconto manual, aux pontual) e recalcula o
-  // total — igual ao VT.
+  // Preview com overrides aplicados (quando ainda não há lote).
   const linhasPreview = useMemo<VRLoteLinha[]>(() => {
     if (loteAtivo) return [];
     const base = montarLinhasLote({
@@ -185,7 +174,20 @@ export function VRPage() {
   const linhasExibidas = loteAtivo?.linhas || linhasPreview;
   const totais = useMemo(() => calcularTotais(linhasExibidas), [linhasExibidas]);
 
-  // Linhas pro PDF — enriquece com a forma de pagamento (Caju/PIX) do cadastro.
+  // Agrupa por área (igual ao VT).
+  const porArea = useMemo(() => {
+    const out: Record<string, VRLoteLinha[]> = {};
+    for (const l of linhasExibidas) {
+      (out[l.area] ||= []).push(l);
+    }
+    for (const a of Object.keys(out)) out[a].sort((x, y) => x.nome.localeCompare(y.nome));
+    return out;
+  }, [linhasExibidas]);
+  const areasComLinhas = useMemo(
+    () => AREAS.filter((a) => porArea[a] && porArea[a].length > 0),
+    [porArea],
+  );
+
   const empregadosById = useMemo(
     () => Object.fromEntries(empregados.map(e => [e.id, e])),
     [empregados],
@@ -217,12 +219,7 @@ export function VRPage() {
     );
     if (!ok) return;
     const nowIso = new Date().toISOString();
-    const evento: VRLoteEvento = {
-      acao: "criado",
-      em: nowIso,
-      por: me.id,
-      porNome: me.nome,
-    };
+    const evento: VRLoteEvento = { acao: "criado", em: nowIso, por: me.id, porNome: me.nome };
     const payload: Omit<VRLote, "id"> = {
       restaurantId: rid,
       ano, mes,
@@ -304,28 +301,59 @@ export function VRPage() {
     }
   }
 
-  // ─── Edição inline de linha (só rascunho) ─────────────────────────────────
+  // ─── Edição inline de linha (rascunho → grava no lote) ────────────────────
   async function atualizarLinha(linhaIdx: number, patch: Partial<VRLoteLinha>) {
     if (!loteAtivo || loteAtivo.status !== "rascunho") return;
     const novaLinha = { ...loteAtivo.linhas[linhaIdx], ...patch };
     novaLinha.total = recalcularTotal(novaLinha);
     const novasLinhas = [...loteAtivo.linhas];
     novasLinhas[linhaIdx] = novaLinha;
-    const totais = calcularTotais(novasLinhas);
+    const tot = calcularTotais(novasLinhas);
     await updateDoc(doc(db, "vrLotes", loteAtivo.id), {
       linhas: novasLinhas,
-      totalGeral: totais.totalGeral,
-      totalPorArea: totais.totalPorArea,
+      totalGeral: tot.totalGeral,
+      totalPorArea: tot.totalPorArea,
       updatedAt: new Date().toISOString(),
     });
   }
 
-  // Roteia a edição: se há lote em rascunho, grava no doc; senão (preview),
-  // guarda no override local — embutido no lote ao lançar.
-  function editarLinha(linhaIdx: number, empregadoId: string, patch: OverrideVR) {
-    if (loteAtivo && loteAtivo.status === "rascunho") atualizarLinha(linhaIdx, patch);
-    else setOverride(empregadoId, patch);
+  // Roteia a edição: rascunho → doc; preview → override local.
+  function editarLinha(empregadoId: string, patch: OverrideVR) {
+    if (loteAtivo && loteAtivo.status === "rascunho") {
+      const idx = loteAtivo.linhas.findIndex((x) => x.empregadoId === empregadoId);
+      if (idx >= 0) atualizarLinha(idx, patch);
+    } else {
+      setOverride(empregadoId, patch);
+    }
   }
+
+  function exportarCaju() {
+    if (!loteAtivo || !activeRestaurant) return;
+    const slug = (activeRestaurant.nome || "restaurante")
+      .toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+    const r = exportarLoteCaju({ lote: loteAtivo, empregados, restaurantSlug: slug });
+    baixarCsvCaju(r);
+    const totalBR = r.totalValor.toFixed(2).replace(".", ",");
+    const ignoradasTxt = r.ignoradas.length === 0
+      ? "Nenhuma linha ignorada."
+      : `${r.ignoradas.length} linha(s) ignorada(s):\n` +
+        r.ignoradas.map(i => `  • ${i.nome}: ${i.motivo}`).join("\n");
+    alert(
+      `✅ CSV exportado: ${r.filename}\n\n` +
+      `${r.qtdLinhasOk} colaborador(es) — R$ ${totalBR}\n\n` +
+      ignoradasTxt + "\n\n" +
+      `Suba no Caju (Pedidos → Importar planilha).`
+    );
+  }
+
+  // Linha em edição pelo sheet
+  const linhaEditando = useMemo(
+    () => linhasExibidas.find((x) => x.empregadoId === editandoEmpId) || null,
+    [linhasExibidas, editandoEmpId],
+  );
+  const editavelGlobal = podeConfig && (!loteAtivo || loteAtivo.status === "rascunho");
 
   // ─── Render guards ────────────────────────────────────────────────────────
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -341,33 +369,54 @@ export function VRPage() {
     );
   }
 
+  const statusLabel = loteAtivo ? VR_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização";
+  const isPago = loteAtivo?.status === "pago";
+
   return (
     <div className="max-w-6xl">
-      {/* Navegação de mês */}
-      <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
-          <span className="font-semibold text-lg">
-            {nomeMes(mes)}/{ano}
+      {/* Header: unidade + navegação de mês */}
+      <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] uppercase tracking-wider font-semibold px-2.5 py-1 rounded-full bg-indigo-600 text-white cursor-default">
+            {activeRestaurant.nome}
           </span>
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
-          {loteAtivo && (
-            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
-              loteAtivo.status === "pago"
-                ? "bg-emerald-100 text-emerald-700"
-                : "bg-amber-100 text-amber-700"
-            }`}>
-              {VR_LOTE_STATUS_LABEL[loteAtivo.status]}
-            </span>
-          )}
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
+          <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[160px] text-center">
+            {nomeMes(mes)} {ano}
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
+        </div>
+      </div>
 
+      {/* Indicador do refMes do desconto sugerido */}
+      <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
+        Desconto sugerido — mês de referência: <strong>{nomeMes(ref.mes).slice(0, 3).toLowerCase()}/{String(ref.ano).slice(2)}</strong>
+      </div>
+
+      {/* Banner de total + ações */}
+      <div className={`rounded-xl border-2 p-3 mb-4 flex items-center justify-between flex-wrap gap-2 ${
+        isPago
+          ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20"
+          : "border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20"
+      }`}>
+        <div>
+          <div className={`text-[11px] uppercase font-bold tracking-wider ${isPago ? "text-emerald-700 dark:text-emerald-300" : "text-indigo-700 dark:text-indigo-300"}`}>
+            {loteAtivo ? `Lote ${statusLabel}` : "A pagar — da escala prevista"}
+          </div>
+          <div className={`text-2xl font-bold tabular-nums ${isPago ? "text-emerald-900 dark:text-emerald-100" : "text-indigo-900 dark:text-indigo-100"}`}>
+            {fmtBR(totais.totalGeral)} <span className={`text-sm font-medium ${isPago ? "text-emerald-700/70 dark:text-emerald-300/70" : "text-indigo-700/70 dark:text-indigo-300/70"}`}>· {linhasExibidas.length} pessoa(s)</span>
+          </div>
+        </div>
         <div className="flex gap-2 flex-wrap">
-          {/* Exportar PDF — sempre disponível (preview ou lote), igual ao VT. */}
           {linhasExibidas.length > 0 && podeConfig && (
-            <Button variant="secondary" size="sm" onClick={() => setShowExportPDF(true)} title="Exportar PDF do VR (por área, com forma de pagamento) e pré-visualizar">
-              📄 Exportar PDF
+            <Button variant="secondary" size="sm" onClick={() => setShowExportPDF(true)} title="Exportar PDF do VR (por área, com forma de pagamento)">
+              📄 PDF
             </Button>
+          )}
+          {loteAtivo && loteAtivo.status !== "cancelado" && podeConfig && (
+            <Button variant="secondary" size="sm" onClick={exportarCaju}>📥 Caju</Button>
           )}
           {!loteAtivo && podeConfig && linhasPreview.length > 0 && (
             <Button onClick={lancarLote}>💸 Lançar pra pagamento</Button>
@@ -384,46 +433,10 @@ export function VRPage() {
               <Button variant="danger" onClick={() => cancelarLote(loteAtivo)}>✕ Cancelar (master)</Button>
             </>
           )}
-          {loteAtivo && loteAtivo.status !== "cancelado" && podeConfig && (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                const slug = (activeRestaurant.nome || "restaurante")
-                  .toLowerCase()
-                  .normalize("NFD").replace(/[̀-ͯ]/g, "")
-                  .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-                const r = exportarLoteCaju({ lote: loteAtivo, empregados, restaurantSlug: slug });
-                baixarCsvCaju(r);
-                const totalBR = r.totalValor.toFixed(2).replace(".", ",");
-                const ignoradasTxt = r.ignoradas.length === 0
-                  ? "Nenhuma linha ignorada."
-                  : `${r.ignoradas.length} linha(s) ignorada(s):\n` +
-                    r.ignoradas.map(i => `  • ${i.nome}: ${i.motivo}`).join("\n");
-                alert(
-                  `✅ CSV exportado: ${r.filename}\n\n` +
-                  `${r.qtdLinhasOk} colaborador(es) — R$ ${totalBR}\n\n` +
-                  ignoradasTxt + "\n\n" +
-                  `Suba no Caju (Pedidos → Importar planilha).`
-                );
-              }}
-            >
-              📥 Exportar CSV pra Caju
-            </Button>
-          )}
         </div>
       </div>
 
-      {/* Cards de totais */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-        <StatCard label="Empregados" value={String(linhasExibidas.length)} />
-        <StatCard label="Total geral" value={fmtBR(totais.totalGeral)} />
-        {Object.entries(totais.totalPorArea).slice(0, 2).map(([area, valor]) => (
-          <StatCard key={area} label={`${AREA_ICON[area] || ""} ${area}`} value={fmtBR(valor)} />
-        ))}
-      </div>
-
-      {/* Linhas */}
+      {/* Linhas agrupadas por área */}
       {loading ? (
         <div className="text-sm text-gray-500 py-6">Carregando…</div>
       ) : linhasExibidas.length === 0 ? (
@@ -438,124 +451,68 @@ export function VRPage() {
           </p>
         </div>
       ) : (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-800 text-xs uppercase tracking-wider text-gray-500">
-                <tr>
-                  <th className="text-left px-3 py-2">Empregado</th>
-                  <th className="text-right px-3 py-2">Dias</th>
-                  <th className="text-right px-3 py-2">R$/dia</th>
-                  <th className="text-right px-3 py-2">Base</th>
-                  <th className="text-right px-3 py-2">Aux. fixo</th>
-                  <th className="text-right px-3 py-2" title="Desconto sugerido (não conta falta justificada)">
-                    Desc. sug.
-                  </th>
-                  <th className="text-right px-3 py-2">Desc. manual</th>
-                  <th className="text-right px-3 py-2">Aux. pontual</th>
-                  <th className="text-right px-3 py-2">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                {linhasExibidas.map((l, i) => {
-                  // Editável tanto no preview (overrides locais) quanto no
-                  // rascunho (grava no lote) — igual ao VT.
-                  const editavel = podeConfig && (!loteAtivo || loteAtivo.status === "rascunho");
+        <div className="space-y-4">
+          {areasComLinhas.map((area) => {
+            const linhasArea = porArea[area];
+            const subtotal = totais.totalPorArea[area] || 0;
+            return (
+              <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
+                  <div className="font-bold text-sm text-gray-800 dark:text-gray-200">
+                    {AREA_ICON[area]} {area}
+                    <span className="ml-2 text-xs font-normal text-gray-500">({linhasArea.length})</span>
+                  </div>
+                  <div className="text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(subtotal)}</div>
+                </div>
+
+                <div className="hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] py-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/30 border-b border-gray-100 dark:border-gray-800">
+                  <div className="px-3 flex items-center">Empregado</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Aux. fixo</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">R$/dia</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Dias</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Desc. sug.</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Desconto</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Aux. pontual</div>
+                  <div className="px-2 flex items-center justify-center text-center border-l border-gray-200 dark:border-gray-700">Total</div>
+                </div>
+
+                {linhasArea.map((l) => {
+                  const recebePeloCaju = empregadosById[l.empregadoId]?.vrRecebePeloCaju !== false;
+                  const onAbrir = editavelGlobal ? () => setEditandoEmpId(l.empregadoId) : undefined;
                   return (
-                    <tr key={l.empregadoId} className="border-t border-gray-100 dark:border-gray-800">
-                      <td className="px-3 py-2">
-                        <div className="font-medium">{l.nome}</div>
-                        <div className="text-xs text-gray-500">
-                          {AREA_ICON[l.area]} {l.area} · {l.cargoNome}
-                        </div>
-                      </td>
-                      <td className="text-right px-3 py-2">{l.diasTrabalhados}</td>
-                      <td className="text-right px-3 py-2">{fmtBR(l.valorDiario)}</td>
-                      <td className="text-right px-3 py-2">{fmtBR(l.vrBase)}</td>
-                      <td className="text-right px-3 py-2">{fmtBR(l.auxFixoMensal)}</td>
-                      <td className="text-right px-3 py-2" title={l.descontoSugeridoJustificativa || ""}>
-                        {editavel ? (
-                          <label className="flex items-center justify-end gap-1 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={l.descontoSugeridoAtivo}
-                              onChange={(e) => editarLinha(i, l.empregadoId, { descontoSugeridoAtivo: e.target.checked })}
-                            />
-                            <span className={l.descontoSugeridoAtivo ? "" : "line-through text-gray-400"}>
-                              -{fmtBR(l.descontoSugerido)}
-                            </span>
-                          </label>
-                        ) : (
-                          <span className={l.descontoSugeridoAtivo ? "" : "line-through text-gray-400"}>
-                            -{fmtBR(l.descontoSugerido)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="text-right px-3 py-2">
-                        {editavel ? (
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            defaultValue={l.descontoManual ? l.descontoManual.toFixed(2).replace(".", ",") : ""}
-                            onBlur={(e) => {
-                              const v = parseMoneyInput(e.target.value);
-                              if (v !== l.descontoManual) editarLinha(i, l.empregadoId, { descontoManual: v });
-                            }}
-                            placeholder="0,00"
-                            className="w-20 text-right border rounded px-1 py-0.5 text-xs bg-transparent"
-                          />
-                        ) : (
-                          fmtBR(l.descontoManual)
-                        )}
-                      </td>
-                      <td className="text-right px-3 py-2">
-                        {editavel ? (
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            defaultValue={l.auxPontual ? l.auxPontual.toFixed(2).replace(".", ",") : ""}
-                            onBlur={(e) => {
-                              const v = parseMoneyInput(e.target.value);
-                              if (v !== l.auxPontual) editarLinha(i, l.empregadoId, { auxPontual: v });
-                            }}
-                            placeholder="0,00"
-                            className="w-20 text-right border rounded px-1 py-0.5 text-xs bg-transparent"
-                          />
-                        ) : (
-                          fmtBR(l.auxPontual)
-                        )}
-                      </td>
-                      <td className="text-right px-3 py-2 font-bold">{fmtBR(l.total)}</td>
-                    </tr>
+                    <div key={l.empregadoId}>
+                      <LinhaVR l={l} onAbrirSheet={onAbrir} recebePeloCaju={recebePeloCaju} />
+                      <LinhaVRCard l={l} onAbrirSheet={onAbrir} recebePeloCaju={recebePeloCaju} />
+                    </div>
                   );
                 })}
-              </tbody>
-              <tfoot>
-                <tr className="bg-gray-50 dark:bg-gray-800 font-bold">
-                  <td className="px-3 py-2" colSpan={8}>Total geral</td>
-                  <td className="text-right px-3 py-2">{fmtBR(totais.totalGeral)}</td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Lista de lotes cancelados (histórico mínimo do mês) */}
-      {lotes.length > 1 && (
+      {/* Histórico mínimo: lotes cancelados do mês */}
+      {lotes.filter((l) => l.status === "cancelado").length > 0 && (
         <div className="mt-6">
-          <h2 className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-2">
-            Histórico do mês
-          </h2>
-          <ul className="text-xs text-gray-600 space-y-1">
+          <h3 className="text-xs uppercase tracking-wider text-gray-500 font-semibold mb-2">Histórico do mês</h3>
+          <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
             {lotes.filter((l) => l.status === "cancelado").map((l) => (
               <li key={l.id}>
-                ✕ Cancelado em {l.canceladoEm?.slice(0, 10)} — {l.motivoCancelamento || "(sem motivo)"} ·
-                {" "}{fmtBR(l.totalGeral)}
+                ✕ Cancelado em {l.canceladoEm?.slice(0, 10)} — {l.motivoCancelamento || "(sem motivo)"} · {fmtBR(l.totalGeral)}
               </li>
             ))}
           </ul>
         </div>
+      )}
+
+      {/* Sheet de edição por linha */}
+      {linhaEditando && (
+        <EditLinhaSheetVR
+          l={linhaEditando}
+          onClose={() => setEditandoEmpId(null)}
+          onAplicar={(patch) => { editarLinha(linhaEditando.empregadoId, patch); setEditandoEmpId(null); }}
+        />
       )}
 
       {showExportPDF && (
@@ -563,7 +520,7 @@ export function VRPage() {
           ano={ano}
           mes={mes}
           restaurantNome={activeRestaurant.nome}
-          statusLabel={loteAtivo ? VR_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização"}
+          statusLabel={statusLabel}
           linhas={linhasPdf}
           onClose={() => setShowExportPDF(false)}
         />
@@ -572,11 +529,184 @@ export function VRPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+// ────────────────────────────────────────────────────────────────────────────
+// Badge da forma de pagamento — Caju (laranja) ou PIX (azul)
+// ────────────────────────────────────────────────────────────────────────────
+function PagamentoBadge({ caju }: { caju: boolean }) {
+  return caju ? (
+    <span className="text-[9px] bg-orange-100 dark:bg-orange-900/40 text-orange-800 dark:text-orange-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">Caju</span>
+  ) : (
+    <span className="text-[9px] bg-blue-100 dark:bg-blue-900/40 text-blue-800 dark:text-blue-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">PIX</span>
+  );
+}
+
+// Desktop: grid de 8 colunas. Edição via ✏️ (abre o sheet).
+function LinhaVR({ l, onAbrirSheet, recebePeloCaju }: {
+  l: VRLoteLinha;
+  onAbrirSheet?: () => void;
+  recebePeloCaju: boolean;
+}) {
+  const cell = "px-2 flex items-center justify-center text-center tabular-nums border-l border-gray-100 dark:border-gray-800";
   return (
-    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-      <div className="text-[10px] uppercase tracking-wider text-gray-500">{label}</div>
-      <div className="text-lg font-bold text-gray-900 dark:text-gray-100">{value}</div>
+    <div className="hidden md:grid grid-cols-[1.4fr_90px_80px_70px_120px_100px_100px_110px] py-2 text-sm border-t border-gray-100 dark:border-gray-800">
+      <div className="px-3 flex items-center flex-wrap gap-x-1.5 gap-y-0.5 min-w-0 font-medium text-gray-900 dark:text-gray-100">
+        <PagamentoBadge caju={recebePeloCaju} />
+        <span className="truncate">{l.nome}</span>
+        <span className="text-[10px] text-gray-400">{l.cargoNome}</span>
+      </div>
+      <div className={`${cell} text-gray-700 dark:text-gray-300`}>{l.auxFixoMensal > 0 ? fmtBR(l.auxFixoMensal) : "—"}</div>
+      <div className={`${cell} text-gray-700 dark:text-gray-300`}>{l.valorDiario > 0 ? fmtBR(l.valorDiario) : "—"}</div>
+      <div className={cell}>{l.diasTrabalhados}</div>
+      <div className={cell}>
+        {l.descontoSugerido > 0 ? (
+          <span className="inline-flex items-center gap-1 justify-center">
+            <span className={`tabular-nums text-xs ${l.descontoSugeridoAtivo ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400 line-through"}`} title={l.descontoSugeridoJustificativa || ""}>
+              -{fmtBR(l.descontoSugerido)}
+            </span>
+            <span className="text-[10px] text-gray-400 cursor-help" title={l.descontoSugeridoJustificativa || ""}>ⓘ</span>
+          </span>
+        ) : <span className="text-gray-400 text-xs">—</span>}
+      </div>
+      <div className={`${cell} text-xs ${l.descontoManual > 0 ? "text-rose-700 dark:text-rose-400 font-semibold" : "text-gray-400"}`}>
+        {l.descontoManual > 0 ? `-${fmtBR(l.descontoManual)}` : "—"}
+      </div>
+      <div className={`${cell} text-xs ${l.auxPontual > 0 ? "text-emerald-700 dark:text-emerald-400 font-semibold" : "text-gray-400"}`}>
+        {l.auxPontual > 0 ? `+${fmtBR(l.auxPontual)}` : "—"}
+      </div>
+      <div className={`${cell} font-bold text-gray-900 dark:text-gray-100 gap-1.5`}>
+        {fmtBR(l.total)}
+        {onAbrirSheet && (
+          <button type="button" onClick={onAbrirSheet} title="Editar valores" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm">✏️</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Mobile: card vertical, edição via bottom-sheet.
+function LinhaVRCard({ l, onAbrirSheet, recebePeloCaju }: {
+  l: VRLoteLinha;
+  onAbrirSheet?: () => void;
+  recebePeloCaju: boolean;
+}) {
+  const detalhes: string[] = [];
+  if (l.valorDiario > 0) detalhes.push(`${l.diasTrabalhados} dias · ${fmtBR(l.valorDiario)}/dia`);
+  const componentes: { label: string; valor: string; cor?: string }[] = [];
+  if (l.auxFixoMensal > 0) componentes.push({ label: "Aux.fixo", valor: fmtBR(l.auxFixoMensal) });
+  if (l.descontoSugeridoAtivo && l.descontoSugerido > 0) componentes.push({ label: "Desc.sug", valor: `-${fmtBR(l.descontoSugerido)}`, cor: "text-rose-600 dark:text-rose-400" });
+  if (l.descontoManual > 0) componentes.push({ label: "Desconto", valor: `-${fmtBR(l.descontoManual)}`, cor: "text-rose-600 dark:text-rose-400" });
+  if (l.auxPontual > 0) componentes.push({ label: "Aux.pontual", valor: `+${fmtBR(l.auxPontual)}`, cor: "text-emerald-600 dark:text-emerald-400" });
+
+  return (
+    <div className="md:hidden border-t border-gray-100 dark:border-gray-800 px-3 py-2.5">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate flex items-center gap-1.5 flex-wrap">
+            <PagamentoBadge caju={recebePeloCaju} />
+            {l.nome}
+          </div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{l.cargoNome}</div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
+          {onAbrirSheet && (
+            <button type="button" onClick={onAbrirSheet} className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1" title="Editar valores">✏️</button>
+          )}
+        </div>
+      </div>
+      {detalhes.length > 0 && (
+        <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 tabular-nums">{detalhes.join(" · ")}</div>
+      )}
+      {componentes.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] tabular-nums">
+          {componentes.map(c => (
+            <span key={c.label} className={c.cor || "text-gray-600 dark:text-gray-400"}>
+              <span className="text-gray-500 dark:text-gray-500">{c.label}: </span>{c.valor}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// EditLinhaSheetVR — edição de valores por linha (bottom-sheet/modal), igual ao VT
+// ────────────────────────────────────────────────────────────────────────────
+function EditLinhaSheetVR({ l, onClose, onAplicar }: {
+  l: VRLoteLinha;
+  onClose: () => void;
+  onAplicar: (patch: OverrideVR) => void;
+}) {
+  const [descRaw, setDescRaw] = useState(fmtMoneyInput(l.descontoManual));
+  const [auxRaw, setAuxRaw] = useState(fmtMoneyInput(l.auxPontual));
+  const [descAtivo, setDescAtivo] = useState(l.descontoSugeridoAtivo);
+
+  function aplicar() {
+    const patch: OverrideVR = {};
+    const novoDesc = round2(parseMoneyInput(descRaw));
+    const novoAux = round2(parseMoneyInput(auxRaw));
+    if (descAtivo !== l.descontoSugeridoAtivo) patch.descontoSugeridoAtivo = descAtivo;
+    if (novoDesc !== l.descontoManual) patch.descontoManual = novoDesc;
+    if (novoAux !== l.auxPontual) patch.auxPontual = novoAux;
+    onAplicar(patch);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full md:max-w-md bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
+          <div>
+            <div className="font-bold text-gray-900 dark:text-gray-100">✏️ {l.nome}</div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{l.cargoNome} · {l.area}</div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/60 p-3 text-xs space-y-0.5 tabular-nums">
+            <div className="flex justify-between"><span className="text-gray-500">Auxílio fixo:</span><span>{fmtBR(l.auxFixoMensal)}</span></div>
+            <div className="flex justify-between"><span className="text-gray-500">VR base ({l.diasTrabalhados} dias × {fmtBR(l.valorDiario)}):</span><span>{fmtBR(l.vrBase)}</span></div>
+          </div>
+
+          {l.descontoSugerido > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input type="checkbox" checked={descAtivo} onChange={(e) => setDescAtivo(e.target.checked)} className="mt-0.5" />
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-sm">Desconto sugerido</span>
+                    <span className={`tabular-nums font-bold ${descAtivo ? "text-rose-700 dark:text-rose-400" : "text-gray-400 line-through"}`}>-{fmtBR(l.descontoSugerido)}</span>
+                  </div>
+                  {l.descontoSugeridoJustificativa && (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{l.descontoSugeridoJustificativa}</div>
+                  )}
+                </div>
+              </label>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Desconto adicional (R$)</label>
+            <input type="text" inputMode="decimal" value={descRaw} onChange={(e) => setDescRaw(e.target.value)} placeholder="0,00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Desconto manual além do sugerido. Pra zerar, deixe vazio.</div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Auxílio pontual (R$)</label>
+            <input type="text" inputMode="decimal" value={auxRaw} onChange={(e) => setAuxRaw(e.target.value)} placeholder="0,00"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Valor extra a pagar nesse mês (acréscimo, ajuda de custo etc).</div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex gap-2 shrink-0">
+          <Button variant="secondary" onClick={onClose} className="flex-1">Cancelar</Button>
+          <Button onClick={aplicar} className="flex-1">Aplicar</Button>
+        </div>
+      </div>
     </div>
   );
 }
