@@ -91,10 +91,10 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
     const result: { date: string; bruto: number; retencao: number; liquido: number }[] = [];
     for (const g of gorjetas) {
       // Gate: só aparece pro empregado quando, além da gorjeta publicada, o dia
-      // dele na escala já foi FECHADO pela análise de ponto. "Fechado" = tem
-      // realAjustes (a praticada espelha a prevista antes de fechar, então `real`
-      // existir não basta).
-      if (!escala?.realAjustes?.[empregado.id]?.[g.date]) continue;
+      // dele foi FECHADO pela análise de ponto. "Fechado" = realAjustes com
+      // origem "solides_sync" (mesma definição do FechamentoTab). NÃO basta ter
+      // realAjustes — apontamentos automáticos (ponto_auto) não fecham o dia.
+      if (escala?.realAjustes?.[empregado.id]?.[g.date]?.origem !== "solides_sync") continue;
       let taxRate = g.taxRate || 0;
       let itens = g.divisaoSnapshot;
       if (!itens || itens.length === 0) {

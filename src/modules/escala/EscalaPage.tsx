@@ -1423,9 +1423,10 @@ function Grade({
                         // F5 — ícones de origem (ponto): só na PRATICADA
                         ajuste={versao === "real" ? escala?.realAjustes?.[e.id]?.[d] : undefined}
                         atraso={versao === "real" ? escala?.atrasos?.[e.id]?.[d] : undefined}
-                        // Praticada ainda não fechada (sem realAjustes) → tracejado.
-                        // Fechado = processado pela análise de ponto (realAjustes), não só `real`.
-                        previsto={versao === "real" && !escala?.realAjustes?.[e.id]?.[d]}
+                        // Praticada ainda não fechada → tracejado. Fechado = realAjustes
+                        // com origem "solides_sync" (fechamento de folha), não só `real`
+                        // nem apontamento automático (ponto_auto).
+                        previsto={versao === "real" && escala?.realAjustes?.[e.id]?.[d]?.origem !== "solides_sync"}
                       />
                     </td>
                   );
@@ -2096,8 +2097,8 @@ function GradeMobile({
                         !status || isImplicito
                           ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
                           : `${info!.bg} ${info!.text}`
-                      } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${versao === "real" && !escDoDia?.realAjustes?.[e.id]?.[iso] ? "opacity-60 outline outline-1 outline-dashed outline-gray-500/70 -outline-offset-2" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
-                      title={versao === "real" && !escDoDia?.realAjustes?.[e.id]?.[iso] ? "Previsto — dia ainda não fechado na praticada" : (swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined)}
+                      } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${versao === "real" && escDoDia?.realAjustes?.[e.id]?.[iso]?.origem !== "solides_sync" ? "opacity-60 outline outline-1 outline-dashed outline-gray-500/70 -outline-offset-2" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
+                      title={versao === "real" && escDoDia?.realAjustes?.[e.id]?.[iso]?.origem !== "solides_sync" ? "Previsto — dia ainda não fechado na praticada" : (swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined)}
                     >
                       {isImplicito ? "·" : (info?.short || "")}
                       {swap && (

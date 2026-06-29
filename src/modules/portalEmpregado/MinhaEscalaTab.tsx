@@ -77,10 +77,11 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
   );
 
   // Versão a usar: priorizamos REAL (o que aconteceu); fallback Prevista; fallback derivado.
-  // "fechado" = o dia foi processado pela análise de ponto (tem realAjustes) — NÃO
-  // basta `real` existir (a praticada espelha a prevista antes de fechar).
+  // "fechado" = o dia foi fechado pela análise de ponto (realAjustes com origem
+  // "solides_sync"). NÃO basta ter `real` (espelha a prevista) nem realAjustes de
+  // apontamento automático (ponto_auto). Mesma definição do FechamentoTab.
   function statusEm(date: string): { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; fechado: boolean } {
-    const fechado = !!escala?.realAjustes?.[empregado.id]?.[date];
+    const fechado = escala?.realAjustes?.[empregado.id]?.[date]?.origem === "solides_sync";
     const real = escala?.real?.[empregado.id]?.[date];
     if (real) return { status: real, fonte: "real", fechado };
     const prev = escala?.prevista?.[empregado.id]?.[date];
