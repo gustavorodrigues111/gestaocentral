@@ -23,13 +23,25 @@ export function HomePage() {
   const { can } = useCanAcao(ridAtivo);
 
   // Landing dinâmica baseada em permissão:
-  //   1. Tem tarefas → Gestor de Tarefas (default histórico)
-  //   2. Senão, tem portalEmpregado.acessar → Portal do Empregado
-  //   3. Senão, fica no catálogo de módulos (esta página)
+  //   1. Tem Chat (Central de Avisos) → é a tela de abertura pra todo mundo
+  //      que tem o módulo liberado.
+  //   2. Senão, tem tarefas → Gestor de Tarefas
+  //   3. Senão, tem portalEmpregado.acessar → Portal do Empregado
+  //   4. Senão, fica no catálogo de módulos (esta página)
   if (activeRestaurant && pessoa && !forcarCatalogo) {
+    const modAtivos = activeRestaurant.modulosAtivos || [];
+
+    // Chat (Central de Avisos) é a abertura. Master bypassa modulosAtivos;
+    // non-master precisa do módulo ativo no restaurante + permissão de perfil.
+    const chatLigado = modAtivos.includes("chat");
+    const podeChat = isMaster || (chatLigado && canUse(pessoa, activeRestaurant.id, "chat"));
+    if (podeChat) {
+      return <Navigate to={`/r/${activeRestaurant.id}/chat`} replace />;
+    }
+
     // Tarefas virou módulo da seção "master" (ligável/desligável). Só faz
     // landing nele se estiver ATIVO no restaurante — senão cai no portal/catálogo.
-    const tarefasLigado = (activeRestaurant.modulosAtivos || []).includes("tarefas");
+    const tarefasLigado = modAtivos.includes("tarefas");
     const podeTarefas = tarefasLigado && (isMaster || canUse(pessoa, activeRestaurant.id, "tarefas"));
     if (podeTarefas) {
       return <Navigate to={`/r/${activeRestaurant.id}/tarefas`} replace />;

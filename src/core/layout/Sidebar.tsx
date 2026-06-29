@@ -5,8 +5,9 @@ import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
-import { canUse } from "../auth/permissions";
+import { canUse, canAcao } from "../auth/permissions";
 import { useCanAcao } from "../auth/useCanAcao";
+import { useAccessProfiles } from "../auth/useAccessProfiles";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
@@ -30,6 +31,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // useCanAcao já lê perfis built-in + custom do Firestore — usa esse hook
   // em vez de canAcao() solto pra perfis custom funcionarem.
   const { can: canAcaoRid } = useCanAcao(rid || "");
+  const { perfis } = useAccessProfiles();
 
   // Seções (grupos) colapsáveis — accordion. Persiste no localStorage.
   const [colapsadas, setColapsadas] = useState<Set<string>>(() => {
@@ -94,6 +96,27 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return () => { u1(); u2(); u3(); u4(); };
   }, [pessoa?.id]);
 
+  // Badge da Central de Avisos (Chat) — contador TRANSVERSAL de avisos
+  // pendentes em todos os restaurantes onde a pessoa pode tratá-los.
+  // Hoje: solicitações de ajuste de escala pendentes (gate aprovarSolicitacoes).
+  const ridsAvisos = restaurants
+    .filter(r => canAcao(pessoa, r.id, "escala", "aprovarSolicitacoes", perfis))
+    .map(r => r.id);
+  const ridsAvisosKey = ridsAvisos.join(",");
+  const [avisosPendentes, setAvisosPendentes] = useState(0);
+  useEffect(() => {
+    if (ridsAvisos.length === 0) { setAvisosPendentes(0); return; }
+    const counts: Record<string, number> = {};
+    const unsubs = ridsAvisos.map(r =>
+      onSnapshot(
+        query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", r), where("status", "==", "pendente")),
+        snap => { counts[r] = snap.size; setAvisosPendentes(Object.values(counts).reduce((a, b) => a + b, 0)); },
+      ),
+    );
+    return () => unsubs.forEach(u => u());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ridsAvisosKey]);
+
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
     if (!pessoa) return false;
@@ -150,6 +173,29 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+          {/* Central de Avisos (Chat) — tela de abertura. Primeiro item,
+              fora dos agrupamentos. Aparece pra quem tem o módulo liberado. */}
+          {visibleModule("chat") && (
+            <NavLink
+              to={rid ? `/r/${rid}/chat` : "/"}
+              onClick={onClose}
+              className={({ isActive }) => `
+                flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
+                ${isActive
+                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
+                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
+              `}
+            >
+              <span>💬</span>
+              <span className="flex-1">Central de Avisos</span>
+              {avisosPendentes > 0 && (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                  {avisosPendentes > 99 ? "99+" : avisosPendentes}
+                </span>
+              )}
+            </NavLink>
+          )}
+
           {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
@@ -166,9 +212,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )}
 
           {areas.map(area => {
-            // Tarefas é renderizada como item de topo (fora dos grupos),
-            // então removemos do agrupamento Operação aqui.
-            const mods = modulesByArea(area).filter(m => !m.oculto && m.id !== "tarefas" && visibleModule(m.id));
+            // Chat (Central de Avisos) é item de topo — removido dos grupos.
+            // (Tarefas migrou pra seção Master.)
+            const mods = modulesByArea(area).filter(m => !m.oculto && m.id !== "chat" && visibleModule(m.id));
             if (mods.length === 0) return null;
             const info = AREA_INFO[area];
             const fechada = colapsadas.has(area);
