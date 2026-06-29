@@ -223,6 +223,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "editar",          label: "Editar escala (mudar turnos)" },
       { id: "aprovarTrocas",   label: "Aprovar pedidos de troca" },
       { id: "aprovarSolicitacoes", label: "Aprovar ajustes de escala solicitados pelo empregado" },
+      { id: "receberAvisos",   label: "Receber avisos de escala na Central de Avisos (solicitações de ajuste)" },
       { id: "publicar",        label: "Publicar mês pra time ver" },
       { id: "exportar",        label: "Exportar/imprimir escala" },
       { id: "planejarPrevista",label: "Planejar escala prevista" },
@@ -560,13 +561,14 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "verMeusHorarios", label: "Ver Meus Horários (jornada cadastrada) — inclui solicitar ajuste de horário" },
       { id: "verMinhaGorjeta", label: "Ver Minha Gorjeta (extrato mensal)" },
       { id: "verComunicados",  label: "Ver Comunicados (avisos da gestão)" },
+      { id: "acessarFaleComDP",   label: "Enviar Fale com DP (empregado abre o canal pra falar com a gestão)" },
+      { id: "receberFaleDp",      label: "Receber mensagens do Fale com DP na Central de Avisos", sensivel: true },
       // ── Reservadas pro futuro (sem UI ainda, mas já no catálogo pra o
       //    master poder decidir desde já em perfis customizados) ──
       { id: "verMinhaFolhaPonto", label: "Ver Minha Folha de Ponto (em breve)" },
       { id: "verMeusUniformes",   label: "Ver Meus Uniformes & EPIs (em breve)" },
       { id: "verMeusExames",      label: "Ver Meus Exames Médicos (em breve)", sensivel: true },
       { id: "verMeuVT",           label: "Ver Meu Vale Transporte (em breve)" },
-      { id: "acessarFaleComDP",   label: "Acessar Fale com DP (em breve)", sensivel: true },
     ],
   },
   {

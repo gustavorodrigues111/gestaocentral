@@ -10,8 +10,9 @@ import { MinhaEscalaTab } from "./MinhaEscalaTab";
 import { MeusHorariosTab } from "./MeusHorariosTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
 import { ComunicadosTab } from "./ComunicadosTab";
+import { FaleComDPTab } from "./FaleComDPTab";
 
-type Tab = "escala" | "horarios" | "gorjetas" | "comunicados";
+type Tab = "escala" | "horarios" | "gorjetas" | "comunicados" | "faleDp";
 
 export function PortalPage() {
   const { pessoa } = useAuth();
@@ -61,6 +62,7 @@ export function PortalPage() {
   const verHorarios    = !!(pessoa && rid && can("portalEmpregado", "verMeusHorarios"));
   const verGorjetas    = !!(pessoa && rid && can("portalEmpregado", "verMinhaGorjeta"));
   const verComunicados = !!(pessoa && rid && can("portalEmpregado", "verComunicados"));
+  const verFaleDp      = !!(pessoa && rid && can("portalEmpregado", "acessarFaleComDP"));
   const podeAcessarPortal = !!(pessoa && rid && can("portalEmpregado", "acessar"));
 
   // Tabs disponíveis (filtradas pelas permissões). Cada seção do portal
@@ -70,6 +72,7 @@ export function PortalPage() {
     ...(verHorarios    ? [{ id: "horarios" as const,    label: "Meus horários",    icon: "🕐" }] : []),
     ...(verGorjetas    ? [{ id: "gorjetas" as const,    label: "Minhas gorjetas",  icon: "💸" }] : []),
     ...(verComunicados ? [{ id: "comunicados" as const, label: "Comunicados",      icon: "📣" }] : []),
+    ...(verFaleDp      ? [{ id: "faleDp" as const,      label: "Fale com DP",      icon: "🗣️" }] : []),
   ];
 
   const [tab, setTab] = useState<Tab>(tabsDisponiveis[0]?.id || "escala");
@@ -159,6 +162,7 @@ export function PortalPage() {
       {tab === "horarios"    && verHorarios    && <MeusHorariosTab    empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
       {tab === "gorjetas"    && verGorjetas    && <MinhasGorjetasTab  empregado={empregado} restaurantId={rid} />}
       {tab === "comunicados" && verComunicados && <ComunicadosTab empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
+      {tab === "faleDp"      && verFaleDp      && <FaleComDPTab    empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
     </div>
   );
 }

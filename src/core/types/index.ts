@@ -553,6 +553,56 @@ export type EscalaSolicitacao = {
   respostaMotivo?: string | null;    // motivo da recusa (ou nota da aprovação)
 };
 
+// ─── FALE COM DP ──────────────────────────────────────────────────────────
+// Canal do empregado pra falar com o DP/gestão. Enviado pelo Portal do
+// Empregado (categoria + identificado/anônimo). Recebido na Central de Avisos
+// (Chat) por quem tem a permissão portalEmpregado.receberFaleDp.
+//
+// LGPD: quando anônimo, NÃO gravamos autorId/autorNome — não rastreamos quem
+// enviou. O texto do aviso de uso deixa isso explícito.
+export type FaleDpCategoria = "elogio" | "reclamacao" | "denuncia" | "outros";
+export type FaleDpStatus = "nova" | "tratada";
+
+export const FALE_DP_CATEGORIA_LABEL: Record<FaleDpCategoria, string> = {
+  elogio: "Elogio",
+  reclamacao: "Reclamação",
+  denuncia: "Denúncia",
+  outros: "Outros",
+};
+export const FALE_DP_CATEGORIA_ICONE: Record<FaleDpCategoria, string> = {
+  elogio: "👏",
+  reclamacao: "😕",
+  denuncia: "🚨",
+  outros: "💬",
+};
+
+// Aviso de uso respeitoso mostrado antes de enviar (aprovado pelo dono).
+export const FALE_DP_AVISO_USO =
+  "Este canal é levado a sério. Mesmo mensagens anônimas devem ser " +
+  "respeitosas — ofensas, xingamentos e linguagem de baixo calão não são " +
+  "aceitos. Mensagens anônimas não registram quem enviou. Em caso de " +
+  "ameaça, calúnia, injúria ou outras condutas ilícitas contra pessoas da " +
+  "empresa, a empresa recomendará que os envolvidos busquem medidas legais " +
+  "cabíveis, incluindo a identificação do autor pelas vias legais " +
+  "apropriadas. Use este canal de boa-fé.";
+
+export type FaleDpMensagem = {
+  id: string;
+  restaurantId: string;
+  categoria: FaleDpCategoria;
+  anonimo: boolean;
+  autorId?: string | null;        // ausente quando anônimo
+  autorNome?: string | null;      // ausente quando anônimo
+  cargoNome?: string | null;      // ausente quando anônimo
+  texto: string;
+  status: FaleDpStatus;
+  criadoEm: string;               // ISO
+  tratadaEm?: string | null;
+  tratadaPor?: string | null;     // pessoaId de quem marcou como tratada
+  tratadaPorNome?: string | null;
+  tratadaNota?: string | null;    // observação opcional ao tratar
+};
+
 // Apontamento na escala praticada — generalização do schema `atrasos` pra
 // cobrir todos os fatos da apuração (atrasos, jornada > 10h, intrajornada
 // curta, trabalho em folga, batidas extras). NÃO muda o status do dia

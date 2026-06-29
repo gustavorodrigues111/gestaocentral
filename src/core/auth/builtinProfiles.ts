@@ -80,7 +80,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     },
     escala: {
       verPropria: true, verTime: true,
-      editar: true, aprovarTrocas: true, aprovarSolicitacoes: true, publicar: true, exportar: true,
+      editar: true, aprovarTrocas: true, aprovarSolicitacoes: true, receberAvisos: true, publicar: true, exportar: true,
       planejarPrevista: true, configurarEscalas: true,
     },
     fechamentoEscala: {
@@ -146,6 +146,10 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     perfisAcesso: {
       ver: false, criar: false, editar: false, excluir: false, atribuir: false,
     },
+    // Recebe as mensagens do Fale com DP na Central de Avisos (função de DP).
+    portalEmpregado: {
+      receberFaleDp: true,
+    },
   },
 };
 
@@ -166,6 +170,8 @@ export const BUILTIN_PORTAL_EMPREGADO: AccessProfile = {
       verMinhaEscala: true,
       verMeusHorarios: true,
       verMinhaGorjeta: true,
+      acessarFaleComDP: true,   // empregado pode abrir o Fale com DP
+      // receberFaleDp fica DESLIGADO — empregado comum não recebe as mensagens.
       // Futuras (verMinhaFolhaPonto, verMeusUniformes, verMeusExames,
       // verMeuVT, acessarFaleComDP) ficam DESLIGADAS por default — master
       // habilita por restaurante quando a UI dessas seções existir.

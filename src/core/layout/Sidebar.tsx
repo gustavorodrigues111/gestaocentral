@@ -98,24 +98,39 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   // Badge da Central de Avisos (Chat) — contador TRANSVERSAL de avisos
   // pendentes em todos os restaurantes onde a pessoa pode tratá-los.
-  // Hoje: solicitações de ajuste de escala pendentes (gate aprovarSolicitacoes).
-  const ridsAvisos = restaurants
-    .filter(r => canAcao(pessoa, r.id, "escala", "aprovarSolicitacoes", perfis))
+  // Fontes: solicitações de escala (gate receberAvisos/aprovarSolicitacoes)
+  // + mensagens novas do Fale com DP (gate portalEmpregado.receberFaleDp).
+  const ridsEscalaAvisos = restaurants
+    .filter(r => canAcao(pessoa, r.id, "escala", "receberAvisos", perfis) || canAcao(pessoa, r.id, "escala", "aprovarSolicitacoes", perfis))
     .map(r => r.id);
-  const ridsAvisosKey = ridsAvisos.join(",");
+  const ridsFaleDpAvisos = restaurants
+    .filter(r => canAcao(pessoa, r.id, "portalEmpregado", "receberFaleDp", perfis))
+    .map(r => r.id);
+  const avisosKey = `e:${ridsEscalaAvisos.join(",")}|f:${ridsFaleDpAvisos.join(",")}`;
   const [avisosPendentes, setAvisosPendentes] = useState(0);
   useEffect(() => {
-    if (ridsAvisos.length === 0) { setAvisosPendentes(0); return; }
-    const counts: Record<string, number> = {};
-    const unsubs = ridsAvisos.map(r =>
-      onSnapshot(
-        query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", r), where("status", "==", "pendente")),
-        snap => { counts[r] = snap.size; setAvisosPendentes(Object.values(counts).reduce((a, b) => a + b, 0)); },
-      ),
+    const escCounts: Record<string, number> = {};
+    const fdpCounts: Record<string, number> = {};
+    const recompute = () => setAvisosPendentes(
+      Object.values(escCounts).reduce((a, b) => a + b, 0) +
+      Object.values(fdpCounts).reduce((a, b) => a + b, 0),
     );
+    const unsubs = [
+      ...ridsEscalaAvisos.map(r =>
+        onSnapshot(
+          query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", r), where("status", "==", "pendente")),
+          snap => { escCounts[r] = snap.size; recompute(); },
+        )),
+      ...ridsFaleDpAvisos.map(r =>
+        onSnapshot(
+          query(collection(db, "faleDpMensagens"), where("restaurantId", "==", r), where("status", "==", "nova")),
+          snap => { fdpCounts[r] = snap.size; recompute(); },
+        )),
+    ];
+    if (unsubs.length === 0) setAvisosPendentes(0);
     return () => unsubs.forEach(u => u());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ridsAvisosKey]);
+  }, [avisosKey]);
 
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
