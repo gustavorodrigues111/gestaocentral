@@ -55,6 +55,17 @@ export function VRPage() {
   const [loading, setLoading] = useState(true);
   const [showExportPDF, setShowExportPDF] = useState(false);
 
+  // Overrides locais do PREVIEW (antes de lançar o lote) — mesma lógica do VT:
+  // o usuário edita desconto sugerido (toggle), desconto manual e aux pontual
+  // direto no preview; aplicamos sobre o cálculo-base e embutimos no lote ao
+  // lançar. Some ao trocar de mês/restaurante.
+  type OverrideVR = { descontoSugeridoAtivo?: boolean; descontoManual?: number; auxPontual?: number };
+  const [overrides, setOverrides] = useState<Record<string, OverrideVR>>({});
+  function setOverride(empId: string, patch: OverrideVR) {
+    setOverrides((prev) => ({ ...prev, [empId]: { ...prev[empId], ...patch } }));
+  }
+  useEffect(() => { setOverrides({}); }, [ano, mes, rid]);
+
   // mês de referência pro desconto = lote.mes − 2
   const ref = useMemo(() => shiftMonth(ano, mes, -2), [ano, mes]);
 
@@ -142,10 +153,12 @@ export function VRPage() {
     [lotes],
   );
 
-  // Preview das linhas (quando ainda não há lote)
+  // Preview das linhas (quando ainda não há lote). Aplica os overrides locais
+  // do usuário (toggle desconto, desconto manual, aux pontual) e recalcula o
+  // total — igual ao VT.
   const linhasPreview = useMemo<VRLoteLinha[]>(() => {
     if (loteAtivo) return [];
-    return montarLinhasLote({
+    const base = montarLinhasLote({
       empregados: empregadosProjetados,
       cargos,
       escala,
@@ -155,7 +168,19 @@ export function VRPage() {
       refAno: ref.ano,
       refMes: ref.mes,
     });
-  }, [loteAtivo, empregadosProjetados, cargos, escala, escalaRef, ano, mes, ref]);
+    return base.map((l) => {
+      const ov = overrides[l.empregadoId];
+      if (!ov) return l;
+      const merged: VRLoteLinha = {
+        ...l,
+        descontoSugeridoAtivo: ov.descontoSugeridoAtivo ?? l.descontoSugeridoAtivo,
+        descontoManual: ov.descontoManual ?? l.descontoManual,
+        auxPontual: ov.auxPontual ?? l.auxPontual,
+      };
+      merged.total = recalcularTotal(merged);
+      return merged;
+    });
+  }, [loteAtivo, empregadosProjetados, cargos, escala, escalaRef, ano, mes, ref, overrides]);
 
   const linhasExibidas = loteAtivo?.linhas || linhasPreview;
   const totais = useMemo(() => calcularTotais(linhasExibidas), [linhasExibidas]);
@@ -295,6 +320,13 @@ export function VRPage() {
     });
   }
 
+  // Roteia a edição: se há lote em rascunho, grava no doc; senão (preview),
+  // guarda no override local — embutido no lote ao lançar.
+  function editarLinha(linhaIdx: number, empregadoId: string, patch: OverrideVR) {
+    if (loteAtivo && loteAtivo.status === "rascunho") atualizarLinha(linhaIdx, patch);
+    else setOverride(empregadoId, patch);
+  }
+
   // ─── Render guards ────────────────────────────────────────────────────────
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (loadingPerfis && !isMaster) {
@@ -426,7 +458,9 @@ export function VRPage() {
               </thead>
               <tbody>
                 {linhasExibidas.map((l, i) => {
-                  const editavel = !!loteAtivo && loteAtivo.status === "rascunho" && podeConfig;
+                  // Editável tanto no preview (overrides locais) quanto no
+                  // rascunho (grava no lote) — igual ao VT.
+                  const editavel = podeConfig && (!loteAtivo || loteAtivo.status === "rascunho");
                   return (
                     <tr key={l.empregadoId} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-3 py-2">
@@ -445,7 +479,7 @@ export function VRPage() {
                             <input
                               type="checkbox"
                               checked={l.descontoSugeridoAtivo}
-                              onChange={(e) => atualizarLinha(i, { descontoSugeridoAtivo: e.target.checked })}
+                              onChange={(e) => editarLinha(i, l.empregadoId, { descontoSugeridoAtivo: e.target.checked })}
                             />
                             <span className={l.descontoSugeridoAtivo ? "" : "line-through text-gray-400"}>
                               -{fmtBR(l.descontoSugerido)}
@@ -465,7 +499,7 @@ export function VRPage() {
                             defaultValue={l.descontoManual ? l.descontoManual.toFixed(2).replace(".", ",") : ""}
                             onBlur={(e) => {
                               const v = parseMoneyInput(e.target.value);
-                              if (v !== l.descontoManual) atualizarLinha(i, { descontoManual: v });
+                              if (v !== l.descontoManual) editarLinha(i, l.empregadoId, { descontoManual: v });
                             }}
                             placeholder="0,00"
                             className="w-20 text-right border rounded px-1 py-0.5 text-xs bg-transparent"
@@ -482,7 +516,7 @@ export function VRPage() {
                             defaultValue={l.auxPontual ? l.auxPontual.toFixed(2).replace(".", ",") : ""}
                             onBlur={(e) => {
                               const v = parseMoneyInput(e.target.value);
-                              if (v !== l.auxPontual) atualizarLinha(i, { auxPontual: v });
+                              if (v !== l.auxPontual) editarLinha(i, l.empregadoId, { auxPontual: v });
                             }}
                             placeholder="0,00"
                             className="w-20 text-right border rounded px-1 py-0.5 text-xs bg-transparent"
