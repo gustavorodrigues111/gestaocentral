@@ -53,13 +53,16 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       ver: true, editar: true,
     },
     ocorrencias: {
+      receberAvisos: true,
       criar: true, ver: true, editar: true, estatistics: true,
     },
     eventos: {
+      receberAvisos: true,
       verLeads: true, editar: true, responder: true,
       configurar: false,                // espaços = master
     },
     compras: {
+      receberAvisos: true,
       verPedidos: true, criarPedido: true, enviarWhatsapp: true, receber: true,
       configurarFornecs: true, configurarProdutos: true,
     },
@@ -73,9 +76,11 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       ver: true, editar: true, configInsumos: true, configEquips: true,
     },
     recebimento: {
+      receberAvisos: true,
       receber: true, ver: true, editar: true, configurar: true,
     },
     fechamentoCaixa: {
+      receberAvisos: true,
       fechar: true, ver: true, painel: true, editar: true, configurar: true,
     },
     escala: {
@@ -88,16 +93,19 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       reabrir: false,                   // ato terminal — master only
     },
     gorjetas: {
+      receberAvisos: true,
       verExtratoProprio: true, verTime: true,
       lancar: true,
       configurarRegra: false,           // assembleia = master
       exportar: true,
     },
     vt: {
+      receberAvisos: true,
       verProprio: true, verTime: true,
       configurar: true, registrarPg: true,
     },
     vr: {
+      receberAvisos: true,
       ver: true, configurar: true,
     },
     freelas: {
@@ -115,12 +123,14 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       configurar: false,                // tipos de evento = master
     },
     ideias: {
+      receberAvisos: true,
       submeter: true, ver: true, moderar: true, executar: true,
     },
     comunicados: {
       ler: true, criar: true, editar: true, deletar: true, verLeituras: true,
     },
     admissao: {
+      receberAvisos: true,
       verCandidaturas: true, triar: true,
       iniciarAdmissao: true, concluirAdmissao: true,
       configurar: false,                // processo = master

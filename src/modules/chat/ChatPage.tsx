@@ -1,182 +1,36 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Chat — Central de Avisos (Fase C2.1)
+//  Chat — Central de Avisos (Fase C2.2)
 //
 //  Futura TELA DE ABERTURA do planejamento.app. Reúne tudo que precisa da
-//  atenção do usuário, vindo de várias fontes:
+//  atenção do usuário, de várias fontes derivadas das coleções dos módulos,
+//  filtradas pela permissão `receberAvisos` de cada módulo (transversal a
+//  todos os restaurantes do usuário).
 //
-//   1. Avisos automáticos do sistema (DERIVADOS — sem coleção própria):
-//        • Solicitações de ajuste de escala aguardando análise   ✅
-//        • Novas mensagens do Fale com DP                         ✅
-//        • Demais módulos (financeiro, operação, DP…)             ⏳ (em batches)
-//   2. Conversas entre usuários (1:1 / grupos)                    ⏳ (futuro)
-//   3. WhatsApp externo                                           ⏳ (futuro)
-//
-//  ARQUITETURA:
-//  • Feed DERIVADO: avisos computados ao vivo das coleções-fonte, filtrados
-//    pela PERMISSÃO do usuário (cada módulo tem uma ação "receber avisos").
-//  • VINCULADO AO USUÁRIO (transversal): agrega avisos de TODOS os
-//    restaurantes que a pessoa acessa. Cada card tem a tag do restaurante;
-//    ao agir, troca o restaurante ativo e resolve no lugar certo.
+//  O cálculo das fontes vive em useAvisos (provider no shell) pra Sidebar e
+//  esta página compartilharem o MESMO resultado — badge bate com o feed.
+//  Aqui é só a renderização + o modal de leitura do Fale com DP.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { canAcao } from "../../core/auth/permissions";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import { subscribeFaleDpNovas, tratarFaleDp } from "../faleDp/repository";
-import type { EscalaSolicitacao, ScheduleStatus, FaleDpMensagem } from "../../core/types";
-import {
-  FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE,
-} from "../../core/types";
-
-// ─── Modelo do aviso (client-side, derivado) ────────────────────────────────
-
-type AvisoTipo = "escala_solicitacao" | "fale_dp";
-
-type Aviso = {
-  id: string;
-  tipo: AvisoTipo;
-  icone: string;
-  titulo: string;
-  descricao: string;
-  em: string;
-  restauranteId: string;
-  restauranteNome: string;
-  cta: string;
-  href?: string;                 // navegação (avisos que abrem outra tela)
-  faleDp?: FaleDpMensagem;       // payload pro modal (avisos de Fale com DP)
-};
-
-const STATUS_LABEL: Record<ScheduleStatus, string> = {
-  trabalho: "trabalho", folga: "folga", freela: "freela",
-  comp: "folga por compensação", comp_trab: "trabalho por compensação",
-  ferias: "férias", falta_j: "falta justificada", falta_i: "falta injustificada",
-};
-function statusLabel(s?: string | null): string {
-  if (!s) return "—";
-  return STATUS_LABEL[s as ScheduleStatus] || s;
-}
-function fmtDataCurta(ymd?: string): string {
-  if (!ymd) return "";
-  const [, m, d] = ymd.split("-");
-  return `${d}/${m}`;
-}
+import { tratarFaleDp } from "../faleDp/repository";
+import { useAvisos, type Aviso } from "./useAvisos";
+import type { FaleDpMensagem } from "../../core/types";
+import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 
 export function ChatPage() {
   const { pessoa } = useAuth();
   const { restaurants, activeRestaurant, setActiveId } = useRestaurant();
-  const { perfis } = useAccessProfiles();
   const navigate = useNavigate();
+  const avisos = useAvisos();
 
-  const nomePorRid = useMemo(() => {
-    const m: Record<string, string> = {};
-    restaurants.forEach((r) => { m[r.id] = r.nome; });
-    return m;
-  }, [restaurants]);
-
-  // ── Fonte 1: solicitações de ajuste de escala pendentes ──
-  // Gate: quem recebe avisos de escala OU quem aprova (aprovador sempre vê).
-  const ridsEscala = useMemo(
-    () => restaurants
-      .filter((r) =>
-        canAcao(pessoa, r.id, "escala", "receberAvisos", perfis) ||
-        canAcao(pessoa, r.id, "escala", "aprovarSolicitacoes", perfis))
-      .map((r) => r.id),
-    [restaurants, pessoa, perfis],
-  );
-  const ridsEscalaKey = ridsEscala.join(",");
-  const [solicPorRid, setSolicPorRid] = useState<Record<string, EscalaSolicitacao[]>>({});
-  useEffect(() => {
-    if (ridsEscala.length === 0) { setSolicPorRid({}); return; }
-    setSolicPorRid({});
-    const unsubs = ridsEscala.map((rid) =>
-      onSnapshot(
-        query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", rid), where("status", "==", "pendente")),
-        (snap) => {
-          const arr = snap.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<EscalaSolicitacao, "id">) }));
-          setSolicPorRid((prev) => ({ ...prev, [rid]: arr }));
-        },
-      ),
-    );
-    return () => unsubs.forEach((u) => u());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ridsEscalaKey]);
-
-  // ── Fonte 2: mensagens do Fale com DP (novas) ──
-  // Gate: portalEmpregado.receberFaleDp.
-  const ridsFaleDp = useMemo(
-    () => restaurants
-      .filter((r) => canAcao(pessoa, r.id, "portalEmpregado", "receberFaleDp", perfis))
-      .map((r) => r.id),
-    [restaurants, pessoa, perfis],
-  );
-  const ridsFaleDpKey = ridsFaleDp.join(",");
-  const [faleDpPorRid, setFaleDpPorRid] = useState<Record<string, FaleDpMensagem[]>>({});
-  useEffect(() => {
-    if (ridsFaleDp.length === 0) { setFaleDpPorRid({}); return; }
-    setFaleDpPorRid({});
-    const unsubs = ridsFaleDp.map((rid) =>
-      subscribeFaleDpNovas(rid, (msgs) => setFaleDpPorRid((prev) => ({ ...prev, [rid]: msgs }))),
-    );
-    return () => unsubs.forEach((u) => u());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ridsFaleDpKey]);
-
-  // ── Monta a lista de avisos ──
-  const avisos: Aviso[] = [];
-
-  for (const rid of Object.keys(solicPorRid)) {
-    const nome = nomePorRid[rid] || "Restaurante";
-    for (const s of solicPorRid[rid] || []) {
-      const quem = s.empregadoNome || "Empregado";
-      const ehHorario = s.tipo === "horario";
-      avisos.push({
-        id: `esc_${s.id}`,
-        tipo: "escala_solicitacao",
-        icone: "📅",
-        titulo: ehHorario ? `${quem} pediu ajuste de horário` : `${quem} pediu ajuste de escala`,
-        descricao: ehHorario
-          ? `Acha que a jornada contratual dele não bate. "${(s.motivo || "").slice(0, 140)}"`
-          : `Dia ${fmtDataCurta(s.data)}: de ${statusLabel(s.statusAtual)} → ${statusLabel(s.statusSolicitado)}. "${(s.motivo || "").slice(0, 140)}"`,
-        em: s.criadoEm || "",
-        restauranteId: rid,
-        restauranteNome: nome,
-        cta: "Analisar na Escala",
-        href: `/r/${rid}/escala?aba=ajustes`,
-      });
-    }
-  }
-
-  for (const rid of Object.keys(faleDpPorRid)) {
-    const nome = nomePorRid[rid] || "Restaurante";
-    for (const m of faleDpPorRid[rid] || []) {
-      const cat = FALE_DP_CATEGORIA_LABEL[m.categoria] || "Mensagem";
-      const remetente = m.anonimo ? "Anônimo" : (m.autorNome || "Identificado");
-      avisos.push({
-        id: `fdp_${m.id}`,
-        tipo: "fale_dp",
-        icone: FALE_DP_CATEGORIA_ICONE[m.categoria] || "🗣️",
-        titulo: `Fale com DP · ${cat}`,
-        descricao: `${remetente}: "${(m.texto || "").slice(0, 140)}"`,
-        em: m.criadoEm || "",
-        restauranteId: rid,
-        restauranteNome: nome,
-        cta: "Ler mensagem",
-        faleDp: m,
-      });
-    }
-  }
-
-  avisos.sort((a, b) => (b.em || "").localeCompare(a.em || ""));
-
-  // ── Ação do card ──
+  const multiRest = restaurants.length > 1;
   const [msgAberta, setMsgAberta] = useState<{ msg: FaleDpMensagem; nome: string } | null>(null);
+
   function abrirAviso(a: Aviso) {
     if (a.faleDp) { setMsgAberta({ msg: a.faleDp, nome: a.restauranteNome }); return; }
     if (a.href) {
@@ -184,8 +38,6 @@ export function ChatPage() {
       navigate(a.href);
     }
   }
-
-  const multiRest = restaurants.length > 1;
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
@@ -234,7 +86,7 @@ export function ChatPage() {
       )}
 
       <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-6 text-center">
-        Em breve: avisos de financeiro, operação e demais módulos; conversas entre usuários.
+        Em breve: conversas entre usuários e WhatsApp externo.
       </p>
 
       {msgAberta && (
@@ -280,7 +132,7 @@ function FaleDpModal({
   return (
     <Modal onClose={onClose} title={`${FALE_DP_CATEGORIA_ICONE[msg.categoria]} Fale com DP · ${FALE_DP_CATEGORIA_LABEL[msg.categoria]}`}>
       <div className="space-y-3">
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
           <span className="inline-flex items-center px-1.5 py-0.5 rounded font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
             🏠 {restauranteNome}
           </span>

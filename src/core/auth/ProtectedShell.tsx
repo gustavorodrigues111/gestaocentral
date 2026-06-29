@@ -53,6 +53,7 @@ import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
 import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais/FerramentasCredenciaisPage";
 import { ChatPage } from "../../modules/chat/ChatPage";
+import { AvisosProvider } from "../../modules/chat/useAvisos";
 import { PlannerPage } from "../../modules/planner/PlannerPage";
 
 function ModuleRouter() {
@@ -135,6 +136,7 @@ export function ProtectedShell() {
   return (
     <RestaurantProvider>
       <SubdomainGuard>
+        <AvisosProvider>
         <AppShell>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -147,6 +149,7 @@ export function ProtectedShell() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppShell>
+        </AvisosProvider>
       </SubdomainGuard>
     </RestaurantProvider>
   );

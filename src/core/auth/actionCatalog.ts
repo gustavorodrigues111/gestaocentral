@@ -108,6 +108,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Registros de incidentes, problemas, ações corretivas",
     area: "operacao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "criar",       label: "Criar ocorrência" },
       { id: "ver",         label: "Ver ocorrências" },
       { id: "editar",      label: "Editar / atualizar status" },
@@ -121,6 +122,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Pedidos de evento na laje/espaço (em dev)",
     area: "operacao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "verLeads",   label: "Ver leads / pedidos pendentes" },
       { id: "editar",     label: "Editar pedido" },
       { id: "responder",  label: "Aprovar / rejeitar / responder" },
@@ -136,6 +138,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Ciclo de abastecimento: contagens → pedidos → recebimento",
     area: "appmise",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "verPedidos",         label: "Ver pedidos" },
       { id: "criarPedido",        label: "Criar pedido / aprovar sugestão" },
       { id: "enviarWhatsapp",     label: "Enviar pedido via WhatsApp" },
@@ -176,6 +179,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Conferência e recebimento de notas fiscais (OCR), arquivamento no Drive",
     area: "appmise",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "receber",    label: "Receber (dar entrada na nota)" },
       { id: "ver",        label: "Ver recebimentos (lista completa)" },
       { id: "editar",     label: "Editar recebimentos" },
@@ -189,6 +193,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Fechamento de caixa por turno: anexos (comprovante, filipetas, comandas), valores e email aos sócios",
     area: "appmise",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "fechar",     label: "Fazer fechamento (dar entrada)" },
       { id: "ver",        label: "Ver fechamentos enviados (lista completa)", sensivel: true },
       { id: "painel",     label: "Ver Painel de faturamento (dashboard)", sensivel: true },
@@ -249,6 +254,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Cálculo e distribuição de gorjeta",
     area: "time",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "verExtratoProprio", label: "Ver seu extrato (já no self-service)" },
       { id: "verTime",           label: "Ver gorjetas de todos do time", sensivel: true },
       { id: "lancar",            label: "Lançar valor recebido no dia" },
@@ -263,6 +269,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Cadastro e pagamento de VT por pessoa",
     area: "time",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "verProprio",  label: "Ver seu VT (já no self-service?)" },
       { id: "verTime",     label: "Ver VT de todos", sensivel: true },
       { id: "configurar",  label: "Configurar VT por pessoa (valor, dias)" },
@@ -276,6 +283,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Cadastro e pagamento de VR diário por pessoa (só restaurantes que usam)",
     area: "time",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "ver",         label: "Ver VR de todos", sensivel: true },
       { id: "configurar",  label: "Lançar lote, marcar pago, exportar pra Caju", sensivel: true },
     ],
@@ -338,6 +346,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Sugestões do time pra melhorar a casa",
     area: "time",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "submeter", label: "Submeter ideia" },
       { id: "ver",      label: "Ver ideias submetidas" },
       { id: "moderar",  label: "Aprovar / rejeitar / classificar" },
@@ -367,6 +376,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Triagem de candidatos + processo de admissão",
     area: "gestao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "verCandidaturas",  label: "Ver candidaturas (trabalhe-conosco)", sensivel: true },
       { id: "triar",            label: "Triar / classificar candidato" },
       { id: "iniciarAdmissao",  label: "Iniciar processo de admissão", sensivel: true },
@@ -439,6 +449,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs",
     area: "gestao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "ver",              label: "Ver uniformes/EPIs (catálogo, estoque, entregas)" },
       { id: "gerenciarCatalogo", label: "Gerenciar catálogo (itens e kits por área)" },
       { id: "ajustarEstoque",   label: "Ajustar estoque (entradas/saídas)" },
@@ -511,6 +522,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Gestão de exames periódicos dos empregados",
     area: "gestao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "ver",          label: "Ver exames dos empregados", sensivel: true },
       { id: "lancar",       label: "Lançar exame realizado / dar baixa", sensivel: true },
       { id: "anexarResult", label: "Anexar resultado (PDF da clínica)", sensivel: true },
@@ -525,6 +537,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Processo de demissão com kanban + cascata de inativação",
     area: "gestao",
     acoes: [
+      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "ver",       label: "Ver processos de demissão", sensivel: true },
       { id: "iniciar",   label: "Iniciar processo de demissão", sensivel: true },
       { id: "processar", label: "Processar subtarefas + anexar docs", sensivel: true },

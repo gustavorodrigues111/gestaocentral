@@ -5,9 +5,9 @@ import { db } from "../firebase/config";
 import { AREA_INFO, modulesByArea } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
-import { canUse, canAcao } from "../auth/permissions";
+import { canUse } from "../auth/permissions";
 import { useCanAcao } from "../auth/useCanAcao";
-import { useAccessProfiles } from "../auth/useAccessProfiles";
+import { useAvisos } from "../../modules/chat/useAvisos";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
@@ -31,7 +31,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // useCanAcao já lê perfis built-in + custom do Firestore — usa esse hook
   // em vez de canAcao() solto pra perfis custom funcionarem.
   const { can: canAcaoRid } = useCanAcao(rid || "");
-  const { perfis } = useAccessProfiles();
 
   // Seções (grupos) colapsáveis — accordion. Persiste no localStorage.
   const [colapsadas, setColapsadas] = useState<Set<string>>(() => {
@@ -96,41 +95,9 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return () => { u1(); u2(); u3(); u4(); };
   }, [pessoa?.id]);
 
-  // Badge da Central de Avisos (Chat) — contador TRANSVERSAL de avisos
-  // pendentes em todos os restaurantes onde a pessoa pode tratá-los.
-  // Fontes: solicitações de escala (gate receberAvisos/aprovarSolicitacoes)
-  // + mensagens novas do Fale com DP (gate portalEmpregado.receberFaleDp).
-  const ridsEscalaAvisos = restaurants
-    .filter(r => canAcao(pessoa, r.id, "escala", "receberAvisos", perfis) || canAcao(pessoa, r.id, "escala", "aprovarSolicitacoes", perfis))
-    .map(r => r.id);
-  const ridsFaleDpAvisos = restaurants
-    .filter(r => canAcao(pessoa, r.id, "portalEmpregado", "receberFaleDp", perfis))
-    .map(r => r.id);
-  const avisosKey = `e:${ridsEscalaAvisos.join(",")}|f:${ridsFaleDpAvisos.join(",")}`;
-  const [avisosPendentes, setAvisosPendentes] = useState(0);
-  useEffect(() => {
-    const escCounts: Record<string, number> = {};
-    const fdpCounts: Record<string, number> = {};
-    const recompute = () => setAvisosPendentes(
-      Object.values(escCounts).reduce((a, b) => a + b, 0) +
-      Object.values(fdpCounts).reduce((a, b) => a + b, 0),
-    );
-    const unsubs = [
-      ...ridsEscalaAvisos.map(r =>
-        onSnapshot(
-          query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", r), where("status", "==", "pendente")),
-          snap => { escCounts[r] = snap.size; recompute(); },
-        )),
-      ...ridsFaleDpAvisos.map(r =>
-        onSnapshot(
-          query(collection(db, "faleDpMensagens"), where("restaurantId", "==", r), where("status", "==", "nova")),
-          snap => { fdpCounts[r] = snap.size; recompute(); },
-        )),
-    ];
-    if (unsubs.length === 0) setAvisosPendentes(0);
-    return () => unsubs.forEach(u => u());
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avisosKey]);
+  // Badge da Central de Avisos (Chat) — usa o MESMO cálculo do feed (provider
+  // no shell), então badge sempre bate com a lista de avisos.
+  const avisosPendentes = useAvisos().length;
 
   function visibleModule(moduleId: ModuleId) {
     if (!rid) return false;
