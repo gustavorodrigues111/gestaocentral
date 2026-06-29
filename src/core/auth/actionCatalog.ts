@@ -222,6 +222,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "verTime",         label: "Ver escala de todos do time", sensivel: true },
       { id: "editar",          label: "Editar escala (mudar turnos)" },
       { id: "aprovarTrocas",   label: "Aprovar pedidos de troca" },
+      { id: "aprovarSolicitacoes", label: "Aprovar ajustes de escala solicitados pelo empregado" },
       { id: "publicar",        label: "Publicar mês pra time ver" },
       { id: "exportar",        label: "Exportar/imprimir escala" },
       { id: "planejarPrevista",label: "Planejar escala prevista" },
@@ -556,6 +557,7 @@ export const CATALOGO: CatalogoModulo[] = [
       // ── Ativas ──
       { id: "acessar",         label: "Acessar o Portal do Empregado (entrar na tela)" },
       { id: "verMinhaEscala",  label: "Ver Minha Escala (turnos do mês)" },
+      { id: "solicitarAjuste", label: "Solicitar ajuste na própria escala (clicar no dia e pedir correção)" },
       { id: "verMeusHorarios", label: "Ver Meus Horários (jornada de trabalho cadastrada)" },
       { id: "verMinhaGorjeta", label: "Ver Minha Gorjeta (extrato mensal)" },
       { id: "verComunicados",  label: "Ver Comunicados (avisos da gestão)" },

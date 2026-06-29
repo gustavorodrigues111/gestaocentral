@@ -80,7 +80,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     },
     escala: {
       verPropria: true, verTime: true,
-      editar: true, aprovarTrocas: true, publicar: true, exportar: true,
+      editar: true, aprovarTrocas: true, aprovarSolicitacoes: true, publicar: true, exportar: true,
       planejarPrevista: true, configurarEscalas: true,
     },
     fechamentoEscala: {
@@ -164,6 +164,7 @@ export const BUILTIN_PORTAL_EMPREGADO: AccessProfile = {
     portalEmpregado: {
       acessar: true,
       verMinhaEscala: true,
+      solicitarAjuste: true,
       verMeusHorarios: true,
       verMinhaGorjeta: true,
       // Futuras (verMinhaFolhaPonto, verMeusUniformes, verMeusExames,

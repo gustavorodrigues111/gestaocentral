@@ -524,6 +524,31 @@ export type AtrasoEscalaMeta = {
   eventoTrilhaId?: string;           // link com EventoTrilha criado
 };
 
+// Pedido do EMPREGADO pra corrigir o status de um dia da escala dele. Vai pra
+// aba "Ajustes solicitados" no módulo Escala; líder/DP aprova (aplica na
+// praticada) ou recusa. Coleção: `escalaSolicitacoes`.
+export type EscalaSolicitacaoStatus = "pendente" | "aprovado" | "recusado";
+export type EscalaSolicitacao = {
+  id: string;
+  restaurantId: string;
+  empregadoId: string;
+  empregadoNome?: string;
+  data: string;                      // YYYY-MM-DD do dia
+  anoMes: string;                    // YYYY-MM (doc da escala = `${rid}_${anoMes}`)
+  statusAtual?: ScheduleStatus | null;   // o que ele via no dia
+  fonteAtual?: "real" | "prevista" | "derivado" | null;
+  statusSolicitado: ScheduleStatus;  // o que ele acha que é o correto
+  motivo: string;                    // explicação curta do empregado
+  gorjetaPaga?: boolean;             // snapshot: o dia já tinha gorjeta publicada
+  status: EscalaSolicitacaoStatus;
+  criadoEm: string;                  // ISO
+  criadoPor: string;                 // pessoaId
+  respondidoEm?: string | null;
+  respondidoPor?: string | null;
+  respondidoPorNome?: string | null;
+  respostaMotivo?: string | null;    // motivo da recusa (ou nota da aprovação)
+};
+
 // Apontamento na escala praticada — generalização do schema `atrasos` pra
 // cobrir todos os fatos da apuração (atrasos, jornada > 10h, intrajornada
 // curta, trabalho em folga, batidas extras). NÃO muda o status do dia

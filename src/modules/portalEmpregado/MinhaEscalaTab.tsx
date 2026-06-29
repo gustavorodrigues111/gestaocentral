@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import { doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, shiftMonth,
 } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
-import type { Cargo, Empregado, EscalaMes, ScheduleStatus } from "../../core/types";
+import { useAuth } from "../../core/auth/AuthContext";
+import { useCanAcao } from "../../core/auth/useCanAcao";
+import { SolicitarAjusteModal } from "./SolicitarAjusteModal";
+import type { Cargo, Empregado, EscalaMes, EscalaSolicitacao, ScheduleStatus } from "../../core/types";
 
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
   trabalho:  { label: "Trabalho",                short: "TR", bg: "bg-emerald-500",  text: "text-white" },
@@ -30,6 +33,9 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
   const [ano, setAno] = useState(hoje.getFullYear());
   const [mes, setMes] = useState(hoje.getMonth() + 1);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
+  const { pessoa } = useAuth();
+  const { can } = useCanAcao(restaurantId);
+  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "solicitarAjuste");
 
   const escalaId = `${restaurantId}_${fmtAnoMes(ano, mes)}`;
   useEffect(() => {
@@ -39,6 +45,30 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
     });
     return () => unsub();
   }, [escalaId]);
+
+  // Pedidos de ajuste pendentes do empregado (pra marcar os dias com ⏳).
+  const [pendentes, setPendentes] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const q = query(collection(db, "escalaSolicitacoes"),
+      where("restaurantId", "==", restaurantId), where("empregadoId", "==", empregado.id), where("status", "==", "pendente"));
+    const unsub = onSnapshot(q, (snap) => {
+      setPendentes(new Set(snap.docs.map((d) => (d.data() as EscalaSolicitacao).data)));
+    });
+    return () => unsub();
+  }, [restaurantId, empregado.id]);
+
+  // Modal de solicitação.
+  const [modalDia, setModalDia] = useState<{ data: string; status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; gorjetaPaga: boolean } | null>(null);
+  async function abrirSolicitacao(date: string, status: ScheduleStatus | null, fonte: "real" | "prevista" | "derivado" | null) {
+    if (!podeSolicitar) return;
+    // Ressalva: o dia já tem gorjeta publicada?
+    let gorjetaPaga = false;
+    try {
+      const gs = await getDocs(query(collection(db, "gorjetas"), where("restaurantId", "==", restaurantId), where("date", "==", date)));
+      gorjetaPaga = gs.docs.some((d) => (d.data() as { publicada?: boolean }).publicada);
+    } catch { /* ignora — ressalva é best-effort */ }
+    setModalDia({ data: date, status, fonte, gorjetaPaga });
+  }
 
   // Derivado dos horários cadastrados
   const derivado = useMemo(
@@ -124,7 +154,13 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           dias={dias}
           statusEm={statusEm}
           todayYmd={todayYmd}
+          pendentes={pendentes}
+          podeSolicitar={podeSolicitar}
+          onDiaClick={abrirSolicitacao}
         />
+        {podeSolicitar && (
+          <p className="text-[11px] text-gray-400 mt-2 text-center">Algum dia errado? Toque no dia pra solicitar um ajuste. ✓ = praticada (confirmada) · sem marca = prevista · tracejado = previsão · ⏳ = pedido pendente.</p>
+        )}
       </div>
 
       {/* Legenda */}
@@ -138,16 +174,34 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           </div>
         ))}
       </div>
+
+      {modalDia && pessoa && (
+        <SolicitarAjusteModal
+          rid={restaurantId}
+          empregado={empregado}
+          criadoPor={pessoa.id}
+          data={modalDia.data}
+          statusAtual={modalDia.status}
+          fonteAtual={modalDia.fonte}
+          gorjetaPaga={modalDia.gorjetaPaga}
+          jaPendente={pendentes.has(modalDia.data)}
+          onClose={() => setModalDia(null)}
+          onCriado={() => setModalDia(null)}
+        />
+      )}
     </div>
   );
 }
 
 function CalendarGrid({
-  ano, mes, dias, statusEm, todayYmd,
+  ano, mes, dias, statusEm, todayYmd, pendentes, podeSolicitar, onDiaClick,
 }: {
   ano: number; mes: number; dias: number;
   statusEm: (date: string) => { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null };
   todayYmd: string;
+  pendentes: Set<string>;
+  podeSolicitar: boolean;
+  onDiaClick: (date: string, status: ScheduleStatus | null, fonte: "real" | "prevista" | "derivado" | null) => void;
 }) {
   // Domingo do dia 1 (offset)
   const primeiroDia = new Date(ano, mes - 1, 1);
@@ -165,21 +219,28 @@ function CalendarGrid({
     const dayDate = new Date(ano, mes - 1, d);
     const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
     const info = status ? STATUS_INFO[status] : null;
-    cells.push(
-      <div
-        key={d}
-        className={`aspect-square rounded flex flex-col items-center justify-center text-[10px] gap-0.5 ${
-          info ? `${info.bg} ${info.text}` : "bg-gray-50 dark:bg-gray-800/40"
-        } ${fonte === "derivado" ? "opacity-60 border border-dashed border-gray-300" : ""} ${
-          isToday ? "ring-2 ring-indigo-500 ring-inset" : ""
-        }`}
-        title={`${date} · ${info?.label || "Sem dado"} (${fonte || "—"})`}
-      >
+    const pend = pendentes.has(date);
+    const cls = `relative aspect-square rounded flex flex-col items-center justify-center text-[10px] gap-0.5 ${
+      info ? `${info.bg} ${info.text}` : "bg-gray-50 dark:bg-gray-800/40"
+    } ${fonte === "derivado" ? "opacity-60 border border-dashed border-gray-300" : ""} ${
+      isToday ? "ring-2 ring-indigo-500 ring-inset" : ""
+    } ${podeSolicitar ? "cursor-pointer active:scale-95 transition-transform" : ""}`;
+    const titulo = `${date} · ${info?.label || "Sem dado"} (${fonte === "real" ? "praticada" : fonte === "prevista" ? "prevista" : fonte === "derivado" ? "previsão" : "—"})${pend ? " · ajuste solicitado" : ""}${podeSolicitar ? " — toque pra solicitar ajuste" : ""}`;
+    const conteudo = (
+      <>
+        {/* ✓ = praticada (confirmada); ⏳ = pedido pendente */}
+        {fonte === "real" && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-80 leading-none">✓</span>}
+        {pend && <span className="absolute top-0.5 left-0.5 text-[9px] leading-none">⏳</span>}
         <div className={`text-[9px] ${info ? "opacity-80" : "text-gray-500"}`}>
           {pad2(d)}{isWeekend && !info ? <span className="text-amber-600">·</span> : null}
         </div>
         {info && <div className="font-bold text-[11px]">{info.short}</div>}
-      </div>
+      </>
+    );
+    cells.push(
+      podeSolicitar
+        ? <button key={d} type="button" onClick={() => onDiaClick(date, status, fonte)} className={cls} title={titulo}>{conteudo}</button>
+        : <div key={d} className={cls} title={titulo}>{conteudo}</div>
     );
   }
   return <div className="grid grid-cols-7 gap-1">{cells}</div>;

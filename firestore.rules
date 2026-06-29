@@ -121,6 +121,7 @@ service cloud.firestore {
     // ── Operacional / dia-a-dia (Phase 2: escopar por restaurantId) ──────
     match /empregados/{id}          { allow read, write: if authed(); }
     match /escalas/{id}             { allow read, write: if authed(); }
+    match /escalaSolicitacoes/{id}  { allow read, write: if authed(); }
     match /escalasNomeadas/{id}     { allow read, write: if authed(); }
     match /sundaySwaps/{id}         { allow read, write: if authed(); }
     match /freelaShifts/{id}        { allow read, write: if authed(); }

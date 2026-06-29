@@ -11,6 +11,7 @@ import { Button } from "../../core/ui/Button";
 import { MesContextoBanner, tintaVersao } from "../../core/ui/MesContextoBanner";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
+import { AjustesSolicitadosTab } from "./AjustesSolicitadosTab";
 import {
   daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
@@ -66,6 +67,7 @@ export function EscalaPage() {
   const acaoAprovarTrocas = !!me?.isMaster || can("escala", "aprovarTrocas");
   const acaoPublicar      = !!me?.isMaster || can("escala", "publicar");
   const acaoExportar      = !!me?.isMaster || can("escala", "exportar");
+  const acaoAprovarSolic  = !!me?.isMaster || can("escala", "aprovarSolicitacoes");
   void acaoEditarEscala; void acaoAprovarTrocas; void acaoPublicar; void acaoExportar;
 
   const hoje = new Date();
@@ -79,6 +81,15 @@ export function EscalaPage() {
   const [loading, setLoading] = useState(true);
   // Versão da escala em edição: prevista (planejamento) ou real (após o mês)
   const [versao, setVersao] = useState<"prevista" | "real">("prevista");
+  // Aba do módulo: grade da escala ou ajustes solicitados pelos empregados.
+  const [aba, setAba] = useState<"grade" | "ajustes">("grade");
+  const [numPendentes, setNumPendentes] = useState(0);
+  useEffect(() => {
+    if (!rid || !acaoAprovarSolic) { setNumPendentes(0); return; }
+    const q = query(collection(db, "escalaSolicitacoes"), where("restaurantId", "==", rid), where("status", "==", "pendente"));
+    const unsub = onSnapshot(q, (snap) => setNumPendentes(snap.size));
+    return () => unsub();
+  }, [rid, acaoAprovarSolic]);
 
   // ── Modais / filtro UI — useState TÊM que ficar aqui no topo, antes de
   // qualquer return condicional. Antes estavam mais embaixo, depois dos
@@ -571,8 +582,31 @@ export function EscalaPage() {
     && !(versao === "prevista" && previstaFechada)
     && !(versao === "prevista" && !isMesFuturo && !me?.isMaster && !previstaFechada);
 
+  // Barra de abas — só aparece pra quem pode aprovar solicitações.
+  const tabBar = acaoAprovarSolic ? (
+    <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-3">
+      <button type="button" onClick={() => setAba("grade")}
+        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${aba === "grade" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Grade</button>
+      <button type="button" onClick={() => setAba("ajustes")}
+        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px flex items-center gap-1.5 ${aba === "ajustes" ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+        Ajustes solicitados
+        {numPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">{numPendentes}</span>}
+      </button>
+    </div>
+  ) : null;
+
+  if (aba === "ajustes" && acaoAprovarSolic) {
+    return (
+      <div>
+        {tabBar}
+        <AjustesSolicitadosTab rid={rid} />
+      </div>
+    );
+  }
+
   return (
     <div>
+      {tabBar}
       <MesContextoBanner
         ano={ano}
         mes={mes}
