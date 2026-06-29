@@ -5,7 +5,9 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { CATALOGO, AREA_INFO, type CatalogoModulo } from "../../core/auth/actionCatalog";
+import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
+import { MODULES, AREA_INFO } from "../../config/modules";
+import type { ModuleArea } from "../../core/types";
 import { isBuiltinProfileId } from "../../core/auth/builtinProfiles";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -270,14 +272,35 @@ function PerfilEditor({ perfil, isNew, restaurantes, onSalvar, onCancelar, onDel
   const totalAcoes = CATALOGO.reduce((s, m) => s + m.acoes.length, 0);
 
   // Agrupa módulos por área
+  // Ordena/agrupa os módulos EXATAMENTE como o menu lateral: por área do
+  // registro de módulos (config/modules) e, dentro de cada área, na ordem do
+  // próprio registro. Módulos que só existem no catálogo de permissões (sem
+  // item de menu — ex: Portal do Empregado, Perfis de Acesso) caem num grupo
+  // final "Outros / Sistema".
+  const menuOrder = useMemo(() => {
+    const m: Record<string, { area: ModuleArea; idx: number }> = {};
+    MODULES.forEach((mod, i) => { m[mod.id] = { area: mod.area, idx: i }; });
+    return m;
+  }, []);
+
   const porArea = useMemo(() => {
     const grupos: Record<string, CatalogoModulo[]> = {};
     for (const mod of CATALOGO) {
-      if (!grupos[mod.area]) grupos[mod.area] = [];
-      grupos[mod.area].push(mod);
+      const area = menuOrder[mod.id]?.area || "outros";
+      (grupos[area] ||= []).push(mod);
+    }
+    for (const a of Object.keys(grupos)) {
+      grupos[a].sort((x, y) => (menuOrder[x.id]?.idx ?? 9999) - (menuOrder[y.id]?.idx ?? 9999));
     }
     return grupos;
-  }, []);
+  }, [menuOrder]);
+
+  // Ordem das áreas igual ao menu, com bucket final pros só-do-catálogo.
+  const AREA_ORDER: (ModuleArea | "outros")[] = ["ops", "dp", "fin", "inst", "master", "outros"];
+  const AREA_LABEL: Record<string, { label: string; color: string }> = {
+    ...AREA_INFO,
+    outros: { label: "Outros / Sistema", color: "#6b7280" },
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-4 pb-20">
@@ -366,11 +389,15 @@ function PerfilEditor({ perfil, isNew, restaurantes, onSalvar, onCancelar, onDel
         </div>
       </div>
 
-      {/* Áreas + módulos */}
-      {Object.entries(porArea).map(([area, mods]) => (
+      {/* Áreas + módulos — mesma ordem do menu lateral */}
+      {AREA_ORDER.map((area) => {
+        const mods = porArea[area];
+        if (!mods || mods.length === 0) return null;
+        const info = AREA_LABEL[area];
+        return (
         <div key={area} className="space-y-2">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            {AREA_INFO[area as keyof typeof AREA_INFO].icon} {AREA_INFO[area as keyof typeof AREA_INFO].label}
+          <h2 className="text-xs font-bold uppercase tracking-wider" style={{ color: info.color }}>
+            {info.label}
           </h2>
           <div className="space-y-2">
             {mods.map(mod => (
@@ -384,7 +411,8 @@ function PerfilEditor({ perfil, isNew, restaurantes, onSalvar, onCancelar, onDel
             ))}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -397,7 +425,8 @@ function ModuloEditor({ modulo, permissoes, onToggle, onTodas }: {
 }) {
   const ativas = modulo.acoes.filter(a => permissoes[a.id] === true).length;
   const total = modulo.acoes.length;
-  const [aberto, setAberto] = useState(true);
+  // Começa FECHADO — usuário expande o módulo que quer editar (igual ao menu).
+  const [aberto, setAberto] = useState(false);
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
