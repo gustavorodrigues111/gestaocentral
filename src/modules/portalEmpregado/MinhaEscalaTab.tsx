@@ -35,7 +35,8 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const { pessoa } = useAuth();
   const { can } = useCanAcao(restaurantId);
-  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "solicitarAjuste");
+  // Sem permissão separada: quem vê a Minha Escala já pode solicitar ajuste.
+  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "verMinhaEscala");
 
   const escalaId = `${restaurantId}_${fmtAnoMes(ano, mes)}`;
   useEffect(() => {

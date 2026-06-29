@@ -34,7 +34,8 @@ type Props = {
 export function MeusHorariosTab({ empregado, cargo, restaurantId }: Props) {
   const { pessoa } = useAuth();
   const { can } = useCanAcao(restaurantId);
-  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "solicitarAjuste");
+  // Sem permissão separada: quem vê Meus Horários já pode solicitar ajuste.
+  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "verMeusHorarios");
   const [modalHorario, setModalHorario] = useState(false);
   // workSchedules ordenado da mais RECENTE pra mais antiga (validFrom desc)
   const wsOrdenados = useMemo(() => {

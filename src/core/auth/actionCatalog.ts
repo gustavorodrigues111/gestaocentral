@@ -556,9 +556,8 @@ export const CATALOGO: CatalogoModulo[] = [
     acoes: [
       // ── Ativas ──
       { id: "acessar",         label: "Acessar o Portal do Empregado (entrar na tela)" },
-      { id: "verMinhaEscala",  label: "Ver Minha Escala (turnos do mês)" },
-      { id: "solicitarAjuste", label: "Solicitar ajuste na própria escala (clicar no dia e pedir correção)" },
-      { id: "verMeusHorarios", label: "Ver Meus Horários (jornada de trabalho cadastrada)" },
+      { id: "verMinhaEscala",  label: "Ver Minha Escala (turnos do mês) — inclui solicitar ajuste de dia" },
+      { id: "verMeusHorarios", label: "Ver Meus Horários (jornada cadastrada) — inclui solicitar ajuste de horário" },
       { id: "verMinhaGorjeta", label: "Ver Minha Gorjeta (extrato mensal)" },
       { id: "verComunicados",  label: "Ver Comunicados (avisos da gestão)" },
       // ── Reservadas pro futuro (sem UI ainda, mas já no catálogo pra o

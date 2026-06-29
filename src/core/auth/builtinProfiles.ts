@@ -164,7 +164,6 @@ export const BUILTIN_PORTAL_EMPREGADO: AccessProfile = {
     portalEmpregado: {
       acessar: true,
       verMinhaEscala: true,
-      solicitarAjuste: true,
       verMeusHorarios: true,
       verMinhaGorjeta: true,
       // Futuras (verMinhaFolhaPonto, verMeusUniformes, verMeusExames,
