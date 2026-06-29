@@ -57,7 +57,7 @@ export function VRPage() {
   const [escalaRef, setEscalaRef] = useState<EscalaMes | null>(null);
   const [lotes, setLotes] = useState<VRLote[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showExportPDF, setShowExportPDF] = useState(false);
+  const [pdfData, setPdfData] = useState<{ statusLabel: string; linhas: VRPDFLinha[] } | null>(null);
   // Sheet de edição por linha (mobile + desktop)
   const [editandoEmpId, setEditandoEmpId] = useState<string | null>(null);
 
@@ -171,18 +171,26 @@ export function VRPage() {
     });
   }, [loteAtivo, empregadosProjetados, cargos, escala, escalaRef, ano, mes, ref, overrides]);
 
-  const linhasExibidas = loteAtivo?.linhas || linhasPreview;
-  const totais = useMemo(() => calcularTotais(linhasExibidas), [linhasExibidas]);
+  // "A pagar" = preview da escala (quem ainda não está em lote). Igual ao VT,
+  // os cards por área mostram só o que está a pagar; o lote vira um card à parte.
+  const linhasAPagar = linhasPreview;
+  const totais = useMemo(() => calcularTotais(linhasAPagar), [linhasAPagar]);
+
+  // Lotes visíveis do mês (rascunho/pago) — os cancelados vão pro histórico.
+  const lotesVisiveis = useMemo(
+    () => lotes.filter((l) => l.status !== "cancelado"),
+    [lotes],
+  );
 
   // Agrupa por área (igual ao VT).
   const porArea = useMemo(() => {
     const out: Record<string, VRLoteLinha[]> = {};
-    for (const l of linhasExibidas) {
+    for (const l of linhasAPagar) {
       (out[l.area] ||= []).push(l);
     }
     for (const a of Object.keys(out)) out[a].sort((x, y) => x.nome.localeCompare(y.nome));
     return out;
-  }, [linhasExibidas]);
+  }, [linhasAPagar]);
   const areasComLinhas = useMemo(
     () => AREAS.filter((a) => porArea[a] && porArea[a].length > 0),
     [porArea],
@@ -192,13 +200,15 @@ export function VRPage() {
     () => Object.fromEntries(empregados.map(e => [e.id, e])),
     [empregados],
   );
-  const linhasPdf = useMemo<VRPDFLinha[]>(
-    () => linhasExibidas.map(l => ({
+  const linhasPdfPreview = useMemo<VRPDFLinha[]>(
+    () => linhasAPagar.map(l => ({
       ...l,
       recebePeloCaju: empregadosById[l.empregadoId]?.vrRecebePeloCaju !== false,
     })),
-    [linhasExibidas, empregadosById],
+    [linhasAPagar, empregadosById],
   );
+  const pdfLinhasDoLote = (lote: VRLote): VRPDFLinha[] =>
+    lote.linhas.map(l => ({ ...l, recebePeloCaju: empregadosById[l.empregadoId]?.vrRecebePeloCaju !== false }));
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
@@ -213,9 +223,10 @@ export function VRPage() {
       return;
     }
     const ok = confirm(
-      `Lançar lote VR de ${nomeMes(mes)}/${ano}?\n\n` +
+      `Gerar lote VR de ${nomeMes(mes)}/${ano}?\n\n` +
       `${linhasPreview.length} colaboradores — total ${fmtBR(totais.totalGeral)}\n\n` +
-      `Status inicial: rascunho. Você pode editar antes de marcar como pago.`
+      `Status inicial: rascunho. Edite os valores na prévia ANTES de gerar; ` +
+      `pra alterar depois, cancele o rascunho e gere de novo.`
     );
     if (!ok) return;
     const nowIso = new Date().toISOString();
@@ -301,39 +312,20 @@ export function VRPage() {
     }
   }
 
-  // ─── Edição inline de linha (rascunho → grava no lote) ────────────────────
-  async function atualizarLinha(linhaIdx: number, patch: Partial<VRLoteLinha>) {
-    if (!loteAtivo || loteAtivo.status !== "rascunho") return;
-    const novaLinha = { ...loteAtivo.linhas[linhaIdx], ...patch };
-    novaLinha.total = recalcularTotal(novaLinha);
-    const novasLinhas = [...loteAtivo.linhas];
-    novasLinhas[linhaIdx] = novaLinha;
-    const tot = calcularTotais(novasLinhas);
-    await updateDoc(doc(db, "vrLotes", loteAtivo.id), {
-      linhas: novasLinhas,
-      totalGeral: tot.totalGeral,
-      totalPorArea: tot.totalPorArea,
-      updatedAt: new Date().toISOString(),
-    });
-  }
-
-  // Roteia a edição: rascunho → doc; preview → override local.
+  // Edição é no PREVIEW (antes de gerar o lote), igual ao VT: guarda no
+  // override local. Pra editar um lote já gerado, cancela o rascunho →
+  // edita aqui → gera de novo.
   function editarLinha(empregadoId: string, patch: OverrideVR) {
-    if (loteAtivo && loteAtivo.status === "rascunho") {
-      const idx = loteAtivo.linhas.findIndex((x) => x.empregadoId === empregadoId);
-      if (idx >= 0) atualizarLinha(idx, patch);
-    } else {
-      setOverride(empregadoId, patch);
-    }
+    setOverride(empregadoId, patch);
   }
 
-  function exportarCaju() {
-    if (!loteAtivo || !activeRestaurant) return;
+  function exportarCaju(lote: VRLote) {
+    if (!activeRestaurant) return;
     const slug = (activeRestaurant.nome || "restaurante")
       .toLowerCase()
       .normalize("NFD").replace(/[̀-ͯ]/g, "")
       .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
-    const r = exportarLoteCaju({ lote: loteAtivo, empregados, restaurantSlug: slug });
+    const r = exportarLoteCaju({ lote, empregados, restaurantSlug: slug });
     baixarCsvCaju(r);
     const totalBR = r.totalValor.toFixed(2).replace(".", ",");
     const ignoradasTxt = r.ignoradas.length === 0
@@ -350,10 +342,11 @@ export function VRPage() {
 
   // Linha em edição pelo sheet
   const linhaEditando = useMemo(
-    () => linhasExibidas.find((x) => x.empregadoId === editandoEmpId) || null,
-    [linhasExibidas, editandoEmpId],
+    () => linhasAPagar.find((x) => x.empregadoId === editandoEmpId) || null,
+    [linhasAPagar, editandoEmpId],
   );
-  const editavelGlobal = podeConfig && (!loteAtivo || loteAtivo.status === "rascunho");
+  // Edição só no preview "A pagar" (antes de gerar o lote), igual ao VT.
+  const editavelGlobal = podeConfig;
 
   // ─── Render guards ────────────────────────────────────────────────────────
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -368,9 +361,6 @@ export function VRPage() {
       </div>
     );
   }
-
-  const statusLabel = loteAtivo ? VR_LOTE_STATUS_LABEL[loteAtivo.status] : "Pré-visualização";
-  const isPago = loteAtivo?.status === "pago";
 
   return (
     <div className="max-w-6xl">
@@ -395,60 +385,46 @@ export function VRPage() {
         Desconto sugerido — mês de referência: <strong>{nomeMes(ref.mes).slice(0, 3).toLowerCase()}/{String(ref.ano).slice(2)}</strong>
       </div>
 
-      {/* Banner de total + ações */}
-      <div className={`rounded-xl border-2 p-3 mb-4 flex items-center justify-between flex-wrap gap-2 ${
-        isPago
-          ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-900/20"
-          : "border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20"
-      }`}>
+      {/* ── A PAGAR (prévia da escala) ─────────────────────────────────── */}
+      <div className="rounded-xl border-2 border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 p-3 mb-4 flex items-center justify-between flex-wrap gap-2">
         <div>
-          <div className={`text-[11px] uppercase font-bold tracking-wider ${isPago ? "text-emerald-700 dark:text-emerald-300" : "text-indigo-700 dark:text-indigo-300"}`}>
-            {loteAtivo ? `Lote ${statusLabel}` : "A pagar — da escala prevista"}
-          </div>
-          <div className={`text-2xl font-bold tabular-nums ${isPago ? "text-emerald-900 dark:text-emerald-100" : "text-indigo-900 dark:text-indigo-100"}`}>
-            {fmtBR(totais.totalGeral)} <span className={`text-sm font-medium ${isPago ? "text-emerald-700/70 dark:text-emerald-300/70" : "text-indigo-700/70 dark:text-indigo-300/70"}`}>· {linhasExibidas.length} pessoa(s)</span>
+          <div className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-300 tracking-wider">A pagar — da escala prevista</div>
+          <div className="text-2xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">
+            {fmtBR(totais.totalGeral)} <span className="text-sm font-medium text-indigo-700/70 dark:text-indigo-300/70">· {linhasAPagar.length} pessoa(s)</span>
           </div>
         </div>
         <div className="flex gap-2 flex-wrap">
-          {linhasExibidas.length > 0 && podeConfig && (
-            <Button variant="secondary" size="sm" onClick={() => setShowExportPDF(true)} title="Exportar PDF do VR (por área, com forma de pagamento)">
-              📄 PDF
+          {podeConfig && (
+            <Button
+              onClick={lancarLote}
+              disabled={linhasAPagar.length === 0}
+              title={linhasAPagar.length === 0 ? "Ninguém pendente — todos já estão em lote" : undefined}
+            >
+              + Gerar lote
             </Button>
           )}
-          {loteAtivo && loteAtivo.status !== "cancelado" && podeConfig && (
-            <Button variant="secondary" size="sm" onClick={exportarCaju}>📥 Caju</Button>
-          )}
-          {!loteAtivo && podeConfig && linhasPreview.length > 0 && (
-            <Button onClick={lancarLote}>💸 Lançar pra pagamento</Button>
-          )}
-          {loteAtivo && loteAtivo.status === "rascunho" && podeConfig && (
-            <>
-              <Button onClick={() => marcarPago(loteAtivo)}>✓ Marcar como pago</Button>
-              <Button variant="secondary" onClick={() => cancelarLote(loteAtivo)}>↶ Cancelar lote</Button>
-            </>
-          )}
-          {loteAtivo && loteAtivo.status === "pago" && isMaster && (
-            <>
-              <Button variant="secondary" onClick={() => reabrirLote(loteAtivo)}>↶ Reabrir (master)</Button>
-              <Button variant="danger" onClick={() => cancelarLote(loteAtivo)}>✕ Cancelar (master)</Button>
-            </>
+          {linhasAPagar.length > 0 && podeConfig && (
+            <Button variant="secondary" size="sm" onClick={() => setPdfData({ statusLabel: "A pagar (prévia)", linhas: linhasPdfPreview })} title="Exportar PDF da prévia a pagar">
+              📄 PDF
+            </Button>
           )}
         </div>
       </div>
 
-      {/* Linhas agrupadas por área */}
+      {/* Linhas agrupadas por área (a pagar) */}
       {loading ? (
         <div className="text-sm text-gray-500 py-6">Carregando…</div>
-      ) : linhasExibidas.length === 0 ? (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🍱</div>
+      ) : linhasAPagar.length === 0 ? (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-center">
+          <div className="text-3xl mb-2">{lotesVisiveis.length > 0 ? "✅" : "🍱"}</div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
-            Nenhum empregado com VR ativo neste mês.
+            {lotesVisiveis.length > 0 ? "Todos já estão em lote — nada pendente a pagar." : "Nenhum empregado com VR ativo neste mês."}
           </p>
-          <p className="text-sm text-gray-500 mt-2">
-            Ative <code>vrAtivo</code> + defina <code>vrValorDiario</code> no cadastro
-            de cada empregado pra eles aparecerem aqui.
-          </p>
+          {lotesVisiveis.length === 0 && (
+            <p className="text-sm text-gray-500 mt-2">
+              Ative <code>vrAtivo</code> + defina <code>vrValorDiario</code> no cadastro de cada empregado.
+            </p>
+          )}
         </div>
       ) : (
         <div className="space-y-4">
@@ -492,6 +468,35 @@ export function VRPage() {
         </div>
       )}
 
+      {/* ── LOTES DO MÊS ───────────────────────────────────────────────── */}
+      <div className="mt-6">
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200 mb-2">
+          Lotes de {nomeMes(mes)} <span className="font-normal text-gray-400">({lotesVisiveis.length})</span>
+        </h3>
+        {lotesVisiveis.length === 0 ? (
+          <div className="text-sm text-gray-400 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-4 text-center">
+            Nenhum lote gerado ainda. Use <strong>+ Gerar lote</strong> acima pra lançar o VR pra pagamento.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {lotesVisiveis.map((lote) => (
+              <LoteCardVR
+                key={lote.id}
+                lote={lote}
+                isMaster={isMaster}
+                podeConfig={podeConfig}
+                onMarcarPago={() => marcarPago(lote)}
+                onCancelarRascunho={() => cancelarLote(lote)}
+                onReabrir={() => reabrirLote(lote)}
+                onCancelarMaster={() => cancelarLote(lote)}
+                onExportarCaju={() => exportarCaju(lote)}
+                onExportarPdf={() => setPdfData({ statusLabel: VR_LOTE_STATUS_LABEL[lote.status], linhas: pdfLinhasDoLote(lote) })}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Histórico mínimo: lotes cancelados do mês */}
       {lotes.filter((l) => l.status === "cancelado").length > 0 && (
         <div className="mt-6">
@@ -515,16 +520,58 @@ export function VRPage() {
         />
       )}
 
-      {showExportPDF && (
+      {pdfData && (
         <ExportarVRModal
           ano={ano}
           mes={mes}
           restaurantNome={activeRestaurant.nome}
-          statusLabel={statusLabel}
-          linhas={linhasPdf}
-          onClose={() => setShowExportPDF(false)}
+          statusLabel={pdfData.statusLabel}
+          linhas={pdfData.linhas}
+          onClose={() => setPdfData(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// LoteCardVR — card compacto de um lote (igual ao VT)
+// ────────────────────────────────────────────────────────────────────────────
+function LoteCardVR({ lote, isMaster, podeConfig, onMarcarPago, onCancelarRascunho, onReabrir, onCancelarMaster, onExportarCaju, onExportarPdf }: {
+  lote: VRLote;
+  isMaster: boolean;
+  podeConfig: boolean;
+  onMarcarPago: () => void;
+  onCancelarRascunho: () => void;
+  onReabrir: () => void;
+  onCancelarMaster: () => void;
+  onExportarCaju: () => void;
+  onExportarPdf: () => void;
+}) {
+  const isRascunho = lote.status === "rascunho";
+  const statusCls = isRascunho
+    ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+    : "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300";
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-800 dark:text-gray-100">{lote.linhas.length} pessoa(s)</span>
+          <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(lote.totalGeral || 0)}</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${statusCls}`}>{VR_LOTE_STATUS_LABEL[lote.status]}</span>
+        </div>
+        <div className="text-[11px] text-gray-400 mt-0.5">
+          {isRascunho ? `criado por ${lote.criadoPorNome || "—"}` : `pago${lote.pagoEm ? ` em ${new Date(lote.pagoEm).toLocaleDateString("pt-BR")}` : ""}${lote.pagoPorNome ? ` · ${lote.pagoPorNome}` : ""}`}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap shrink-0">
+        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju">📥 Caju</Button>
+        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote">📄 PDF</Button>
+        {isRascunho && podeConfig && <Button size="sm" onClick={onMarcarPago}>✓ Marcar pago</Button>}
+        {isRascunho && podeConfig && <Button variant="danger" size="sm" onClick={onCancelarRascunho} title="Cancela o rascunho e devolve as pessoas pra 'A pagar'">✕ Cancelar</Button>}
+        {!isRascunho && isMaster && <Button variant="secondary" size="sm" onClick={onReabrir}>↶ Reabrir</Button>}
+        {!isRascunho && isMaster && <Button variant="danger" size="sm" onClick={onCancelarMaster}>✕ Cancelar</Button>}
+      </div>
     </div>
   );
 }
