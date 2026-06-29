@@ -670,6 +670,13 @@ export function EscalaPage() {
           </button>
         )}
 
+        {versao === "real" && (
+          <span className="text-[11px] text-gray-500 dark:text-gray-400 inline-flex items-center gap-1.5">
+            <span className="inline-block w-3.5 h-3.5 rounded outline outline-1 outline-dashed outline-gray-500/70 opacity-60 bg-emerald-500/60" />
+            tracejado = previsto (dia ainda não fechado) · sólido = fechado na praticada
+          </span>
+        )}
+
         <div className="flex items-center gap-2 flex-wrap">
           {usaMultiUnidades && unidadesAtivas.length > 0 && (
             <select
@@ -1416,6 +1423,8 @@ function Grade({
                         // F5 — ícones de origem (ponto): só na PRATICADA
                         ajuste={versao === "real" ? escala?.realAjustes?.[e.id]?.[d] : undefined}
                         atraso={versao === "real" ? escala?.atrasos?.[e.id]?.[d] : undefined}
+                        // Praticada mostrando a prevista (dia ainda não fechado) → tracejado
+                        previsto={versao === "real" && !realCell}
                       />
                     </td>
                   );
@@ -1455,7 +1464,7 @@ function Grade({
 // - Selecionada (multi-select): ring indigo
 function Celula({
   override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge, swap, empregadoId,
-  ajuste, atraso,
+  ajuste, atraso, previsto,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
@@ -1469,11 +1478,16 @@ function Celula({
   // F5 — integração com Ponto: marcadores de ajuste auto / atraso
   ajuste?: AjusteEscalaMeta;
   atraso?: AtrasoEscalaMeta;
+  // Na praticada: dia AINDA não fechado (mostra a prevista como fallback) →
+  // tracejado/esmaecido pra diferenciar do dia já fechado (praticada confirmada).
+  previsto?: boolean;
 }) {
   // Resolve display
   const displayStatus = override ?? derived?.status;
   const isFromOverride = !!override;
   const isImplicito = !override && derived?.fonte === "implicito";
+  // Estilo "previsto, não fechado" (só faz sentido na praticada).
+  const previstoCls = previsto ? "opacity-60 outline outline-1 outline-dashed outline-gray-500/70 -outline-offset-2" : "";
 
   // Ring extra quando célula está selecionada via Shift+Click
   const selRing = isSelected ? "ring-2 ring-indigo-500 ring-offset-1" : "";
@@ -1544,8 +1558,8 @@ function Celula({
         onClick={onClick}
         className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all bg-gray-100 dark:bg-gray-800/40 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 ${
           podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-        title={[swapTitle, ajusteAtrasoTitle, isImplicito ? "Sem horário cadastrado — assume trabalho no cálculo" : "Vazio"].filter(Boolean).join(" · ")}
+        } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass} ${previstoCls}`}
+        title={[swapTitle, ajusteAtrasoTitle, previsto ? "Previsto — dia ainda não fechado na praticada" : (isImplicito ? "Sem horário cadastrado — assume trabalho no cálculo" : "Vazio")].filter(Boolean).join(" · ")}
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
@@ -1567,8 +1581,8 @@ function Celula({
       onClick={onClick}
       className={`relative w-7 h-7 rounded text-[10px] font-bold transition-all ${info.bg} ${info.text} ${
         podeEditar ? "cursor-pointer hover:scale-110" : "cursor-default"
-      } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass}`}
-      title={[swapTitle, ajusteAtrasoTitle, isFromOverride ? `${info.label} (override manual)` : info.label].filter(Boolean).join(" · ")}
+      } ${isOpen ? "ring-1 ring-indigo-400" : ""} ${selRing} ${swapClass} ${previstoCls}`}
+      title={[swapTitle, ajusteAtrasoTitle, previsto ? `${info.label} · previsto (dia ainda não fechado)` : (isFromOverride ? `${info.label} (override manual)` : info.label)].filter(Boolean).join(" · ")}
     >
       {info.short}
       {unidadeSubscript}
@@ -2081,8 +2095,8 @@ function GradeMobile({
                         !status || isImplicito
                           ? "bg-gray-100 dark:bg-gray-800/40 text-gray-400"
                           : `${info!.bg} ${info!.text}`
-                      } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
-                      title={swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined}
+                      } ${!inMes ? "opacity-40" : ""} ${swap ? "ring-2 ring-violet-500 ring-offset-1" : ""} ${versao === "real" && !realCell ? "opacity-60 outline outline-1 outline-dashed outline-gray-500/70 -outline-offset-2" : ""} ${podeEditar ? "active:scale-95 transition-transform" : ""}`}
+                      title={versao === "real" && !realCell ? "Previsto — dia ainda não fechado na praticada" : (swap ? `Inversão com ${e.id === swap.empAId ? swap.empBNome : swap.empANome}${swap.motivo ? ` — ${swap.motivo}` : ""}` : undefined)}
                     >
                       {isImplicito ? "·" : (info?.short || "")}
                       {swap && (

@@ -90,6 +90,9 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
   const linhas = useMemo(() => {
     const result: { date: string; bruto: number; retencao: number; liquido: number }[] = [];
     for (const g of gorjetas) {
+      // Gate: só aparece pro empregado quando, além da gorjeta publicada, o dia
+      // dele na escala já foi FECHADO pela análise de ponto (praticada = real setado).
+      if (!escala?.real?.[empregado.id]?.[g.date]) continue;
       let taxRate = g.taxRate || 0;
       let itens = g.divisaoSnapshot;
       if (!itens || itens.length === 0) {
