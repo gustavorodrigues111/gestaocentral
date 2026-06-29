@@ -106,6 +106,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
   const areas: ModuleArea[] = ["ops", "dp", "fin", "inst"];
 
+  // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
+  // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
+  // assim o master liga/desliga essas ferramentas nas Configurações.
+  // Default off até ser ligado. Só visível pro master.
+  function masterModuloLigado(moduleId: ModuleId) {
+    if (!pessoa?.isMaster) return false;
+    return modulosAtivos.includes(moduleId);
+  }
+  const masterMods = modulesByArea("master").filter(m => !m.oculto && masterModuloLigado(m.id));
+
   return (
     <>
       {/* Backdrop mobile */}
@@ -140,49 +150,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-          {/* Tarefas é a tela inicial — link de topo, fora dos agrupamentos.
-              Só aparece pra quem tem permissão no módulo "tarefas". */}
-          {visibleModule("tarefas") && (
-          <NavLink
-            to={rid ? `/r/${rid}/tarefas` : "/"}
-            end
-            onClick={onClose}
-            className={({ isActive }) => `
-              flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
-              ${isActive
-                ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
-            `}
-          >
-            <span>📋</span>
-            <span className="flex-1">Tarefas</span>
-            {tarefasPendentes > 0 && (
-              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-                {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
-              </span>
-            )}
-          </NavLink>
-          )}
-
-          {/* Planner — pessoal do dono (master). Link de topo "Meu dia",
-              fora do escopo de restaurante. */}
-          {pessoa?.isMaster && (
-            <NavLink
-              to="/planner"
-              onClick={onClose}
-              className={({ isActive }) => `
-                flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
-                ${isActive
-                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
-              `}
-            >
-              <span>🗓</span>
-              <span className="flex-1">Planner</span>
-              <span className="text-[9px] text-gray-400">pessoal</span>
-            </NavLink>
-          )}
-
           {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
@@ -268,6 +235,58 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               </div>
             );
           })}
+
+          {/* Seção Master — Tarefas + Planner. Respeita modulosAtivos mesmo
+              pro master (ligável/desligável nas Configurações). */}
+          {masterMods.length > 0 && (() => {
+            const fechada = colapsadas.has("master");
+            const info = AREA_INFO.master;
+            return (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => toggleArea("master")}
+                  className="w-full flex items-center gap-1 px-3 mb-1 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
+                  style={{ color: info.color }}
+                  title={fechada ? "Expandir" : "Recolher"}
+                >
+                  <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`}>▾</span>
+                  <span className="flex-1 text-left">{info.label}</span>
+                  <span className="opacity-60 font-semibold">{masterMods.length}</span>
+                </button>
+                {!fechada && (
+                <div className="space-y-0.5">
+                  {masterMods.map(m => {
+                    const to = m.id === "planner" ? "/planner" : (rid ? `/r/${rid}/${m.id}` : "#");
+                    return (
+                      <NavLink
+                        key={m.id}
+                        to={to}
+                        end={m.id === "tarefas"}
+                        onClick={onClose}
+                        className={({ isActive }) => `
+                          flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
+                          ${isActive
+                            ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium"
+                            : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}
+                        `}
+                      >
+                        <span>{m.icon}</span>
+                        <span className="flex-1 truncate">{m.label}</span>
+                        {m.id === "tarefas" && tarefasPendentes > 0 && (
+                          <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
+                            {tarefasPendentes > 99 ? "99+" : tarefasPendentes}
+                          </span>
+                        )}
+                        {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
+                      </NavLink>
+                    );
+                  })}
+                </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Link discreto pro catálogo (grid) — Tarefas é a default mas
               quem quiser ver o panorama de módulos abre por aqui */}

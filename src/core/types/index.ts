@@ -39,7 +39,7 @@ export type AccessProfile = {
 
 // ─── TIPOS BASE ───
 
-export type ModuleArea = "ops" | "dp" | "fin" | "inst";
+export type ModuleArea = "ops" | "dp" | "fin" | "inst" | "master";
 
 export type ModuleId =
   // Operação
@@ -70,7 +70,10 @@ export type ModuleId =
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
   // o link "Meu Portal" separado); existe só pra o sistema de perfis decidir
   // o que cada empregado vê dentro da PortalPage.
-  | "portalEmpregado";
+  | "portalEmpregado"
+  // Planner — agenda pessoal do dono (Google Calendar), single-user. Roteia em
+  // /planner (fora do escopo de restaurante). Fica na seção "master".
+  | "planner";
 
 // ─── PERMISSÕES ───
 

@@ -36,7 +36,8 @@ export const MODULES: ModuleDef[] = [
   { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "beta",               desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
-  { id: "tarefas",     area: "ops", subarea: "Tarefas",                label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+  { id: "tarefas",     area: "master", subarea: "Master",              label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+  { id: "planner",     area: "master", subarea: "Master",              label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal do dono integrada ao Google Calendar (single-user, fora do escopo de restaurante)" },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
@@ -96,6 +97,7 @@ export const AREA_INFO = {
   dp:   { label: "Pessoas & DP",           color: "#3b82f6", desc: "RH, admissão, escala e desenvolvimento" },
   fin:  { label: "Financeiro",             color: "#10b981", desc: "Benefícios, gorjetas e pagamentos" },
   inst: { label: "Institucional / Config", color: "#8b5cf6", desc: "Site público e configurações" },
+  master: { label: "Master",               color: "#6b7280", desc: "Ferramentas pessoais do dono — ligue/desligue quando quiser" },
 } as const;
 
 // Helpers

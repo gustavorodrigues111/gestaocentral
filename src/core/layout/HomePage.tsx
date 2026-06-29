@@ -27,7 +27,10 @@ export function HomePage() {
   //   2. Senão, tem portalEmpregado.acessar → Portal do Empregado
   //   3. Senão, fica no catálogo de módulos (esta página)
   if (activeRestaurant && pessoa && !forcarCatalogo) {
-    const podeTarefas = isMaster || canUse(pessoa, activeRestaurant.id, "tarefas");
+    // Tarefas virou módulo da seção "master" (ligável/desligável). Só faz
+    // landing nele se estiver ATIVO no restaurante — senão cai no portal/catálogo.
+    const tarefasLigado = (activeRestaurant.modulosAtivos || []).includes("tarefas");
+    const podeTarefas = tarefasLigado && (isMaster || canUse(pessoa, activeRestaurant.id, "tarefas"));
     if (podeTarefas) {
       return <Navigate to={`/r/${activeRestaurant.id}/tarefas`} replace />;
     }
