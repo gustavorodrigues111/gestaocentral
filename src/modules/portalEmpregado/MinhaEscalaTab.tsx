@@ -70,6 +70,18 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
     setModalDia({ data: date, status, fonte, gorjetaPaga });
   }
 
+  // Dias com gorjeta PAGA no mês (pro cadeado 🔒). Filtra client-side pra não
+  // exigir índice composto.
+  const [pagosDates, setPagosDates] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    const ym = fmtAnoMes(ano, mes);
+    const q = query(collection(db, "gorjetas"), where("restaurantId", "==", restaurantId));
+    const unsub = onSnapshot(q, (snap) => {
+      setPagosDates(new Set(snap.docs.map((d) => d.data() as { date: string; paga?: boolean }).filter((g) => g.paga && (g.date || "").startsWith(ym)).map((g) => g.date)));
+    }, () => { /* ignora */ });
+    return () => unsub();
+  }, [restaurantId, ano, mes]);
+
   // Derivado dos horários cadastrados
   const derivado = useMemo(
     () => derivedScheduleForEmpregado(empregado, ano, mes),
@@ -159,12 +171,14 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           statusEm={statusEm}
           todayYmd={todayYmd}
           pendentes={pendentes}
+          pagosDates={pagosDates}
           podeSolicitar={podeSolicitar}
           onDiaClick={abrirSolicitacao}
         />
-        {podeSolicitar && (
-          <p className="text-[11px] text-gray-400 mt-2 text-center">Algum dia errado? Toque no dia pra solicitar um ajuste. 🔒 borda = dia fechado (praticada) · sem borda = prevista · tracejado = previsão · ⏳ = pedido pendente.</p>
-        )}
+        <p className="text-[11px] text-gray-400 mt-2 text-center">
+          Cor cheia = dia <strong>fechado</strong> (confirmado) · apagado = ainda <strong>previsto</strong> · 🔒 = gorjeta paga (não muda mais) · ⏳ = ajuste pendente.
+          {podeSolicitar && " Toque num dia pra solicitar ajuste."}
+        </p>
       </div>
 
       {/* Legenda */}
@@ -204,6 +218,7 @@ function CalendarGrid({
   statusEm: (date: string) => { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; fechado: boolean };
   todayYmd: string;
   pendentes: Set<string>;
+  pagosDates: Set<string>;
   podeSolicitar: boolean;
   onDiaClick: (date: string, status: ScheduleStatus | null, fonte: "real" | "prevista" | "derivado" | null) => void;
 }) {
@@ -224,16 +239,18 @@ function CalendarGrid({
     const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
     const info = status ? STATUS_INFO[status] : null;
     const pend = pendentes.has(date);
+    const paga = pagosDates.has(date);
+    // Hierarquia visual: fechado = cor cheia; não-confirmado fica apagado
+    // (previsão mais apagada que prevista). Sem bordas.
+    const fade = fechado ? "" : fonte === "derivado" ? "opacity-40" : "opacity-50";
     const cls = `relative aspect-square rounded flex flex-col items-center justify-center text-[10px] gap-0.5 ${
       info ? `${info.bg} ${info.text}` : "bg-gray-50 dark:bg-gray-800/40"
-    } ${fonte === "derivado" ? "opacity-60 border border-dashed border-gray-300" : ""} ${
-      fechado ? "border-2 border-gray-800/70 dark:border-white/70" : ""
-    } ${isToday ? "ring-2 ring-indigo-500 ring-inset" : ""} ${podeSolicitar ? "cursor-pointer active:scale-95 transition-transform" : ""}`;
-    const titulo = `${date} · ${info?.label || "Sem dado"} (${fechado ? "praticada · fechado" : fonte === "prevista" ? "prevista" : fonte === "derivado" ? "previsão" : "—"})${pend ? " · ajuste solicitado" : ""}${podeSolicitar ? " — toque pra solicitar ajuste" : ""}`;
+    } ${fade} ${isToday ? "ring-2 ring-indigo-500 ring-inset" : ""} ${podeSolicitar ? "cursor-pointer active:scale-95 transition-transform" : ""}`;
+    const titulo = `${date} · ${info?.label || "Sem dado"} (${fechado ? "fechado" : fonte === "prevista" ? "previsto" : fonte === "derivado" ? "previsão" : "—"})${paga ? " · gorjeta paga 🔒" : ""}${pend ? " · ajuste solicitado" : ""}${podeSolicitar ? " — toque pra solicitar ajuste" : ""}`;
     const conteudo = (
       <>
-        {/* 🔒 = dia fechado (praticada); ⏳ = pedido pendente */}
-        {fechado && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-90 leading-none">🔒</span>}
+        {/* 🔒 = gorjeta paga (dia travado); ⏳ = pedido pendente */}
+        {paga && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-90 leading-none">🔒</span>}
         {pend && <span className="absolute top-0.5 left-0.5 text-[9px] leading-none">⏳</span>}
         <div className={`text-[9px] ${info ? "opacity-80" : "text-gray-500"}`}>
           {pad2(d)}{isWeekend && !info ? <span className="text-amber-600">·</span> : null}
