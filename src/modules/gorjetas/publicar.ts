@@ -94,11 +94,16 @@ export async function recalcularSnapshotGorjeta(p: PublicarParams): Promise<void
     gorjeta.unidadeId || null,
     unidades,
   );
+  const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
     divisaoSnapshot: result.itens,
     taxRate: sv.taxRate,
     valorLiquido: liquido,
-    updatedAt: new Date().toISOString(),
+    // Marca QUANDO o snapshot foi recalculado — a detecção de "escala mudou
+    // após a divisão" compara contra isto (e não só contra publicadaEm, que é
+    // preservado). Sem isto, o banner nunca somia depois do recálculo.
+    divisaoRecalculadaEm: now,
+    updatedAt: now,
   }));
 }
 

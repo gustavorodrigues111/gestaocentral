@@ -989,6 +989,11 @@ export type Gorjeta = {
   // dessa gorjeta NÃO recalcula mesmo que a escala mude. Pra recalcular, é
   // necessário despublicar e publicar de novo.
   divisaoSnapshot?: DivisaoItem[];
+  // ISO da última vez que o divisaoSnapshot foi recalculado (mantendo a
+  // publicação original). Usado pra detectar "escala mudou após a divisão":
+  // a comparação é feita contra o MAIS RECENTE entre publicadaEm e este campo,
+  // senão o banner de "escala alterada" nunca some depois do recálculo.
+  divisaoRecalculadaEm?: string | null;
   paidAt?: string | null;       // DEPRECATED: pagamento agora é mensal
   paidBy?: string | null;       // idem
   createdAt: string;

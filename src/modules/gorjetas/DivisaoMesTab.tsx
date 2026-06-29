@@ -294,10 +294,17 @@ export function DivisaoMesTab({
   );
   const escalaDesatualizada = useMemo(() => {
     if (!escala?.updatedAt || publicadasNoMes.length === 0) return false;
-    // Se a escala foi atualizada APÓS qualquer publicação do mês,
-    // alguma divisão pode estar desatualizada.
+    // Se a escala foi atualizada APÓS o snapshot mais recente de alguma
+    // gorjeta, a divisão dela pode estar desatualizada. Usa o MAIS RECENTE
+    // entre publicadaEm e divisaoRecalculadaEm — senão, como o recálculo
+    // preserva publicadaEm, o banner nunca somia depois de recalcular.
     const escalaTs = escala.updatedAt;
-    return publicadasNoMes.some(g => (g.publicadaEm || "") < escalaTs);
+    return publicadasNoMes.some(g => {
+      const snapTs = (g.divisaoRecalculadaEm || "") > (g.publicadaEm || "")
+        ? (g.divisaoRecalculadaEm || "")
+        : (g.publicadaEm || "");
+      return snapTs < escalaTs;
+    });
   }, [escala?.updatedAt, publicadasNoMes]);
 
   // Recalcula o divisaoSnapshot das gorjetas publicadas do mês com o
