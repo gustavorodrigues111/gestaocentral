@@ -1263,6 +1263,10 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 
   const filesFrom = (e: ChangeEvent<HTMLInputElement>) => { const fs = Array.from(e.target.files || []); e.target.value = ""; return fs; };
   const somaBand = (r: Record<string, number>) => Object.values(r).reduce((s, v) => s + v, 0);
+  // Ordem de exibição das bandeiras: Visa, Master, Elo, Amex… (resto alfabético no fim).
+  const ORDEM_BAND = ["visa", "master", "elo", "amex", "hiper", "diners"];
+  const posBand = (b: string) => { const n = b.toLowerCase(); const i = ORDEM_BAND.findIndex((k) => n.includes(k)); return i === -1 ? 99 : i; };
+  const ordenarBand = (r: Record<string, number>) => Object.entries(r).sort((a, b) => posBand(a[0]) - posBand(b[0]) || a[0].localeCompare(b[0]));
 
   // Duplicados: mesmo nº de caixa repetido, ou cortes a menos de 2min (prints sobrepostos).
   const dups = useMemo(() => {
@@ -1289,20 +1293,20 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
   const Breakdown = ({ g }: { g: Totais }) => (
     <div className="space-y-2">
       <div>
-        <div className="flex justify-between text-[12px] font-semibold text-emerald-700 dark:text-emerald-300"><span>Crédito</span><span className="tabular-nums">{fmtBRL(somaBand(g.credito))}</span></div>
-        {Object.entries(g.credito).sort().map(([b, v]) => (
-          <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
-        ))}
+        <div className="flex justify-between text-[12px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
+        <div className="text-[11px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
       </div>
-      <div>
-        <div className="flex justify-between text-[12px] font-semibold text-sky-700 dark:text-sky-300"><span>Débito</span><span className="tabular-nums">{fmtBRL(somaBand(g.debito))}</span></div>
-        {Object.entries(g.debito).sort().map(([b, v]) => (
+      <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex justify-between text-[12px] font-semibold text-emerald-700 dark:text-emerald-300"><span>Crédito</span><span className="tabular-nums">{fmtBRL(somaBand(g.credito))}</span></div>
+        {ordenarBand(g.credito).map(([b, v]) => (
           <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
         ))}
       </div>
       <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
-        <div className="flex justify-between text-[12px] font-semibold text-violet-700 dark:text-violet-300"><span>PIX (Rede)</span><span className="tabular-nums">{fmtBRL(g.pixRede)}</span></div>
-        <div className="text-[11px] text-gray-400">só maquininha — o PIX do balcão (QR/banco) não vem da Rede</div>
+        <div className="flex justify-between text-[12px] font-semibold text-sky-700 dark:text-sky-300"><span>Débito</span><span className="tabular-nums">{fmtBRL(somaBand(g.debito))}</span></div>
+        {ordenarBand(g.debito).map(([b, v]) => (
+          <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span>{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+        ))}
       </div>
       {temIfood && (
         <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
