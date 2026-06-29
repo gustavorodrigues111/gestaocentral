@@ -52,7 +52,7 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
     const q = query(collection(db, "escalaSolicitacoes"),
       where("restaurantId", "==", restaurantId), where("empregadoId", "==", empregado.id), where("status", "==", "pendente"));
     const unsub = onSnapshot(q, (snap) => {
-      setPendentes(new Set(snap.docs.map((d) => (d.data() as EscalaSolicitacao).data)));
+      setPendentes(new Set(snap.docs.map((d) => (d.data() as EscalaSolicitacao).data).filter((x): x is string => !!x)));
     });
     return () => unsub();
   }, [restaurantId, empregado.id]);
@@ -159,7 +159,7 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           onDiaClick={abrirSolicitacao}
         />
         {podeSolicitar && (
-          <p className="text-[11px] text-gray-400 mt-2 text-center">Algum dia errado? Toque no dia pra solicitar um ajuste. ✓ = praticada (confirmada) · sem marca = prevista · tracejado = previsão · ⏳ = pedido pendente.</p>
+          <p className="text-[11px] text-gray-400 mt-2 text-center">Algum dia errado? Toque no dia pra solicitar um ajuste. 🔒 borda = dia fechado (praticada) · sem borda = prevista · tracejado = previsão · ⏳ = pedido pendente.</p>
         )}
       </div>
 
@@ -220,16 +220,17 @@ function CalendarGrid({
     const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
     const info = status ? STATUS_INFO[status] : null;
     const pend = pendentes.has(date);
+    const fechado = fonte === "real"; // dia já fechado na praticada (análise de ponto)
     const cls = `relative aspect-square rounded flex flex-col items-center justify-center text-[10px] gap-0.5 ${
       info ? `${info.bg} ${info.text}` : "bg-gray-50 dark:bg-gray-800/40"
     } ${fonte === "derivado" ? "opacity-60 border border-dashed border-gray-300" : ""} ${
-      isToday ? "ring-2 ring-indigo-500 ring-inset" : ""
-    } ${podeSolicitar ? "cursor-pointer active:scale-95 transition-transform" : ""}`;
-    const titulo = `${date} · ${info?.label || "Sem dado"} (${fonte === "real" ? "praticada" : fonte === "prevista" ? "prevista" : fonte === "derivado" ? "previsão" : "—"})${pend ? " · ajuste solicitado" : ""}${podeSolicitar ? " — toque pra solicitar ajuste" : ""}`;
+      fechado ? "border-2 border-gray-800/70 dark:border-white/70" : ""
+    } ${isToday ? "ring-2 ring-indigo-500 ring-inset" : ""} ${podeSolicitar ? "cursor-pointer active:scale-95 transition-transform" : ""}`;
+    const titulo = `${date} · ${info?.label || "Sem dado"} (${fechado ? "praticada · fechado" : fonte === "prevista" ? "prevista" : fonte === "derivado" ? "previsão" : "—"})${pend ? " · ajuste solicitado" : ""}${podeSolicitar ? " — toque pra solicitar ajuste" : ""}`;
     const conteudo = (
       <>
-        {/* ✓ = praticada (confirmada); ⏳ = pedido pendente */}
-        {fonte === "real" && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-80 leading-none">✓</span>}
+        {/* 🔒 = dia fechado (praticada); ⏳ = pedido pendente */}
+        {fechado && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-90 leading-none">🔒</span>}
         {pend && <span className="absolute top-0.5 left-0.5 text-[9px] leading-none">⏳</span>}
         <div className={`text-[9px] ${info ? "opacity-80" : "text-gray-500"}`}>
           {pad2(d)}{isWeekend && !info ? <span className="text-amber-600">·</span> : null}

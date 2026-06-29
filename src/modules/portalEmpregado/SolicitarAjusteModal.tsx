@@ -27,6 +27,7 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
   gorjetaPaga: boolean; jaPendente: boolean;
   onClose: () => void; onCriado: () => void;
 }) {
+  // gorjetaPaga BLOQUEIA o pedido (não dá pra alterar dia com gorjeta já paga).
   const [status, setStatus] = useState<ScheduleStatus | "">(statusAtual && statusAtual !== "folga" ? "folga" : "trabalho");
   const [motivo, setMotivo] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -42,6 +43,7 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
         restaurantId: rid,
         empregadoId: empregado.id,
         empregadoNome: empregado.nome,
+        tipo: "dia",
         data,
         anoMes: data.slice(0, 7),
         statusAtual: statusAtual,
@@ -67,7 +69,11 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none">×</button>
         </div>
 
-        {jaPendente ? (
+        {gorjetaPaga ? (
+          <div className="rounded-lg border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-900/20 p-3 text-[13px] text-rose-900 dark:text-rose-200">
+            🔒 A <strong>gorjeta deste dia já foi paga</strong>, então ele não pode mais ser alterado. Se houver um erro, fale direto com a gestão.
+          </div>
+        ) : jaPendente ? (
           <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-3 text-[13px] text-amber-900 dark:text-amber-200">
             Você já tem um pedido <strong>pendente</strong> pra esse dia. Aguarde a gestão responder.
           </div>
@@ -96,13 +102,7 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
             </div>
 
-            {gorjetaPaga && (
-              <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-2.5 text-[12px] text-amber-900 dark:text-amber-200">
-                ⚠ A <strong>gorjeta deste dia já foi publicada</strong>. Você pode pedir o ajuste, mas mudanças podem não refletir no que já foi pago — a gestão decide.
-              </div>
-            )}
-
-            {erro && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erro}</div>}
+            {erro &&<div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erro}</div>}
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>

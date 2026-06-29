@@ -156,7 +156,7 @@ export function PortalPage() {
       </div>
 
       {tab === "escala"      && verEscala      && <MinhaEscalaTab     empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
-      {tab === "horarios"    && verHorarios    && <MeusHorariosTab    empregado={empregado} cargo={cargo || null} />}
+      {tab === "horarios"    && verHorarios    && <MeusHorariosTab    empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
       {tab === "gorjetas"    && verGorjetas    && <MinhasGorjetasTab  empregado={empregado} restaurantId={rid} />}
       {tab === "comunicados" && verComunicados && <ComunicadosTab empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
     </div>

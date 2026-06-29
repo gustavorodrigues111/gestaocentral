@@ -13,8 +13,14 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useMemo, useState } from "react";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { getActiveWorkSchedule } from "../../core/escala/horarios";
 import { fmtBR, todayYmd } from "../../core/utils/date";
+import { useAuth } from "../../core/auth/AuthContext";
+import { useCanAcao } from "../../core/auth/useCanAcao";
+import { Button } from "../../core/ui/Button";
 import type { Cargo, Empregado, HorarioDia, SundayCycle, WorkSchedule } from "../../core/types";
 
 const DIA_NOMES = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -22,9 +28,14 @@ const DIA_NOMES = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", 
 type Props = {
   empregado: Empregado;
   cargo: Cargo | null;
+  restaurantId: string;
 };
 
-export function MeusHorariosTab({ empregado, cargo }: Props) {
+export function MeusHorariosTab({ empregado, cargo, restaurantId }: Props) {
+  const { pessoa } = useAuth();
+  const { can } = useCanAcao(restaurantId);
+  const podeSolicitar = !!pessoa?.isMaster || can("portalEmpregado", "solicitarAjuste");
+  const [modalHorario, setModalHorario] = useState(false);
   // workSchedules ordenado da mais RECENTE pra mais antiga (validFrom desc)
   const wsOrdenados = useMemo(() => {
     const arr = empregado.workSchedules || [];
@@ -139,6 +150,52 @@ export function MeusHorariosTab({ empregado, cargo }: Props) {
           )}
         </>
       )}
+
+      {/* Solicitar ajuste de horário (jornada não bate com a praticada) */}
+      {podeSolicitar && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 flex items-center justify-between gap-3 flex-wrap">
+          <span className="text-[13px] text-gray-600 dark:text-gray-300">Esse horário não bate com o que você pratica?</span>
+          <Button variant="secondary" size="sm" onClick={() => setModalHorario(true)}>Solicitar ajuste de horário</Button>
+        </div>
+      )}
+      {modalHorario && pessoa && (
+        <SolicitarHorarioModal rid={restaurantId} empregado={empregado} criadoPor={pessoa.id} onClose={() => setModalHorario(false)} />
+      )}
+    </div>
+  );
+}
+
+// ─── Modal: pedir ajuste da jornada contratual (texto livre) ──────────────
+function SolicitarHorarioModal({ rid, empregado, criadoPor, onClose }: { rid: string; empregado: Empregado; criadoPor: string; onClose: () => void }) {
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  async function enviar() {
+    if (!motivo.trim()) { setErro("Descreva o que está diferente no seu horário."); return; }
+    setSalvando(true); setErro("");
+    try {
+      await addDoc(collection(db, "escalaSolicitacoes"), sanitizeForFirestore({
+        restaurantId: rid, empregadoId: empregado.id, empregadoNome: empregado.nome,
+        tipo: "horario", motivo: motivo.trim(), status: "pendente",
+        criadoEm: new Date().toISOString(), criadoPor,
+      }));
+      onClose();
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao enviar."); }
+    finally { setSalvando(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center p-3" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-md p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <h3 className="font-bold text-gray-900 dark:text-gray-100">Solicitar ajuste de horário</h3>
+        <p className="text-[13px] text-gray-500 dark:text-gray-400">Descreva como sua jornada real difere da cadastrada (dias, horários, intervalo, folga…). A gestão revisa e corrige no cadastro.</p>
+        <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={4} placeholder="ex: minha folga mudou de segunda pra quarta · entro 10h e não 12h · não faço mais 2h de intervalo…"
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        {erro && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erro}</div>}
+        <div className="flex justify-end gap-2">
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
+          <Button size="sm" disabled={salvando} onClick={() => void enviar()}>{salvando ? "Enviando…" : "Enviar pedido"}</Button>
+        </div>
+      </div>
     </div>
   );
 }

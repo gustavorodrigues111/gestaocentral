@@ -533,11 +533,12 @@ export type EscalaSolicitacao = {
   restaurantId: string;
   empregadoId: string;
   empregadoNome?: string;
-  data: string;                      // YYYY-MM-DD do dia
-  anoMes: string;                    // YYYY-MM (doc da escala = `${rid}_${anoMes}`)
+  tipo?: "dia" | "horario";          // "dia" (status de um dia) ou "horario" (jornada contratual). Default "dia".
+  data?: string;                     // YYYY-MM-DD do dia (tipo "dia")
+  anoMes?: string;                   // YYYY-MM (doc da escala = `${rid}_${anoMes}`)
   statusAtual?: ScheduleStatus | null;   // o que ele via no dia
   fonteAtual?: "real" | "prevista" | "derivado" | null;
-  statusSolicitado: ScheduleStatus;  // o que ele acha que é o correto
+  statusSolicitado?: ScheduleStatus; // o que ele acha que é o correto (tipo "dia")
   motivo: string;                    // explicação curta do empregado
   gorjetaPaga?: boolean;             // snapshot: o dia já tinha gorjeta publicada
   status: EscalaSolicitacaoStatus;
