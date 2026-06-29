@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -244,7 +245,15 @@ export function VRPage() {
       historico: [evento],
       updatedAt: nowIso,
     };
-    await addDoc(collection(db, "vrLotes"), payload);
+    try {
+      // sanitizeForFirestore remove campos undefined (ex: descontoSugerido sem
+      // justificativa) — o Firestore rejeita undefined e fazia o addDoc falhar
+      // em silêncio, dando a impressão de que o lote foi gerado.
+      await addDoc(collection(db, "vrLotes"), sanitizeForFirestore(payload));
+    } catch (e) {
+      console.error("[VR lancarLote]", e);
+      alert(`Erro ao gerar o lote VR: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   async function marcarPago(lote: VRLote) {
