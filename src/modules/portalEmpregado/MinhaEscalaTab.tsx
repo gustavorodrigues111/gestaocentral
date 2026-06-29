@@ -76,15 +76,18 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
     [empregado, ano, mes],
   );
 
-  // Versão a usar: priorizamos REAL (o que aconteceu); fallback Prevista; fallback derivado
-  function statusEm(date: string): { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null } {
+  // Versão a usar: priorizamos REAL (o que aconteceu); fallback Prevista; fallback derivado.
+  // "fechado" = o dia foi processado pela análise de ponto (tem realAjustes) — NÃO
+  // basta `real` existir (a praticada espelha a prevista antes de fechar).
+  function statusEm(date: string): { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; fechado: boolean } {
+    const fechado = !!escala?.realAjustes?.[empregado.id]?.[date];
     const real = escala?.real?.[empregado.id]?.[date];
-    if (real) return { status: real, fonte: "real" };
+    if (real) return { status: real, fonte: "real", fechado };
     const prev = escala?.prevista?.[empregado.id]?.[date];
-    if (prev) return { status: prev, fonte: "prevista" };
+    if (prev) return { status: prev, fonte: "prevista", fechado };
     const der = derivado[date]?.status;
-    if (der) return { status: der, fonte: "derivado" };
-    return { status: null, fonte: null };
+    if (der) return { status: der, fonte: "derivado", fechado };
+    return { status: null, fonte: null, fechado };
   }
 
   const dias = daysInMonth(ano, mes);
@@ -197,7 +200,7 @@ function CalendarGrid({
   ano, mes, dias, statusEm, todayYmd, pendentes, podeSolicitar, onDiaClick,
 }: {
   ano: number; mes: number; dias: number;
-  statusEm: (date: string) => { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null };
+  statusEm: (date: string) => { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; fechado: boolean };
   todayYmd: string;
   pendentes: Set<string>;
   podeSolicitar: boolean;
@@ -214,13 +217,12 @@ function CalendarGrid({
   }
   for (let d = 1; d <= dias; d++) {
     const date = `${ano}-${pad2(mes)}-${pad2(d)}`;
-    const { status, fonte } = statusEm(date);
+    const { status, fonte, fechado } = statusEm(date);
     const isToday = date === todayYmd;
     const dayDate = new Date(ano, mes - 1, d);
     const isWeekend = dayDate.getDay() === 0 || dayDate.getDay() === 6;
     const info = status ? STATUS_INFO[status] : null;
     const pend = pendentes.has(date);
-    const fechado = fonte === "real"; // dia já fechado na praticada (análise de ponto)
     const cls = `relative aspect-square rounded flex flex-col items-center justify-center text-[10px] gap-0.5 ${
       info ? `${info.bg} ${info.text}` : "bg-gray-50 dark:bg-gray-800/40"
     } ${fonte === "derivado" ? "opacity-60 border border-dashed border-gray-300" : ""} ${
