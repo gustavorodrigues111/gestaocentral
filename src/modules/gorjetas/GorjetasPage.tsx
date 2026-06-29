@@ -17,8 +17,7 @@ import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
-import { publicarGorjeta, despublicarGorjeta } from "./publicar";
-import { PublicarGorjetasModal } from "./PublicarGorjetasModal";
+import { publicarGorjeta, despublicarGorjeta, pagarGorjeta, desmarcarPagaGorjeta } from "./publicar";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -189,13 +188,6 @@ export function GorjetasPage() {
     setMes(next.mes);
   }
 
-  // Estado pro modal de publicação em lote
-  const [showPublicar, setShowPublicar] = useState(false);
-  // Quantas gorjetas estão "publicáveis" (lançadas + ainda não publicadas)
-  const qtdPublicaveis = useMemo(() => {
-    return gorjetas.filter(g => !g.publicada && !g.semGorjeta && g.valorBruto > 0).length;
-  }, [gorjetas]);
-
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
   }
@@ -280,15 +272,6 @@ export function GorjetasPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {podeConfig && qtdPublicaveis > 0 && (
-            <Button
-              size="sm"
-              onClick={() => setShowPublicar(true)}
-              title="Abre seleção pra você escolher quais dias publicar — depois confirma a divisão"
-            >
-              📢 Selecionar gorjetas a publicar ({qtdPublicaveis})
-            </Button>
-          )}
           <ModuleConfigButton title="⚙️ Regras de divisão de gorjeta" disabled={!podeConfig}>
             <RegrasDivisaoConfig
               rid={rid}
@@ -377,21 +360,6 @@ export function GorjetasPage() {
           unidades={unidades}
           usaMultiUnidades={usaMultiUnidades}
           filtroUnidadeId={filtroUnidadeId}
-        />
-      )}
-
-      {showPublicar && (
-        <PublicarGorjetasModal
-          onClose={() => setShowPublicar(false)}
-          gorjetas={gorjetas}
-          empregados={empregados}
-          cargos={cargos}
-          escala={escala}
-          splitVersions={splitVersions}
-          unidades={unidades}
-          usaMultiUnidades={usaMultiUnidades}
-          meId={me?.id || ""}
-          meNome={me?.nome || ""}
         />
       )}
 
@@ -567,6 +535,38 @@ function ListaDiasInline({
     }
   }
 
+  async function togglePaga(date: string, unidadeId: string) {
+    const g = gorjetaMap[keyFor(date, unidadeId)];
+    if (!g) return;
+    if (g.paga) {
+      if (!window.confirm("Desmarcar o pagamento desta gorjeta? (continua publicada)")) return;
+      try { await desmarcarPagaGorjeta(g); } catch (e) { alert(e instanceof Error ? e.message : "Erro"); }
+      return;
+    }
+    if (!window.confirm(`Marcar a gorjeta de ${date} como PAGA?\n\n(Publica se ainda não estava. Depois disso o dia trava pra pedido de ajuste de escala.)`)) return;
+    try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); }
+    catch (e) { alert(e instanceof Error ? e.message : "Erro ao pagar"); }
+  }
+
+  // ── Seleção em lote (checkbox por dia) + ações Publicar / Pagar ──────────
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const toggleSel = (k: string) => setSel((prev) => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const gsSelecionadas = () => [...sel].map((k) => gorjetaMap[k]).filter((g): g is Gorjeta => !!g && g.valorBruto > 0 && !g.semGorjeta);
+  async function publicarSelecionados() {
+    const gs = gsSelecionadas().filter((g) => !g.publicada);
+    if (!gs.length) { alert("Selecione dias com gorjeta lançada e ainda não publicada."); return; }
+    if (!window.confirm(`Publicar ${gs.length} gorjeta(s)? A divisão é calculada e congelada agora.`)) return;
+    for (const g of gs) { try { await publicarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${g.date}: ${e instanceof Error ? e.message : ""}`); } }
+    setSel(new Set());
+  }
+  async function pagarSelecionados() {
+    const gs = gsSelecionadas().filter((g) => !g.paga);
+    if (!gs.length) { alert("Selecione dias com gorjeta pra pagar."); return; }
+    if (!window.confirm(`Marcar ${gs.length} gorjeta(s) como PAGAS? (publica as que ainda não estavam). Depois disso esses dias travam pra pedido de ajuste de escala.`)) return;
+    for (const g of gs) { try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${g.date}: ${e instanceof Error ? e.message : ""}`); } }
+    setSel(new Set());
+  }
+
   // Paleta pra diferenciar unidades em restaurantes multi-unidades.
   // Duas pegadas:
   //   - `border` (6px na esquerda): marca o "trilho" da unidade ao longo das linhas
@@ -593,6 +593,18 @@ function ListaDiasInline({
   }
 
   return (
+    <div className="space-y-2">
+      {podeEditar && (
+        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
+          <span className="text-[12px] text-gray-500 dark:text-gray-400">{sel.size > 0 ? `${sel.size} dia(s) selecionado(s)` : "Marque os dias e use as ações:"}</span>
+          <span className="flex-1" />
+          <button type="button" disabled={sel.size === 0} onClick={() => void publicarSelecionados()}
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-40">📢 Publicar</button>
+          <button type="button" disabled={sel.size === 0} onClick={() => void pagarSelecionados()}
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-40">💸 Pagar</button>
+          {sel.size > 0 && <button type="button" onClick={() => setSel(new Set())} className="text-[12px] text-gray-500 hover:underline">limpar</button>}
+        </div>
+      )}
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
       {Array.from({ length: dias }, (_, i) => i + 1).map(dia => {
         const date = `${ano}-${pad2(mes)}-${pad2(dia)}`;
@@ -686,6 +698,13 @@ function ListaDiasInline({
 
                 {/* Ações */}
                 <div className="flex items-center gap-1">
+                  {podeEditar && hasValor && !semRegra && (
+                    <input type="checkbox" checked={sel.has(k)} onChange={() => toggleSel(k)} title="Selecionar pra publicar/pagar em lote" className="w-4 h-4 accent-indigo-600 mr-0.5" />
+                  )}
+                  {g?.paga && (
+                    <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} title={podeEditar ? "Desmarcar pagamento" : "Gorjeta paga"}
+                      className="px-2 py-1 text-xs rounded border bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold">💸 Paga</button>
+                  )}
                   {podeEditar && !semRegra && (
                     <button
                       type="button"
@@ -739,6 +758,9 @@ function ListaDiasInline({
                     )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
+                    {podeEditar && hasValor && !semRegra && (
+                      <input type="checkbox" checked={sel.has(k)} onChange={() => toggleSel(k)} className="w-4 h-4 accent-indigo-600" title="Selecionar pra publicar/pagar" />
+                    )}
                     {hasValor ? (
                       <span className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(g.valorBruto)}</span>
                     ) : isSemGorjeta ? (
@@ -772,6 +794,9 @@ function ListaDiasInline({
                         📢 publicada
                       </span>
                     )}
+                    {g?.paga && (
+                      <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-semibold">💸 paga</button>
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -803,6 +828,7 @@ function ListaDiasInline({
           />
         );
       })()}
+    </div>
     </div>
   );
 }

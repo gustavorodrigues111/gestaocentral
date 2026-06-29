@@ -61,12 +61,12 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
   const [modalDia, setModalDia] = useState<{ data: string; status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; gorjetaPaga: boolean } | null>(null);
   async function abrirSolicitacao(date: string, status: ScheduleStatus | null, fonte: "real" | "prevista" | "derivado" | null) {
     if (!podeSolicitar) return;
-    // Ressalva: o dia já tem gorjeta publicada?
+    // Bloqueio: o dia já tem gorjeta PAGA? (publicada não basta)
     let gorjetaPaga = false;
     try {
       const gs = await getDocs(query(collection(db, "gorjetas"), where("restaurantId", "==", restaurantId), where("date", "==", date)));
-      gorjetaPaga = gs.docs.some((d) => (d.data() as { publicada?: boolean }).publicada);
-    } catch { /* ignora — ressalva é best-effort */ }
+      gorjetaPaga = gs.docs.some((d) => (d.data() as { paga?: boolean }).paga);
+    } catch { /* ignora — best-effort */ }
     setModalDia({ data: date, status, fonte, gorjetaPaga });
   }
 

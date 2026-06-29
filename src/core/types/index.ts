@@ -922,6 +922,13 @@ export type Gorjeta = {
   publicadaEm?: string | null;
   publicadaPor?: string | null;
   publicadaPorNome?: string | null;
+  // Pagamento: publicada ≠ paga. "paga" = a gorjeta do dia já foi quitada com o
+  // time. Bloqueia pedido de ajuste de escala naquele dia. Pagar congela o
+  // snapshot (publica se ainda não estava).
+  paga?: boolean;
+  pagaEm?: string | null;
+  pagaPor?: string | null;
+  pagaPorNome?: string | null;
   taxRate: number;              // snapshot — usado só pra retrocompat de docs antigos
   valorLiquido: number;         // snapshot — idem
   observacao?: string;

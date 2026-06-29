@@ -109,8 +109,30 @@ export async function despublicarGorjeta(gorjeta: Gorjeta): Promise<void> {
     publicadaEm: null,
     publicadaPor: null,
     publicadaPorNome: null,
+    // Despublicar também desfaz o pagamento (não pode estar "paga" sem snapshot).
+    paga: false,
+    pagaEm: null,
+    pagaPor: null,
+    pagaPorNome: null,
     // Apaga o snapshot pra próxima publicação recalcular
     divisaoSnapshot: null,
     updatedAt: now,
+  }));
+}
+
+// Marca a gorjeta como PAGA. Se ainda não estava publicada, publica antes
+// (congela o snapshot da divisão) — não dá pra pagar sem a divisão fechada.
+export async function pagarGorjeta(p: PublicarParams): Promise<void> {
+  if (!p.gorjeta.publicada) await publicarGorjeta(p);
+  const now = new Date().toISOString();
+  await updateDoc(doc(db, "gorjetas", p.gorjeta.id), sanitizeForFirestore({
+    paga: true, pagaEm: now, pagaPor: p.publicadoPorId, pagaPorNome: p.publicadoPorNome, updatedAt: now,
+  }));
+}
+
+// Desfaz o pagamento (continua publicada).
+export async function desmarcarPagaGorjeta(gorjeta: Gorjeta): Promise<void> {
+  await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
+    paga: false, pagaEm: null, pagaPor: null, pagaPorNome: null, updatedAt: new Date().toISOString(),
   }));
 }
