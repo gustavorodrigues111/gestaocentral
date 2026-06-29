@@ -212,7 +212,7 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
 }
 
 function CalendarGrid({
-  ano, mes, dias, statusEm, todayYmd, pendentes, podeSolicitar, onDiaClick,
+  ano, mes, dias, statusEm, todayYmd, pendentes, pagosDates, podeSolicitar, onDiaClick,
 }: {
   ano: number; mes: number; dias: number;
   statusEm: (date: string) => { status: ScheduleStatus | null; fonte: "real" | "prevista" | "derivado" | null; fechado: boolean };
