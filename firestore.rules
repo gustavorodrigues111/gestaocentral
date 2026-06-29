@@ -135,6 +135,8 @@ service cloud.firestore {
     match /gorjetas/{id}            { allow read, write: if authed(); }
     match /vtFolhas/{id}            { allow read, write: if authed(); }
     match /vtLotes/{id}             { allow read, write: if authed(); }
+    match /vrLotes/{id}             { allow read, write: if authed(); }
+    match /beneficiosLotes/{id}     { allow read, write: if authed(); }
     match /recebimentos/{id}        { allow read, write: if authed(); }
     match /fechamentosCaixa/{id}    { allow read, write: if authed(); }
     match /conciliacoesCaixa/{id}   { allow read, write: if authed(); }
