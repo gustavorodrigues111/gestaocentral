@@ -1027,7 +1027,7 @@ function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: Fecham
 // (do corte anterior até o corte de cada caixa) pra conferir crédito/débito por
 // bandeira na Altec. PIX/dinheiro não vêm da Rede (entram por outro canal).
 type CaixaCorte = { id?: string; data: string; hora: string; abertura?: string }; // hora HH:MM:SS; abertura ISO quando há (sessão com abertura+fechamento)
-type TxRede = { ts: number; modalidade: "credito" | "debito" | "pix" | "voucher" | "outro"; bandeira: string; valor: number };
+type TxRede = { ts: number; modalidade: "credito" | "debito" | "pix" | "voucher" | "outro"; bandeira: string; valor: number; rotulo?: string };
 const DIACR = new RegExp("[\\u0300-\\u036f]", "g");
 const normMod = (s: string): TxRede["modalidade"] => {
   const t = (s || "").toLowerCase().normalize("NFD").replace(DIACR, "");
@@ -1067,7 +1067,10 @@ async function parseRedeXlsx(file: File): Promise<TxRede[]> {
     }
     if (!dt || isNaN(dt.getTime())) continue;
     const valor = typeof r[ciVal] === "number" ? (r[ciVal] as number) : parseBRL(String(r[ciVal] ?? "")) ?? 0;
-    out.push({ ts: dt.getTime(), modalidade: normMod(String(r[ciMod] ?? "")), bandeira: String(r[ciBand] ?? "").trim() || "—", valor });
+    const rawMod = String(r[ciMod] ?? "").trim();
+    const mod = normMod(rawMod);
+    const bandeira = String(r[ciBand] ?? "").trim() || "—";
+    out.push({ ts: dt.getTime(), modalidade: mod, bandeira, valor, ...(mod === "outro" ? { rotulo: [rawMod, bandeira !== "—" ? bandeira : ""].filter(Boolean).join(" · ") || "—" } : {}) });
   }
   return out;
 }
@@ -1099,7 +1102,7 @@ async function parseIfoodXlsx(file: File): Promise<TxIfood[]> {
   return out;
 }
 
-type Totais = { credito: Record<string, number>; debito: Record<string, number>; voucher?: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
+type Totais = { credito: Record<string, number>; debito: Record<string, number>; voucher?: Record<string, number>; outros?: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
 type CaixaSalvo = Totais & {
   id: string; restaurantId: string;
   caixaId?: string; corteData: string; corteHora: string;
@@ -1108,7 +1111,7 @@ type CaixaSalvo = Totais & {
   criadoEm?: string;
 };
 const chaveSalvo = (s: { corteData: string; corteHora: string; caixaId?: string }) => `${s.corteData}T${s.corteHora}|${s.caixaId || ""}`;
-const assinaturaTotais = (g: Totais) => JSON.stringify([Object.entries(g.credito).sort(), Object.entries(g.debito).sort(), Object.entries(g.voucher || {}).sort(), g.pixRede, g.ifood, g.total]);
+const assinaturaTotais = (g: Totais) => JSON.stringify([Object.entries(g.credito).sort(), Object.entries(g.debito).sort(), Object.entries(g.voucher || {}).sort(), Object.entries(g.outros || {}).sort(), g.pixRede, g.ifood, g.total]);
 
 function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; temIfood: boolean; me: { id?: string; nome?: string } | null; podeConfig: boolean }) {
   const [caixas, setCaixas] = useState<CaixaCorte[]>([]);
@@ -1198,8 +1201,8 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 
   const resultado = useMemo(() => {
     if (!txs || !cortes.length) return null;
-    type Grupo = { credito: Record<string, number>; debito: Record<string, number>; voucher: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
-    const novo = (): Grupo => ({ credito: {}, debito: {}, voucher: {}, pixRede: 0, ifood: 0, nIfood: 0, nCard: 0, total: 0 });
+    type Grupo = { credito: Record<string, number>; debito: Record<string, number>; voucher: Record<string, number>; outros: Record<string, number>; pixRede: number; ifood: number; nIfood: number; nCard: number; total: number };
+    const novo = (): Grupo => ({ credito: {}, debito: {}, voucher: {}, outros: {}, pixRede: 0, ifood: 0, nIfood: 0, nCard: 0, total: 0 });
     const porCaixa = cortes.map(() => novo());
     const aberto = novo(); // vendas após o último corte (caixa ainda aberto)
     const grupoDe = (ts: number): Grupo | null => {
@@ -1213,6 +1216,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       else if (t.modalidade === "debito") { g.debito[t.bandeira] = (g.debito[t.bandeira] || 0) + t.valor; g.nCard++; g.total += t.valor; }
       else if (t.modalidade === "pix") { g.pixRede += t.valor; }
       else if (t.modalidade === "voucher") { g.voucher[t.bandeira] = (g.voucher[t.bandeira] || 0) + t.valor; }
+      else { const r = t.rotulo || t.bandeira || "—"; g.outros[r] = (g.outros[r] || 0) + t.valor; } // nada é descartado: vai pra "outros a classificar"
     }
     for (const o of (ifood || [])) { const g = grupoDe(o.ts); if (g) { g.ifood += o.valor; g.nIfood++; } }
     return { porCaixa, aberto };
@@ -1231,7 +1235,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
         const rec = {
           restaurantId: rid, ...(c.id ? { caixaId: c.id } : {}), corteData: c.data, corteHora: c.hora,
           ...(i > 0 ? { prevData: cortes[i - 1].data, prevHora: cortes[i - 1].hora } : {}),
-          credito: g.credito, debito: g.debito, voucher: g.voucher, pixRede: g.pixRede, ifood: g.ifood, nIfood: g.nIfood, nCard: g.nCard, total: g.total,
+          credito: g.credito, debito: g.debito, voucher: g.voucher, outros: g.outros, pixRede: g.pixRede, ifood: g.ifood, nIfood: g.nIfood, nCard: g.nCard, total: g.total,
         };
         const rotulo = `Caixa ${c.id ? `#${c.id}` : fmtData(c.data)}`;
         if (!existente) await addDoc(collection(db, "conciliacoesCaixa"), { ...rec, criadoEm: new Date().toISOString() });
@@ -1257,7 +1261,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
     try { await deleteDoc(doc(db, "conciliacoesCaixa", s.id)); }
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao remover."); }
   }
-  const totaisDe = (s: CaixaSalvo): Totais => ({ credito: s.credito || {}, debito: s.debito || {}, voucher: s.voucher || {}, pixRede: s.pixRede || 0, ifood: s.ifood || 0, nIfood: s.nIfood || 0, nCard: s.nCard || 0, total: s.total || 0 });
+  const totaisDe = (s: CaixaSalvo): Totais => ({ credito: s.credito || {}, debito: s.debito || {}, voucher: s.voucher || {}, outros: s.outros || {}, pixRede: s.pixRede || 0, ifood: s.ifood || 0, nIfood: s.nIfood || 0, nCard: s.nCard || 0, total: s.total || 0 });
   const tituloSalvo = (s: CaixaSalvo) => `Caixa ${s.caixaId ? `#${s.caixaId}` : fmtData(s.corteData)} · fechou ${fmtData(s.corteData)} ${s.corteHora.slice(0, 5)}`;
   const janelaSalvo = (s: CaixaSalvo) => `de ${s.prevData ? `${fmtData(s.prevData)} ${(s.prevHora || "").slice(0, 5)}` : "início"} até ${fmtData(s.corteData)} ${s.corteHora.slice(0, 5)}`;
   const pendentesSalvos = useMemo(() => salvos.filter((s) => !s.conciliadoEm).sort((a, b) => chaveSalvo(a).localeCompare(chaveSalvo(b))), [salvos]);
@@ -1280,7 +1284,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
     return { ids, near };
   }, [cortes]);
 
-  const totalDe = (g: Totais) => somaBand(g.credito) + somaBand(g.debito) + somaBand(g.voucher || {}) + g.pixRede + (temIfood ? g.ifood : 0);
+  const totalDe = (g: Totais) => somaBand(g.credito) + somaBand(g.debito) + somaBand(g.voucher || {}) + somaBand(g.outros || {}) + g.pixRede + (temIfood ? g.ifood : 0);
 
   // Linha compacta (só cabeçalho) — clicável, abre o modal de detalhe.
   const LinhaCaixa = ({ titulo, sub, g, amber, onClick }: { titulo: string; sub?: string; g: Totais; amber?: boolean; onClick: () => void }) => (
@@ -1322,6 +1326,15 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
         <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
           <div className="flex justify-between text-[12px] font-semibold text-rose-700 dark:text-rose-300"><span>iFood</span><span className="tabular-nums">{fmtBRL(g.ifood)}</span></div>
           <div className="text-[11px] text-gray-400">{g.nIfood} pedido(s) · valor dos itens</div>
+        </div>
+      )}
+      {somaBand(g.outros || {}) > 0 && (
+        <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+          <div className="flex justify-between text-[12px] font-semibold text-gray-700 dark:text-gray-300"><span>Outros a classificar</span><span className="tabular-nums">{fmtBRL(somaBand(g.outros || {}))}</span></div>
+          {ordenarBand(g.outros || {}).map(([b, v]) => (
+            <div key={b} className="flex justify-between text-sm text-gray-600 dark:text-gray-300 pl-2"><span className="truncate">{b}</span><span className="tabular-nums">{fmtBRL(v)}</span></div>
+          ))}
+          <div className="text-[11px] text-gray-400">modalidades não mapeadas — nada é descartado, confira o que são</div>
         </div>
       )}
       <div className="flex justify-between text-sm font-bold pt-1 border-t border-gray-200 dark:border-gray-700"><span>Total</span><span className="tabular-nums">{fmtBRL(totalDe(g))}</span></div>
