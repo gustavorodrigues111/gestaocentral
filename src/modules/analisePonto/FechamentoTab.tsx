@@ -910,6 +910,13 @@ export function FechamentoTab({
       {pdf && (
         <Modal title="👁 Espelho de ponto" onClose={fecharPdf} maxWidth="max-w-4xl">
           <div className="space-y-2">
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
+              ℹ️ Este é o <strong>espelho oficial da Sólides</strong>: ele só cobre até o
+              <strong> fechamento da competência da folha</strong> de cada colaborador. Dias mais
+              recentes (ainda na competência aberta) entram na próxima folha e podem não aparecer
+              aqui — mesmo já tendo batida. Pra conferência do dia-a-dia em tempo real, use a lista
+              de dias acima (cruza as batidas direto da Sólides).
+            </div>
             <object data={pdf.url} type="application/pdf" className="w-full h-[70vh] rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="p-6 text-center text-sm text-gray-500">
                 Não deu pra exibir o PDF aqui (o Safari às vezes bloqueia).{" "}
