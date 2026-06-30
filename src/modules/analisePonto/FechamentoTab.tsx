@@ -475,6 +475,15 @@ export function FechamentoTab({
   const totalFechados = espelho.filter((d) => fechadoEm(d.date)).length;
   const totalFechaveis = espelho.filter((d) => !d.demitido && !d.futuro).length;
 
+  // Dias do empregado com ajuste aguardando aprovação (estado "aprovar").
+  // Base pra aprovação em lote do colaborador selecionado.
+  const diasAprovaveis = (selEmp === "" || naoBateSel)
+    ? []
+    : espelho
+        .filter((d) => !d.demitido && !d.futuro && !fechadoEm(d.date)
+          && inconsistDoDia(Number(selEmp), d.date).estado === "aprovar")
+        .map((d) => d.date);
+
   // ── Ações inline de inconsistência (mesma lógica da aba Inconsistências) ──
   // Núcleo: monta UMA mensagem de WhatsApp com TODAS as ocorrências passadas e
   // registra UMA solicitação (usado tanto pelo 💬 do dia quanto pelo lote).
@@ -544,6 +553,34 @@ export function FechamentoTab({
       await carregar();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
+    } finally { setSalvando(false); }
+  }
+
+  // Aprova de uma vez TODOS os ajustes pendentes do colaborador selecionado
+  // (todos os dias com estado "aprovar"). Útil quando o empregado ajustou
+  // vários dias e estão todos "a aprovar".
+  async function aprovarTodosPendentes() {
+    if (selEmp === "" || diasAprovaveis.length === 0) return;
+    const aps = diasAprovaveis.flatMap((date) => inconsistDoDia(Number(selEmp), date).aprovacoes);
+    if (!aps.length) return;
+    if (!window.confirm(
+      `Aprovar ${aps.length} ajuste(s) de ${colSel?.nome} em ${diasAprovaveis.length} dia(s)?\n\n` +
+      `Grava na Sólides (dado trabalhista).`,
+    )) return;
+    setErro(""); setSalvando(true);
+    try {
+      for (const a of aps) {
+        await decidirAprovacao(shortCode, { punchId: a.punchId, status: "APPROVED" });
+        try {
+          await addDoc(collection(db, "pontoAuditoria"), {
+            restaurantId: rid, tipo: "aprovacao", status: "APPROVED", por: { id: por.id, nome: por.nome },
+            punchId: a.punchId, employeeId: a.employeeId, colaborador: a.employeeName, em: new Date().toISOString(),
+          });
+        } catch { /* auditoria não bloqueia */ }
+      }
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao aprovar os pontos.");
     } finally { setSalvando(false); }
   }
 
@@ -734,21 +771,33 @@ export function FechamentoTab({
             </div>
             {!colSel?.emp && <span className="text-[10px] text-amber-600">sem empregado vinculado no app — não dá pra fechar</span>}
             {colSel?.emp && !previstaFechada && <span className="text-[10px] text-amber-600">feche a prevista do mês na Escala pra poder fechar o ponto</span>}
-            {colSel?.emp && previstaFechada && (
-              <div className="ml-auto flex items-center gap-2">
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
-                  <input type="checkbox" checked={todosAbertosSel} onChange={() => setSelDias(todosAbertosSel ? new Set() : new Set(diasAbertos))} className="w-4 h-4 accent-indigo-600" />
-                  Selecionar abertos
-                </label>
-                <button type="button" disabled={diasSelComInconsist.length === 0} onClick={() => solicitarSelecionados()}
-                  title="Manda UM WhatsApp com todos os dias selecionados que têm inconsistência"
-                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
-                  💬 Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}
-                </button>
-                <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
-                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
-                  {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
-                </button>
+            {colSel?.emp && (
+              <div className="ml-auto flex items-center gap-2 flex-wrap">
+                {/* Aprovar em lote — independe da prevista fechada (ação na Sólides). */}
+                {diasAprovaveis.length > 0 && (
+                  <button type="button" disabled={salvando} onClick={() => void aprovarTodosPendentes()}
+                    title={`Aprovar todos os ajustes pendentes de ${colSel?.nome} (${diasAprovaveis.length} dia(s))`}
+                    className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                    {salvando ? "Aprovando…" : `✓ Aprovar pendentes (${diasAprovaveis.length})`}
+                  </button>
+                )}
+                {previstaFechada && (
+                  <>
+                    <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                      <input type="checkbox" checked={todosAbertosSel} onChange={() => setSelDias(todosAbertosSel ? new Set() : new Set(diasAbertos))} className="w-4 h-4 accent-indigo-600" />
+                      Selecionar abertos
+                    </label>
+                    <button type="button" disabled={diasSelComInconsist.length === 0} onClick={() => solicitarSelecionados()}
+                      title="Manda UM WhatsApp com todos os dias selecionados que têm inconsistência"
+                      className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
+                      💬 Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}
+                    </button>
+                    <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
+                      className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                      {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </header>
