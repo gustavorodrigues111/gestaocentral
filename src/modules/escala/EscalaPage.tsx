@@ -1929,6 +1929,13 @@ function GradeMobile({
     return proxSegunda;
   }
   const [weekStart, setWeekStart] = useState<Date>(() => initialWeekStart());
+  // O auto-switch de mês (semana caiu majoritariamente em outro mês) só vale
+  // quando o USUÁRIO navega semanas. Na semana inicial automática NÃO pode
+  // disparar — senão, no fim do mês, a "semana de hoje" (ex: 29/jun–05/jul,
+  // maioria em julho) joga a tela pro mês seguinte e o usuário não consegue
+  // ficar no mês corrente. Como o GradeMobile fica montado mesmo no desktop,
+  // sem isso o bug sequestra a navegação do desktop também.
+  const userNavegouSemanaRef = useRef(false);
 
   // Reseta quando o mês/ano muda no header (mas só se a semana atual NÃO
   // está dentro do novo mês — senão fica perdendo a posição quando o
@@ -1943,7 +1950,7 @@ function GradeMobile({
     const fimMes = dataFim.getMonth() + 1;
     const semanaTocaNovoMes =
       (semanaAno === ano && semanaMes === mes) || (fimAno === ano && fimMes === mes);
-    if (!semanaTocaNovoMes) setWeekStart(initialWeekStart());
+    if (!semanaTocaNovoMes) { userNavegouSemanaRef.current = false; setWeekStart(initialWeekStart()); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ano, mes]);
 
@@ -1974,7 +1981,10 @@ function GradeMobile({
         majAno = a; majMes = m; majCount = v;
       }
     }
-    if (majAno !== ano || majMes !== mes) {
+    // Só segue o mês majoritário em navegação ATIVA de semana do usuário.
+    // (Na semana inicial automática, não — evita o flip indevido no fim do mês.)
+    if (userNavegouSemanaRef.current && (majAno !== ano || majMes !== mes)) {
+      userNavegouSemanaRef.current = false;
       onMesChange(majAno, majMes);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1984,6 +1994,7 @@ function GradeMobile({
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
 
   function navegarSemana(delta: number) {
+    userNavegouSemanaRef.current = true;   // navegação ativa → pode trocar de mês
     const novo = new Date(weekStart);
     novo.setDate(novo.getDate() + delta * 7);
     setWeekStart(novo);
