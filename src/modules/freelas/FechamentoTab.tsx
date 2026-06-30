@@ -101,11 +101,37 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     }
   }
 
-  // Prontos pra lote: status="fechamento" sem lote ainda.
+  // Prontos pra lote: status="fechamento" sem lote ainda. Inclui os
+  // CANCELADOS (zerados) — entram no lote só pra registro.
   const prontosLote = useMemo(
-    () => shifts.filter((s) => s.status === "fechamento" && !s.lotePagamentoId),
+    () => shifts.filter((s) => (s.status === "fechamento" || s.status === "cancelado") && !s.lotePagamentoId),
     [shifts],
   );
+
+  // Cancela um turno lançado errado: status "cancelado", zera o valor e
+  // registra o motivo. Some da precificação e entra em "Prontos pra lote"
+  // zerado, podendo ir num lote só pra registro. Reversível via "Reabrir".
+  async function cancelarShift(s: FreelaShift) {
+    const motivo = prompt(
+      `Cancelar o turno de ${s.nomeSnapshot} (${fmtDataCurta(s.date)})?\n\n` +
+      `Ele fica zerado e entra em "Prontos pra lote" só pra registro.\n\nMotivo:`,
+    );
+    if (motivo === null) return;
+    try {
+      await updateDoc(doc(db, "freelaShifts", s.id), {
+        status: "cancelado",
+        totalCalc: 0,
+        motivoCancelamento: motivo.trim() || "",
+        canceladoEm: new Date().toISOString(),
+        canceladoPor: me?.id || null,
+        canceladoPorNome: me?.nome || null,
+        updatedAt: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error("[cancelarShift]", e);
+      alert(`Erro ao cancelar turno: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   function toggle(id: string) {
     setSelecionados((prev) => {
@@ -251,8 +277,8 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         ) : (
           <AreaGroups
             shifts={aPrecificar}
-            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} />}
-            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} />}
+            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} />}
+            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} />}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
                 <th className="px-4 py-2 w-24">Data</th>
@@ -293,11 +319,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
             podeEditar={podeEditar}
             renderRowDesktop={(s) => (
               <ProntoLoteRowDesktop key={s.id} shift={s} podeEditar={podeEditar}
-                checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} />
+                checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} onCancelar={() => cancelarShift(s)} />
             )}
             renderRowMobile={(s) => (
               <ProntoLoteRowMobile key={s.id} shift={s} podeEditar={podeEditar}
-                checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} />
+                checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} onCancelar={() => cancelarShift(s)} />
             )}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
@@ -606,7 +632,7 @@ function TarifaPicker({
   );
 }
 
-function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean }) {
+function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancelar }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -646,14 +672,19 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix }: { shif
       <td className="px-2 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</td>
       <td className="px-4 py-3 text-right">
         {podeEditar && (
-          <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+          <div className="flex flex-col items-end gap-1.5">
+            <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+            <button type="button" onClick={onCancelar} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline" title="Cancelar turno (lançado errado) — fica zerado, só pra registro">
+              ✕ Cancelar
+            </button>
+          </div>
         )}
       </td>
     </tr>
   );
 }
 
-function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean }) {
+function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancelar }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -686,7 +717,12 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix }: { shift
         block
       />
       {podeEditar && (
-        <Button size="sm" className="w-full mt-3" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+        <div className="mt-3 space-y-1.5">
+          <Button size="sm" className="w-full" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+          <button type="button" onClick={onCancelar} className="w-full text-[11px] text-rose-600 dark:text-rose-400 hover:underline" title="Cancelar turno (lançado errado)">
+            ✕ Cancelar turno
+          </button>
+        </div>
       )}
     </div>
   );
@@ -705,66 +741,84 @@ async function reabrirShift(shift: FreelaShift) {
   });
 }
 
-function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void }) {
-  const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+// Badge "cancelado" + motivo (tooltip). Reutilizado nas linhas.
+function CanceladoBadge({ shift }: { shift: FreelaShift }) {
+  if (shift.status !== "cancelado") return null;
   return (
-    <tr className="border-t border-gray-100 dark:border-gray-800">
+    <span
+      title={shift.motivoCancelamento ? `Motivo: ${shift.motivoCancelamento}` : "Turno cancelado"}
+      className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+    >
+      ✕ cancelado
+    </span>
+  );
+}
+
+function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void }) {
+  const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+  const cancelado = shift.status === "cancelado";
+  return (
+    <tr className={`border-t border-gray-100 dark:border-gray-800 ${cancelado ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}>
       <td className="px-4 py-2">
         <input type="checkbox" checked={checked} onChange={onToggle} disabled={!podeEditar} />
       </td>
       <td className="px-2 py-2 text-gray-700 dark:text-gray-300 tabular-nums">{fmtDataCurta(shift.date)}</td>
-      <td className="px-2 py-2 font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</td>
+      <td className="px-2 py-2 font-medium text-gray-900 dark:text-gray-100 truncate">
+        <span className="inline-flex items-center gap-1.5">{shift.nomeSnapshot} <CanceladoBadge shift={shift} /></span>
+      </td>
       <td className="px-2 py-2 text-xs text-gray-700 dark:text-gray-300">
         {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
       </td>
       <td className="px-2 py-2 text-xs text-gray-600 dark:text-gray-400">
-        {shift.valorTipo === "diaria" ? "diária" : "R$/h"} {fmtBR(shift.valorUnit || 0)}
+        {cancelado ? "—" : `${shift.valorTipo === "diaria" ? "diária" : "R$/h"} ${fmtBR(shift.valorUnit || 0)}`}
       </td>
-      <td className="px-2 py-2 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(shift.totalCalc || 0)}</td>
-      <td className="px-4 py-2 text-right">
+      <td className={`px-2 py-2 text-right font-semibold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(shift.totalCalc || 0)}</td>
+      <td className="px-4 py-2 text-right whitespace-nowrap">
         {podeEditar && (
-          <button
-            type="button"
-            onClick={() => reabrirShift(shift)}
-            className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
-            title="Reabrir e voltar pra precificação"
-          >
-            ↩ Reabrir
-          </button>
+          <span className="inline-flex items-center gap-2">
+            {!cancelado && (
+              <button type="button" onClick={onCancelar} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline" title="Cancelar turno (lançado errado) — fica zerado">
+                ✕ Cancelar
+              </button>
+            )}
+            <button type="button" onClick={() => reabrirShift(shift)} className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline" title="Reabrir e voltar pra precificação">
+              ↩ Reabrir
+            </button>
+          </span>
         )}
       </td>
     </tr>
   );
 }
 
-function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void }) {
+function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void }) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
+  const cancelado = shift.status === "cancelado";
   return (
-    <div className="px-3 py-3 flex items-start gap-3">
+    <div className={`px-3 py-3 flex items-start gap-3 ${cancelado ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}>
       <input type="checkbox" checked={checked} onChange={onToggle} disabled={!podeEditar} className="mt-1" />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
           <div>
             <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
-            <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</div>
+            <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">{shift.nomeSnapshot} <CanceladoBadge shift={shift} /></div>
           </div>
-          <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(shift.totalCalc || 0)}</div>
+          <div className={`text-sm font-bold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(shift.totalCalc || 0)}</div>
         </div>
         <div className="text-xs text-gray-700 dark:text-gray-300">
           {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
         </div>
         <div className="flex items-center justify-between gap-2 mt-1">
           <div className="text-[11px] text-gray-500">
-            {shift.valorTipo === "diaria" ? "diária" : "R$/h"} {fmtBR(shift.valorUnit || 0)}
+            {cancelado ? (shift.motivoCancelamento || "cancelado") : `${shift.valorTipo === "diaria" ? "diária" : "R$/h"} ${fmtBR(shift.valorUnit || 0)}`}
           </div>
           {podeEditar && (
-            <button
-              type="button"
-              onClick={() => reabrirShift(shift)}
-              className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline"
-            >
-              ↩ Reabrir
-            </button>
+            <span className="inline-flex items-center gap-2">
+              {!cancelado && (
+                <button type="button" onClick={onCancelar} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline">✕ Cancelar</button>
+              )}
+              <button type="button" onClick={() => reabrirShift(shift)} className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline">↩ Reabrir</button>
+            </span>
           )}
         </div>
       </div>
@@ -805,7 +859,12 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
       });
       const batch = writeBatch(db);
       for (const sid of lote.shiftIds) {
-        batch.update(doc(db, "freelaShifts", sid), { status: "pago", pagoEm, updatedAt: now });
+        const s = shiftsDoLote.find((x) => x.id === sid);
+        // Turno cancelado segue cancelado (registro zerado) — só marca pagoEm.
+        const upd = s?.status === "cancelado"
+          ? { pagoEm, updatedAt: now }
+          : { status: "pago", pagoEm, updatedAt: now };
+        batch.update(doc(db, "freelaShifts", sid), upd);
       }
       await batch.commit();
       setPagarAberto(false);

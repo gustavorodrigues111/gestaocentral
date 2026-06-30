@@ -2208,7 +2208,8 @@ export type FreelaShiftStatus =
   | "aberto"
   | "fechamento"
   | "pago"
-  | "nao_compareceu";
+  | "nao_compareceu"
+  | "cancelado";       // lançado errado — fica zerado, entra no lote só pra registro
 
 export const FREELA_SHIFT_STATUS_LABEL: Record<FreelaShiftStatus, string> = {
   agendado:       "Agendado",
@@ -2216,6 +2217,7 @@ export const FREELA_SHIFT_STATUS_LABEL: Record<FreelaShiftStatus, string> = {
   fechamento:     "Em fechamento",
   pago:           "Pago",
   nao_compareceu: "Não compareceu",
+  cancelado:      "Cancelado",
 };
 
 // Um intervalo (pausa/refeição) dentro de um turno de freela. Duração em
@@ -2273,6 +2275,13 @@ export type FreelaShift = {
   lotePagamentoId?: string | null; // preenchido quando entra num FreelaPagamento
 
   observacao?: string;
+
+  // Cancelamento (turno lançado errado): fica com totalCalc 0, pode entrar
+  // num lote só pra registro. Mostra o motivo na lista.
+  motivoCancelamento?: string;
+  canceladoEm?: string | null;
+  canceladoPor?: string | null;
+  canceladoPorNome?: string | null;
 
   // Auditoria
   lancadoPor: string;              // pessoaId
