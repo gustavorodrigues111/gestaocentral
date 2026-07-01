@@ -466,33 +466,47 @@ export function FechamentoTab({
     if (ed) return ed;
     return espelho.find((d) => d.date === date)?.sugerido;
   };
-  const setStatus = (date: string, s: ScheduleStatus) => {
-    if (!selEmp) return;
-    // Feedback imediato na tela.
-    setEdits((cur) => ({ ...cur, [selEmp]: { ...(cur[selEmp] || {}), [date]: s } }));
-    // Persiste como RASCUNHO (não fecha o dia): sobrevive a sair/voltar da tela.
-    // Fica separado da escala.real pra NÃO afetar gorjeta/VT antes do fechamento.
+  // Muda o status de um dia de UM colaborador (por solId): feedback imediato +
+  // rascunho persistente (não fecha o dia). Separado da escala.real pra não
+  // afetar gorjeta/VT antes do fechamento.
+  const setStatusDe = (solId: number, date: string, s: ScheduleStatus) => {
+    setEdits((cur) => ({ ...cur, [solId]: { ...(cur[solId] || {}), [date]: s } }));
     if (rid) {
       void setDoc(
-        doc(db, "pontoRascunhos", `${rid}_${selEmp}_${mes}`),
-        { restaurantId: rid, employeeId: selEmp, anoMes: mes, statuses: { [date]: s }, updatedAt: new Date().toISOString() },
+        doc(db, "pontoRascunhos", `${rid}_${solId}_${mes}`),
+        { restaurantId: rid, employeeId: solId, anoMes: mes, statuses: { [date]: s }, updatedAt: new Date().toISOString() },
         { merge: true },
       ).catch((e) => console.error("[pontoRascunho setStatus]", e));
     }
   };
+  // Status exibido de um dia de QUALQUER colaborador (por solId + appId).
+  const statusDeCol = (solId: number, appId: string | undefined, d: DiaEspelho): ScheduleStatus | undefined => {
+    if (appId && (escala?.realAjustes?.[appId]?.[d.date] as AjusteEscalaMeta | undefined)?.origem === "solides_sync") {
+      return escala?.real?.[appId]?.[d.date];
+    }
+    return edits[solId]?.[d.date] ?? d.sugerido;
+  };
 
-  // Carrega os rascunhos de status persistidos do colaborador/mês e semeia em
-  // `edits` — assim, ao voltar pra tela, o seletor mostra o que foi escolhido
-  // mesmo sem o dia ter sido fechado.
+  // Carrega os rascunhos de status persistidos de TODOS os colaboradores do
+  // mês e semeia em `edits` — assim tanto a visão por-colaborador quanto a de
+  // dias pendentes mostram o que foi escolhido mesmo sem o dia ter sido fechado.
+  // Query só por restaurantId (sem índice composto); filtra o mês no cliente.
   useEffect(() => {
-    if (!rid || !selEmp) return;
-    const ref = doc(db, "pontoRascunhos", `${rid}_${selEmp}_${mes}`);
-    const unsub = onSnapshot(ref, (snap) => {
-      const statuses = (snap.exists() ? (snap.data() as { statuses?: Record<string, ScheduleStatus> }).statuses : null) || {};
-      setEdits((cur) => ({ ...cur, [selEmp]: { ...statuses, ...(cur[selEmp] || {}) } }));
+    if (!rid) return;
+    const q = query(collection(db, "pontoRascunhos"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setEdits((cur) => {
+        const next = { ...cur };
+        snap.forEach((d) => {
+          const data = d.data() as { employeeId?: number; anoMes?: string; statuses?: Record<string, ScheduleStatus> };
+          if (data.anoMes !== mes || typeof data.employeeId !== "number") return;
+          next[data.employeeId] = { ...(data.statuses || {}), ...(next[data.employeeId] || {}) };
+        });
+        return next;
+      });
     }, (e) => console.error("[pontoRascunho load]", e));
     return () => unsub();
-  }, [rid, selEmp, mes]);
+  }, [rid, mes]);
 
   // limpa seleção ao trocar de colaborador/mês
   useEffect(() => { setSelDias(new Set()); }, [selEmp, mes]);
@@ -503,8 +517,7 @@ export function FechamentoTab({
   // fechar em lote — prático quando falta só 1-2 dias de todo mundo.
   const [visao, setVisao] = useState<"colaborador" | "pendentes">("colaborador");
   const [pendSel, setPendSel] = useState<Set<string>>(new Set());   // key `${appId}|${date}`
-  const [pendEdits, setPendEdits] = useState<Record<string, ScheduleStatus>>({}); // override de status
-  useEffect(() => { setPendSel(new Set()); setPendEdits({}); }, [visao, mes, diaIni, diaFim]);
+  useEffect(() => { setPendSel(new Set()); }, [visao, mes, diaIni, diaFim]);
 
   const pendentesPorEmp = useMemo(() => {
     if (visao !== "pendentes") return [] as { col: ColabItem; appId: string; dias: DiaEspelho[] }[];
@@ -532,7 +545,6 @@ export function FechamentoTab({
   const todosPendSel = totalPendentes > 0 && pendKeys.every((k) => pendSel.has(k));
   const togglePend = (k: string) => setPendSel((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
   const toggleTodosPend = () => setPendSel(todosPendSel ? new Set() : new Set(pendKeys));
-  const statusPend = (appId: string, d: DiaEspelho) => pendEdits[`${appId}|${d.date}`] ?? d.sugerido;
 
   async function fecharPendentesSel() {
     if (!previstaFechada) { setErro("Feche a PREVISTA do mês primeiro (no módulo de Escala)."); return; }
@@ -540,7 +552,7 @@ export function FechamentoTab({
     const pairs: { appId: string; date: string; status: ScheduleStatus }[] = [];
     for (const g of pendentesPorEmp) for (const d of g.dias) {
       const k = `${g.appId}|${d.date}`;
-      if (pendSel.has(k)) pairs.push({ appId: g.appId, date: d.date, status: statusPend(g.appId, d) });
+      if (pendSel.has(k)) pairs.push({ appId: g.appId, date: d.date, status: statusDeCol(g.col.solId, g.appId, d) ?? d.sugerido });
     }
     if (!pairs.length) { setErro("Selecione ao menos 1 dia."); return; }
     const nPessoas = new Set(pairs.map((p) => p.appId)).size;
@@ -595,24 +607,24 @@ export function FechamentoTab({
   // ── Ações inline de inconsistência (mesma lógica da aba Inconsistências) ──
   // Núcleo: monta UMA mensagem de WhatsApp com TODAS as ocorrências passadas e
   // registra UMA solicitação (usado tanto pelo 💬 do dia quanto pelo lote).
-  function enviarCorrecaoOcs(ocs: Ocorrencia[]) {
-    if (selEmp === "" || !colSel || !ocs.length) return;
-    const tel = telDoColaborador(colSel.emp);
-    if (!tel) { alert(`${colSel.nome} não tem WhatsApp/telefone no cadastro (Pessoa ou Empregado). Cadastre pra poder enviar a correção.`); return; }
+  function enviarCorrecaoOcsPara(col: ColabItem, ocs: Ocorrencia[]) {
+    if (!ocs.length) return;
+    const tel = telDoColaborador(col.emp);
+    if (!tel) { alert(`${col.nome} não tem WhatsApp/telefone no cadastro (Pessoa ou Empregado). Cadastre pra poder enviar a correção.`); return; }
     const ordenadas = [...ocs].sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
     const prazoHoras = 6;
     const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
-    window.open(waLink(tel, montarMensagem(colSel.nome, ordenadas, prazoEm)), "_blank");
+    window.open(waLink(tel, montarMensagem(col.nome, ordenadas, prazoEm)), "_blank");
     const itens = ordenadas.map((o) => ({ key: ocKey(o.employeeId, o.data, o.tipo), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
     void addDoc(collection(db, "pontoSolicitacoes"), {
-      restaurantId: rid, employeeId: Number(selEmp), colaborador: colSel.nome, itens,
+      restaurantId: rid, employeeId: col.solId, colaborador: col.nome, itens,
       enviadoEm: new Date().toISOString(), prazoHoras, prazoEm,
       por: { id: por.id, nome: por.nome }, status: "enviado",
     }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar a solicitação."));
   }
-  function solicitarDia(date: string) {
-    if (selEmp === "") return;
-    enviarCorrecaoOcs(inconsistDoDia(Number(selEmp), date).ocs);
+  function enviarCorrecaoOcs(ocs: Ocorrencia[]) { if (colSel) enviarCorrecaoOcsPara(colSel, ocs); }
+  function solicitarDiaDe(col: ColabItem, date: string) {
+    enviarCorrecaoOcsPara(col, inconsistDoDia(col.solId, date).ocs);
   }
   // Lote: junta as ocorrências de TODOS os dias selecionados (que tenham
   // inconsistência aberta, ainda não lançada como afastamento) em 1 mensagem.
@@ -627,9 +639,8 @@ export function FechamentoTab({
     enviarCorrecaoOcs(ocs);
     setSelDias(new Set());
   }
-  function cienciaDia(date: string) {
-    if (selEmp === "") return;
-    const ocs = inconsistDoDia(Number(selEmp), date).ocs;
+  function cienciaDiaDe(solId: number, date: string) {
+    const ocs = inconsistDoDia(solId, date).ocs;
     const em = new Date().toISOString();
     for (const o of ocs) {
       const k = ocKey(o.employeeId, o.data, o.tipo);
@@ -641,12 +652,11 @@ export function FechamentoTab({
       }).catch((e) => setErro(e instanceof Error ? e.message : "Falha ao registrar ciência."));
     }
   }
-  async function decidirDia(date: string, status: "APPROVED" | "REPROVED") {
-    if (selEmp === "") return;
-    const aps = inconsistDoDia(Number(selEmp), date).aprovacoes;
+  async function decidirDiaDe(solId: number, nome: string, date: string, status: "APPROVED" | "REPROVED") {
+    const aps = inconsistDoDia(solId, date).aprovacoes;
     if (!aps.length) return;
     const verbo = status === "APPROVED" ? "Aprovar" : "Reprovar";
-    if (!window.confirm(`${verbo} ${aps.length} ajuste(s) de ${colSel?.nome} em ${date.split("-").reverse().join("/")}?\n\nGrava na Sólides (dado trabalhista).`)) return;
+    if (!window.confirm(`${verbo} ${aps.length} ajuste(s) de ${nome} em ${date.split("-").reverse().join("/")}?\n\nGrava na Sólides (dado trabalhista).`)) return;
     setErro(""); setSalvando(true);
     try {
       for (const a of aps) {
@@ -662,6 +672,110 @@ export function FechamentoTab({
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao decidir o ponto.");
     } finally { setSalvando(false); }
+  }
+  // ── Linha do espelho (reutilizada nas 2 visões) ──────────────────────────
+  // Mesmas cores por status, badges de inconsistência e ações (aprovar,
+  // solicitar correção, corrigir batida, afastamento, ciência) — parametrizada
+  // por colaborador, então funciona tanto no "por colaborador" quanto no
+  // "dias pendentes de todos".
+  function linhaEspelho(col: ColabItem, d: DiaEspelho, opts: {
+    selecionado: boolean; onToggleSel?: () => void; podeSelecionar: boolean; fechado: boolean; onReabrir?: () => void;
+  }) {
+    const solId = col.solId;
+    const appId = col.emp?.id;
+    const dataBR = d.date.split("-").reverse().join("/");
+    const wd = DIAS_PT[weekdayOf(d.date)];
+    const kk = `${solId}-${d.date}`;
+    if (d.demitido) return (
+      <div key={kk} className="px-3 py-2 flex items-center gap-2.5 text-xs bg-rose-100/70 dark:bg-rose-900/30">
+        <span className="w-4 shrink-0" />
+        <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-rose-600 text-white">DM</span>
+        <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
+        <div className="min-w-0 flex-1 truncate text-rose-700 dark:text-rose-300 font-medium">Demitido (fora do contrato)</div>
+      </div>
+    );
+    if (d.futuro) return (
+      <div key={kk} className="px-3 py-2 flex items-center gap-2.5 text-xs opacity-50">
+        <span className="w-4 shrink-0" />
+        <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300">–</span>
+        <span className="w-24 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400 tabular-nums">{wd} {dataBR}</span>
+        <div className="min-w-0 flex-1 truncate text-gray-400">data futura{d.prevista ? <span className="ml-2">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span> : null}</div>
+      </div>
+    );
+    const st = statusDeCol(solId, appId, d);
+    const editado = !opts.fechado && edits[solId]?.[d.date] && edits[solId][d.date] !== d.sugerido;
+    const vis = st ? STATUS_VIS[st] : null;
+    const naoBate = naoBatePontoDe(col.emp);
+    const inc = naoBate
+      ? { ocs: [] as Ocorrencia[], estado: null as EstadoDia | null, prazoEm: undefined as string | undefined, aprovacoes: [] as AprovacaoPendente[] }
+      : inconsistDoDia(solId, d.date);
+    const incRot = inc.ocs[0] ? (ROTULOS[inc.ocs[0].tipo] || "").split(" (")[0] : "";
+    const incExtra = inc.ocs.length > 1 ? ` +${inc.ocs.length - 1}` : "";
+    const incTitle = inc.ocs.map((o) => ROTULOS[o.tipo]).join(" · ");
+    const afastLancado = afastamentoPorDia.get(`${solId}|${d.date}`);
+    const temEmp = !!col.emp;
+    const btn = "w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]";
+    return (
+      <div key={kk} className={`px-3 py-2 flex items-center gap-2.5 text-xs ${vis?.row || ""}`}>
+        {opts.podeSelecionar && opts.onToggleSel ? (
+          <input type="checkbox" checked={opts.selecionado} onChange={opts.onToggleSel} className="w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
+        ) : (
+          <span className="w-4 shrink-0 text-center">{opts.fechado ? "🔒" : ""}</span>
+        )}
+        {vis && <span className={`shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${vis.badge}`}>{vis.short}</span>}
+        <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
+        <div className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">
+          {d.worked ? <span className="tabular-nums">{d.marks}</span>
+            : d.afastamento ? <span className="text-indigo-700 dark:text-indigo-300">{d.afastamento}</span>
+            : <span className="text-gray-400">sem batida</span>}
+          {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
+        </div>
+        {afastLancado && (
+          <span title={afastLancado.detalhe} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado.motivo} · Sólides ✓</span>
+        )}
+        {!afastLancado && inc.estado === "aprovar" && (
+          <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
+        )}
+        {!afastLancado && inc.estado === "enviado" && (
+          <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">enviado{inc.prazoEm ? ` · ${relogio(inc.prazoEm, now).txt}` : ""}</span>
+        )}
+        {!afastLancado && inc.estado === "ciente" && (
+          <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">✓ ciente</span>
+        )}
+        {!afastLancado && inc.estado === "aberto" && (
+          <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ {incRot}{incExtra}</span>
+        )}
+        {!afastLancado && !opts.fechado && inc.estado === "aprovar" && temEmp && (
+          <span className="shrink-0 flex gap-1">
+            <button type="button" title="Aprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDiaDe(solId, col.nome, d.date, "APPROVED")}
+              className="w-7 h-7 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 text-[13px]">✅</button>
+            <button type="button" title="Reprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDiaDe(solId, col.nome, d.date, "REPROVED")}
+              className="w-7 h-7 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40 text-[13px]">✗</button>
+          </span>
+        )}
+        {!afastLancado && !opts.fechado && inc.estado && inc.estado !== "aprovar" && temEmp && (
+          <span className="shrink-0 flex gap-1">
+            <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDiaDe(col, d.date)} className={btn}>💬</button>
+            <button type="button" title="Corrigir / lançar batida na Sólides" onClick={() => setModalBatidas({ employeeId: solId, colaborador: col.nome, data: d.date })} className={btn}>🔧</button>
+            <button type="button" title="Lançar afastamento / férias" onClick={() => setModalAfast({ employeeId: solId, colaborador: col.nome, data: d.date })} className={btn}>☂️</button>
+            {inc.estado !== "ciente" && (
+              <button type="button" title="Dar ciência (sem ação)" onClick={() => cienciaDiaDe(solId, d.date)} className={btn}>✓</button>
+            )}
+          </span>
+        )}
+        {opts.fechado ? (
+          <button type="button" disabled={salvando || mesEncerrado} onClick={opts.onReabrir}
+            className="shrink-0 text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40">
+            ↩︎ reabrir
+          </button>
+        ) : (
+          <select value={st || ""} onChange={(e) => setStatusDe(solId, d.date, e.target.value as ScheduleStatus)}
+            className={`h-8 px-2 text-xs rounded-md border bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 ${editado ? "border-indigo-400 ring-1 ring-indigo-300" : "border-gray-300 dark:border-gray-700"}`}>
+            {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        )}
+      </div>
+    );
   }
 
   // Aprova de uma vez TODOS os ajustes pendentes do colaborador selecionado
@@ -929,106 +1043,15 @@ export function FechamentoTab({
             )}
           </header>
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {espelho.map((d) => {
-              const dataBR = d.date.split("-").reverse().join("/");
-              const wd = DIAS_PT[weekdayOf(d.date)];
-              if (d.demitido) {
-                return (
-                  <div key={d.date} className="px-3 py-2 flex items-center gap-2.5 text-xs bg-rose-100/70 dark:bg-rose-900/30">
-                    <span className="w-4 shrink-0" />
-                    <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-rose-600 text-white">DM</span>
-                    <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
-                    <div className="min-w-0 flex-1 truncate text-rose-700 dark:text-rose-300 font-medium">Demitido (fora do contrato)</div>
-                  </div>
-                );
-              }
-              if (d.futuro) {
-                return (
-                  <div key={d.date} className="px-3 py-2 flex items-center gap-2.5 text-xs opacity-50">
-                    <span className="w-4 shrink-0" />
-                    <span className="shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300">–</span>
-                    <span className="w-24 shrink-0 whitespace-nowrap text-gray-500 dark:text-gray-400 tabular-nums">{wd} {dataBR}</span>
-                    <div className="min-w-0 flex-1 truncate text-gray-400">data futura{d.prevista ? <span className="ml-2">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span> : null}</div>
-                  </div>
-                );
-              }
-              const st = statusDe(d.date);
+            {colSel && espelho.map((d) => {
               const fechado = fechadoEm(d.date);
-              const editado = !fechado && edits[selEmp]?.[d.date] && edits[selEmp][d.date] !== d.sugerido;
-              const vis = st ? STATUS_VIS[st] : null;
-              const inc = naoBateSel
-                ? { ocs: [] as Ocorrencia[], estado: null as EstadoDia | null, prazoEm: undefined as string | undefined, aprovacoes: [] as AprovacaoPendente[] }
-                : inconsistDoDia(Number(selEmp), d.date);
-              const incRot = inc.ocs[0] ? (ROTULOS[inc.ocs[0].tipo] || "").split(" (")[0] : "";
-              const incExtra = inc.ocs.length > 1 ? ` +${inc.ocs.length - 1}` : "";
-              const incTitle = inc.ocs.map((o) => ROTULOS[o.tipo]).join(" · ");
-              const afastLancado = afastamentoPorDia.get(`${Number(selEmp)}|${d.date}`);
-              return (
-                <div key={d.date} className={`px-3 py-2 flex items-center gap-2.5 text-xs ${vis?.row || ""}`}>
-                  {colSel?.emp && previstaFechada && !fechado ? (
-                    <input type="checkbox" checked={selDias.has(d.date)} onChange={() => toggleDia(d.date)}
-                      className="w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
-                  ) : (
-                    <span className="w-4 shrink-0 text-center">{fechado ? "🔒" : ""}</span>
-                  )}
-                  {vis && <span className={`shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${vis.badge}`}>{vis.short}</span>}
-                  <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
-                  <div className="min-w-0 flex-1 truncate text-gray-600 dark:text-gray-300">
-                    {d.worked ? <span className="tabular-nums">{d.marks}</span>
-                      : d.afastamento ? <span className="text-indigo-700 dark:text-indigo-300">{d.afastamento}</span>
-                      : <span className="text-gray-400">sem batida</span>}
-                    {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
-                  </div>
-                  {afastLancado && (
-                    <span title={afastLancado.detalhe} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado.motivo} · Sólides ✓</span>
-                  )}
-                  {!afastLancado && inc.estado === "aprovar" && (
-                    <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
-                  )}
-                  {!afastLancado && inc.estado === "enviado" && (
-                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">enviado{inc.prazoEm ? ` · ${relogio(inc.prazoEm, now).txt}` : ""}</span>
-                  )}
-                  {!afastLancado && inc.estado === "ciente" && (
-                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">✓ ciente</span>
-                  )}
-                  {!afastLancado && inc.estado === "aberto" && (
-                    <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ {incRot}{incExtra}</span>
-                  )}
-                  {!afastLancado && !fechado && inc.estado === "aprovar" && colSel?.emp && (
-                    <span className="shrink-0 flex gap-1">
-                      <button type="button" title="Aprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDia(d.date, "APPROVED")}
-                        className="w-7 h-7 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 text-[13px]">✅</button>
-                      <button type="button" title="Reprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDia(d.date, "REPROVED")}
-                        className="w-7 h-7 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40 text-[13px]">✗</button>
-                    </span>
-                  )}
-                  {!afastLancado && !fechado && inc.estado && inc.estado !== "aprovar" && colSel?.emp && (
-                    <span className="shrink-0 flex gap-1">
-                      <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDia(d.date)}
-                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">💬</button>
-                      <button type="button" title="Corrigir / lançar batida na Sólides" onClick={() => setModalBatidas({ employeeId: Number(selEmp), colaborador: colSel?.nome || "", data: d.date })}
-                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">🔧</button>
-                      <button type="button" title="Lançar afastamento / férias" onClick={() => setModalAfast({ employeeId: Number(selEmp), colaborador: colSel?.nome || "", data: d.date })}
-                        className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">☂️</button>
-                      {inc.estado !== "ciente" && (
-                        <button type="button" title="Dar ciência (sem ação)" onClick={() => cienciaDia(d.date)}
-                          className="w-7 h-7 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 text-[13px]">✓</button>
-                      )}
-                    </span>
-                  )}
-                  {fechado ? (
-                    <button type="button" disabled={salvando || mesEncerrado} onClick={() => void reabrirDia(d.date)}
-                      className="shrink-0 text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-40">
-                      ↩︎ reabrir
-                    </button>
-                  ) : (
-                    <select value={st || ""} onChange={(e) => setStatus(d.date, e.target.value as ScheduleStatus)}
-                      className={`h-8 px-2 text-xs rounded-md border bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 ${editado ? "border-indigo-400 ring-1 ring-indigo-300" : "border-gray-300 dark:border-gray-700"}`}>
-                      {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                    </select>
-                  )}
-                </div>
-              );
+              return linhaEspelho(colSel, d, {
+                selecionado: selDias.has(d.date),
+                onToggleSel: () => toggleDia(d.date),
+                podeSelecionar: !!colSel.emp && previstaFechada && !fechado,
+                fechado,
+                onReabrir: () => void reabrirDia(d.date),
+              });
             })}
           </div>
         </section>
@@ -1074,24 +1097,15 @@ export function FechamentoTab({
                         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{naoBatePontoDe(col.emp) ? "🎩 " : ""}{col.nome}</span>
                         <span className="text-[11px] text-gray-400">· {dias.length} dia(s) a fechar</span>
                       </label>
-                      <div className="space-y-1 sm:pl-6">
+                      <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
                         {dias.map((d) => {
                           const k = `${appId}|${d.date}`;
-                          const wd = DIAS_PT[weekdayOf(d.date)];
-                          return (
-                            <div key={d.date} className="flex items-center gap-2 text-xs flex-wrap">
-                              <input type="checkbox" checked={pendSel.has(k)} onChange={() => togglePend(k)} className="w-4 h-4 accent-indigo-600 shrink-0" />
-                              <span className="w-24 shrink-0 tabular-nums text-gray-600 dark:text-gray-300">{wd} {d.date.split("-").reverse().join("/")}</span>
-                              <span className="flex-1 min-w-0 truncate text-gray-500 dark:text-gray-400">
-                                {d.marks || (d.afastamento ? `☂️ ${d.afastamento}` : "sem batida")}
-                                {d.prevista && <span className="ml-1 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
-                              </span>
-                              <select value={statusPend(appId, d)} onChange={(e) => setPendEdits((s) => ({ ...s, [k]: e.target.value as ScheduleStatus }))}
-                                className="h-8 px-2 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0">
-                                {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
-                              </select>
-                            </div>
-                          );
+                          return linhaEspelho(col, d, {
+                            selecionado: pendSel.has(k),
+                            onToggleSel: () => togglePend(k),
+                            podeSelecionar: true,
+                            fechado: false,
+                          });
                         })}
                       </div>
                     </div>
