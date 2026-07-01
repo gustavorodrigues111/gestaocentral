@@ -11,9 +11,12 @@
 //  filtra os dois meses no cliente + carrega a escala de cada mês.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { jsPDF as JsPDFType } from "jspdf";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { Modal } from "../../core/ui/Modal";
+import { Button } from "../../core/ui/Button";
 import { nomeMes } from "../../core/utils/date";
 import { getActiveSplitVersion } from "./splitRules";
 // Label "Junho/2026" a partir de "2026-06" (o util nomeMes só dá o nome do mês).
@@ -172,7 +175,13 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     );
   };
 
+  // Export → abre modal com pré-visualização + botão de baixar.
   const [exportando, setExportando] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState("");
+  const pdfDocRef = useRef<JsPDFType | null>(null);
+  const pdfUrlRef = useRef("");
+  useEffect(() => () => { if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current); }, []);
+
   async function exportarPDF() {
     setExportando(true);
     try {
@@ -180,16 +189,25 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         restaurantNome,
         labelBase: labelMes(base),
         labelComp: labelMes(comparado),
-        subtitulo: "Todas as unidades",
+        subtitulo: usaMultiUni ? "Todas as unidades" : "",
         linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.liqBase, liqComp: l.liqComp, delta: l.delta, pct: l.pct })),
         totBase, totComp, totDelta, totPct,
       });
-      doc.save(`comparacao-gorjetas-${base}-vs-${comparado}.pdf`);
+      pdfDocRef.current = doc;
+      const url = URL.createObjectURL(doc.output("blob"));
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current);
+      pdfUrlRef.current = url;
+      setPdfUrl(url);
     } catch (e) {
       alert(`Erro ao gerar o PDF: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExportando(false);
     }
+  }
+  function fecharPdf() {
+    if (pdfUrlRef.current) { URL.revokeObjectURL(pdfUrlRef.current); pdfUrlRef.current = ""; }
+    pdfDocRef.current = null;
+    setPdfUrl("");
   }
 
   return (
@@ -314,6 +332,24 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
             </table>
           </div>
         </div>
+      )}
+
+      {pdfUrl && (
+        <Modal title="📄 Comparação de gorjetas — PDF" onClose={fecharPdf} maxWidth="max-w-4xl">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 dark:text-gray-400">{labelMes(comparado)} vs {labelMes(base)}</span>
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap">↗ abrir em nova aba</a>
+            </div>
+            <div className="rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 h-[60vh] overflow-hidden">
+              <iframe src={pdfUrl} title="Pré-visualização do PDF de comparação" className="w-full h-full bg-white" />
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+              <Button variant="secondary" onClick={fecharPdf}>Fechar</Button>
+              <Button onClick={() => pdfDocRef.current?.save(`comparacao-gorjetas-${base}-vs-${comparado}.pdf`)}>⬇️ Baixar PDF</Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
