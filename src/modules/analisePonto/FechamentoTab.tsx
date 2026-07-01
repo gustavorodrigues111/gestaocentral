@@ -1002,8 +1002,13 @@ export function FechamentoTab({
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${sel ? "ring-2 ring-indigo-500" : ""}`}
                       >
                         <span className="shrink-0">{st === "fechado" ? "✓" : st === "aberto" ? "●" : "○"}</span>
-                        <span className="truncate flex-1">{c.appOnly ? "📋 " : naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
-                        {c.appOnly && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200" title="Não bate ponto na Sólides — fecha pela prevista">APP</span>}
+                        <span className="truncate flex-1">{c.appOnly ? (c.emp?.freelaMensalista ? "🗓️ " : "📋 ") : naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
+                        {c.appOnly && (
+                          <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200"
+                            title="Não bate ponto na Sólides — fecha pela escala prevista">
+                            {c.emp?.freelaMensalista ? "FREELA" : "S/ PONTO"}
+                          </span>
+                        )}
                         {c.fired && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200">DEM</span>}
                       </button>
                     );
