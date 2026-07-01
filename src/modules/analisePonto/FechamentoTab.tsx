@@ -5,7 +5,7 @@
 //  prevista), editável dia a dia, e permite VISUALIZAR o PDF do espelho (Sólides).
 //  O "Fechar folha do empregado" (gravar na praticada) entra no Passo 2.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Pessoa, Restaurant, ScheduleStatus } from "../../core/types";
@@ -285,6 +285,7 @@ export function FechamentoTab({
       .filter((c) => !c.fired || (c.demissao ? c.demissao >= monthStart : false))
       .sort((a, b) => a.nome.localeCompare(b.nome));
   }, [roster, empAppPorCpf, mes]);
+  type ColabItem = (typeof colaboradores)[number];
 
   const hojeYmd = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }, []);
 
@@ -400,17 +401,18 @@ export function FechamentoTab({
     return { ocs, estado: "aberto", aprovacoes };
   }
 
-  // Espelho do empregado selecionado: 1 linha por dia do mês.
-  const espelho = useMemo<DiaEspelho[]>(() => {
-    if (!selEmp) return [];
-    const col = colaboradores.find((c) => c.solId === selEmp);
-    const appId = col?.emp?.id;
-    const dem = col?.demissao;
-    const naoBate = !!col?.emp && !empregadoBatePonto(col.emp, col.emp.cargoId ? cargoPorId.get(col.emp.cargoId) : undefined);
+  // Espelho de UM colaborador: 1 linha por dia do mês. Extraído numa função
+  // pra dar pra computar o de todos (visão "dias pendentes"), não só o selecionado.
+  const espelhoDe = useCallback((col: ColabItem | undefined): DiaEspelho[] => {
+    if (!col) return [];
+    const solId = col.solId;
+    const appId = col.emp?.id;
+    const dem = col.demissao;
+    const naoBate = !!col.emp && !empregadoBatePonto(col.emp, col.emp.cargoId ? cargoPorId.get(col.emp.cargoId) : undefined);
     const prevista = appId ? escala?.prevista?.[appId] : undefined;
     const porDia = new Map<string, SolidesPunch[]>();
     for (const p of punches) {
-      if (p.employeeId !== selEmp || (p as { excluded?: boolean }).excluded) continue;
+      if (p.employeeId !== solId || (p as { excluded?: boolean }).excluded) continue;
       const arr = porDia.get(p.date) || []; arr.push(p); porDia.set(p.date, arr);
     }
     return diasDoMes(mes).map((date) => {
@@ -441,7 +443,12 @@ export function FechamentoTab({
       else sugerido = prev || "folga";
       return { date, worked, marks, afastamento, prevista: prev, sugerido };
     });
-  }, [selEmp, colaboradores, escala, punches, mes, cargoPorId, hojeYmd]);
+  }, [escala, punches, mes, cargoPorId, hojeYmd]);
+
+  const espelho = useMemo<DiaEspelho[]>(
+    () => (selEmp ? espelhoDe(colaboradores.find((c) => c.solId === selEmp)) : []),
+    [espelhoDe, colaboradores, selEmp],
+  );
 
   const colSel = colaboradores.find((c) => c.solId === selEmp);
   const naoBateSel = naoBatePontoDe(colSel?.emp);
@@ -489,6 +496,84 @@ export function FechamentoTab({
 
   // limpa seleção ao trocar de colaborador/mês
   useEffect(() => { setSelDias(new Set()); }, [selEmp, mes]);
+
+  // ── Visão "Dias pendentes de todos" ──────────────────────────────────────
+  // Em vez de fechar colaborador por colaborador, lista TODOS os dias em aberto
+  // (passados, não fechados) de todos os empregados, agrupados por pessoa, pra
+  // fechar em lote — prático quando falta só 1-2 dias de todo mundo.
+  const [visao, setVisao] = useState<"colaborador" | "pendentes">("colaborador");
+  const [pendSel, setPendSel] = useState<Set<string>>(new Set());   // key `${appId}|${date}`
+  const [pendEdits, setPendEdits] = useState<Record<string, ScheduleStatus>>({}); // override de status
+  useEffect(() => { setPendSel(new Set()); setPendEdits({}); }, [visao, mes, diaIni, diaFim]);
+
+  const pendentesPorEmp = useMemo(() => {
+    if (visao !== "pendentes") return [] as { col: ColabItem; appId: string; dias: DiaEspelho[] }[];
+    const out: { col: ColabItem; appId: string; dias: DiaEspelho[] }[] = [];
+    for (const col of colaboradores) {
+      if (!col.emp) continue;                       // sem vínculo → não dá pra fechar
+      const appId = col.emp.id;
+      const aj = escala?.realAjustes?.[appId] || {};
+      const dias = espelhoDe(col).filter((d) =>
+        !d.demitido && !d.futuro
+        && d.date < hojeYmd                          // só dias já passados
+        && (!diaIni || d.date >= diaIni) && (!diaFim || d.date <= diaFim)
+        && (aj[d.date] as AjusteEscalaMeta | undefined)?.origem !== "solides_sync",
+      );
+      if (dias.length) out.push({ col, appId, dias });
+    }
+    return out;
+  }, [visao, colaboradores, escala, espelhoDe, hojeYmd, diaIni, diaFim]);
+
+  const pendKeys = useMemo(
+    () => pendentesPorEmp.flatMap((g) => g.dias.map((d) => `${g.appId}|${d.date}`)),
+    [pendentesPorEmp],
+  );
+  const totalPendentes = pendKeys.length;
+  const todosPendSel = totalPendentes > 0 && pendKeys.every((k) => pendSel.has(k));
+  const togglePend = (k: string) => setPendSel((s) => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const toggleTodosPend = () => setPendSel(todosPendSel ? new Set() : new Set(pendKeys));
+  const statusPend = (appId: string, d: DiaEspelho) => pendEdits[`${appId}|${d.date}`] ?? d.sugerido;
+
+  async function fecharPendentesSel() {
+    if (!previstaFechada) { setErro("Feche a PREVISTA do mês primeiro (no módulo de Escala)."); return; }
+    if (mesEncerrado) { setErro("Mês já encerrado — reabra no módulo de Escala pra editar a praticada."); return; }
+    const pairs: { appId: string; date: string; status: ScheduleStatus }[] = [];
+    for (const g of pendentesPorEmp) for (const d of g.dias) {
+      const k = `${g.appId}|${d.date}`;
+      if (pendSel.has(k)) pairs.push({ appId: g.appId, date: d.date, status: statusPend(g.appId, d) });
+    }
+    if (!pairs.length) { setErro("Selecione ao menos 1 dia."); return; }
+    const nPessoas = new Set(pairs.map((p) => p.appId)).size;
+    if (!window.confirm(`Fechar ${pairs.length} dia(s) de ${nPessoas} colaborador(es)?\n\nSobe pra escala PRATICADA do mês.`)) return;
+    setErro(""); setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      const updates: Record<string, unknown> = { updatedAt: now };
+      for (const { appId, date, status } of pairs) {
+        const ant = escala?.real?.[appId]?.[date];
+        updates[`real.${appId}.${date}`] = status;
+        updates[`realAjustes.${appId}.${date}`] = {
+          origem: "solides_sync", ajustadoEm: now, ajustadoPor: por.id, ajustadoPorNome: por.nome,
+          ...(ant ? { statusAnterior: ant } : {}),
+        } satisfies AjusteEscalaMeta;
+      }
+      await updateDoc(doc(db, "escalas", `${rid}_${mes}`), updates);
+      // limpa rascunhos das datas fechadas, por colaborador
+      const porEmp = new Map<string, string[]>();
+      for (const { appId, date } of pairs) { const arr = porEmp.get(appId) || []; arr.push(date); porEmp.set(appId, arr); }
+      for (const [appId, datas] of porEmp) {
+        const col = colaboradores.find((c) => c.emp?.id === appId);
+        if (!col) continue;
+        const statusesLimpar: Record<string, unknown> = {};
+        for (const d of datas) statusesLimpar[d] = deleteField();
+        void setDoc(doc(db, "pontoRascunhos", `${rid}_${col.solId}_${mes}`), { statuses: statusesLimpar }, { merge: true }).catch(() => {});
+      }
+      setPendSel(new Set());
+      await carregar();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao fechar os dias.");
+    } finally { setSalvando(false); }
+  }
 
   const toggleDia = (date: string) => setSelDias((s) => {
     const n = new Set(s); n.has(date) ? n.delete(date) : n.add(date); return n;
@@ -724,8 +809,22 @@ export function FechamentoTab({
         </p>
       </div>
 
-      {/* Banner agregado do período */}
+      {/* Toggle de visão */}
       {colaboradores.length > 0 && (
+        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+          <button type="button" onClick={() => setVisao("colaborador")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "colaborador" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
+            👤 Por colaborador
+          </button>
+          <button type="button" onClick={() => setVisao("pendentes")}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "pendentes" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
+            📋 Dias pendentes de todos
+          </button>
+        </div>
+      )}
+
+      {/* Banner agregado do período */}
+      {visao === "colaborador" && colaboradores.length > 0 && (
         resumoFech.abertos === 0 ? (
           <div className="text-sm rounded-xl px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 font-medium">
             ✓ Todos fechados de {fmtDataBR(diaIni)} a {fmtDataBR(diaFim)} — {resumoFech.fechados} colaborador(es){resumoFech.semVinculo > 0 ? ` · ${resumoFech.semVinculo} sem vínculo no app` : ""}.
@@ -738,7 +837,7 @@ export function FechamentoTab({
       )}
 
       {/* Chips por área — visão geral de quem já está fechado */}
-      {colaboradores.length > 0 && (
+      {visao === "colaborador" && colaboradores.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {colaboradoresPorArea.map(([area, cols]) => {
             const fechadosArea = cols.filter((c) => statusFechCol.get(c.solId) === "fechado").length;
@@ -780,7 +879,7 @@ export function FechamentoTab({
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
 
-      {carregando ? (
+      {visao === "colaborador" && (carregando ? (
         <div className="text-center text-sm text-gray-400 py-12">Carregando o mês…</div>
       ) : selEmp === "" ? (
         <div className="text-center text-sm text-gray-400 py-12">Escolha um colaborador pra revisar o espelho.</div>
@@ -932,6 +1031,75 @@ export function FechamentoTab({
               );
             })}
           </div>
+        </section>
+      ))}
+
+      {/* ── Visão "Dias pendentes de todos" ── */}
+      {visao === "pendentes" && (
+        <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
+          {carregando ? (
+            <div className="text-center text-sm text-gray-400 py-12">Carregando o mês…</div>
+          ) : !previstaFechada ? (
+            <div className="p-4 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30">
+              ⚠️ Feche a <strong>prevista</strong> do mês no módulo de Escala pra poder fechar os dias por aqui.
+            </div>
+          ) : totalPendentes === 0 ? (
+            <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-12">
+              ✓ Nenhum dia pendente de {fmtDataBR(diaIni)} a {fmtDataBR(diaFim)}.
+            </div>
+          ) : (
+            <>
+              <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2 sticky top-0 bg-white dark:bg-gray-900 z-10">
+                <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={todosPendSel} onChange={toggleTodosPend} className="w-4 h-4 accent-indigo-600" />
+                  Selecionar todos ({totalPendentes} dia(s) · {pendentesPorEmp.length} pessoa(s))
+                </label>
+                <div className="flex-1" />
+                <span className="text-[11px] text-gray-400">{pendSel.size} selecionado(s)</span>
+                <button type="button" disabled={pendSel.size === 0 || salvando || mesEncerrado} onClick={() => void fecharPendentesSel()}
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
+                  {salvando ? "Fechando…" : `🔒 Fechar selecionados${pendSel.size ? ` (${pendSel.size})` : ""}`}
+                </button>
+              </header>
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {pendentesPorEmp.map(({ col, appId, dias }) => {
+                  const keysEmp = dias.map((d) => `${appId}|${d.date}`);
+                  const todosDoEmp = keysEmp.every((k) => pendSel.has(k));
+                  return (
+                    <div key={appId} className="px-3 py-2.5">
+                      <label className="inline-flex items-center gap-1.5 cursor-pointer mb-1.5">
+                        <input type="checkbox" checked={todosDoEmp}
+                          onChange={() => setPendSel((s) => { const n = new Set(s); keysEmp.forEach((k) => todosDoEmp ? n.delete(k) : n.add(k)); return n; })}
+                          className="w-4 h-4 accent-indigo-600" />
+                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{naoBatePontoDe(col.emp) ? "🎩 " : ""}{col.nome}</span>
+                        <span className="text-[11px] text-gray-400">· {dias.length} dia(s) a fechar</span>
+                      </label>
+                      <div className="space-y-1 sm:pl-6">
+                        {dias.map((d) => {
+                          const k = `${appId}|${d.date}`;
+                          const wd = DIAS_PT[weekdayOf(d.date)];
+                          return (
+                            <div key={d.date} className="flex items-center gap-2 text-xs flex-wrap">
+                              <input type="checkbox" checked={pendSel.has(k)} onChange={() => togglePend(k)} className="w-4 h-4 accent-indigo-600 shrink-0" />
+                              <span className="w-24 shrink-0 tabular-nums text-gray-600 dark:text-gray-300">{wd} {d.date.split("-").reverse().join("/")}</span>
+                              <span className="flex-1 min-w-0 truncate text-gray-500 dark:text-gray-400">
+                                {d.marks || (d.afastamento ? `☂️ ${d.afastamento}` : "sem batida")}
+                                {d.prevista && <span className="ml-1 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
+                              </span>
+                              <select value={statusPend(appId, d)} onChange={(e) => setPendEdits((s) => ({ ...s, [k]: e.target.value as ScheduleStatus }))}
+                                className="h-8 px-2 text-xs rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0">
+                                {STATUS_OPCOES.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+                              </select>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </section>
       )}
 
