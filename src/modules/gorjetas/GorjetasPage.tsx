@@ -583,6 +583,24 @@ function ListaDiasInline({
     ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
     : [{ id: "", nome: "" }];
 
+  // Todas as chaves selecionáveis (dias com valor lançado + regra) — pro
+  // "selecionar todos" do topo.
+  const todasKeysSel = useMemo(() => {
+    const out: string[] = [];
+    for (let dia = 1; dia <= dias; dia++) {
+      const date = `${ano}-${pad2(mes)}-${pad2(dia)}`;
+      if (!getActiveSplitVersion(splitVersions, date)) continue;
+      for (const u of unidadesParaRow) {
+        const g = gorjetaMap[keyFor(date, u.id)];
+        if (g && g.valorBruto > 0 && !g.semGorjeta) out.push(keyFor(date, u.id));
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dias, ano, mes, gorjetaMap, splitVersions, filtroValidoLancamentos, usaMultiUnidades]);
+  const todosSelecionados = todasKeysSel.length > 0 && todasKeysSel.every(k => sel.has(k));
+  const toggleTodos = () => setSel(todosSelecionados ? new Set() : new Set(todasKeysSel));
+
   // Paleta pra diferenciar unidades em restaurantes multi-unidades.
   // Duas pegadas:
   //   - `border` (6px na esquerda): marca o "trilho" da unidade ao longo das linhas
@@ -612,7 +630,10 @@ function ListaDiasInline({
     <div className="space-y-2">
       {podeEditar && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
-          <span className="text-[12px] text-gray-500 dark:text-gray-400">{sel.size > 0 ? `${sel.size} dia(s) selecionado(s)` : "Marque os dias e use as ações:"}</span>
+          <label className="inline-flex items-center gap-1.5 cursor-pointer select-none" title="Selecionar todos os dias lançados">
+            <input type="checkbox" checked={todosSelecionados} onChange={toggleTodos} disabled={todasKeysSel.length === 0} className="w-4 h-4 accent-indigo-600" />
+            <span className="text-[12px] text-gray-500 dark:text-gray-400">{sel.size > 0 ? `${sel.size} dia(s) selecionado(s)` : "Selecionar todos"}</span>
+          </label>
           <button type="button" onClick={() => setShowImport(true)}
             title="Colar uma tabela de datas + valores pra lançar vários dias de uma vez (na unidade escolhida)"
             className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">⬆️ Importar em lote</button>
@@ -654,7 +675,7 @@ function ListaDiasInline({
                   no single e no multi. Em multi: barra grossa colorida da
                   unidade na esquerda (6px) + chip colorido na coluna Unidade. */}
               <div
-                className={`hidden md:grid grid-cols-[70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm ${
+                className={`hidden md:grid grid-cols-[34px_70px_120px_1fr_auto] items-center gap-3 px-3 py-2 text-sm ${
                   isPrimeiroDoDia ? "border-t border-gray-200 dark:border-gray-700" : "border-t border-gray-100/60 dark:border-gray-800/60"
                 } ${usaMultiUnidades ? `border-l-[6px] ${corU.border}` : ""} ${
                   weekend ? "bg-amber-50/30 dark:bg-amber-900/10" : ""
@@ -662,6 +683,13 @@ function ListaDiasInline({
                   isPublicada ? "bg-emerald-50/50 dark:bg-emerald-900/10" : ""
                 }`}
               >
+                {/* Checkbox de seleção (1ª coluna) */}
+                <div className="flex items-center justify-center">
+                  {podeEditar && hasValor && !semRegra && (
+                    <input type="checkbox" checked={sel.has(k)} onChange={() => toggleSel(k)} title="Selecionar pra publicar/pagar em lote" className="w-4 h-4 accent-indigo-600" />
+                  )}
+                </div>
+
                 {/* Dia */}
                 <div className="font-medium text-gray-900 dark:text-gray-100">
                   {idx === 0 ? (
@@ -717,9 +745,6 @@ function ListaDiasInline({
 
                 {/* Ações */}
                 <div className="flex items-center gap-1">
-                  {podeEditar && hasValor && !semRegra && (
-                    <input type="checkbox" checked={sel.has(k)} onChange={() => toggleSel(k)} title="Selecionar pra publicar/pagar em lote" className="w-4 h-4 accent-indigo-600 mr-0.5" />
-                  )}
                   {g?.paga && (
                     <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} title={podeEditar ? "Desmarcar pagamento" : "Gorjeta paga"}
                       className="px-2 py-1 text-xs rounded border bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold">💸 Paga</button>
