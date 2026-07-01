@@ -378,6 +378,7 @@ export function GorjetasPage() {
       {tab === "comparacao" && (
         <ComparacaoTab
           rid={rid}
+          restaurantNome={activeRestaurant.nome}
           empregados={empregados}
           cargos={cargos}
           splitVersions={splitVersions}
