@@ -17,6 +17,7 @@ import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
+import { ComparacaoTab } from "./ComparacaoTab";
 import { publicarGorjeta, despublicarGorjeta, pagarGorjeta, desmarcarPagaGorjeta } from "./publicar";
 
 const fmtBR = (n: number) =>
@@ -51,7 +52,7 @@ export function GorjetasPage() {
   const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
   const [loading, setLoading] = useState(true);
   // Estado de tab (modal por dia foi removido — edição é inline no ListaDiasInline)
-  const [tab, setTab] = useState<"lancamentos" | "divisao">("lancamentos");
+  const [tab, setTab] = useState<"lancamentos" | "divisao" | "comparacao">("lancamentos");
   // Filtro de unidade (multi-unidades) — compartilhado entre tabs.
   // "" = todas
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");
@@ -307,6 +308,17 @@ export function GorjetasPage() {
         >
           📊 Divisão do mês
         </button>
+        <button
+          type="button"
+          onClick={() => setTab("comparacao")}
+          className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            tab === "comparacao"
+              ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
+              : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
+          }`}
+        >
+          📈 Comparação
+        </button>
       </div>
 
       {tab === "lancamentos" && (
@@ -360,6 +372,16 @@ export function GorjetasPage() {
           unidades={unidades}
           usaMultiUnidades={usaMultiUnidades}
           filtroUnidadeId={filtroUnidadeId}
+        />
+      )}
+
+      {tab === "comparacao" && (
+        <ComparacaoTab
+          rid={rid}
+          empregados={empregados}
+          cargos={cargos}
+          splitVersions={splitVersions}
+          unidades={unidades}
         />
       )}
 
