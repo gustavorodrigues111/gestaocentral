@@ -11,7 +11,7 @@
 //  filtra os dois meses no cliente + carrega a escala de cada mês.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { nomeMes } from "../../core/utils/date";
@@ -98,6 +98,16 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   const escalaBase = base === mesA ? escalaA : escalaB;
   const escalaComp = comparado === mesA ? escalaA : escalaB;
 
+  // Unidade padrão de cada empregado (pra agrupar). Só agrupa por unidade
+  // quando o restaurante tem 2+ unidades ativas.
+  const usaMultiUni = unidades.filter((u) => u.ativa).length > 1;
+  const uniNomePorEmp = useMemo(() => {
+    const byId = Object.fromEntries(unidades.map((u) => [u.id, u.nome]));
+    const m: Record<string, string> = {};
+    for (const e of empregados) if (e.unidadePadraoId && byId[e.unidadePadraoId]) m[e.id] = byId[e.unidadePadraoId];
+    return m;
+  }, [empregados, unidades]);
+
   const linhas = useMemo(() => {
     const mapBase = liquidoPorEmp(base, escalaBase);
     const mapComp = liquidoPorEmp(comparado, escalaComp);
@@ -114,11 +124,28 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         nome: (c || b)?.nome || "—",
         cargoNome: (c || b)?.cargoNome || "",
         area: (c || b)?.area || "",
+        uni: usaMultiUni ? (uniNomePorEmp[id] || "Sem unidade") : "",
         liqBase, liqComp, delta, pct,
       };
     });
-    return out.sort((a, b) => (a.area || "").localeCompare(b.area || "") || a.nome.localeCompare(b.nome));
-  }, [liquidoPorEmp, base, comparado, escalaBase, escalaComp]);
+    return out.sort((a, b) =>
+      (a.uni || "").localeCompare(b.uni || "")
+      || (a.area || "").localeCompare(b.area || "")
+      || a.nome.localeCompare(b.nome),
+    );
+  }, [liquidoPorEmp, base, comparado, escalaBase, escalaComp, usaMultiUni, uniNomePorEmp]);
+
+  type Linha = (typeof linhas)[number];
+  // Agrupa em unidade → área, com subtotais por (unidade, área).
+  const grupos = useMemo(() => {
+    const out: { uni: string; area: string; rows: Linha[]; base: number; comp: number }[] = [];
+    for (const l of linhas) {
+      let g = out[out.length - 1];
+      if (!g || g.uni !== l.uni || g.area !== l.area) { g = { uni: l.uni, area: l.area, rows: [], base: 0, comp: 0 }; out.push(g); }
+      g.rows.push(l); g.base += l.liqBase; g.comp += l.liqComp;
+    }
+    return out;
+  }, [linhas]);
 
   const totBase = linhas.reduce((s, l) => s + l.liqBase, 0);
   const totComp = linhas.reduce((s, l) => s + l.liqComp, 0);
@@ -151,7 +178,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         labelBase: labelMes(base),
         labelComp: labelMes(comparado),
         subtitulo: "Todas as unidades",
-        linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, liqBase: l.liqBase, liqComp: l.liqComp, delta: l.delta, pct: l.pct })),
+        linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.liqBase, liqComp: l.liqComp, delta: l.delta, pct: l.pct })),
         totBase, totComp, totDelta, totPct,
       });
       doc.save(`comparacao-gorjetas-${base}-vs-${comparado}.pdf`);
@@ -234,17 +261,44 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
                 </tr>
               </thead>
               <tbody>
-                {linhas.map((l) => (
-                  <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
-                    <td className="px-3 py-2">
-                      <div className="font-medium text-gray-900 dark:text-gray-100">{l.nome}</div>
-                      <div className="text-xs text-gray-500">{l.area}{l.cargoNome ? ` · ${l.cargoNome}` : ""}</div>
-                    </td>
-                    <td className="text-right px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.liqBase)}</td>
-                    <td className="text-right px-3 py-2 tabular-nums font-semibold text-gray-900 dark:text-gray-100">{fmtBR(l.liqComp)}</td>
-                    <td className="text-right px-3 py-2 whitespace-nowrap"><DeltaChip delta={l.delta} pct={l.pct} /></td>
-                  </tr>
-                ))}
+                {grupos.map((g, gi) => {
+                  const uniHeader = usaMultiUni && (gi === 0 || grupos[gi - 1].uni !== g.uni);
+                  const subDelta = Math.round((g.comp - g.base) * 100) / 100;
+                  const subPct = g.base > 0 ? (subDelta / g.base) * 100 : null;
+                  return (
+                    <Fragment key={`${g.uni}|${g.area}`}>
+                      {uniHeader && (
+                        <tr className="bg-indigo-50 dark:bg-indigo-900/20">
+                          <td colSpan={4} className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                            🏠 {g.uni}
+                          </td>
+                        </tr>
+                      )}
+                      <tr className="bg-gray-50 dark:bg-gray-800/40">
+                        <td colSpan={4} className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                          {g.area || "Sem área"}
+                        </td>
+                      </tr>
+                      {g.rows.map((l) => (
+                        <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
+                          <td className="px-3 py-2 pl-5">
+                            <div className="font-medium text-gray-900 dark:text-gray-100">{l.nome}</div>
+                            {l.cargoNome && <div className="text-xs text-gray-500">{l.cargoNome}</div>}
+                          </td>
+                          <td className="text-right px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.liqBase)}</td>
+                          <td className="text-right px-3 py-2 tabular-nums font-semibold text-gray-900 dark:text-gray-100">{fmtBR(l.liqComp)}</td>
+                          <td className="text-right px-3 py-2 whitespace-nowrap"><DeltaChip delta={l.delta} pct={l.pct} /></td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
+                        <td className="px-3 py-1.5 pl-5 text-[11px] font-semibold">Subtotal {g.area || "sem área"}</td>
+                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px]">{fmtBR(g.base)}</td>
+                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px] font-semibold">{fmtBR(g.comp)}</td>
+                        <td className="text-right px-3 py-1.5 whitespace-nowrap"><DeltaChip delta={subDelta} pct={subPct} /></td>
+                      </tr>
+                    </Fragment>
+                  );
+                })}
               </tbody>
               <tfoot>
                 <tr className="bg-gray-50 dark:bg-gray-800 font-bold">

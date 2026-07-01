@@ -11,7 +11,7 @@ import type { jsPDF as JsPDFType } from "jspdf";
 const fmtBR = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 export type ComparacaoPDFLinha = {
-  nome: string; cargoNome: string; area: string;
+  nome: string; cargoNome: string; area: string; uni?: string;
   liqBase: number; liqComp: number; delta: number; pct: number | null;
 };
 
@@ -80,9 +80,30 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
   // Tabela (agrupada por área)
   type Cell = string | { content: string; colSpan?: number; styles?: Record<string, unknown> };
   const body: Cell[][] = [];
+  let uniPrev: string | null = null;
   let areaPrev: string | null = null;
+  let subBase = 0, subComp = 0, temSub = false;
+  const pushSubtotal = () => {
+    if (!temSub) return;
+    const d = Math.round((subComp - subBase) * 100) / 100;
+    const pct = subBase > 0 ? (d / subBase) * 100 : null;
+    body.push([
+      { content: `Subtotal ${areaPrev || "sem área"}`, styles: { fontStyle: "italic", textColor: [107, 114, 128], fontSize: 8 } },
+      { content: fmtBR(subBase), styles: { halign: "right", textColor: [107, 114, 128], fontSize: 8 } },
+      { content: fmtBR(subComp), styles: { halign: "right", fontStyle: "bold", textColor: [107, 114, 128], fontSize: 8 } },
+      { content: txtVariacao(d, pct), styles: { halign: "right", textColor: corDelta(d), fontStyle: "bold", fontSize: 8 } },
+    ]);
+    subBase = 0; subComp = 0; temSub = false;
+  };
   for (const l of p.linhas) {
+    const uni = l.uni || "";
+    if (uni && uni !== uniPrev) {
+      pushSubtotal();
+      body.push([{ content: uni.toUpperCase(), colSpan: 4, styles: { fillColor: [224, 231, 255], textColor: [55, 48, 163], fontStyle: "bold", fontSize: 9 } }]);
+      uniPrev = uni; areaPrev = null;
+    }
     if (l.area !== areaPrev) {
+      pushSubtotal();
       body.push([{ content: l.area || "Sem área", colSpan: 4, styles: { fillColor: [243, 244, 246], textColor: [55, 65, 81], fontStyle: "bold", fontSize: 9 } }]);
       areaPrev = l.area;
     }
@@ -92,7 +113,9 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
       fmtBR(l.liqComp),
       { content: txtVariacao(l.delta, l.pct), styles: { textColor: corDelta(l.delta), fontStyle: "bold", halign: "right" } },
     ]);
+    subBase += l.liqBase; subComp += l.liqComp; temSub = true;
   }
+  pushSubtotal();
 
   autoTable(doc, {
     startY: yC + cardH + 12,
