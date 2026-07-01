@@ -123,6 +123,7 @@ service cloud.firestore {
     match /escalas/{id}             { allow read, write: if authed(); }
     match /escalaSolicitacoes/{id}  { allow read, write: if authed(); }
     match /faleDpMensagens/{id}     { allow read, write: if authed(); }
+    match /pontoRascunhos/{id}      { allow read, write: if authed(); }
     match /escalasNomeadas/{id}     { allow read, write: if authed(); }
     match /sundaySwaps/{id}         { allow read, write: if authed(); }
     match /freelaShifts/{id}        { allow read, write: if authed(); }

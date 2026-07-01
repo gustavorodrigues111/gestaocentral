@@ -6,7 +6,7 @@
 //  O "Fechar folha do empregado" (gravar na praticada) entra no Passo 2.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Pessoa, Restaurant, ScheduleStatus } from "../../core/types";
 import { AREAS, empregadoBatePonto } from "../../core/types";
@@ -461,8 +461,31 @@ export function FechamentoTab({
   };
   const setStatus = (date: string, s: ScheduleStatus) => {
     if (!selEmp) return;
+    // Feedback imediato na tela.
     setEdits((cur) => ({ ...cur, [selEmp]: { ...(cur[selEmp] || {}), [date]: s } }));
+    // Persiste como RASCUNHO (não fecha o dia): sobrevive a sair/voltar da tela.
+    // Fica separado da escala.real pra NÃO afetar gorjeta/VT antes do fechamento.
+    if (rid) {
+      void setDoc(
+        doc(db, "pontoRascunhos", `${rid}_${selEmp}_${mes}`),
+        { restaurantId: rid, employeeId: selEmp, anoMes: mes, statuses: { [date]: s }, updatedAt: new Date().toISOString() },
+        { merge: true },
+      ).catch((e) => console.error("[pontoRascunho setStatus]", e));
+    }
   };
+
+  // Carrega os rascunhos de status persistidos do colaborador/mês e semeia em
+  // `edits` — assim, ao voltar pra tela, o seletor mostra o que foi escolhido
+  // mesmo sem o dia ter sido fechado.
+  useEffect(() => {
+    if (!rid || !selEmp) return;
+    const ref = doc(db, "pontoRascunhos", `${rid}_${selEmp}_${mes}`);
+    const unsub = onSnapshot(ref, (snap) => {
+      const statuses = (snap.exists() ? (snap.data() as { statuses?: Record<string, ScheduleStatus> }).statuses : null) || {};
+      setEdits((cur) => ({ ...cur, [selEmp]: { ...statuses, ...(cur[selEmp] || {}) } }));
+    }, (e) => console.error("[pontoRascunho load]", e));
+    return () => unsub();
+  }, [rid, selEmp, mes]);
 
   // limpa seleção ao trocar de colaborador/mês
   useEffect(() => { setSelDias(new Set()); }, [selEmp, mes]);
@@ -607,6 +630,11 @@ export function FechamentoTab({
         updates[`realAjustes.${appIdSel}.${d}`] = meta;
       }
       await updateDoc(doc(db, "escalas", `${rid}_${mes}`), updates);
+      // Dia fechado → limpa o rascunho dessas datas (a fonte agora é a praticada).
+      const statusesLimpar: Record<string, unknown> = {};
+      for (const d of dias) statusesLimpar[d] = deleteField();
+      void setDoc(doc(db, "pontoRascunhos", `${rid}_${selEmp}_${mes}`), { statuses: statusesLimpar }, { merge: true })
+        .catch((e) => console.error("[pontoRascunho limpeza]", e));
       setSelDias(new Set());
       await carregar();
     } catch (e) {
