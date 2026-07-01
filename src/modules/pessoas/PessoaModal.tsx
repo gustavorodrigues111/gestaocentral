@@ -22,11 +22,8 @@ import {
   VINCULOS_LOGICOS,
   VINCULO_LOGICO_LABEL,
   VINCULO_LOGICO_ICONE,
-  ATRIBUTO_LABEL,
-  atributosDependeDaPessoa,
   resolverVinculo,
   type VinculoLogico,
-  type AtributoVinculo,
 } from "../../core/vinculos/comportamento";
 import { Link, useNavigate } from "react-router-dom";
 
@@ -928,20 +925,14 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
     return () => { cancelado = true; };
   }, [pessoa.id, restaurantId]);
 
-  // Estado LOCAL otimista — o componente lê da prop `pessoa`, que só atualiza
-  // ao reabrir o modal. Sem isso, clicar num toggle grava mas a tela não
-  // reflete na hora (o bug relatado). Sincroniza quando a prop muda.
+  // Estado LOCAL otimista do vínculo — a prop `pessoa` só atualiza ao reabrir.
   const [vinculoLocal, setVinculoLocal] = useState<VinculoLogico | "">(pessoa.vinculos?.[restaurantId] || "");
-  const [togglesLocal, setTogglesLocal] = useState<Record<string, boolean | undefined>>(pessoa.pessoaToggles?.[restaurantId] || {});
   useEffect(() => {
     setVinculoLocal(pessoa.vinculos?.[restaurantId] || "");
-    setTogglesLocal(pessoa.pessoaToggles?.[restaurantId] || {});
   }, [pessoa, restaurantId]);
 
   const vinculoExplicito = vinculoLocal || null;
   const vinculoResolvido = vinculoLocal || resolverVinculo(pessoa, restaurantId, empregado, cargo);
-  const atributosPess = vinculoResolvido ? atributosDependeDaPessoa(vinculoResolvido) : [];
-  const toggles = togglesLocal;
 
   async function alterarVinculo(novo: VinculoLogico | "") {
     setVinculoLocal(novo);   // otimista — reflete na hora
@@ -961,39 +952,6 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
       setSalvando(false);
     }
   }
-
-  async function alterarToggle(atributo: AtributoVinculo, valor: boolean) {
-    // Só atributos persistidos em pessoaToggles (subset do AtributoVinculo)
-    const persistedKeys: AtributoVinculo[] = [
-      "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
-      "recebeVT", "recebeVR", "temCargoAssociado",
-    ];
-    if (!persistedKeys.includes(atributo)) return;
-    setTogglesLocal((prev) => ({ ...prev, [atributo]: valor }));   // otimista — reflete na hora
-    setSalvando(true);
-    setErro("");
-    try {
-      const pessoaToggles = { ...(pessoa.pessoaToggles || {}) };
-      const ridToggles = { ...(pessoaToggles[restaurantId] || {}) };
-      (ridToggles as Record<string, boolean>)[atributo] = valor;
-      pessoaToggles[restaurantId] = ridToggles;
-      await updateDoc(doc(db, "pessoas", pessoa.id), {
-        pessoaToggles,
-        atualizadoEm: new Date().toISOString(),
-      });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Erro ao salvar");
-      setTogglesLocal((prev) => ({ ...prev, [atributo]: !valor }));   // reverte no erro
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  const persistedKeys = new Set<AtributoVinculo>([
-    "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
-    "recebeVT", "recebeVR", "temCargoAssociado",
-  ]);
-  const atributosPessPersistiveis = atributosPess.filter(a => persistedKeys.has(a));
 
   return (
     <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/40 dark:bg-fuchsia-900/10 p-3 space-y-2">
@@ -1027,29 +985,6 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
           </option>
         ))}
       </select>
-      {vinculoResolvido && atributosPessPersistiveis.length > 0 && (
-        <div className="border-t border-fuchsia-200 dark:border-fuchsia-800 pt-2 space-y-1">
-          <div className="text-[11px] text-fuchsia-700 dark:text-fuchsia-300 mb-1">
-            Pra <strong>{VINCULO_LOGICO_LABEL[vinculoResolvido]}</strong>, os atributos abaixo
-            dependem da pessoa — marca caso a caso:
-          </div>
-          {atributosPessPersistiveis.map(atributo => {
-            const valor = (toggles as Record<string, boolean | undefined>)[atributo] === true;
-            return (
-              <label key={atributo} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-fuchsia-100/50 dark:hover:bg-fuchsia-900/20 rounded px-2 py-1">
-                <input
-                  type="checkbox"
-                  checked={valor}
-                  onChange={(e) => alterarToggle(atributo, e.target.checked)}
-                  disabled={salvando}
-                  className="rounded border-fuchsia-300 dark:border-fuchsia-700 text-fuchsia-600 focus:ring-fuchsia-500"
-                />
-                <span className="text-gray-700 dark:text-gray-300">{ATRIBUTO_LABEL[atributo]}</span>
-              </label>
-            );
-          })}
-        </div>
-      )}
       {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
       <p className="text-[11px] text-gray-600 dark:text-gray-400">
         O vínculo define como a pessoa se comporta neste restaurante — escala, gorjeta, ponto,
