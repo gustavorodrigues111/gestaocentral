@@ -567,6 +567,22 @@ function ListaDiasInline({
     setSel(new Set());
   }
 
+  // ── Importar valores de gorjeta em lote (colando data + valor) ──────────
+  const [showImport, setShowImport] = useState(false);
+  async function importarLote(rows: { date: string; valor: number }[], unidadeId: string): Promise<number> {
+    let ok = 0;
+    for (const r of rows) {
+      try {
+        await gravar(r.date, unidadeId, { valorBruto: Math.round(r.valor * 100) / 100, semGorjeta: false });
+        ok++;
+      } catch (e) { console.error("[importarLote]", r, e); }
+    }
+    return ok;
+  }
+  const unidadeImportOptions: { id: string; nome: string }[] = usaMultiUnidades
+    ? unidadesAtendimento.map(u => ({ id: u.id, nome: u.nome }))
+    : [{ id: "", nome: "" }];
+
   // Paleta pra diferenciar unidades em restaurantes multi-unidades.
   // Duas pegadas:
   //   - `border` (6px na esquerda): marca o "trilho" da unidade ao longo das linhas
@@ -597,6 +613,9 @@ function ListaDiasInline({
       {podeEditar && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 px-3 py-2">
           <span className="text-[12px] text-gray-500 dark:text-gray-400">{sel.size > 0 ? `${sel.size} dia(s) selecionado(s)` : "Marque os dias e use as ações:"}</span>
+          <button type="button" onClick={() => setShowImport(true)}
+            title="Colar uma tabela de datas + valores pra lançar vários dias de uma vez (na unidade escolhida)"
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">⬆️ Importar em lote</button>
           <span className="flex-1" />
           <button type="button" disabled={sel.size === 0} onClick={() => void publicarSelecionados()}
             className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-40">📢 Publicar</button>
@@ -828,7 +847,152 @@ function ListaDiasInline({
           />
         );
       })()}
+
+      {showImport && (
+        <ImportarLoteGorjetasModal
+          anoDefault={ano}
+          usaMultiUnidades={usaMultiUnidades}
+          unidadeOptions={unidadeImportOptions}
+          defaultUnidadeId={filtroValidoLancamentos || unidadeImportOptions[0]?.id || ""}
+          onClose={() => setShowImport(false)}
+          onImportar={importarLote}
+        />
+      )}
     </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// ImportarLoteGorjetasModal — cola uma tabela "data + valor" e lança vários
+// dias de uma vez, na unidade escolhida. O MÊS vem da própria data colada
+// (DD/MM), então dá pra importar um mês inteiro mesmo estando vendo outro.
+// ────────────────────────────────────────────────────────────────────────────
+function ImportarLoteGorjetasModal({
+  anoDefault, usaMultiUnidades, unidadeOptions, defaultUnidadeId, onClose, onImportar,
+}: {
+  anoDefault: number;
+  usaMultiUnidades: boolean;
+  unidadeOptions: { id: string; nome: string }[];
+  defaultUnidadeId: string;
+  onClose: () => void;
+  onImportar: (rows: { date: string; valor: number }[], unidadeId: string) => Promise<number>;
+}) {
+  const [texto, setTexto] = useState("");
+  const [unidadeId, setUnidadeId] = useState(defaultUnidadeId);
+  const [salvando, setSalvando] = useState(false);
+
+  // Parse: cada linha vira {date, valor}. Aceita "02/06 491,10",
+  // "02/06\t491,10", "02/06/2026 491,10", valores pt-BR ou com ponto decimal.
+  const { rows, ignoradas } = useMemo(() => {
+    const rows: { date: string; valor: number; raw: string }[] = [];
+    const ignoradas: string[] = [];
+    for (const linhaRaw of texto.split(/\r?\n/)) {
+      const linha = linhaRaw.trim();
+      if (!linha) continue;
+      const dm = linha.match(/(\d{1,2})[/.\-](\d{1,2})(?:[/.\-](\d{2,4}))?/);
+      if (!dm) continue; // linha sem data (ex: cabeçalho) — ignora em silêncio
+      const dia = Number(dm[1]);
+      const mesN = Number(dm[2]);
+      let ano = anoDefault;
+      if (dm[3]) { const y = Number(dm[3]); ano = y < 100 ? 2000 + y : y; }
+      if (dia < 1 || dia > 31 || mesN < 1 || mesN > 12) { ignoradas.push(linha); continue; }
+      // Valor = restante da linha após a data, só dígitos/.,-
+      const resto = linha.slice((dm.index || 0) + dm[0].length).replace(/[^\d.,-]/g, "").trim();
+      const valor = parseFloat(resto.replace(/\./g, "").replace(",", ".")) || 0;
+      if (valor <= 0) { ignoradas.push(linha); continue; }
+      const date = `${ano}-${pad2(mesN)}-${pad2(dia)}`;
+      rows.push({ date, valor, raw: linha });
+    }
+    return { rows, ignoradas };
+  }, [texto, anoDefault]);
+
+  const total = rows.reduce((s, r) => s + r.valor, 0);
+  const meses = Array.from(new Set(rows.map(r => r.date.slice(0, 7)))).sort();
+  const nomeMesLabel = (ym: string) => {
+    const [a, m] = ym.split("-");
+    return `${["", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"][Number(m)]}/${a.slice(2)}`;
+  };
+  const fmtBRv = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+  async function importar() {
+    if (rows.length === 0) return;
+    if (usaMultiUnidades && !unidadeId) { alert("Escolha a unidade."); return; }
+    const nomeUni = usaMultiUnidades ? (unidadeOptions.find(u => u.id === unidadeId)?.nome || "") : "";
+    if (!window.confirm(
+      `Importar ${rows.length} dia(s) — ${fmtBRv(total)}${nomeUni ? ` · ${nomeUni}` : ""}?\n\n` +
+      `Meses: ${meses.map(nomeMesLabel).join(", ")}.\n` +
+      `Vai gravar/sobrescrever o valor bruto desses dias. As datas vêm da tabela colada.`,
+    )) return;
+    setSalvando(true);
+    try {
+      const ok = await onImportar(rows.map(r => ({ date: r.date, valor: r.valor })), unidadeId);
+      alert(`✅ ${ok} dia(s) importado(s).${meses.length ? `\nAbra ${meses.map(nomeMesLabel).join(" / ")} pra conferir.` : ""}`);
+      onClose();
+    } catch (e) {
+      alert(`Erro ao importar: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
+          <div className="font-bold text-gray-900 dark:text-gray-100">⬆️ Importar gorjetas em lote</div>
+          <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {usaMultiUnidades && (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1">Unidade</label>
+              <select value={unidadeId} onChange={(e) => setUnidadeId(e.target.value)}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+                <option value="">— escolha —</option>
+                {unidadeOptions.map(u => <option key={u.id} value={u.id}>{u.nome}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-1">
+              Cole a tabela (data + valor por linha)
+            </label>
+            <textarea
+              value={texto}
+              onChange={(e) => setTexto(e.target.value)}
+              rows={10}
+              placeholder={"02/06\t491,10\n03/06\t814,30\n04/06\t1.304,20\n…"}
+              className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-y"
+            />
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              Aceita data <code>DD/MM</code> ou <code>DD/MM/AAAA</code> e valor em reais (1.304,20 ou 1304.20).
+              O mês vem da data colada — cabeçalhos e linhas sem data são ignorados.
+            </div>
+          </div>
+
+          {rows.length > 0 && (
+            <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/50 bg-emerald-50 dark:bg-emerald-900/20 p-3 text-xs text-emerald-800 dark:text-emerald-200">
+              <strong>{rows.length}</strong> dia(s) reconhecido(s) · total <strong>{fmtBRv(total)}</strong> · meses: {meses.map(nomeMesLabel).join(", ")}
+            </div>
+          )}
+          {ignoradas.length > 0 && (
+            <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-2.5 text-[11px] text-amber-800 dark:text-amber-200">
+              ⚠ {ignoradas.length} linha(s) ignorada(s) (sem valor válido): {ignoradas.slice(0, 4).join(" · ")}{ignoradas.length > 4 ? "…" : ""}
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 p-3 flex justify-end gap-2 shrink-0">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={importar} disabled={rows.length === 0 || salvando || (usaMultiUnidades && !unidadeId)}>
+            {salvando ? "Importando…" : `Importar ${rows.length || ""} dia(s)`}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
