@@ -83,7 +83,6 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
   // Tabela (agrupada por área)
   type Cell = string | { content: string; colSpan?: number; styles?: Record<string, unknown> };
   const body: Cell[][] = [];
-  let uniPrev: string | null = null;
   let areaPrev: string | null = null;
   let subBase = 0, subComp = 0, temSub = false;
   const pushSubtotal = () => {
@@ -100,20 +99,15 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
     subBase = 0; subComp = 0; temSub = false;
   };
   for (const l of p.linhas) {
-    const uni = l.uni || "";
-    if (uni && uni !== uniPrev) {
-      pushSubtotal();
-      body.push([{ content: uni.toUpperCase(), colSpan: 4, styles: { fillColor: [224, 231, 255], textColor: [55, 48, 163], fontStyle: "bold", fontSize: 9 } }]);
-      uniPrev = uni; areaPrev = null;
-    }
     if (l.area !== areaPrev) {
       pushSubtotal();
-      body.push([{ content: l.area || "Sem área", colSpan: 4, styles: { fillColor: [243, 244, 246], textColor: [55, 65, 81], fontStyle: "bold", fontSize: 9 } }]);
+      body.push([{ content: (l.area || "Sem área").toUpperCase(), colSpan: 4, styles: { fillColor: [243, 244, 246], textColor: [55, 65, 81], fontStyle: "bold", fontSize: 9 } }]);
       areaPrev = l.area;
     }
     const f = fillDelta(l.delta);
+    const sub = [l.cargoNome, l.uni].filter(Boolean).join(" · ");
     body.push([
-      { content: l.cargoNome ? `${l.nome}\n${l.cargoNome}` : l.nome, styles: { fillColor: f } },
+      { content: sub ? `${l.nome}\n${sub}` : l.nome, styles: { fillColor: f } },
       { content: fmtBR(l.liqBase), styles: { halign: "right", fillColor: f } },
       { content: fmtBR(l.liqComp), styles: { halign: "right", fontStyle: "bold", fillColor: f } },
       { content: txtVariacao(l.delta, l.pct), styles: { textColor: corDelta(l.delta), fontStyle: "bold", halign: "right", fillColor: f } },
