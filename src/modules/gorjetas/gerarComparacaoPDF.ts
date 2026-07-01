@@ -29,6 +29,9 @@ const VERMELHO: [number, number, number] = [190, 18, 60];
 const AZUL: [number, number, number] = [37, 99, 235];
 const corDelta = (delta: number): [number, number, number] =>
   delta > 0.005 ? VERDE : delta < -0.005 ? VERMELHO : AZUL;
+// Sombra suave da linha conforme a variação (verde/vermelho/azul bem claros).
+const fillDelta = (delta: number): [number, number, number] =>
+  delta > 0.005 ? [236, 253, 245] : delta < -0.005 ? [254, 242, 242] : [239, 246, 255];
 const txtVariacao = (delta: number, pct: number | null): string => {
   const seta = delta > 0.005 ? "+" : delta < -0.005 ? "-" : "=";
   const pctTxt = pct === null ? (delta > 0.005 ? " (novo)" : "") : ` (${pct >= 0 ? "+" : "-"}${Math.abs(pct).toFixed(1)}%)`;
@@ -87,11 +90,12 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
     if (!temSub) return;
     const d = Math.round((subComp - subBase) * 100) / 100;
     const pct = subBase > 0 ? (d / subBase) * 100 : null;
+    const fs = fillDelta(d);
     body.push([
-      { content: `Subtotal ${areaPrev || "sem área"}`, styles: { fontStyle: "italic", textColor: [107, 114, 128], fontSize: 8 } },
-      { content: fmtBR(subBase), styles: { halign: "right", textColor: [107, 114, 128], fontSize: 8 } },
-      { content: fmtBR(subComp), styles: { halign: "right", fontStyle: "bold", textColor: [107, 114, 128], fontSize: 8 } },
-      { content: txtVariacao(d, pct), styles: { halign: "right", textColor: corDelta(d), fontStyle: "bold", fontSize: 8 } },
+      { content: `Subtotal ${areaPrev || "sem área"}`, styles: { fontStyle: "bold", textColor: [75, 85, 99], fontSize: 8, fillColor: fs } },
+      { content: fmtBR(subBase), styles: { halign: "right", textColor: [75, 85, 99], fontSize: 8, fillColor: fs } },
+      { content: fmtBR(subComp), styles: { halign: "right", fontStyle: "bold", textColor: [55, 65, 81], fontSize: 8, fillColor: fs } },
+      { content: txtVariacao(d, pct), styles: { halign: "right", textColor: corDelta(d), fontStyle: "bold", fontSize: 8, fillColor: fs } },
     ]);
     subBase = 0; subComp = 0; temSub = false;
   };
@@ -107,11 +111,12 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
       body.push([{ content: l.area || "Sem área", colSpan: 4, styles: { fillColor: [243, 244, 246], textColor: [55, 65, 81], fontStyle: "bold", fontSize: 9 } }]);
       areaPrev = l.area;
     }
+    const f = fillDelta(l.delta);
     body.push([
-      l.cargoNome ? `${l.nome}\n${l.cargoNome}` : l.nome,
-      fmtBR(l.liqBase),
-      fmtBR(l.liqComp),
-      { content: txtVariacao(l.delta, l.pct), styles: { textColor: corDelta(l.delta), fontStyle: "bold", halign: "right" } },
+      { content: l.cargoNome ? `${l.nome}\n${l.cargoNome}` : l.nome, styles: { fillColor: f } },
+      { content: fmtBR(l.liqBase), styles: { halign: "right", fillColor: f } },
+      { content: fmtBR(l.liqComp), styles: { halign: "right", fontStyle: "bold", fillColor: f } },
+      { content: txtVariacao(l.delta, l.pct), styles: { textColor: corDelta(l.delta), fontStyle: "bold", halign: "right", fillColor: f } },
     ]);
     subBase += l.liqBase; subComp += l.liqComp; temSub = true;
   }

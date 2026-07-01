@@ -152,19 +152,22 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   const totDelta = Math.round((totComp - totBase) * 100) / 100;
   const totPct = totBase > 0 ? (totDelta / totBase) * 100 : null;
 
-  // Chip da variação: verde (aumento) · vermelho (queda) · azul (exatamente zero).
-  const DeltaChip = ({ delta, pct }: { delta: number; pct: number | null }) => {
+  // Sombra da linha inteira conforme a variação: verde (aumento), vermelho
+  // (queda), azul (exatamente zero).
+  const rowTint = (delta: number) =>
+    delta > 0.005 ? "bg-emerald-50/70 dark:bg-emerald-900/15"
+    : delta < -0.005 ? "bg-rose-50/70 dark:bg-rose-900/15"
+    : "bg-blue-50/70 dark:bg-blue-900/15";
+
+  // Texto da variação (colorido, sem chip).
+  const DeltaText = ({ delta, pct }: { delta: number; pct: number | null }) => {
     const up = delta > 0.005, down = delta < -0.005;
-    const cls = up
-      ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
-      : down
-      ? "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-300"
-      : "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300";
+    const cor = up ? "text-emerald-700 dark:text-emerald-400" : down ? "text-rose-700 dark:text-rose-400" : "text-blue-700 dark:text-blue-400";
     const seta = up ? "▲" : down ? "▼" : "→";
     const pctTxt = pct === null ? (up ? "novo" : "—") : `${pct >= 0 ? "+" : "−"}${Math.abs(pct).toFixed(1)}%`;
     return (
-      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold tabular-nums whitespace-nowrap ${cls}`}>
-        {seta} {delta >= 0 ? "+" : "−"}{fmtBR(Math.abs(delta))} · {pctTxt}
+      <span className={`tabular-nums font-semibold whitespace-nowrap ${cor}`}>
+        {seta} {delta >= 0 ? "+" : "−"}{fmtBR(Math.abs(delta))} <span className="font-normal text-[11px]">· {pctTxt}</span>
       </span>
     );
   };
@@ -233,9 +236,9 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
             <div className="text-[10px] uppercase tracking-wider text-indigo-600 dark:text-indigo-300">Total {labelMes(comparado)}</div>
             <div className="text-xl font-bold text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtBR(totComp)}</div>
           </div>
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex flex-col justify-center">
+          <div className={`rounded-xl border border-gray-200 dark:border-gray-800 p-3 flex flex-col justify-center ${rowTint(totDelta)}`}>
             <div className="text-[10px] uppercase tracking-wider text-gray-500 mb-1">Variação total</div>
-            <DeltaChip delta={totDelta} pct={totPct} />
+            <div className="text-lg"><DeltaText delta={totDelta} pct={totPct} /></div>
           </div>
         </div>
       )}
@@ -280,32 +283,32 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
                         </td>
                       </tr>
                       {g.rows.map((l) => (
-                        <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
+                        <tr key={l.id} className={`border-t border-gray-100 dark:border-gray-800 ${rowTint(l.delta)}`}>
                           <td className="px-3 py-2 pl-5">
                             <div className="font-medium text-gray-900 dark:text-gray-100">{l.nome}</div>
                             {l.cargoNome && <div className="text-xs text-gray-500">{l.cargoNome}</div>}
                           </td>
                           <td className="text-right px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.liqBase)}</td>
                           <td className="text-right px-3 py-2 tabular-nums font-semibold text-gray-900 dark:text-gray-100">{fmtBR(l.liqComp)}</td>
-                          <td className="text-right px-3 py-2 whitespace-nowrap"><DeltaChip delta={l.delta} pct={l.pct} /></td>
+                          <td className="text-right px-3 py-2"><DeltaText delta={l.delta} pct={l.pct} /></td>
                         </tr>
                       ))}
-                      <tr className="border-t border-gray-100 dark:border-gray-800 text-gray-500 dark:text-gray-400">
-                        <td className="px-3 py-1.5 pl-5 text-[11px] font-semibold">Subtotal {g.area || "sem área"}</td>
-                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px]">{fmtBR(g.base)}</td>
-                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px] font-semibold">{fmtBR(g.comp)}</td>
-                        <td className="text-right px-3 py-1.5 whitespace-nowrap"><DeltaChip delta={subDelta} pct={subPct} /></td>
+                      <tr className={`border-t border-gray-200 dark:border-gray-700 ${rowTint(subDelta)}`}>
+                        <td className="px-3 py-1.5 pl-5 text-[11px] font-bold text-gray-600 dark:text-gray-300">Subtotal {g.area || "sem área"}</td>
+                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px] text-gray-600 dark:text-gray-300">{fmtBR(g.base)}</td>
+                        <td className="text-right px-3 py-1.5 tabular-nums text-[12px] font-bold text-gray-800 dark:text-gray-100">{fmtBR(g.comp)}</td>
+                        <td className="text-right px-3 py-1.5"><DeltaText delta={subDelta} pct={subPct} /></td>
                       </tr>
                     </Fragment>
                   );
                 })}
               </tbody>
               <tfoot>
-                <tr className="bg-gray-50 dark:bg-gray-800 font-bold">
-                  <td className="px-3 py-2">Total</td>
+                <tr className={`font-bold border-t-2 border-gray-300 dark:border-gray-600 ${rowTint(totDelta)}`}>
+                  <td className="px-3 py-2">Total geral</td>
                   <td className="text-right px-3 py-2 tabular-nums">{fmtBR(totBase)}</td>
                   <td className="text-right px-3 py-2 tabular-nums">{fmtBR(totComp)}</td>
-                  <td className="text-right px-3 py-2 whitespace-nowrap"><DeltaChip delta={totDelta} pct={totPct} /></td>
+                  <td className="text-right px-3 py-2"><DeltaText delta={totDelta} pct={totPct} /></td>
                 </tr>
               </tfoot>
             </table>
