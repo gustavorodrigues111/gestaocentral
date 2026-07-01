@@ -214,6 +214,13 @@ export type Empregado = {
 
   // Trilha de admissões/demissões
   periodos: EmpregadoPeriodo[];
+  // Freela MENSALISTA: freela (provisório) que cobre um período (ex: férias de
+  // um CLT) e, diferente do diarista, ENTRA NA GORJETA dos dias trabalhados.
+  // Não bate ponto na Sólides — fecha a praticada pela prevista (Análise de
+  // Ponto). O período de cobertura é o próprio `periodos` (admissão/demissão).
+  // É só um marcador de clareza: a gorjeta já entra por cargo com pontos +
+  // período ativo + escala; o fechamento entra por não bater ponto.
+  freelaMensalista?: boolean;
   // Derivados pra performance (atualizados sempre que mexe em periodos)
   estaAtivo: boolean;            // true se último período sem demissão
   admissaoAtual?: string | null; // último período em aberto

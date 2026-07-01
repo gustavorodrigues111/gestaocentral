@@ -43,6 +43,14 @@ const STATUS_VIS: Record<ScheduleStatus, { short: string; badge: string; row: st
 };
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
+// solId sintético (negativo) pra empregados do app que não estão na Sólides —
+// serve só de chave de seleção; ids reais da Sólides são positivos, então não
+// colide. Determinístico a partir do id do empregado (estável entre renders).
+function synthSolId(empId: string): number {
+  let h = 0;
+  for (let i = 0; i < empId.length; i++) h = (Math.imul(h, 31) + empId.charCodeAt(i)) | 0;
+  return -(Math.abs(h) + 1);
+}
 const pad = (n: number) => String(n).padStart(2, "0");
 const fmtDataBR = (ymd: string) => ymd ? ymd.slice(8, 10) + "/" + ymd.slice(5, 7) : "—";
 const DIAS_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
@@ -279,12 +287,26 @@ export function FechamentoTab({
   // histórico inteiro de demitidos antigos.
   const colaboradores = useMemo(() => {
     const monthStart = `${mes}-01`;
-    return roster
+    const [my, mm] = mes.split("-").map(Number);
+    const monthEnd = `${mes}-${String(new Date(my, mm, 0).getDate()).padStart(2, "0")}`;
+    const rosterCols = roster
       .filter((r) => typeof r.id === "number")
-      .map((r) => ({ solId: r.id as number, nome: r.name || "?", emp: empAppPorCpf.get(soDigitos(r.cpf)), demissao: demissaoYmd(r), fired: !!r.fired }))
-      .filter((c) => !c.fired || (c.demissao ? c.demissao >= monthStart : false))
-      .sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [roster, empAppPorCpf, mes]);
+      .map((r) => ({ solId: r.id as number, nome: r.name || "?", emp: empAppPorCpf.get(soDigitos(r.cpf)) as Empregado | undefined, demissao: demissaoYmd(r), fired: !!r.fired, appOnly: false }))
+      .filter((c) => !c.fired || (c.demissao ? c.demissao >= monthStart : false));
+    // Empregados do app que NÃO batem ponto e NÃO estão na Sólides (ex: freela
+    // mensalista). Entram aqui pra dar pra revisar a prevista e fechar a
+    // praticada — sem batidas pra cruzar (a sugestão vem da escala prevista).
+    const cpfsRoster = new Set(roster.map((r) => soDigitos(r.cpf)).filter(Boolean));
+    const appOnly = empregados
+      .filter((e) => {
+        if (e.cpf && cpfsRoster.has(soDigitos(e.cpf))) return false;   // já está na Sólides
+        const cargo = e.cargoId ? cargoPorId.get(e.cargoId) : undefined;
+        if (empregadoBatePonto(e, cargo)) return false;               // bate ponto → fluxo normal
+        return (e.periodos || []).some((p) => p.admissao <= monthEnd && (!p.demissao || p.demissao > monthStart));
+      })
+      .map((e) => ({ solId: synthSolId(e.id), nome: e.nome, emp: e as Empregado | undefined, demissao: (e.demitidoEm || undefined) as string | undefined, fired: !e.estaAtivo, appOnly: true }));
+    return [...rosterCols, ...appOnly].sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [roster, empAppPorCpf, empregados, cargoPorId, mes]);
   type ColabItem = (typeof colaboradores)[number];
 
   const hojeYmd = useMemo(() => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; }, []);
@@ -452,6 +474,7 @@ export function FechamentoTab({
 
   const colSel = colaboradores.find((c) => c.solId === selEmp);
   const naoBateSel = naoBatePontoDe(colSel?.emp);
+  const appOnlySel = !!colSel?.appOnly;   // não bate ponto E não está na Sólides
   const appIdSel = colSel?.emp?.id;
   const previstaFechada = !!escala?.previstaFechadaEm;
   const mesEncerrado = !!escala?.fechadoEm;
@@ -911,7 +934,7 @@ export function FechamentoTab({
             className="h-9 px-4 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap">
             {carregando ? "Atualizando…" : "🔄 Atualizar"}
           </button>
-          {selEmp !== "" && (
+          {selEmp !== "" && !appOnlySel && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
               {pdfLoading ? "Gerando…" : "👁 Visualizar espelho (PDF)"}
@@ -979,7 +1002,8 @@ export function FechamentoTab({
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${sel ? "ring-2 ring-indigo-500" : ""}`}
                       >
                         <span className="shrink-0">{st === "fechado" ? "✓" : st === "aberto" ? "●" : "○"}</span>
-                        <span className="truncate flex-1">{naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
+                        <span className="truncate flex-1">{c.appOnly ? "📋 " : naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
+                        {c.appOnly && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200" title="Não bate ponto na Sólides — fecha pela prevista">APP</span>}
                         {c.fired && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200">DEM</span>}
                       </button>
                     );
@@ -999,7 +1023,12 @@ export function FechamentoTab({
         <div className="text-center text-sm text-gray-400 py-12">Escolha um colaborador pra revisar o espelho.</div>
       ) : (
         <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          {naoBateSel && (
+          {appOnlySel ? (
+            <div className="px-4 py-2.5 bg-violet-50 dark:bg-violet-950/30 border-b border-violet-200 dark:border-violet-900/50 text-[12px] text-violet-800 dark:text-violet-200 flex items-start gap-2">
+              <span className="text-base leading-none">📋</span>
+              <span><strong>Não bate ponto na Sólides</strong> (ex: freela mensalista). Não há batidas pra cruzar — a sugestão abaixo vem da <strong>escala prevista</strong>. Revise dia a dia, declare se trabalhou e feche pra registrar na praticada (e entrar na gorjeta dos dias trabalhados).</span>
+            </div>
+          ) : naoBateSel && (
             <div className="px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-900/50 text-[12px] text-amber-800 dark:text-amber-200 flex items-start gap-2">
               <span className="text-base leading-none">🎩</span>
               <span><strong>Cargo de confiança</strong> — dispensado de bater ponto (CLT Art. 62 II). Não há batidas pra cruzar: a sugestão abaixo vem direto da <strong>escala prevista</strong>. Confira e feche pra registrar a praticada do mês.</span>

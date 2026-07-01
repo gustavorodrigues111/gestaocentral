@@ -47,6 +47,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [batePonto, setBatePonto] = useState<boolean | null>(
     typeof empregado?.batePonto === "boolean" ? empregado.batePonto : null,
   );
+  // Freela mensalista: freela (provisório) que cobre um período e entra na
+  // gorjeta dos dias trabalhados. Não bate ponto — fecha pela prevista.
+  const [freelaMensalista, setFreelaMensalista] = useState<boolean>(!!empregado?.freelaMensalista);
   // Auto-sugere unidade padrão: se cargo é produção, pega primeira de produção;
   // senão pega primeira de atendimento. Se rest tem só 1, usa essa.
   function sugestaoUnidade(novoCargoId: string): string {
@@ -188,6 +191,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     }
     // batePonto: override individual sobre o cargo. null = herdar (grava null
     // no Firestore — empregadoBatePonto() só consulta se for boolean).
+    if (!!empregado.freelaMensalista !== freelaMensalista) {
+      nonCritical.freelaMensalista = freelaMensalista;
+    }
     const batePontoAtualEmp = typeof empregado.batePonto === "boolean" ? empregado.batePonto : null;
     if (batePontoAtualEmp !== batePonto) {
       nonCritical.batePonto = batePonto;
@@ -281,6 +287,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
           cargoId,
           ...(batePonto !== null ? { batePonto } : {}),
+          ...(freelaMensalista ? { freelaMensalista: true } : {}),
           unidadePadraoId: unidadePadraoId || null,
           empCode: empCode.trim() || null,
           codigoContabil: codigoContabil.trim() || null,
@@ -626,6 +633,24 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </div>
           );
         })()}
+
+        {/* Freela mensalista — só faz sentido pra vínculo provisório (freela).
+            Marca que a pessoa cobre um período e ENTRA NA GORJETA dos dias
+            trabalhados (≠ diarista). Usa o período de admissão/demissão como
+            janela de cobertura; não bate ponto (fecha pela prevista). */}
+        {cargo?.tipoVinculo === "provisorio" && (
+          <div className="border border-violet-200 dark:border-violet-800/50 rounded-lg p-3 bg-violet-50/60 dark:bg-violet-950/20">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={freelaMensalista}
+                onChange={(e) => { setFreelaMensalista(e.target.checked); if (e.target.checked && batePonto === null) setBatePonto(false); }} />
+              <span className="font-medium">🗓️ Freela mensalista</span>
+              <span className="text-xs text-gray-500">(entra na gorjeta do período)</span>
+            </label>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
+              Cobre um período (ex: férias de um CLT). Defina a <strong>admissão/demissão</strong> como a janela de cobertura e um <strong>cargo com pontos</strong> pra entrar na gorjeta. Não bate ponto — o fechamento é feito pela prevista na Análise de Ponto.
+            </p>
+          </div>
+        )}
 
         {/* Unidade padrão: só aparece se há mais de 1 unidade. Se há 1 só,
             já vem auto-preenchida e não precisa mostrar dropdown. */}
