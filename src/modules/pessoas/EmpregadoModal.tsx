@@ -72,6 +72,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   );
   // Fim da cobertura do freela mensalista (= demissão do período). "" = em aberto.
   const [coberturaFim, setCoberturaFim] = useState<string>(ultimoPeriodo?.demissao || "");
+  const [coberturaMotivo, setCoberturaMotivo] = useState<string>(ultimoPeriodo?.motivo || "");
   const [empCode, setEmpCode] = useState(empregado?.empCode || "");
   const [codigoContabil, setCodigoContabil] = useState(empregado?.codigoContabil || "");
   const [emergenciaNome, setEmergenciaNome] = useState(empregado?.emergenciaNome || "");
@@ -235,13 +236,15 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   function buildPeriodos() {
     const now = new Date().toISOString();
     const dem = demissaoPeriodo();
-    // Freela mensalista: edita a JANELA do último período (início + fim) no lugar.
+    // Freela mensalista: edita a JANELA do último período (início + fim + motivo).
     if (freelaMensalista) {
-      const p = { admissao, demissao: dem, registradoEm: now, registradoPor: me!.id };
+      const mot = coberturaMotivo.trim() || null;
+      const p = { admissao, demissao: dem, ...(mot ? { motivo: mot } : {}), registradoEm: now, registradoPor: me!.id };
       if (!empregado?.periodos?.length) return [p];
       const last = empregado.periodos[empregado.periodos.length - 1];
-      if (last.admissao === admissao && (last.demissao || null) === dem) return empregado.periodos;
-      return [...empregado.periodos.slice(0, -1), { ...last, admissao, demissao: dem }];
+      if (last.admissao === admissao && (last.demissao || null) === dem && (last.motivo || "") === (mot || "")) return empregado.periodos;
+      const { motivo: _drop, ...lastSemMotivo } = last;
+      return [...empregado.periodos.slice(0, -1), { ...lastSemMotivo, admissao, demissao: dem, ...(mot ? { motivo: mot } : {}) }];
     }
     // ── fluxo normal ──
     const periodoNovo = { admissao, demissao: null, registradoEm: now, registradoPor: me!.id };
@@ -298,7 +301,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           nome: usaPessoa ? pessoa.nome : nomeProvisorio.trim(),
           cpf: usaPessoa ? (pessoa.cpf || null) : (cpfProvisorio.trim() || null),
           cargoId,
-          ...(batePonto !== null ? { batePonto } : {}),
+          // Freela mensalista não bate ponto mesmo em cargo CLT.
+          ...(freelaMensalista ? { batePonto: false } : (batePonto !== null ? { batePonto } : {})),
           ...(freelaMensalista ? { freelaMensalista: true } : {}),
           unidadePadraoId: unidadePadraoId || null,
           empCode: empCode.trim() || null,
@@ -306,9 +310,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           emergenciaNome: emergenciaNome.trim() || null,
           emergenciaTelefone: emergenciaTelefone.trim() || null,
           periodos: buildPeriodos(),
-          estaAtivo: !demissaoPeriodo(),
-          admissaoAtual: demissaoPeriodo() ? null : admissao,
-          demitidoEm: demissaoPeriodo(),
+          // Freela mensalista segue ATIVO após o fim da cobertura (fica de
+          // sobreaviso p/ próximas coberturas); a escala/gorjeta usam o período.
+          estaAtivo: freelaMensalista ? true : !demissaoPeriodo(),
+          admissaoAtual: (freelaMensalista || !demissaoPeriodo()) ? admissao : null,
+          demitidoEm: freelaMensalista ? null : demissaoPeriodo(),
           vtAtivo: !!vtAtivo,
           ...(vtAtivo ? {
             vtPassagensPorDia: parseFloat(vtPassagensPorDia),
@@ -379,11 +385,11 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     const admissaoMudou = empregado!.admissaoAtual !== admissao;
     if (JSON.stringify(periodos) !== JSON.stringify(empregado!.periodos)) {
       nonCritical.periodos = periodos;
-      // Freela mensalista com fim fecha o período → reflete nos derivados.
       const dem = demissaoPeriodo();
-      nonCritical.admissaoAtual = dem ? null : admissao;
-      nonCritical.estaAtivo = !dem;
-      nonCritical.demitidoEm = dem;
+      // Freela mensalista segue ativo mesmo com a cobertura encerrada.
+      nonCritical.admissaoAtual = (freelaMensalista || !dem) ? admissao : null;
+      nonCritical.estaAtivo = freelaMensalista ? true : !dem;
+      nonCritical.demitidoEm = freelaMensalista ? null : dem;
     }
 
     if (criticas.length === 0) {
@@ -619,7 +625,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         {/* Cargo de confiança — override individual. SÓ pra vínculos que batem
             ponto por padrão (CLT/estagiário). Freela/terceirizado já não bate
             ponto pela natureza do vínculo — não é "cargo de confiança". */}
-        {cargo && (cargo.tipoVinculo === "registrado" || cargo.tipoVinculo === "estagiario") && (() => {
+        {cargo && !freelaMensalista && (cargo.tipoVinculo === "registrado" || cargo.tipoVinculo === "estagiario") && (() => {
           // CLT/estagiário batem ponto por padrão; confiança = override do cargo.
           const herdadoDoCargo = cargo.batePonto === false;
           const efetivoConfianca = batePonto === null ? herdadoDoCargo : batePonto === false;
@@ -649,17 +655,18 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           );
         })()}
 
-        {/* ── Bloco Freela mensalista — só pra vínculo provisório (freela) ──
-            Bloco dedicado: marca que a pessoa cobre um PERÍODO e entra na
-            escala + na gorjeta só desses dias (≠ diarista, que é por turno no
-            módulo Freelas). Início = Admissão; Fim = fim da cobertura. */}
-        {cargo?.tipoVinculo === "provisorio" && (
+        {/* ── Bloco Freela mensalista (cobertura provisória) ──
+            Reaproveita QUALQUER cargo existente (o cargo dá pontos/área pra
+            gorjeta). Marca que a pessoa cobre um PERÍODO e entra na escala +
+            gorjeta só desses dias, sem bater ponto (≠ diarista, que é por turno
+            no módulo Freelas). Início = Admissão; Fim = fim da cobertura. */}
+        {cargo && (
           <div className="border border-violet-200 dark:border-violet-800/50 rounded-lg p-3 bg-violet-50/60 dark:bg-violet-950/20 space-y-2">
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={freelaMensalista}
-                onChange={(e) => setFreelaMensalista(e.target.checked)} />
-              <span className="font-medium">🗓️ Freela mensalista</span>
-              <span className="text-xs text-gray-500">(entra na escala e na gorjeta do período)</span>
+                onChange={(e) => { setFreelaMensalista(e.target.checked); if (e.target.checked) setBatePonto(false); }} />
+              <span className="font-medium">🗓️ Freela mensalista (cobertura)</span>
+              <span className="text-xs text-gray-500">(entra na escala e na gorjeta só no período)</span>
             </label>
             {freelaMensalista ? (
               <>
@@ -675,13 +682,19 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                       className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                   </div>
                 </div>
+                <div className="pl-6">
+                  <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Motivo da cobertura</label>
+                  <input type="text" value={coberturaMotivo} onChange={(e) => setCoberturaMotivo(e.target.value)}
+                    placeholder="ex: cobertura de férias do Fulano"
+                    className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                </div>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-6">
-                  Só entra na escala/gorjeta entre essas datas. Escolha um <strong>cargo com pontos</strong> pra receber gorjeta. <strong>Não bate ponto</strong> — o fechamento é pela escala prevista na Análise de Ponto.
+                  Usa o cargo <strong>"{cargo.nome}"</strong> (pontos/área da gorjeta). Só entra na escala/gorjeta entre as datas. <strong>Não bate ponto</strong> — fecha pela prevista na Análise de Ponto. Segue como freela ativo após o fim.
                 </p>
               </>
             ) : (
               <p className="text-[11px] text-gray-500 dark:text-gray-400 pl-6">
-                Marque se este freela cobre um período fixo e deve <strong>entrar na gorjeta</strong> (ex: cobrindo férias de um CLT). Diarista pago por turno é no módulo <strong>Freelas</strong>.
+                Marque se esta pessoa é freela cobrindo um período (ex: férias de um CLT) e deve <strong>entrar na gorjeta</strong> desses dias, no cargo escolhido acima. Diarista pago por turno é no módulo <strong>Freelas</strong>.
               </p>
             )}
           </div>

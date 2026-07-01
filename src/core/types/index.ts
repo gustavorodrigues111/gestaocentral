@@ -188,6 +188,8 @@ export type EmpregadoPeriodo = {
   admissao: string;              // YYYY-MM-DD
   demissao?: string | null;      // YYYY-MM-DD (null = vigente)
   motivoDemissao?: string;
+  // Motivo da COBERTURA (freela mensalista): ex "cobertura de férias do Fulano".
+  motivo?: string;
   registradoEm: string;          // ISO
   registradoPor: string;         // pessoaId
 };
