@@ -928,12 +928,23 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
     return () => { cancelado = true; };
   }, [pessoa.id, restaurantId]);
 
-  const vinculoExplicito = pessoa.vinculos?.[restaurantId] || null;
-  const vinculoResolvido = resolverVinculo(pessoa, restaurantId, empregado, cargo);
+  // Estado LOCAL otimista — o componente lê da prop `pessoa`, que só atualiza
+  // ao reabrir o modal. Sem isso, clicar num toggle grava mas a tela não
+  // reflete na hora (o bug relatado). Sincroniza quando a prop muda.
+  const [vinculoLocal, setVinculoLocal] = useState<VinculoLogico | "">(pessoa.vinculos?.[restaurantId] || "");
+  const [togglesLocal, setTogglesLocal] = useState<Record<string, boolean | undefined>>(pessoa.pessoaToggles?.[restaurantId] || {});
+  useEffect(() => {
+    setVinculoLocal(pessoa.vinculos?.[restaurantId] || "");
+    setTogglesLocal(pessoa.pessoaToggles?.[restaurantId] || {});
+  }, [pessoa, restaurantId]);
+
+  const vinculoExplicito = vinculoLocal || null;
+  const vinculoResolvido = vinculoLocal || resolverVinculo(pessoa, restaurantId, empregado, cargo);
   const atributosPess = vinculoResolvido ? atributosDependeDaPessoa(vinculoResolvido) : [];
-  const toggles = pessoa.pessoaToggles?.[restaurantId] || {};
+  const toggles = togglesLocal;
 
   async function alterarVinculo(novo: VinculoLogico | "") {
+    setVinculoLocal(novo);   // otimista — reflete na hora
     setSalvando(true);
     setErro("");
     try {
@@ -952,17 +963,18 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
   }
 
   async function alterarToggle(atributo: AtributoVinculo, valor: boolean) {
+    // Só atributos persistidos em pessoaToggles (subset do AtributoVinculo)
+    const persistedKeys: AtributoVinculo[] = [
+      "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
+      "recebeVT", "recebeVR", "temCargoAssociado",
+    ];
+    if (!persistedKeys.includes(atributo)) return;
+    setTogglesLocal((prev) => ({ ...prev, [atributo]: valor }));   // otimista — reflete na hora
     setSalvando(true);
     setErro("");
     try {
       const pessoaToggles = { ...(pessoa.pessoaToggles || {}) };
       const ridToggles = { ...(pessoaToggles[restaurantId] || {}) };
-      // Só atributos persistidos em pessoaToggles (subset do AtributoVinculo)
-      const persistedKeys: AtributoVinculo[] = [
-        "apareceNaEscalaMensal", "temHorarioCadastrado", "recebeGorjeta",
-        "recebeVT", "recebeVR", "temCargoAssociado",
-      ];
-      if (!persistedKeys.includes(atributo)) return;
       (ridToggles as Record<string, boolean>)[atributo] = valor;
       pessoaToggles[restaurantId] = ridToggles;
       await updateDoc(doc(db, "pessoas", pessoa.id), {
@@ -971,6 +983,7 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
       });
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar");
+      setTogglesLocal((prev) => ({ ...prev, [atributo]: !valor }));   // reverte no erro
     } finally {
       setSalvando(false);
     }
