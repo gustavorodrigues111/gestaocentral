@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import type { ItemUniforme, Pessoa } from "../../core/types";
-import { deletarItem } from "../../core/uniformes/uniformesHelpers";
 import { ItemEditarModal } from "./ItemEditarModal";
 
 type Props = {
@@ -32,20 +31,6 @@ export function ItensTab({ itens, podeConfig, pessoa, restaurantId }: Props) {
     }
     return r.sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
   }, [itens, filtro, busca]);
-
-  async function excluir(item: ItemUniforme) {
-    if (!podeConfig) return;
-    const tem = item.variacoes.some(v => v.estoque > 0);
-    const aviso = tem
-      ? `${item.nome} tem estoque > 0 em alguma variação. Excluir mesmo assim?`
-      : `Excluir o item "${item.nome}"?`;
-    if (!confirm(aviso)) return;
-    try {
-      await deletarItem(item.id);
-    } catch (e) {
-      alert("Erro ao excluir: " + (e instanceof Error ? e.message : "?"));
-    }
-  }
 
   return (
     <div className="space-y-3">
@@ -98,7 +83,6 @@ export function ItensTab({ itens, podeConfig, pessoa, restaurantId }: Props) {
               item={item}
               podeConfig={podeConfig}
               onEditar={() => setEditando(item)}
-              onExcluir={() => excluir(item)}
             />
           ))}
         </div>
@@ -117,12 +101,11 @@ export function ItensTab({ itens, podeConfig, pessoa, restaurantId }: Props) {
 }
 
 function ItemRow({
-  item, podeConfig, onEditar, onExcluir,
+  item, podeConfig, onEditar,
 }: {
   item: ItemUniforme;
   podeConfig: boolean;
   onEditar: () => void;
-  onExcluir: () => void;
 }) {
   const estoqueTotal = item.variacoes.reduce((s, v) => s + (v.estoque || 0), 0);
   const algumBaixo = item.variacoes.some(v =>
@@ -186,13 +169,6 @@ function ItemRow({
               className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
             >
               ✏️ editar
-            </button>
-            <button
-              type="button"
-              onClick={onExcluir}
-              className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline"
-            >
-              🗑️ excluir
             </button>
           </div>
         )}

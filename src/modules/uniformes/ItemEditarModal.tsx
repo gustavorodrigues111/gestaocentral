@@ -40,7 +40,38 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
       ? structuredClone(item.variacoes)
       : [{ id: novaVariacaoId(), tamanho: "Único", estoque: 0 }],
   );
-  const [ativo, setAtivo] = useState(item?.ativo ?? true);
+  const [ativo] = useState(item?.ativo ?? true);
+  const isMaster = !!pessoa.isMaster;
+
+  async function excluirItem() {
+    if (!item) return;
+    const temEstoque = item.variacoes.some(v => v.estoque > 0);
+    const ok = window.confirm(
+      `Excluir "${item.nome}"?` +
+      (temEstoque ? "\n\n⚠ Ainda há estoque em alguma variação." : "") +
+      "\n\nEle some das listas mas fica no histórico (filtro \"Inativos\"). O master pode reabilitar depois.",
+    );
+    if (!ok) return;
+    setSalvando(true);
+    try {
+      await atualizarItem(item.id, { ativo: false });
+      onClose();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao excluir.");
+      setSalvando(false);
+    }
+  }
+  async function reabilitarItem() {
+    if (!item) return;
+    setSalvando(true);
+    try {
+      await atualizarItem(item.id, { ativo: true });
+      onClose();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao reabilitar.");
+      setSalvando(false);
+    }
+  }
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -260,19 +291,28 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={ativo}
-            onChange={(e) => setAtivo(e.target.checked)}
-            className="w-4 h-4 accent-indigo-600"
-          />
-          <span>Item ativo (aparece nas listas de seleção)</span>
-        </label>
+        {!novo && item && !item.ativo && (
+          <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-lg px-3 py-2">
+            Este item está <strong>excluído</strong> (não aparece nas listas). {isMaster ? "Você pode reabilitá-lo abaixo." : "Só o master pode reabilitar."}
+          </div>
+        )}
 
         {erro && <div className="text-xs text-rose-600 dark:text-rose-400">{erro}</div>}
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+          {!novo && item && (
+            item.ativo ? (
+              <button type="button" onClick={excluirItem} disabled={salvando}
+                className="text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline mr-auto disabled:opacity-50">
+                🗑️ Excluir item
+              </button>
+            ) : isMaster ? (
+              <button type="button" onClick={reabilitarItem} disabled={salvando}
+                className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline mr-auto disabled:opacity-50">
+                ♻️ Reabilitar item
+              </button>
+            ) : <div className="mr-auto" />
+          )}
           <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
           <Button onClick={salvar} disabled={salvando}>
             {salvando ? "Salvando…" : (novo ? "Criar item" : "Salvar")}

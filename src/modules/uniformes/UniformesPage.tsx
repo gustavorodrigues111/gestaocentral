@@ -18,12 +18,11 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { TabBadge } from "../../core/ui/TabBadge";
 import type {
-  EntregaUniforme, ItemUniforme, KitAreaUniforme, MovEstoqueUniforme,
+  EntregaUniforme, ItemUniforme, KitAreaUniforme,
 } from "../../core/types";
 import { itensProximosVencimento } from "../../core/uniformes/uniformesHelpers";
 import { ItensTab } from "./ItensTab";
 import { KitsAreaTab } from "./KitsAreaTab";
-import { EstoqueTab } from "./EstoqueTab";
 import { PorEmpregadoTab } from "./PorEmpregadoTab";
 
 type TabId = "porEmpregado" | "estoque" | "config";
@@ -52,7 +51,6 @@ export function UniformesPage() {
   const [itens, setItens] = useState<ItemUniforme[]>([]);
   const [kits, setKits] = useState<KitAreaUniforme[]>([]);
   const [entregas, setEntregas] = useState<EntregaUniforme[]>([]);
-  const [movs, setMovs] = useState<MovEstoqueUniforme[]>([]);
 
   useEffect(() => {
     if (!rid) return;
@@ -68,11 +66,7 @@ export function UniformesPage() {
       query(collection(db, "entregasUniforme"), where("restaurantId", "==", rid)),
       (snap) => setEntregas(snap.docs.map(d => ({ ...d.data(), id: d.id }) as EntregaUniforme)),
     );
-    const u4 = onSnapshot(
-      query(collection(db, "movEstoqueUniforme"), where("restaurantId", "==", rid)),
-      (snap) => setMovs(snap.docs.map(d => ({ ...d.data(), id: d.id }) as MovEstoqueUniforme)),
-    );
-    return () => { u1(); u2(); u3(); u4(); };
+    return () => { u1(); u2(); u3(); };
   }, [rid]);
 
   // Contadores pros badges
@@ -129,14 +123,7 @@ export function UniformesPage() {
         />
       )}
       {tab === "estoque" && me && (
-        <div className="space-y-6">
-          {/* Cadastro de itens (uniformes + EPIs) */}
-          <ItensTab itens={itens} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
-          {/* Controle de estoque (saldos + ajustes + histórico) */}
-          <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
-            <EstoqueTab itens={itens} movs={movs} podeConfig={podeConfig} pessoa={me} />
-          </div>
-        </div>
+        <ItensTab itens={itens} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
       )}
       {tab === "config" && me && (
         <div className="space-y-2">
