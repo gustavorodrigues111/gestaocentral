@@ -107,10 +107,17 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   useEffect(() => {
     if (!restaurantId) return;
     return onSnapshot(query(collection(db, "freelaMensalistaConfirmado"), where("restaurantId", "==", restaurantId)), (snap) => {
-      const arr = snap.docs.map((d) => {
-        const data = d.data() as { linha: FreelaMensalistaLinha; input?: MensInput };
-        return { ...data.linha, docId: d.id, input: data.input } as ConfLinha;
-      }).sort((a, b) => (b.competencia + a.nome).localeCompare(a.competencia + b.nome));
+      const arr = snap.docs
+        .map((d) => {
+          const data = d.data() as { linha?: FreelaMensalistaLinha; input?: MensInput };
+          // Docs de schema antigo não gravavam `linha` — sem ela não dá pra
+          // exibir o confirmado (não crashamos, só ignoramos: o usuário
+          // reconfirma na competência dele).
+          if (!data.linha || !data.linha.competencia) return null;
+          return { ...data.linha, docId: d.id, input: data.input } as ConfLinha;
+        })
+        .filter((c): c is ConfLinha => c !== null)
+        .sort((a, b) => (b.competencia + a.nome).localeCompare(a.competencia + b.nome));
       setConfirmados(arr);
       setMensSel((prev) => { const n = new Set(prev); arr.forEach((c) => n.add(c.docId)); return n; });
     });
