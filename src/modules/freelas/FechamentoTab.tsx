@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
@@ -330,7 +331,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         criadoPor: me.id,
         criadoPorNome: me.nome,
       };
-      const ref = await addDoc(collection(db, "freelaPagamentos"), payload as Record<string, unknown>);
+      const ref = await addDoc(collection(db, "freelaPagamentos"), sanitizeForFirestore(payload));
       const batch = writeBatch(db);
       for (const s of selecShifts) {
         batch.update(doc(db, "freelaShifts", s.id), { lotePagamentoId: ref.id, updatedAt: now });
