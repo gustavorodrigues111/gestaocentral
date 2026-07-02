@@ -4,9 +4,9 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
-  AREAS, type Area, type Empregado, type EscalaMes, type FreelaMensalistaLinha,
+  AREAS, type Area, type Cargo, type Empregado, type EscalaMes, type FreelaMensalistaLinha,
   type FreelaPagamento, type FreelaPagamentoResumoPessoa, type FreelaShift,
-  type Gorjeta, type Restaurant,
+  type Gorjeta, type Restaurant, type SplitVersion,
 } from "../../core/types";
 import {
   VALORES_DIARIA, VALORES_HORA,
@@ -74,6 +74,9 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const [competencia, setCompetencia] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [ano, mes] = useMemo(() => { const [a, m] = competencia.split("-"); return [Number(a), Number(m)]; }, [competencia]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [splitVersions, setSplitVersions] = useState<SplitVersion[]>([]);
+  const unidades = useMemo(() => restaurant?.unidades || [], [restaurant]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
   const [mensSel, setMensSel] = useState<Set<string>>(new Set());
@@ -86,6 +89,16 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     if (!restaurantId) return;
     return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", restaurantId)),
       (snap) => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() } as Empregado))));
+  }, [restaurantId]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", restaurantId)),
+      (snap) => setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Cargo))));
+  }, [restaurantId]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(query(collection(db, "splitVersions"), where("restaurantId", "==", restaurantId)),
+      (snap) => setSplitVersions(snap.docs.map(d => ({ id: d.id, ...d.data() } as SplitVersion))));
   }, [restaurantId]);
   useEffect(() => {
     if (!restaurantId) return;
@@ -106,7 +119,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     return mensalistas.map((e) => {
       const inp = inputDe(e.id);
       const dias = diasTrabalhadosMensalista(e.id, escala, ano, mes);
-      const gorj = gorjetaMensalDe(e.id, gorjetasMes);
+      const gorj = gorjetaMensalDe(e.id, gorjetasMes, empregados, cargos, escala, splitVersions, unidades);
       const remMes = parseFloat(inp.remuneracao.replace(",", ".")) || 0;
       const proporcional = Math.round((remMes * dias / dnm) * 100) / 100;
       const gorjetaAplicada = inp.modo === "bruto" ? gorj.bruto : gorj.liquido;
@@ -124,7 +137,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mensalistas, escala, gorjetasMes, mensInputs, ano, mes, dnm, competencia, pixMap]);
+  }, [mensalistas, escala, gorjetasMes, cargos, splitVersions, unidades, empregados, mensInputs, ano, mes, dnm, competencia, pixMap]);
 
   const mensLinhasSel = useMemo(() => mensLinhas.filter(l => mensSel.has(l.empregadoId)), [mensLinhas, mensSel]);
 

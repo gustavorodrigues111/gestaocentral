@@ -1,9 +1,11 @@
 // Cálculo do fechamento de freela MENSALISTA.
 //  • lista mensalistas ativos num mês-competência;
-//  • soma a gorjeta do mês (do divisaoSnapshot das gorjetas publicadas) —
-//    líquido e bruto (bruto = liquido / (1 − taxRate/100));
-//  • conta os dias trabalhados na escala praticada (base do rateio da remuneração).
-import type { Empregado, EscalaMes, Gorjeta } from "../../core/types";
+//  • soma a gorjeta do mês usando a MESMA lógica da Divisão do Mês
+//    (snapshot se publicada, senão recalcula ao vivo) — líquido + bruto;
+//  • conta os dias na escala (praticada, com fallback pra prevista).
+import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
+import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
+import { getActiveSplitVersion } from "../gorjetas/splitRules";
 
 const STATUS_TRABALHADO_MENSALISTA = new Set(["trabalho", "comp_trab", "freela"]);
 
@@ -30,34 +32,50 @@ export function mensalistasAtivosNoMes(empregados: Empregado[], ano: number, mes
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 }
 
-// Soma da gorjeta do empregado no mês, a partir do snapshot das gorjetas
-// publicadas (líquido por pessoa já congelado). Bruto derivado pelo taxRate.
-export function gorjetaMensalDe(empId: string, gorjetasDoMes: Gorjeta[]): { liquido: number; bruto: number; dias: number } {
+// Soma da gorjeta do empregado no mês — mesma lógica da DivisaoMesTab:
+// snapshot se publicada, senão recalcula a divisão do dia ao vivo.
+export function gorjetaMensalDe(
+  empId: string,
+  gorjetas: Gorjeta[],
+  empregados: Empregado[],
+  cargos: Cargo[],
+  escala: EscalaMes | null,
+  splitVersions: SplitVersion[],
+  unidades: Unidade[],
+): { liquido: number; bruto: number; dias: number } {
   let liquido = 0, bruto = 0, dias = 0;
-  for (const g of gorjetasDoMes) {
-    const item = g.divisaoSnapshot?.find(i => i.empregadoId === empId);
-    if (!item || !item.valor) continue;
-    liquido += item.valor;
-    const tax = typeof g.taxRate === "number" ? g.taxRate : 0;
-    bruto += tax >= 100 ? item.valor : item.valor / (1 - tax / 100);
+  for (const g of gorjetas) {
+    const splitVersion = getActiveSplitVersion(splitVersions, g.date);
+    const taxRate = (g.publicada && g.divisaoSnapshot) ? (g.taxRate || 0) : (splitVersion?.taxRate ?? 0);
+    const fator = 1 - taxRate / 100;
+    let itens: DivisaoItem[];
+    if (g.publicada && g.divisaoSnapshot) {
+      itens = g.divisaoSnapshot;
+    } else {
+      const liq = calcularValorLiquido(g.valorBruto, taxRate);
+      itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades).itens;
+    }
+    const it = itens.find(i => i.empregadoId === empId);
+    if (!it || !it.valor) continue;
+    const liqEmp = it.valor;
+    liquido += liqEmp;
+    bruto += fator > 0 ? liqEmp / fator : liqEmp;
     dias++;
   }
-  return {
-    liquido: Math.round(liquido * 100) / 100,
-    bruto: Math.round(bruto * 100) / 100,
-    dias,
-  };
+  return { liquido: Math.round(liquido * 100) / 100, bruto: Math.round(bruto * 100) / 100, dias };
 }
 
-// Dias trabalhados na PRATICADA (escala.real) no mês — base do rateio.
+// Dias na escala no mês — praticada (real) com fallback pra prevista. Base do rateio.
 export function diasTrabalhadosMensalista(empId: string, escala: EscalaMes | null, ano: number, mes: number): number {
-  if (!escala?.real?.[empId]) return 0;
+  if (!escala) return 0;
+  const real = escala.real?.[empId] || {};
+  const prevista = escala.prevista?.[empId] || {};
   const mm = String(mes).padStart(2, "0");
-  const prefixo = `${ano}-${mm}-`;
   let n = 0;
-  for (const [date, status] of Object.entries(escala.real[empId])) {
-    if (!date.startsWith(prefixo)) continue;
-    if (STATUS_TRABALHADO_MENSALISTA.has(String(status))) n++;
+  for (let d = 1; d <= diasNoMes(ano, mes); d++) {
+    const date = `${ano}-${mm}-${String(d).padStart(2, "0")}`;
+    const status = real[date] ?? prevista[date];   // real sobrepõe; senão prevista
+    if (status && STATUS_TRABALHADO_MENSALISTA.has(String(status))) n++;
   }
   return n;
 }
