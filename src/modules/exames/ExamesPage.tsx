@@ -11,13 +11,14 @@
 //   → cria/atualiza ExameEmpregado + adiciona ao histórico.
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where, doc, getDoc, getDocs, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, getDoc, getDocs, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { pickDriveFile } from "../../core/google/drivePicker";
+import { subirExameNoDrive } from "./driveExames";
 import {
   ouvirTipos, salvarTipo, excluirTipo, gerarSubtarefasTemplateDefault,
   criarExame, darBaixa, desativarExame, reativarExame,
@@ -412,6 +413,48 @@ function ListaPorTipo({ exames, tipos, onAbrir }: { exames: ExameEmpregado[]; ti
 
 // ─── Configuração ──────────────────────────────────────────────────────
 
+// Lista de fornecedores padrão de exame por restaurante (Restaurant.exameFornecedores).
+function FornecedoresConfig({ rid }: { rid: string }) {
+  const { restaurants } = useRestaurant();
+  const restaurant = restaurants.find(r => r.id === rid);
+  const fornecedores = restaurant?.exameFornecedores || [];
+  const [novo, setNovo] = useState("");
+
+  async function persistir(lista: string[]) {
+    await updateDoc(doc(db, "restaurants", rid), { exameFornecedores: lista });
+  }
+  async function add() {
+    const v = novo.trim();
+    if (!v || fornecedores.some(f => f.toLowerCase() === v.toLowerCase())) { setNovo(""); return; }
+    await persistir([...fornecedores, v].sort((a, b) => a.localeCompare(b, "pt-BR")));
+    setNovo("");
+  }
+
+  return (
+    <div className="mb-4 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <div className="text-sm font-bold text-gray-900 dark:text-gray-100">Fornecedores</div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">
+        Clínicas/laboratórios que aparecem no dropdown ao lançar um exame.
+      </p>
+      {fornecedores.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {fornecedores.map(f => (
+            <span key={f} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+              {f}
+              <button type="button" onClick={() => persistir(fornecedores.filter(x => x !== f))} className="text-gray-400 hover:text-rose-600">✕</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input value={novo} onChange={e => setNovo(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void add(); } }}
+          placeholder="Ex: Triagem, Almed…" className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <Button size="sm" onClick={add}>+ Adicionar</Button>
+      </div>
+    </div>
+  );
+}
+
 function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[]; rid: string; pessoaId: string; cargos: Cargo[] }) {
   const cargoNome = (id: string) => cargos.find(c => c.id === id)?.nome || "cargo?";
   const cargosLabel = (t: ExameTipoConfig) => {
@@ -532,6 +575,8 @@ function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[];
           <Button size="sm" onClick={() => setCriando(true)}>+ Novo Tipo</Button>
         </div>
       </div>
+      <FornecedoresConfig rid={rid} />
+
       <div className="space-y-2">
         {tipos.map(t => (
           <div key={t.id} className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
@@ -737,6 +782,10 @@ function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExiste
     if (tipo && !fornecedor) setFornecedor(tipo.fornecedorPadrao || "");
   }, [tipoId, tipo, fornecedor]);
 
+  const { restaurants } = useRestaurant();
+  const fornecedoresRest = restaurants.find(r => r.id === rid)?.exameFornecedores || [];
+  const [subindo, setSubindo] = useState(false);
+
   async function escolherArquivo() {
     try {
       const f = await pickDriveFile("Selecione o resultado do exame");
@@ -746,6 +795,20 @@ function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExiste
       }
     } catch (e) {
       alert("Não foi possível abrir o Drive Picker: " + String(e));
+    }
+  }
+
+  async function subirArquivo(file: File) {
+    if (!emp) { alert("Escolha o empregado primeiro."); return; }
+    setSubindo(true);
+    try {
+      const r = await subirExameNoDrive(emp, file);
+      setAnexoUrl(r.url);
+      setAnexoNome(r.nome);
+    } catch (e) {
+      alert("Erro ao subir arquivo: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setSubindo(false);
     }
   }
 
@@ -836,15 +899,36 @@ function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExiste
             </label>
             <label>
               <div className="text-xs text-gray-600 mb-1">Fornecedor</div>
-              <input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className="exm-input" placeholder={tipo?.fornecedorPadrao || ""} />
+              {fornecedoresRest.length > 0 ? (
+                <select
+                  value={fornecedoresRest.includes(fornecedor) || !fornecedor ? fornecedor : "__outro__"}
+                  onChange={(e) => setFornecedor(e.target.value === "__outro__" ? "" : e.target.value)}
+                  className="exm-input"
+                >
+                  <option value="">— escolher —</option>
+                  {fornecedoresRest.map(f => <option key={f} value={f}>{f}</option>)}
+                  <option value="__outro__">Outro (digitar)…</option>
+                </select>
+              ) : (
+                <input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className="exm-input" placeholder={tipo?.fornecedorPadrao || ""} />
+              )}
+              {fornecedoresRest.length > 0 && !fornecedoresRest.includes(fornecedor) && (
+                <input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className="exm-input mt-1" placeholder="Nome do fornecedor" />
+              )}
             </label>
           </div>
           <div>
-            <div className="text-xs text-gray-600 mb-1">Resultado (arquivo do Drive)</div>
-            <div className="flex gap-2 items-center">
-              <Button size="sm" variant="ghost" onClick={escolherArquivo}>📎 Escolher arquivo do Drive</Button>
-              {anexoNome && <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">{anexoNome}</span>}
+            <div className="text-xs text-gray-600 mb-1">Resultado (PDF)</div>
+            <div className="flex gap-2 items-center flex-wrap">
+              <Button size="sm" variant="ghost" onClick={escolherArquivo}>📎 Escolher do Drive</Button>
+              <label className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer ${subindo ? "opacity-50" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}>
+                {subindo ? "Subindo…" : "⬆️ Subir arquivo"}
+                <input type="file" className="hidden" disabled={subindo}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) void subirArquivo(f); e.target.value = ""; }} />
+              </label>
+              {anexoNome && <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">✓ {anexoNome}</span>}
             </div>
+            <div className="text-[10px] text-gray-400 mt-0.5">"Subir arquivo" joga o PDF na pasta "Exames Médicos" do empregado no Drive.</div>
           </div>
           <label className="block">
             <div className="text-xs text-gray-600 mb-1">Observação</div>

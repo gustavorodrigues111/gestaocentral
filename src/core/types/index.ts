@@ -215,6 +215,8 @@ export type Empregado = {
   // Link da pasta do empregado no Google Drive (criada na admissão). Pro DP
   // consultar contratos/documentos assinados depois.
   driveFolderUrl?: string | null;
+  driveFolderId?: string | null;        // id da pasta [Nome] do empregado
+  driveExamesFolderId?: string | null;  // subpasta "Exames Médicos" (cache)
 
   // Trilha de admissões/demissões
   periodos: EmpregadoPeriodo[];
@@ -798,6 +800,8 @@ export type Restaurant = {
   // a pasta [Nome do empregado] aqui dentro (com subpastas + "docs assinados").
   driveEmpregadosAtivosFolderId?: string;
   driveEmpregadosAtivosFolderNome?: string;
+  // Fornecedores padrão de exames médicos (editável em Exames → Configuração).
+  exameFornecedores?: string[];
   // Pasta raiz no Drive pras notas de recebimento de produtos. Dentro dela o
   // app cria subpastas por semana (segunda→domingo) nomeadas "dd.mm.aa a dd.mm.aa".
   recebimentoDriveFolderId?: string;

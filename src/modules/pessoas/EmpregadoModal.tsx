@@ -7,6 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
+import { PastaDriveEmpregado } from "./PastaDriveEmpregado";
 import { VigenciaModal, type ChangedField } from "../../core/ui/VigenciaModal";
 import { applyVersionedChange, logAudit } from "../../core/audit/versionedChange";
 import { TIPO_VINCULO_LABEL, TIPOS_VINCULO_COM_PESSOA } from "../../core/types";
@@ -745,19 +746,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           />
         </div>
 
-        {/* Pasta do empregado no Google Drive (criada na admissão) */}
-        {empregado?.driveFolderUrl && (
-          <div className="text-xs text-gray-600 dark:text-gray-400">
-            📁 Pasta no Drive:{" "}
-            <a
-              href={empregado.driveFolderUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              abrir pasta do empregado ↗
-            </a>
-          </div>
+        {/* Pasta do empregado no Google Drive — criar/vincular/trocar */}
+        {empregado && empregado.id && restaurant && (
+          <PastaDriveEmpregado empregado={empregado} restaurant={restaurant} />
         )}
 
         <div className="grid grid-cols-2 gap-3">
