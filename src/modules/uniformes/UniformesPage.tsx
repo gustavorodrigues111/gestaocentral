@@ -26,15 +26,17 @@ import { KitsAreaTab } from "./KitsAreaTab";
 import { EstoqueTab } from "./EstoqueTab";
 import { EntregasTab } from "./EntregasTab";
 import { VencimentosTab } from "./VencimentosTab";
+import { PorEmpregadoTab } from "./PorEmpregadoTab";
 
-type TabId = "itens" | "kits" | "estoque" | "entregas" | "vencimentos";
+type TabId = "itens" | "porEmpregado" | "estoque" | "entregas" | "vencimentos" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "itens",       label: "Itens",         icon: "🛍️" },
-  { id: "kits",        label: "Kits por Área", icon: "🧰" },
-  { id: "estoque",     label: "Estoque",       icon: "📦" },
-  { id: "entregas",    label: "Entregas",      icon: "📋" },
-  { id: "vencimentos", label: "Vencimentos",   icon: "⏳" },
+  { id: "itens",        label: "Itens",         icon: "🛍️" },
+  { id: "porEmpregado", label: "Por empregado", icon: "👥" },
+  { id: "estoque",      label: "Estoque",       icon: "📦" },
+  { id: "entregas",     label: "Entregas",      icon: "📋" },
+  { id: "vencimentos",  label: "Vencimentos",   icon: "⏳" },
+  { id: "config",       label: "Configurações", icon: "⚙️" },
 ];
 
 const DIAS_ALERTA_VENCIMENTO = 30;
@@ -86,10 +88,11 @@ export function UniformesPage() {
 
   const badges: Record<TabId, number> = {
     itens: 0,
-    kits: 0,
+    porEmpregado: 0,
     estoque: 0,
     entregas: 0,
     vencimentos: countVencendo,
+    config: 0,
   };
 
   if (!activeRestaurant) {
@@ -130,8 +133,19 @@ export function UniformesPage() {
       {tab === "itens" && me && (
         <ItensTab itens={itens} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
       )}
-      {tab === "kits" && me && (
-        <KitsAreaTab itens={itens} kits={kits} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
+      {tab === "porEmpregado" && (
+        <PorEmpregadoTab itens={itens} kits={kits} entregas={entregas} restaurantId={rid} />
+      )}
+      {tab === "config" && me && (
+        <div className="space-y-2">
+          <div>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">Kits por área</h2>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">
+              O kit da área é o <strong>mínimo</strong> de uniformes/EPIs dos cargos daquela área. Serve de base pra admissão e pro controle "Por empregado".
+            </p>
+          </div>
+          <KitsAreaTab itens={itens} kits={kits} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
+        </div>
       )}
       {tab === "estoque" && me && (
         <EstoqueTab itens={itens} movs={movs} podeConfig={podeConfig} pessoa={me} />
