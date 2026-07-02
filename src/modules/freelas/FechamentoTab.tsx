@@ -189,7 +189,13 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       const descDescFull = [inp.descontoModo === "pct" && descPct ? `${descPct}%` : "", inp.descontoDesc.trim()].filter(Boolean).join(" · ") || undefined;
       const acreDescFull = [inp.acrescimoModo === "pct" && acrePct ? `${acrePct}%` : "", inp.acrescimoDesc.trim()].filter(Boolean).join(" · ") || undefined;
       return {
-        empregadoId: e.id, nome: e.nome, pix: pixMap.byId[e.id] || null, cpf: e.cpf ?? null,
+        empregadoId: e.id, nome: e.nome,
+        // PIX vem da Pessoa vinculada: resolve por pessoaId e, em fallback, por CPF.
+        // (o pixMap é indexado por id da pessoa e por CPF, não pelo id do empregado)
+        pix: (e.pessoaId ? pixMap.byId[e.pessoaId] : null)
+          || (e.cpf ? pixMap.byCpf[String(e.cpf).replace(/\D/g, "")] : null)
+          || null,
+        cpf: e.cpf ?? null,
         competencia, diasTrabalhados: dias, diasCobertos: dr.cobertos, faltasInjust: dr.faltas, diasNoMes: dnm,
         remuneracaoMes: remMes, remuneracaoProporcional: proporcional,
         gorjetaModo: inp.modo, gorjetaLiquido: gorj.liquido, gorjetaBruto: gorj.bruto, gorjetaAplicada,
