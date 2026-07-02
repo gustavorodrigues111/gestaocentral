@@ -21,6 +21,18 @@ function shiftMes(comp: string, delta: number): string {
   const d = new Date(a, (m - 1) + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
+
+// Máscara de moeda "centavos da direita": dígitos preenchem a partir dos
+// centavos. Ex: "1621" → "16,21", "162100" → "1.621,00".
+function maskMoeda(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return "";
+  return (parseInt(digits, 10) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function parseMoeda(masked: string): number {
+  const digits = (masked || "").replace(/\D/g, "");
+  return digits ? parseInt(digits, 10) / 100 : 0;
+}
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 import { HorarioModal } from "./HorarioModal";
 import { Modal } from "../../core/ui/Modal";
@@ -80,9 +92,10 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
   const [mensSel, setMensSel] = useState<Set<string>>(new Set());
-  type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoDesc: string; acrescimo: string; acrescimoDesc: string };
+  type AjModo = "reais" | "pct";
+  type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoModo: AjModo; descontoDesc: string; acrescimo: string; acrescimoModo: AjModo; acrescimoDesc: string };
   const [mensInputs, setMensInputs] = useState<Record<string, MensInput>>({});
-  const inputDe = (id: string): MensInput => mensInputs[id] || { remuneracao: "", modo: "liquido", desconto: "", descontoDesc: "", acrescimo: "", acrescimoDesc: "" };
+  const inputDe = (id: string): MensInput => mensInputs[id] || { remuneracao: "", modo: "liquido", desconto: "", descontoModo: "reais", descontoDesc: "", acrescimo: "", acrescimoModo: "reais", acrescimoDesc: "" };
   const setInput = (id: string, patch: Partial<MensInput>) => setMensInputs(prev => ({ ...prev, [id]: { ...inputDe(id), ...patch } }));
 
   useEffect(() => {
@@ -120,19 +133,25 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       const inp = inputDe(e.id);
       const dias = diasTrabalhadosMensalista(e.id, escala, ano, mes);
       const gorj = gorjetaMensalDe(e.id, gorjetasMes, empregados, cargos, escala, splitVersions, unidades);
-      const remMes = parseFloat(inp.remuneracao.replace(",", ".")) || 0;
+      const remMes = parseMoeda(inp.remuneracao);
       const proporcional = Math.round((remMes * dias / dnm) * 100) / 100;
       const gorjetaAplicada = inp.modo === "bruto" ? gorj.bruto : gorj.liquido;
-      const desconto = parseFloat(inp.desconto.replace(",", ".")) || 0;
-      const acrescimo = parseFloat(inp.acrescimo.replace(",", ".")) || 0;
+      const subtotal = proporcional + gorjetaAplicada;
+      // Desconto/acréscimo em R$ ou % (do subtotal remuneração+gorjeta).
+      const descPct = parseFloat(inp.desconto.replace(",", ".")) || 0;
+      const acrePct = parseFloat(inp.acrescimo.replace(",", ".")) || 0;
+      const desconto = Math.round((inp.descontoModo === "pct" ? subtotal * descPct / 100 : parseMoeda(inp.desconto)) * 100) / 100;
+      const acrescimo = Math.round((inp.acrescimoModo === "pct" ? subtotal * acrePct / 100 : parseMoeda(inp.acrescimo)) * 100) / 100;
       const total = Math.round((proporcional + gorjetaAplicada + acrescimo - desconto) * 100) / 100;
+      const descDescFull = [inp.descontoModo === "pct" && descPct ? `${descPct}%` : "", inp.descontoDesc.trim()].filter(Boolean).join(" · ") || undefined;
+      const acreDescFull = [inp.acrescimoModo === "pct" && acrePct ? `${acrePct}%` : "", inp.acrescimoDesc.trim()].filter(Boolean).join(" · ") || undefined;
       return {
         empregadoId: e.id, nome: e.nome, pix: pixMap.byId[e.id] || null, cpf: e.cpf ?? null,
         competencia, diasTrabalhados: dias, diasNoMes: dnm,
         remuneracaoMes: remMes, remuneracaoProporcional: proporcional,
         gorjetaModo: inp.modo, gorjetaLiquido: gorj.liquido, gorjetaBruto: gorj.bruto, gorjetaAplicada,
-        desconto, descontoDesc: inp.descontoDesc.trim() || undefined,
-        acrescimo, acrescimoDesc: inp.acrescimoDesc.trim() || undefined,
+        desconto, descontoDesc: descDescFull,
+        acrescimo, acrescimoDesc: acreDescFull,
         total,
       };
     });
@@ -417,8 +436,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                     <div className="mt-2 grid sm:grid-cols-4 gap-2">
                       <label className="text-xs">
                         <span className="text-gray-500">Remuneração do mês</span>
-                        <input value={inp.remuneracao} onChange={(e) => setInput(l.empregadoId, { remuneracao: e.target.value })} inputMode="decimal" placeholder="0,00"
-                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <div className="mt-0.5 flex items-center rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2">
+                          <span className="text-gray-400 text-xs">R$</span>
+                          <input value={inp.remuneracao} onChange={(e) => setInput(l.empregadoId, { remuneracao: maskMoeda(e.target.value) })} inputMode="numeric" placeholder="0,00"
+                            className="w-full px-1 py-1.5 bg-transparent text-right outline-none" />
+                        </div>
                         <span className="text-[10px] text-gray-400">proporcional: {fmtBR(l.remuneracaoProporcional)}</span>
                       </label>
                       <div className="text-xs">
@@ -433,20 +455,32 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                         </div>
                         <span className="text-[10px] text-gray-400">aplica {fmtBR(l.gorjetaAplicada)}</span>
                       </div>
-                      <label className="text-xs">
+                      {/* Desconto */}
+                      <div className="text-xs">
                         <span className="text-gray-500">Desconto</span>
-                        <input value={inp.desconto} onChange={(e) => setInput(l.empregadoId, { desconto: e.target.value })} inputMode="decimal" placeholder="0,00"
-                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <div className="mt-0.5 flex items-center rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                          <button type="button" onClick={() => setInput(l.empregadoId, { descontoModo: inp.descontoModo === "reais" ? "pct" : "reais", desconto: "" })}
+                            className="px-2 py-1.5 text-gray-500 hover:text-indigo-600 border-r border-gray-200 dark:border-gray-700 shrink-0">{inp.descontoModo === "pct" ? "%" : "R$"}</button>
+                          <input value={inp.desconto} onChange={(e) => setInput(l.empregadoId, { desconto: inp.descontoModo === "reais" ? maskMoeda(e.target.value) : e.target.value })} inputMode="decimal" placeholder="0"
+                            className="w-full px-2 py-1.5 bg-transparent text-right outline-none" />
+                        </div>
                         <input value={inp.descontoDesc} onChange={(e) => setInput(l.empregadoId, { descontoDesc: e.target.value })} placeholder="motivo (opcional)"
                           className="w-full mt-1 px-2 py-1 text-[11px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
-                      </label>
-                      <label className="text-xs">
+                        {l.desconto > 0 && <span className="text-[10px] text-gray-400">− {fmtBR(l.desconto)}</span>}
+                      </div>
+                      {/* Acréscimo */}
+                      <div className="text-xs">
                         <span className="text-gray-500">Acréscimo</span>
-                        <input value={inp.acrescimo} onChange={(e) => setInput(l.empregadoId, { acrescimo: e.target.value })} inputMode="decimal" placeholder="0,00"
-                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <div className="mt-0.5 flex items-center rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                          <button type="button" onClick={() => setInput(l.empregadoId, { acrescimoModo: inp.acrescimoModo === "reais" ? "pct" : "reais", acrescimo: "" })}
+                            className="px-2 py-1.5 text-gray-500 hover:text-indigo-600 border-r border-gray-200 dark:border-gray-700 shrink-0">{inp.acrescimoModo === "pct" ? "%" : "R$"}</button>
+                          <input value={inp.acrescimo} onChange={(e) => setInput(l.empregadoId, { acrescimo: inp.acrescimoModo === "reais" ? maskMoeda(e.target.value) : e.target.value })} inputMode="decimal" placeholder="0"
+                            className="w-full px-2 py-1.5 bg-transparent text-right outline-none" />
+                        </div>
                         <input value={inp.acrescimoDesc} onChange={(e) => setInput(l.empregadoId, { acrescimoDesc: e.target.value })} placeholder="motivo (opcional)"
                           className="w-full mt-1 px-2 py-1 text-[11px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
-                      </label>
+                        {l.acrescimo > 0 && <span className="text-[10px] text-gray-400">+ {fmtBR(l.acrescimo)}</span>}
+                      </div>
                     </div>
                   )}
                 </div>
