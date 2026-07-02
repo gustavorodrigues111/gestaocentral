@@ -92,48 +92,45 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const unidades = useMemo(() => restaurant?.unidades || [], [restaurant]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
-  const [mensSel, setMensSel] = useState<Set<string>>(new Set());
-  const [mensConfirmados, setMensConfirmados] = useState<Set<string>>(new Set());
-  const draftId = (empId: string) => `${restaurantId}_${competencia}_${empId}`;
-  // Ao trocar de competência, zera (o listener repopula com o mês certo).
-  useEffect(() => { setMensConfirmados(new Set()); setMensSel(new Set()); }, [competencia]);
   type AjModo = "reais" | "pct";
   type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoModo: AjModo; descontoDesc: string; acrescimo: string; acrescimoModo: AjModo; acrescimoDesc: string };
+  type ConfLinha = FreelaMensalistaLinha & { docId: string; input?: MensInput };
   const [mensInputs, setMensInputs] = useState<Record<string, MensInput>>({});
   const inputDe = (id: string): MensInput => mensInputs[id] || { remuneracao: "", modo: "liquido", desconto: "", descontoModo: "reais", descontoDesc: "", acrescimo: "", acrescimoModo: "reais", acrescimoDesc: "" };
   const setInput = (id: string, patch: Partial<MensInput>) => setMensInputs(prev => ({ ...prev, [id]: { ...inputDe(id), ...patch } }));
 
-  // Persistência da confirmação: freelaMensalistaConfirmado/{rid}_{competencia}_{empId}.
-  // Guarda os inputs → sobrevive a sair/voltar da tela até virar lote.
+  // "Prontos pra lote" dos mensalistas = TODOS os confirmados do restaurante
+  // (independente da competência do seletor). Acumulam até virar lote.
+  const [confirmados, setConfirmados] = useState<ConfLinha[]>([]);
+  const [mensSel, setMensSel] = useState<Set<string>>(new Set());   // docIds selecionados
+  const draftId = (comp: string, empId: string) => `${restaurantId}_${comp}_${empId}`;
   useEffect(() => {
     if (!restaurantId) return;
-    const q = query(collection(db, "freelaMensalistaConfirmado"),
-      where("restaurantId", "==", restaurantId), where("competencia", "==", competencia));
-    return onSnapshot(q, (snap) => {
-      const conf = new Set<string>();
-      const inputs: Record<string, MensInput> = {};
-      snap.forEach((d) => {
-        const data = d.data() as { empregadoId: string; input?: MensInput };
-        conf.add(data.empregadoId);
-        if (data.input) inputs[data.empregadoId] = data.input;
-      });
-      setMensConfirmados(conf);
-      setMensSel((prev) => { const n = new Set(prev); conf.forEach((id) => n.add(id)); return n; });
-      setMensInputs((prev) => ({ ...prev, ...inputs }));
+    return onSnapshot(query(collection(db, "freelaMensalistaConfirmado"), where("restaurantId", "==", restaurantId)), (snap) => {
+      const arr = snap.docs.map((d) => {
+        const data = d.data() as { linha: FreelaMensalistaLinha; input?: MensInput };
+        return { ...data.linha, docId: d.id, input: data.input } as ConfLinha;
+      }).sort((a, b) => (b.competencia + a.nome).localeCompare(a.competencia + b.nome));
+      setConfirmados(arr);
+      setMensSel((prev) => { const n = new Set(prev); arr.forEach((c) => n.add(c.docId)); return n; });
     });
-  }, [restaurantId, competencia]);
+  }, [restaurantId]);
+  // Confirmados da competência selecionada (pra esconder da seção de input).
+  const confirmadosDoMes = useMemo(() => new Set(confirmados.filter(c => c.competencia === competencia).map(c => c.empregadoId)), [confirmados, competencia]);
 
-  async function confirmarMens(empId: string) {
-    const inp = inputDe(empId);
-    setMensConfirmados((s) => new Set(s).add(empId));
-    setMensSel((s) => new Set(s).add(empId));
-    await setDoc(doc(db, "freelaMensalistaConfirmado", draftId(empId)),
-      sanitizeForFirestore({ restaurantId, competencia, empregadoId: empId, input: inp, atualizadoEm: new Date().toISOString() }));
+  async function confirmarMens(l: FreelaMensalistaLinha) {
+    const inp = inputDe(l.empregadoId);
+    const id = draftId(l.competencia, l.empregadoId);
+    setMensSel((s) => new Set(s).add(id));
+    await setDoc(doc(db, "freelaMensalistaConfirmado", id),
+      sanitizeForFirestore({ restaurantId, competencia: l.competencia, empregadoId: l.empregadoId, linha: l, input: inp, atualizadoEm: new Date().toISOString() }));
   }
-  async function editarMens(empId: string) {
-    setMensConfirmados((s) => { const n = new Set(s); n.delete(empId); return n; });
-    setMensSel((s) => { const n = new Set(s); n.delete(empId); return n; });
-    await deleteDoc(doc(db, "freelaMensalistaConfirmado", draftId(empId)));
+  async function editarMens(c: ConfLinha) {
+    // Volta pra edição: reabre a competência dele + restaura os valores digitados.
+    setCompetencia(c.competencia);
+    if (c.input) setMensInputs((prev) => ({ ...prev, [c.empregadoId]: c.input as MensInput }));
+    setMensSel((s) => { const n = new Set(s); n.delete(c.docId); return n; });
+    await deleteDoc(doc(db, "freelaMensalistaConfirmado", c.docId));
   }
 
   useEffect(() => {
@@ -197,7 +194,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mensalistas, escala, gorjetasMes, cargos, splitVersions, unidades, empregados, mensInputs, ano, mes, dnm, competencia, pixMap]);
 
-  const mensLinhasSel = useMemo(() => mensLinhas.filter(l => mensSel.has(l.empregadoId)), [mensLinhas, mensSel]);
+  const mensLinhasSel = useMemo(() => confirmados.filter(c => mensSel.has(c.docId)), [confirmados, mensSel]);
 
   // Aguardando precificação: operacional fechou (tem entrada+saída) e DP ainda
   // não confirmou. Status="aberto".
@@ -348,7 +345,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         ...(obs.trim() ? { observacao: obs.trim() } : {}),
         shiftIds: selecShifts.map((s) => s.id),
         pessoasResumo,
-        ...(mensLinhasSel.length ? { mensalistas: mensLinhasSel } : {}),
+        ...(mensLinhasSel.length ? { mensalistas: mensLinhasSel.map(({ docId, input, ...linha }) => { void docId; void input; return linha; }) } : {}),
         totalGeral: Math.round(totalGeral * 100) / 100,
         qtdShifts: selecShifts.length,
         qtdPessoas: pessoasResumo.length + mensLinhasSel.length,
@@ -364,12 +361,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       }
       await batch.commit();
       // Consome os drafts confirmados que entraram no lote.
-      for (const l of mensLinhasSel) {
-        await deleteDoc(doc(db, "freelaMensalistaConfirmado", draftId(l.empregadoId))).catch(() => undefined);
+      for (const c of mensLinhasSel) {
+        await deleteDoc(doc(db, "freelaMensalistaConfirmado", c.docId)).catch(() => undefined);
       }
       setSelecionados(new Set());
       setMensSel(new Set());
-      setMensConfirmados(new Set());
       setObs("");
       alert(`Lote ${numero} criado.`);
     } catch (e) {
@@ -461,11 +457,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         </div>
         {mensalistas.length === 0 ? (
           <EmptyState texto={`Nenhum freela mensalista ativo em ${nomeMes(mes)}/${ano}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
-        ) : mensLinhas.every(l => mensConfirmados.has(l.empregadoId)) ? (
-          <EmptyState texto="Todos os mensalistas confirmados. Veja em 'Prontos pra lote' abaixo." />
+        ) : mensLinhas.every(l => confirmadosDoMes.has(l.empregadoId)) ? (
+          <EmptyState texto={`Todos os mensalistas de ${nomeMes(mes)}/${ano} confirmados. Veja em 'Prontos pra lote' abaixo.`} />
         ) : (
           <div className="space-y-2">
-            {mensLinhas.filter(l => !mensConfirmados.has(l.empregadoId)).map((l) => {
+            {mensLinhas.filter(l => !confirmadosDoMes.has(l.empregadoId)).map((l) => {
               const inp = inputDe(l.empregadoId);
               return (
                 <div key={l.empregadoId} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -529,7 +525,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                   )}
                   {podeEditar && (
                     <div className="mt-2 flex justify-end">
-                      <Button size="sm" onClick={() => confirmarMens(l.empregadoId)}>✅ Confirmar</Button>
+                      <Button size="sm" onClick={() => confirmarMens(l)}>✅ Confirmar</Button>
                     </div>
                   )}
                 </div>
@@ -556,26 +552,30 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         </div>
 
         {/* Mensalistas confirmados (entram no lote junto com os turnos) */}
-        {mensConfirmados.size > 0 && (
+        {confirmados.length > 0 && (
           <div className="mb-3 space-y-1.5">
             <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">🗓️ Mensalistas confirmados</div>
-            {mensLinhas.filter(l => mensConfirmados.has(l.empregadoId)).map(l => (
-              <div key={l.empregadoId} className="flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-                {podeEditar && (
-                  <input type="checkbox" checked={mensSel.has(l.empregadoId)} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(l.empregadoId)) n.delete(l.empregadoId); else n.add(l.empregadoId); return n; })} className="w-4 h-4 accent-indigo-600" />
-                )}
-                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{l.nome}</span>
-                <span className="text-[11px] text-gray-500">{l.diasTrabalhados}/{dnm}d · remun {fmtBR(l.remuneracaoProporcional)} · gorj {l.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(l.gorjetaAplicada)}{l.desconto > 0 ? ` · −${fmtBR(l.desconto)}` : ""}{l.acrescimo > 0 ? ` · +${fmtBR(l.acrescimo)}` : ""}</span>
-                <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(l.total)}</span>
-                {podeEditar && (
-                  <button type="button" onClick={() => editarMens(l.empregadoId)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ editar</button>
-                )}
-              </div>
-            ))}
+            {confirmados.map(c => {
+              const [cy, cm] = c.competencia.split("-").map(Number);
+              return (
+                <div key={c.docId} className="flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+                  {podeEditar && (
+                    <input type="checkbox" checked={mensSel.has(c.docId)} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(c.docId)) n.delete(c.docId); else n.add(c.docId); return n; })} className="w-4 h-4 accent-indigo-600" />
+                  )}
+                  <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{c.nome}</span>
+                  <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{nomeMes(cm)}/{cy}</span>
+                  <span className="text-[11px] text-gray-500">remun {fmtBR(c.remuneracaoProporcional)} · gorj {c.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(c.gorjetaAplicada)}{c.desconto > 0 ? ` · −${fmtBR(c.desconto)}` : ""}{c.acrescimo > 0 ? ` · +${fmtBR(c.acrescimo)}` : ""}</span>
+                  <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(c.total)}</span>
+                  {podeEditar && (
+                    <button type="button" onClick={() => editarMens(c)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ editar</button>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {prontosLote.length === 0 && mensConfirmados.size === 0 ? (
+        {prontosLote.length === 0 && confirmados.length === 0 ? (
           <EmptyState texto="Nenhum turno pronto pra lote. Precifique acima primeiro." />
         ) : prontosLote.length === 0 ? null : (
           <AreaGroups
@@ -606,7 +606,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           />
         )}
 
-        {podeEditar && (prontosLote.length > 0 || mensalistas.length > 0) && (
+        {podeEditar && (prontosLote.length > 0 || confirmados.length > 0) && (
           <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 p-3">
             <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200 mb-2">
               💰 {totaisSelec.qtd} turno(s){mensLinhasSel.length > 0 ? ` + ${mensLinhasSel.length} mensalista(s)` : ""} ·{" "}
