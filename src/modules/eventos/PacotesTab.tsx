@@ -87,7 +87,9 @@ export function PacotesTab({ rid, podeEditar }: Props) {
       adicionais: [],
       inclusos: [],
       naoInclusos: [],
-      ativo: true,
+      // Nasce INATIVO: só aparece pro cliente na vitrine pública quando o
+      // usuário conscientemente liga o toggle. Evita rascunho vazar pro site.
+      ativo: false,
       ordem,
       createdAt: now,
       updatedAt: now,
