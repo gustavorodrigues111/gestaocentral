@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
@@ -147,6 +147,31 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
       }
     }
     setFecharModalOpen(true);
+  }
+
+  // Finaliza o evento → sai do board e vai pro histórico do mês em que ocorreu.
+  async function finalizarEvento() {
+    if (!podeEditar) return;
+    if (!lead.fechamento) {
+      alert("Preencha o fechamento antes de finalizar (faturamento + dados de comissão).");
+      await abrirFecharModal();
+      return;
+    }
+    const now = new Date().toISOString();
+    await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
+      arquivadoEm: now,
+      arquivadoMesRef: (lead.dataDesejada || now).slice(0, 10).slice(0, 7),
+      updatedAt: now,
+    }));
+    onClose();
+  }
+  async function reabrirEvento() {
+    if (!podeEditar) return;
+    await updateDoc(doc(db, "leadsEvento", lead.id), {
+      arquivadoEm: deleteField(),
+      arquivadoMesRef: deleteField(),
+      updatedAt: new Date().toISOString(),
+    });
   }
 
   async function confirmarFechamento(fech: NonNullable<LeadEvento["fechamento"]>) {
@@ -538,11 +563,19 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
                   {lead.fechamento.fechadoPorNome && ` por ${lead.fechamento.fechadoPorNome}`}
                 </div>
                 {podeEditar && (
-                  <div className="pt-2">
-                    <Button size="sm" variant="secondary" onClick={abrirFecharModal} disabled={salvando}>
-                      Editar fechamento
-                    </Button>
-                  </div>
+                  lead.arquivadoEm ? (
+                    <div className="pt-2 flex items-center gap-2 flex-wrap border-t border-emerald-200 dark:border-emerald-800 mt-2">
+                      <span className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                        ✓ Finalizado — no histórico{lead.arquivadoMesRef ? ` de ${lead.arquivadoMesRef.split("-").reverse().join("/")}` : ""}
+                      </span>
+                      <Button size="sm" variant="secondary" onClick={reabrirEvento} disabled={salvando}>↩︎ Reabrir</Button>
+                    </div>
+                  ) : (
+                    <div className="pt-2 flex gap-2 flex-wrap">
+                      <Button size="sm" onClick={finalizarEvento} disabled={salvando}>✓ Finalizar evento</Button>
+                      <Button size="sm" variant="secondary" onClick={abrirFecharModal} disabled={salvando}>Editar fechamento</Button>
+                    </div>
+                  )
                 )}
               </div>
             ) : (

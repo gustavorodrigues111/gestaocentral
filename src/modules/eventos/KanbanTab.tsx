@@ -95,7 +95,8 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     return () => unsub();
   }, [rid]);
 
-  const leadsAtivos = leads;
+  // Board ativo = tudo que ainda não foi finalizado (arquivado no histórico).
+  const leadsAtivos = useMemo(() => leads.filter(l => !l.arquivadoEm), [leads]);
 
   const leadsPorStatus = useMemo(() => {
     const acc: Record<LeadEventoStatus, LeadEvento[]> = {
@@ -124,12 +125,12 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     return (leadsPorDia.get(leadAberto.dataDesejada) || []).filter(o => o.id !== leadAberto.id);
   }, [leadAberto, leadsPorDia]);
 
-  // Histórico: todos os eventos (menos perdidos) agrupados pelo mês da data.
+  // Histórico: eventos FINALIZADOS, agrupados pelo mês em que ocorreram.
   const mesesEventos = useMemo(() => {
     const m = new Map<string, LeadEvento[]>();
     for (const l of leads) {
-      if (l.status === "perdido") continue;
-      const ref = mesRefDe(l.dataDesejada);
+      if (!l.arquivadoEm) continue;
+      const ref = l.arquivadoMesRef || mesRefDe(l.dataDesejada);
       if (!ref) continue;
       if (!m.has(ref)) m.set(ref, []);
       m.get(ref)!.push(l);
@@ -341,7 +342,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
       {/* Relatório mensal */}
       {relatorioMes && (
         <RelatorioEventosModal
-          leads={leads.filter(l => !!l.fechamento && mesRefDe(l.dataDesejada) === relatorioMes)}
+          leads={leads.filter(l => !!l.arquivadoEm && !!l.fechamento && (l.arquivadoMesRef || mesRefDe(l.dataDesejada)) === relatorioMes)}
           comissao={comissaoCfg}
           restaurantNome={restaurant?.nome || "Restaurante"}
           mesRef={relatorioMes}
