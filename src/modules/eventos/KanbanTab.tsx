@@ -58,12 +58,10 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   const [mostrarPerdidos, setMostrarPerdidos] = useState(false);
   const [criandoManual, setCriandoManual] = useState(false);
 
-  // Drag-and-drop + histórico/fechamento mensal
+  // Drag-and-drop + histórico mensal
   const [dragOver, setDragOver] = useState<LeadEventoStatus | null>(null);
-  const [mesFechar, setMesFechar] = useState(() => new Date().toISOString().slice(0, 7));
-  const [fechandoMes, setFechandoMes] = useState(false);
   const [relatorioMes, setRelatorioMes] = useState<string | null>(null);
-  const [historicoAberto, setHistoricoAberto] = useState(false);
+  const [mesesExpandidos, setMesesExpandidos] = useState<Set<string>>(() => new Set());
 
   useEffect(() => {
     if (!rid) return;
@@ -97,9 +95,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     return () => unsub();
   }, [rid]);
 
-  // Board ativo = tudo que não foi arquivado no fechamento mensal.
-  const leadsAtivos = useMemo(() => leads.filter(l => !l.arquivadoEm), [leads]);
-  const leadsArquivados = useMemo(() => leads.filter(l => !!l.arquivadoEm), [leads]);
+  const leadsAtivos = leads;
 
   const leadsPorStatus = useMemo(() => {
     const acc: Record<LeadEventoStatus, LeadEvento[]> = {
@@ -128,22 +124,27 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     return (leadsPorDia.get(leadAberto.dataDesejada) || []).filter(o => o.id !== leadAberto.id);
   }, [leadAberto, leadsPorDia]);
 
-  // Meses arquivados (histórico)
-  const mesesArquivados = useMemo(() => {
+  // Histórico: todos os eventos (menos perdidos) agrupados pelo mês da data.
+  const mesesEventos = useMemo(() => {
     const m = new Map<string, LeadEvento[]>();
-    for (const l of leadsArquivados) {
-      const ref = l.arquivadoMesRef || mesRefDe(l.dataDesejada);
+    for (const l of leads) {
+      if (l.status === "perdido") continue;
+      const ref = mesRefDe(l.dataDesejada);
+      if (!ref) continue;
       if (!m.has(ref)) m.set(ref, []);
       m.get(ref)!.push(l);
     }
+    for (const arr of m.values()) arr.sort((a, b) => a.dataDesejada.localeCompare(b.dataDesejada));
     return Array.from(m.entries()).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [leadsArquivados]);
+  }, [leads]);
 
-  // Elegíveis a fechar no mês selecionado: realizados, com fechamento, do mês, não arquivados.
-  const elegiveisFecharMes = useMemo(
-    () => leadsAtivos.filter(l => l.status === "realizado" && l.fechamento && mesRefDe(l.dataDesejada) === mesFechar),
-    [leadsAtivos, mesFechar],
-  );
+  function toggleMes(ref: string) {
+    setMesesExpandidos(prev => {
+      const next = new Set(prev);
+      if (next.has(ref)) next.delete(ref); else next.add(ref);
+      return next;
+    });
+  }
 
   async function moverLead(leadId: string, novoStatus: LeadEventoStatus) {
     const l = leads.find(x => x.id === leadId);
@@ -153,26 +154,6 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     }));
     // Realizado exige fechamento → abre o card pra completar dados de comissão.
     if (novoStatus === "realizado") setLeadAbertoId(leadId);
-  }
-
-  async function fecharMes() {
-    if (fechandoMes || elegiveisFecharMes.length === 0) return;
-    const ok = window.confirm(
-      `Fechar ${mesLabel(mesFechar)}? ${elegiveisFecharMes.length} evento(s) realizado(s) vão pro histórico e saem do board.`,
-    );
-    if (!ok) return;
-    setFechandoMes(true);
-    try {
-      const now = new Date().toISOString();
-      await Promise.all(elegiveisFecharMes.map(l =>
-        updateDoc(doc(db, "leadsEvento", l.id), sanitizeForFirestore({
-          arquivadoEm: now, arquivadoMesRef: mesFechar, updatedAt: now,
-        })),
-      ));
-      setRelatorioMes(mesFechar);
-    } finally {
-      setFechandoMes(false);
-    }
   }
 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
@@ -280,62 +261,63 @@ export function KanbanTab({ rid, podeEditar }: Props) {
         </div>
       )}
 
-      {/* Fechamento mensal + histórico */}
+      {/* Histórico mensal — uma linha por mês; expande com os eventos do mês. */}
       <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div>
-            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100">🗂️ Histórico mensal</h3>
-            <p className="text-[11px] text-gray-500 dark:text-gray-400">
-              Fecha o mês: eventos realizados e com fechamento preenchido vão pro histórico e geram o relatório de comissão.
-            </p>
-          </div>
-          {podeEditar && (
-            <div className="flex items-center gap-2">
-              <input
-                type="month"
-                value={mesFechar}
-                onChange={(e) => setMesFechar(e.target.value)}
-                className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-              />
-              <button
-                type="button"
-                onClick={fecharMes}
-                disabled={fechandoMes || elegiveisFecharMes.length === 0}
-                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-40"
-                title={elegiveisFecharMes.length === 0 ? "Nenhum evento realizado+fechado neste mês" : ""}
-              >
-                {fechandoMes ? "Fechando…" : `Fechar mês (${elegiveisFecharMes.length})`}
-              </button>
-            </div>
-          )}
-        </div>
-
-        {mesesArquivados.length > 0 && (
-          <div className="mt-3">
-            <button
-              type="button"
-              onClick={() => setHistoricoAberto(v => !v)}
-              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
-            >
-              {historicoAberto ? "▾" : "▸"} Meses fechados ({mesesArquivados.length})
-            </button>
-            {historicoAberto && (
-              <div className="mt-2 space-y-1.5">
-                {mesesArquivados.map(([ref, ls]) => (
-                  <div key={ref} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800">
-                    <span className="text-sm text-gray-800 dark:text-gray-100 font-medium">{mesLabel(ref)}</span>
-                    <span className="text-[11px] text-gray-500">{ls.length} evento(s)</span>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">🗂️ Histórico</h3>
+        {mesesEventos.length === 0 ? (
+          <p className="text-[12px] text-gray-500 dark:text-gray-400">Nenhum evento ainda.</p>
+        ) : (
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {mesesEventos.map(([ref, ls]) => {
+              const aberto = mesesExpandidos.has(ref);
+              return (
+                <div key={ref}>
+                  <div className="flex items-center gap-2 py-2">
+                    <button
+                      type="button"
+                      onClick={() => toggleMes(ref)}
+                      className="flex-1 flex items-center gap-2 text-left"
+                    >
+                      <span className="text-gray-400 w-3">{aberto ? "▾" : "▸"}</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{mesLabel(ref)}</span>
+                      <span className="text-[11px] text-gray-500">{ls.length} evento(s)</span>
+                    </button>
                     <button
                       type="button"
                       onClick={() => setRelatorioMes(ref)}
-                      className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline ml-auto"
+                      className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
                     >
-                      📊 Relatório
+                      📊 Gerar relatório do mês
                     </button>
                   </div>
-                ))}
-              </div>
-            )}
+                  {aberto && (
+                    <div className="pb-2 pl-5 space-y-1">
+                      {ls.map(l => {
+                        const d = parseYmd(l.dataDesejada);
+                        const cor = STATUS_COR[l.status];
+                        return (
+                          <button
+                            key={l.id}
+                            type="button"
+                            onClick={() => setLeadAbertoId(l.id)}
+                            className="w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-md hover:bg-gray-50 dark:hover:bg-gray-800/60"
+                          >
+                            <span className="text-[11px] tabular-nums text-gray-500 w-10">{pad2(d.getDate())}/{pad2(d.getMonth() + 1)}</span>
+                            <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 truncate">{l.cliente.nome}</span>
+                            {l.fechamento && (
+                              <span className="text-[11px] tabular-nums text-emerald-700 dark:text-emerald-400">
+                                R$ {l.fechamento.faturamentoBrutoSemGorjeta.toFixed(0)}
+                              </span>
+                            )}
+                            <span className={`text-[9px] uppercase font-bold px-1 py-0.5 rounded ${cor.bg} ${cor.text}`}>{STATUS_LABEL[l.status]}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -359,7 +341,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
       {/* Relatório mensal */}
       {relatorioMes && (
         <RelatorioEventosModal
-          leads={leads.filter(l => !!l.fechamento && (l.arquivadoMesRef || mesRefDe(l.dataDesejada)) === relatorioMes)}
+          leads={leads.filter(l => !!l.fechamento && mesRefDe(l.dataDesejada) === relatorioMes)}
           comissao={comissaoCfg}
           restaurantNome={restaurant?.nome || "Restaurante"}
           mesRef={relatorioMes}

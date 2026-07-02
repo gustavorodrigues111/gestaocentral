@@ -208,6 +208,11 @@ function PacoteCard({
                   inativo
                 </span>
               )}
+              {pacote.interno && (
+                <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
+                  🔒 interno
+                </span>
+              )}
             </div>
             {pacote.descricao && (
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{pacote.descricao}</p>
@@ -435,6 +440,24 @@ function PacoteEditor({
             }`}
           >
             {form.ativo ? "Ativo" : "Inativo"}
+          </button>
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Visibilidade
+          </label>
+          <button
+            type="button"
+            onClick={() => setForm({ ...form, interno: !form.interno })}
+            className={`mt-1 w-full px-3 py-2 rounded-lg text-sm font-medium border text-left ${
+              form.interno
+                ? "bg-amber-100 border-amber-300 text-amber-800 dark:bg-amber-900/30 dark:border-amber-700 dark:text-amber-300"
+                : "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300"
+            }`}
+          >
+            {form.interno
+              ? "🔒 Interno — só aparece pra equipe montar proposta"
+              : "🌐 Público — cliente pode escolher no site"}
           </button>
         </div>
       </div>

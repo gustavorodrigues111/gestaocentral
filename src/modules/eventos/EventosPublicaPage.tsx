@@ -86,7 +86,7 @@ export function EventosPublicaPage() {
           return;
         }
         setEspacos(espacosAtivos);
-        const pacs = pacSnap.docs.map(d => ({ id: d.id, ...d.data() }) as PacoteEvento).filter(p => p.ativo);
+        const pacs = pacSnap.docs.map(d => ({ id: d.id, ...d.data() }) as PacoteEvento).filter(p => p.ativo && !p.interno);
         pacs.sort((a, b) => a.ordem - b.ordem);
         setPacotes(pacs);
       } catch (e) {

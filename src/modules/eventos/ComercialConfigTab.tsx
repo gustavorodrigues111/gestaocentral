@@ -132,17 +132,24 @@ export function ComercialConfigTab({ rid }: Props) {
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
           Quem recebe todos os leads novos deste restaurante (público e manual).
           Aplicado automaticamente; pode ser alterado por evento no card.
+          Só é possível escolher entre as pessoas comerciais abaixo.
         </p>
-        <select
-          value={respPadraoId}
-          onChange={(e) => setRespPadrao(e.target.value)}
-          className="w-full max-w-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-        >
-          <option value="">— ninguém (leads entram sem responsável) —</option>
-          {pessoas.map(p => (
-            <option key={p.id} value={p.id}>{p.nome}</option>
-          ))}
-        </select>
+        {selecionados.length === 0 ? (
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Cadastre pessoas comerciais abaixo pra poder definir o responsável padrão.
+          </p>
+        ) : (
+          <select
+            value={respPadraoId}
+            onChange={(e) => setRespPadrao(e.target.value)}
+            className="w-full max-w-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+          >
+            <option value="">— ninguém (leads entram sem responsável) —</option>
+            {selecionados.map(p => (
+              <option key={p.id} value={p.id}>{p.nome}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       <div>

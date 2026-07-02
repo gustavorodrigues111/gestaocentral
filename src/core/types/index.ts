@@ -3055,6 +3055,9 @@ export type PacoteEvento = {
   naoInclusos: string[];             // ["bolo", "DJ"]
   observacoes?: string;
   ativo: boolean;
+  // Pacote interno: aparece só pra equipe montar proposta (ex: cortesia,
+  // locação com desconto). NÃO aparece na vitrine pública pro cliente pedir.
+  interno?: boolean;
   ordem: number;                     // ordenação na vitrine pública
   createdAt: string;
   updatedAt: string;
