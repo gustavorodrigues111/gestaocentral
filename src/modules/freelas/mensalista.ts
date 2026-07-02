@@ -7,8 +7,6 @@ import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, U
 import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
 import { getActiveSplitVersion } from "../gorjetas/splitRules";
 
-const STATUS_TRABALHADO_MENSALISTA = new Set(["trabalho", "comp_trab", "freela"]);
-
 export function diasNoMes(ano: number, mes: number): number {
   return new Date(ano, mes, 0).getDate(); // mes 1-12
 }
@@ -65,17 +63,24 @@ export function gorjetaMensalDe(
   return { liquido: Math.round(liquido * 100) / 100, bruto: Math.round(bruto * 100) / 100, dias };
 }
 
-// Dias na escala no mês — praticada (real) com fallback pra prevista. Base do rateio.
-export function diasTrabalhadosMensalista(empId: string, escala: EscalaMes | null, ano: number, mes: number): number {
-  if (!escala) return 0;
-  const real = escala.real?.[empId] || {};
-  const prevista = escala.prevista?.[empId] || {};
+// Base do rateio da remuneração: DIAS CORRIDOS do período dela dentro do mês
+// (não "dias trabalhados"), descontando apenas as FALTAS INJUSTIFICADAS.
+//   efetivos = cobertos − faltas_i
+export function diasRemuneracaoMensalista(
+  emp: Empregado, escala: EscalaMes | null, ano: number, mes: number,
+): { cobertos: number; faltas: number; efetivos: number } {
   const mm = String(mes).padStart(2, "0");
-  let n = 0;
-  for (let d = 1; d <= diasNoMes(ano, mes); d++) {
+  const dnm = diasNoMes(ano, mes);
+  const real = escala?.real?.[emp.id] || {};
+  const prevista = escala?.prevista?.[emp.id] || {};
+  let cobertos = 0, faltas = 0;
+  for (let d = 1; d <= dnm; d++) {
     const date = `${ano}-${mm}-${String(d).padStart(2, "0")}`;
-    const status = real[date] ?? prevista[date];   // real sobrepõe; senão prevista
-    if (status && STATUS_TRABALHADO_MENSALISTA.has(String(status))) n++;
+    // Dia dentro de algum período dela? (demissao = 1º dia FORA → date < demissao)
+    const coberto = (emp.periodos || []).some(p => date >= p.admissao && (!p.demissao || date < p.demissao));
+    if (!coberto) continue;
+    cobertos++;
+    if (String(real[date] ?? prevista[date]) === "falta_i") faltas++;
   }
-  return n;
+  return { cobertos, faltas, efetivos: cobertos - faltas };
 }

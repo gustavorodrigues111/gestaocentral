@@ -12,7 +12,7 @@ import {
   VALORES_DIARIA, VALORES_HORA,
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
-import { diasNoMes, diasTrabalhadosMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
+import { diasNoMes, diasRemuneracaoMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
 import { nomeMes } from "../../core/utils/date";
 
 // Desloca a competência "YYYY-MM" em ±N meses.
@@ -131,7 +131,8 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const mensLinhas = useMemo<FreelaMensalistaLinha[]>(() => {
     return mensalistas.map((e) => {
       const inp = inputDe(e.id);
-      const dias = diasTrabalhadosMensalista(e.id, escala, ano, mes);
+      const dr = diasRemuneracaoMensalista(e, escala, ano, mes);
+      const dias = dr.efetivos;
       const gorj = gorjetaMensalDe(e.id, gorjetasMes, empregados, cargos, escala, splitVersions, unidades);
       const remMes = parseMoeda(inp.remuneracao);
       const proporcional = Math.round((remMes * dias / dnm) * 100) / 100;
@@ -147,7 +148,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       const acreDescFull = [inp.acrescimoModo === "pct" && acrePct ? `${acrePct}%` : "", inp.acrescimoDesc.trim()].filter(Boolean).join(" · ") || undefined;
       return {
         empregadoId: e.id, nome: e.nome, pix: pixMap.byId[e.id] || null, cpf: e.cpf ?? null,
-        competencia, diasTrabalhados: dias, diasNoMes: dnm,
+        competencia, diasTrabalhados: dias, diasCobertos: dr.cobertos, faltasInjust: dr.faltas, diasNoMes: dnm,
         remuneracaoMes: remMes, remuneracaoProporcional: proporcional,
         gorjetaModo: inp.modo, gorjetaLiquido: gorj.liquido, gorjetaBruto: gorj.bruto, gorjetaAplicada,
         desconto, descontoDesc: descDescFull,
@@ -429,7 +430,9 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                       <input type="checkbox" checked={sel} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(l.empregadoId)) n.delete(l.empregadoId); else n.add(l.empregadoId); return n; })} className="w-4 h-4 accent-indigo-600" />
                     )}
                     <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.nome}</span>
-                    <span className="text-[11px] text-gray-500">{l.diasTrabalhados}/{dnm} dias · gorjeta líq {fmtBR(l.gorjetaLiquido)} · bruto {fmtBR(l.gorjetaBruto)}</span>
+                    <span className="text-[11px] text-gray-500">
+                      {l.diasTrabalhados}/{dnm} dias corridos{(l.faltasInjust || 0) > 0 ? ` (${l.diasCobertos} − ${l.faltasInjust} falta inj.)` : ""} · gorjeta líq {fmtBR(l.gorjetaLiquido)} · bruto {fmtBR(l.gorjetaBruto)}
+                    </span>
                     <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(l.total)}</span>
                   </div>
                   {podeEditar && (

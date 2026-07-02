@@ -2348,7 +2348,9 @@ export type FreelaMensalistaLinha = {
   pix?: string | null;
   cpf?: string | null;
   competencia: string;             // "YYYY-MM"
-  diasTrabalhados: number;         // dias na escala (praticada) no mês
+  diasTrabalhados: number;         // dias EFETIVOS = corridos − faltas injustificadas
+  diasCobertos?: number;           // dias corridos do período dela no mês
+  faltasInjust?: number;           // faltas injustificadas descontadas
   diasNoMes: number;               // dias do mês-competência (base do rateio)
   remuneracaoMes: number;          // valor cheio de um mês
   remuneracaoProporcional: number; // remuneracaoMes × dias/diasNoMes
