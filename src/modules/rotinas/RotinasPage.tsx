@@ -11,6 +11,7 @@ import type { ModuleId, Pessoa, Rotina } from "../../core/types";
 import { RotinaModal } from "./RotinaModal";
 import { apagarRotina } from "./repository";
 import { recorrenciaLabel, proximaData } from "./rotinasEngine";
+import { subDestinoLabel } from "./subDestinos";
 
 const moduloLabel = (id?: ModuleId) => {
   if (!id) return null;
@@ -80,7 +81,7 @@ export function RotinasPage() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-5xl">
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Lembretes recorrentes que aparecem na Central de Avisos dos responsáveis no dia devido.
@@ -113,7 +114,9 @@ export function RotinasPage() {
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                       <span>🔁 {recorrenciaLabel(r.recorrencia)}</span>
                       {prox && <span>📅 próxima: {prox.split("-").reverse().join("/")}</span>}
-                      {moduloLabel(r.moduloAlvo) && <span>➡️ {moduloLabel(r.moduloAlvo)}</span>}
+                      {moduloLabel(r.moduloAlvo) && (
+                        <span>➡️ {moduloLabel(r.moduloAlvo)}{subDestinoLabel(r.moduloAlvo, r.subAlvo) ? ` › ${subDestinoLabel(r.moduloAlvo, r.subAlvo)}` : ""}</span>
+                      )}
                       <span>👤 {nomes}</span>
                     </div>
                   </div>

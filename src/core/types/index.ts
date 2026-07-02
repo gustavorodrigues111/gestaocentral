@@ -3103,6 +3103,7 @@ export type Rotina = {
   titulo: string;
   descricao?: string;
   moduloAlvo?: ModuleId;            // função do sistema (gera o deep-link)
+  subAlvo?: string;                // sub-destino/aba dentro do módulo (ver subDestinos.ts)
   responsaveis: string[];          // pessoaIds
   responsaveisNomes?: Record<string, string>; // snapshot pra exibir
   recorrencia: RotinaRecorrencia;

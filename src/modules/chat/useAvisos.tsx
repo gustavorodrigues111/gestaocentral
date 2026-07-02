@@ -24,6 +24,7 @@ import type { FaleDpMensagem, Rotina, RotinaConclusao } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
+import { deepLinkRotina } from "../rotinas/subDestinos";
 
 export type Aviso = {
   id: string;
@@ -179,7 +180,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         restauranteId: r.restaurantId,
         restauranteNome: nomePorRid[r.restaurantId] || "Restaurante",
         cta: r.moduloAlvo ? "Fazer agora" : "Marcar feito",
-        href: r.moduloAlvo ? `/r/${r.restaurantId}/${r.moduloAlvo}` : undefined,
+        href: deepLinkRotina(r.restaurantId, r.moduloAlvo, r.subAlvo),
         rotina: { rotina: r, ocorrenciaData: p.ocorrenciaData, atrasada: p.atrasada },
         categoria: "Rotinas",
         categoriaIcone: "🔁",
