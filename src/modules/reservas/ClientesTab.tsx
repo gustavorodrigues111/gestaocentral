@@ -10,6 +10,26 @@ import { ClienteModal } from "./ClienteModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { phoneKey, upsertClienteLookup } from "./clienteLookup";
 
+function addDiasStr(ymd: string, n: number): string {
+  const d = new Date(ymd + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+// MM-DD do aniversário (aceita "MM-DD" ou "YYYY-MM-DD"). null se inválido —
+// resolve o "Invalid Date" pra clientes com aniversário vazio/malformado.
+function anivMMDD(a?: string | null): string | null {
+  if (!a) return null;
+  const s = a.length === 5 ? a : a.length >= 10 ? a.slice(5, 10) : "";
+  const [mm, dd] = s.split("-");
+  const m = Number(mm), d = Number(dd);
+  if (!m || !d || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  return `${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+function anivLabel(a?: string | null): string | null {
+  const s = anivMMDD(a);
+  return s ? s.split("-").reverse().join("/") : null;   // DD/MM
+}
+
 type Props = {
   restaurantId: string;
   podeConfig: boolean;
@@ -41,6 +61,8 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
 
   const [search, setSearch] = useState("");
   const [filtroTag, setFiltroTag] = useState<string>("");
+  const [vista, setVista] = useState<"recentes" | "frequentes" | "aniversarios" | "todos">("recentes");
+  const [limiteTodos, setLimiteTodos] = useState(30);
   const [editing, setEditing] = useState<Cliente | "new" | null>(null);
   const [verHistorico, setVerHistorico] = useState<Cliente | null>(null);
 
@@ -188,20 +210,67 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
     }
   }
 
-  const filtered = useMemo(() => {
-    return clientes.filter(c => {
+  // Datas de recorte pras visões.
+  const hoje = new Date().toISOString().slice(0, 10);
+  const d7 = addDiasStr(hoje, -7);
+  const d365 = addDiasStr(hoje, -365);
+  const mesAtual = hoje.slice(5, 7);
+
+  // Por cliente: última reserva + nº de reservas no último ano (das reservas).
+  const resStats = useMemo(() => {
+    const m: Record<string, { ultima: string | null; countAno: number }> = {};
+    for (const r of reservas) {
+      if (!r.clienteId || !r.data) continue;
+      const e = m[r.clienteId] || { ultima: null, countAno: 0 };
+      if (!e.ultima || r.data > e.ultima) e.ultima = r.data;
+      if (r.data >= d365) e.countAno++;
+      m[r.clienteId] = e;
+    }
+    return m;
+  }, [reservas, d365]);
+
+  const matchBusca = useMemo(() => {
+    const s = search.trim().toLowerCase();
+    return (c: Cliente) => {
       if (filtroTag && !(c.tags || []).includes(filtroTag)) return false;
-      if (search.trim()) {
-        const s = search.toLowerCase();
-        if (
-          !c.nome.toLowerCase().includes(s) &&
-          !(c.telefone || "").toLowerCase().includes(s) &&
-          !(c.email || "").toLowerCase().includes(s)
-        ) return false;
-      }
-      return true;
-    });
-  }, [clientes, search, filtroTag]);
+      if (!s) return true;
+      return c.nome.toLowerCase().includes(s)
+        || (c.telefone || "").toLowerCase().includes(s)
+        || (c.email || "").toLowerCase().includes(s);
+    };
+  }, [search, filtroTag]);
+
+  // Lista base conforme a visão (antes da busca).
+  const visiveis = useMemo(() => {
+    const base = clientes.filter(matchBusca);
+    if (vista === "recentes") {
+      return base.filter(c => { const u = resStats[c.id]?.ultima; return !!u && u >= d7; })
+        .sort((a, b) => (resStats[b.id]?.ultima || "").localeCompare(resStats[a.id]?.ultima || ""));
+    }
+    if (vista === "frequentes") {
+      return base.filter(c => (resStats[c.id]?.countAno || 0) > 0)
+        .sort((a, b) => (resStats[b.id]?.countAno || 0) - (resStats[a.id]?.countAno || 0) || a.nome.localeCompare(b.nome, "pt-BR"));
+    }
+    if (vista === "aniversarios") {
+      return base.filter(c => anivMMDD(c.aniversario)?.slice(0, 2) === mesAtual)
+        .sort((a, b) => (anivMMDD(a.aniversario) || "").localeCompare(anivMMDD(b.aniversario) || ""));
+    }
+    return base; // todos — já vem alfabético
+  }, [clientes, matchBusca, vista, resStats, d7, mesAtual]);
+
+  // Agrupa "Todos" por letra inicial (contatos), com lazy load.
+  const gruposTodos = useMemo(() => {
+    if (vista !== "todos") return [];
+    const lim = visiveis.slice(0, limiteTodos);
+    const m = new Map<string, Cliente[]>();
+    for (const c of lim) {
+      const l = (c.nome[0] || "#").toUpperCase();
+      const arr = m.get(l) || []; arr.push(c); m.set(l, arr);
+    }
+    return Array.from(m.entries());
+  }, [vista, visiveis, limiteTodos]);
+
+  useEffect(() => { setLimiteTodos(30); }, [vista, search, filtroTag]);
 
   async function excluir(c: Cliente) {
     if (!confirm(`Excluir cliente "${c.nome}"?\n\nReservas antigas dele preservam o nome em snapshot.`)) return;
@@ -226,6 +295,23 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
         value={search}
         onChange={(e) => setSearch(e.target.value)}
       />
+
+      {/* Visões (agenda estilo contatos) */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        {([
+          ["recentes", "🕒 Recentes (7d)"],
+          ["frequentes", "⭐ Frequentes"],
+          ["aniversarios", "🎂 Aniversariantes"],
+          ["todos", `🔤 Todos (${clientes.length})`],
+        ] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setVista(v)}
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+              vista === v ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+            }`}>
+            {l}
+          </button>
+        ))}
+      </div>
 
       {tagsDisponiveis.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap">
@@ -298,86 +384,47 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
         </div>
       )}
 
-      {filtered.length === 0 ? (
+      {visiveis.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">👥</div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
-            {search || filtroTag ? "Nenhum cliente encontrado" : "Sem clientes"}
+            {vista === "recentes" ? "Ninguém reservou nos últimos 7 dias"
+              : vista === "frequentes" ? "Ninguém com reservas no último ano"
+              : vista === "aniversarios" ? "Nenhum aniversariante neste mês"
+              : (search || filtroTag ? "Nenhum cliente encontrado" : "Sem clientes")}
           </p>
+        </div>
+      ) : vista === "todos" ? (
+        <div className="space-y-3">
+          {gruposTodos.map(([letra, cs]) => (
+            <div key={letra}>
+              <div className="text-xs font-bold text-gray-400 dark:text-gray-500 px-1 mb-1 sticky top-0 bg-gray-50/80 dark:bg-gray-950/60 backdrop-blur py-0.5">{letra}</div>
+              <div className="space-y-1">
+                {cs.map(c => (
+                  <ClienteCard key={c.id} cliente={c} stats={statsPorCliente[c.id]}
+                    canEditar={canEditar} podeExcluir={podeExcluirClienteEfetivo}
+                    onHistorico={() => setVerHistorico(c)} onEditar={() => setEditing(c)} onExcluir={() => excluir(c)} />
+                ))}
+              </div>
+            </div>
+          ))}
+          {visiveis.length > limiteTodos && (
+            <div className="text-center pt-1">
+              <Button variant="secondary" size="sm" onClick={() => setLimiteTodos(n => n + 40)}>
+                Carregar mais ({visiveis.length - limiteTodos} restantes)
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-1">
-          {filtered.map(c => {
-            const stats = statsPorCliente[c.id];
-            const compareceu = stats?.compareceu ?? c.totalCompareceu ?? 0;
-            const noShow = stats?.noShow ?? c.totalNoShow ?? 0;
-            const ultima = stats?.ultima ?? c.ultimaVisita;
-            const total = compareceu + noShow + (stats?.total || c.totalReservas || 0) - compareceu - noShow;
-            // Aniversário hoje?
-            let aniversarioHoje = false;
-            if (c.aniversario) {
-              const hoje = new Date();
-              const mm = String(hoje.getMonth() + 1).padStart(2, "0");
-              const dd = String(hoje.getDate()).padStart(2, "0");
-              const aniv = c.aniversario.length === 5 ? c.aniversario : c.aniversario.slice(5); // pega MM-DD
-              aniversarioHoje = aniv === `${mm}-${dd}`;
-            }
-            return (
-              <div
-                key={c.id}
-                className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3"
-              >
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-bold text-gray-900 dark:text-gray-100">{c.nome}</h3>
-                      {aniversarioHoje && (
-                        <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
-                          🎂 Hoje!
-                        </span>
-                      )}
-                      {(c.tags || []).map(t => (
-                        <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                          {t}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-                      {c.telefone && <span>📞 {c.telefone}</span>}
-                      {c.email && <span>✉️ {c.email}</span>}
-                      {c.aniversario && (
-                        <span>🎂 {c.aniversario.length === 5 ? c.aniversario.split("-").reverse().join("/") : new Date(c.aniversario + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</span>
-                      )}
-                    </div>
-                    {c.restricoesAlimentares && (
-                      <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                        ⚠ {c.restricoesAlimentares}
-                      </div>
-                    )}
-                    {c.observacoes && (
-                      <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 italic">{c.observacoes}</div>
-                    )}
-                    {/* Stats */}
-                    <div className="text-[11px] text-gray-500 mt-1.5 flex gap-3 flex-wrap">
-                      {compareceu > 0 && <span>🪑 {compareceu} visita(s)</span>}
-                      {total > 0 && <span>📅 {total} reserva(s)</span>}
-                      {noShow > 0 && <span className="text-rose-600">😶 {noShow} no-show</span>}
-                      {ultima && <span>· última: {new Date(ultima + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
-                    </div>
-                  </div>
-                  <div className="flex gap-1 flex-wrap">
-                    <Button variant="secondary" size="sm" onClick={() => setVerHistorico(c)}>📊 Histórico</Button>
-                    {canEditar && (
-                      <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>
-                    )}
-                    {podeExcluirClienteEfetivo && (
-                      <Button variant="danger" size="sm" onClick={() => excluir(c)} title="Exclusão hard (master ou perfil com permissão). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+          {visiveis.map(c => (
+            <ClienteCard key={c.id} cliente={c} stats={statsPorCliente[c.id]}
+              canEditar={canEditar} podeExcluir={podeExcluirClienteEfetivo}
+              countAno={vista === "frequentes" ? resStats[c.id]?.countAno : undefined}
+              anivDestaque={vista === "aniversarios"}
+              onHistorico={() => setVerHistorico(c)} onEditar={() => setEditing(c)} onExcluir={() => excluir(c)} />
+          ))}
         </div>
       )}
 
@@ -395,6 +442,69 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
           onClose={() => setVerHistorico(null)}
         />
       )}
+    </div>
+  );
+}
+
+function ClienteCard({ cliente: c, stats, canEditar, podeExcluir, countAno, anivDestaque, onHistorico, onEditar, onExcluir }: {
+  cliente: Cliente;
+  stats?: { total: number; compareceu: number; noShow: number; ultima: string | null };
+  canEditar: boolean;
+  podeExcluir: boolean;
+  countAno?: number;
+  anivDestaque?: boolean;
+  onHistorico: () => void;
+  onEditar: () => void;
+  onExcluir: () => void;
+}) {
+  const compareceu = stats?.compareceu ?? c.totalCompareceu ?? 0;
+  const noShow = stats?.noShow ?? c.totalNoShow ?? 0;
+  const ultima = stats?.ultima ?? c.ultimaVisita;
+  const total = stats?.total ?? c.totalReservas ?? 0;
+  const now = new Date();
+  const hojeMMDD = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const anivHoje = anivMMDD(c.aniversario) === hojeMMDD;
+  const anivTxt = anivLabel(c.aniversario);
+
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="font-bold text-gray-900 dark:text-gray-100">{c.nome}</h3>
+            {anivHoje && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">🎂 Hoje!</span>
+            )}
+            {countAno != null && countAno > 0 && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⭐ {countAno} no ano</span>
+            )}
+            {anivDestaque && anivTxt && (
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">🎂 {anivTxt}</span>
+            )}
+            {(c.tags || []).map(t => (
+              <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{t}</span>
+            ))}
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+            {c.telefone && <span>📞 {c.telefone}</span>}
+            {c.email && <span>✉️ {c.email}</span>}
+            {!anivDestaque && anivTxt && <span>🎂 {anivTxt}</span>}
+          </div>
+          {c.restricoesAlimentares && <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">⚠ {c.restricoesAlimentares}</div>}
+          {c.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 italic">{c.observacoes}</div>}
+          <div className="text-[11px] text-gray-500 mt-1.5 flex gap-3 flex-wrap">
+            {compareceu > 0 && <span>🪑 {compareceu} visita(s)</span>}
+            {total > 0 && <span>📅 {total} reserva(s)</span>}
+            {noShow > 0 && <span className="text-rose-600">😶 {noShow} no-show</span>}
+            {ultima && <span>· última: {new Date(ultima + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
+          </div>
+        </div>
+        <div className="flex gap-1 flex-wrap">
+          <Button variant="secondary" size="sm" onClick={onHistorico}>📊 Histórico</Button>
+          {canEditar && <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>}
+          {podeExcluir && <Button variant="danger" size="sm" onClick={onExcluir} title="Exclusão hard (master ou perfil com permissão). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>}
+        </div>
+      </div>
     </div>
   );
 }
