@@ -47,7 +47,9 @@ export function OcorrenciasPage() {
   const isMaster = !!me?.isMaster;
   const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeCriar     = isMaster || can("ocorrencias", "criar");
-  const podeVer       = isMaster || can("ocorrencias", "ver");
+  // Kanban de gestão: nova permissão "gerenciar" (ou "ver" legado, retrocompat).
+  const podeGerenciar = isMaster || can("ocorrencias", "gerenciar") || can("ocorrencias", "ver");
+  const podeVer       = podeGerenciar; // conteúdo do kanban reusa este gate
   const podeEditar    = isMaster || can("ocorrencias", "editar");
   const podeStats     = isMaster || can("ocorrencias", "estatistics");
 
@@ -60,6 +62,11 @@ export function OcorrenciasPage() {
   const [filtroGrav, setFiltroGrav] = useState<"todas" | OcorrenciaGravidade>("todas");
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "todas" | OcorrenciaStatus>("abertas");
   const [editing, setEditing] = useState<Ocorrencia | "new" | null>(null);
+  const [aba, setAba] = useState<"registrar" | "kanban">(() => {
+    try { return (localStorage.getItem("ocorrencias_aba") as "registrar" | "kanban") || "registrar"; }
+    catch { return "registrar"; }
+  });
+  useEffect(() => { try { localStorage.setItem("ocorrencias_aba", aba); } catch {} }, [aba]);
   const [view, setView] = useState<"lista" | "kanban">(() => {
     try { return (localStorage.getItem("ocorrencias_view") as "lista" | "kanban") || "kanban"; }
     catch { return "kanban"; }
@@ -126,6 +133,19 @@ export function OcorrenciasPage() {
     });
   }, [ocorrencias, filtroGrav, filtroStatus, search, empMap]);
 
+  // Ocorrências que EU registrei (aba Registrar, pra quem não gerencia).
+  const minhas = useMemo(
+    () => ocorrencias.filter(o => o.criadaPor === me?.id),
+    [ocorrencias, me?.id],
+  );
+
+  // Abas disponíveis conforme permissão.
+  const abaEfetiva: "registrar" | "kanban" =
+    aba === "kanban" && podeGerenciar ? "kanban"
+    : podeCriar ? "registrar"
+    : "kanban";
+  const mostrarTabs = podeCriar && podeGerenciar;
+
   // Stats topo
   const today = todayYmd();
   const hoje = ocorrencias.filter(o => o.data === today).length;
@@ -170,14 +190,64 @@ export function OcorrenciasPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div />
-        {podeCriar && (
-          <Button onClick={() => setEditing("new")}>+ Nova ocorrência</Button>
-        )}
-      </div>
+      {/* Abas: Registrar (criação) e Kanban (gestão) */}
+      {mostrarTabs && (
+        <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+          {([{ k: "registrar", l: "📝 Registrar" }, { k: "kanban", l: "📊 Kanban" }] as const).map(t => (
+            <button
+              key={t.k}
+              type="button"
+              onClick={() => setAba(t.k)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                abaEfetiva === t.k
+                  ? "border-indigo-600 text-indigo-700 dark:text-indigo-300"
+                  : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              }`}
+            >
+              {t.l}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {/* Stats — apenas pra quem tem permissão de estatísticas */}
+      {/* ABA REGISTRAR — criação + histórico só das próprias */}
+      {abaEfetiva === "registrar" && podeCriar && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">Registrar ocorrência</h2>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400">Descreva o que aconteceu — o gestor recebe e trata no Kanban.</p>
+            </div>
+            <Button onClick={() => setEditing("new")}>+ Nova ocorrência</Button>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Minhas ocorrências</div>
+            {minhas.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">Você ainda não registrou nenhuma ocorrência.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {minhas.map(o => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => setEditing(o)}
+                    className="w-full text-left flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 p-3"
+                  >
+                    <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+                    <span className="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{o.titulo}</span>
+                    <span className="text-[11px] text-gray-500 tabular-nums">{new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${STATUS_CLS[o.status]}`}>{OCORRENCIA_STATUS_LABEL[o.status]}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ABA KANBAN — gestão (todas as ocorrências) */}
+      {abaEfetiva === "kanban" && podeVer && (
+      <>
       {podeStats && (
         <div className="grid grid-cols-3 gap-3 mb-4">
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
@@ -194,19 +264,6 @@ export function OcorrenciasPage() {
           </div>
         </div>
       )}
-
-      {/* Quem só pode registrar (sem ver lista) — placeholder e fim. */}
-      {!podeVer && podeCriar && (
-        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6 text-center text-sm text-blue-800 dark:text-blue-300">
-          <div className="text-3xl mb-2">📝</div>
-          <p className="font-medium mb-1">Você pode registrar ocorrências</p>
-          <p className="text-xs">A lista das ocorrências registradas fica visível só pra gestores. Após enviar, o gestor é notificado.</p>
-        </div>
-      )}
-
-      {/* Busca + filtros + lista — visíveis só pra quem pode ver */}
-      {podeVer && (
-      <>
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <Input
           placeholder="🔍 Buscar por título, descrição, empregado, cliente..."
@@ -352,6 +409,7 @@ export function OcorrenciasPage() {
                 )}
                 <div className="flex items-center gap-3 flex-wrap text-xs text-gray-600 dark:text-gray-400 pt-2 mt-2 border-t border-gray-200 dark:border-gray-800">
                   <span>📅 {new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}{o.hora ? ` ${o.hora}` : ""}</span>
+                  {o.criadaPorNome && <span>✍️ {o.criadaPorNome}</span>}
                   {empNomes.length > 0 && <span>👤 {empNomes.join(", ")}</span>}
                   {o.clienteNome && <span>🪑 Cliente: {o.clienteNome}</span>}
                 </div>
@@ -416,7 +474,7 @@ function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, 
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 overflow-x-auto">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 items-start">
       {KANBAN_COLS_OC.map(col => {
         const lista = porCol[col.id];
         const ehAlvo = dropTarget === col.id;
@@ -447,7 +505,7 @@ function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, 
               </div>
               <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{col.descricao}</div>
             </div>
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               {lista.map(o => {
                 const arrastando = draggingId === o.id;
                 return (
@@ -478,6 +536,7 @@ function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, 
                     </div>
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                       {new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}
+                      {o.criadaPorNome && <span> · por {o.criadaPorNome}</span>}
                     </div>
                     {o.descricao && (
                       <div className="text-[10px] text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{o.descricao}</div>

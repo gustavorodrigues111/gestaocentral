@@ -89,6 +89,7 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
         resolvidaPor: acabouResolver ? me.id : (ocorrencia?.resolvidaPor ?? null),
         criadaEm: ocorrencia?.criadaEm || now,
         criadaPor: ocorrencia?.criadaPor || me.id,
+        criadaPorNome: ocorrencia?.criadaPorNome || me.nome,
         atualizadaEm: now,
       };
 

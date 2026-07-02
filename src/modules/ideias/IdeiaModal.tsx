@@ -42,6 +42,7 @@ export function IdeiaModal({ ideia, restaurantId, onClose }: Props) {
         reuniaoId: ideia?.reuniaoId ?? null,
         criadoEm: ideia?.criadoEm || now,
         criadoPor: ideia?.criadoPor || me.id,
+        criadoPorNome: ideia?.criadoPorNome || me.nome,
         atualizadoEm: now,
       };
       if (isNew) {

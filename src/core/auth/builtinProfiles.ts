@@ -54,7 +54,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     },
     ocorrencias: {
       receberAvisos: true,
-      criar: true, ver: true, editar: true, estatistics: true,
+      criar: true, gerenciar: true, ver: true, editar: true, estatistics: true,
     },
     eventos: {
       receberAvisos: true,
@@ -124,7 +124,7 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
     },
     ideias: {
       receberAvisos: true,
-      submeter: true, ver: true, moderar: true, executar: true,
+      submeter: true, gerenciar: true, ver: true, moderar: true, executar: true,
     },
     comunicados: {
       ler: true, criar: true, editar: true, deletar: true, verLeituras: true,

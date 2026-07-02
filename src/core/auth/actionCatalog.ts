@@ -109,7 +109,8 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "operacao",
     acoes: [
       { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
-      { id: "criar",       label: "Criar ocorrência" },
+      { id: "criar",       label: "Registrar ocorrência" },
+      { id: "gerenciar",   label: "Gerenciar no Kanban (ver todas + mover)" },
       { id: "ver",         label: "Ver ocorrências" },
       { id: "editar",      label: "Editar / atualizar status" },
       { id: "estatistics", label: "Ver relatórios / estatísticas" },
@@ -348,6 +349,7 @@ export const CATALOGO: CatalogoModulo[] = [
     acoes: [
       { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "submeter", label: "Submeter ideia" },
+      { id: "gerenciar", label: "Gerenciar no Kanban (ver todas + mover)" },
       { id: "ver",      label: "Ver ideias submetidas" },
       { id: "moderar",  label: "Aprovar / rejeitar / classificar" },
       { id: "executar", label: "Marcar como implementada" },

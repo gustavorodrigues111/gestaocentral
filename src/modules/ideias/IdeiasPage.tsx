@@ -28,13 +28,15 @@ export function IdeiasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "ideias");
-  // Gates granulares — Banco de ideias tem 2 "papéis": submissor (qualquer
-  // pessoa do time submete) e moderador (gestor classifica/executa).
+  // Gates granulares. Submissor = qualquer um do time submete (aba Registrar).
+  // Gerenciar = vê o Kanban de gestão (nova permissão; "moderar"/"ver" legado
+  // servem de retrocompat).
   const { can } = useCanAcao(rid);
-  const podeSubmeter = !!me?.isMaster || can("ideias", "submeter");
-  const podeModerar  = !!me?.isMaster || can("ideias", "moderar");
-  const podeExecutar = !!me?.isMaster || can("ideias", "executar");
+  const isMaster = !!me?.isMaster;
+  const podeSubmeter = isMaster || can("ideias", "submeter");
+  const podeGerenciar = isMaster || can("ideias", "gerenciar") || can("ideias", "moderar") || canVer(me, rid, "ideias");
+  const podeModerar  = isMaster || can("ideias", "moderar");
+  const podeExecutar = isMaster || can("ideias", "executar");
   void podeExecutar; // usado em refinamento futuro (botao "marcar implementada")
 
   const [ideias, setIdeias] = useState<Ideia[]>([]);
@@ -44,6 +46,11 @@ export function IdeiasPage() {
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "em_pauta" | "discutidas" | "descartadas" | "todas">("abertas");
   const [editing, setEditing] = useState<Ideia | "new" | null>(null);
   const [levando, setLevando] = useState<Ideia | null>(null);
+  const [aba, setAba] = useState<"registrar" | "kanban">(() => {
+    try { return (localStorage.getItem("ideias_aba") as "registrar" | "kanban") || "registrar"; }
+    catch { return "registrar"; }
+  });
+  useEffect(() => { try { localStorage.setItem("ideias_aba", aba); } catch {} }, [aba]);
   const [view, setView] = useState<"lista" | "kanban">(() => {
     try { return (localStorage.getItem("ideias_view") as "lista" | "kanban") || "kanban"; }
     catch { return "kanban"; }
@@ -80,6 +87,13 @@ export function IdeiasPage() {
     return m;
   }, [reunioes]);
 
+  const minhas = useMemo(() => ideias.filter(i => i.criadoPor === me?.id), [ideias, me?.id]);
+  const abaEfetiva: "registrar" | "kanban" =
+    aba === "kanban" && podeGerenciar ? "kanban"
+    : podeSubmeter ? "registrar"
+    : "kanban";
+  const mostrarTabs = podeSubmeter && podeGerenciar;
+
   const filtered = useMemo(() => {
     return ideias.filter(i => {
       if (filtroStatus === "abertas"    && i.status !== "aberta")     return false;
@@ -111,7 +125,7 @@ export function IdeiasPage() {
   if (!restaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
   }
-  if (!podeVer) {
+  if (!podeSubmeter && !podeGerenciar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -122,13 +136,66 @@ export function IdeiasPage() {
 
   return (
     <div className="max-w-4xl">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div />
-        {podeSubmeter && (
-          <Button onClick={() => setEditing("new")}>+ Nova ideia</Button>
-        )}
-      </div>
+      {/* Abas: Registrar (criação) e Kanban (gestão) */}
+      {mostrarTabs && (
+        <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+          {([{ k: "registrar", l: "💡 Registrar" }, { k: "kanban", l: "📊 Kanban" }] as const).map(t => (
+            <button
+              key={t.k}
+              type="button"
+              onClick={() => setAba(t.k)}
+              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+                abaEfetiva === t.k
+                  ? "border-indigo-600 text-indigo-700 dark:text-indigo-300"
+                  : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              }`}
+            >
+              {t.l}
+            </button>
+          ))}
+        </div>
+      )}
 
+      {/* ABA REGISTRAR — criação + só as próprias ideias */}
+      {abaEfetiva === "registrar" && podeSubmeter && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">Sugerir ideia</h2>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400">Manda sua sugestão pra melhorar a casa — o gestor avalia no Kanban.</p>
+            </div>
+            <Button onClick={() => setEditing("new")}>+ Nova ideia</Button>
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Minhas ideias</div>
+            {minhas.length === 0 ? (
+              <p className="text-sm text-gray-500 dark:text-gray-400 italic">Você ainda não sugeriu nenhuma ideia.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {minhas.map(i => {
+                  const status = STATUS_INFO[i.status];
+                  return (
+                    <button
+                      key={i.id}
+                      type="button"
+                      onClick={() => setEditing(i)}
+                      className="w-full text-left flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 p-3"
+                    >
+                      <span className="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{i.titulo}</span>
+                      <span className="text-[11px] text-gray-500 tabular-nums">{i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}</span>
+                      <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${status.cls}`}>{status.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ABA KANBAN — gestão (todas as ideias) */}
+      {abaEfetiva === "kanban" && podeGerenciar && (
+      <>
       <div className="flex gap-2 mb-3 flex-wrap items-center">
         <Input
           placeholder="🔍 Buscar..."
@@ -250,6 +317,7 @@ export function IdeiasPage() {
                 )}
                 <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
                   📅 {i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}
+                  {i.criadoPorNome && <> · ✍️ {i.criadoPorNome}</>}
                   {reuniao && (
                     <> · 🗣️ {reuniao.titulo} ({new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")})</>
                   )}
@@ -259,6 +327,8 @@ export function IdeiasPage() {
           })}
         </div>
       ))}
+      </>
+      )}
 
       {editing && (
         <IdeiaModal
@@ -327,7 +397,7 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingI
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 overflow-x-auto">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 items-start">
       {KANBAN_COLUNAS.map(col => {
         const lista = porColuna[col.id];
         const ehAlvo = dropTarget === col.id;
@@ -358,7 +428,7 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingI
               </div>
               <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">{col.descricao}</div>
             </div>
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1.5">
               {lista.map(i => {
                 const arrastando = draggingId === i.id;
                 return (
@@ -384,6 +454,9 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingI
                     )}
                     {i.descricao && (
                       <div className="text-[10px] text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{i.descricao}</div>
+                    )}
+                    {i.criadoPorNome && (
+                      <div className="text-[9px] text-gray-400 dark:text-gray-500 mt-1">por {i.criadoPorNome}</div>
                     )}
                   </button>
                 );
