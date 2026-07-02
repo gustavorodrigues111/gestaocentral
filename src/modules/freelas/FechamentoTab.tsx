@@ -92,6 +92,17 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
   const [mensSel, setMensSel] = useState<Set<string>>(new Set());
+  const [mensConfirmados, setMensConfirmados] = useState<Set<string>>(new Set());
+  // Ao trocar de competência, limpa confirmação/seleção (valores mudam).
+  useEffect(() => { setMensConfirmados(new Set()); setMensSel(new Set()); }, [competencia]);
+  function confirmarMens(empId: string) {
+    setMensConfirmados(s => new Set(s).add(empId));
+    setMensSel(s => new Set(s).add(empId));
+  }
+  function editarMens(empId: string) {
+    setMensConfirmados(s => { const n = new Set(s); n.delete(empId); return n; });
+    setMensSel(s => { const n = new Set(s); n.delete(empId); return n; });
+  }
   type AjModo = "reais" | "pct";
   type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoModo: AjModo; descontoDesc: string; acrescimo: string; acrescimoModo: AjModo; acrescimoDesc: string };
   const [mensInputs, setMensInputs] = useState<Record<string, MensInput>>({});
@@ -418,17 +429,15 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         </div>
         {mensalistas.length === 0 ? (
           <EmptyState texto={`Nenhum freela mensalista ativo em ${nomeMes(mes)}/${ano}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
+        ) : mensLinhas.every(l => mensConfirmados.has(l.empregadoId)) ? (
+          <EmptyState texto="Todos os mensalistas confirmados. Veja em 'Prontos pra lote' abaixo." />
         ) : (
           <div className="space-y-2">
-            {mensLinhas.map((l) => {
+            {mensLinhas.filter(l => !mensConfirmados.has(l.empregadoId)).map((l) => {
               const inp = inputDe(l.empregadoId);
-              const sel = mensSel.has(l.empregadoId);
               return (
-                <div key={l.empregadoId} className={`rounded-xl border p-3 ${sel ? "border-indigo-300 dark:border-indigo-700 bg-indigo-50/40 dark:bg-indigo-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+                <div key={l.empregadoId} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {podeEditar && (
-                      <input type="checkbox" checked={sel} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(l.empregadoId)) n.delete(l.empregadoId); else n.add(l.empregadoId); return n; })} className="w-4 h-4 accent-indigo-600" />
-                    )}
                     <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.nome}</span>
                     <span className="text-[11px] text-gray-500">
                       {l.diasTrabalhados}/{dnm} dias corridos{(l.faltasInjust || 0) > 0 ? ` (${l.diasCobertos} − ${l.faltasInjust} falta inj.)` : ""} · gorjeta líq {fmtBR(l.gorjetaLiquido)} · bruto {fmtBR(l.gorjetaBruto)}
@@ -486,6 +495,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                       </div>
                     </div>
                   )}
+                  {podeEditar && (
+                    <div className="mt-2 flex justify-end">
+                      <Button size="sm" onClick={() => confirmarMens(l.empregadoId)}>✅ Confirmar</Button>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -508,9 +522,30 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
             </button>
           )}
         </div>
-        {prontosLote.length === 0 ? (
+
+        {/* Mensalistas confirmados (entram no lote junto com os turnos) */}
+        {mensConfirmados.size > 0 && (
+          <div className="mb-3 space-y-1.5">
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">🗓️ Mensalistas confirmados</div>
+            {mensLinhas.filter(l => mensConfirmados.has(l.empregadoId)).map(l => (
+              <div key={l.empregadoId} className="flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+                {podeEditar && (
+                  <input type="checkbox" checked={mensSel.has(l.empregadoId)} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(l.empregadoId)) n.delete(l.empregadoId); else n.add(l.empregadoId); return n; })} className="w-4 h-4 accent-indigo-600" />
+                )}
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{l.nome}</span>
+                <span className="text-[11px] text-gray-500">{l.diasTrabalhados}/{dnm}d · remun {fmtBR(l.remuneracaoProporcional)} · gorj {l.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(l.gorjetaAplicada)}{l.desconto > 0 ? ` · −${fmtBR(l.desconto)}` : ""}{l.acrescimo > 0 ? ` · +${fmtBR(l.acrescimo)}` : ""}</span>
+                <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(l.total)}</span>
+                {podeEditar && (
+                  <button type="button" onClick={() => editarMens(l.empregadoId)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ editar</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {prontosLote.length === 0 && mensConfirmados.size === 0 ? (
           <EmptyState texto="Nenhum turno pronto pra lote. Precifique acima primeiro." />
-        ) : (
+        ) : prontosLote.length === 0 ? null : (
           <AreaGroups
             shifts={prontosLote}
             onToggleGrupo={(rows) => toggleGrupo(rows)}
