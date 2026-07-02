@@ -7,8 +7,9 @@ import type {
   EspacoEvento, LeadEvento, LinhaProposta, PacoteEvento, ParcelaProposta, PropostaEvento,
 } from "../../core/types";
 import { linhaPropostaTotal, pacotePrecoLabel, pacoteValorTotal } from "../../core/types";
-import { criarProposta, montarMensagemProposta } from "./propostaHelpers";
+import { criarProposta, montarMensagemProposta, parcelasDefaultPF, parcelasDefaultPJ } from "./propostaHelpers";
 import { registrarTratativa } from "./tratativas";
+import { pickDriveFile } from "../../core/google/drivePicker";
 
 type Props = {
   lead: LeadEvento;
@@ -34,7 +35,10 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const [pacoteSelecionado, setPacoteSelecionado] = useState<string>(lead.pacoteSugeridoId || "");
   const [pax, setPax] = useState<number>(lead.numConvidados);
   const [linhas, setLinhas] = useState<LinhaProposta[]>([]);
+  const [arredondamento, setArredondamento] = useState(0);
+  const [parcelasEdit, setParcelasEdit] = useState<ParcelaProposta[]>([]); // vazio = 50/50 padrão
   const [montando, setMontando] = useState(false); // editor aberto pra nova versão
+  const [pagando, setPagando] = useState<{ p: PropostaEvento; idx: number } | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -71,6 +75,23 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     [linhas],
   );
   const totalPreview = Math.round((baseDoPacote + totalLinhas) * 100) / 100;
+  const totalFinal = Math.round((totalPreview + arredondamento) * 100) / 100;
+
+  const parcelasDefault = (total: number): ParcelaProposta[] =>
+    lead.cliente.tipoPessoa === "PJ" ? parcelasDefaultPJ(total) : parcelasDefaultPF(total, lead.dataDesejada);
+
+  // Abre o editor pré-preenchido a partir da proposta atual (pra fazer a v2).
+  function iniciarNovaVersao() {
+    const p = propostaAtual;
+    setPacoteSelecionado(p?.pacoteBaseId || "");
+    setPax(p?.numConvidados || lead.numConvidados);
+    setLinhas((p?.linhas || []).map(l => ({ ...l, id: novaLinha().id })));
+    setArredondamento(p?.arredondamento || 0);
+    setParcelasEdit((p?.parcelas || []).map(pc => ({
+      ordem: pc.ordem, descricao: pc.descricao, valor: pc.valor, vencimentoEm: pc.vencimentoEm,
+    })));
+    setMontando(true);
+  }
 
   function setLinha(id: string, patch: Partial<LinhaProposta>) {
     setLinhas(prev => prev.map(l => (l.id === id ? { ...l, ...patch } : l)));
@@ -97,9 +118,13 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
         espaco,
         numConvidados: pax,
         linhas: linhasFinais,
+        arredondamento,
+        parcelas: parcelasEdit.length > 0 ? parcelasEdit : undefined,
         criadoPorId: meId,
       });
       setLinhas([]);
+      setArredondamento(0);
+      setParcelasEdit([]);
       setMontando(false);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao gerar proposta");
@@ -134,16 +159,20 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     window.open(url, "_blank");
   }
 
-  async function registrarPagamento(p: PropostaEvento, parcelaIdx: number) {
+  function registrarPagamento(p: PropostaEvento, parcelaIdx: number) {
     if (!podeEditar) return;
     const parcela = p.parcelas[parcelaIdx];
     if (!parcela || parcela.pagaEm) return;
-    const ok = confirm(`Confirmar recebimento de R$ ${parcela.valor.toFixed(2)} (${parcela.descricao})?`);
-    if (!ok) return;
+    setPagando({ p, idx: parcelaIdx });
+  }
+
+  async function confirmarPagamento(p: PropostaEvento, parcelaIdx: number, comprovanteUrl?: string) {
+    if (!podeEditar) return;
     const now = new Date().toISOString();
     const novasParcelas: ParcelaProposta[] = p.parcelas.map((par, i) =>
-      i === parcelaIdx ? { ...par, pagaEm: now, pagaPor: meId, pagaPorNome: meNome } : par);
+      i === parcelaIdx ? { ...par, pagaEm: now, pagaPor: meId, pagaPorNome: meNome, comprovanteUrl: comprovanteUrl || par.comprovanteUrl } : par);
     await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({ parcelas: novasParcelas }));
+    setPagando(null);
 
     const todasPagas = novasParcelas.every(par => !!par.pagaEm);
     const algumaPaga = novasParcelas.some(par => !!par.pagaEm);
@@ -201,10 +230,10 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
           {podeEditar && !montando && (
             <button
               type="button"
-              onClick={() => { setMontando(true); setLinhas([]); }}
+              onClick={iniciarNovaVersao}
               className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
             >
-              + Nova versão da proposta
+              + Nova versão da proposta (edita a atual)
             </button>
           )}
         </div>
@@ -314,22 +343,134 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             </div>
           </div>
 
+          {/* Arredondamento */}
+          <div className="rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2.5 space-y-1.5">
+            <div className="flex items-center gap-2 flex-wrap text-sm">
+              <span className="text-gray-500">Subtotal:</span>
+              <span className="tabular-nums">R$ {totalPreview.toFixed(2)}</span>
+              <span className="text-gray-400 mx-1">·</span>
+              <span className="text-gray-500">Arredondar:</span>
+              <span className="inline-flex items-center gap-1">
+                <span className="text-xs text-gray-400">R$</span>
+                <input type="number" step="0.01" value={arredondamento || ""} onChange={(e) => setArredondamento(parseFloat(e.target.value) || 0)}
+                  placeholder="0,00" className="w-24 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right" />
+              </span>
+              <button type="button" onClick={() => setArredondamento(Math.round((Math.ceil(totalPreview / 10) * 10 - totalPreview) * 100) / 100)}
+                className="text-[11px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">↑ dezena</button>
+              <button type="button" onClick={() => setArredondamento(Math.round((Math.ceil(totalPreview / 100) * 100 - totalPreview) * 100) / 100)}
+                className="text-[11px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">↑ centena</button>
+              {arredondamento !== 0 && <button type="button" onClick={() => setArredondamento(0)} className="text-[11px] text-rose-500 hover:underline">zerar</button>}
+            </div>
+            <div className="text-sm">
+              <span className="text-gray-500">Total final: </span>
+              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalFinal.toFixed(2)}</strong>
+            </div>
+          </div>
+
+          {/* Pagamento (sinal/saldo editável) */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase font-bold text-gray-500">Pagamento</span>
+              {parcelasEdit.length === 0 ? (
+                <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">Personalizar parcelas</button>
+              ) : (
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-gray-500 hover:underline">↻ 50/50</button>
+                  <button type="button" onClick={() => setParcelasEdit(prev => [...prev, { ordem: prev.length + 1, descricao: "", valor: 0 }])} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">+ parcela</button>
+                  <button type="button" onClick={() => setParcelasEdit([])} className="text-[11px] text-rose-500 hover:underline">usar 50/50 padrão</button>
+                </div>
+              )}
+            </div>
+            {parcelasEdit.length === 0 ? (
+              <div className="text-xs text-gray-500 mt-1">
+                {lead.cliente.tipoPessoa === "PJ" ? "Faturamento (contrato + NF) — parcela única." : "50% sinal no ato + 50% saldo até 1 dia antes (padrão)."}
+              </div>
+            ) : (
+              <div className="mt-2 space-y-1.5">
+                {parcelasEdit.map((pc, i) => (
+                  <div key={i} className="flex items-center gap-2 flex-wrap">
+                    <input value={pc.descricao} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, descricao: e.target.value } : x))}
+                      placeholder="Descrição (ex: Sinal 40%)" className="flex-1 min-w-[140px] px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    <span className="inline-flex items-center gap-1"><span className="text-xs text-gray-400">R$</span>
+                      <input type="number" step="0.01" value={pc.valor || ""} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, valor: parseFloat(e.target.value) || 0 } : x))}
+                        className="w-24 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right" /></span>
+                    <input type="date" value={pc.vencimentoEm || ""} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, vencimentoEm: e.target.value || undefined } : x))}
+                      className="px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    <button type="button" onClick={() => setParcelasEdit(prev => prev.filter((_, j) => j !== i))} className="text-rose-500 hover:text-rose-700 text-sm">✕</button>
+                  </div>
+                ))}
+                {(() => {
+                  const soma = Math.round(parcelasEdit.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
+                  return Math.abs(soma - totalFinal) > 0.01 ? (
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400">⚠ Soma das parcelas R$ {soma.toFixed(2)} ≠ total R$ {totalFinal.toFixed(2)}</div>
+                  ) : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ soma bate com o total</div>;
+                })()}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
             <div className="text-sm">
               <span className="text-gray-500">Total: </span>
-              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalPreview.toFixed(2)}</strong>
+              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalFinal.toFixed(2)}</strong>
             </div>
             <div className="flex gap-2">
               {montando && (
-                <Button size="sm" variant="secondary" onClick={() => { setMontando(false); setLinhas([]); }}>Cancelar</Button>
+                <Button size="sm" variant="secondary" onClick={() => { setMontando(false); setLinhas([]); setArredondamento(0); setParcelasEdit([]); }}>Cancelar</Button>
               )}
-              <Button onClick={gerarProposta} disabled={criando || totalPreview <= 0}>
+              <Button onClick={gerarProposta} disabled={criando || totalFinal <= 0}>
                 {criando ? "Gerando…" : propostas.length === 0 ? "💼 Gerar proposta v1" : "💼 Gerar nova versão"}
               </Button>
             </div>
           </div>
         </div>
       )}
+
+      {pagando && (
+        <RegistrarPagamentoModal
+          parcela={pagando.p.parcelas[pagando.idx]}
+          onClose={() => setPagando(null)}
+          onConfirmar={(comprovanteUrl) => confirmarPagamento(pagando.p, pagando.idx, comprovanteUrl)}
+        />
+      )}
+    </div>
+  );
+}
+
+function RegistrarPagamentoModal({ parcela, onClose, onConfirmar }: {
+  parcela: ParcelaProposta;
+  onClose: () => void;
+  onConfirmar: (comprovanteUrl?: string) => void;
+}) {
+  const [comp, setComp] = useState<{ url: string; nome: string } | null>(
+    parcela.comprovanteUrl ? { url: parcela.comprovanteUrl, nome: "comprovante atual" } : null,
+  );
+  const [salvando, setSalvando] = useState(false);
+  async function escolher() {
+    try {
+      const f = await pickDriveFile("Selecione o comprovante");
+      if (f) setComp({ url: `https://drive.google.com/open?id=${f.id}`, nome: f.name });
+    } catch (e) { alert("Não foi possível abrir o Drive: " + String(e)); }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Registrar pagamento</h3>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{parcela.descricao} — <strong>R$ {parcela.valor.toFixed(2)}</strong></p>
+        <div className="mt-3">
+          <div className="text-xs text-gray-500 mb-1">Comprovante (opcional)</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button size="sm" variant="secondary" onClick={escolher}>📎 Anexar do Drive</Button>
+            {comp && <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">✓ {comp.nome}</span>}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 mt-5">
+          <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
+          <Button disabled={salvando} onClick={() => { setSalvando(true); onConfirmar(comp?.url); }}>
+            {salvando ? "Salvando…" : "Confirmar recebimento"}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -417,6 +558,7 @@ function PropostaCard({
                   <div className="text-[10px] text-emerald-700 dark:text-emerald-400">
                     ✓ paga em {new Date(p.pagaEm).toLocaleDateString("pt-BR")}
                     {p.pagaPorNome && ` por ${p.pagaPorNome}`}
+                    {p.comprovanteUrl && <> · <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" className="underline">📎 comprovante</a></>}
                   </div>
                 )}
                 {!paga && p.vencimentoEm && (

@@ -24,6 +24,8 @@ export type CriarPropostaParams = {
   // Linhas customizáveis (locação fixa + itens por pessoa). Quando presente,
   // são a fonte do preço: total = base do pacote + Σ linhas.
   linhas?: LinhaProposta[];
+  arredondamento?: number;           // ajuste manual pra fechar valor redondo
+  parcelas?: ParcelaProposta[];      // override do 50/50 (sinal/saldo editados)
   observacoes?: string;
   criadoPorId: string;
 };
@@ -117,16 +119,21 @@ export async function criarProposta(params: CriarPropostaParams): Promise<Propos
     : baseDoPacote;
   // Com linhas customizáveis: total = base do pacote (se houver) + Σ linhas.
   // Sem linhas: modelo legado (base + ajustes marcados).
-  const total = usaLinhas
-    ? Math.round((baseDoPacote + linhas.reduce((s, l) => s + linhaPropostaTotal(l), 0)) * 100) / 100
-    : Math.round((baseEfetiva + ajustes.reduce((s, a) => s + a.valor, 0)) * 100) / 100;
+  const arredondamento = Math.round((params.arredondamento || 0) * 100) / 100;
+  const totalBase = usaLinhas
+    ? baseDoPacote + linhas.reduce((s, l) => s + linhaPropostaTotal(l), 0)
+    : baseEfetiva + ajustes.reduce((s, a) => s + a.valor, 0);
+  const total = Math.round((totalBase + arredondamento) * 100) / 100;
   const versao = await proximaVersaoProposta(lead.id);
   const id = `prop_${lead.id}_v${versao}`;
   const now = new Date().toISOString();
 
-  const parcelas = lead.cliente.tipoPessoa === "PJ"
-    ? parcelasDefaultPJ(total)
-    : parcelasDefaultPF(total, lead.dataDesejada);
+  // Parcelas: usa as editadas (se vieram) — senão default 50/50 (PF) ou única (PJ).
+  const parcelas = (params.parcelas && params.parcelas.length > 0)
+    ? params.parcelas
+    : lead.cliente.tipoPessoa === "PJ"
+      ? parcelasDefaultPJ(total)
+      : parcelasDefaultPF(total, lead.dataDesejada);
 
   const proposta: PropostaEvento = {
     id,
@@ -146,6 +153,7 @@ export async function criarProposta(params: CriarPropostaParams): Promise<Propos
     naoInclusos: pacote?.naoInclusos || [],
     ajustes,
     linhas: usaLinhas ? linhas : undefined,
+    arredondamento: arredondamento || undefined,
     precoTotal: total,
     precoPorPessoa: usaLinhas ? 0 : precoPorPessoa,
     parcelas,

@@ -3310,6 +3310,7 @@ export type PropostaEvento = {
   // Linhas customizáveis (locação fixa + itens por pessoa). Fonte do preço nas
   // propostas novas; quando presente, precoTotal = base pacote + Σ linhas.
   linhas?: LinhaProposta[];
+  arredondamento?: number;           // ajuste manual (+/−) pra fechar valor redondo
   precoTotal: number;
   precoPorPessoa: number;
   // Pagamento
