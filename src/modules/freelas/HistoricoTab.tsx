@@ -322,18 +322,8 @@ function ReciboModal({ data, onClose }: { data: ReciboData; onClose: () => void 
     const w = window.open("", "_blank", "width=480,height=680");
     if (!w) { alert("Permita pop-ups pra imprimir o recibo."); return; }
     w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Recibo — ${escaparHtml(data.nome)}</title>
-      <style>
-        body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1710;margin:24px;font-size:13px}
-        h1{font-size:16px;margin:0 0 2px}
-        .sub{color:#64748b;font-size:12px;margin-bottom:12px}
-        table{width:100%;border-collapse:collapse;margin:8px 0}
-        th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #e5e7eb}
-        th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
-        td.r,th.r{text-align:right}
-        .tot{font-weight:700;font-size:15px;margin-top:10px;display:flex;justify-content:space-between;border-top:2px solid #1c1710;padding-top:8px}
-        .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e5e7eb}
-        .foot{color:#94a3b8;font-size:10px;margin-top:18px}
-      </style></head><body>${html}<div class="foot">Recibo gerado em ${dBR(hojeISO())} — sem valor fiscal.</div></body></html>`);
+      <style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1710;margin:24px}</style>
+      </head><body>${html}<div style="color:#94a3b8;font-size:10px;margin-top:18px">Recibo gerado em ${dBR(hojeISO())} — sem valor fiscal.</div></body></html>`);
     w.document.close();
     w.focus();
     setTimeout(() => w.print(), 250);
@@ -341,7 +331,7 @@ function ReciboModal({ data, onClose }: { data: ReciboData; onClose: () => void 
   return (
     <Modal title="Recibo" onClose={onClose} maxWidth="max-w-md">
       <div
-        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white text-gray-900 p-4 text-sm max-h-[60vh] overflow-y-auto"
+        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white text-gray-900 p-4 max-h-[60vh] overflow-y-auto"
         dangerouslySetInnerHTML={{ __html: html }}
       />
       <div className="flex justify-end gap-2 mt-4">
@@ -352,33 +342,54 @@ function ReciboModal({ data, onClose }: { data: ReciboData; onClose: () => void 
   );
 }
 
+// Estilos inline (não dependem de <style> — renderiza igual no modal e na
+// janela de impressão).
+const RB = {
+  h1: "font-size:16px;font-weight:700;margin:0 0 2px",
+  sub: "color:#64748b;font-size:12px;margin:0 0 12px",
+  table: "width:100%;border-collapse:collapse;font-size:13px",
+  th: "text-align:left;padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b",
+  thR: "text-align:right;padding:6px 8px;border-bottom:1px solid #e5e7eb;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b",
+  td: "text-align:left;padding:6px 8px;border-bottom:1px solid #f1f5f9",
+  tdR: "text-align:right;padding:6px 8px;border-bottom:1px solid #f1f5f9",
+  totTd: "text-align:left;padding:8px;border-top:2px solid #1c1710;font-weight:700;font-size:14px",
+  totTdR: "text-align:right;padding:8px;border-top:2px solid #1c1710;font-weight:700;font-size:14px",
+};
+
 function buildReciboHTML(d: ReciboData): string {
-  const cab = `<h1>Recibo — ${escaparHtml(d.nome)}</h1><div class="sub">Período: ${escaparHtml(d.periodo)}</div>`;
+  const cab = `<div style="${RB.h1}">Recibo — ${escaparHtml(d.nome)}</div><div style="${RB.sub}">Período: ${escaparHtml(d.periodo)}</div>`;
+
   if (d.tipo === "mensalista" && d.mensalista) {
     const m = d.mensalista;
-    const linhas = [
-      `<div class="row"><span>Dias trabalhados</span><span>${m.diasTrabalhados}/${m.diasNoMes}</span></div>`,
-      `<div class="row"><span>Remuneração proporcional</span><span>${fmtBR(m.remuneracaoProporcional)}</span></div>`,
-      `<div class="row"><span>Gorjeta (${m.gorjetaModo === "bruto" ? "bruto" : "líquido"})</span><span>${fmtBR(m.gorjetaAplicada)}</span></div>`,
-      m.desconto > 0 ? `<div class="row"><span>Desconto${m.descontoDesc ? ` (${escaparHtml(m.descontoDesc)})` : ""}</span><span>− ${fmtBR(m.desconto)}</span></div>` : "",
-      m.acrescimo > 0 ? `<div class="row"><span>Acréscimo${m.acrescimoDesc ? ` (${escaparHtml(m.acrescimoDesc)})` : ""}</span><span>+ ${fmtBR(m.acrescimo)}</span></div>` : "",
+    const linha = (desc: string, val: string) =>
+      `<tr><td style="${RB.td}">${desc}</td><td style="${RB.tdR}">${val}</td></tr>`;
+    const rows = [
+      linha("Dias trabalhados", `${m.diasTrabalhados}/${m.diasNoMes}`),
+      linha("Remuneração proporcional", fmtBR(m.remuneracaoProporcional)),
+      linha(`Gorjeta (${m.gorjetaModo === "bruto" ? "bruto" : "líquido"})`, fmtBR(m.gorjetaAplicada)),
+      m.desconto > 0 ? linha(`Desconto${m.descontoDesc ? ` (${escaparHtml(m.descontoDesc)})` : ""}`, `− ${fmtBR(m.desconto)}`) : "",
+      m.acrescimo > 0 ? linha(`Acréscimo${m.acrescimoDesc ? ` (${escaparHtml(m.acrescimoDesc)})` : ""}`, `+ ${fmtBR(m.acrescimo)}`) : "",
     ].join("");
-    return `${cab}${linhas}<div class="tot"><span>Total recebido</span><span>${fmtBR(d.total)}</span></div>`;
+    return `${cab}<table style="${RB.table}">
+      <thead><tr><th style="${RB.th}">Descrição</th><th style="${RB.thR}">Valor</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr><td style="${RB.totTd}">Total recebido</td><td style="${RB.totTdR}">${fmtBR(d.total)}</td></tr></tfoot>
+    </table>`;
   }
+
   const turnos = d.turnos || [];
   const rows = turnos.map((t) => `<tr>
-    <td>${dBR(t.date)}</td>
-    <td>${t.entrada && t.saida ? `${t.entrada}–${t.saida}` : "—"}</td>
-    <td class="r">${fmtHoras(t.horas || 0)}</td>
-    <td class="r">${escaparHtml(tarifaTxt(t))}</td>
-    <td class="r">${fmtBR(t.totalCalc || 0)}</td>
+    <td style="${RB.td}">${dBR(t.date)}</td>
+    <td style="${RB.td}">${t.entrada && t.saida ? `${t.entrada}–${t.saida}` : "—"}</td>
+    <td style="${RB.tdR}">${fmtHoras(t.horas || 0)}</td>
+    <td style="${RB.tdR}">${escaparHtml(tarifaTxt(t))}</td>
+    <td style="${RB.tdR}">${fmtBR(t.totalCalc || 0)}</td>
   </tr>`).join("");
-  return `${cab}
-    <table>
-      <thead><tr><th>Data</th><th>Horário</th><th class="r">Horas</th><th class="r">Tarifa</th><th class="r">Total</th></tr></thead>
+  return `${cab}<table style="${RB.table}">
+      <thead><tr><th style="${RB.th}">Data</th><th style="${RB.th}">Horário</th><th style="${RB.thR}">Horas</th><th style="${RB.thR}">Tarifa</th><th style="${RB.thR}">Total</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table>
-    <div class="tot"><span>Total recebido</span><span>${fmtBR(d.total)}</span></div>`;
+      <tfoot><tr><td style="${RB.totTd}" colspan="4">Total recebido</td><td style="${RB.totTdR}">${fmtBR(d.total)}</td></tr></tfoot>
+    </table>`;
 }
 
 function tarifaTxt(t: FreelaTurnoSnapshot): string {
