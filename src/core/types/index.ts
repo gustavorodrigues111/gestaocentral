@@ -2339,6 +2339,30 @@ export type FreelaPagamentoResumoPessoa = {
   totalValor: number;
 };
 
+// Linha de um freela MENSALISTA no lote de pagamento. Diferente do diarista
+// (por turno): tem remuneração do mês (proporcional aos dias na escala) + a
+// gorjeta do período (bruta OU líquida, escolha por pessoa) + ajustes.
+export type FreelaMensalistaLinha = {
+  empregadoId: string;
+  nome: string;
+  pix?: string | null;
+  cpf?: string | null;
+  competencia: string;             // "YYYY-MM"
+  diasTrabalhados: number;         // dias na escala (praticada) no mês
+  diasNoMes: number;               // dias do mês-competência (base do rateio)
+  remuneracaoMes: number;          // valor cheio de um mês
+  remuneracaoProporcional: number; // remuneracaoMes × dias/diasNoMes
+  gorjetaModo: "bruto" | "liquido";
+  gorjetaLiquido: number;          // soma do período
+  gorjetaBruto: number;            // soma do período
+  gorjetaAplicada: number;         // = bruto ou liquido conforme o modo
+  desconto: number;
+  descontoDesc?: string;
+  acrescimo: number;
+  acrescimoDesc?: string;
+  total: number;                   // proporcional + gorjetaAplicada + acréscimo − desconto
+};
+
 export type FreelaPagamento = {
   id: string;
   restaurantId: string;
@@ -2346,6 +2370,7 @@ export type FreelaPagamento = {
   observacao?: string;
   shiftIds: string[];              // FreelaShift.id contidos no lote
   pessoasResumo: FreelaPagamentoResumoPessoa[];
+  mensalistas?: FreelaMensalistaLinha[]; // freelas mensalistas no mesmo lote
   totalGeral: number;
   qtdShifts: number;
   qtdPessoas: number;

@@ -186,6 +186,15 @@ function LoteCard({
                   <td className="py-1.5 text-right font-semibold">{fmtBR(p.totalValor)}</td>
                 </tr>
               ))}
+              {(lote.mensalistas || []).map((m, i) => (
+                <tr key={`m${i}`} className="text-gray-700 dark:text-gray-200">
+                  <td className="py-1.5 font-medium">{m.nome} <span className="text-[10px] uppercase text-indigo-500">mensalista</span></td>
+                  <td className="py-1.5 text-gray-500">{m.pix || "—"}</td>
+                  <td className="py-1.5 text-center">{m.diasTrabalhados}/{m.diasNoMes}d</td>
+                  <td className="py-1.5 text-right text-[11px] text-gray-500">rem {fmtBR(m.remuneracaoProporcional)} · gorj {m.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(m.gorjetaAplicada)}</td>
+                  <td className="py-1.5 text-right font-semibold">{fmtBR(m.total)}</td>
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>

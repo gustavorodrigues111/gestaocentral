@@ -4,13 +4,15 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
-  AREAS, type Area, type FreelaPagamento,
-  type FreelaPagamentoResumoPessoa, type FreelaShift, type Restaurant,
+  AREAS, type Area, type Empregado, type EscalaMes, type FreelaMensalistaLinha,
+  type FreelaPagamento, type FreelaPagamentoResumoPessoa, type FreelaShift,
+  type Gorjeta, type Restaurant,
 } from "../../core/types";
 import {
   VALORES_DIARIA, VALORES_HORA,
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
+import { diasNoMes, diasTrabalhadosMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 import { HorarioModal } from "./HorarioModal";
 import { Modal } from "../../core/ui/Modal";
@@ -59,6 +61,64 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   }, [restaurantId]);
   const pixDe = (s: FreelaShift): string =>
     s.pixSnapshot || (s.pessoaId ? pixMap.byId[s.pessoaId] : "") || (s.cpfSnapshot ? pixMap.byCpf[String(s.cpfSnapshot).replace(/\D/g, "")] : "") || "";
+
+  // ── Freela MENSALISTA — fechamento por competência ──────────────────────
+  const [competencia, setCompetencia] = useState(() => new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [ano, mes] = useMemo(() => { const [a, m] = competencia.split("-"); return [Number(a), Number(m)]; }, [competencia]);
+  const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [escala, setEscala] = useState<EscalaMes | null>(null);
+  const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
+  const [mensSel, setMensSel] = useState<Set<string>>(new Set());
+  type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoDesc: string; acrescimo: string; acrescimoDesc: string };
+  const [mensInputs, setMensInputs] = useState<Record<string, MensInput>>({});
+  const inputDe = (id: string): MensInput => mensInputs[id] || { remuneracao: "", modo: "liquido", desconto: "", descontoDesc: "", acrescimo: "", acrescimoDesc: "" };
+  const setInput = (id: string, patch: Partial<MensInput>) => setMensInputs(prev => ({ ...prev, [id]: { ...inputDe(id), ...patch } }));
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", restaurantId)),
+      (snap) => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() } as Empregado))));
+  }, [restaurantId]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(doc(db, "escalas", `${restaurantId}_${competencia}`),
+      (snap) => setEscala(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null), () => setEscala(null));
+  }, [restaurantId, competencia]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(query(collection(db, "gorjetas"), where("restaurantId", "==", restaurantId)),
+      (snap) => setGorjetasMes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Gorjeta)).filter(g => (g.date || "").startsWith(competencia))));
+  }, [restaurantId, competencia]);
+
+  const mensalistas = useMemo(() => mensalistasAtivosNoMes(empregados, ano, mes), [empregados, ano, mes]);
+  const dnm = diasNoMes(ano, mes);
+
+  // Linhas calculadas dos mensalistas (pra exibir e pra montar o lote).
+  const mensLinhas = useMemo<FreelaMensalistaLinha[]>(() => {
+    return mensalistas.map((e) => {
+      const inp = inputDe(e.id);
+      const dias = diasTrabalhadosMensalista(e.id, escala, ano, mes);
+      const gorj = gorjetaMensalDe(e.id, gorjetasMes);
+      const remMes = parseFloat(inp.remuneracao.replace(",", ".")) || 0;
+      const proporcional = Math.round((remMes * dias / dnm) * 100) / 100;
+      const gorjetaAplicada = inp.modo === "bruto" ? gorj.bruto : gorj.liquido;
+      const desconto = parseFloat(inp.desconto.replace(",", ".")) || 0;
+      const acrescimo = parseFloat(inp.acrescimo.replace(",", ".")) || 0;
+      const total = Math.round((proporcional + gorjetaAplicada + acrescimo - desconto) * 100) / 100;
+      return {
+        empregadoId: e.id, nome: e.nome, pix: pixMap.byId[e.id] || null, cpf: e.cpf ?? null,
+        competencia, diasTrabalhados: dias, diasNoMes: dnm,
+        remuneracaoMes: remMes, remuneracaoProporcional: proporcional,
+        gorjetaModo: inp.modo, gorjetaLiquido: gorj.liquido, gorjetaBruto: gorj.bruto, gorjetaAplicada,
+        desconto, descontoDesc: inp.descontoDesc.trim() || undefined,
+        acrescimo, acrescimoDesc: inp.acrescimoDesc.trim() || undefined,
+        total,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mensalistas, escala, gorjetasMes, mensInputs, ano, mes, dnm, competencia, pixMap]);
+
+  const mensLinhasSel = useMemo(() => mensLinhas.filter(l => mensSel.has(l.empregadoId)), [mensLinhas, mensSel]);
 
   // Aguardando precificação: operacional fechou (tem entrada+saída) e DP ainda
   // não confirmou. Status="aberto".
@@ -164,8 +224,13 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   async function gerarLote() {
     if (!me) return;
     const selecShifts = prontosLote.filter((s) => selecionados.has(s.id));
-    if (!selecShifts.length) { alert("Selecione ao menos 1 turno."); return; }
-    if (!confirm(`Gerar lote com ${selecShifts.length} turno(s) — ${fmtBR(totaisSelec.total)}?`)) return;
+    if (!selecShifts.length && !mensLinhasSel.length) { alert("Selecione ao menos 1 turno ou 1 mensalista."); return; }
+    const totalMens = mensLinhasSel.reduce((a, l) => a + l.total, 0);
+    const partes = [
+      selecShifts.length ? `${selecShifts.length} turno(s)` : "",
+      mensLinhasSel.length ? `${mensLinhasSel.length} mensalista(s)` : "",
+    ].filter(Boolean).join(" + ");
+    if (!confirm(`Gerar lote com ${partes} — ${fmtBR(totaisSelec.total + totalMens)}?`)) return;
     setSalvando(true);
     try {
       const resumoMap = new Map<string, FreelaPagamentoResumoPessoa>();
@@ -196,7 +261,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         }));
       const now = new Date().toISOString();
       const numero = proximoNumeroLote(pagamentos);
-      const totalGeral = pessoasResumo.reduce((a, p) => a + p.totalValor, 0);
+      const totalGeral = pessoasResumo.reduce((a, p) => a + p.totalValor, 0) + mensLinhasSel.reduce((a, l) => a + l.total, 0);
 
       const payload: Omit<FreelaPagamento, "id"> = {
         restaurantId,
@@ -204,9 +269,10 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         ...(obs.trim() ? { observacao: obs.trim() } : {}),
         shiftIds: selecShifts.map((s) => s.id),
         pessoasResumo,
+        ...(mensLinhasSel.length ? { mensalistas: mensLinhasSel } : {}),
         totalGeral: Math.round(totalGeral * 100) / 100,
         qtdShifts: selecShifts.length,
-        qtdPessoas: pessoasResumo.length,
+        qtdPessoas: pessoasResumo.length + mensLinhasSel.length,
         status: "pendente",
         criadoEm: now,
         criadoPor: me.id,
@@ -219,6 +285,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       }
       await batch.commit();
       setSelecionados(new Set());
+      setMensSel(new Set());
       setObs("");
       alert(`Lote ${numero} criado.`);
     } catch (e) {
@@ -293,6 +360,76 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         )}
       </section>
 
+      {/* ─── Freela mensalistas ─── */}
+      <section>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+            🗓️ Freela mensalistas
+            <span className="ml-2 text-[11px] text-gray-500 font-normal">remuneração do mês (proporcional aos dias) + gorjeta</span>
+          </h3>
+          <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)}
+            className="px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        </div>
+        {mensalistas.length === 0 ? (
+          <EmptyState texto={`Nenhum freela mensalista ativo em ${competencia.split("-").reverse().join("/")}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
+        ) : (
+          <div className="space-y-2">
+            {mensLinhas.map((l) => {
+              const inp = inputDe(l.empregadoId);
+              const sel = mensSel.has(l.empregadoId);
+              return (
+                <div key={l.empregadoId} className={`rounded-xl border p-3 ${sel ? "border-indigo-300 dark:border-indigo-700 bg-indigo-50/40 dark:bg-indigo-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {podeEditar && (
+                      <input type="checkbox" checked={sel} onChange={() => setMensSel(s => { const n = new Set(s); if (n.has(l.empregadoId)) n.delete(l.empregadoId); else n.add(l.empregadoId); return n; })} className="w-4 h-4 accent-indigo-600" />
+                    )}
+                    <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.nome}</span>
+                    <span className="text-[11px] text-gray-500">{l.diasTrabalhados}/{dnm} dias · gorjeta líq {fmtBR(l.gorjetaLiquido)} · bruto {fmtBR(l.gorjetaBruto)}</span>
+                    <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(l.total)}</span>
+                  </div>
+                  {podeEditar && (
+                    <div className="mt-2 grid sm:grid-cols-4 gap-2">
+                      <label className="text-xs">
+                        <span className="text-gray-500">Remuneração do mês</span>
+                        <input value={inp.remuneracao} onChange={(e) => setInput(l.empregadoId, { remuneracao: e.target.value })} inputMode="decimal" placeholder="0,00"
+                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <span className="text-[10px] text-gray-400">proporcional: {fmtBR(l.remuneracaoProporcional)}</span>
+                      </label>
+                      <div className="text-xs">
+                        <span className="text-gray-500">Gorjeta</span>
+                        <div className="mt-0.5 inline-flex rounded-md bg-gray-100 dark:bg-gray-800 p-0.5 w-full">
+                          {(["liquido", "bruto"] as const).map(m => (
+                            <button key={m} type="button" onClick={() => setInput(l.empregadoId, { modo: m })}
+                              className={`flex-1 px-2 py-1 text-xs font-semibold rounded ${inp.modo === m ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>
+                              {m === "liquido" ? "Líquido" : "Bruto"}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-gray-400">aplica {fmtBR(l.gorjetaAplicada)}</span>
+                      </div>
+                      <label className="text-xs">
+                        <span className="text-gray-500">Desconto</span>
+                        <input value={inp.desconto} onChange={(e) => setInput(l.empregadoId, { desconto: e.target.value })} inputMode="decimal" placeholder="0,00"
+                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <input value={inp.descontoDesc} onChange={(e) => setInput(l.empregadoId, { descontoDesc: e.target.value })} placeholder="motivo (opcional)"
+                          className="w-full mt-1 px-2 py-1 text-[11px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                      </label>
+                      <label className="text-xs">
+                        <span className="text-gray-500">Acréscimo</span>
+                        <input value={inp.acrescimo} onChange={(e) => setInput(l.empregadoId, { acrescimo: e.target.value })} inputMode="decimal" placeholder="0,00"
+                          className="w-full mt-0.5 px-2 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                        <input value={inp.acrescimoDesc} onChange={(e) => setInput(l.empregadoId, { acrescimoDesc: e.target.value })} placeholder="motivo (opcional)"
+                          className="w-full mt-1 px-2 py-1 text-[11px] rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       {/* ─── Prontos pra lote ─── */}
       <section>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
@@ -339,11 +476,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           />
         )}
 
-        {prontosLote.length > 0 && podeEditar && (
+        {podeEditar && (prontosLote.length > 0 || mensalistas.length > 0) && (
           <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 p-3">
             <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200 mb-2">
-              💰 {totaisSelec.qtd} turno(s) selecionado(s) · {totaisSelec.pessoas} pessoa(s) ·{" "}
-              <strong>{fmtBR(totaisSelec.total)}</strong>
+              💰 {totaisSelec.qtd} turno(s){mensLinhasSel.length > 0 ? ` + ${mensLinhasSel.length} mensalista(s)` : ""} ·{" "}
+              <strong>{fmtBR(totaisSelec.total + mensLinhasSel.reduce((a, l) => a + l.total, 0))}</strong>
             </div>
             <textarea
               value={obs}
@@ -353,7 +490,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
               className="w-full px-2 py-1.5 text-xs rounded border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 dark:text-gray-100 mb-2"
             />
             <div className="flex justify-end">
-              <Button size="sm" onClick={gerarLote} disabled={salvando || totaisSelec.qtd === 0}>
+              <Button size="sm" onClick={gerarLote} disabled={salvando || (totaisSelec.qtd === 0 && mensLinhasSel.length === 0)}>
                 {salvando ? "Gerando…" : "Gerar lote de pagamento"}
               </Button>
             </div>
