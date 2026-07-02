@@ -514,6 +514,17 @@ service cloud.firestore {
       allow create, read, update, delete: if authed();
     }
 
+    // ── /rotinas ── lembretes recorrentes atribuídos a pessoas ──────────
+    // Read auth-only (todos precisam ler as rotinas em que são responsáveis).
+    // Write auth-only (UI valida quem gerencia). Delete auth (soft não aplicável).
+    match /rotinas/{id} {
+      allow read, write: if authed();
+    }
+    // Conclusões de rotina — registro de "feito por X na data Y". Append/idempotente.
+    match /rotinaConclusoes/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /avisosLidos ── estado de leitura da Central de Avisos ───────────
     // Doc por pessoa (id = pessoaId): { itens: { [avisoId]: emSnapshot } }.
     // Dado NÃO sensível (só controla o que já foi visto). Read/write authed.

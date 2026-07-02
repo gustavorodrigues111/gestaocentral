@@ -155,9 +155,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-          {/* Central de Avisos (Chat) — tela de abertura. Primeiro item,
-              fora dos agrupamentos. Aparece pra quem tem o módulo liberado. */}
-          {visibleModule("chat") && (
+          {/* Central de Avisos — tela de abertura UNIVERSAL. Primeiro item,
+              fora dos agrupamentos. Aparece pra todo usuário com restaurante
+              ativo (independe do módulo chat) — é o canal das Rotinas/avisos. */}
+          {rid && (
             <NavLink
               to={rid ? `/r/${rid}/chat` : "/"}
               onClick={onClose}

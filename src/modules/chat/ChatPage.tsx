@@ -18,6 +18,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { tratarFaleDp } from "../faleDp/repository";
+import { concluirRotina } from "../rotinas/repository";
 import { useAvisosCentral, type Aviso } from "./useAvisos";
 import type { FaleDpMensagem } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
@@ -51,6 +52,11 @@ export function ChatPage() {
       if (a.restauranteId !== activeRestaurant?.id) setActiveId(a.restauranteId);
       navigate(a.href);
     }
+  }
+
+  async function concluirRotinaAviso(a: Aviso) {
+    if (!a.rotina || !pessoa) return;
+    await concluirRotina(a.rotina.rotina, a.rotina.ocorrenciaData, pessoa.id, pessoa.nome);
   }
 
   return (
@@ -114,7 +120,9 @@ export function ChatPage() {
                 <AvisoCard
                   key={a.id} aviso={a} multiRest={multiRest}
                   onAbrir={() => abrirAviso(a)}
-                  acao={{ label: "Marcar como lido", icone: "✓", onClick: () => marcarLido(a) }}
+                  acao={a.rotina
+                    ? { label: "Marcar como feita", icone: "✓", onClick: () => concluirRotinaAviso(a) }
+                    : { label: "Marcar como lido", icone: "✓", onClick: () => marcarLido(a) }}
                 />
               ))}
             </div>

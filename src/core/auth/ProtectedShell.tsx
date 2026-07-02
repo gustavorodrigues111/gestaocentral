@@ -29,6 +29,7 @@ import { IdeiasPage } from "../../modules/ideias/IdeiasPage";
 import { ReunioesPage } from "../../modules/reunioes/ReunioesPage";
 import { TrilhaPage } from "../../modules/trilha/TrilhaPage";
 import { OcorrenciasPage } from "../../modules/ocorrencias/OcorrenciasPage";
+import { RotinasPage } from "../../modules/rotinas/RotinasPage";
 import { ChecklistsPage } from "../../modules/checklists/ChecklistsPage";
 import { ReservasPage } from "../../modules/reservas/ReservasPage";
 import { HorariosPage } from "../../modules/horarios/HorariosPage";
@@ -82,6 +83,7 @@ function ModuleRouter() {
     case "reunioes":      return <ReunioesPage key={k} />;
     case "trilha":        return <TrilhaPage key={k} />;
     case "ocorrencias":   return <OcorrenciasPage key={k} />;
+    case "rotinas":       return <RotinasPage key={k} />;
     case "checklists":    return <ChecklistsPage key={k} />;
     case "reservas":      return <ReservasPage key={k} />;
     case "horarios":      return <HorariosPage key={k} />;

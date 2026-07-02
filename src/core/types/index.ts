@@ -47,6 +47,8 @@ export type ModuleId =
   | "horarios"
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
+  // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
+  | "rotinas"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites" | "cardapio"
@@ -3083,6 +3085,45 @@ export function pacotePrecoLabel(p: Pick<PacoteEvento, "precoModo" | "precoPorPe
   const v = (p.precoPorPessoa || 0).toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   return `R$ ${v}/p`;
 }
+
+// ─── ROTINAS ─────────────────────────────────────────────────────────────
+// Lembretes recorrentes de tarefas do sistema (ex: "fechar o ponto da semana"
+// na Análise de Ponto). Atribuídas a uma ou mais pessoas; surgem na Central de
+// Avisos no dia devido. Não geram doc por ocorrência — o "vence hoje" é
+// calculado do padrão de recorrência; conclusões ficam em rotinaConclusoes.
+export type RotinaRecorrencia =
+  | { tipo: "semanal"; diasSemana: number[] }              // 0=dom … 6=sáb
+  | { tipo: "mensal_dia"; diaDoMes: number }               // 1..31 (31 = último dia)
+  | { tipo: "mensal_posicao"; posicao: 1 | 2 | 3 | 4 | -1; diaSemana: number } // -1 = última
+  | { tipo: "quinzenal"; dataBase: string };               // "YYYY-MM-DD" — a cada 14 dias
+
+export type Rotina = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  descricao?: string;
+  moduloAlvo?: ModuleId;            // função do sistema (gera o deep-link)
+  responsaveis: string[];          // pessoaIds
+  responsaveisNomes?: Record<string, string>; // snapshot pra exibir
+  recorrencia: RotinaRecorrencia;
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  atualizadoEm?: string;
+};
+
+// Registro de que uma pessoa concluiu a ocorrência de uma rotina numa data.
+// id determinístico = `${rotinaId}_${ocorrenciaData}_${pessoaId}` (idempotente).
+export type RotinaConclusao = {
+  id: string;
+  restaurantId: string;
+  rotinaId: string;
+  ocorrenciaData: string;          // "YYYY-MM-DD" — a data devida que foi cumprida
+  pessoaId: string;
+  pessoaNome?: string;
+  concluidoEm: string;             // ISO
+};
 
 export type LeadEventoStatus =
   | "novo"

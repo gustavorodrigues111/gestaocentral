@@ -117,6 +117,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "rotinas",
+    icon: "🔁",
+    label: "Rotinas",
+    desc: "Lembretes recorrentes de tarefas do sistema atribuídos a pessoas",
+    area: "operacao",
+    acoes: [
+      { id: "gerenciar", label: "Criar / editar / atribuir rotinas" },
+      { id: "ver",       label: "Ver todas as rotinas do restaurante" },
+    ],
+  },
+  {
     id: "eventos",
     icon: "🎉",
     label: "Eventos privados",

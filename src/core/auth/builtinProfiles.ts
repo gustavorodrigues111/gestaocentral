@@ -56,6 +56,9 @@ export const BUILTIN_GERENTE_RESTAURANTE: AccessProfile = {
       receberAvisos: true,
       criar: true, gerenciar: true, ver: true, editar: true, estatistics: true,
     },
+    rotinas: {
+      gerenciar: true, ver: true,
+    },
     eventos: {
       receberAvisos: true,
       verLeads: true, editar: true, responder: true,

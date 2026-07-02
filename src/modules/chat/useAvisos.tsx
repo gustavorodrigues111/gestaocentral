@@ -14,14 +14,16 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { useAvisoSource, type AvisoDoc } from "./useAvisoSource";
-import type { FaleDpMensagem } from "../../core/types";
+import type { FaleDpMensagem, Rotina, RotinaConclusao } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
+import { pendentesParaPessoa } from "../rotinas/repository";
+import { recorrenciaLabel } from "../rotinas/rotinasEngine";
 
 export type Aviso = {
   id: string;
@@ -35,6 +37,7 @@ export type Aviso = {
   cta: string;
   href?: string;              // navegação
   faleDp?: FaleDpMensagem;    // payload do modal (avisos de Fale com DP)
+  rotina?: { rotina: Rotina; ocorrenciaData: string; atrasada: boolean }; // rotina pendente
   categoria: string;          // rótulo do módulo — agrupa o Histórico
   categoriaIcone: string;     // ícone do módulo (não do item)
 };
@@ -92,6 +95,29 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return m;
   }, [restaurants]);
 
+  // ── Rotinas do usuário (transversal): onde ele é responsável + suas conclusões ──
+  const pid = pessoa?.id || "";
+  const [rotinas, setRotinas] = useState<Rotina[]>([]);
+  const [conclusoesIds, setConclusoesIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!pid) { setRotinas([]); return; }
+    const unsub = onSnapshot(
+      query(collection(db, "rotinas"), where("responsaveis", "array-contains", pid)),
+      (snap) => setRotinas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Rotina)),
+      () => setRotinas([]),
+    );
+    return () => unsub();
+  }, [pid]);
+  useEffect(() => {
+    if (!pid) { setConclusoesIds(new Set()); return; }
+    const unsub = onSnapshot(
+      query(collection(db, "rotinaConclusoes"), where("pessoaId", "==", pid)),
+      (snap) => setConclusoesIds(new Set(snap.docs.map((d) => ((d.data() as RotinaConclusao).id) || d.id))),
+      () => setConclusoesIds(new Set()),
+    );
+    return () => unsub();
+  }, [pid]);
+
   // ── Fontes por-item ──
   const escala = useAvisoSource({ ...base,
     gates: [["escala", "receberAvisos"], ["escala", "aprovarSolicitacoes"]],
@@ -139,6 +165,26 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     const out: Aviso[] = [];
     const hoje = new Date().toISOString().slice(0, 10);
     const limite30 = addDiasYmd(hoje, 30);
+
+    // ── Rotinas pendentes do usuário (vencem hoje ou atrasadas e não feitas) ──
+    for (const p of pendentesParaPessoa(rotinas, conclusoesIds, pid, hoje)) {
+      const r = p.rotina;
+      out.push({
+        id: `rot_${r.id}`,
+        tipo: "rotina",
+        icone: p.atrasada ? "⏰" : "🔁",
+        titulo: r.titulo,
+        descricao: `${p.atrasada ? "Atrasada · " : ""}${recorrenciaLabel(r.recorrencia)}${r.descricao ? ` · ${r.descricao}` : ""}`,
+        em: p.ocorrenciaData,
+        restauranteId: r.restaurantId,
+        restauranteNome: nomePorRid[r.restaurantId] || "Restaurante",
+        cta: r.moduloAlvo ? "Fazer agora" : "Marcar feito",
+        href: r.moduloAlvo ? `/r/${r.restaurantId}/${r.moduloAlvo}` : undefined,
+        rotina: { rotina: r, ocorrenciaData: p.ocorrenciaData, atrasada: p.atrasada },
+        categoria: "Rotinas",
+        categoriaIcone: "🔁",
+      });
+    }
 
     // Helper agregado: 1 card por restaurante com contador.
     const agg = (
@@ -269,7 +315,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     out.sort((a, b) => (b.em || "").localeCompare(a.em || ""));
     return out;
   }, [
-    nomePorRid, escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
+    nomePorRid, rotinas, conclusoesIds, pid,
+    escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
   ]);
 
@@ -295,6 +342,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
 
   const api = useMemo<AvisosApi>(() => {
     const estaLido = (a: Aviso) => {
+      if (a.tipo === "rotina") return false; // rotina some só quando concluída
       const snap = lidos[a.id];
       return snap != null && (a.em || "") <= snap;
     };
