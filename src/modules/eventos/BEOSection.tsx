@@ -1,10 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where, getDocs } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { BEOEvento, LeadEvento, PropostaEvento } from "../../core/types";
+import type { BEOEvento, CardapioPdf, LeadEvento, PropostaEvento } from "../../core/types";
+
+const MAX_BEO_PDF_MB = 20;
 
 type Props = {
   lead: LeadEvento;
@@ -31,6 +36,9 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
   const [restricoes, setRestricoes] = useState("");
   const [setup, setSetup] = useState("");
   const [observacoes, setObservacoes] = useState("");
+  // Cardápios anexados direto no BEO (além dos que vieram da proposta) —
+  // ex: cardápio final combinado com o cliente por fora.
+  const [cardapiosExtra, setCardapiosExtra] = useState<CardapioPdf[]>([]);
 
   useEffect(() => {
     const q = query(collection(db, "beosEvento"), where("leadId", "==", lead.id));
@@ -94,7 +102,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
           nome: contatoNomeDia.trim() || lead.cliente.nome,
           whatsapp: contatoWaDia.trim() || lead.cliente.whatsapp,
         },
-        cardapios: propostaVigente.cardapios || [],
+        cardapios: [...(propostaVigente.cardapios || []), ...cardapiosExtra],
         restricoesAlimentares: restricoesArr,
         setup: setup.trim() || "Padrão da Laje",
         observacoes: observacoes.trim() || undefined,
@@ -103,6 +111,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
         geradoPorNome: meNome,
       };
       await setDoc(doc(db, "beosEvento", id), sanitizeForFirestore(beo));
+      setCardapiosExtra([]);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao gerar BEO");
     } finally {
@@ -181,13 +190,16 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
         </details>
       )}
 
-      {/* Form pra nova versão */}
+      {/* Form pra gerar BEO (ou nova versão) — painel sempre visível */}
       {podeEditar && (
-        <details className="mt-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3" open={!beoAtual}>
-          <summary className="cursor-pointer text-sm font-medium">
-            {beoAtual ? "+ Gerar nova versão" : "+ Gerar BEO"}
-          </summary>
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <BeoFormPanel beoAtual={beoAtual}>
+          {!beoAtual && (
+            <div className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+              Preencha os horários e o setup abaixo e clique em <strong>Gerar BEO</strong> pra
+              consolidar a ordem do evento pra cozinha (a partir da proposta v{propostaVigente.versao}).
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <Input label="Chegada equipe" type="time" value={horaChegada} onChange={(e) => setHoraChegada(e.target.value)} />
             <Input label="Início serviço" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             <Input label="Encerramento" type="time" value={horaEncerramento} onChange={(e) => setHoraEncerramento(e.target.value)} />
@@ -231,13 +243,170 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
               rows={2}
             />
           </div>
+          {/* Cardápios: herdados da proposta + anexos combinados com o cliente */}
           <div className="mt-3">
-            <Button size="sm" onClick={gerarBEO} disabled={gerando}>
-              {gerando ? "Gerando..." : "📋 Gerar BEO"}
+            <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
+              Cardápios do evento
+            </label>
+            <div className="mt-1 space-y-1">
+              {(propostaVigente.cardapios || []).map(c => (
+                <div key={c.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                  <span>📄</span>
+                  <a href={c.url} target="_blank" rel="noreferrer" className="underline truncate">{c.nome}</a>
+                  <span className="text-[10px] px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">da proposta</span>
+                </div>
+              ))}
+              {cardapiosExtra.map(c => (
+                <div key={c.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+                  <span>📎</span>
+                  <a href={c.url} target="_blank" rel="noreferrer" className="underline truncate">{c.nome}</a>
+                  <button
+                    type="button"
+                    onClick={() => setCardapiosExtra(prev => prev.filter(x => x.id !== c.id))}
+                    className="text-red-500 hover:text-red-700 text-[11px]"
+                    title="Remover anexo"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+              {(propostaVigente.cardapios || []).length === 0 && cardapiosExtra.length === 0 && (
+                <div className="text-xs text-gray-400 italic">Nenhum cardápio ainda — anexe o combinado com o cliente.</div>
+              )}
+            </div>
+            <div className="mt-2">
+              <BeoCardapioUploader
+                restaurantId={lead.restaurantId}
+                leadId={lead.id}
+                proximaOrdem={(propostaVigente.cardapios || []).length + cardapiosExtra.length}
+                onUploaded={(c) => setCardapiosExtra(prev => [...prev, c])}
+              />
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <Button onClick={gerarBEO} disabled={gerando}>
+              {gerando ? "Gerando..." : beoAtual ? "📋 Gerar nova versão" : "📋 Gerar BEO"}
             </Button>
           </div>
-        </details>
+        </BeoFormPanel>
       )}
+    </div>
+  );
+}
+
+// Painel do formulário de BEO. Quando ainda não existe BEO, fica aberto e
+// visível (borda sólida destacada) pra deixar o "Gerar BEO" óbvio. Quando já
+// existe um BEO, vira um accordion "nova versão" recolhido pra não poluir.
+function BeoFormPanel({ beoAtual, children }: { beoAtual: BEOEvento | null; children: ReactNode }) {
+  if (!beoAtual) {
+    return (
+      <div className="mt-2 rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50/30 dark:bg-purple-900/10 p-3">
+        <div className="text-sm font-bold text-purple-800 dark:text-purple-200 mb-1">Gerar BEO</div>
+        {children}
+      </div>
+    );
+  }
+  return (
+    <details className="mt-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3">
+      <summary className="cursor-pointer text-sm font-medium">+ Gerar nova versão</summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
+// Uploader de PDF de cardápio pro BEO. Mesma mecânica dos cardápios de pacote
+// (Firebase Storage), path próprio por lead.
+function BeoCardapioUploader({
+  restaurantId, leadId, proximaOrdem, onUploaded,
+}: {
+  restaurantId: string;
+  leadId: string;
+  proximaOrdem: number;
+  onUploaded: (c: CardapioPdf) => void;
+}) {
+  const { pessoa: me } = useAuth();
+  const [uploading, setUploading] = useState(false);
+  const [progresso, setProgresso] = useState(0);
+  const [erro, setErro] = useState("");
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function upload(file: File) {
+    setErro("");
+    if (file.type !== "application/pdf") {
+      setErro("Só PDF.");
+      return;
+    }
+    const mb = file.size / (1024 * 1024);
+    if (mb > MAX_BEO_PDF_MB) {
+      setErro(`Arquivo muito grande (${mb.toFixed(1)} MB). Máximo: ${MAX_BEO_PDF_MB} MB.`);
+      return;
+    }
+    setUploading(true);
+    setProgresso(0);
+    const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const path = `beos-cardapios/${restaurantId}/${leadId}/${id}.pdf`;
+    const ref = storageRef(storage, path);
+    const task = uploadBytesResumable(ref, file, {
+      contentType: "application/pdf",
+      customMetadata: { restaurantId, leadId, uploadedBy: me?.id || "" },
+    });
+    task.on(
+      "state_changed",
+      (snap) => setProgresso(Math.max(5, Math.round((snap.bytesTransferred / snap.totalBytes) * 100))),
+      (err) => {
+        console.error("Storage upload error:", err);
+        const cod = (err as { code?: string }).code || "";
+        if (cod.includes("unauthorized") || cod.includes("permission")) {
+          setErro("Sem permissão pra subir. Regras do Storage podem não estar publicadas: firebase deploy --only storage --project gestaocentral");
+        } else {
+          setErro(err.message || "Erro ao enviar");
+        }
+        setUploading(false);
+        if (inputRef.current) inputRef.current.value = "";
+      },
+      async () => {
+        try {
+          const url = await getDownloadURL(task.snapshot.ref);
+          const nomeBase = file.name.replace(/\.pdf$/i, "").slice(0, 60);
+          onUploaded({
+            id,
+            nome: nomeBase || "Cardápio",
+            url,
+            uploadedAt: new Date().toISOString(),
+            uploadedBy: me?.id,
+            ordem: proximaOrdem,
+          });
+          setProgresso(100);
+        } catch (e) {
+          console.error(e);
+          setErro(e instanceof Error ? e.message : "Erro ao salvar");
+        } finally {
+          setUploading(false);
+          if (inputRef.current) inputRef.current.value = "";
+        }
+      },
+    );
+  }
+
+  return (
+    <div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-xs text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-500 transition-colors disabled:opacity-60"
+      >
+        {uploading ? `Enviando… ${progresso}%` : "📎 Anexar cardápio (PDF)"}
+      </button>
+      {erro && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">{erro}</div>}
     </div>
   );
 }
