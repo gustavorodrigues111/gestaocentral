@@ -6,6 +6,7 @@
 //  O "Fechar folha do empregado" (gravar na praticada) entra no Passo 2.
 // ════════════════════════════════════════════════════════════════════════════
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { AjusteEscalaMeta, Cargo, Empregado, EscalaMes, Pessoa, Restaurant, ScheduleStatus } from "../../core/types";
@@ -169,7 +170,7 @@ type DiaEspelho = {
 };
 
 export function FechamentoTab({
-  rid, activeRestaurant, empregados, cargos, pessoas, mesInicial, por,
+  rid, activeRestaurant, empregados, cargos, pessoas, mesInicial, por, podeAprovar = true,
 }: {
   rid: string;
   activeRestaurant: Restaurant;
@@ -178,6 +179,7 @@ export function FechamentoTab({
   pessoas: Pessoa[];
   mesInicial: string; // YYYY-MM
   por: { id: string; nome: string };
+  podeAprovar?: boolean;
 }) {
   const [mes, setMes] = useState(mesInicial);
   // Faixa de dias dentro do mês (padrão = mês inteiro). Permite conferir "todo
@@ -538,9 +540,47 @@ export function FechamentoTab({
   // Em vez de fechar colaborador por colaborador, lista TODOS os dias em aberto
   // (passados, não fechados) de todos os empregados, agrupados por pessoa, pra
   // fechar em lote — prático quando falta só 1-2 dias de todo mundo.
-  const [visao, setVisao] = useState<"colaborador" | "pendentes">("colaborador");
+  const [sp] = useSearchParams();
+  const [visao, setVisao] = useState<"colaborador" | "pendentes" | "aprovacoes">(
+    sp.get("fv") === "aprovacoes" && podeAprovar ? "aprovacoes"
+    : sp.get("fv") === "pendentes" ? "pendentes"
+    : "colaborador",
+  );
   const [pendSel, setPendSel] = useState<Set<string>>(new Set());   // key `${appId}|${date}`
   useEffect(() => { setPendSel(new Set()); }, [visao, mes, diaIni, diaFim]);
+
+  // ── Visão "Aprovações pendentes" ─────────────────────────────────────────
+  // Lista cross-colaborador de ajustes que o empregado fez no app de ponto e
+  // aguardam decisão (aprovar/reprovar) — migrado da antiga aba Inconsistências.
+  const aprovacoes = useMemo(() => derivarAprovacoes(punches), [punches]);
+  const [aprovSel, setAprovSel] = useState<Set<number>>(new Set());  // punchIds
+  const [decidindoAprov, setDecidindoAprov] = useState(false);
+  useEffect(() => { setAprovSel(new Set()); }, [visao, aprovacoes.length]);
+  const aprovSelVis = useMemo(() => aprovacoes.filter((a) => aprovSel.has(a.punchId)), [aprovacoes, aprovSel]);
+  const todosAprovSel = aprovacoes.length > 0 && aprovSelVis.length === aprovacoes.length;
+
+  async function decidirAprovLote(itens: AprovacaoPendente[], status: "APPROVED" | "REPROVED") {
+    if (itens.length === 0 || decidindoAprov) return;
+    const verbo = status === "APPROVED" ? "Aprovar" : "Reprovar";
+    if (!window.confirm(`${verbo} ${itens.length} ajuste(s)?\n\nGrava na Sólides (dado trabalhista).`)) return;
+    setErro(""); setDecidindoAprov(true);
+    let falhas = 0;
+    for (const a of itens) {
+      try {
+        await decidirAprovacao(shortCode, { punchId: a.punchId, status });
+        try {
+          await addDoc(collection(db, "pontoAuditoria"), {
+            restaurantId: rid, tipo: "aprovacao", status, por: { id: por.id, nome: por.nome },
+            punchId: a.punchId, employeeId: a.employeeId, colaborador: a.employeeName, em: new Date().toISOString(),
+          });
+        } catch { /* auditoria não bloqueia */ }
+      } catch { falhas++; }
+    }
+    setAprovSel(new Set());
+    if (falhas > 0) setErro(`${falhas} de ${itens.length} não puderam ser ${status === "APPROVED" ? "aprovados" : "reprovados"}.`);
+    await carregar();
+    setDecidindoAprov(false);
+  }
 
   const pendentesPorEmp = useMemo(() => {
     if (visao !== "pendentes") return [] as { col: ColabItem; appId: string; dias: DiaEspelho[] }[];
@@ -957,6 +997,12 @@ export function FechamentoTab({
             className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "pendentes" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
             📋 Dias pendentes de todos
           </button>
+          {podeAprovar && (
+            <button type="button" onClick={() => setVisao("aprovacoes")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "aprovacoes" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
+              ⏳ Aprovações pendentes{aprovacoes.length > 0 ? ` (${aprovacoes.length})` : ""}
+            </button>
+          )}
         </div>
       )}
 
@@ -1145,6 +1191,68 @@ export function FechamentoTab({
                     </div>
                   );
                 })}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {/* Visão: Aprovações pendentes (cross-colaborador) */}
+      {visao === "aprovacoes" && podeAprovar && (
+        <section className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          {carregando ? (
+            <div className="p-6 text-sm text-gray-500">Carregando…</div>
+          ) : aprovacoes.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-2">✅</div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Nenhuma aprovação pendente</p>
+              <p className="text-xs text-gray-500 mt-1">Ajustes que o empregado faz no app de ponto aparecem aqui pra você aprovar ou reprovar.</p>
+            </div>
+          ) : (
+            <>
+              <header className="flex items-center gap-2 flex-wrap px-3 py-2.5 bg-blue-50/60 dark:bg-blue-950/20 border-b border-gray-200 dark:border-gray-800">
+                <label className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-700 dark:text-gray-200 cursor-pointer">
+                  <input type="checkbox" checked={todosAprovSel}
+                    onChange={() => setAprovSel(todosAprovSel ? new Set() : new Set(aprovacoes.map((a) => a.punchId)))}
+                    className="w-4 h-4 accent-indigo-600" />
+                  Selecionar todos ({aprovacoes.length})
+                </label>
+                <div className="flex-1" />
+                <span className="text-[11px] text-gray-400">{aprovSelVis.length} selecionado(s)</span>
+                <button type="button" disabled={aprovSelVis.length === 0 || decidindoAprov} onClick={() => void decidirAprovLote(aprovSelVis, "APPROVED")}
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">
+                  ✓ Aprovar{aprovSelVis.length ? ` (${aprovSelVis.length})` : ""}
+                </button>
+                <button type="button" disabled={aprovSelVis.length === 0 || decidindoAprov} onClick={() => void decidirAprovLote(aprovSelVis, "REPROVED")}
+                  className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 disabled:opacity-40">
+                  ✕ Reprovar
+                </button>
+              </header>
+              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {aprovacoes.map((a) => (
+                  <div key={a.punchId} className="flex items-start gap-2 px-3 py-2.5">
+                    <input type="checkbox" checked={aprovSel.has(a.punchId)}
+                      onChange={() => setAprovSel((s) => { const n = new Set(s); if (n.has(a.punchId)) n.delete(a.punchId); else n.add(a.punchId); return n; })}
+                      className="w-4 h-4 mt-0.5 accent-indigo-600" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{a.employeeName}</span>
+                        <span className="text-[11px] text-gray-500 tabular-nums">{a.date ? new Date(a.date + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</span>
+                        {(a.editIn || a.editOut) && (
+                          <span className="text-[10px] uppercase font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">editou {a.editIn && a.editOut ? "entrada+saída" : a.editIn ? "entrada" : "saída"}</span>
+                        )}
+                      </div>
+                      {a.motivo && <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5"><strong>Motivo:</strong> {a.motivo}</div>}
+                      {a.observation && <div className="text-xs text-gray-500 dark:text-gray-400">{a.observation}</div>}
+                    </div>
+                    <div className="flex gap-1 shrink-0">
+                      <button type="button" disabled={decidindoAprov} onClick={() => void decidirAprovLote([a], "APPROVED")}
+                        className="text-[11px] font-semibold px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40">✓</button>
+                      <button type="button" disabled={decidindoAprov} onClick={() => void decidirAprovLote([a], "REPROVED")}
+                        className="text-[11px] font-semibold px-2 py-1 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 disabled:opacity-40">✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           )}

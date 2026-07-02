@@ -8,9 +8,9 @@ export type SubDestino = { id: string; label: string; query: string };
 
 export const MODULO_SUBDESTINOS: Partial<Record<ModuleId, SubDestino[]>> = {
   "analise-ponto": [
-    { id: "fechamento", label: "Fechamento de ponto", query: "tab=fechamento" },
-    { id: "inconsist",  label: "Inconsistências",      query: "tab=inconsist" },
-    { id: "escalas",    label: "Escalas (comparação)", query: "tab=escalas" },
+    { id: "fechamento", label: "Fechamento de ponto",        query: "tab=fechamento" },
+    { id: "aprovacoes", label: "Aprovações pendentes",       query: "tab=fechamento&fv=aprovacoes" },
+    { id: "escalas",    label: "Escalas (comparação)",       query: "tab=escalas" },
   ],
   escala: [
     { id: "ajustes", label: "Ajustes solicitados", query: "aba=ajustes" },

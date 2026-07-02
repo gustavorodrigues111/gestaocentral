@@ -254,8 +254,12 @@ function AnalisePontoInner() {
   const [decidindoLote, setDecidindoLote] = useState(false);
   const [searchParams] = useSearchParams();
   const tabInicial = searchParams.get("tab");
+  // Aba "inconsist" foi descontinuada — o Fechamento cobre por colaborador/dias
+  // pendentes e as APROVAÇÕES pendentes migraram pra lá. O tipo mantém o valor
+  // só pra retrocompat interna, mas ela não é mais navegável.
+  const podeFechamentoTab = podeFechar || podeAprovar;
   const [tab, setTab] = useState<"inconsist" | "fechamento" | "escalas">(
-    tabInicial === "fechamento" || tabInicial === "escalas" ? tabInicial : "inconsist",
+    tabInicial === "escalas" || !podeFechamentoTab ? "escalas" : "fechamento",
   );
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.
@@ -509,8 +513,7 @@ function AnalisePontoInner() {
   }
 
   const tabsDisp = ([
-    { id: "inconsist", label: "⚠️ Inconsistências" },
-    podeFechar ? { id: "fechamento", label: "📄 Fechamento de ponto" } : null,
+    (podeFechar || podeAprovar) ? { id: "fechamento", label: "📄 Fechamento de ponto" } : null,
     { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
   ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
@@ -531,7 +534,7 @@ function AnalisePontoInner() {
 
       {tab === "fechamento" && (
         <FechamentoTab rid={rid} activeRestaurant={activeRestaurant} empregados={empregados} cargos={cargos} pessoas={pessoas} mesInicial={inicio.slice(0, 7)}
-          por={{ id: me?.id || "", nome: me?.nome || "?" }} />
+          por={{ id: me?.id || "", nome: me?.nome || "?" }} podeAprovar={podeAprovar} />
       )}
 
       {tab === "inconsist" && <>
