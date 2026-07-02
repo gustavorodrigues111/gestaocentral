@@ -46,6 +46,8 @@ type Props = {
   /** Callback chamado quando a entrega é criada com sucesso —
       usado pra marcar a subtarefa correspondente. */
   onEntregaCriada?: (pdf?: { blob: Blob; filename: string }) => void;
+  /** Pré-seleciona a pessoa (ex: "Fazer entrega" a partir do Por empregado). */
+  pessoaInicialId?: string;
 };
 
 type LinhaEntrega = {
@@ -56,7 +58,7 @@ type LinhaEntrega = {
 
 export function NovaEntregaModal({
   tipo, itens, kits, restaurantId, activeRestaurant, pessoa, onClose,
-  admissaoContexto, entregaExistente, onEntregaCriada,
+  admissaoContexto, entregaExistente, onEntregaCriada, pessoaInicialId,
 }: Props) {
   // Modo "admissão": pessoa fixa (candidato), tipo fixo, motivo=admissao.
   // Não permite trocar a pessoa.
@@ -80,7 +82,7 @@ export function NovaEntregaModal({
   }, [restaurantId]);
 
   const [pessoaSelId, setPessoaSelId] = useState(
-    () => admissaoContexto?.pessoaIdVinculada || "",
+    () => admissaoContexto?.pessoaIdVinculada || pessoaInicialId || "",
   );
   const pessoaSel = pessoas.find(p => p.id === pessoaSelId);
 

@@ -1,21 +1,34 @@
-// Tab "👥 Por empregado" — lista todos os empregados ativos com cargo e mostra,
-// pra cada um, o que já recebeu de uniforme/EPI vs o KIT MÍNIMO da área do
-// cargo. Falta em relação ao mínimo → destaque vermelho (controle).
+// Tab "👥 Por empregado" — hub operacional de uniformes/EPIs.
+//  • lista todos os empregados ativos com cargo/área;
+//  • mostra o recebido vs o KIT MÍNIMO da área (falta em vermelho);
+//  • filtro "a vencer" (substitui a aba Vencimentos);
+//  • "Fazer entrega" por empregado (substitui a aba Entregas).
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { Cargo, Empregado, EntregaUniforme, ItemUniforme, KitAreaUniforme } from "../../core/types";
+import { Button } from "../../core/ui/Button";
+import type {
+  Cargo, Empregado, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TipoItemUniforme,
+} from "../../core/types";
+import { NovaEntregaModal } from "./NovaEntregaModal";
 
 type Props = {
   itens: ItemUniforme[];
   kits: KitAreaUniforme[];
   entregas: EntregaUniforme[];
   restaurantId: string;
+  activeRestaurant: Restaurant;
+  me: Pessoa;
+  podeConfig: boolean;
 };
 
-export function PorEmpregadoTab({ itens, kits, entregas, restaurantId }: Props) {
+const DIAS_VENCER = 30;
+
+export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRestaurant, me, podeConfig }: Props) {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [filtro, setFiltro] = useState<"todos" | "vencer">("todos");
+  const [entregaModal, setEntregaModal] = useState<{ pessoaId?: string; tipo: TipoItemUniforme } | null>(null);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -33,15 +46,18 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId }: Props) 
     return (id: string) => m.get(id) || "item";
   }, [itens]);
 
-  // Quantidade líquida que o empregado tem hoje, por itemId (entregas ativas
-  // menos devoluções, ignorando entregas canceladas).
-  function recebidoPorEmp(emp: Empregado): Map<string, number> {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const limiteVenc = new Date(Date.now() + DIAS_VENCER * 86400_000).toISOString().slice(0, 10);
+
+  function entregasDoEmp(emp: Empregado): EntregaUniforme[] {
+    return entregas.filter(e => !e.cancelamento && (
+      (e.empregadoId && e.empregadoId === emp.id)
+      || (!!e.pessoaId && !!emp.pessoaId && e.pessoaId === emp.pessoaId)
+    ));
+  }
+  function recebidoPorEmp(emps: EntregaUniforme[]): Map<string, number> {
     const rec = new Map<string, number>();
-    for (const e of entregas) {
-      if (e.cancelamento) continue;
-      const daPessoa = (e.empregadoId && e.empregadoId === emp.id)
-        || (!!e.pessoaId && !!emp.pessoaId && e.pessoaId === emp.pessoaId);
-      if (!daPessoa) continue;
+    for (const e of emps) {
       for (const it of e.itens) rec.set(it.itemId, (rec.get(it.itemId) || 0) + (it.qtd || 0));
       for (const dv of e.devolucao?.itens || []) rec.set(dv.itemId, (rec.get(dv.itemId) || 0) - (dv.qtd || 0));
     }
@@ -55,45 +71,82 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId }: Props) 
         const cargo = e.cargoId ? cargoById.get(e.cargoId) : undefined;
         const area = cargo?.area;
         const kit = area ? kitByArea.get(area) : undefined;
-        const rec = recebidoPorEmp(e);
+        const ents = entregasDoEmp(e);
+        const rec = recebidoPorEmp(ents);
         const itensKit = (kit?.itens || []).map(req => {
           const have = rec.get(req.itemId) || 0;
-          const falta = Math.max(0, req.quantidade - have);
-          return { itemId: req.itemId, nome: itemNome(req.itemId), minimo: req.quantidade, have, falta };
+          return { itemId: req.itemId, nome: itemNome(req.itemId), minimo: req.quantidade, have, falta: Math.max(0, req.quantidade - have) };
         });
-        const semKit = !!area && !kit;
-        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit };
+        // Itens entregues vencendo em <= 30d (não vencido há muito não interessa aqui;
+        // inclui atrasados também pra cobrar reposição).
+        const vencendo = ents.flatMap(en => en.itens
+          .filter(it => it.validadeAte && it.validadeAte <= limiteVenc)
+          .map(it => ({ nome: it.nome, validadeAte: it.validadeAte!, dias: Math.round((new Date(it.validadeAte! + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) })));
+        vencendo.sort((a, b) => a.validadeAte.localeCompare(b.validadeAte));
+        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo };
       })
-      .filter(l => !!l.area); // só quem tem área no cargo
+      .filter(l => !!l.area);
     out.sort((a, b) => (b.pendencias - a.pendencias) || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empregados, cargoById, kitByArea, entregas, itens]);
 
-  if (linhas.length === 0) return <div className="text-center py-12 text-gray-500">Nenhum empregado ativo com cargo/área.</div>;
+  const visiveis = filtro === "vencer" ? linhas.filter(l => l.vencendo.length > 0) : linhas;
   const totalPend = linhas.reduce((s, l) => s + l.pendencias, 0);
+  const totalVenc = linhas.reduce((s, l) => s + l.vencendo.length, 0);
 
   return (
     <div className="space-y-3">
-      {totalPend > 0 && (
+      {/* Filtro */}
+      <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+        {([["todos", "Todos"], ["vencer", `A vencer (${totalVenc})`]] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setFiltro(v)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md ${filtro === v ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      {filtro === "todos" && totalPend > 0 && (
         <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
-          ⚠ <strong>{totalPend}</strong> item(ns) abaixo do mínimo do kit. Registre a entrega pra ficar em conformidade.
+          ⚠ <strong>{totalPend}</strong> item(ns) abaixo do mínimo do kit.
         </div>
       )}
-      {linhas.map(({ emp, cargo, area, itensKit, pendencias, semKit }) => (
-        <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
-          <div className="p-3 flex items-center justify-between gap-2">
+
+      {visiveis.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">{filtro === "vencer" ? "Nada vencendo nos próximos 30 dias." : "Nenhum empregado ativo com cargo/área."}</div>
+      ) : visiveis.map(({ emp, cargo, area, itensKit, pendencias, semKit, vencendo }) => (
+        <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 && filtro === "todos" ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
+          <div className="p-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="min-w-0">
               <span className="font-semibold text-gray-900 dark:text-gray-100">{emp.nome}</span>
               <span className="ml-2 text-xs text-gray-500">{cargo?.nome}{area ? ` · ${area}` : ""}</span>
             </div>
-            {semKit
-              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">sem kit na área</span>
-              : pendencias > 0
-              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{pendencias} abaixo</span>
-              : <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">em dia</span>}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {filtro === "todos" && (semKit
+                ? <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">sem kit na área</span>
+                : pendencias > 0
+                ? <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{pendencias} abaixo</span>
+                : <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">em dia</span>)}
+              {podeConfig && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "uniforme" })}>👕 Uniforme</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "epi" })}>🦺 EPI</Button>
+                </>
+              )}
+            </div>
           </div>
-          {semKit ? (
+
+          {filtro === "vencer" ? (
+            <div className="px-3 pb-3 space-y-1">
+              {vencendo.map((v, i) => (
+                <div key={i} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${v.dias < 0 ? "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300" : "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"}`}>
+                  <span className="min-w-0 truncate">{v.nome}</span>
+                  <span className="tabular-nums shrink-0">{v.validadeAte.split("-").reverse().join("/")} · {v.dias < 0 ? `${-v.dias}d atrasado` : `${v.dias}d`}</span>
+                </div>
+              ))}
+            </div>
+          ) : semKit ? (
             <div className="px-3 pb-3 text-xs text-gray-500">Defina o kit da área <strong>{area}</strong> em Configurações pra controlar o mínimo.</div>
           ) : (
             <div className="px-3 pb-3 space-y-1">
@@ -114,6 +167,19 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId }: Props) 
           )}
         </div>
       ))}
+
+      {entregaModal && (
+        <NovaEntregaModal
+          tipo={entregaModal.tipo}
+          itens={itens}
+          kits={kits}
+          restaurantId={restaurantId}
+          activeRestaurant={activeRestaurant}
+          pessoa={me}
+          pessoaInicialId={entregaModal.pessoaId}
+          onClose={() => setEntregaModal(null)}
+        />
+      )}
     </div>
   );
 }

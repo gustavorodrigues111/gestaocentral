@@ -24,18 +24,13 @@ import { itensProximosVencimento } from "../../core/uniformes/uniformesHelpers";
 import { ItensTab } from "./ItensTab";
 import { KitsAreaTab } from "./KitsAreaTab";
 import { EstoqueTab } from "./EstoqueTab";
-import { EntregasTab } from "./EntregasTab";
-import { VencimentosTab } from "./VencimentosTab";
 import { PorEmpregadoTab } from "./PorEmpregadoTab";
 
-type TabId = "itens" | "porEmpregado" | "estoque" | "entregas" | "vencimentos" | "config";
+type TabId = "porEmpregado" | "estoque" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "itens",        label: "Itens",         icon: "🛍️" },
   { id: "porEmpregado", label: "Por empregado", icon: "👥" },
   { id: "estoque",      label: "Estoque",       icon: "📦" },
-  { id: "entregas",     label: "Entregas",      icon: "📋" },
-  { id: "vencimentos",  label: "Vencimentos",   icon: "⏳" },
   { id: "config",       label: "Configurações", icon: "⚙️" },
 ];
 
@@ -51,7 +46,7 @@ export function UniformesPage() {
   const podeVer = canVer(me, rid, "uniformes" as never);
   const podeConfig = canConfigurar(me, rid, "uniformes" as never);
 
-  const [tab, setTab] = useState<TabId>("itens");
+  const [tab, setTab] = useState<TabId>("porEmpregado");
 
   // ─── Carrega dados reativos ───
   const [itens, setItens] = useState<ItemUniforme[]>([]);
@@ -87,11 +82,8 @@ export function UniformesPage() {
   );
 
   const badges: Record<TabId, number> = {
-    itens: 0,
-    porEmpregado: 0,
+    porEmpregado: countVencendo,
     estoque: 0,
-    entregas: 0,
-    vencimentos: countVencendo,
     config: 0,
   };
 
@@ -130,11 +122,21 @@ export function UniformesPage() {
         })}
       </div>
 
-      {tab === "itens" && me && (
-        <ItensTab itens={itens} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
+      {tab === "porEmpregado" && me && (
+        <PorEmpregadoTab
+          itens={itens} kits={kits} entregas={entregas} restaurantId={rid}
+          activeRestaurant={activeRestaurant} me={me} podeConfig={podeConfig}
+        />
       )}
-      {tab === "porEmpregado" && (
-        <PorEmpregadoTab itens={itens} kits={kits} entregas={entregas} restaurantId={rid} />
+      {tab === "estoque" && me && (
+        <div className="space-y-6">
+          {/* Cadastro de itens (uniformes + EPIs) */}
+          <ItensTab itens={itens} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
+          {/* Controle de estoque (saldos + ajustes + histórico) */}
+          <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+            <EstoqueTab itens={itens} movs={movs} podeConfig={podeConfig} pessoa={me} />
+          </div>
+        </div>
       )}
       {tab === "config" && me && (
         <div className="space-y-2">
@@ -146,19 +148,6 @@ export function UniformesPage() {
           </div>
           <KitsAreaTab itens={itens} kits={kits} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
         </div>
-      )}
-      {tab === "estoque" && me && (
-        <EstoqueTab itens={itens} movs={movs} podeConfig={podeConfig} pessoa={me} />
-      )}
-      {tab === "entregas" && me && (
-        <EntregasTab
-          itens={itens} kits={kits} entregas={entregas}
-          podeConfig={podeConfig} pessoa={me} restaurantId={rid}
-          activeRestaurant={activeRestaurant}
-        />
-      )}
-      {tab === "vencimentos" && (
-        <VencimentosTab entregas={entregas} diasAlerta={DIAS_ALERTA_VENCIMENTO} />
       )}
     </div>
   );
