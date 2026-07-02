@@ -242,6 +242,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
         cargoId: adm.cargoId,
         cargoNome: cargo?.nome,
         cargoArea: cargo?.area,
+        cargoVinculo: cargo?.tipoVinculo,
         restaurantId: adm.restaurantId,
         dataAdmissao: adm.dataAdmissao,
         autor: { id: me.id, nome: me.nome },
