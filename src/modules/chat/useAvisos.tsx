@@ -13,7 +13,9 @@
 //     evita inundar o feed quando há muitos itens pendentes.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -33,6 +35,20 @@ export type Aviso = {
   cta: string;
   href?: string;              // navegação
   faleDp?: FaleDpMensagem;    // payload do modal (avisos de Fale com DP)
+  categoria: string;          // rótulo do módulo — agrupa o Histórico
+  categoriaIcone: string;     // ícone do módulo (não do item)
+};
+
+// API exposta pela Central de Avisos: caixa de entrada (não lidos), histórico
+// (lidos), e ações de leitura. Estado de leitura é um overlay persistido por
+// pessoa (avisos são derivados ao vivo — não têm doc próprio pra marcar).
+export type AvisosApi = {
+  todos: Aviso[];
+  inbox: Aviso[];
+  historico: Aviso[];
+  marcarLido: (a: Aviso) => void;
+  marcarNaoLido: (a: Aviso) => void;
+  marcarTodosLidos: () => void;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -52,8 +68,17 @@ function addDiasYmd(ymd: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const AvisosCtx = createContext<Aviso[]>([]);
-export const useAvisos = () => useContext(AvisosCtx);
+const AvisosCtx = createContext<AvisosApi>({
+  todos: [], inbox: [], historico: [],
+  marcarLido: () => {}, marcarNaoLido: () => {}, marcarTodosLidos: () => {},
+});
+// API completa (ChatPage). Sentinela de data "alta" pra avisos sem `em`: uma vez
+// lidos, ficam lidos (não ressurgem por não terem timestamp de atividade).
+const EM_ALTO = "9999-99-99";
+export const useAvisosCentral = () => useContext(AvisosCtx);
+// Retrocompat: quem só quer a contagem/lista da caixa de entrada (badge da
+// sidebar) continua chamando useAvisos() e recebe o inbox (não lidos).
+export const useAvisos = (): Aviso[] => useContext(AvisosCtx).inbox;
 
 export function AvisosProvider({ children }: { children: ReactNode }) {
   const { pessoa } = useAuth();
@@ -110,7 +135,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const uniformes = useAvisoSource({ ...base,
     gates: [["uniformes", "receberAvisos"]], collectionName: "entregasUniforme" });
 
-  const avisos = useMemo<Aviso[]>(() => {
+  const todos = useMemo<Aviso[]>(() => {
     const out: Aviso[] = [];
     const hoje = new Date().toISOString().slice(0, 10);
     const limite30 = addDiasYmd(hoje, 30);
@@ -144,6 +169,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           restauranteNome: nomePorRid[rid] || "Restaurante",
           cta: `Abrir ${cfg.label}`,
           href: `/r/${rid}/${cfg.modulo}`,
+          categoria: cfg.label,
+          categoriaIcone: cfg.icone,
         });
       }
     };
@@ -170,6 +197,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           restauranteNome: nomePorRid[d.restaurantId] || "Restaurante",
           cta: "Analisar na Escala",
           href: `/r/${d.restaurantId}/escala?aba=ajustes`,
+          categoria: "Escala",
+          categoriaIcone: "📅",
         });
       }
     }
@@ -191,6 +220,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
           restauranteNome: nomePorRid[d.restaurantId] || "Restaurante",
           cta: "Ler mensagem",
           faleDp: m,
+          categoria: "Fale com DP",
+          categoriaIcone: "🗣️",
         });
       }
     }
@@ -242,5 +273,59 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
   ]);
 
-  return <AvisosCtx.Provider value={avisos}>{children}</AvisosCtx.Provider>;
+  // ── Estado de leitura (overlay persistido por pessoa) ──
+  // avisosLidos/{pessoaId} = { itens: { [avisoId]: emSnapshot } }.
+  // Lido = existe snapshot E o aviso não teve atividade mais nova que ele
+  // (agregado que ganha item novo → em avança → ressurge pra caixa de entrada).
+  const [lidos, setLidos] = useState<Record<string, string>>({});
+  const pessoaId = pessoa?.id || "";
+
+  useEffect(() => {
+    if (!pessoaId) { setLidos({}); return; }
+    const ref = doc(db, "avisosLidos", pessoaId);
+    return onSnapshot(
+      ref,
+      (snap) => {
+        const data = snap.data() as { itens?: Record<string, string> } | undefined;
+        setLidos(data?.itens || {});
+      },
+      () => setLidos({}),
+    );
+  }, [pessoaId]);
+
+  const api = useMemo<AvisosApi>(() => {
+    const estaLido = (a: Aviso) => {
+      const snap = lidos[a.id];
+      return snap != null && (a.em || "") <= snap;
+    };
+    const inbox = todos.filter((a) => !estaLido(a));
+    const historico = todos.filter((a) => estaLido(a));
+
+    const persistir = (next: Record<string, string>) => {
+      setLidos(next); // otimista
+      if (!pessoaId) return;
+      void setDoc(
+        doc(db, "avisosLidos", pessoaId),
+        { pessoaId, itens: next, atualizadoEm: new Date().toISOString() },
+        { merge: true },
+      ).catch((e) => console.error("avisosLidos:", e));
+    };
+
+    return {
+      todos, inbox, historico,
+      marcarLido: (a) => persistir({ ...lidos, [a.id]: a.em || EM_ALTO }),
+      marcarNaoLido: (a) => {
+        const next = { ...lidos };
+        delete next[a.id];
+        persistir(next);
+      },
+      marcarTodosLidos: () => {
+        const next = { ...lidos };
+        for (const a of inbox) next[a.id] = a.em || EM_ALTO;
+        persistir(next);
+      },
+    };
+  }, [todos, lidos, pessoaId]);
+
+  return <AvisosCtx.Provider value={api}>{children}</AvisosCtx.Provider>;
 }

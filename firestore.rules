@@ -514,6 +514,13 @@ service cloud.firestore {
       allow create, read, update, delete: if authed();
     }
 
+    // ── /avisosLidos ── estado de leitura da Central de Avisos ───────────
+    // Doc por pessoa (id = pessoaId): { itens: { [avisoId]: emSnapshot } }.
+    // Dado NÃO sensível (só controla o que já foi visto). Read/write authed.
+    match /avisosLidos/{id} {
+      allow read, write: if authed();
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
