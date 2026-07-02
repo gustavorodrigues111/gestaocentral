@@ -13,6 +13,14 @@ import {
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
 import { diasNoMes, diasTrabalhadosMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
+import { nomeMes } from "../../core/utils/date";
+
+// Desloca a competência "YYYY-MM" em ±N meses.
+function shiftMes(comp: string, delta: number): string {
+  const [a, m] = comp.split("-").map(Number);
+  const d = new Date(a, (m - 1) + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
 import { HorarioModal } from "./HorarioModal";
 import { Modal } from "../../core/ui/Modal";
@@ -367,11 +375,16 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
             🗓️ Freela mensalistas
             <span className="ml-2 text-[11px] text-gray-500 font-normal">remuneração do mês (proporcional aos dias) + gorjeta</span>
           </h3>
-          <input type="month" value={competencia} onChange={(e) => setCompetencia(e.target.value)}
-            className="px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <div className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <button type="button" onClick={() => setCompetencia(shiftMes(competencia, -1))}
+              className="px-2.5 py-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Mês anterior">◀</button>
+            <span className="px-3 text-sm font-semibold text-gray-900 dark:text-gray-100 min-w-[120px] text-center">{nomeMes(mes)}/{ano}</span>
+            <button type="button" onClick={() => setCompetencia(shiftMes(competencia, 1))}
+              className="px-2.5 py-1.5 text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400" aria-label="Próximo mês">▶</button>
+          </div>
         </div>
         {mensalistas.length === 0 ? (
-          <EmptyState texto={`Nenhum freela mensalista ativo em ${competencia.split("-").reverse().join("/")}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
+          <EmptyState texto={`Nenhum freela mensalista ativo em ${nomeMes(mes)}/${ano}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
         ) : (
           <div className="space-y-2">
             {mensLinhas.map((l) => {
