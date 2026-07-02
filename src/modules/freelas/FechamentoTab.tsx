@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -94,21 +94,47 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
   const [mensSel, setMensSel] = useState<Set<string>>(new Set());
   const [mensConfirmados, setMensConfirmados] = useState<Set<string>>(new Set());
-  // Ao trocar de competência, limpa confirmação/seleção (valores mudam).
+  const draftId = (empId: string) => `${restaurantId}_${competencia}_${empId}`;
+  // Ao trocar de competência, zera (o listener repopula com o mês certo).
   useEffect(() => { setMensConfirmados(new Set()); setMensSel(new Set()); }, [competencia]);
-  function confirmarMens(empId: string) {
-    setMensConfirmados(s => new Set(s).add(empId));
-    setMensSel(s => new Set(s).add(empId));
-  }
-  function editarMens(empId: string) {
-    setMensConfirmados(s => { const n = new Set(s); n.delete(empId); return n; });
-    setMensSel(s => { const n = new Set(s); n.delete(empId); return n; });
-  }
   type AjModo = "reais" | "pct";
   type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoModo: AjModo; descontoDesc: string; acrescimo: string; acrescimoModo: AjModo; acrescimoDesc: string };
   const [mensInputs, setMensInputs] = useState<Record<string, MensInput>>({});
   const inputDe = (id: string): MensInput => mensInputs[id] || { remuneracao: "", modo: "liquido", desconto: "", descontoModo: "reais", descontoDesc: "", acrescimo: "", acrescimoModo: "reais", acrescimoDesc: "" };
   const setInput = (id: string, patch: Partial<MensInput>) => setMensInputs(prev => ({ ...prev, [id]: { ...inputDe(id), ...patch } }));
+
+  // Persistência da confirmação: freelaMensalistaConfirmado/{rid}_{competencia}_{empId}.
+  // Guarda os inputs → sobrevive a sair/voltar da tela até virar lote.
+  useEffect(() => {
+    if (!restaurantId) return;
+    const q = query(collection(db, "freelaMensalistaConfirmado"),
+      where("restaurantId", "==", restaurantId), where("competencia", "==", competencia));
+    return onSnapshot(q, (snap) => {
+      const conf = new Set<string>();
+      const inputs: Record<string, MensInput> = {};
+      snap.forEach((d) => {
+        const data = d.data() as { empregadoId: string; input?: MensInput };
+        conf.add(data.empregadoId);
+        if (data.input) inputs[data.empregadoId] = data.input;
+      });
+      setMensConfirmados(conf);
+      setMensSel((prev) => { const n = new Set(prev); conf.forEach((id) => n.add(id)); return n; });
+      setMensInputs((prev) => ({ ...prev, ...inputs }));
+    });
+  }, [restaurantId, competencia]);
+
+  async function confirmarMens(empId: string) {
+    const inp = inputDe(empId);
+    setMensConfirmados((s) => new Set(s).add(empId));
+    setMensSel((s) => new Set(s).add(empId));
+    await setDoc(doc(db, "freelaMensalistaConfirmado", draftId(empId)),
+      sanitizeForFirestore({ restaurantId, competencia, empregadoId: empId, input: inp, atualizadoEm: new Date().toISOString() }));
+  }
+  async function editarMens(empId: string) {
+    setMensConfirmados((s) => { const n = new Set(s); n.delete(empId); return n; });
+    setMensSel((s) => { const n = new Set(s); n.delete(empId); return n; });
+    await deleteDoc(doc(db, "freelaMensalistaConfirmado", draftId(empId)));
+  }
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -337,8 +363,13 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         batch.update(doc(db, "freelaShifts", s.id), { lotePagamentoId: ref.id, updatedAt: now });
       }
       await batch.commit();
+      // Consome os drafts confirmados que entraram no lote.
+      for (const l of mensLinhasSel) {
+        await deleteDoc(doc(db, "freelaMensalistaConfirmado", draftId(l.empregadoId))).catch(() => undefined);
+      }
       setSelecionados(new Set());
       setMensSel(new Set());
+      setMensConfirmados(new Set());
       setObs("");
       alert(`Lote ${numero} criado.`);
     } catch (e) {

@@ -128,6 +128,7 @@ service cloud.firestore {
     match /sundaySwaps/{id}         { allow read, write: if authed(); }
     match /freelaShifts/{id}        { allow read, write: if authed(); }
     match /freelaPagamentos/{id}    { allow read, write: if authed(); }
+    match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
     match /excecoesStatusSemana/{id} { allow read, write: if authed(); }
     match /excecoesDiaStatus/{id}    { allow read, write: if authed(); }
     match /excecoesApontamentoStatus/{id} { allow read, write: if authed(); }
