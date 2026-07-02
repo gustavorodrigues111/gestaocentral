@@ -1729,6 +1729,48 @@ function construirVTDaAdmissao(dados: Record<string, unknown>): VTFromAdmissao {
   };
 }
 
+// Acha o Empregado de uma pessoa NESTE restaurante (se já existir). Usado ao
+// concluir admissão vinculando alguém que já foi cadastrado por fora — evita
+// criar um empregado duplicado.
+export async function empregadoDaPessoaNoRestaurante(
+  pessoaId: string,
+  restaurantId: string,
+): Promise<string | null> {
+  const snap = await getDocs(query(
+    collection(db, "empregados"),
+    where("pessoaId", "==", pessoaId),
+    where("restaurantId", "==", restaurantId),
+  ));
+  return snap.empty ? null : snap.docs[0].id;
+}
+
+// Conclui a admissão VINCULANDO uma pessoa que já existe no sistema.
+//  - Se essa pessoa já tem empregado neste restaurante (criado por fora) →
+//    apenas aponta pessoaIdCriada/empregadoIdCriado pro existente (nada novo).
+//  - Se não tem empregado aqui → cria o empregado via aprovarAdmissao (vincula
+//    a pessoa, sem duplicar cadastro).
+export async function vincularPessoaEConcluir(
+  admissao: Admissao,
+  pessoaId: string,
+  por: Pessoa,
+): Promise<void> {
+  const now = new Date().toISOString();
+  const empId = await empregadoDaPessoaNoRestaurante(pessoaId, admissao.restaurantId);
+  if (empId) {
+    await updateDoc(doc(db, "admissoes", admissao.id), {
+      pessoaIdCriada: pessoaId,
+      pessoaIdVinculada: pessoaId,
+      empregadoIdCriado: empId,
+      aprovadoEm: admissao.aprovadoEm || now,
+      aprovadoPor: admissao.aprovadoPor || { id: por.id, nome: por.nome },
+      updatedAt: now,
+    });
+  } else {
+    await aprovarAdmissao({ ...admissao, pessoaIdVinculada: pessoaId }, por);
+  }
+  await finalizarAdmissao(admissao.id, por);
+}
+
 export async function aprovarAdmissao(
   admissao: Admissao,
   aprovadoPor: Pessoa,

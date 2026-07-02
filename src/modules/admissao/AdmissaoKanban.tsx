@@ -57,9 +57,11 @@ import {
   finalizarAdmissao,
   temDadosFinaisCompletos,
   expurgarDocumentosNoStorage,
+  vincularPessoaEConcluir,
   type IniciarAdmissaoInput,
 } from "../../core/admissao/admissaoHelpers";
 import { CancelarAdmissaoModal } from "./CancelarAdmissaoModal";
+import { ConcluirAdmissaoModal } from "./ConcluirAdmissaoModal";
 import { ADMISSAO_STATUS_LABEL as STATUS_LABEL } from "../../core/types";
 import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
@@ -122,6 +124,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const [showNovaModal, setShowNovaModal] = useState(false);
   // Modal de cancelar — guarda admissão sendo cancelada
   const [admCancelando, setAdmCancelando] = useState<Admissao | null>(null);
+  const [concluirModalAdm, setConcluirModalAdm] = useState<Admissao | null>(null);
   const [formAdm, setFormAdm] = useState<Admissao | null>(null);
   const [verAdm, setVerAdm] = useState<Admissao | null>(null);
   // Drag state (id do card sendo arrastado + coluna origem)
@@ -278,35 +281,60 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   // CONCLUIR a admissão — encerra/arquiva (sai do Kanban ativo, vai pra
   // Finalizadas). Só no final. Garante que o empregado exista (cria na hora
   // como rede de segurança se ainda não foi criado).
+  // Limpeza best-effort ao concluir: apaga do Storage os docs já no Drive.
+  async function limpezaPosConclusao(adm: Admissao) {
+    try {
+      const n = await expurgarDocumentosNoStorage(adm);
+      alert(`Admissão concluída e arquivada.${n > 0 ? `\n\n${n} documento(s) já no Drive foram limpos do Storage.` : ""}`);
+    } catch {
+      alert("Admissão concluída e arquivada.");
+    }
+  }
+
   async function concluirAdmissao(adm: Admissao) {
     if (!me) return;
     if (adm.finalizadoEm) { alert("Admissão já concluída."); return; }
-    if (!adm.empregadoIdCriado) {
-      if (!temDadosFinaisCompletos(adm)) {
-        alert("Antes de concluir, crie o empregado (precisa de cargo, data, salário e horário).");
-        return;
-      }
-      if (!confirm(`Concluir a admissão de ${adm.candidato.nome}?\n\nO empregado ainda não foi criado — vou criar agora e arquivar a admissão.`)) return;
-      try {
-        await aprovarAdmissao(adm, me);
-      } catch (e) {
-        alert("Erro ao criar empregado: " + (e instanceof Error ? e.message : "?"));
-        return;
-      }
-    } else {
+    // Empregado já existe → só arquiva.
+    if (adm.empregadoIdCriado) {
       if (!confirm(`Concluir e arquivar a admissão de ${adm.candidato.nome}?\n\nEla sai do Kanban ativo e vai pra aba Finalizadas (pode reabrir depois).`)) return;
+      try {
+        await finalizarAdmissao(adm.id, me);
+        await limpezaPosConclusao(adm);
+      } catch (e) {
+        alert("Erro ao concluir: " + (e instanceof Error ? e.message : "?"));
+      }
+      return;
+    }
+    // Empregado ainda NÃO criado → escolher criar novo ou vincular existente.
+    setConcluirModalAdm(adm);
+  }
+
+  // Conclusão criando Pessoa+Empregado novos (a partir do modal).
+  async function concluirCriandoNova(adm: Admissao) {
+    if (!me) return;
+    if (!temDadosFinaisCompletos(adm)) {
+      alert("Pra criar o empregado preciso dos dados da vaga: cargo, data de admissão, salário e horário.\n\nPreencha em 'Ver/editar dados' no checklist do card — ou vincule uma pessoa já existente.");
+      return;
     }
     try {
+      await aprovarAdmissao(adm, me);
       await finalizarAdmissao(adm.id, me);
-      // Limpeza ao concluir: apaga do Storage os docs já no Drive. Best-effort.
-      try {
-        const n = await expurgarDocumentosNoStorage(adm);
-        alert(`Admissão concluída e arquivada.${n > 0 ? `\n\n${n} documento(s) já no Drive foram limpos do Storage.` : ""}`);
-      } catch {
-        alert("Admissão concluída e arquivada.");
-      }
+      setConcluirModalAdm(null);
+      await limpezaPosConclusao(adm);
     } catch (e) {
       alert("Erro ao concluir: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
+
+  // Conclusão vinculando uma pessoa que já existe no sistema (a partir do modal).
+  async function concluirVinculando(adm: Admissao, pessoaId: string) {
+    if (!me) return;
+    try {
+      await vincularPessoaEConcluir(adm, pessoaId, me);
+      setConcluirModalAdm(null);
+      await limpezaPosConclusao(adm);
+    } catch (e) {
+      alert("Erro ao vincular/concluir: " + (e instanceof Error ? e.message : "?"));
     }
   }
 
@@ -532,6 +560,16 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
               alert("Erro ao cancelar: " + (e instanceof Error ? e.message : "?"));
             }
           }}
+        />
+      )}
+
+      {concluirModalAdm && me && (
+        <ConcluirAdmissaoModal
+          candidatoNome={concluirModalAdm.candidato.nome}
+          candidatoCpf={concluirModalAdm.candidato.cpf}
+          onCriarNova={() => concluirCriandoNova(concluirModalAdm)}
+          onVincular={(pid) => concluirVinculando(concluirModalAdm, pid)}
+          onClose={() => setConcluirModalAdm(null)}
         />
       )}
 
