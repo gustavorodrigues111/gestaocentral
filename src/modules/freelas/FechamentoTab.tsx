@@ -124,6 +124,23 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   }, [restaurantId]);
   // Confirmados da competência selecionada (pra esconder da seção de input).
   const confirmadosDoMes = useMemo(() => new Set(confirmados.filter(c => c.competencia === competencia).map(c => c.empregadoId)), [confirmados, competencia]);
+  // Mensalistas que JÁ entraram num lote — trava pra não pagar de novo o mesmo
+  // mês. Indexado por "competencia_empregadoId" a partir dos lotes existentes;
+  // guarda o snapshot pago (valor real do lote). Se o lote for apagado, a
+  // pessoa volta a aparecer automaticamente.
+  type EmLote = { numero: string; status: FreelaPagamento["status"]; linha: FreelaMensalistaLinha };
+  const mensEmLote = useMemo(() => {
+    const m = new Map<string, EmLote>();  // "comp_empId" → snapshot
+    for (const p of pagamentos) {
+      for (const l of p.mensalistas || []) m.set(`${l.competencia}_${l.empregadoId}`, { numero: p.numero, status: p.status, linha: l });
+    }
+    return m;
+  }, [pagamentos]);
+  const jaEmLoteNoMes = (empId: string): EmLote | undefined => mensEmLote.get(`${competencia}_${empId}`);
+  const pagosNoMes = useMemo(
+    () => [...mensEmLote.entries()].filter(([k]) => k.startsWith(`${competencia}_`)).map(([, v]) => v),
+    [mensEmLote, competencia],
+  );
 
   async function confirmarMens(l: FreelaMensalistaLinha) {
     const inp = inputDe(l.empregadoId);
@@ -470,11 +487,23 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         </div>
         {mensalistas.length === 0 ? (
           <EmptyState texto={`Nenhum freela mensalista ativo em ${nomeMes(mes)}/${ano}. (Marque "Freela mensalista" no cadastro do empregado com o período.)`} />
-        ) : mensLinhas.every(l => confirmadosDoMes.has(l.empregadoId)) ? (
-          <EmptyState texto={`Todos os mensalistas de ${nomeMes(mes)}/${ano} confirmados. Veja em 'Prontos pra lote' abaixo.`} />
         ) : (
           <div className="space-y-2">
-            {mensLinhas.filter(l => !confirmadosDoMes.has(l.empregadoId)).map((l) => {
+            {/* Já pagos / em lote neste mês — travados, não entram de novo */}
+            {pagosNoMes.map(({ numero, status, linha: l }) => (
+              <div key={`pago_${l.empregadoId}`} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-3 flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm text-gray-700 dark:text-gray-300">{l.nome}</span>
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  {status === "pago" ? "✓ pago" : "✓ em lote"} · {numero}
+                </span>
+                <span className="text-[11px] text-gray-500">já incluído — não entra em lote de novo</span>
+                <span className="ml-auto text-sm font-bold text-gray-500 tabular-nums">{fmtBR(l.total)}</span>
+              </div>
+            ))}
+            {mensLinhas.filter(l => !confirmadosDoMes.has(l.empregadoId) && !jaEmLoteNoMes(l.empregadoId)).length === 0 && (
+              <EmptyState texto={`Todos os mensalistas de ${nomeMes(mes)}/${ano} já foram confirmados ou pagos. Veja em 'Prontos pra lote' abaixo.`} />
+            )}
+            {mensLinhas.filter(l => !confirmadosDoMes.has(l.empregadoId) && !jaEmLoteNoMes(l.empregadoId)).map((l) => {
               const inp = inputDe(l.empregadoId);
               return (
                 <div key={l.empregadoId} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
