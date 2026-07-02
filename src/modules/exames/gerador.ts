@@ -141,8 +141,9 @@ function diasEntre(a: string, b: string): number {
 
 // ─── Cascata Admissão → cria ExameEmpregado pra cada tipo aplicável ────
 
-import type { Cargo, Empregado, Area, SubtarefaAdmissao } from "../../core/types";
+import type { Cargo, Empregado, TipoVinculo, SubtarefaAdmissao } from "../../core/types";
 import { criarExame } from "./repository";
+import { tipoAplicaAoCargo } from "./aplicabilidade";
 
 export async function gerarExamesParaAdmissao(input: {
   empregadoId: string;
@@ -150,6 +151,7 @@ export async function gerarExamesParaAdmissao(input: {
   cargoId?: string;
   cargoNome?: string;
   cargoArea?: string;
+  cargoVinculo?: TipoVinculo;
   restaurantId: string;
   dataAdmissao: string;
   autor: { id: string; nome: string };
@@ -168,11 +170,8 @@ export async function gerarExamesParaAdmissao(input: {
 
   let criados = 0;
   for (const tipo of tipos) {
-    // Filtra áreas aplicáveis: vazio = todas; senão, só as listadas
-    const areas = tipo.areasAplicaveis || [];
-    if (areas.length > 0) {
-      if (!input.cargoArea || !areas.includes(input.cargoArea as Area)) continue;
-    }
+    // Aplicabilidade por cargo (cargosObrigatorios), com fallback pra áreas.
+    if (!tipoAplicaAoCargo(tipo, { id: input.cargoId, area: input.cargoArea, tipoVinculo: input.cargoVinculo })) continue;
     // Verifica se já existe (idempotência por empregado × tipo)
     const existSnap = await getDocs(query(
       collection(db, COL_EXAMES),
@@ -286,15 +285,13 @@ export async function reavaliarExamesDoEmpregado(
   let desativados = 0;
   let criados = 0;
 
-  // 1. Desativa exames cuja área não se aplica mais
+  // 1. Desativa exames que não se aplicam mais ao cargo atual
   for (const exame of exames) {
     if (!exame.ativo) continue;
     const tipo = tipos.find(t => t.id === exame.tipoId);
     if (!tipo) continue;
-    const areas = tipo.areasAplicaveis || [];
-    if (areas.length === 0) continue; // tipo vale pra todas áreas, mantém
-    if (!cargo?.area || !areas.includes(cargo.area)) {
-      await desativarExame(exame.id, autor, `Mudança de área — agora ${cargo?.area || "—"}, exame não se aplica`);
+    if (!tipoAplicaAoCargo(tipo, cargo)) {
+      await desativarExame(exame.id, autor, `Mudança de cargo — ${cargo?.nome || "—"} não exige "${tipo.nome}"`);
       desativados++;
     }
   }
@@ -308,6 +305,7 @@ export async function reavaliarExamesDoEmpregado(
       cargoId: emp.cargoId,
       cargoNome: cargo?.nome,
       cargoArea: cargo?.area,
+      cargoVinculo: cargo?.tipoVinculo,
       restaurantId: emp.restaurantId,
       dataAdmissao: adm,
       autor,

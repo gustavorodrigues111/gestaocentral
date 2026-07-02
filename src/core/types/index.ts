@@ -4560,8 +4560,13 @@ export type ExameTipoConfig = {
   // qualquer empregado). Preenchido = só empregados em cargos com essa
   // área. Ex: Coprocultura = ["Cozinha", "Bar"]. Audiometria = ["Cozinha"].
   // Ao mudar o cargo do empregado, sistema reavalia e desativa exames
-  // cuja área não se aplica mais.
+  // cuja área não se aplica mais. (LEGADO — substituído por cargosObrigatorios.)
   areasAplicaveis: Area[];
+  // Cargos pros quais este exame é OBRIGATÓRIO. Fonte de verdade nova (por cargo,
+  // não por área). Vazio/ausente = todos os cargos CLT (registrado/estagiário),
+  // ex: Exame Clínico anual. Preenchido = só esses cargos, ex: Coprocultura →
+  // cargos de cozinha. Tem precedência sobre areasAplicaveis.
+  cargosObrigatorios?: string[];
   responsavelPadraoId: string;       // pessoaId — default DP do rest
   responsavelPadraoNome?: string;    // snapshot
   subtarefasTemplate: ExameSubtarefaTemplate[];

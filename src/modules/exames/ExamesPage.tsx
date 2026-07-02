@@ -24,9 +24,9 @@ import {
 } from "./repository";
 import { gerarTarefasDeExames } from "./gerador";
 import type {
-  ExameTipoConfig, ExameEmpregado, Empregado,
+  ExameTipoConfig, ExameEmpregado, Empregado, Cargo,
 } from "../../core/types";
-import { AREAS } from "../../core/types";
+import { tipoAplicaAoCargoObj } from "./aplicabilidade";
 
 type Tab = "vencimentos" | "porEmpregado" | "porTipo" | "config";
 type JanelaVenc = "atrasados" | "15" | "30" | "60" | "90" | "180" | "todos";
@@ -40,6 +40,8 @@ export function ExamesPage() {
   const [tipos, setTipos] = useState<ExameTipoConfig[]>([]);
   const [exames, setExames] = useState<ExameEmpregado[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [lancarPrefill, setLancarPrefill] = useState<{ empregado: Empregado; tipo: ExameTipoConfig } | null>(null);
   const [exameSelecionado, setExameSelecionado] = useState<ExameEmpregado | null>(null);
   const [lancandoNovo, setLancandoNovo] = useState(false);
   const [gerando, setGerando] = useState(false);
@@ -56,7 +58,11 @@ export function ExamesPage() {
       query(collection(db, "empregados"), where("restaurantId", "==", rid)),
       snap => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() } as Empregado)))
     );
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(
+      query(collection(db, "cargos"), where("restaurantId", "==", rid)),
+      snap => setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() } as Cargo)))
+    );
+    return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);
 
   const hoje = new Date().toISOString().slice(0, 10);
@@ -177,9 +183,15 @@ export function ExamesPage() {
           />
         </div>
       )}
-      {tab === "porEmpregado" && <ListaPorEmpregado exames={ativos} onAbrir={setExameSelecionado} />}
+      {tab === "porEmpregado" && (
+        <ListaPorEmpregado
+          empregados={empregados} cargos={cargos} tipos={tipos} exames={ativos}
+          onAbrir={setExameSelecionado}
+          onLancar={(empregado, tipo) => setLancarPrefill({ empregado, tipo })}
+        />
+      )}
       {tab === "porTipo" && <ListaPorTipo exames={ativos} tipos={tipos} onAbrir={setExameSelecionado} />}
-      {tab === "config" && pessoa?.isMaster && <ConfigTab tipos={tipos} rid={rid} pessoaId={pessoa.id} />}
+      {tab === "config" && pessoa?.isMaster && <ConfigTab tipos={tipos} rid={rid} pessoaId={pessoa.id} cargos={cargos} />}
 
       {exameSelecionado && (
         <ExameDetalheModal
@@ -188,14 +200,15 @@ export function ExamesPage() {
           autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
         />
       )}
-      {lancandoNovo && (
+      {(lancandoNovo || lancarPrefill) && (
         <LancarExameModal
           tipos={tipos}
           empregados={empregados}
-          onClose={() => setLancandoNovo(false)}
+          onClose={() => { setLancandoNovo(false); setLancarPrefill(null); }}
           autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
           rid={rid}
           examesExistentes={exames}
+          prefill={lancarPrefill ? { empregadoId: lancarPrefill.empregado.id, tipoId: lancarPrefill.tipo.id } : undefined}
         />
       )}
     </div>
@@ -294,33 +307,74 @@ function CardExame({ exame, onAbrir, forceAtrasado }: {
   );
 }
 
-function ListaPorEmpregado({ exames, onAbrir }: { exames: ExameEmpregado[]; onAbrir: (e: ExameEmpregado) => void }) {
-  const grupos = new Map<string, ExameEmpregado[]>();
-  exames.forEach(e => {
-    const arr = grupos.get(e.empregadoId) || [];
-    arr.push(e);
-    grupos.set(e.empregadoId, arr);
-  });
-  const lista = Array.from(grupos.entries()).sort((a, b) => {
-    const na = a[1][0]?.empregadoNomeSnapshot || "";
-    const nb = b[1][0]?.empregadoNomeSnapshot || "";
-    return na.localeCompare(nb);
-  });
-  if (lista.length === 0) return <div className="text-center py-12 text-gray-500">Nenhum exame cadastrado.</div>;
+function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLancar }: {
+  empregados: Empregado[];
+  cargos: Cargo[];
+  tipos: ExameTipoConfig[];
+  exames: ExameEmpregado[];
+  onAbrir: (e: ExameEmpregado) => void;
+  onLancar: (emp: Empregado, tipo: ExameTipoConfig) => void;
+}) {
+  const cargoById = useMemo(() => new Map(cargos.map(c => [c.id, c])), [cargos]);
+  const tiposAtivos = useMemo(() => tipos.filter(t => t.ativo), [tipos]);
+
+  // Todos os empregados ATIVOS com cargo → cruza com os exames EXIGIDOS pelo
+  // cargo. Falta cadastrar (sem realização) → destaque vermelho pra controle.
+  const linhas = useMemo(() => {
+    const out = empregados
+      .filter(e => e.estaAtivo !== false && e.cargoId)
+      .map(e => {
+        const cargo = e.cargoId ? cargoById.get(e.cargoId) : undefined;
+        const requeridos = tiposAtivos.filter(t => tipoAplicaAoCargoObj(t, cargo));
+        const itens = requeridos.map(t => {
+          const exame = exames.find(x => x.empregadoId === e.id && x.tipoId === t.id && x.ativo);
+          const falta = !exame || !exame.ultimaRealizacao;
+          return { tipo: t, exame, falta };
+        });
+        return { emp: e, cargo, itens, pendencias: itens.filter(i => i.falta).length };
+      })
+      .filter(l => l.itens.length > 0);
+    out.sort((a, b) => (b.pendencias - a.pendencias) || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
+    return out;
+  }, [empregados, cargoById, tiposAtivos, exames]);
+
+  if (linhas.length === 0) return <div className="text-center py-12 text-gray-500">Nenhum empregado CLT com cargo e exames exigidos.</div>;
+  const totalPend = linhas.reduce((s, l) => s + l.pendencias, 0);
+
   return (
     <div className="space-y-3">
-      {lista.map(([empId, exs]) => (
-        <details key={empId} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-          <summary className="p-3 cursor-pointer font-semibold text-gray-900 dark:text-gray-100">
-            {exs[0]?.empregadoNomeSnapshot}
-            <span className="ml-2 text-xs text-gray-500 font-normal">{exs.length} exame(s)</span>
-          </summary>
+      {totalPend > 0 && (
+        <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
+          ⚠ <strong>{totalPend}</strong> exame(s) sem prazo cadastrado. Registre a data de realização pra controlar os vencimentos.
+        </div>
+      )}
+      {linhas.map(({ emp, cargo, itens, pendencias }) => (
+        <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
+          <div className="p-3 flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <span className="font-semibold text-gray-900 dark:text-gray-100">{emp.nome}</span>
+              {cargo && <span className="ml-2 text-xs text-gray-500">{cargo.nome}{cargo.area ? ` · ${cargo.area}` : ""}</span>}
+            </div>
+            {pendencias > 0
+              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{pendencias} pendente(s)</span>
+              : <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">em dia</span>}
+          </div>
           <div className="px-3 pb-3 space-y-1.5">
-            {exs.sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento)).map(e => (
-              <CardExame key={e.id} exame={e} onAbrir={() => onAbrir(e)} />
+            {itens.map(({ tipo, exame, falta }) => (
+              falta ? (
+                <div key={tipo.id} className="flex items-center justify-between gap-2 p-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
+                  <div className="text-sm text-red-800 dark:text-red-300 min-w-0">
+                    <strong>{tipo.nome}</strong> — sem prazo cadastrado
+                    <div className="text-[11px] text-red-600 dark:text-red-400">Periodicidade {tipo.periodicidadeDias}d · falta registrar a última realização</div>
+                  </div>
+                  <Button size="sm" onClick={() => onLancar(emp, tipo)}>+ Lançar</Button>
+                </div>
+              ) : (
+                <CardExame key={tipo.id} exame={exame!} onAbrir={() => onAbrir(exame!)} />
+              )
             ))}
           </div>
-        </details>
+        </div>
       ))}
     </div>
   );
@@ -358,7 +412,13 @@ function ListaPorTipo({ exames, tipos, onAbrir }: { exames: ExameEmpregado[]; ti
 
 // ─── Configuração ──────────────────────────────────────────────────────
 
-function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: string; pessoaId: string }) {
+function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[]; rid: string; pessoaId: string; cargos: Cargo[] }) {
+  const cargoNome = (id: string) => cargos.find(c => c.id === id)?.nome || "cargo?";
+  const cargosLabel = (t: ExameTipoConfig) => {
+    if (t.cargosObrigatorios?.length) return t.cargosObrigatorios.map(cargoNome).join(", ");
+    if (t.areasAplicaveis?.length) return `áreas ${t.areasAplicaveis.join(", ")}`;
+    return "Todos (CLT)";
+  };
   const [criando, setCriando] = useState(false);
   const [editando, setEditando] = useState<ExameTipoConfig | null>(null);
   const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
@@ -424,6 +484,7 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
           cargoId: emp.cargoId,
           cargoNome: cargo?.nome,
           cargoArea: cargo?.area,
+          cargoVinculo: cargo?.tipoVinculo,
           restaurantId: rid,
           dataAdmissao: emp.admissaoAtual || emp.periodos?.[emp.periodos.length - 1]?.admissao || new Date().toISOString().slice(0, 10),
           autor: { id: pessoaId, nome: "Migração inicial" },
@@ -480,7 +541,7 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                   Periodicidade: {t.periodicidadeDias} dias · Antecedência: {t.diasAntecedencia} dias
                   {t.fornecedorPadrao && ` · Fornecedor: ${t.fornecedorPadrao}`}
-                  {" · "}Áreas: {!t.areasAplicaveis?.length ? "Todas" : t.areasAplicaveis.join(", ")}
+                  {" · "}Cargos: {cargosLabel(t)}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   Responsável padrão: {t.responsavelPadraoNome || "—"} · Subtarefas template: {t.subtarefasTemplate?.length || 0}
@@ -500,6 +561,7 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
           rid={rid}
           pessoas={pessoas}
           pessoaId={pessoaId}
+          cargos={cargos}
           onClose={() => { setCriando(false); setEditando(null); }}
         />
       )}
@@ -507,11 +569,12 @@ function ConfigTab({ tipos, rid, pessoaId }: { tipos: ExameTipoConfig[]; rid: st
   );
 }
 
-function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
+function TipoForm({ tipo, rid, pessoas, pessoaId, cargos, onClose }: {
   tipo: ExameTipoConfig | null;
   rid: string;
   pessoas: Array<{ id: string; nome: string }>;
   pessoaId: string;
+  cargos: Cargo[];
   onClose: () => void;
 }) {
   const [f, setF] = useState<Partial<ExameTipoConfig>>(tipo ? { ...tipo } : {
@@ -520,10 +583,16 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
     periodicidadeDias: 365,
     diasAntecedencia: 14,
     areasAplicaveis: [],
+    cargosObrigatorios: [],
     responsavelPadraoId: pessoaId,
     subtarefasTemplate: gerarSubtarefasTemplateDefault(),
     ativo: true,
   });
+  // "todos" = cargosObrigatorios vazio (aplica a todos os cargos CLT).
+  const [modo, setModo] = useState<"todos" | "especificos">(
+    tipo?.cargosObrigatorios?.length ? "especificos" : "todos",
+  );
+  const cargosOrdenados = cargos.slice().sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
   async function salvar() {
     if (!f.nome) { alert("Nome obrigatório"); return; }
@@ -538,6 +607,7 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
       diasAntecedencia: f.diasAntecedencia ?? 14,
       fornecedorPadrao: f.fornecedorPadrao,
       areasAplicaveis: f.areasAplicaveis || [],
+      cargosObrigatorios: modo === "especificos" ? (f.cargosObrigatorios || []) : [],
       responsavelPadraoId: f.responsavelPadraoId || pessoaId,
       responsavelPadraoNome: respNome,
       subtarefasTemplate: f.subtarefasTemplate || gerarSubtarefasTemplateDefault(),
@@ -576,28 +646,43 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
             <input value={f.fornecedorPadrao || ""} onChange={(e) => setF({ ...f, fornecedorPadrao: e.target.value })} className="exm-input" placeholder="Ex: Triagem, Almed" />
           </label>
           <div>
-            <div className="text-xs text-gray-600 mb-1">Áreas aplicáveis</div>
-            <div className="flex flex-wrap gap-2 p-2 border border-gray-300 dark:border-gray-700 rounded-md">
-              {AREAS.map(a => {
-                const sel = (f.areasAplicaveis || []).includes(a);
-                return (
-                  <label key={a} className="flex items-center gap-1 text-xs cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={sel}
-                      onChange={(e) => {
-                        const cur = f.areasAplicaveis || [];
-                        const novo = e.target.checked ? [...cur, a] : cur.filter(x => x !== a);
-                        setF({ ...f, areasAplicaveis: novo });
-                      }}
-                    />
-                    {a}
-                  </label>
-                );
-              })}
+            <div className="text-xs text-gray-600 mb-1">Cargos obrigatórios</div>
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              {([
+                { v: "todos" as const, t: "Todos os cargos CLT", s: "Ex: Exame Clínico anual" },
+                { v: "especificos" as const, t: "Cargos específicos", s: "Ex: Coprocultura → cozinha" },
+              ]).map(o => (
+                <button key={o.v} type="button" onClick={() => setModo(o.v)}
+                  className={`text-left px-3 py-2 rounded-lg border transition-colors ${
+                    modo === o.v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30" : "border-gray-200 dark:border-gray-700"
+                  }`}>
+                  <div className={`text-xs font-semibold ${modo === o.v ? "text-indigo-700 dark:text-indigo-300" : "text-gray-800 dark:text-gray-100"}`}>{o.t}</div>
+                  <div className="text-[10px] text-gray-500">{o.s}</div>
+                </button>
+              ))}
             </div>
+            {modo === "especificos" && (
+              <div className="flex flex-col gap-1 p-2 border border-gray-300 dark:border-gray-700 rounded-md max-h-44 overflow-y-auto">
+                {cargosOrdenados.length === 0 ? (
+                  <div className="text-xs text-gray-500">Nenhum cargo cadastrado neste restaurante.</div>
+                ) : cargosOrdenados.map(c => {
+                  const sel = (f.cargosObrigatorios || []).includes(c.id);
+                  return (
+                    <label key={c.id} className="flex items-center gap-2 text-xs cursor-pointer">
+                      <input type="checkbox" checked={sel}
+                        onChange={(e) => {
+                          const cur = f.cargosObrigatorios || [];
+                          const novo = e.target.checked ? [...cur, c.id] : cur.filter(x => x !== c.id);
+                          setF({ ...f, cargosObrigatorios: novo });
+                        }} />
+                      <span>{c.nome}{c.area ? <span className="text-gray-400"> · {c.area}</span> : null}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
             <div className="text-[10px] text-gray-400 mt-0.5">
-              Vazio = aplica a TODAS as áreas (ex: Clínico). Marcado = só essas áreas (ex: Coprocultura = Cozinha + Bar).
+              "Todos os cargos CLT" = registrados + estagiários (ex: Clínico). "Cargos específicos" = só os marcados (ex: Coprocultura pros manipuladores de alimento).
             </div>
           </div>
           <label>
@@ -627,16 +712,17 @@ function TipoForm({ tipo, rid, pessoas, pessoaId, onClose }: {
 
 // ─── Modal "+ Lançar exame" (registrar exame realizado/atualizar baixa) ──
 
-function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExistentes }: {
+function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExistentes, prefill }: {
   tipos: ExameTipoConfig[];
   empregados: Empregado[];
   onClose: () => void;
   autor: { id: string; nome: string };
   rid: string;
   examesExistentes: ExameEmpregado[];
+  prefill?: { empregadoId: string; tipoId: string };
 }) {
-  const [empregadoId, setEmpregadoId] = useState("");
-  const [tipoId, setTipoId] = useState("");
+  const [empregadoId, setEmpregadoId] = useState(prefill?.empregadoId || "");
+  const [tipoId, setTipoId] = useState(prefill?.tipoId || "");
   const [realizadoEm, setRealizadoEm] = useState(new Date().toISOString().slice(0, 10));
   const [fornecedor, setFornecedor] = useState("");
   const [observacao, setObservacao] = useState("");
