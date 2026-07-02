@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
+import { Modal } from "../../core/ui/Modal";
 import type {
-  FreelaPagamento, FreelaShift, Restaurant,
+  FreelaMensalistaLinha, FreelaPagamento, FreelaPagamentoResumoPessoa,
+  FreelaShift, FreelaTurnoSnapshot, Restaurant,
 } from "../../core/types";
 import { fmtBR, fmtHoras } from "./helpers";
 import { LotePDFPreviewModal } from "./LotePDFPreviewModal";
@@ -131,10 +133,12 @@ function LoteCard({
 }: { lote: FreelaPagamento; shifts: FreelaShift[]; restaurant: Restaurant }) {
   const [aberto, setAberto] = useState(false);
   const [previewAberto, setPreviewAberto] = useState(false);
+  const [recibo, setRecibo] = useState<ReciboData | null>(null);
   const shiftsDoLote = useMemo(
     () => shifts.filter((s) => lote.shiftIds.includes(s.id)),
     [shifts, lote.shiftIds],
   );
+  const dataLote = lote.pagoEm || lote.criadoEm;
 
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
@@ -147,7 +151,7 @@ function LoteCard({
             </span>
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400">
-            Pago em {fmtDate(lote.pagoEm)} por {lote.pagoPorNome || "—"}
+            Lote de {fmtDate(dataLote)} · pago por {lote.pagoPorNome || "—"}
             {lote.formaPagamento && ` · ${lote.formaPagamento}`}
           </div>
         </div>
@@ -165,38 +169,18 @@ function LoteCard({
         </div>
       </div>
       {aberto && (
-        <div className="p-3 text-xs">
-          <table className="w-full">
-            <thead>
-              <tr className="text-left text-gray-500 uppercase tracking-wider">
-                <th className="py-1">Nome</th>
-                <th className="py-1">PIX</th>
-                <th className="py-1 text-center">Turnos</th>
-                <th className="py-1 text-right">Horas</th>
-                <th className="py-1 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {lote.pessoasResumo.map((p, i) => (
-                <tr key={i} className="text-gray-700 dark:text-gray-200">
-                  <td className="py-1.5 font-medium">{p.nome}</td>
-                  <td className="py-1.5 text-gray-500">{p.pix || "—"}</td>
-                  <td className="py-1.5 text-center">{p.qtdShifts}</td>
-                  <td className="py-1.5 text-right">{fmtHoras(p.totalHoras)}</td>
-                  <td className="py-1.5 text-right font-semibold">{fmtBR(p.totalValor)}</td>
-                </tr>
-              ))}
-              {(lote.mensalistas || []).map((m, i) => (
-                <tr key={`m${i}`} className="text-gray-700 dark:text-gray-200">
-                  <td className="py-1.5 font-medium">{m.nome} <span className="text-[10px] uppercase text-indigo-500">mensalista</span></td>
-                  <td className="py-1.5 text-gray-500">{m.pix || "—"}</td>
-                  <td className="py-1.5 text-center">{m.diasTrabalhados}/{m.diasNoMes}d</td>
-                  <td className="py-1.5 text-right text-[11px] text-gray-500">rem {fmtBR(m.remuneracaoProporcional)} · gorj {m.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(m.gorjetaAplicada)}</td>
-                  <td className="py-1.5 text-right font-semibold">{fmtBR(m.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="p-3 space-y-1">
+          {lote.pessoasResumo.map((p, i) => (
+            <PessoaLoteRow
+              key={`p${i}`}
+              pessoa={p}
+              shiftsDoLote={shiftsDoLote}
+              onRecibo={(d) => setRecibo(d)}
+            />
+          ))}
+          {(lote.mensalistas || []).map((m, i) => (
+            <MensalistaLoteRow key={`m${i}`} linha={m} onRecibo={(d) => setRecibo(d)} />
+          ))}
         </div>
       )}
       {previewAberto && (
@@ -207,8 +191,228 @@ function LoteCard({
           onClose={() => setPreviewAberto(false)}
         />
       )}
+      {recibo && <ReciboModal data={recibo} onClose={() => setRecibo(null)} />}
     </div>
   );
+}
+
+// Diárias congeladas da pessoa: usa o snapshot do lote (novos) e, em fallback,
+// deriva dos turnos ao vivo (lotes antigos, sem snapshot).
+function turnosDaPessoa(p: FreelaPagamentoResumoPessoa, shiftsDoLote: FreelaShift[]): FreelaTurnoSnapshot[] {
+  if (p.turnos && p.turnos.length) return p.turnos;
+  const bate = (s: FreelaShift) =>
+    p.pessoaId ? s.pessoaId === p.pessoaId
+      : p.empregadoId ? s.empregadoId === p.empregadoId
+      : s.nomeSnapshot === p.nome;
+  return shiftsDoLote.filter(bate).map((s) => ({
+    date: s.date, area: s.area ?? null, entrada: s.entrada ?? null, saida: s.saida ?? null,
+    horas: s.horas ?? null, valorTipo: s.valorTipo ?? null, valorUnit: s.valorUnit ?? null,
+    totalCalc: s.totalCalc ?? null, cancelado: s.status === "cancelado",
+  })).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function PessoaLoteRow({
+  pessoa: p, shiftsDoLote, onRecibo,
+}: {
+  pessoa: FreelaPagamentoResumoPessoa;
+  shiftsDoLote: FreelaShift[];
+  onRecibo: (d: ReciboData) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const turnos = useMemo(() => turnosDaPessoa(p, shiftsDoLote), [p, shiftsDoLote]);
+  const periodo = periodoDeTurnos(turnos);
+
+  return (
+    <div className="rounded-lg border border-gray-100 dark:border-gray-800">
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="flex-1 min-w-0 flex items-center gap-1.5 text-left">
+          <span className="text-gray-400 text-xs w-3">{open ? "▾" : "▸"}</span>
+          <span className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
+          <span className="text-[11px] text-gray-500 shrink-0">· {p.qtdShifts} diária(s) · {fmtHoras(p.totalHoras)}</span>
+        </button>
+        <span className="hidden sm:block text-[11px] text-gray-500 truncate max-w-[120px]">{p.pix || ""}</span>
+        <span className="text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{fmtBR(p.totalValor)}</span>
+        <button
+          type="button"
+          onClick={() => onRecibo({ tipo: "diarista", nome: p.nome, periodo, turnos, total: p.totalValor })}
+          className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0"
+        >
+          🧾 Recibo
+        </button>
+      </div>
+      {open && (
+        <div className="px-2 pb-2 overflow-x-auto">
+          <table className="w-full text-[11px] min-w-[420px]">
+            <thead>
+              <tr className="text-left text-gray-400 uppercase tracking-wider">
+                <th className="py-1">Data</th>
+                <th className="py-1">Horário</th>
+                <th className="py-1 text-right">Horas</th>
+                <th className="py-1 text-right">Tarifa</th>
+                <th className="py-1 text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              {turnos.map((t, i) => (
+                <tr key={i} className={`text-gray-700 dark:text-gray-200 ${t.cancelado ? "opacity-50 line-through" : ""}`}>
+                  <td className="py-1">{dBR(t.date)}</td>
+                  <td className="py-1">{t.entrada && t.saida ? `${t.entrada}–${t.saida}` : "—"}</td>
+                  <td className="py-1 text-right">{fmtHoras(t.horas || 0)}</td>
+                  <td className="py-1 text-right">{tarifaTxt(t)}</td>
+                  <td className="py-1 text-right font-semibold">{fmtBR(t.totalCalc || 0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MensalistaLoteRow({
+  linha: m, onRecibo,
+}: { linha: FreelaMensalistaLinha; onRecibo: (d: ReciboData) => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="rounded-lg border border-gray-100 dark:border-gray-800">
+      <div className="flex items-center gap-2 px-2 py-1.5">
+        <button type="button" onClick={() => setOpen((v) => !v)} className="flex-1 min-w-0 flex items-center gap-1.5 text-left">
+          <span className="text-gray-400 text-xs w-3">{open ? "▾" : "▸"}</span>
+          <span className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{m.nome}</span>
+          <span className="text-[10px] uppercase font-bold text-indigo-500">mensalista</span>
+        </button>
+        <span className="hidden sm:block text-[11px] text-gray-500 truncate max-w-[120px]">{m.pix || ""}</span>
+        <span className="text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{fmtBR(m.total)}</span>
+        <button
+          type="button"
+          onClick={() => onRecibo({ tipo: "mensalista", nome: m.nome, periodo: competenciaRange(m.competencia), mensalista: m, total: m.total })}
+          className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0"
+        >
+          🧾 Recibo
+        </button>
+      </div>
+      {open && (
+        <div className="px-2 pb-2 text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5">
+          <div>Período: {competenciaRange(m.competencia)} · {m.diasTrabalhados}/{m.diasNoMes} dias{(m.faltasInjust || 0) > 0 ? ` (${m.diasCobertos ?? m.diasTrabalhados} − ${m.faltasInjust} falta inj.)` : ""}</div>
+          <div>Remuneração proporcional: {fmtBR(m.remuneracaoProporcional)}</div>
+          <div>Gorjeta ({m.gorjetaModo === "bruto" ? "bruto" : "líquido"}): {fmtBR(m.gorjetaAplicada)}</div>
+          {m.desconto > 0 && <div>Desconto{m.descontoDesc ? ` (${m.descontoDesc})` : ""}: − {fmtBR(m.desconto)}</div>}
+          {m.acrescimo > 0 && <div>Acréscimo{m.acrescimoDesc ? ` (${m.acrescimoDesc})` : ""}: + {fmtBR(m.acrescimo)}</div>}
+          <div className="font-semibold text-gray-800 dark:text-gray-100">Total: {fmtBR(m.total)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Recibo (na tela + imprimir; sem nome do restaurante) ───
+type ReciboData = {
+  tipo: "diarista" | "mensalista";
+  nome: string;
+  periodo: string;
+  total: number;
+  turnos?: FreelaTurnoSnapshot[];
+  mensalista?: FreelaMensalistaLinha;
+};
+
+function ReciboModal({ data, onClose }: { data: ReciboData; onClose: () => void }) {
+  const html = buildReciboHTML(data);
+  function imprimir() {
+    const w = window.open("", "_blank", "width=480,height=680");
+    if (!w) { alert("Permita pop-ups pra imprimir o recibo."); return; }
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Recibo — ${escaparHtml(data.nome)}</title>
+      <style>
+        body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1710;margin:24px;font-size:13px}
+        h1{font-size:16px;margin:0 0 2px}
+        .sub{color:#64748b;font-size:12px;margin-bottom:12px}
+        table{width:100%;border-collapse:collapse;margin:8px 0}
+        th,td{text-align:left;padding:4px 6px;border-bottom:1px solid #e5e7eb}
+        th{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
+        td.r,th.r{text-align:right}
+        .tot{font-weight:700;font-size:15px;margin-top:10px;display:flex;justify-content:space-between;border-top:2px solid #1c1710;padding-top:8px}
+        .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #e5e7eb}
+        .foot{color:#94a3b8;font-size:10px;margin-top:18px}
+      </style></head><body>${html}<div class="foot">Recibo gerado em ${dBR(hojeISO())} — sem valor fiscal.</div></body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 250);
+  }
+  return (
+    <Modal title="Recibo" onClose={onClose} maxWidth="max-w-md">
+      <div
+        className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white text-gray-900 p-4 text-sm max-h-[60vh] overflow-y-auto"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
+      <div className="flex justify-end gap-2 mt-4">
+        <Button variant="secondary" onClick={onClose}>Fechar</Button>
+        <Button onClick={imprimir}>🖨️ Imprimir</Button>
+      </div>
+    </Modal>
+  );
+}
+
+function buildReciboHTML(d: ReciboData): string {
+  const cab = `<h1>Recibo — ${escaparHtml(d.nome)}</h1><div class="sub">Período: ${escaparHtml(d.periodo)}</div>`;
+  if (d.tipo === "mensalista" && d.mensalista) {
+    const m = d.mensalista;
+    const linhas = [
+      `<div class="row"><span>Dias trabalhados</span><span>${m.diasTrabalhados}/${m.diasNoMes}</span></div>`,
+      `<div class="row"><span>Remuneração proporcional</span><span>${fmtBR(m.remuneracaoProporcional)}</span></div>`,
+      `<div class="row"><span>Gorjeta (${m.gorjetaModo === "bruto" ? "bruto" : "líquido"})</span><span>${fmtBR(m.gorjetaAplicada)}</span></div>`,
+      m.desconto > 0 ? `<div class="row"><span>Desconto${m.descontoDesc ? ` (${escaparHtml(m.descontoDesc)})` : ""}</span><span>− ${fmtBR(m.desconto)}</span></div>` : "",
+      m.acrescimo > 0 ? `<div class="row"><span>Acréscimo${m.acrescimoDesc ? ` (${escaparHtml(m.acrescimoDesc)})` : ""}</span><span>+ ${fmtBR(m.acrescimo)}</span></div>` : "",
+    ].join("");
+    return `${cab}${linhas}<div class="tot"><span>Total recebido</span><span>${fmtBR(d.total)}</span></div>`;
+  }
+  const turnos = d.turnos || [];
+  const rows = turnos.map((t) => `<tr>
+    <td>${dBR(t.date)}</td>
+    <td>${t.entrada && t.saida ? `${t.entrada}–${t.saida}` : "—"}</td>
+    <td class="r">${fmtHoras(t.horas || 0)}</td>
+    <td class="r">${escaparHtml(tarifaTxt(t))}</td>
+    <td class="r">${fmtBR(t.totalCalc || 0)}</td>
+  </tr>`).join("");
+  return `${cab}
+    <table>
+      <thead><tr><th>Data</th><th>Horário</th><th class="r">Horas</th><th class="r">Tarifa</th><th class="r">Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    <div class="tot"><span>Total recebido</span><span>${fmtBR(d.total)}</span></div>`;
+}
+
+function tarifaTxt(t: FreelaTurnoSnapshot): string {
+  if (t.valorTipo === "diaria") return `${fmtBR(t.valorUnit || 0)} (diária)`;
+  if (t.valorTipo === "hora") return `${fmtBR(t.valorUnit || 0)}/h`;
+  return "—";
+}
+
+function periodoDeTurnos(turnos: FreelaTurnoSnapshot[]): string {
+  if (turnos.length === 0) return "—";
+  const datas = turnos.map((t) => t.date).sort();
+  const ini = dBR(datas[0]), fim = dBR(datas[datas.length - 1]);
+  return ini === fim ? ini : `${ini} – ${fim}`;
+}
+
+function competenciaRange(comp: string): string {
+  const m = comp.match(/^(\d{4})-(\d{2})/);
+  if (!m) return comp;
+  const ultimo = new Date(Number(m[1]), Number(m[2]), 0).getDate();
+  return `01/${m[2]}/${m[1]} – ${String(ultimo).padStart(2, "0")}/${m[2]}/${m[1]}`;
+}
+
+// "YYYY-MM-DD" → "DD/MM/YYYY" sem Date (evita fuso).
+function dBR(iso: string): string {
+  const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || "—");
+}
+
+function hojeISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function escaparHtml(s: string): string {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
 }
 
 function fmtDate(iso?: string): string {

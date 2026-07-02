@@ -6,7 +6,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import {
   AREAS, type Area, type Cargo, type Empregado, type EscalaMes, type FreelaMensalistaLinha,
-  type FreelaPagamento, type FreelaPagamentoResumoPessoa, type FreelaShift,
+  type FreelaPagamento, type FreelaPagamentoResumoPessoa, type FreelaShift, type FreelaTurnoSnapshot,
   type Gorjeta, type Restaurant, type SplitVersion,
 } from "../../core/types";
 import {
@@ -352,10 +352,23 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           cpf: s.cpfSnapshot ?? null,
           whatsapp: s.whatsappSnapshot ?? null,
           qtdShifts: 0, totalHoras: 0, totalValor: 0,
+          turnos: [] as FreelaTurnoSnapshot[],
         };
         r.qtdShifts += 1;
         r.totalHoras += s.horas || 0;
         r.totalValor += s.totalCalc || 0;
+        // Congela o detalhe do turno no lote (histórico + recibo estáveis).
+        (r.turnos ||= []).push({
+          date: s.date,
+          area: s.area ?? null,
+          entrada: s.entrada ?? null,
+          saida: s.saida ?? null,
+          horas: s.horas ?? null,
+          valorTipo: s.valorTipo ?? null,
+          valorUnit: s.valorUnit ?? null,
+          totalCalc: s.totalCalc ?? null,
+          cancelado: s.status === "cancelado",
+        });
         resumoMap.set(key, r);
       }
       const pessoasResumo = Array.from(resumoMap.values())
@@ -364,6 +377,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           ...r,
           totalHoras: Math.round(r.totalHoras * 100) / 100,
           totalValor: Math.round(r.totalValor * 100) / 100,
+          turnos: (r.turnos || []).slice().sort((x, y) => x.date.localeCompare(y.date)),
         }));
       const now = new Date().toISOString();
       const numero = proximoNumeroLote(pagamentos);

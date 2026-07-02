@@ -2326,6 +2326,20 @@ export const FREELA_PAGAMENTO_STATUS_LABEL: Record<FreelaPagamentoStatus, string
   pago:     "Pago",
 };
 
+// Snapshot de um turno dentro do lote — congela os dados pra o histórico e o
+// recibo ficarem estáveis mesmo se o turno original for editado/apagado depois.
+export type FreelaTurnoSnapshot = {
+  date: string;                    // YYYY-MM-DD
+  area?: Area | null;
+  entrada?: string | null;         // "HH:MM"
+  saida?: string | null;           // "HH:MM"
+  horas?: number | null;           // decimal
+  valorTipo?: "hora" | "diaria" | null;
+  valorUnit?: number | null;       // R$/h ou diária
+  totalCalc?: number | null;       // R$ do turno
+  cancelado?: boolean;             // turno cancelado (entrou zerado só pra registro)
+};
+
 // Resumo por pessoa dentro do lote (pra render rápido na lista + PDF)
 export type FreelaPagamentoResumoPessoa = {
   pessoaId?: string | null;
@@ -2337,6 +2351,7 @@ export type FreelaPagamentoResumoPessoa = {
   qtdShifts: number;
   totalHoras: number;
   totalValor: number;
+  turnos?: FreelaTurnoSnapshot[];  // detalhe congelado (lotes novos); ausente nos antigos
 };
 
 // Linha de um freela MENSALISTA no lote de pagamento. Diferente do diarista
