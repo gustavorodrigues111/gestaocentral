@@ -9,6 +9,12 @@ type Props = {
   rid: string;
 };
 
+// Percentuais de comissão padrão (editáveis). INBOUND máx 2%, OUTBOUND máx 3,5%.
+export const COMISSAO_DEFAULT = {
+  inbound: { negociacaoFechamento: 1, acompanhamento: 1 },
+  outbound: { captacao: 1.5, negociacaoFechamento: 1, acompanhamento: 1 },
+};
+
 // Aba "Comercial" das configs de Eventos. Master define a lista de pessoas
 // que podem aparecer nos pickers do fechamento de evento ("captado por",
 // "negociado por", "acompanhado por"). Salvo em
@@ -24,6 +30,40 @@ export function ComercialConfigTab({ rid }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const selecionadosIds = restaurant?.eventosConfig?.pessoasComerciaisIds || [];
+  const respPadraoId = restaurant?.eventosConfig?.responsavelPadraoId || "";
+  const comissaoSalva = restaurant?.eventosConfig?.comissao || COMISSAO_DEFAULT;
+
+  // Comissão: edição local + botão salvar (evita write por tecla).
+  const [comissao, setComissao] = useState(comissaoSalva);
+  useEffect(() => { setComissao(restaurant?.eventosConfig?.comissao || COMISSAO_DEFAULT); }, [restaurant?.eventosConfig?.comissao]);
+  const [savingComissao, setSavingComissao] = useState(false);
+
+  async function setRespPadrao(pessoaId: string) {
+    if (!restaurant) return;
+    const p = pessoas.find(x => x.id === pessoaId);
+    await updateDoc(doc(db, "restaurants", rid), {
+      "eventosConfig.responsavelPadraoId": pessoaId || null,
+      "eventosConfig.responsavelPadraoNome": p?.nome || null,
+    });
+  }
+
+  async function salvarComissao() {
+    if (!restaurant || savingComissao) return;
+    setSavingComissao(true);
+    try {
+      await updateDoc(doc(db, "restaurants", rid), { "eventosConfig.comissao": comissao });
+    } finally {
+      setSavingComissao(false);
+    }
+  }
+
+  const setC = (grupo: "inbound" | "outbound", campo: string, v: number) =>
+    setComissao(prev => {
+      const g = { ...(prev[grupo] as Record<string, number>), [campo]: v };
+      return { ...prev, [grupo]: g } as typeof COMISSAO_DEFAULT;
+    });
+  const maxInbound = (comissao.inbound.negociacaoFechamento || 0) + (comissao.inbound.acompanhamento || 0);
+  const maxOutbound = (comissao.outbound.captacao || 0) + (comissao.outbound.negociacaoFechamento || 0) + (comissao.outbound.acompanhamento || 0);
 
   useEffect(() => {
     const unsub = onSnapshot(
@@ -85,7 +125,26 @@ export function ComercialConfigTab({ rid }: Props) {
   if (loading) return <div className="text-sm text-gray-500">Carregando pessoas...</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
+      {/* Responsável padrão por leads */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Responsável padrão</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+          Quem recebe todos os leads novos deste restaurante (público e manual).
+          Aplicado automaticamente; pode ser alterado por evento no card.
+        </p>
+        <select
+          value={respPadraoId}
+          onChange={(e) => setRespPadrao(e.target.value)}
+          className="w-full max-w-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+        >
+          <option value="">— ninguém (leads entram sem responsável) —</option>
+          {pessoas.map(p => (
+            <option key={p.id} value={p.id}>{p.nome}</option>
+          ))}
+        </select>
+      </div>
+
       <div>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pessoas comerciais</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -150,6 +209,52 @@ export function ComercialConfigTab({ rid }: Props) {
         </button>
       </div>
 
+      {/* Percentuais de comissão */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Comissão</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+          Percentuais sobre o faturamento bruto (sem gorjeta) do evento. Somados por
+          atividade que a pessoa realizou, conforme o fechamento.
+        </p>
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          {/* INBOUND */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">🔹 Inbound (cliente procurou)</span>
+              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">máx {maxInbound.toLocaleString("pt-BR")}%</span>
+            </div>
+            <div className="space-y-2">
+              <CampoPct label="Negociação e fechamento" value={comissao.inbound.negociacaoFechamento} onChange={v => setC("inbound", "negociacaoFechamento", v)} />
+              <CampoPct label="Acompanhamento presencial" value={comissao.inbound.acompanhamento} onChange={v => setC("inbound", "acompanhamento", v)} />
+            </div>
+          </div>
+          {/* OUTBOUND */}
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">🔹 Outbound (captação ativa)</span>
+              <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">máx {maxOutbound.toLocaleString("pt-BR")}%</span>
+            </div>
+            <div className="space-y-2">
+              <CampoPct label="Captação ativa" value={comissao.outbound.captacao} onChange={v => setC("outbound", "captacao", v)} />
+              <CampoPct label="Negociação e fechamento" value={comissao.outbound.negociacaoFechamento} onChange={v => setC("outbound", "negociacaoFechamento", v)} />
+              <CampoPct label="Acompanhamento presencial" value={comissao.outbound.acompanhamento} onChange={v => setC("outbound", "acompanhamento", v)} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end mt-3">
+          <button
+            type="button"
+            onClick={salvarComissao}
+            disabled={savingComissao}
+            className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium disabled:opacity-50"
+          >
+            {savingComissao ? "Salvando…" : "Salvar comissão"}
+          </button>
+        </div>
+      </div>
+
       {modalOpen && (
         <AdicionarPessoaModal
           pessoas={pessoas}
@@ -163,6 +268,22 @@ export function ComercialConfigTab({ rid }: Props) {
         />
       )}
     </div>
+  );
+}
+
+function CampoPct({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span className="text-xs text-gray-600 dark:text-gray-300">{label}</span>
+      <span className="inline-flex items-center gap-1">
+        <input
+          type="number" min={0} step={0.1} value={value}
+          onChange={(e) => onChange(Number(e.target.value) || 0)}
+          className="w-20 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-right"
+        />
+        <span className="text-xs text-gray-400">%</span>
+      </span>
+    </label>
   );
 }
 

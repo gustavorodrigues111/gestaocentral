@@ -8,6 +8,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import type { LeadEvento, OcasiaoEvento, ModeloEvento, SlotEvento } from "../../core/types";
 
 type Props = {
@@ -26,6 +27,9 @@ function slotDoHorario(horaInicio: string, horaFim: string): SlotEvento {
 
 export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const cfg = restaurants.find(r => r.id === rid)?.eventosConfig;
+  const [captacao, setCaptacao] = useState<"inbound" | "outbound">("inbound");
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
@@ -72,6 +76,12 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
         decoracao: false,
         observacoesCliente: observacoes.trim() || undefined,
         origem: "manual",
+        // Captação declarada no cadastro + responsável padrão do restaurante.
+        classificacaoPrevia: captacao,
+        captadoPorPessoaId: captacao === "outbound" ? me?.id : undefined,
+        captadoPorNome: captacao === "outbound" ? me?.nome : undefined,
+        responsavelId: cfg?.responsavelPadraoId,
+        responsavelNome: cfg?.responsavelPadraoNome,
         createdAt: now,
         createdBy: me?.id,
         updatedAt: now,
@@ -93,6 +103,30 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
         <p className="text-[12px] text-gray-500 dark:text-gray-400">
           Pra leads vindos por outro canal (telefone, indicação, etc.). Preenche o mínimo aqui e completa depois abrindo o card.
         </p>
+
+        <div>
+          <label className="text-[11px] uppercase font-bold text-gray-500 dark:text-gray-400">Como chegou este lead?</label>
+          <div className="grid grid-cols-2 gap-2 mt-1">
+            {([
+              { v: "inbound" as const, t: "Cliente procurou", s: "Passiva — ele veio até nós" },
+              { v: "outbound" as const, t: "Captação ativa", s: "Nós fomos atrás" },
+            ]).map(o => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => setCaptacao(o.v)}
+                className={`text-left px-3 py-2 rounded-lg border transition-colors ${
+                  captacao === o.v
+                    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30"
+                    : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
+                }`}
+              >
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{o.t}</div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400">{o.s}</div>
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div className="col-span-2">

@@ -8,10 +8,10 @@ import { collection, doc, getDocs, query, setDoc, where } from "firebase/firesto
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  AjusteProposta, EspacoEvento, LeadEvento, PacoteEvento,
+  AjusteProposta, EspacoEvento, LeadEvento, LinhaProposta, PacoteEvento,
   ParcelaProposta, PropostaEvento,
 } from "../../core/types";
-import { pacoteValorTotal } from "../../core/types";
+import { linhaPropostaTotal, pacoteValorTotal } from "../../core/types";
 
 export type CriarPropostaParams = {
   lead: LeadEvento;
@@ -21,6 +21,9 @@ export type CriarPropostaParams = {
   numConvidados?: number;
   precoPorPessoaOverride?: number;
   ajustes?: AjusteProposta[];
+  // Linhas customizáveis (locação fixa + itens por pessoa). Quando presente,
+  // são a fonte do preço: total = base do pacote + Σ linhas.
+  linhas?: LinhaProposta[];
   observacoes?: string;
   criadoPorId: string;
 };
@@ -105,13 +108,18 @@ export async function criarProposta(params: CriarPropostaParams): Promise<Propos
   const precoPorPessoa = params.precoPorPessoaOverride
     ?? (pacote && (pacote.precoModo || "por_pessoa") === "por_pessoa" ? pacote.precoPorPessoa : 0);
   const ajustes = params.ajustes || [];
+  const linhas = params.linhas || [];
+  const usaLinhas = linhas.length > 0;
   // Base = override*pax OU valor cheio do pacote (total_fixo) OU pacote por pessoa
   const baseDoPacote = pacote ? pacoteValorTotal(pacote, pax) : 0;
   const baseEfetiva = params.precoPorPessoaOverride != null
     ? params.precoPorPessoaOverride * pax
     : baseDoPacote;
-  const totalAjustes = ajustes.reduce((s, a) => s + a.valor, 0);
-  const total = Math.round((baseEfetiva + totalAjustes) * 100) / 100;
+  // Com linhas customizáveis: total = base do pacote (se houver) + Σ linhas.
+  // Sem linhas: modelo legado (base + ajustes marcados).
+  const total = usaLinhas
+    ? Math.round((baseDoPacote + linhas.reduce((s, l) => s + linhaPropostaTotal(l), 0)) * 100) / 100
+    : Math.round((baseEfetiva + ajustes.reduce((s, a) => s + a.valor, 0)) * 100) / 100;
   const versao = await proximaVersaoProposta(lead.id);
   const id = `prop_${lead.id}_v${versao}`;
   const now = new Date().toISOString();
@@ -137,8 +145,9 @@ export async function criarProposta(params: CriarPropostaParams): Promise<Propos
     inclusos: pacote?.inclusos || [],
     naoInclusos: pacote?.naoInclusos || [],
     ajustes,
+    linhas: usaLinhas ? linhas : undefined,
     precoTotal: total,
-    precoPorPessoa,
+    precoPorPessoa: usaLinhas ? 0 : precoPorPessoa,
     parcelas,
     politicaCancelamentoTexto: politicaCancelamentoTexto(espaco),
     observacoes: params.observacoes,
@@ -177,7 +186,17 @@ export function montarMensagemProposta(proposta: PropostaEvento, leadNome: strin
     linhas.push("*Não inclusos*: " + proposta.naoInclusos.join(", "));
     linhas.push("");
   }
-  if (proposta.ajustes.length > 0) {
+  if (proposta.linhas && proposta.linhas.length > 0) {
+    linhas.push("*Composição*");
+    for (const l of proposta.linhas) {
+      const tot = linhaPropostaTotal(l);
+      const detalhe = l.tipo === "por_pessoa"
+        ? ` (R$ ${l.valor.toFixed(2)}/pessoa × ${l.numPessoas || 0})`
+        : " (valor fixo)";
+      linhas.push(`• ${l.descricao}: R$ ${tot.toFixed(2)}${detalhe}`);
+    }
+    linhas.push("");
+  } else if (proposta.ajustes.length > 0) {
     linhas.push("*Ajustes*");
     for (const a of proposta.ajustes) {
       linhas.push(`• ${a.descricao}: R$ ${a.valor.toFixed(2)}`);

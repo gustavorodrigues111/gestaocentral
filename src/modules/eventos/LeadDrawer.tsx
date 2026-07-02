@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
@@ -7,12 +7,14 @@ import { Button } from "../../core/ui/Button";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { parseYmd, pad2 } from "../../core/utils/date";
-import type { LeadEvento, LeadEventoStatus, PacoteEvento, Pessoa } from "../../core/types";
+import type { CanalTratativa, LeadEvento, LeadEventoStatus, LogMensagemEvento, PacoteEvento, Pessoa } from "../../core/types";
+import { CANAL_TRATATIVA_ICONE, CANAL_TRATATIVA_LABEL } from "../../core/types";
 import { PropostaSection } from "./PropostaSection";
 import { BEOSection } from "./BEOSection";
 import { ESCOPO_PACOTE_LABEL, MODELO_LABEL, OCASIAO_LABEL } from "./validacoes";
 import { FecharEventoModal } from "./FecharEventoModal";
 import { fecharEvento, precoUltimaProposta } from "./leadHelpers";
+import { registrarTratativa } from "./tratativas";
 
 const STATUS_LABEL: Record<LeadEventoStatus, string> = {
   novo: "Novo",
@@ -70,18 +72,49 @@ type Props = {
   lead: LeadEvento;
   pacotes: PacoteEvento[];
   podeEditar: boolean;
+  conflitosDoDia?: LeadEvento[];   // outros leads ativos no mesmo dia
   onClose: () => void;
 };
 
-export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
+export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onClose }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const restaurant = restaurants.find(r => r.id === lead.restaurantId) || null;
   const pessoasComerciaisIds = restaurant?.eventosConfig?.pessoasComerciaisIds || [];
 
   const [salvando, setSalvando] = useState(false);
-  const [novaPergunta, setNovaPergunta] = useState("");
-  const [novaResposta, setNovaResposta] = useState("");
+
+  // Log de tratativas (logsEvento) deste lead.
+  const [tratativas, setTratativas] = useState<LogMensagemEvento[]>([]);
+  const [novaTratativa, setNovaTratativa] = useState("");
+  const [canalTratativa, setCanalTratativa] = useState<CanalTratativa>("whatsapp");
+  useEffect(() => {
+    const unsub = onSnapshot(
+      query(collection(db, "logsEvento"), where("leadId", "==", lead.id)),
+      (snap) => setTratativas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as LogMensagemEvento)),
+      () => { /* silent */ },
+    );
+    return () => unsub();
+  }, [lead.id]);
+  const tratativasOrd = useMemo(
+    () => [...tratativas].sort((a, b) => (b.enviadoEm || "").localeCompare(a.enviadoEm || "")),
+    [tratativas],
+  );
+
+  async function registrarTratativaManual() {
+    if (!me || !novaTratativa.trim()) return;
+    setSalvando(true);
+    try {
+      await registrarTratativa({
+        restaurantId: lead.restaurantId, leadId: lead.id,
+        texto: novaTratativa.trim(), canal: canalTratativa,
+        porId: me.id, porNome: me.nome, manual: true,
+      });
+      setNovaTratativa("");
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   // Modal de fechamento de evento
   const [fecharModalOpen, setFecharModalOpen] = useState(false);
@@ -167,50 +200,43 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
     await mudarStatus(STATUS_ORDEM[idx - 1]);
   }
 
-  async function atribuir(eu: boolean) {
-    if (!me) return;
+  // Responsável padrão do restaurante (default de exibição pra leads sem dono,
+  // ex: vindos do form público que não conseguem ler a config na criação).
+  const respPadraoId = restaurant?.eventosConfig?.responsavelPadraoId;
+  const respPadraoNome = restaurant?.eventosConfig?.responsavelPadraoNome;
+  const responsavelEfetivoNome = lead.responsavelNome || respPadraoNome || null;
+  const responsavelPeloPadrao = !lead.responsavelId && !!respPadraoId;
+
+  // Pessoas que podem ser responsáveis: comerciais + eu (sem duplicar).
+  const candidatosResp = useMemo(() => {
+    const set = new Set(pessoasComerciaisIds);
+    if (me) set.add(me.id);
+    if (respPadraoId) set.add(respPadraoId);
+    return pessoas.filter(p => set.has(p.id)).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [pessoas, pessoasComerciaisIds, me, respPadraoId]);
+
+  async function setResponsavel(pessoaId: string) {
+    if (!podeEditar) return;
+    const p = pessoas.find(x => x.id === pessoaId);
     await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
-      responsavelId: eu ? me.id : null,
-      responsavelNome: eu ? me.nome : null,
+      responsavelId: pessoaId || null,
+      responsavelNome: p?.nome || null,
       updatedAt: new Date().toISOString(),
     }));
   }
 
-  async function perguntarPraGestor() {
-    if (!me || !novaPergunta.trim()) return;
-    setSalvando(true);
-    try {
-      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
-        duvidaPraGestor: {
-          pergunta: novaPergunta.trim(),
-          perguntadoEm: new Date().toISOString(),
-          perguntadoPor: me.id,
-        },
-        updatedAt: new Date().toISOString(),
-      }));
-      setNovaPergunta("");
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  async function responderDuvida() {
-    if (!me || !novaResposta.trim() || !lead.duvidaPraGestor) return;
-    setSalvando(true);
-    try {
-      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
-        duvidaPraGestor: {
-          ...lead.duvidaPraGestor,
-          resposta: novaResposta.trim(),
-          respondidoEm: new Date().toISOString(),
-          respondidoPor: me.id,
-        },
-        updatedAt: new Date().toISOString(),
-      }));
-      setNovaResposta("");
-    } finally {
-      setSalvando(false);
-    }
+  // Conflito de agenda no mesmo dia. Vermelho se horários se sobrepõem
+  // (sempre bloqueia visualmente); amarelo discreto se dia igual mas horários
+  // diferentes e o usuário já aceitou ter dois eventos no dia.
+  const temSobreposicao = conflitosDoDia.some(
+    o => lead.horaInicio < o.horaFim && o.horaInicio < lead.horaFim,
+  );
+  const temConflitoDia = conflitosDoDia.length > 0;
+  async function aceitarConflitoDia() {
+    if (!podeEditar) return;
+    await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
+      conflitoDiaAceito: true, updatedAt: new Date().toISOString(),
+    }));
   }
 
   // Link WhatsApp já preenchido com saudação inicial
@@ -240,6 +266,34 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
             </div>
           )}
         </div>
+
+        {/* Banner de conflito de agenda no mesmo dia */}
+        {temConflitoDia && (temSobreposicao || !lead.conflitoDiaAceito ? (
+          <div className="rounded-lg border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/25 p-3">
+            <div className="text-sm font-bold text-rose-800 dark:text-rose-200 flex items-center gap-1.5">
+              ⚠ {temSobreposicao ? "Conflito de horário neste dia" : "Já existe evento neste dia"}
+            </div>
+            <div className="text-[12px] text-rose-700 dark:text-rose-300 mt-1">
+              {conflitosDoDia.map(o => `${o.cliente.nome} (${o.horaInicio}–${o.horaFim})`).join(", ")}
+              {temSobreposicao
+                ? " — os horários se sobrepõem. Ajuste os horários pra liberar."
+                : " — confirme se querem mesmo dois eventos no mesmo dia."}
+            </div>
+            {!temSobreposicao && podeEditar && (
+              <div className="mt-2">
+                <Button size="sm" variant="secondary" onClick={aceitarConflitoDia}>
+                  Sim, aceitar dois eventos neste dia
+                </Button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/15 px-3 py-2">
+            <div className="text-[12px] text-amber-800 dark:text-amber-300">
+              🗓️ Mais de um evento neste dia (horários diferentes) — aceito.
+            </div>
+          </div>
+        ))}
 
         {/* Próxima ação */}
         <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3">
@@ -342,78 +396,86 @@ export function LeadDrawer({ lead, pacotes, podeEditar, onClose }: Props) {
           </div>
         )}
 
-        {/* Atribuição */}
-        {podeEditar && (
-          <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Responsável</div>
-            <div className="flex items-center gap-2">
-              {lead.responsavelNome ? (
-                <>
-                  <span className="text-sm font-medium">{lead.responsavelNome}</span>
-                  <Button size="sm" variant="secondary" onClick={() => atribuir(false)}>tirar</Button>
-                </>
-              ) : (
-                <>
-                  <span className="text-sm text-gray-500 italic">ninguém atribuído</span>
-                  <Button size="sm" variant="secondary" onClick={() => atribuir(true)}>assumir</Button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Dúvida pro gestor */}
+        {/* Responsável */}
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-            🙋 Dúvida pro gestor
-          </div>
-          {lead.duvidaPraGestor ? (
-            <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm space-y-2">
-              <div>
-                <strong>Pergunta:</strong> {lead.duvidaPraGestor.pergunta}
-                <div className="text-[10px] text-gray-500 mt-0.5">
-                  perguntada em {new Date(lead.duvidaPraGestor.perguntadoEm).toLocaleString("pt-BR")}
-                </div>
-              </div>
-              {lead.duvidaPraGestor.resposta ? (
-                <div className="border-t border-amber-200 dark:border-amber-800 pt-2">
-                  <strong>Resposta:</strong> {lead.duvidaPraGestor.resposta}
-                  <div className="text-[10px] text-gray-500 mt-0.5">
-                    respondida em {lead.duvidaPraGestor.respondidoEm && new Date(lead.duvidaPraGestor.respondidoEm).toLocaleString("pt-BR")}
-                  </div>
-                </div>
-              ) : (
-                podeEditar && (
-                  <div className="space-y-1">
-                    <textarea
-                      value={novaResposta}
-                      onChange={(e) => setNovaResposta(e.target.value)}
-                      placeholder="Resposta..."
-                      className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                      rows={2}
-                    />
-                    <Button size="sm" onClick={responderDuvida} disabled={salvando || !novaResposta.trim()}>
-                      Responder
-                    </Button>
-                  </div>
-                )
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Responsável</div>
+          {podeEditar ? (
+            <div className="flex items-center gap-2 flex-wrap">
+              <select
+                value={lead.responsavelId || ""}
+                onChange={(e) => setResponsavel(e.target.value)}
+                className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 max-w-[240px]"
+              >
+                <option value="">
+                  {respPadraoNome ? `Padrão — ${respPadraoNome}` : "— ninguém —"}
+                </option>
+                {candidatosResp.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </select>
+              {responsavelPeloPadrao && (
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">
+                  padrão
+                </span>
               )}
             </div>
           ) : (
-            podeEditar && (
-              <div className="space-y-1">
-                <textarea
-                  value={novaPergunta}
-                  onChange={(e) => setNovaPergunta(e.target.value)}
-                  placeholder="Pergunta pro gestor (vai ficar marcada como pendente no card)..."
-                  className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  rows={2}
-                />
-                <Button size="sm" variant="secondary" onClick={perguntarPraGestor} disabled={salvando || !novaPergunta.trim()}>
-                  🙋 Tirar dúvida
+            <div className="text-sm">{responsavelEfetivoNome || <span className="text-gray-500 italic">ninguém atribuído</span>}</div>
+          )}
+        </div>
+
+        {/* Log de tratativas com o cliente */}
+        <div>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
+            📇 Tratativas com o cliente
+          </div>
+          {podeEditar && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 mb-2 space-y-2">
+              <textarea
+                value={novaTratativa}
+                onChange={(e) => setNovaTratativa(e.target.value)}
+                placeholder="Ex: cliente pediu pra reduzir o valor da locação; combinamos retorno até sexta…"
+                className="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+                rows={2}
+              />
+              <div className="flex items-center gap-2">
+                <select
+                  value={canalTratativa}
+                  onChange={(e) => setCanalTratativa(e.target.value as CanalTratativa)}
+                  className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                >
+                  <option value="whatsapp">💬 WhatsApp</option>
+                  <option value="telefone">📞 Telefone</option>
+                  <option value="email">📧 E-mail</option>
+                  <option value="presencial">🤝 Presencial</option>
+                  <option value="outro">• Outro</option>
+                </select>
+                <Button size="sm" onClick={registrarTratativaManual} disabled={salvando || !novaTratativa.trim()}>
+                  Registrar tratativa
                 </Button>
               </div>
-            )
+            </div>
+          )}
+          {tratativasOrd.length === 0 ? (
+            <p className="text-xs text-gray-500 dark:text-gray-400 italic px-1">
+              Nenhuma tratativa registrada ainda. Proposta enviada e interações ficam aqui.
+            </p>
+          ) : (
+            <ol className="relative border-l border-gray-200 dark:border-gray-700 ml-2 space-y-3">
+              {tratativasOrd.map((t) => (
+                <li key={t.id} className="ml-4">
+                  <span className="absolute -left-[7px] mt-1 w-3 h-3 rounded-full bg-indigo-400 dark:bg-indigo-500" />
+                  <div className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{t.texto}</div>
+                  <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span>{CANAL_TRATATIVA_ICONE[t.canal] || "•"} {CANAL_TRATATIVA_LABEL[t.canal] || t.canal}</span>
+                    <span>·</span>
+                    <span>{t.enviadoEm && new Date(t.enviadoEm).toLocaleString("pt-BR")}</span>
+                    {t.enviadoPorNome && <><span>·</span><span>{t.enviadoPorNome}</span></>}
+                    {!t.manual && <span className="px-1 rounded bg-gray-100 dark:bg-gray-800">auto</span>}
+                  </div>
+                </li>
+              ))}
+            </ol>
           )}
         </div>
 

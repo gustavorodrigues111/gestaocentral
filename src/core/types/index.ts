@@ -842,6 +842,16 @@ export type Restaurant = {
   // Master/admin seleciona em Eventos → Configurações.
   eventosConfig?: {
     pessoasComerciaisIds?: string[];
+    // Responsável padrão que recebe todos os leads novos do restaurante.
+    // Aplicado automaticamente a leads públicos e manuais; alterável por evento.
+    responsavelPadraoId?: string;
+    responsavelPadraoNome?: string;
+    // Percentuais de comissão (configuráveis) por classificação e atividade.
+    // Aplicados sobre fechamento.faturamentoBrutoSemGorjeta.
+    comissao?: {
+      inbound: { negociacaoFechamento: number; acompanhamento: number };
+      outbound: { captacao: number; negociacaoFechamento: number; acompanhamento: number };
+    };
   };
 
   ativo: boolean;
@@ -3127,19 +3137,24 @@ export type LeadEvento = {
   decoracao: boolean;
   pacoteSugeridoId?: string;         // se cliente escolheu pacote no form
   observacoesCliente?: string;       // texto livre do form
-  // Atribuição interna
+  // Espaço físico do evento (default: único espaço ativo do restaurante).
+  espacoId?: string;
+  // Atribuição interna — responsável padrão vem de eventosConfig; alterável.
   responsavelId?: string;
   responsavelNome?: string;
-  // Marcações operacionais
-  duvidaPraGestor?: {
-    pergunta: string;
-    perguntadoEm: string;
-    perguntadoPor: string;
-    resposta?: string;
-    respondidoEm?: string;
-    respondidoPor?: string;
-  };
-  conflitaDataCom?: string[];
+  // Classificação de captação declarada na entrada do lead:
+  //   publico  → inbound (cliente procurou)
+  //   manual   → perguntado no cadastro (inbound = passiva / outbound = ativa)
+  // Serve de default pro fechamento e pro cálculo de comissão.
+  classificacaoPrevia?: "inbound" | "outbound";
+  captadoPorPessoaId?: string;       // quem captou (se outbound)
+  captadoPorNome?: string;
+  // Conflito de agenda — usuário aceitou ter mais de um evento no mesmo dia.
+  conflitoDiaAceito?: boolean;
+  conflitaDataCom?: string[];        // legado (detecção antiga por data+slot)
+  // Arquivamento mensal — setado ao "fechar o mês". Sai do board ativo.
+  arquivadoEm?: string;              // ISO
+  arquivadoMesRef?: string;          // "YYYY-MM"
   // Auditoria
   origem: "publico" | "manual";
   createdAt: string;
@@ -3156,11 +3171,29 @@ export type LeadEvento = {
     captacaoAtiva: { ativo: boolean; pessoaId?: string; pessoaNome?: string };
     negociacaoPor: { pessoaId: string; pessoaNome: string };
     acompanhamentoPresencial: { ativo: boolean; pessoaId?: string; pessoaNome?: string };
+    pagamentoConfirmado?: boolean;         // sinal+saldo quitados (finalizado)
     fechadoEm: string;                     // ISO
     fechadoPor: string;                    // pessoaId que fechou
     fechadoPorNome?: string;
   };
 };
+
+// Linha customizável da proposta. Substitui/estende os ajustes: cada linha é
+// cobrada como valor FIXO (total) ou POR PESSOA (× numPessoas, que pode ser
+// menor que o total de convidados — ex: bebida alcoólica só pros adultos).
+export type LinhaProposta = {
+  id: string;
+  descricao: string;                 // "Locação", "Comidas", "Bebidas alcoólicas"
+  tipo: "fixo" | "por_pessoa";
+  valor: number;                     // fixo = total; por_pessoa = valor unitário
+  numPessoas?: number;               // só quando tipo="por_pessoa"
+};
+
+// Total de uma linha, resolvendo fixo vs por_pessoa.
+export function linhaPropostaTotal(l: Pick<LinhaProposta, "tipo" | "valor" | "numPessoas">): number {
+  if (l.tipo === "fixo") return l.valor || 0;
+  return (l.valor || 0) * (l.numPessoas || 0);
+}
 
 export type AjusteProposta = {
   descricao: string;                 // "Hora adicional", "Decoração premium"
@@ -3197,7 +3230,10 @@ export type PropostaEvento = {
   cardapios: CardapioPdf[];
   inclusos: string[];
   naoInclusos: string[];
-  ajustes: AjusteProposta[];
+  ajustes: AjusteProposta[];         // legado — mantido pra propostas antigas
+  // Linhas customizáveis (locação fixa + itens por pessoa). Fonte do preço nas
+  // propostas novas; quando presente, precoTotal = base pacote + Σ linhas.
+  linhas?: LinhaProposta[];
   precoTotal: number;
   precoPorPessoa: number;
   // Pagamento
@@ -3264,6 +3300,20 @@ export type ConfigTemplatesEvento = {
   updatedAt: string;
 };
 
+export type CanalTratativa =
+  | "whatsapp_wame" | "whatsapp_api" | "whatsapp"
+  | "email" | "telefone" | "presencial" | "sistema" | "outro";
+
+export const CANAL_TRATATIVA_LABEL: Record<CanalTratativa, string> = {
+  whatsapp_wame: "WhatsApp", whatsapp_api: "WhatsApp", whatsapp: "WhatsApp",
+  email: "E-mail", telefone: "Telefone", presencial: "Presencial",
+  sistema: "Sistema", outro: "Outro",
+};
+export const CANAL_TRATATIVA_ICONE: Record<CanalTratativa, string> = {
+  whatsapp_wame: "💬", whatsapp_api: "💬", whatsapp: "💬",
+  email: "📧", telefone: "📞", presencial: "🤝", sistema: "⚙️", outro: "•",
+};
+
 export type LogMensagemEvento = {
   id: string;
   restaurantId: string;
@@ -3273,7 +3323,8 @@ export type LogMensagemEvento = {
   enviadoEm: string;
   enviadoPor: string;
   enviadoPorNome: string;
-  canal: "whatsapp_wame" | "whatsapp_api" | "email";
+  canal: CanalTratativa;
+  manual?: boolean;                  // true = tratativa lançada à mão pelo usuário
 };
 
 // ─── SITES ─────────────────────────────────────────────────────────────────

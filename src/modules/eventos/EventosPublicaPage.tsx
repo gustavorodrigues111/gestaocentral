@@ -223,6 +223,7 @@ export function EventosPublicaPage() {
         pacoteSugeridoId: form.pacoteSugeridoId || undefined,
         observacoesCliente: form.observacoesCliente.trim() || undefined,
         origem: "publico",
+        classificacaoPrevia: "inbound", // cliente procurou = inbound (passiva)
         createdAt: now,
         updatedAt: now,
       };

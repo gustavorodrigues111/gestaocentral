@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, updateDoc, where, getDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where, getDocs } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import type {
-  EspacoEvento, LeadEvento, PacoteEvento, ParcelaProposta, PropostaEvento,
+  EspacoEvento, LeadEvento, LinhaProposta, PacoteEvento, ParcelaProposta, PropostaEvento,
 } from "../../core/types";
-import { pacotePrecoLabel, pacoteValorTotal } from "../../core/types";
-import {
-  criarProposta, montarMensagemProposta,
-} from "./propostaHelpers";
+import { linhaPropostaTotal, pacotePrecoLabel, pacoteValorTotal } from "../../core/types";
+import { criarProposta, montarMensagemProposta } from "./propostaHelpers";
+import { registrarTratativa } from "./tratativas";
 
 type Props = {
   lead: LeadEvento;
@@ -20,16 +19,22 @@ type Props = {
   onAvancarStatus?: () => Promise<void>;
 };
 
+const novaLinha = (parcial?: Partial<LinhaProposta>): LinhaProposta => ({
+  id: `ln_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  descricao: parcial?.descricao ?? "",
+  tipo: parcial?.tipo ?? "por_pessoa",
+  valor: parcial?.valor ?? 0,
+  numPessoas: parcial?.numPessoas,
+});
+
 export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAvancarStatus }: Props) {
   const [propostas, setPropostas] = useState<PropostaEvento[]>([]);
   const [espaco, setEspaco] = useState<EspacoEvento | null>(null);
   const [criando, setCriando] = useState(false);
   const [pacoteSelecionado, setPacoteSelecionado] = useState<string>(lead.pacoteSugeridoId || "");
-  const [paxOverride, setPaxOverride] = useState<string>("");
-  const [precoPaxOverride, setPrecoPaxOverride] = useState<string>("");
-  // Set de ids de adicionais marcados — set vazio reseta a cada troca de pacote
-  // via useEffect lá embaixo (caso o user troque depois de marcar).
-  const [adicionaisMarcados, setAdicionaisMarcados] = useState<Set<string>>(() => new Set());
+  const [pax, setPax] = useState<number>(lead.numConvidados);
+  const [linhas, setLinhas] = useState<LinhaProposta[]>([]);
+  const [montando, setMontando] = useState(false); // editor aberto pra nova versão
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -41,56 +46,49 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     return () => unsub();
   }, [lead.id]);
 
-  // Carrega espaço (1º ativo) — pra usar a política de cancelamento
   useEffect(() => {
     (async () => {
       const q = query(collection(db, "espacosEvento"), where("restaurantId", "==", lead.restaurantId));
-      const snap = await getDoc(doc(db, "espacosEvento", "_dummy_")).catch(() => null);
-      // Workaround: usa getDocs simples — onSnapshot ficaria pesado pra uma só leitura
-      const { getDocs } = await import("firebase/firestore");
       const r = await getDocs(q);
       const ativos = r.docs.map(d => ({ id: d.id, ...d.data() }) as EspacoEvento).filter(e => e.ativo);
       setEspaco(ativos[0] || null);
-      void snap;
     })();
   }, [lead.restaurantId]);
 
-  const propostaAtual = propostas[0] || null; // mais recente
+  const propostaAtual = propostas[0] || null;
   const pacoteAtual = useMemo(
     () => pacoteSelecionado ? pacotes.find(p => p.id === pacoteSelecionado) : null,
     [pacoteSelecionado, pacotes],
   );
   const pacotesAtivos = useMemo(() => pacotes.filter(p => p.ativo), [pacotes]);
 
-  // Limpa seleção de adicionais quando troca de pacote — adicionais são
-  // do pacote, não fazem sentido carregar pra outro.
-  useEffect(() => {
-    setAdicionaisMarcados(new Set());
-  }, [pacoteSelecionado]);
+  const baseDoPacote = useMemo(
+    () => (pacoteAtual ? pacoteValorTotal(pacoteAtual, pax) : 0),
+    [pacoteAtual, pax],
+  );
+  const totalLinhas = useMemo(
+    () => linhas.reduce((s, l) => s + linhaPropostaTotal(l), 0),
+    [linhas],
+  );
+  const totalPreview = Math.round((baseDoPacote + totalLinhas) * 100) / 100;
 
-  // Converte set de IDs marcados em lista de AjusteProposta. O cálculo do
-  // valor depende do pax atual quando o adicional é por_pessoa.
-  function ajustesDeAdicionais(): { descricao: string; valor: number }[] {
-    if (!pacoteAtual?.adicionais) return [];
-    const pax = parseInt(paxOverride, 10) || lead.numConvidados;
-    return pacoteAtual.adicionais
-      .filter(a => adicionaisMarcados.has(a.id))
-      .map(a => ({
-        descricao: a.precoModo === "por_pessoa" ? `${a.nome} (R$ ${a.preco.toFixed(2)}/p × ${pax})` : a.nome,
-        valor: a.precoModo === "por_pessoa" ? a.preco * pax : a.preco,
-      }));
+  function setLinha(id: string, patch: Partial<LinhaProposta>) {
+    setLinhas(prev => prev.map(l => (l.id === id ? { ...l, ...patch } : l)));
+  }
+  function addLinha(preset?: Partial<LinhaProposta>) {
+    setLinhas(prev => [...prev, novaLinha(preset)]);
+  }
+  function delLinha(id: string) {
+    setLinhas(prev => prev.filter(l => l.id !== id));
   }
 
   async function gerarProposta() {
     if (!podeEditar) return;
     const pacote = pacoteSelecionado ? pacotes.find(p => p.id === pacoteSelecionado) : null;
-    const pax = parseInt(paxOverride, 10) || lead.numConvidados;
-    // Override de R$/pax só faz sentido pra pacote por_pessoa ou proposta livre.
-    // Pra total_fixo, o valor do pacote manda — ignora qualquer resíduo no state.
-    const modoPacote = pacote?.precoModo || "por_pessoa";
-    const precoPax = (modoPacote !== "total_fixo" && precoPaxOverride)
-      ? parseFloat(precoPaxOverride.replace(",", "."))
-      : undefined;
+    // Normaliza numPessoas das linhas por_pessoa (default = pax).
+    const linhasFinais = linhas
+      .filter(l => l.descricao.trim() || l.valor)
+      .map(l => l.tipo === "por_pessoa" ? { ...l, numPessoas: l.numPessoas ?? pax } : { ...l, numPessoas: undefined });
     setCriando(true);
     try {
       await criarProposta({
@@ -98,13 +96,11 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
         pacote: pacote || null,
         espaco,
         numConvidados: pax,
-        precoPorPessoaOverride: precoPax,
-        ajustes: ajustesDeAdicionais(),
+        linhas: linhasFinais,
         criadoPorId: meId,
       });
-      setPaxOverride("");
-      setPrecoPaxOverride("");
-      setAdicionaisMarcados(new Set());
+      setLinhas([]);
+      setMontando(false);
     } catch (e) {
       alert(e instanceof Error ? e.message : "Erro ao gerar proposta");
     } finally {
@@ -117,13 +113,18 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     const restaurantNome = espaco?.nome || "nosso espaço";
     const texto = montarMensagemProposta(p, lead.cliente.nome, restaurantNome);
     const url = `https://api.whatsapp.com/send?phone=${encodeURIComponent(numero)}&text=${encodeURIComponent(texto)}`;
-    // Marca proposta como enviada
     await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({
       enviadaEm: new Date().toISOString(),
       enviadaPor: meId,
       enviadaPorNome: meNome,
     }));
-    // Se lead ainda não tá em "proposta_enviada", avança
+    // Registra no log de tratativas (auto).
+    await registrarTratativa({
+      restaurantId: lead.restaurantId, leadId: lead.id,
+      texto: `Proposta v${p.versao} enviada — R$ ${p.precoTotal.toFixed(2)}`,
+      canal: "whatsapp", porId: meId, porNome: meNome,
+      manual: false, templateKey: "envio_proposta",
+    }).catch(() => { /* log não bloqueia o envio */ });
     if (lead.status === "novo" || lead.status === "qualificado") {
       await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
         status: "proposta_enviada",
@@ -137,33 +138,19 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     if (!podeEditar) return;
     const parcela = p.parcelas[parcelaIdx];
     if (!parcela || parcela.pagaEm) return;
-    const ok = confirm(
-      `Confirmar recebimento de R$ ${parcela.valor.toFixed(2)} (${parcela.descricao})?`
-    );
+    const ok = confirm(`Confirmar recebimento de R$ ${parcela.valor.toFixed(2)} (${parcela.descricao})?`);
     if (!ok) return;
     const now = new Date().toISOString();
     const novasParcelas: ParcelaProposta[] = p.parcelas.map((par, i) =>
-      i === parcelaIdx
-        ? { ...par, pagaEm: now, pagaPor: meId, pagaPorNome: meNome }
-        : par
-    );
-    await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({
-      parcelas: novasParcelas,
-    }));
+      i === parcelaIdx ? { ...par, pagaEm: now, pagaPor: meId, pagaPorNome: meNome } : par);
+    await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({ parcelas: novasParcelas }));
 
-    // Auto-avança o status do lead
     const todasPagas = novasParcelas.every(par => !!par.pagaEm);
     const algumaPaga = novasParcelas.some(par => !!par.pagaEm);
     if (todasPagas && lead.status !== "confirmado" && lead.status !== "realizado") {
-      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
-        status: "confirmado",
-        updatedAt: now,
-      }));
+      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({ status: "confirmado", updatedAt: now }));
     } else if (algumaPaga && lead.status === "proposta_enviada") {
-      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({
-        status: "sinal_recebido",
-        updatedAt: now,
-      }));
+      await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({ status: "sinal_recebido", updatedAt: now }));
     }
     void onAvancarStatus;
   }
@@ -173,159 +160,27 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     const ok = confirm("Desmarcar este pagamento? (não muda status do lead automaticamente)");
     if (!ok) return;
     const novasParcelas: ParcelaProposta[] = p.parcelas.map((par, i) =>
-      i === parcelaIdx
-        ? { ...par, pagaEm: undefined, pagaPor: undefined, pagaPorNome: undefined }
-        : par
-    );
-    await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({
-      parcelas: novasParcelas,
-    }));
+      i === parcelaIdx ? { ...par, pagaEm: undefined, pagaPor: undefined, pagaPorNome: undefined } : par);
+    await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({ parcelas: novasParcelas }));
   }
 
-  // Preview do total que a proposta nova vai ter (antes de gerar).
-  // - Pacote total_fixo: sempre usa o precoTotal (override de R$/pax não se
-  //   aplica — é locação cheia, multiplicar por pax não faz sentido).
-  // - Pacote por_pessoa ou sem pacote: override do vendedor vence; senão
-  //   usa precoPorPessoa do pacote × pax.
-  const totalPreview = useMemo(() => {
-    const pax = parseInt(paxOverride, 10) || lead.numConvidados;
-    const modo = pacoteAtual?.precoModo || "por_pessoa";
-    let base = 0;
-    if (modo === "total_fixo") {
-      base = pacoteAtual ? (pacoteAtual.precoTotal || 0) : 0;
-    } else if (precoPaxOverride) {
-      const v = parseFloat(precoPaxOverride.replace(",", ".")) || 0;
-      base = Math.round(v * pax * 100) / 100;
-    } else {
-      base = pacoteAtual ? pacoteValorTotal(pacoteAtual, pax) : 0;
-    }
-    // Soma adicionais marcados (preview reativo aos checkboxes)
-    const adicionais = (pacoteAtual?.adicionais || [])
-      .filter(a => adicionaisMarcados.has(a.id))
-      .reduce((s, a) => s + (a.precoModo === "por_pessoa" ? a.preco * pax : a.preco), 0);
-    return Math.round((base + adicionais) * 100) / 100;
-  }, [paxOverride, precoPaxOverride, pacoteAtual, lead.numConvidados, adicionaisMarcados]);
+  const editorAberto = propostas.length === 0 || montando;
 
   return (
     <div>
-      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-        💼 Proposta
-      </div>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">💼 Proposta</div>
 
-      {propostas.length === 0 ? (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
-          <div className="text-sm text-gray-600 dark:text-gray-400">
-            Ainda não há proposta gerada. Escolhe um pacote (ou deixa em branco
-            pra montar do zero) e ajusta pax/preço se quiser.
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="sm:col-span-3">
-              <label className="text-[11px] uppercase font-bold text-gray-500">Pacote-base</label>
-              <select
-                value={pacoteSelecionado}
-                onChange={(e) => setPacoteSelecionado(e.target.value)}
-                className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-              >
-                <option value="">— sem pacote (proposta livre) —</option>
-                {pacotesAtivos.map(p => (
-                  <option key={p.id} value={p.id}>{p.nome} · {pacotePrecoLabel(p)}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="text-[11px] uppercase font-bold text-gray-500">Pax</label>
-              <input
-                type="number"
-                value={paxOverride}
-                onChange={(e) => setPaxOverride(e.target.value)}
-                placeholder={String(lead.numConvidados)}
-                className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-              />
-            </div>
-            {/* Campo "Preço/pax R$" só aparece pra pacotes por pessoa OU
-                quando não tem pacote selecionado (proposta livre). Pacotes
-                de valor fixo mostram o valor cheio congelado. */}
-            {pacoteAtual && pacoteAtual.precoModo === "total_fixo" ? (
-              <div>
-                <label className="text-[11px] uppercase font-bold text-gray-500">Valor fixo</label>
-                <div className="mt-1 px-3 py-2 rounded border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-sm text-gray-700 dark:text-gray-300">
-                  💰 R$ {(pacoteAtual.precoTotal || 0).toFixed(2)} <span className="text-[10px] text-gray-500">(locação)</span>
-                </div>
-              </div>
-            ) : (
-              <div>
-                <label className="text-[11px] uppercase font-bold text-gray-500">Preço/pax R$</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={precoPaxOverride}
-                  onChange={(e) => setPrecoPaxOverride(e.target.value)}
-                  placeholder={pacoteAtual ? (pacoteAtual.precoPorPessoa || 0).toFixed(2) : "0.00"}
-                  className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                />
-              </div>
-            )}
-            <div className="flex items-end">
-              <div className="text-sm">
-                <span className="text-gray-500">Total preview: </span>
-                <strong className="text-emerald-700 dark:text-emerald-400">
-                  R$ {totalPreview.toFixed(2)}
-                </strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Adicionais ofertados pelo pacote — checkboxes; marcados viram
-              linhas em proposta.ajustes na hora de gerar. */}
-          {pacoteAtual?.adicionais && pacoteAtual.adicionais.length > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3">
-              <div className="text-[11px] uppercase font-bold text-gray-500 mb-2">Adicionais</div>
-              <div className="space-y-1">
-                {pacoteAtual.adicionais.map(a => (
-                  <label key={a.id} className="flex items-center gap-2 text-sm cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={adicionaisMarcados.has(a.id)}
-                      onChange={(e) => {
-                        setAdicionaisMarcados(prev => {
-                          const next = new Set(prev);
-                          if (e.target.checked) next.add(a.id);
-                          else next.delete(a.id);
-                          return next;
-                        });
-                      }}
-                    />
-                    <span className="flex-1">{a.nome}</span>
-                    <span className="text-emerald-700 dark:text-emerald-400 text-xs tabular-nums">
-                      +R$ {a.preco.toFixed(2)}{a.precoModo === "por_pessoa" ? "/p" : ""}
-                    </span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {podeEditar && (
-            <Button onClick={gerarProposta} disabled={criando}>
-              {criando ? "Gerando..." : "💼 Gerar proposta v1"}
-            </Button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Proposta mais recente em destaque */}
+      {/* Propostas existentes */}
+      {propostas.length > 0 && (
+        <div className="space-y-3 mb-3">
           {propostaAtual && (
             <PropostaCard
-              proposta={propostaAtual}
-              destaque
-              podeEditar={podeEditar}
+              proposta={propostaAtual} destaque podeEditar={podeEditar}
               onEnviar={() => enviarWhatsApp(propostaAtual)}
               onRegistrarPagamento={(i) => registrarPagamento(propostaAtual, i)}
               onDesmarcarPagamento={(i) => desmarcarPagamento(propostaAtual, i)}
             />
           )}
-
-          {/* Versões anteriores */}
           {propostas.length > 1 && (
             <details className="rounded-lg border border-gray-200 dark:border-gray-700 p-2">
               <summary className="cursor-pointer text-xs text-gray-500 dark:text-gray-400">
@@ -334,10 +189,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               <div className="mt-2 space-y-2">
                 {propostas.slice(1).map(p => (
                   <PropostaCard
-                    key={p.id}
-                    proposta={p}
-                    destaque={false}
-                    podeEditar={false}
+                    key={p.id} proposta={p} destaque={false} podeEditar={false}
                     onEnviar={() => enviarWhatsApp(p)}
                     onRegistrarPagamento={() => { /* só na atual */ }}
                     onDesmarcarPagamento={() => { /* só na atual */ }}
@@ -346,60 +198,136 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               </div>
             </details>
           )}
+          {podeEditar && !montando && (
+            <button
+              type="button"
+              onClick={() => { setMontando(true); setLinhas([]); }}
+              className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              + Nova versão da proposta
+            </button>
+          )}
+        </div>
+      )}
 
-          {/* Botão pra nova versão */}
-          {podeEditar && (
-            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2">
-              <div className="text-xs text-gray-500 dark:text-gray-400">
-                Cliente pediu ajuste? Gera uma nova versão a partir do pacote / preço atual.
-              </div>
-              <div className="flex items-end gap-2 flex-wrap">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500">Pacote</label>
-                  <select
-                    value={pacoteSelecionado}
-                    onChange={(e) => setPacoteSelecionado(e.target.value)}
-                    className="block mt-0.5 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  >
-                    <option value="">— sem pacote —</option>
-                    {pacotesAtivos.map(p => (
-                      <option key={p.id} value={p.id}>{p.nome}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-gray-500">Pax</label>
-                  <input
-                    type="number"
-                    value={paxOverride}
-                    onChange={(e) => setPaxOverride(e.target.value)}
-                    placeholder={String(lead.numConvidados)}
-                    className="block mt-0.5 w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                  />
-                </div>
-                {pacoteAtual && pacoteAtual.precoModo === "total_fixo" ? (
-                  <div className="text-xs text-gray-600 dark:text-gray-400 self-end pb-1.5">
-                    💰 R$ {(pacoteAtual.precoTotal || 0).toFixed(2)} fixo
-                  </div>
-                ) : (
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-gray-500">R$/pax</label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={precoPaxOverride}
-                      onChange={(e) => setPrecoPaxOverride(e.target.value)}
-                      placeholder={pacoteAtual ? (pacoteAtual.precoPorPessoa || 0).toFixed(2) : ""}
-                      className="block mt-0.5 w-24 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-                    />
-                  </div>
-                )}
-                <Button size="sm" variant="secondary" onClick={gerarProposta} disabled={criando}>
-                  + Nova versão
-                </Button>
-              </div>
+      {/* Editor de proposta (v1 ou nova versão) */}
+      {podeEditar && editorAberto && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+          {propostas.length === 0 && (
+            <div className="text-sm text-gray-600 dark:text-gray-400">
+              Monte a proposta por linhas — locação fixa, comidas e bebidas por pessoa, etc.
+              Um pacote-base é opcional (traz cardápios e um valor de partida).
             </div>
           )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="sm:col-span-2">
+              <label className="text-[11px] uppercase font-bold text-gray-500">Pacote-base (opcional)</label>
+              <select
+                value={pacoteSelecionado}
+                onChange={(e) => setPacoteSelecionado(e.target.value)}
+                className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              >
+                <option value="">— Personalizado (proposta livre) —</option>
+                {pacotesAtivos.map(p => (
+                  <option key={p.id} value={p.id}>{p.nome} · {pacotePrecoLabel(p)}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[11px] uppercase font-bold text-gray-500">Nº convidados</label>
+              <input
+                type="number" min={1} value={pax}
+                onChange={(e) => setPax(parseInt(e.target.value, 10) || 0)}
+                className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+              />
+            </div>
+          </div>
+
+          {baseDoPacote > 0 && (
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              Base do pacote: <strong className="tabular-nums">R$ {baseDoPacote.toFixed(2)}</strong>
+              <span className="text-gray-400"> (as linhas abaixo somam a isto)</span>
+            </div>
+          )}
+
+          {/* Editor de linhas */}
+          <div className="space-y-2">
+            <div className="text-[11px] uppercase font-bold text-gray-500">Linhas da proposta</div>
+            {linhas.length === 0 && (
+              <p className="text-xs text-gray-500 italic">Nenhuma linha ainda. Adicione abaixo.</p>
+            )}
+            {linhas.map(l => {
+              const tot = linhaPropostaTotal(l);
+              return (
+                <div key={l.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-1.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={l.descricao}
+                      onChange={(e) => setLinha(l.id, { descricao: e.target.value })}
+                      placeholder="Descrição (ex: Locação, Comidas, Bebidas alcoólicas)"
+                      className="flex-1 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    />
+                    <button onClick={() => delLinha(l.id)} className="text-rose-500 hover:text-rose-700 text-sm px-1" title="Remover linha">✕</button>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <select
+                      value={l.tipo}
+                      onChange={(e) => setLinha(l.id, { tipo: e.target.value as LinhaProposta["tipo"] })}
+                      className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
+                    >
+                      <option value="fixo">Valor fixo</option>
+                      <option value="por_pessoa">Por pessoa</option>
+                    </select>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-xs text-gray-400">R$</span>
+                      <input
+                        type="number" step="0.01" min={0} value={l.valor || ""}
+                        onChange={(e) => setLinha(l.id, { valor: parseFloat(e.target.value) || 0 })}
+                        placeholder="0,00"
+                        className="w-24 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right"
+                      />
+                    </span>
+                    {l.tipo === "por_pessoa" && (
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-xs text-gray-400">×</span>
+                        <input
+                          type="number" min={0} value={l.numPessoas ?? pax}
+                          onChange={(e) => setLinha(l.id, { numPessoas: parseInt(e.target.value, 10) || 0 })}
+                          className="w-16 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right"
+                        />
+                        <span className="text-xs text-gray-400">pessoas</span>
+                      </span>
+                    )}
+                    <span className="ml-auto text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
+                      = R$ {tot.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap gap-1.5">
+              <button onClick={() => addLinha({ descricao: "Locação", tipo: "fixo" })} className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">+ Locação (fixo)</button>
+              <button onClick={() => addLinha({ descricao: "Comidas", tipo: "por_pessoa", numPessoas: pax })} className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">+ Comidas (por pessoa)</button>
+              <button onClick={() => addLinha({ descricao: "Bebidas", tipo: "por_pessoa", numPessoas: pax })} className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">+ Bebidas (por pessoa)</button>
+              <button onClick={() => addLinha()} className="text-xs px-2 py-1 rounded-md border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">+ Linha livre</button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
+            <div className="text-sm">
+              <span className="text-gray-500">Total: </span>
+              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalPreview.toFixed(2)}</strong>
+            </div>
+            <div className="flex gap-2">
+              {montando && (
+                <Button size="sm" variant="secondary" onClick={() => { setMontando(false); setLinhas([]); }}>Cancelar</Button>
+              )}
+              <Button onClick={gerarProposta} disabled={criando || totalPreview <= 0}>
+                {criando ? "Gerando…" : propostas.length === 0 ? "💼 Gerar proposta v1" : "💼 Gerar nova versão"}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -426,9 +354,7 @@ function PropostaCard({
     }`}>
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div>
-          <span className="font-bold text-gray-900 dark:text-gray-100">
-            Proposta v{proposta.versao}
-          </span>
+          <span className="font-bold text-gray-900 dark:text-gray-100">Proposta v{proposta.versao}</span>
           {proposta.enviadaEm && (
             <span className="ml-2 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
               ✓ enviada
@@ -442,7 +368,7 @@ function PropostaCard({
           <div className="text-[11px] text-gray-500">
             {proposta.precoPorPessoa > 0
               ? `R$ ${proposta.precoPorPessoa.toFixed(2)} × ${proposta.numConvidados} pax`
-              : `${proposta.numConvidados} pax · valor fechado`}
+              : `${proposta.numConvidados} pax`}
           </div>
         </div>
       </div>
@@ -450,17 +376,27 @@ function PropostaCard({
         {dataBR} · {proposta.slot === "almoco" ? "almoço" : "jantar"} · {proposta.duracaoHoras}h
       </div>
 
-      {/* Cardápios PDF — links pra equipe conferir antes de mandar */}
+      {/* Composição em linhas */}
+      {proposta.linhas && proposta.linhas.length > 0 && (
+        <div className="mt-2 text-xs text-gray-600 dark:text-gray-400 space-y-0.5">
+          {proposta.linhas.map(l => (
+            <div key={l.id} className="flex items-center justify-between gap-2">
+              <span>
+                {l.descricao}
+                {l.tipo === "por_pessoa" && <span className="text-gray-400"> · R$ {l.valor.toFixed(2)}/p × {l.numPessoas || 0}</span>}
+              </span>
+              <span className="tabular-nums">R$ {linhaPropostaTotal(l).toFixed(2)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Cardápios PDF */}
       {(proposta.cardapios?.length || 0) > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {proposta.cardapios.map(c => (
-            <a
-              key={c.id}
-              href={c.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
-            >
+            <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
               📄 {c.nome}
             </a>
           ))}
@@ -473,9 +409,7 @@ function PropostaCard({
           const paga = !!p.pagaEm;
           return (
             <div key={i} className={`flex items-center justify-between gap-2 px-2 py-1.5 rounded text-sm ${
-              paga
-                ? "bg-emerald-100 dark:bg-emerald-900/30"
-                : "bg-gray-50 dark:bg-gray-800/50"
+              paga ? "bg-emerald-100 dark:bg-emerald-900/30" : "bg-gray-50 dark:bg-gray-800/50"
             }`}>
               <div className="flex-1 min-w-0">
                 <div className={paga ? "line-through text-gray-500" : ""}>{p.descricao}</div>
@@ -494,13 +428,9 @@ function PropostaCard({
               <div className="font-bold tabular-nums shrink-0">R$ {p.valor.toFixed(2)}</div>
               {podeEditar && (
                 paga ? (
-                  <button onClick={() => onDesmarcarPagamento(i)} className="text-xs text-rose-600 hover:underline shrink-0">
-                    desmarcar
-                  </button>
+                  <button onClick={() => onDesmarcarPagamento(i)} className="text-xs text-rose-600 hover:underline shrink-0">desmarcar</button>
                 ) : (
-                  <button onClick={() => onRegistrarPagamento(i)} className="text-xs text-indigo-600 hover:underline shrink-0">
-                    registrar
-                  </button>
+                  <button onClick={() => onRegistrarPagamento(i)} className="text-xs text-indigo-600 hover:underline shrink-0">registrar</button>
                 )
               )}
             </div>
@@ -508,7 +438,6 @@ function PropostaCard({
         })}
       </div>
 
-      {/* Ações */}
       {destaque && (
         <div className="mt-3 flex gap-2 flex-wrap">
           <Button size="sm" onClick={onEnviar}>
