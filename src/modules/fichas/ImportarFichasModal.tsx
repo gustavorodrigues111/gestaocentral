@@ -4,7 +4,7 @@
 // insumo (principal + variações c/ % de aproveitamento) + subfichas; (2) receitas
 // (incluir/excluir, categoria em lote) → grava deduplicado.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { doc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, setDoc as setDocFs, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
@@ -12,7 +12,8 @@ import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao } from "../../core/types";
 import { labelUnidade } from "./unidades";
 import { normalizarNome as norm } from "./dedup";
-import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo } from "./importar";
+import { fmtBRDateTime } from "../../core/utils/date";
+import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo, type FichaIA } from "./importar";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const UP = (s: string) => (s || "").trim().toUpperCase();
@@ -48,6 +49,18 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const camRef = useRef<HTMLInputElement | null>(null);
   const temFonte = !!planilhaTexto || anexos.length > 0;
   const catsAtivas = categorias.filter(c => c.ativo !== false);
+  const rascunhoId = meId ? `${rid}_${meId}` : rid;
+  const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number } | null>(null);
+
+  // Carrega rascunho salvo (leitura crua da IA) pra retomar sem gastar IA de novo.
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "ftImportRascunhos", rascunhoId));
+        if (snap.exists()) { const d = snap.data() as { receitasRaw?: FichaIA[]; criadoEm?: string; nReceitas?: number }; if (Array.isArray(d.receitasRaw) && d.receitasRaw.length) setRascunho({ receitasRaw: d.receitasRaw, criadoEm: d.criadoEm || "", nReceitas: d.nReceitas || d.receitasRaw.length }); }
+      } catch { /* sem rascunho */ }
+    })();
+  }, [rascunhoId]);
 
   useEffect(() => {
     if (fase !== "processando") return;
@@ -93,29 +106,48 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setItens(itensIni); setFeito(0); setFase("processando");
     const marcar = (ids: string[], status: "lendo" | "ok" | "erro") => setItens(prev => prev.map(it => ids.includes(it.id) ? { ...it, status } : it));
 
-    // 1ª passada: coleta receitas cruas.
-    const cruas: { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; rendimento: { qtd: number; unidade: string }; ings: { nome: string; qtd: number; unidade: string; qb: boolean; principal: string; variacao: string }[] }[] = [];
+    // 1ª passada (CARA — gasta IA): lê cada unidade e acumula o cru da IA.
+    const todasIA: FichaIA[] = [];
     const errosLote: string[] = [];
     for (const u of unidades) {
       marcar(u.itemIds, "lendo");
       try {
         const ia = await importarFichasIA(u.payload);
-        for (const f of ia) cruas.push({
-          id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true, categoriaId: matchCategoria(f.categoria),
-          rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
-          ings: (f.ingredientes || []).filter(ing => ing.nome && !RUIDO.has(norm(ing.nome))).map(ing => ({ nome: UP(ing.nome), qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, principal: UP(ing.insumoPrincipal || ing.nome), variacao: UP(ing.variacao || "") })),
-        });
+        for (const f of ia) todasIA.push(f);
         marcar(u.itemIds, "ok");
       } catch (e) { marcar(u.itemIds, "erro"); errosLote.push(e instanceof Error ? e.message : String(e)); }
       setFeito(f => f + u.itemIds.length);
     }
-    if (cruas.length === 0) { setErro(errosLote[0] || "A IA não encontrou nenhuma receita."); setFase("upload"); return; }
+    if (todasIA.length === 0) { setErro(errosLote[0] || "A IA não encontrou nenhuma receita."); setFase("upload"); return; }
 
-    // Nomes das receitas do lote → pra reconhecer subfichas.
+    // Salva o cru como rascunho: reprocessar depois (mudanças de código no
+    // cliente) NÃO gasta IA de novo — só "Reler com IA" refaz a leitura.
+    try {
+      await setDocFs(doc(db, "ftImportRascunhos", rascunhoId), sanitizeForFirestore({
+        id: rascunhoId, restaurantId: rid, criadoPor: meId || null, criadoPorNome: meNome || null,
+        criadoEm: new Date().toISOString(), nReceitas: todasIA.length, receitasRaw: todasIA,
+      }));
+      setRascunho({ receitasRaw: todasIA, criadoEm: new Date().toISOString(), nReceitas: todasIA.length });
+    } catch { /* rascunho é best-effort; não bloqueia a revisão */ }
+
+    const { fichasRev, princ, subN } = processarIA(todasIA);
+    setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
+    if (errosLote.length) setErro(`${errosLote.length} parte(s) falharam e ficaram de fora.`);
+    setFase("revisao");
+  }
+
+  // Transforma o cru da IA em dados de revisão (filtro de ruído, agrupamento por
+  // insumo principal + variações, detecção de subficha). SEM IA — roda offline,
+  // então mudar essa lógica e "Retomar" o rascunho não gasta nada.
+  function processarIA(iaList: FichaIA[]): { fichasRev: FichaRev[]; princ: Record<string, Principal>; subN: Record<string, string> } {
+    const cruas = iaList.map(f => ({
+      id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true, categoriaId: matchCategoria(f.categoria),
+      rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
+      ings: (f.ingredientes || []).filter(ing => ing.nome && !RUIDO.has(norm(ing.nome))).map(ing => ({ nome: UP(ing.nome), qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, principal: UP(ing.insumoPrincipal || ing.nome), variacao: UP(ing.variacao || "") })),
+    }));
     const fichaPorNome = new Map<string, string>();
     for (const c of cruas) fichaPorNome.set(norm(c.nome), c.id);
     const subN: Record<string, string> = {};
-
     const princ: Record<string, Principal> = {};
     const fichasRev: FichaRev[] = cruas.map(c => ({
       id: c.id, nome: c.nome, ehSubficha: c.ehSubficha, categoriaId: c.categoriaId, incluir: true, rendimento: c.rendimento,
@@ -134,10 +166,21 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         return { id: uid("ing"), qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb, principalKey: pk, variacaoNorm: vNorm, subfichaFichaId: null };
       }),
     }));
+    return { fichasRev, princ, subN };
+  }
 
+  // Retoma o rascunho salvo: reprocessa o cru da IA (grátis) e vai pra revisão.
+  function retomarRascunho() {
+    if (!rascunho) return;
+    setErro("");
+    const { fichasRev, princ, subN } = processarIA(rascunho.receitasRaw);
     setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
-    if (errosLote.length) setErro(`${errosLote.length} parte(s) falharam e ficaram de fora.`);
     setFase("revisao");
+  }
+
+  async function descartarRascunho() {
+    try { await deleteDoc(doc(db, "ftImportRascunhos", rascunhoId)); } catch { /* ignore */ }
+    setRascunho(null);
   }
 
   // edições
@@ -228,6 +271,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         } as FtFicha));
       }
       await batch.commit();
+      try { await deleteDoc(doc(db, "ftImportRascunhos", rascunhoId)); } catch { /* rascunho já foi consumido */ }
       onClose();
     } catch (e) { setErro(e instanceof Error ? e.message : String(e)); setFase("revisao"); }
   }
@@ -236,6 +280,16 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     <Modal title="Importar receita (IA)" onClose={onClose} maxWidth="max-w-3xl">
       {fase === "upload" && (
         <div className="py-1" onPaste={onPaste}>
+          {rascunho && (
+            <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-900/20 p-3">
+              <div className="text-sm font-medium text-indigo-800 dark:text-indigo-200">📌 Leitura salva: {rascunho.nReceitas} receita{rascunho.nReceitas === 1 ? "" : "s"}</div>
+              <div className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">Lida em {rascunho.criadoEm ? fmtBRDateTime(rascunho.criadoEm) : "—"}. Retome a revisão sem gastar IA de novo.</div>
+              <div className="flex flex-wrap gap-2 mt-2">
+                <Button onClick={retomarRascunho}>↩️ Retomar revisão</Button>
+                <Button variant="secondary" onClick={() => void descartarRascunho()}>🗑️ Descartar</Button>
+              </div>
+            </div>
+          )}
           <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,application/pdf,image/*" multiple className="hidden" onChange={e => { if (e.target.files) void addArquivos(e.target.files); e.currentTarget.value = ""; }} />
           <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { if (e.target.files) void addArquivos(e.target.files); e.currentTarget.value = ""; }} />
           <div className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-6 text-center">
