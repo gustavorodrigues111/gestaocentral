@@ -105,15 +105,26 @@ export function FichasPage() {
   );
 }
 
-// Protege contra docs do schema antigo (sem rendimento/ingredientes/ehSubficha).
+// Normaliza/MIGRA docs do schema antigo (ingredientes dentro de `subfichas`,
+// `rendimentoFinal`, `tipo`) pro modelo novo (ingredientes plano + ehSubficha).
 function normFicha(f: FtFicha): FtFicha {
-  return {
-    ...f,
-    ehSubficha: !!f.ehSubficha,
-    categoriaId: f.categoriaId ?? null,
-    rendimento: f.rendimento && typeof f.rendimento.qtd === "number" ? f.rendimento : { qtd: 1, unidade: "porção" },
-    ingredientes: Array.isArray(f.ingredientes) ? f.ingredientes : [],
-  };
+  const raw = f as unknown as Record<string, unknown>;
+  const rendimentoFinal = raw.rendimentoFinal as { qtd?: number; unidade?: string } | undefined;
+  const rendimento = f.rendimento && typeof f.rendimento.qtd === "number"
+    ? f.rendimento
+    : (rendimentoFinal && typeof rendimentoFinal.qtd === "number" ? (rendimentoFinal as { qtd: number; unidade: string }) : { qtd: 1, unidade: "porção" });
+
+  let ingredientes: FtIngrediente[] = Array.isArray(f.ingredientes) ? f.ingredientes : [];
+  if (ingredientes.length === 0 && Array.isArray(raw.subfichas)) {
+    // Achata os ingredientes que estavam dentro das subfichas (etapas) antigas.
+    ingredientes = (raw.subfichas as Array<{ ingredientes?: FtIngrediente[] }>).flatMap(sf =>
+      (sf.ingredientes || []).map(ing => ({ ...ing, tipo: ing.tipo === "insumo" ? "insumo" : "ficha" })) as FtIngrediente[]);
+  }
+  const ehSubficha = f.ehSubficha != null ? !!f.ehSubficha : raw.tipo === "subproduto";
+
+  const out = { ...f, ehSubficha, categoriaId: f.categoriaId ?? null, rendimento, ingredientes } as Record<string, unknown>;
+  delete out.subfichas; delete out.rendimentoFinal; delete out.tipo;
+  return out as unknown as FtFicha;
 }
 
 function novaFicha(rid: string, ehSubficha: boolean, meId?: string, meNome?: string): FtFicha {
