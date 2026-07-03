@@ -14,7 +14,7 @@ import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
-import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
+import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
@@ -652,21 +652,29 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
           </div>
         ))}
       </ListaCard>
-      {editar && <EditarCustoModal insumo={editar} meId={meId} onClose={() => setEditar(null)} />}
+      {editar && <EditarCustoModal insumo={editar} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
       {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
 
-function EditarCustoModal({ insumo, meId, onClose }: { insumo: FtInsumo; meId?: string; onClose: () => void }) {
+function EditarCustoModal({ insumo, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
   const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
   const cNum = parseMoeda(custo);
+  const precoForn = useMemo(() => precosPorFornecedor(insumo.id, recebimentos, vinculos), [insumo.id, recebimentos, vinculos]);
+  const serie = (insumo.historicoCusto || []).filter(h => h.custo > 0).map(h => h.custo);
   function addVar() { setVariacoes(v => [...v, { id: uid("var"), nome: "", fc: 100 }]); }
   function patchVar(id: string, patch: Partial<FtInsumoVariacao>) { setVariacoes(v => v.map(x => x.id === id ? { ...x, ...patch } : x)); }
+  async function aplicarDoFornecedor(pf: { custoBase: number; data: string; fornecedor: string; notaId: string; notaNumero: string }) {
+    const nova: FtHistoricoCusto = { custo: pf.custoBase, data: pf.data, por: meId || null, origem: "recebimento", fornecedor: pf.fornecedor || null, notaId: pf.notaId || null, notaNumero: pf.notaNumero || null };
+    const hist = [...(insumo.historicoCusto || []), nova].slice(-20);
+    await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: pf.custoBase, custoAtualizadoEm: pf.data, historicoCusto: hist }));
+    setCusto(maskMoeda(String(Math.round(pf.custoBase * 100))));
+  }
   async function salvar() {
     const c = parseMoeda(custo); const now = new Date().toISOString();
     const hist = [...(insumo.historicoCusto || [])];
@@ -704,9 +712,28 @@ function EditarCustoModal({ insumo, meId, onClose }: { insumo: FtInsumo; meId?: 
           </div>
         </div>
 
+        {precoForn.length > 0 && (
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Preço por fornecedor <span className="font-normal text-gray-400">(último de cada · convertido pra {labelUnidade(insumo.unidadeBase)})</span></div>
+            <div className="space-y-1">
+              {precoForn.map((pf, i) => (
+                <div key={pf.fornecedor + i} className={`flex items-center gap-2 text-xs rounded-lg px-2 py-1.5 ${i === 0 ? "bg-emerald-50 dark:bg-emerald-900/20" : ""}`}>
+                  <span className="flex-1 truncate text-gray-700 dark:text-gray-200">{pf.fornecedor}{i === 0 && precoForn.length > 1 && <span className="ml-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400">MELHOR</span>}</span>
+                  <span className="text-[10px] text-gray-400">{fmtBR(pf.data)}</span>
+                  <span className="tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(pf.custoBase)}</span>
+                  <button type="button" onClick={() => void aplicarDoFornecedor(pf)} className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30">usar</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {(insumo.historicoCusto || []).length > 0 && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Histórico de preço</div>
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Histórico de preço</div>
+              {serie.length > 1 && <Sparkline valores={serie} />}
+            </div>
             <div className="space-y-0.5 max-h-40 overflow-y-auto">
               {[...(insumo.historicoCusto || [])].reverse().slice(0, 10).map((h, i) => (
                 <div key={i} className="flex items-center gap-2 text-[11px]">
@@ -971,6 +998,22 @@ function CampoMoeda({ label, value, onChange }: { label: string; value: string; 
         <input value={value} onChange={onChange} inputMode="numeric" placeholder="0,00" className="w-full py-2 bg-transparent text-right text-sm outline-none dark:text-gray-100" />
       </div>
     </div>
+  );
+}
+function Sparkline({ valores }: { valores: number[] }) {
+  if (valores.length < 2) return null;
+  const w = 110, h = 24, pad = 2;
+  const min = Math.min(...valores), max = Math.max(...valores), range = max - min || 1;
+  const pts = valores.map((v, i) => {
+    const x = pad + (i / (valores.length - 1)) * (w - 2 * pad);
+    const y = h - pad - ((v - min) / range) * (h - 2 * pad);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
+  const cor = valores[valores.length - 1] >= valores[0] ? "#e11d48" : "#059669"; // subiu=rosa, caiu=verde
+  return (
+    <svg width={w} height={h} aria-hidden="true">
+      <polyline points={pts} fill="none" stroke={cor} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   );
 }
 function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {

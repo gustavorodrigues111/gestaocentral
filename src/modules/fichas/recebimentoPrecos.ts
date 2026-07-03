@@ -162,6 +162,30 @@ function melhorInsumo(descricao: string, insumos: FtInsumo[]): { insumo: FtInsum
   return null;
 }
 
+// Preço mais recente de CADA fornecedor pra um insumo (convertido pra base via
+// o fator do vínculo). Ordenado do mais barato → destaca o melhor preço.
+export type PrecoFornecedor = { fornecedor: string; custoBase: number; data: string; unidadeNota: string; valorUnitario: number; notaId: string; notaNumero: string };
+export function precosPorFornecedor(insumoId: string, recebimentos: RecebimentoNota[], vinculos: FtVinculoRecebimento[]): PrecoFornecedor[] {
+  const vincs = vinculos.filter(v => v.insumoId === insumoId && !v.ignorar);
+  if (vincs.length === 0) return [];
+  const descs = new Set(vincs.map(v => v.descricaoNorm));
+  const fatorDe = (descNorm: string, forn: string) => {
+    const exato = vincs.find(v => v.descricaoNorm === descNorm && fornKey(v.fornecedor) === fornKey(forn));
+    return (exato || vincs.find(v => v.descricaoNorm === descNorm))?.fatorParaBase || 0;
+  };
+  const byForn = new Map<string, PrecoFornecedor>();
+  for (const p of coletarPrecos(recebimentos)) {
+    if (!descs.has(p.descricaoNorm)) continue;
+    const fator = fatorDe(p.descricaoNorm, p.fornecedor);
+    if (!(fator > 0)) continue;
+    const custoBase = custoNaBase(p.valorUnitario, fator);
+    const k = fornKey(p.fornecedor);
+    const cur = byForn.get(k);
+    if (!cur || (p.data || "") > cur.data) byForn.set(k, { fornecedor: p.fornecedor || "—", custoBase, data: p.data, unidadeNota: p.unidade, valorUnitario: p.valorUnitario, notaId: p.notaId, notaNumero: p.notaNumero });
+  }
+  return [...byForn.values()].sort((a, b) => a.custoBase - b.custoBase);
+}
+
 // Impacto no CMV: fichas (diretas ou via subficha) que usam o insumo, com o
 // custo antes/depois de aplicar o novo preço.
 export type ImpactoFicha = { ficha: FtFicha; antes: number; depois: number };
