@@ -70,8 +70,10 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
   const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
   const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number; varExistNorm: string } | null>(null);
-  // Ao fechar um sub-painel (mesclar/dissolver), restaura o scroll da lista.
-  useEffect(() => { if (!dissolver && !mescla && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla]);
+  const [escolher, setEscolher] = useState<{ subfichaId: string; modo: "subproduto" | "mesclar" } | null>(null);
+  const [buscaEscolher, setBuscaEscolher] = useState("");
+  // Ao fechar um sub-painel (mesclar/dissolver/escolher), restaura o scroll.
+  useEffect(() => { if (!dissolver && !mescla && !escolher && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla, escolher]);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -400,6 +402,16 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
   }
 
+  // Etapa 1 da reclassificação: escolhe a AÇÃO; a ficha-alvo vem no painel.
+  function abrirEscolher(subfichaId: string, modo: "subproduto" | "mesclar") { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaEscolher(""); setEscolher({ subfichaId, modo }); }
+  function escolherAlvo(targetId: string) {
+    if (!escolher) return;
+    const sid = escolher.subfichaId, modo = escolher.modo;
+    setEscolher(null);
+    if (modo === "subproduto") subfichaViraSubproduto(sid, targetId);
+    else abrirMescla(sid, targetId);
+  }
+
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
@@ -453,15 +465,11 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         </div>
         {f.ehSubficha && (
           <div className="mt-1.5 pl-6">
-            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); else if (v.startsWith("subprod:")) subfichaViraSubproduto(f.id, v.slice(8)); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[220px]">
+            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v === "__subproduto__") abrirEscolher(f.id, "subproduto"); else if (v === "__mesclar__") abrirEscolher(f.id, "mesclar"); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[260px]">
               <option value="">reclassificar…</option>
               <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
-              {fichas.filter(o => o.id !== f.id).length > 0 && (
-                <optgroup label="↦ é subproduto de…">{fichas.filter(o => o.id !== f.id).sort((a, b) => a.nome.localeCompare(b.nome)).map(o => <option key={o.id} value={`subprod:${o.id}`}>{o.nome}</option>)}</optgroup>
-              )}
-              {subfichas.filter(o => o.id !== f.id).length > 0 && (
-                <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
-              )}
+              {fichas.filter(o => o.id !== f.id).length > 0 && <option value="__subproduto__">↦ é subproduto de outra ficha</option>}
+              {subfichas.filter(o => o.id !== f.id).length > 0 && <option value="__mesclar__">⇄ é a mesma que outra subficha</option>}
             </select>
           </div>
         )}
@@ -583,6 +591,32 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={() => setDissolver(null)}>Cancelar</Button>
           <Button onClick={() => dissolver.modo === "variacao" ? dissolverEmVariacao(sf.id, dissolver.principalKey, dissolver.varNome, dissolver.fc) : dissolverEmInsumo(sf.id)} disabled={dissolver.modo === "variacao" && (!dissolver.principalKey || !dissolver.varNome.trim())}>Confirmar</Button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderEscolher = () => {
+    if (!escolher) return null;
+    const sf = fichas.find(f => f.id === escolher.subfichaId);
+    if (!sf) return null;
+    const candidatos = (escolher.modo === "subproduto" ? fichas : subfichas)
+      .filter(o => o.id !== escolher.subfichaId)
+      .filter(o => !buscaEscolher.trim() || norm(o.nome).includes(norm(buscaEscolher)))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    return (
+      <div>
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">{escolher.modo === "subproduto" ? <>De qual preparo “{sf.nome}” é subproduto?</> : <>“{sf.nome}” é a mesma que qual subficha?</>}</div>
+        <p className="text-[11px] text-gray-400 mb-2">{escolher.modo === "subproduto" ? "Escolha o preparo que gera esta como coproduto (o % você ajusta depois na tela de Fichas)." : "Escolha a subficha duplicada — na próxima tela você confirma nome e conteúdo."}</p>
+        <input autoFocus value={buscaEscolher} onChange={e => setBuscaEscolher(e.target.value)} placeholder="🔎 buscar…" className="w-full text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 mb-2" />
+        <div className="max-h-[40vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {candidatos.map(o => (
+            <button key={o.id} type="button" onClick={() => escolherAlvo(o.id)} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200">{o.nome} <span className="text-[11px] text-gray-400">· rende {o.rendimento.qtd} {labelUnidade(o.rendimento.unidade)}</span></button>
+          ))}
+          {candidatos.length === 0 && <div className="px-3 py-6 text-center text-sm text-gray-400 italic">Nada encontrado.</div>}
+        </div>
+        <div className="flex justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={() => setEscolher(null)}>Cancelar</Button>
         </div>
       </div>
     );
@@ -756,7 +790,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             )}
 
             {/* PASSO 2 — Subfichas (detectadas + promovidas) */}
-            {passo === 2 && (mescla ? renderMescla() : dissolver ? renderDissolver() : (
+            {passo === 2 && (mescla ? renderMescla() : dissolver ? renderDissolver() : escolher ? renderEscolher() : (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final, ou use <em>mesclar com…</em> pra juntar duplicadas.</p>
                 {subfichas.length > 0 && (
