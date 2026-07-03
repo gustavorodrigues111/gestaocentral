@@ -23,7 +23,6 @@ import {
   ouvirTipos, salvarTipo, excluirTipo, gerarSubtarefasTemplateDefault,
   criarExame, darBaixa, desativarExame, reativarExame,
 } from "./repository";
-import { gerarTarefasDeExames } from "./gerador";
 import type {
   ExameTipoConfig, ExameEmpregado, Empregado, Cargo,
 } from "../../core/types";
@@ -44,7 +43,6 @@ export function ExamesPage() {
   const [lancarPrefill, setLancarPrefill] = useState<{ empregado: Empregado; tipo: ExameTipoConfig } | null>(null);
   const [exameSelecionado, setExameSelecionado] = useState<ExameEmpregado | null>(null);
   const [lancandoNovo, setLancandoNovo] = useState(false);
-  const [gerando, setGerando] = useState(false);
 
   // Listeners
   useEffect(() => {
@@ -67,19 +65,6 @@ export function ExamesPage() {
 
   const ativos = useMemo(() => exames.filter(e => e.ativo), [exames]);
 
-  async function rodarGerador() {
-    if (!pessoa) return;
-    setGerando(true);
-    try {
-      const r = await gerarTarefasDeExames({ id: pessoa.id, nome: pessoa.nome });
-      alert(`Geração de exames:\n• ${r.geradas} tarefa(s)-pai criada(s)\n• ${r.jaExistiam} já existiam\n${r.erros.length ? `• ${r.erros.length} erro(s)` : ""}`);
-    } catch (e) {
-      alert("Erro: " + String(e));
-    } finally {
-      setGerando(false);
-    }
-  }
-
   if (!rid) {
     return <div className="text-center py-12 text-gray-500">Selecione um restaurante.</div>;
   }
@@ -88,11 +73,6 @@ export function ExamesPage() {
     <div className="max-w-7xl mx-auto p-4">
       <header className="flex items-center justify-between mb-4 gap-2">
         <div className="flex gap-2">
-          {pessoa?.isMaster && (
-            <Button size="sm" variant="ghost" onClick={rodarGerador} disabled={gerando} title="Cria automaticamente tarefas no módulo Tarefas para agendar os exames que estão entrando no prazo (janela de antecedência configurada). Não duplica tarefas já criadas.">
-              {gerando ? "Gerando…" : "📋 Gerar tarefas de agendamento"}
-            </Button>
-          )}
           <Button onClick={() => setLancandoNovo(true)}>+ Lançar exame</Button>
         </div>
       </header>
