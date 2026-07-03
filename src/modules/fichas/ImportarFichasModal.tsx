@@ -10,7 +10,7 @@ import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtFicha, FtIngrediente, FtInsumo } from "../../core/types";
 import { labelUnidade } from "./unidades";
 import { normalizarNome } from "./dedup";
-import { fileParaAnexo, importarFichasIA, planilhaParaTexto, resolverIngrediente, type Anexo, type IngredienteResol } from "./importar";
+import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo, type IngredienteResol } from "./importar";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -28,9 +28,11 @@ const CHIP: Record<string, string> = {
 export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, onClose }: {
   rid: string; insumos: FtInsumo[]; categorias: FtCategoria[]; meId?: string; meNome?: string; onClose: () => void;
 }) {
-  const [fase, setFase] = useState<"upload" | "lendo" | "revisao" | "gravando">("upload");
+  const [fase, setFase] = useState<"upload" | "processando" | "revisao" | "gravando">("upload");
   const [erro, setErro] = useState("");
   const [fichas, setFichas] = useState<FichaRev[]>([]);
+  const [itens, setItens] = useState<{ id: string; nome: string; status: "pendente" | "lendo" | "ok" | "erro" }[]>([]);
+  const [feito, setFeito] = useState(0);
   const [planilhaTexto, setPlanilhaTexto] = useState("");
   const [planilhaNome, setPlanilhaNome] = useState("");
   const [anexos, setAnexos] = useState<Anexo[]>([]);
@@ -68,24 +70,74 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     }
   }
 
+  // Reconhece o que tem no documento (blocos da planilha + anexos), processa em
+  // lotes com progresso, e vai marcando cada receita conforme é lida.
   async function analisar() {
     if (!temFonte) return;
-    setErro(""); setFase("lendo");
-    try {
-      const ia = await importarFichasIA({ planilha: planilhaTexto, anexos });
-      if (ia.length === 0) throw new Error("A IA não encontrou nenhuma receita. Tente uma imagem mais nítida ou outro arquivo.");
-      let k = 0;
-      const rev: FichaRev[] = ia.map(f => ({
-        id: uid("fic"),
-        nome: f.nome || "(sem nome)",
-        ehSubficha: f.ehSubficha ?? true,
-        categoriaId: matchCategoria(f.categoria),
-        rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
-        ingredientes: (f.ingredientes || []).map(ing => resolverIngrediente(ing, insumos, k++)),
-      }));
-      setFichas(rev);
-      setFase("revisao");
-    } catch (e) { setErro(e instanceof Error ? e.message : String(e)); setFase("upload"); }
+    setErro("");
+    const LOTE = 3;
+    // 1) reconhecimento local (sem IA).
+    const blocos = planilhaTexto ? dividirEmBlocos(planilhaTexto) : [];
+    type Unidade = { itemIds: string[]; payload: { planilha?: string; anexos?: Anexo[] } };
+    const unidades: Unidade[] = [];
+    const itensIniciais: { id: string; nome: string; status: "pendente" }[] = [];
+
+    if (blocos.length > 1) {
+      const comId = blocos.map(b => ({ id: uid("it"), nome: nomeDoBloco(b), bloco: b }));
+      comId.forEach(x => itensIniciais.push({ id: x.id, nome: x.nome, status: "pendente" }));
+      for (let i = 0; i < comId.length; i += LOTE) {
+        const grupo = comId.slice(i, i + LOTE);
+        unidades.push({ itemIds: grupo.map(g => g.id), payload: { planilha: grupo.map(g => g.bloco).join("\n\n") } });
+      }
+    } else if (planilhaTexto.trim()) {
+      const id = uid("it");
+      itensIniciais.push({ id, nome: planilhaNome || "planilha", status: "pendente" });
+      unidades.push({ itemIds: [id], payload: { planilha: planilhaTexto } });
+    }
+    for (const a of anexos) {
+      const id = uid("it");
+      itensIniciais.push({ id, nome: a.nome, status: "pendente" });
+      unidades.push({ itemIds: [id], payload: { anexos: [a] } });
+    }
+
+    setItens(itensIniciais);
+    setFeito(0);
+    setFase("processando");
+
+    // 2) processa cada unidade, atualizando status.
+    const marcar = (ids: string[], status: "lendo" | "ok" | "erro") =>
+      setItens(prev => prev.map(it => ids.includes(it.id) ? { ...it, status } : it));
+
+    const coletadas: FichaRev[] = [];
+    const errosLote: string[] = [];
+    let k = 0;
+    for (const u of unidades) {
+      marcar(u.itemIds, "lendo");
+      try {
+        const ia = await importarFichasIA(u.payload);
+        for (const f of ia) {
+          coletadas.push({
+            id: uid("fic"), nome: f.nome || "(sem nome)", ehSubficha: f.ehSubficha ?? true,
+            categoriaId: matchCategoria(f.categoria), rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
+            ingredientes: (f.ingredientes || []).map(ing => resolverIngrediente(ing, insumos, k++)),
+          });
+        }
+        marcar(u.itemIds, "ok");
+      } catch (e) {
+        marcar(u.itemIds, "erro");
+        errosLote.push(e instanceof Error ? e.message : String(e));
+      }
+      setFeito(f => f + 1);
+    }
+
+    if (coletadas.length === 0) {
+      setErro(errosLote[0] || "A IA não encontrou nenhuma receita. Tente arquivos mais nítidos.");
+      setFase("upload");
+      return;
+    }
+    setFichas(coletadas);
+    if (errosLote.length) setErro(`${errosLote.length} parte(s) falharam e ficaram de fora — o resto foi lido.`);
+    setFase("revisao");
   }
 
   function setMatch(fichaId: string, ingId: string, valor: string) {
@@ -174,10 +226,30 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         </div>
       )}
 
-      {fase === "lendo" && (
-        <div className="text-center py-12 text-gray-500">
-          <div className="text-3xl mb-3 animate-pulse">🤖</div>
-          Lendo a receita e estruturando… <span className="block text-xs text-gray-400 mt-1">(pode levar alguns segundos)</span>
+      {fase === "processando" && (
+        <div className="py-2">
+          <div className="flex items-center justify-between text-sm mb-2">
+            <span className="font-medium text-gray-700 dark:text-gray-200">Lendo {itens.length} receita(s)…</span>
+            <span className="text-xs text-gray-400">{feito}/{itens.length}</span>
+          </div>
+          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden mb-3">
+            <div className="h-full bg-indigo-600 transition-all" style={{ width: `${itens.length ? Math.round((feito / itens.length) * 100) : 0}%` }} />
+          </div>
+          <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+            {itens.map(it => (
+              <div key={it.id} className="flex items-center gap-2 text-sm px-2 py-1.5 rounded-lg">
+                <span className="w-5 text-center shrink-0">
+                  {it.status === "ok" ? <span className="text-emerald-600">✓</span>
+                    : it.status === "erro" ? <span className="text-red-500">✕</span>
+                    : it.status === "lendo" ? <span className="inline-block animate-spin">◌</span>
+                    : <span className="text-gray-300">•</span>}
+                </span>
+                <span className={`flex-1 min-w-0 truncate ${it.status === "ok" ? "text-gray-800 dark:text-gray-200" : it.status === "lendo" ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>{it.nome}</span>
+                {it.status === "lendo" && <span className="text-[10px] text-indigo-400 shrink-0">lendo…</span>}
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-gray-400 mt-3">Processando em partes pra não travar — pode levar um tempo se forem muitas receitas.</p>
         </div>
       )}
 

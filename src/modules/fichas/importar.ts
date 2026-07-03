@@ -50,6 +50,30 @@ export async function fileParaAnexo(file: File): Promise<Anexo> {
   return { data, mediaType, nome: file.name || (isPdf ? "documento.pdf" : "imagem") };
 }
 
+// Divide o texto da planilha em blocos, um por "Preparo" (cada bloco = uma
+// receita). Preserva o cabeçalho da aba. Se não achar marcadores, retorna [].
+export function dividirEmBlocos(planilha: string): string[] {
+  const linhas = planilha.split("\n");
+  const blocos: string[] = [];
+  let atual: string[] = [];
+  const push = () => { if (atual.some(l => /Preparo\s*\|/i.test(l))) blocos.push(atual.join("\n").trim()); };
+  for (const l of linhas) {
+    if (/^===\s*Aba:/i.test(l)) continue;          // ignora marcador de aba
+    if (/^\s*Preparo\s*\|/i.test(l)) { push(); atual = [l]; }
+    else atual.push(l);
+  }
+  push();
+  return blocos.filter(b => b.length > 0);
+}
+
+// Extrai o nome do preparo da linha "Preparo | <nome> | ..." de um bloco.
+export function nomeDoBloco(bloco: string): string {
+  const linha = bloco.split("\n").find(l => /^\s*Preparo\s*\|/i.test(l));
+  if (!linha) return "(sem nome)";
+  const partes = linha.split("|").map(s => s.trim()).filter(Boolean);
+  return partes[1] || partes[0] || "(sem nome)";
+}
+
 export async function importarFichasIA(payload: { planilha?: string; anexos?: Anexo[] }): Promise<FichaIA[]> {
   const anexos = (payload.anexos || []).map(a => ({ data: a.data, mediaType: a.mediaType }));
   const resp = await fetch("/api/importar-fichas", {
