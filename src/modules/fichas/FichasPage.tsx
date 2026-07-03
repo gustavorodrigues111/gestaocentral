@@ -279,8 +279,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     <div className="max-w-5xl mx-auto p-4">
       <div className="flex items-center gap-2 mb-4">
         <button type="button" onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">← Voltar</button>
-        <div className="ml-auto flex gap-2">
-          <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir</Button>
+        <div className="ml-auto">
           <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
         </div>
       </div>
@@ -396,6 +395,11 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
             </div>
           )}
         </div>
+      </div>
+
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
+        <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir ficha</Button>
+        <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
       </div>
     </div>
   );
@@ -1158,7 +1162,7 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
       <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
         {doTipo(t).map(c => (
           <div key={c.id} onClick={() => setEditar(c)} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" title="Editar categoria">
-            <span className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">🏷️</span>
+            <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t === "ficha" ? "bg-indigo-100 dark:bg-indigo-900/40" : "bg-purple-100 dark:bg-purple-900/40"}`}>{t === "ficha" ? "🍽️" : "🧩"}</span>
             <span className="flex-1 text-gray-900 dark:text-gray-100">{c.nome}</span>
             {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
             <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
