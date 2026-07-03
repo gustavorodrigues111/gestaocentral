@@ -53,6 +53,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   type RevSnap = { fichas: FichaRev[]; principais: Record<string, Principal>; subNomes: Record<string, string> };
   const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number; revisao?: RevSnap } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -141,7 +142,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     const { fichasRev, princ, subN } = processarIA(todasIA);
     setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
     if (errosLote.length) setErro(`${errosLote.length} parte(s) falharam e ficaram de fora.`);
-    setFase("revisao");
+    setPasso(1); setFase("revisao");
   }
 
   // Transforma o cru da IA em dados de revisão (filtro de ruído, agrupamento por
@@ -174,7 +175,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         return { id: uid("ing"), qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb, principalKey: pk, variacaoNorm: vNorm, subfichaFichaId: null };
       }),
     }));
-    return { fichasRev, princ, subN };
+    // Toda ficha referenciada como ingrediente de outra é subficha (passo 2).
+    const refSet = new Set(Object.keys(subN));
+    return { fichasRev: fichasRev.map(f => refSet.has(f.id) ? { ...f, ehSubficha: true } : f), princ, subN };
   }
 
   // Retoma o rascunho salvo. Se há revisão editada salva, restaura ela (mantém
@@ -188,7 +191,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       const { fichasRev, princ, subN } = processarIA(rascunho.receitasRaw);
       setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
     }
-    setFase("revisao");
+    setPasso(1); setFase("revisao");
   }
 
   async function descartarRascunho() {
@@ -294,6 +297,41 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     return { casado, novo, conferir, subs: subLista.length, insumos: principaisLista.length };
   }, [principaisLista, subLista]);
   const nSel = fichas.filter(f => f.incluir).length;
+  // Split do wizard: passo 2 = subfichas, passo 3 = fichas finais (pratos/drinks).
+  const subfichas = useMemo(() => fichas.filter(f => f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
+  const fichasFinais = useMemo(() => fichas.filter(f => !f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
+  const usoComoSub = useMemo(() => { const c: Record<string, number> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1; return c; }, [fichas]);
+
+  const renderCard = (f: FichaRev) => (
+    <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
+      <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 flex-wrap">
+        <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
+        <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[120px] bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
+        {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
+        <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
+        <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+        <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+      </div>
+      <div className="p-2.5 space-y-1">
+        {f.ingredientes.map(ing => {
+          const sub = ing.subfichaFichaId ? subNomes[ing.subfichaFichaId] : null;
+          const p = ing.principalKey ? principais[ing.principalKey] : undefined;
+          const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
+          const nome = sub || (p ? p.nome : "?");
+          return (
+            <div key={ing.id} className="flex items-center gap-2 text-sm">
+              <span className="w-28 sm:w-56 shrink-0 truncate text-gray-700 dark:text-gray-200">{nome}{v && <span className="text-indigo-600 dark:text-indigo-400"> ↳ {v.nome}</span>}</span>
+              <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
+              <div className="flex-1" />
+              {sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
+                : <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP[p?.status || "novo"]}`}>{(p?.status || "novo") === "casado" ? "reconhecido" : (p?.status || "novo")}</span>}
+            </div>
+          );
+        })}
+        {f.ingredientes.length === 0 && <div className="text-xs text-gray-400 italic">Sem ingredientes — monte na tela de Fichas depois de gravar.</div>}
+      </div>
+    </div>
+  );
 
   async function gravar() {
     if (nSel === 0) { setErro("Selecione ao menos uma receita."); return; }
@@ -399,108 +437,95 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
 
       {(fase === "revisao" || fase === "gravando") && (
         <div>
-          <div className="flex items-center gap-2 flex-wrap mb-2 text-xs">
-            <span className="text-gray-600 dark:text-gray-300 font-medium">{fichas.length} receita(s) · {cont.insumos} insumo(s){cont.subs ? ` · ${cont.subs} subficha(s)` : ""}:</span>
-            <span className={`px-2 py-0.5 rounded-full ${CHIP.casado}`}>{cont.casado} casados</span>
-            <span className={`px-2 py-0.5 rounded-full ${CHIP.novo}`}>{cont.novo} novos</span>
-            {cont.conferir > 0 && <span className={`px-2 py-0.5 rounded-full ${CHIP.conferir}`}>{cont.conferir} a conferir</span>}
-            <div className="flex-1" />
-            <span className="text-gray-400">Categoria de todas:</span>
-            <select onChange={e => catTodas(e.target.value)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          {/* Passos do wizard */}
+          <div className="flex items-center gap-1 mb-3">
+            {([[1, "Ingredientes", cont.insumos], [2, "Subfichas", subfichas.length], [3, "Fichas", fichasFinais.length]] as const).map(([n, t, qt], i) => (
+              <button key={n} type="button" onClick={() => setPasso(n)} className={`flex-1 flex items-center justify-center gap-1.5 text-xs px-2 py-1.5 rounded-lg border transition-colors ${passo === n ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold" : "border-gray-200 dark:border-gray-800 text-gray-500 hover:border-gray-300"}`}>
+                <span className={`w-4 h-4 rounded-full text-[10px] flex items-center justify-center ${passo === n ? "bg-indigo-600 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"}`}>{i + 1}</span>
+                {t} <span className="opacity-60">({qt})</span>
+              </button>
+            ))}
           </div>
 
           <div className="max-h-[55vh] overflow-y-auto pr-1 space-y-4">
-            {/* Ingredientes (insumos + variações) */}
-            <div className="rounded-xl border border-gray-200 dark:border-gray-800">
-              <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200">Insumos ({cont.insumos}) — principal + variações</div>
-              <div className="p-2 space-y-2">
-                {principaisLista.map(p => (
-                  <div key={p.key}>
-                    <div className="flex items-center gap-2 text-sm">
-                      <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
-                      <span className="text-[11px] text-gray-400 shrink-0 w-16">{usoPrincipal[p.key]} uso(s)</span>
-                      <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; if (val.startsWith("merge:")) { mesclarPrincipais(p.key, val.slice(6)); return; } setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                        {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
-                        <option value="__novo__">+ criar novo insumo</option>
-                        {principaisLista.some(o => o.key !== p.key) && (
-                          <optgroup label="↔ Juntar com outro desta importação">
-                            {principaisLista.filter(o => o.key !== p.key).map(o => <option key={o.key} value={`merge:${o.key}`}>é o mesmo que {o.nome}</option>)}
-                          </optgroup>
-                        )}
-                      </select>
-                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
-                      <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
-                    </div>
-                    {p.variacoes.map(v => (
-                      <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
-                        <span className="text-indigo-500 text-xs shrink-0">↳</span>
-                        <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
-                        <span className="text-[11px] text-gray-400">aprov.</span>
-                        <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
-                        <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
-                        <button type="button" onClick={() => promoverParaSubficha(p.key, v.norm)} title="É um preparo — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400">é subficha ↧</button>
-                        <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
-                      </div>
-                    ))}
-                  </div>
-                ))}
-                {subLista.length > 0 && (
-                  <div className="border-t border-gray-100 dark:border-gray-800 pt-2 mt-1">
-                    <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Reconhecidas como subficha</div>
-                    {subLista.map(s => (
-                      <div key={s.id} className="flex items-center gap-2 text-sm py-0.5">
-                        <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></span>
-                        <span className="flex-1 truncate text-gray-800 dark:text-gray-200">{s.nome}</span>
-                        <span className="text-[11px] text-gray-400">{usoSub[s.id]} uso(s)</span>
-                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Receitas */}
-            <div className="space-y-3">
-              {fichas.map(f => (
-                <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
-                  <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 flex-wrap">
-                    <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
-                    <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[120px] bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
-                    <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
-                    <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
-                    <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
-                  </div>
-                  <div className="p-2.5 space-y-1">
-                    {f.ingredientes.map(ing => {
-                      const sub = ing.subfichaFichaId ? subNomes[ing.subfichaFichaId] : null;
-                      const p = ing.principalKey ? principais[ing.principalKey] : undefined;
-                      const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
-                      const nome = sub || (p ? p.nome : "?");
-                      return (
-                        <div key={ing.id} className="flex items-center gap-2 text-sm">
-                          <span className="w-28 sm:w-56 shrink-0 truncate text-gray-700 dark:text-gray-200">{nome}{v && <span className="text-indigo-600 dark:text-indigo-400"> ↳ {v.nome}</span>}</span>
-                          <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
-                          <div className="flex-1" />
-                          {sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
-                            : <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP[p?.status || "novo"]}`}>{(p?.status || "novo") === "casado" ? "reconhecido" : (p?.status || "novo")}</span>}
-                        </div>
-                      );
-                    })}
-                    {f.ingredientes.length === 0 && <div className="text-xs text-gray-400 italic">Sem ingredientes.</div>}
-                  </div>
+            {/* PASSO 1 — Ingredientes (insumos + variações) */}
+            {passo === 1 && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800">
+                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 flex-wrap">
+                  <span>Insumos ({cont.insumos}) — principal + variações</span>
+                  <span className={`px-2 py-0.5 rounded-full ${CHIP.casado}`}>{cont.casado} casados</span>
+                  <span className={`px-2 py-0.5 rounded-full ${CHIP.novo}`}>{cont.novo} novos</span>
+                  {cont.conferir > 0 && <span className={`px-2 py-0.5 rounded-full ${CHIP.conferir}`}>{cont.conferir} a conferir</span>}
                 </div>
-              ))}
-            </div>
+                <div className="p-2 space-y-2">
+                  {principaisLista.map(p => (
+                    <div key={p.key}>
+                      <div className="flex items-center gap-2 text-sm">
+                        <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
+                        <span className="text-[11px] text-gray-400 shrink-0 w-16">{usoPrincipal[p.key]} uso(s)</span>
+                        <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; if (val.startsWith("merge:")) { mesclarPrincipais(p.key, val.slice(6)); return; } setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                          {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
+                          <option value="__novo__">+ criar novo insumo</option>
+                          {principaisLista.some(o => o.key !== p.key) && (
+                            <optgroup label="↔ Juntar com outro desta importação">
+                              {principaisLista.filter(o => o.key !== p.key).map(o => <option key={o.key} value={`merge:${o.key}`}>é o mesmo que {o.nome}</option>)}
+                            </optgroup>
+                          )}
+                        </select>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
+                        <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
+                      </div>
+                      {p.variacoes.map(v => (
+                        <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
+                          <span className="text-indigo-500 text-xs shrink-0">↳</span>
+                          <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
+                          <span className="text-[11px] text-gray-400">aprov.</span>
+                          <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
+                          <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
+                          <button type="button" onClick={() => promoverParaSubficha(p.key, v.norm)} title="É um preparo — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400">é subficha ↧</button>
+                          <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  {principaisLista.length === 0 && <div className="text-xs text-gray-400 italic p-2">Nenhum insumo — todos viraram subficha.</div>}
+                </div>
+              </div>
+            )}
+
+            {/* PASSO 2 — Subfichas (detectadas + promovidas) */}
+            {passo === 2 && (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final.</p>
+                {subfichas.map(renderCard)}
+                {subfichas.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma subficha nesta importação.</div>}
+              </div>
+            )}
+
+            {/* PASSO 3 — Fichas finais */}
+            {passo === 3 && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="text-gray-400">Categoria de todas:</span>
+                  <select onChange={e => catTodas(e.target.value)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                </div>
+                {fichasFinais.map(renderCard)}
+                {fichasFinais.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma ficha final — tudo virou subficha.</div>}
+              </div>
+            )}
           </div>
 
           {erro && <div className="text-sm text-red-600 mt-3">{erro}</div>}
           <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <span className="text-[11px] text-gray-400">Insumos "novos" entram sem custo — depois você lança na aba Insumos.</span>
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose} disabled={fase === "gravando" || salvando}>Cancelar</Button>
-              <Button variant="secondary" onClick={() => void salvarRascunhoRevisao()} disabled={fase === "gravando" || salvando} title="Salva suas edições pra continuar depois, sem gravar as fichas">{salvando ? "Salvando…" : "💾 Salvar rascunho"}</Button>
-              <Button onClick={gravar} disabled={fase === "gravando" || salvando || nSel === 0}>{fase === "gravando" ? "Gravando…" : `Aprovar e gravar ${nSel}`}</Button>
+              <Button variant="secondary" onClick={() => void salvarRascunhoRevisao()} disabled={fase === "gravando" || salvando} title="Salva suas edições pra continuar depois, sem gravar as fichas">{salvando ? "Salvando…" : "💾 Rascunho"}</Button>
+            </div>
+            <div className="flex gap-2">
+              {passo > 1 && <Button variant="secondary" onClick={() => setPasso(p => (p - 1) as 1 | 2 | 3)} disabled={fase === "gravando" || salvando}>← Voltar</Button>}
+              {passo < 3
+                ? <Button onClick={() => setPasso(p => (p + 1) as 1 | 2 | 3)} disabled={fase === "gravando" || salvando}>{passo === 1 ? "Subfichas →" : "Fichas →"}</Button>
+                : <Button onClick={gravar} disabled={fase === "gravando" || salvando || nSel === 0}>{fase === "gravando" ? "Gravando…" : `Aprovar e gravar ${nSel}`}</Button>}
             </div>
           </div>
         </div>
