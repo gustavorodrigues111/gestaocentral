@@ -50,14 +50,22 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const temFonte = !!planilhaTexto || anexos.length > 0;
   const catsAtivas = categorias.filter(c => c.ativo !== false);
   const rascunhoId = meId ? `${rid}_${meId}` : rid;
-  const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number } | null>(null);
+  type RevSnap = { fichas: FichaRev[]; principais: Record<string, Principal>; subNomes: Record<string, string> };
+  const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number; revisao?: RevSnap } | null>(null);
+  const [salvando, setSalvando] = useState(false);
 
-  // Carrega rascunho salvo (leitura crua da IA) pra retomar sem gastar IA de novo.
+  // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
+  // retomar sem gastar IA de novo.
   useEffect(() => {
     (async () => {
       try {
         const snap = await getDoc(doc(db, "ftImportRascunhos", rascunhoId));
-        if (snap.exists()) { const d = snap.data() as { receitasRaw?: FichaIA[]; criadoEm?: string; nReceitas?: number }; if (Array.isArray(d.receitasRaw) && d.receitasRaw.length) setRascunho({ receitasRaw: d.receitasRaw, criadoEm: d.criadoEm || "", nReceitas: d.nReceitas || d.receitasRaw.length }); }
+        if (snap.exists()) {
+          const d = snap.data() as { receitasRaw?: FichaIA[]; criadoEm?: string; nReceitas?: number; revisao?: RevSnap };
+          const raw = Array.isArray(d.receitasRaw) ? d.receitasRaw : [];
+          const rev = d.revisao && Array.isArray(d.revisao.fichas) ? d.revisao : undefined;
+          if (raw.length || rev) setRascunho({ receitasRaw: raw, criadoEm: d.criadoEm || "", nReceitas: d.nReceitas || rev?.fichas.length || raw.length, revisao: rev });
+        }
       } catch { /* sem rascunho */ }
     })();
   }, [rascunhoId]);
@@ -169,18 +177,54 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     return { fichasRev, princ, subN };
   }
 
-  // Retoma o rascunho salvo: reprocessa o cru da IA (grátis) e vai pra revisão.
+  // Retoma o rascunho salvo. Se há revisão editada salva, restaura ela (mantém
+  // suas associações/edições); senão reprocessa o cru da IA (grátis).
   function retomarRascunho() {
     if (!rascunho) return;
     setErro("");
-    const { fichasRev, princ, subN } = processarIA(rascunho.receitasRaw);
-    setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
+    if (rascunho.revisao) {
+      setFichas(rascunho.revisao.fichas); setPrincipais(rascunho.revisao.principais); setSubNomes(rascunho.revisao.subNomes);
+    } else {
+      const { fichasRev, princ, subN } = processarIA(rascunho.receitasRaw);
+      setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
+    }
     setFase("revisao");
   }
 
   async function descartarRascunho() {
     try { await deleteDoc(doc(db, "ftImportRascunhos", rascunhoId)); } catch { /* ignore */ }
     setRascunho(null);
+  }
+
+  // Salva a revisão atual (com edições/associações) como rascunho e fecha, sem
+  // gravar as fichas. Reabrir → banner "Retomar" restaura exatamente daqui.
+  async function salvarRascunhoRevisao() {
+    setSalvando(true); setErro("");
+    const criadoEm = new Date().toISOString();
+    const revisao: RevSnap = { fichas, principais, subNomes };
+    try {
+      await setDocFs(doc(db, "ftImportRascunhos", rascunhoId), sanitizeForFirestore({
+        id: rascunhoId, restaurantId: rid, criadoPor: meId || null, criadoPorNome: meNome || null,
+        criadoEm, nReceitas: fichas.length, receitasRaw: rascunho?.receitasRaw || [], revisao,
+      }));
+      onClose();
+    } catch (e) { setErro(e instanceof Error ? e.message : String(e)); setSalvando(false); }
+  }
+
+  // Associa este insumo a OUTRO da mesma importação (ex.: "AÇÚCAR" → "AÇÚCAR
+  // REFINADO"): remapeia os usos e funde as variações no destino.
+  function mesclarPrincipais(fromKey: string, toKey: string) {
+    if (fromKey === toKey) return;
+    setPrincipais(prev => {
+      const from = prev[fromKey], to = prev[toKey];
+      if (!from || !to) return prev;
+      const next = { ...prev };
+      const jaTem = new Set(to.variacoes.map(v => v.norm));
+      next[toKey] = { ...to, temBase: to.temBase || from.temBase, variacoes: [...to.variacoes, ...from.variacoes.filter(v => !jaTem.has(v.norm))] };
+      delete next[fromKey];
+      return next;
+    });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === fromKey ? { ...ing, principalKey: toKey } : ing) })));
   }
 
   // edições
@@ -282,8 +326,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         <div className="py-1" onPaste={onPaste}>
           {rascunho && (
             <div className="mb-3 rounded-xl border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-900/20 p-3">
-              <div className="text-sm font-medium text-indigo-800 dark:text-indigo-200">📌 Leitura salva: {rascunho.nReceitas} receita{rascunho.nReceitas === 1 ? "" : "s"}</div>
-              <div className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">Lida em {rascunho.criadoEm ? fmtBRDateTime(rascunho.criadoEm) : "—"}. Retome a revisão sem gastar IA de novo.</div>
+              <div className="text-sm font-medium text-indigo-800 dark:text-indigo-200">📌 {rascunho.revisao ? "Rascunho salvo" : "Leitura salva"}: {rascunho.nReceitas} receita{rascunho.nReceitas === 1 ? "" : "s"}</div>
+              <div className="text-xs text-indigo-600 dark:text-indigo-300 mt-0.5">{rascunho.revisao ? "Com suas edições" : "Lida"} em {rascunho.criadoEm ? fmtBRDateTime(rascunho.criadoEm) : "—"}. Retome sem gastar IA de novo.</div>
               <div className="flex flex-wrap gap-2 mt-2">
                 <Button onClick={retomarRascunho}>↩️ Retomar revisão</Button>
                 <Button variant="secondary" onClick={() => void descartarRascunho()}>🗑️ Descartar</Button>
@@ -351,9 +395,14 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                     <div className="flex items-center gap-2 text-sm">
                       <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
                       <span className="text-[11px] text-gray-400 shrink-0 w-16">{usoPrincipal[p.key]} uso(s)</span>
-                      <select value={p.matchInsumoId ?? "__novo__"} onChange={e => setPrinc(p.key, e.target.value === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: e.target.value, status: "casado" })} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                      <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; if (val.startsWith("merge:")) { mesclarPrincipais(p.key, val.slice(6)); return; } setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                         {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
                         <option value="__novo__">+ criar novo insumo</option>
+                        {principaisLista.some(o => o.key !== p.key) && (
+                          <optgroup label="↔ Juntar com outro desta importação">
+                            {principaisLista.filter(o => o.key !== p.key).map(o => <option key={o.key} value={`merge:${o.key}`}>é o mesmo que {o.nome}</option>)}
+                          </optgroup>
+                        )}
                       </select>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                     </div>
@@ -423,8 +472,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
             <span className="text-[11px] text-gray-400">Insumos "novos" entram sem custo — depois você lança na aba Insumos.</span>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={onClose} disabled={fase === "gravando"}>Cancelar</Button>
-              <Button onClick={gravar} disabled={fase === "gravando" || nSel === 0}>{fase === "gravando" ? "Gravando…" : `Aprovar e gravar ${nSel}`}</Button>
+              <Button variant="secondary" onClick={onClose} disabled={fase === "gravando" || salvando}>Cancelar</Button>
+              <Button variant="secondary" onClick={() => void salvarRascunhoRevisao()} disabled={fase === "gravando" || salvando} title="Salva suas edições pra continuar depois, sem gravar as fichas">{salvando ? "Salvando…" : "💾 Salvar rascunho"}</Button>
+              <Button onClick={gravar} disabled={fase === "gravando" || salvando || nSel === 0}>{fase === "gravando" ? "Gravando…" : `Aprovar e gravar ${nSel}`}</Button>
             </div>
           </div>
         </div>
