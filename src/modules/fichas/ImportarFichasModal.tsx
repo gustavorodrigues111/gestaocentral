@@ -1,7 +1,7 @@
 // Tela de revisão do import de receitas por IA (planilha/PDF/print/foto).
 // Cada bloco vira uma receita (ficha ou subficha) com lista plana de
 // ingredientes; você revisa casado/novo/conferir + tipo + categoria e grava.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -43,6 +43,14 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const camRef = useRef<HTMLInputElement | null>(null);
   const temFonte = !!planilhaTexto || anexos.length > 0;
   const catsAtivas = categorias.filter(c => c.ativo !== false);
+
+  // Enquanto lê, avisa se tentar fechar/recarregar a aba (perderia o progresso).
+  useEffect(() => {
+    if (fase !== "processando") return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [fase]);
 
   function matchCategoria(nome?: string): string | null {
     if (!nome) return null;
@@ -255,7 +263,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-gray-400 mt-3">Processando em partes pra não travar — pode levar um tempo se forem muitas receitas.</p>
+          <p className="text-[11px] text-gray-400 mt-3">Roda no navegador: pode <strong>alternar de janela/app</strong> à vontade, mas <strong>não feche esta aba</strong> nem saia da tela até terminar.</p>
         </div>
       )}
 
