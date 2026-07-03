@@ -66,7 +66,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [salvando, setSalvando] = useState(false);
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
   const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
-  const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number } | null>(null);
+  const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number; varExistNorm: string } | null>(null);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -346,7 +346,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     const unico = sf.ingredientes.length === 1 ? sf.ingredientes[0] : undefined;
     const pk = unico?.principalKey && principais[unico.principalKey] ? unico.principalKey : "";
     const baseNome = pk ? UP(sf.nome).replace(UP(principais[pk].nome), "").trim() : "";
-    setDissolver({ subfichaId: sf.id, modo: pk ? "variacao" : "insumo", principalKey: pk, varNome: baseNome || "LIMPO", fc: fcSugeridoDe(sf) ?? 100 });
+    setDissolver({ subfichaId: sf.id, modo: pk ? "variacao" : "insumo", principalKey: pk, varNome: baseNome || "LIMPO", fc: fcSugeridoDe(sf) ?? 100, varExistNorm: "" });
   }
 
   // Dissolve a subficha num INSUMO próprio (checa duplicata → unifica).
@@ -526,14 +526,22 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             <input type="radio" name="dissolverModo" checked={dissolver.modo === "variacao"} disabled={!podeVar} onChange={() => setDissolver(d => d && { ...d, modo: "variacao" })} className="accent-indigo-600 mt-1" />
             <div className="flex-1">
               <div className={podeVar ? "" : "text-gray-400"}>É uma <strong>variação</strong> de um ingrediente (com fator de correção){!podeVar && " — nenhum ingrediente na lista"}</div>
-              {dissolver.modo === "variacao" && podeVar && (
-                <div className="flex items-center gap-2 flex-wrap mt-2">
-                  <select value={dissolver.principalKey} onChange={e => setDissolver(d => d && { ...d, principalKey: e.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"><option value="">qual ingrediente?</option>{principaisLista.map(p => <option key={p.key} value={p.key}>{p.nome}</option>)}</select>
-                  <input value={dissolver.varNome} onChange={e => setDissolver(d => d && { ...d, varNome: e.target.value.toUpperCase() })} placeholder="nome (ex: PESO LIMPO)" className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-40" />
-                  <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">aprov.</span><input type="number" value={dissolver.fc} onChange={e => setDissolver(d => d && { ...d, fc: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100" /><span className="text-[11px] text-gray-400">%</span></div>
-                  {fcSugeridoDe(sf) != null && <span className="text-[10px] text-gray-400">sugerido: {fcSugeridoDe(sf)}%</span>}
-                </div>
-              )}
+              {dissolver.modo === "variacao" && podeVar && (() => {
+                const varsExist = (dissolver.principalKey ? principais[dissolver.principalKey]?.variacoes : []) || [];
+                const usarExist = !!dissolver.varExistNorm;
+                return (
+                  <div className="flex items-center gap-2 flex-wrap mt-2">
+                    <select value={dissolver.principalKey} onChange={e => setDissolver(d => d && { ...d, principalKey: e.target.value, varExistNorm: "" })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"><option value="">qual ingrediente?</option>{principaisLista.map(p => <option key={p.key} value={p.key}>{p.nome}</option>)}</select>
+                    {varsExist.length > 0 && (
+                      <select value={dissolver.varExistNorm} onChange={e => { const v = varsExist.find(x => x.norm === e.target.value); setDissolver(d => d && (v ? { ...d, varExistNorm: v.norm, varNome: v.nome, fc: v.fc } : { ...d, varExistNorm: "" })); }} className="text-xs px-2 py-1.5 rounded border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300"><option value="">+ nova variação</option>{varsExist.map(v => <option key={v.norm} value={v.norm}>usar “{v.nome}” ({v.fc}%)</option>)}</select>
+                    )}
+                    <input value={dissolver.varNome} disabled={usarExist} onChange={e => setDissolver(d => d && { ...d, varNome: e.target.value.toUpperCase() })} placeholder="nome (ex: PESO LIMPO)" className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-40 disabled:opacity-60" />
+                    <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">aprov.</span><input type="number" value={dissolver.fc} disabled={usarExist} onChange={e => setDissolver(d => d && { ...d, fc: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100 disabled:opacity-60" /><span className="text-[11px] text-gray-400">%</span></div>
+                    {!usarExist && fcSugeridoDe(sf) != null && <span className="text-[10px] text-gray-400">sugerido: {fcSugeridoDe(sf)}%</span>}
+                    {usarExist && <span className="text-[10px] text-indigo-500">mantém o % da variação existente</span>}
+                  </div>
+                );
+              })()}
             </div>
           </label>
           <label className="flex items-start gap-2 text-sm cursor-pointer">
