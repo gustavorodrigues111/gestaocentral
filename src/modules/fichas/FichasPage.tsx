@@ -110,7 +110,7 @@ export function FichasPage() {
       {tab === "categorias" && podeEditar && <CadastroCategorias rid={rid} categorias={categorias} />}
 
       {importando && (
-        <ImportarFichasModal rid={rid} insumos={insumos} categorias={categorias} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
+        <ImportarFichasModal rid={rid} insumos={insumos} categorias={categorias} fichasExistentes={fichas} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
       )}
     </div>
   );

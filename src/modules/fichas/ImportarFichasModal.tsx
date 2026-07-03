@@ -43,9 +43,10 @@ const CHIP: Record<string, string> = {
   subficha: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
 };
 
-export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, onClose }: {
-  rid: string; insumos: FtInsumo[]; categorias: FtCategoria[]; meId?: string; meNome?: string; onClose: () => void;
+export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes, meId, meNome, onClose }: {
+  rid: string; insumos: FtInsumo[]; categorias: FtCategoria[]; fichasExistentes: FtFicha[]; meId?: string; meNome?: string; onClose: () => void;
 }) {
+  const subfichasSistema = useMemo(() => fichasExistentes.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichasExistentes]);
   const [fase, setFase] = useState<"upload" | "processando" | "revisao" | "gravando">("upload");
   const [erro, setErro] = useState("");
   const [fichas, setFichas] = useState<FichaRev[]>([]);
@@ -297,16 +298,22 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     if (vNorm && !v) return;
     // Nome completo (principal + variação) pra não virar só "COZIDO" sem contexto.
     const nome = v ? UP(`${p.nome} ${v.nome}`) : UP(p.nome);
-    // Alvo: subficha escolhida, ou existente com mesmo nome (idempotente), ou nova.
-    const existente = targetId ? fichas.find(f => f.id === targetId) : fichas.find(f => f.ehSubficha && norm(f.nome) === norm(nome));
-    const alvoId = existente ? existente.id : uid("fic");
+    // Alvo: subficha escolhida (do LOTE ou já CADASTRADA no sistema), ou
+    // existente com mesmo nome (idempotente), ou nova.
+    const emImport = targetId ? fichas.find(f => f.id === targetId) : undefined;
+    const sistema = targetId && !emImport ? subfichasSistema.find(f => f.id === targetId) : undefined;
+    const porNome = !targetId ? fichas.find(f => f.ehSubficha && norm(f.nome) === norm(nome)) : undefined;
+    const alvo = emImport || porNome;
+    const alvoId = alvo ? alvo.id : sistema ? sistema.id : uid("fic");
+    const alvoNome = alvo ? alvo.nome : sistema ? sistema.nome : nome;
+    const criar = !alvo && !sistema;
     setFichas(prev => {
       const remapped = prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing =>
         ing.principalKey === pk && (vNorm ? ing.variacaoNorm === vNorm : ing.variacaoNorm === "")
           ? { ...ing, subfichaFichaId: alvoId, principalKey: "", variacaoNorm: "" } : ing) }));
-      return existente ? remapped : [...remapped, { id: alvoId, nome, ehSubficha: true, categoriaId: null, incluir: true, rendimento: { qtd: 1, unidade: "kg" }, ingredientes: [] }];
+      return criar ? [...remapped, { id: alvoId, nome, ehSubficha: true, categoriaId: null, incluir: true, rendimento: { qtd: 1, unidade: "kg" }, ingredientes: [] }] : remapped;
     });
-    setSubNomes(prev => ({ ...prev, [alvoId]: existente ? existente.nome : nome }));
+    setSubNomes(prev => ({ ...prev, [alvoId]: alvoNome }));
     setPrincipais(prev => {
       const cur = prev[pk]; if (!cur) return prev;
       return { ...prev, [pk]: vNorm ? { ...cur, variacoes: cur.variacoes.filter(x => x.norm !== vNorm) } : { ...cur, temBase: false } };
@@ -771,7 +778,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                           )}
                         </select>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
-                        <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="usar existente">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
+                        <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
                         <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
                         {p.ehSubprodutoPendente && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 shrink-0" title="Vira insumo-subproduto sem custo; vincule ao preparo na tela de Fichas">subproduto ⏳</span>}
                       </div>
@@ -785,7 +792,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                             <select value="" onChange={e => { if (e.target.value) mesclarVariacoes(p.key, v.norm, e.target.value); }} title="Esta variação é a mesma que outra deste insumo" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[96px]"><option value="">= mesma que…</option>{p.variacoes.filter(o => o.norm !== v.norm).map(o => <option key={o.norm} value={o.norm}>{o.nome}</option>)}</select>
                           )}
                           <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
-                          <select value="" onChange={e => { const val = e.target.value; if (val === "__nova__") promoverParaSubficha(p.key, v.norm); else if (val) promoverParaSubficha(p.key, v.norm, val); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[100px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="usar existente">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
+                          <select value="" onChange={e => { const val = e.target.value; if (val === "__nova__") promoverParaSubficha(p.key, v.norm); else if (val) promoverParaSubficha(p.key, v.norm, val); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[100px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
                           <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       ))}
