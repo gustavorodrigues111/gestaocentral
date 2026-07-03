@@ -939,10 +939,10 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap mt-2">
-                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[150px] shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
-                      <span className="text-[11px] text-gray-400 shrink-0">1 {l.produto.unidade} =</span>
+                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-44 sm:w-52 shrink-0 shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+                      <span className="text-[11px] text-gray-400 shrink-0 w-12 text-right">1 {l.produto.unidade || "un"} =</span>
                       <MiniStepper value={e.fator} onChange={v => setEdit(l, { fator: v })} sufixo={ins ? labelUnidade(ins.unidadeBase) : "base"} />
-                      {preview != null && <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
+                      <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0 w-24">{preview != null ? `= ${fmtMoeda(preview)}/${ins ? labelUnidade(ins.unidadeBase) : ""}` : ""}</span>
                       <div className="flex-1" />
                       <button type="button" onClick={() => void aprovarVinculo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shrink-0">Vincular</button>
                       <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
