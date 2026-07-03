@@ -1033,8 +1033,12 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                     </div>
                   )}
                   {linhaVinculo(l, <>
-                    <button type="button" onClick={() => void naoEEste(l)} title="Não é este insumo — ainda não cadastrado (sai das sugestões, vai pra 'sem insumo')" className="text-xs text-gray-500 hover:text-amber-600 shrink-0">não é este</button>
-                    <button type="button" onClick={() => void ignorar(l)} title="Não é insumo (descartável, limpeza…) — some de vez" className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
+                    <select value="" onChange={ev => { const v = ev.target.value; if (v === "outro") setEdit(l, { insumoId: "", fator: "" }); else if (v === "novo") void naoEEste(l); else if (v === "ignorar") void ignorar(l); }} title="Não é este insumo" className="h-8 text-xs px-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-500 shrink-0">
+                      <option value="">não é este…</option>
+                      <option value="outro">↺ escolher outro insumo</option>
+                      <option value="novo">⏳ ainda não cadastrado</option>
+                      <option value="ignorar">🚫 não é insumo (ignorar)</option>
+                    </select>
                   </>)}
                 </div>
               ))}
