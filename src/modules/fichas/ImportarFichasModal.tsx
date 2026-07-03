@@ -247,7 +247,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const setPrinc = (k: string, patch: Partial<Principal>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], ...patch } }));
   const setVar = (k: string, vNorm: string, patch: Partial<VarInfo>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: p[k].variacoes.map(v => v.norm === vNorm ? { ...v, ...patch } : v) } }));
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
-  const catTodas = (id: string) => setFichas(prev => prev.map(f => ({ ...f, categoriaId: id || null })));
+  const catTodas = (id: string, soSub?: boolean) => setFichas(prev => prev.map(f => (soSub === undefined || f.ehSubficha === soSub) ? { ...f, categoriaId: id || null } : f));
 
   // "Não é variação, é um insumo próprio": tira a variação do principal e cria
   // um insumo standalone; remapeia os ingredientes que a usavam.
@@ -719,6 +719,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             {passo === 2 && (mescla ? renderMescla() : dissolver ? renderDissolver() : (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final, ou use <em>mesclar com…</em> pra juntar duplicadas.</p>
+                {subfichas.length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="text-gray-400">Categoria de todas as subfichas:</span>
+                    <select onChange={e => catTodas(e.target.value, true)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                  </div>
+                )}
                 {subfichas.map(renderCard)}
                 {subfichas.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma subficha nesta importação.</div>}
               </div>
@@ -729,7 +735,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-gray-400">Categoria de todas:</span>
-                  <select onChange={e => catTodas(e.target.value)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                  <select onChange={e => catTodas(e.target.value, false)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
                 </div>
                 {fichasFinais.map(renderCard)}
                 {fichasFinais.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma ficha final — tudo virou subficha.</div>}
