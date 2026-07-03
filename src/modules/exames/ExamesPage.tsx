@@ -227,7 +227,7 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
   onAbrir: (e: ExameEmpregado) => void;
   onLancar: (emp: Empregado, tipo: ExameTipoConfig) => void;
 }) {
-  const [filtro, setFiltro] = useState<"todos" | "vencidos" | "aVencer">("todos");
+  const [filtro, setFiltro] = useState<"todos" | "vencidos" | "aVencer" | "falta">("todos");
   const cargoById = useMemo(() => new Map(cargos.map(c => [c.id, c])), [cargos]);
   const tiposAtivos = useMemo(() => tipos.filter(t => t.ativo), [tipos]);
   const hoje = new Date().toISOString().slice(0, 10);
@@ -269,19 +269,20 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
   }, [empregados, cargoById, tiposAtivos, exames, hoje, limite30]);
 
   const contagem = useMemo(() => {
-    let vencidos = 0, aVencer = 0, todos = 0;
+    let vencidos = 0, aVencer = 0, falta = 0, todos = 0;
     linhasBase.forEach(l => l.itens.forEach(it => {
       todos++;
       if (it.status === "vencido") vencidos++;
       else if (it.status === "aVencer") aVencer++;
+      else if (it.status === "falta") falta++;
     }));
-    return { todos, vencidos, aVencer };
+    return { todos, vencidos, aVencer, falta };
   }, [linhasBase]);
 
   // Aplica o filtro nos itens e descarta empregados sem item correspondente.
   const linhas = useMemo(() => {
     if (filtro === "todos") return linhasBase;
-    const alvo = filtro === "vencidos" ? "vencido" : "aVencer";
+    const alvo = filtro === "vencidos" ? "vencido" : filtro === "aVencer" ? "aVencer" : "falta";
     return linhasBase
       .map(l => ({ ...l, itens: l.itens.filter(it => it.status === alvo) }))
       .filter(l => l.itens.length > 0);
@@ -302,6 +303,9 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
         <Chip ativo={filtro === "aVencer"} onClick={() => setFiltro("aVencer")}>
           A vencer em 30d {contagem.aVencer > 0 && `(${contagem.aVencer})`}
         </Chip>
+        <Chip ativo={filtro === "falta"} onClick={() => setFiltro("falta")} cor="red">
+          ⚠ Sem exame cadastrado {contagem.falta > 0 && `(${contagem.falta})`}
+        </Chip>
       </div>
 
       {totalFalta > 0 && filtro === "todos" && (
@@ -314,7 +318,9 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
         <div className="text-center py-12 text-gray-500">Nenhum empregado CLT com cargo e exames exigidos.</div>
       ) : linhas.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          {filtro === "vencidos" ? "✅ Nenhum exame vencido." : "✅ Nenhum exame vencendo nos próximos 30 dias."}
+          {filtro === "vencidos" ? "✅ Nenhum exame vencido."
+            : filtro === "falta" ? "✅ Nenhum exame sem prazo cadastrado."
+            : "✅ Nenhum exame vencendo nos próximos 30 dias."}
         </div>
       ) : linhas.map(({ emp, cargo, itens, nFalta, nVencido, nAVencer }) => (
         <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${(nFalta + nVencido) > 0 ? "border-red-200 dark:border-red-800" : nAVencer > 0 ? "border-amber-200 dark:border-amber-800" : "border-gray-200 dark:border-gray-800"}`}>
