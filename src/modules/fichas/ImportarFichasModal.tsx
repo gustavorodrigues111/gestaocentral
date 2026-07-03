@@ -392,7 +392,6 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   // subficha. O % de rateio você ajusta na tela de Fichas.
   function subfichaViraSubproduto(subfichaId: string, produtorId: string) {
     const sf = fichas.find(f => f.id === subfichaId); if (!sf || produtorId === subfichaId) return;
-    scrollPos.current = scrollRef.current?.scrollTop || 0;
     const nome = UP(sf.nome); const subId = uid("sp");
     const novo: FtSubproduto = { id: subId, nome, nomeNormalizado: norm(nome), unidade: sf.rendimento.unidade, rendimentoQtd: sf.rendimento.qtd || 1, percentualCusto: 0 };
     setFichas(prev => prev
@@ -443,7 +442,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const usoComoSub = useMemo(() => { const c: Record<string, number> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1; return c; }, [fichas]);
   const preparosPorSub = useMemo(() => { const m: Record<string, string[]> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) { if (!m[ing.subfichaFichaId]) m[ing.subfichaFichaId] = []; if (!m[ing.subfichaFichaId].includes(f.nome)) m[ing.subfichaFichaId].push(f.nome); } return m; }, [fichas]);
 
-  const abrirMescla = (aId: string, bId: string) => { scrollPos.current = scrollRef.current?.scrollTop || 0; const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
+  const abrirMescla = (aId: string, bId: string) => { const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
   const ingLabel = (ing: IngRev): string => {
     if (ing.subfichaFichaId) return subNomes[ing.subfichaFichaId] || "?";
     const p = principais[ing.principalKey];
