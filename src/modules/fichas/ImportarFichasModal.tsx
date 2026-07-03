@@ -64,6 +64,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   type RevSnap = { fichas: FichaRev[]; principais: Record<string, Principal>; subNomes: Record<string, string> };
   const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number; revisao?: RevSnap } | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [salvouOk, setSalvouOk] = useState(false);
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
   const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
   const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number; varExistNorm: string } | null>(null);
@@ -212,8 +213,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setRascunho(null);
   }
 
-  // Salva a revisão atual (com edições/associações) como rascunho e fecha, sem
-  // gravar as fichas. Reabrir → banner "Retomar" restaura exatamente daqui.
+  // Salva a revisão atual (com edições/associações) como rascunho SEM fechar o
+  // modal nem mexer no scroll. Reabrir → banner "Retomar" restaura exatamente.
   async function salvarRascunhoRevisao() {
     setSalvando(true); setErro("");
     const criadoEm = new Date().toISOString();
@@ -223,8 +224,10 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         id: rascunhoId, restaurantId: rid, criadoPor: meId || null, criadoPorNome: meNome || null,
         criadoEm, nReceitas: fichas.length, receitasRaw: rascunho?.receitasRaw || [], revisao,
       }));
-      onClose();
-    } catch (e) { setErro(e instanceof Error ? e.message : String(e)); setSalvando(false); }
+      setRascunho({ receitasRaw: rascunho?.receitasRaw || [], criadoEm, nReceitas: fichas.length, revisao });
+      setSalvouOk(true); setTimeout(() => setSalvouOk(false), 2500);
+    } catch (e) { setErro(e instanceof Error ? e.message : String(e)); }
+    finally { setSalvando(false); }
   }
 
   // Associa este insumo a OUTRO da mesma importação (ex.: "AÇÚCAR" → "AÇÚCAR
@@ -761,7 +764,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
             <div className="flex gap-2">
               <Button variant="secondary" onClick={onClose} disabled={fase === "gravando" || salvando}>Cancelar</Button>
-              <Button variant="secondary" onClick={() => void salvarRascunhoRevisao()} disabled={fase === "gravando" || salvando} title="Salva suas edições pra continuar depois, sem gravar as fichas">{salvando ? "Salvando…" : "💾 Rascunho"}</Button>
+              <Button variant="secondary" onClick={() => void salvarRascunhoRevisao()} disabled={fase === "gravando" || salvando} title="Salva suas edições pra continuar depois, sem gravar as fichas e sem fechar">{salvando ? "Salvando…" : salvouOk ? "✓ Salvo" : "💾 Rascunho"}</Button>
             </div>
             <div className="flex gap-2">
               {passo > 1 && <Button variant="secondary" onClick={() => setPasso(p => (p - 1) as 1 | 2 | 3)} disabled={fase === "gravando" || salvando}>← Voltar</Button>}
