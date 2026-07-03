@@ -458,7 +458,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[200px] basis-1/2 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
           {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0 cursor-help underline decoration-dotted underline-offset-2" title={`Usada em: ${(preparosPorSub[f.id] || []).join(", ") || "—"}`}>usada em {usoComoSub[f.id]}</span>}
           <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
-          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
           <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
           <button type="button" onClick={() => setFicha(f.id, { revisar: !f.revisar })} title="Marcar que esta ficha precisa de revisão" className={`text-[13px] shrink-0 leading-none ${f.revisar ? "text-rose-600" : "text-gray-300 hover:text-rose-400"}`}>⚑</button>
@@ -802,7 +802,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                 {subfichas.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap text-xs">
                     <span className="text-gray-400">Categoria de todas as subfichas:</span>
-                    <select onChange={e => catTodas(e.target.value, true)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                    <select onChange={e => catTodas(e.target.value, true)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "subficha").map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
                   </div>
                 )}
                 {subfichas.map(renderCard)}
@@ -815,7 +815,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-gray-400">Categoria de todas:</span>
-                  <select onChange={e => catTodas(e.target.value, false)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                  <select onChange={e => catTodas(e.target.value, false)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "ficha").map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
                 </div>
                 {fichasFinais.map(renderCard)}
                 {fichasFinais.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma ficha final — tudo virou subficha.</div>}

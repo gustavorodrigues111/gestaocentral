@@ -5371,12 +5371,15 @@ export type FtInsumo = {
   ativo: boolean;
 };
 
-// Categoria criada pelo usuário (Drinks, Pratos principais, Entradas, Pratos
-// frios...). Aplica tanto a fichas finais quanto a subfichas.
+// Categoria criada pelo usuário. Escopo por GRUPO: "ficha" = fichas finais
+// (divisão do cardápio, pro CMV) · "subficha" = bases (molhos, caldos…).
+// Legado sem tipo é tratado como "ficha".
+export type FtCategoriaTipo = "ficha" | "subficha";
 export type FtCategoria = {
   id: string;
   restaurantId: string;
   nome: string;
+  tipo?: FtCategoriaTipo;
   ordem?: number;
   ativo: boolean;
 };

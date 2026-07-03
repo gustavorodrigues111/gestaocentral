@@ -36,7 +36,6 @@ function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
 type Tab = "fichas" | "insumos" | "categorias";
-type FiltroTipo = "todas" | "finais" | "subfichas" | "pendentes" | "revisar";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
 const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
 
@@ -151,16 +150,20 @@ function novaFicha(rid: string, ehSubficha: boolean, meId?: string, meNome?: str
 function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
   fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; onEditar: (f: FtFicha) => void; podeEditar: boolean;
 }) {
-  const [filtro, setFiltro] = useState<FiltroTipo>("todas");
+  const [grupo, setGrupo] = useState<"finais" | "subfichas">("finais");
+  const [subFiltro, setSubFiltro] = useState<"todas" | "pendentes" | "revisar">("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
   const catNome = (id?: string | null) => categorias.find(c => c.id === id)?.nome;
-  const nPendentes = useMemo(() => fichas.filter(f => f.ativo !== false && fichaPendente(f)).length, [fichas]);
-  const nRevisar = useMemo(() => fichas.filter(f => f.ativo !== false && f.revisar).length, [fichas]);
-  const lista = useMemo(() => fichas
-    .filter(f => f.ativo !== false)
-    .filter(f => filtro === "todas" ? true : filtro === "pendentes" ? fichaPendente(f) : filtro === "revisar" ? !!f.revisar : filtro === "finais" ? !f.ehSubficha : f.ehSubficha)
+  const doGrupo = useMemo(() => fichas.filter(f => f.ativo !== false && (grupo === "subfichas" ? f.ehSubficha : !f.ehSubficha)), [fichas, grupo]);
+  const nFinais = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha).length, [fichas]);
+  const nSubs = useMemo(() => fichas.filter(f => f.ativo !== false && f.ehSubficha).length, [fichas]);
+  const nPend = useMemo(() => doGrupo.filter(fichaPendente).length, [doGrupo]);
+  const nRev = useMemo(() => doGrupo.filter(f => f.revisar).length, [doGrupo]);
+  const catsGrupo = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha"));
+  const lista = useMemo(() => doGrupo
+    .filter(f => subFiltro === "todas" ? true : subFiltro === "pendentes" ? fichaPendente(f) : !!f.revisar)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
-    .sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, filtro, catFiltro]);
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro]);
 
   if (fichas.filter(f => f.ativo !== false).length === 0) return (
     <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
@@ -170,19 +173,24 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
 
   return (
     <div className="space-y-3">
+      {/* Grupo primário */}
+      <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+        {([["finais", `Fichas finais (${nFinais})`], ["subfichas", `Subfichas (${nSubs})`]] as const).map(([g, label]) => (
+          <button key={g} type="button" onClick={() => { setGrupo(g); setSubFiltro("todas"); setCatFiltro(""); }}
+            className={`px-4 py-1.5 text-xs font-medium rounded-md ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{label}</button>
+        ))}
+      </div>
+      {/* Filtros dentro do grupo */}
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-          {(["todas", "finais", "subfichas", "pendentes", "revisar"] as FiltroTipo[]).map(t => (
-            <button key={t} type="button" onClick={() => setFiltro(t)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md ${filtro === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"} ${t === "pendentes" && nPendentes > 0 && filtro !== t ? "text-amber-700 dark:text-amber-400" : ""} ${t === "revisar" && nRevisar > 0 && filtro !== t ? "text-rose-600 dark:text-rose-400" : ""}`}>
-              {t === "todas" ? "Todas" : t === "finais" ? "Fichas finais" : t === "subfichas" ? "Subfichas" : t === "pendentes" ? `⏳ Pendentes${nPendentes > 0 ? ` (${nPendentes})` : ""}` : `⚑ Revisar${nRevisar > 0 ? ` (${nRevisar})` : ""}`}
-            </button>
-          ))}
-        </div>
-        {categorias.filter(c => c.ativo !== false).length > 0 && (
+        {([["todas", "Todas"], ["pendentes", `⏳ Pendentes${nPend > 0 ? ` (${nPend})` : ""}`], ["revisar", `⚑ Revisar${nRev > 0 ? ` (${nRev})` : ""}`]] as const).map(([t, label]) => (
+          <button key={t} type="button" onClick={() => setSubFiltro(t)}
+            className={`px-3 py-1 text-xs font-medium rounded-full border ${subFiltro === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"} ${t === "pendentes" && nPend > 0 && subFiltro !== t ? "text-amber-700 dark:text-amber-400" : ""} ${t === "revisar" && nRev > 0 && subFiltro !== t ? "text-rose-600 dark:text-rose-400" : ""}`}>{label}</button>
+        ))}
+        <div className="flex-1" />
+        {catsGrupo.length > 0 && (
           <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
             <option value="">Todas categorias</option>
-            {categorias.filter(c => c.ativo !== false).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            {catsGrupo.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </select>
         )}
       </div>
@@ -287,9 +295,9 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                   onQtd={n => setF({ ...f, rendimento: { ...f.rendimento, qtd: n } })}
                   onUnidade={u => setF({ ...f, rendimento: { ...f.rendimento, unidade: u } })} />
               </div>
-              <Select label="Categoria" value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })}>
+              <Select label={f.ehSubficha ? "Categoria (base)" : "Categoria (cardápio)"} value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })}>
                 <option value="">— sem categoria —</option>
-                {catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </Select>
               <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 pb-2 whitespace-nowrap">
                 <input type="checkbox" checked={f.ehSubficha} onChange={e => setF({ ...f, ehSubficha: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
@@ -1124,30 +1132,45 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
 // ─── Aba Categorias ────────────────────────────────────────────────────────
 function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCategoria[] }) {
   const [nome, setNome] = useState("");
+  const [tipo, setTipo] = useState<"ficha" | "subficha">("ficha");
   const ativas = categorias.filter(c => c.ativo !== false).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
+  const doTipo = (t: "ficha" | "subficha") => ativas.filter(c => (c.tipo || "ficha") === t);
   async function add() {
     if (!nome.trim()) return;
     const id = uid("cat");
-    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: nome.trim(), ordem: ativas.length, ativo: true } as FtCategoria));
+    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: nome.trim(), tipo, ordem: ativas.length, ativo: true } as FtCategoria));
     setNome("");
   }
-  return (
-    <div className="space-y-4">
-      <FormCard titulo="Nova categoria" nota="Ex: Drinks, Pratos principais, Entradas, Pratos frios, Molhos, Massas…">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
-          <Input label="Categoria" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Pratos principais" />
-          <Button onClick={add}>+ Adicionar</Button>
-        </div>
-      </FormCard>
-      <ListaCard vazio={ativas.length === 0} vazioTexto="Nenhuma categoria cadastrada.">
-        {ativas.map(c => (
+  const secao = (t: "ficha" | "subficha", titulo: string, nota: string) => (
+    <div>
+      <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}</span></div>
+      <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
+        {doTipo(t).map(c => (
           <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm group">
             <span className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">🏷️</span>
             <span className="flex-1 text-gray-900 dark:text-gray-100">{c.nome}</span>
+            <button type="button" onClick={() => updateDoc(doc(db, "ftCategorias", c.id), { tipo: t === "ficha" ? "subficha" : "ficha" })} className="text-xs text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">→ {t === "ficha" ? "subficha" : "ficha"}</button>
             <button type="button" onClick={() => deleteDoc(doc(db, "ftCategorias", c.id))} className="text-xs text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">Excluir</button>
           </div>
         ))}
       </ListaCard>
+    </div>
+  );
+  return (
+    <div className="space-y-4">
+      <FormCard titulo="Nova categoria">
+        <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-3 items-end">
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-end mb-0.5">
+            {([["ficha", "Fichas"], ["subficha", "Subfichas"]] as const).map(([t, l]) => (
+              <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+          <Input label="Categoria" value={nome} onChange={e => setNome(e.target.value)} placeholder={tipo === "ficha" ? "ex: Pratos principais, Drinks" : "ex: Molhos, Caldos"} />
+          <Button onClick={add}>+ Adicionar</Button>
+        </div>
+      </FormCard>
+      {secao("ficha", "Categorias de fichas finais", "divisão do cardápio (pratos, drinks…) — pro CMV")}
+      {secao("subficha", "Categorias de subfichas", "bases: molhos, caldos, massas…")}
     </div>
   );
 }
