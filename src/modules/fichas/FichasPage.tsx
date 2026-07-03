@@ -296,19 +296,22 @@ function SubfichaCard({ sf, indice, isUltima, custo, insumos, subprodutos, subfi
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
-// Stepper − [qtd] + com unidade acoplada (mesma altura, alinhado).
+// Stepper "pílula" − [qtd] [unidade] + — boxes alinhados, sombra leve na cor
+// do tema (índigo). Opção A escolhida pelo usuário.
 function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }: {
   qtd: number; unidade: string; unidades: string[]; unidadeTravada: boolean;
   onQtd: (n: number) => void; onUnidade: (u: string) => void;
 }) {
   return (
-    <div className="inline-flex items-stretch h-9 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden shrink-0">
-      <button type="button" onClick={() => onQtd(Math.max(0, round2(qtd - passoDe(qtd))))} className="px-2.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none">−</button>
-      <input type="number" value={qtd} onChange={e => onQtd(Number(e.target.value) || 0)} className="w-14 text-center bg-transparent text-sm outline-none border-x border-gray-200 dark:border-gray-700 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-      <button type="button" onClick={() => onQtd(round2(qtd + passoDe(qtd)))} className="px-2.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none border-r border-gray-200 dark:border-gray-700">+</button>
-      <select value={unidade} onChange={e => onUnidade(e.target.value)} disabled={unidadeTravada} className="px-2 bg-gray-50 dark:bg-gray-800/60 text-xs font-medium text-gray-600 dark:text-gray-300 outline-none appearance-none text-center disabled:opacity-80 cursor-pointer disabled:cursor-default">
-        {unidades.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
-      </select>
+    <div className="inline-flex items-center h-9 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_2px_8px_-3px_rgba(99,102,241,0.4)] dark:shadow-[0_2px_10px_-3px_rgba(99,102,241,0.55)] shrink-0 px-1">
+      <button type="button" onClick={() => onQtd(Math.max(0, round2(qtd - passoDe(qtd))))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="diminuir">−</button>
+      <input type="number" value={qtd} onChange={e => onQtd(Number(e.target.value) || 0)} className="w-10 text-center bg-transparent text-sm outline-none dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+      {unidadeTravada
+        ? <span className="text-xs text-gray-400 min-w-[24px] text-center">{labelUnidade(unidade)}</span>
+        : <select value={unidade} onChange={e => onUnidade(e.target.value)} className="bg-transparent text-xs font-medium text-gray-500 dark:text-gray-400 outline-none appearance-none text-center cursor-pointer pr-0.5">
+            {unidades.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
+          </select>}
+      <button type="button" onClick={() => onQtd(round2(qtd + passoDe(qtd)))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="aumentar">+</button>
     </div>
   );
 }
