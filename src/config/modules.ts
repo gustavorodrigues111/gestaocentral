@@ -46,7 +46,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
-  { id: "fichas",       area: "ops", label: "Fichas Técnicas",   icon: "📋", status: "planejado", etapa: "em_desenvolvimento", desc: "Receitas e custo de pratos", dependsOn: ["compras"], oculto: true },
+  { id: "fichas",       area: "ops", subarea: "Produção & Estoque", label: "Fichas Técnicas", icon: "📋", status: "ativo", etapa: "beta", desc: "Fichas técnicas de pratos e drinques: subfichas, custo em tempo real, produção do dia (escala + requisição) e CMV do cardápio" },
 
   // ═══ 👥 PESSOAS & DP ═══
 

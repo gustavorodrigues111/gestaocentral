@@ -5311,3 +5311,79 @@ export type VendaCobranca = {
   criadoPor?: string;
   criadoPorNome?: string;
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  FICHAS TÉCNICAS — produção (escalar por rendimento, custo em tempo real).
+//  Base portada do AppMise, melhorada: unidade com DIMENSÃO (massa/volume/
+//  unidade), dedup de insumo, subproduto (ficha que vira ingrediente de outra).
+//  Escopo POR EMPRESA (restaurantId). Fase 1: Insumos + Fichas + custo.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type FtDimensao = "massa" | "volume" | "unidade";
+
+export type FtHistoricoCusto = { custo: number; data: string; por?: string | null };
+
+export type FtInsumo = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  nomeNormalizado: string;             // pra dedup/busca
+  dimensao: FtDimensao;                // fixada pela unidadeBase
+  unidadeBase: string;                 // "kg" | "g" | "L" | "ml" | "un" ...
+  custo: number;                       // R$ por unidadeBase
+  custoAtualizadoEm?: string | null;   // ISO
+  historicoCusto?: FtHistoricoCusto[];
+  fornecedorPadrao?: string | null;
+  reutilizavel?: boolean;              // ex: óleo de fritura — não pesa custo cheio
+  aliases?: string[];
+  ativo: boolean;
+};
+
+export type FtIngredienteTipo = "insumo" | "subficha" | "subproduto";
+export type FtIngrediente = {
+  id: string;
+  tipo: FtIngredienteTipo;
+  refId: string;                       // insumoId | subfichaId | fichaId(subproduto)
+  nomeSnapshot?: string;
+  qtd: number;
+  unidade: string;
+  qb?: boolean;                        // quanto baste — não entra no custo/peso
+  fc?: number;                         // fator de correção (≥1) — perda de limpeza
+};
+
+export type FtSubficha = {
+  id: string;
+  nome: string;
+  rendimento: { qtd: number; unidade: string };
+  modoPreparo?: string | null;
+  ingredientes: FtIngrediente[];
+};
+
+export type FtFichaTipo = "prato" | "drinque" | "subproduto";
+export const FT_FICHA_TIPO_LABEL: Record<FtFichaTipo, string> = {
+  prato: "Prato",
+  drinque: "Drinque",
+  subproduto: "Subproduto",
+};
+
+export type FtFicha = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  nomeNormalizado: string;
+  tipo: FtFichaTipo;
+  descricao?: string | null;
+  categoria?: string | null;
+  fotoUrl?: string | null;
+  rendimentoFinal: { qtd: number; unidade: string };
+  subfichas: FtSubficha[];
+  modoPreparo?: string | null;
+  louca?: string | null;
+  equipamentos?: string[];
+  markupAlvo?: number | null;
+  cmvAlvo?: number | null;             // % alvo de CMV
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+};

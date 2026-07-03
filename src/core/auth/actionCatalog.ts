@@ -529,6 +529,20 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "fichas",
+    icon: "📋",
+    label: "Fichas Técnicas",
+    desc: "Fichas técnicas, insumos/custo, produção e CMV",
+    area: "operacao",
+    acoes: [
+      { id: "ver",         label: "Ver fichas e custos" },
+      { id: "editarFicha", label: "Criar e editar fichas técnicas" },
+      { id: "insumos",     label: "Cadastrar insumos e custos", sensivel: true },
+      { id: "producao",    label: "Planejar produção do dia (requisição + equipe)" },
+      { id: "cardapio",    label: "Cardápio e CMV (preço de venda)", sensivel: true },
+    ],
+  },
+  {
     id: "vendas",
     icon: "🧾",
     label: "Vendas",
