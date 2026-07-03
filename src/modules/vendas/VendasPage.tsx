@@ -52,9 +52,11 @@ export function VendasPage() {
   const [formas, setFormas] = useState<VendaFormaPagamento[]>([]);
 
   const [novaVenda, setNovaVenda] = useState(false);
+  const [editVenda, setEditVenda] = useState<Venda | null>(null);
   const [cobrando, setCobrando] = useState(false);
   const [pagarVenda, setPagarVenda] = useState<Venda | null>(null);
   const [filtro, setFiltro] = useState<VendaStatus | "todas">("todas");
+  const [busca, setBusca] = useState("");
 
   const empresaNome = (id?: string | null) => restaurants.find(r => r.id === id)?.nome || "—";
 
@@ -74,9 +76,11 @@ export function VendasPage() {
   }, [rid]);
 
   const vendasFiltradas = useMemo(() => {
-    const arr = filtro === "todas" ? vendas : vendas.filter(v => v.status === filtro);
+    const q = busca.trim().toLowerCase();
+    const arr = (filtro === "todas" ? vendas : vendas.filter(v => v.status === filtro))
+      .filter(v => !q || v.clienteNomeSnapshot.toLowerCase().includes(q) || (v.numero || "").toLowerCase().includes(q));
     return arr.slice().sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.numero || "").localeCompare(a.numero || ""));
-  }, [vendas, filtro]);
+  }, [vendas, filtro, busca]);
 
   const cont = useMemo(() => ({
     todas: vendas.length,
@@ -85,6 +89,23 @@ export function VendasPage() {
     quitada: vendas.filter(v => v.status === "quitada").length,
     aberto: Math.round(vendas.filter(v => v.status !== "quitada").reduce((s, v) => s + (v.saldo ?? v.valorTotal), 0) * 100) / 100,
   }), [vendas]);
+
+  // KPIs do topo — recebido/permutas do mês corrente.
+  const kpi = useMemo(() => {
+    const mes = new Date().toISOString().slice(0, 7);
+    let recebidoMes = 0, permutasMes = 0;
+    for (const v of vendas) for (const p of v.pagamentos || []) {
+      if (!(p.data || "").startsWith(mes)) continue;
+      if (p.tipo === "permuta") permutasMes += p.valor || 0;
+      else recebidoMes += p.valor || 0;
+    }
+    return {
+      emAberto: cont.aberto,
+      abertasCount: cont.aberta + cont.cobranca_enviada,
+      recebidoMes: Math.round(recebidoMes * 100) / 100,
+      permutasMes: Math.round(permutasMes * 100) / 100,
+    };
+  }, [vendas, cont]);
 
   // Salva um pagamento numa venda (recomputa) e, se for permuta interna,
   // quita reciprocamente a venda da outra empresa.
@@ -119,6 +140,21 @@ export function VendasPage() {
     }
   }
 
+  async function excluirVenda(v: Venda) {
+    if (!confirm(`Excluir a venda ${v.numero} de ${v.clienteNomeSnapshot}? Essa ação não pode ser desfeita.`)) return;
+    await deleteDoc(doc(db, "vendas", v.id));
+  }
+
+  // Cobrança rápida de UMA venda: abre o WhatsApp do cliente e marca como
+  // "cobrança enviada".
+  async function cobrarUma(v: Venda) {
+    const cliente = clientes.find(c => c.id === v.clienteId) || null;
+    const msg = montarMensagemCobranca(activeRestaurant?.nome || "", cliente, [v]);
+    if (v.status === "aberta") await updateDoc(doc(db, "vendas", v.id), { status: "cobranca_enviada" });
+    const link = whatsLink(v.clienteWhatsappSnapshot || cliente?.whatsapp || undefined, msg);
+    window.open(link || `https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+  }
+
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
   if (!can("vendas", "ver")) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Vendas.</div>;
 
@@ -149,27 +185,42 @@ export function VendasPage() {
 
       {tab === "vendas" && (
         <div>
+          {/* KPIs */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <KpiCard label="Em aberto" valor={fmtMoeda(kpi.emAberto)} hint={`${kpi.abertasCount} venda(s)`} />
+            <KpiCard label="Recebido no mês" valor={fmtMoeda(kpi.recebidoMes)} hint="pagamentos" />
+            <KpiCard label="Permutas no mês" valor={fmtMoeda(kpi.permutasMes)} hint="entre empresas" />
+            <KpiCard label="Cobranças enviadas" valor={String(cont.cobranca_enviada)} hint="aguardando" />
+          </div>
+
+          {/* Filtro segmentado + busca */}
           <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
-            <div className="flex gap-2 overflow-x-auto">
-              <Chip ativo={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas ({cont.todas})</Chip>
-              <Chip ativo={filtro === "aberta"} onClick={() => setFiltro("aberta")} cor="amber">Abertas ({cont.aberta})</Chip>
-              <Chip ativo={filtro === "cobranca_enviada"} onClick={() => setFiltro("cobranca_enviada")} cor="blue">Cobrança enviada ({cont.cobranca_enviada})</Chip>
-              <Chip ativo={filtro === "quitada"} onClick={() => setFiltro("quitada")} cor="green">Quitadas ({cont.quitada})</Chip>
+            <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+              <Seg ativo={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas ({cont.todas})</Seg>
+              <Seg ativo={filtro === "aberta"} onClick={() => setFiltro("aberta")}>Abertas ({cont.aberta})</Seg>
+              <Seg ativo={filtro === "cobranca_enviada"} onClick={() => setFiltro("cobranca_enviada")}>Cobrança enviada ({cont.cobranca_enviada})</Seg>
+              <Seg ativo={filtro === "quitada"} onClick={() => setFiltro("quitada")}>Quitadas ({cont.quitada})</Seg>
             </div>
-            {cont.aberto > 0 && <div className="text-xs text-gray-500">Em aberto: <strong className="text-gray-800 dark:text-gray-200">{fmtMoeda(cont.aberto)}</strong></div>}
+            <div className="flex items-center gap-2 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm min-w-[200px]">
+              <span className="text-gray-400 text-sm">🔎</span>
+              <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou nº…" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
+            </div>
           </div>
 
           {vendasFiltradas.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
-              Nenhuma venda {filtro !== "todas" ? "nesse status" : "registrada"} ainda.
+              {busca ? "Nada encontrado pra essa busca." : `Nenhuma venda ${filtro !== "todas" ? "nesse status" : "registrada"} ainda.`}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
               {vendasFiltradas.map(v => (
-                <VendaCard
+                <VendaRow
                   key={v.id} venda={v} empresaNome={empresaNome}
-                  podeQuitar={podeQuitar}
+                  podeQuitar={podeQuitar} podeLancar={podeLancar} podeCobrar={podeCobrar}
                   onPagar={() => setPagarVenda(v)}
+                  onEditar={() => setEditVenda(v)}
+                  onExcluir={() => excluirVenda(v)}
+                  onCobrar={() => cobrarUma(v)}
                 />
               ))}
             </div>
@@ -181,11 +232,12 @@ export function VendasPage() {
       {tab === "clientes" && <CadastroClientes rid={rid} clientes={clientes} restaurants={restaurants} />}
       {tab === "formas" && <CadastroFormas formas={formas} />}
 
-      {novaVenda && (
+      {(novaVenda || editVenda) && (
         <NovaVendaModal
           rid={rid} produtos={produtos} clientes={clientes} vendas={vendas}
+          vendaEdit={editVenda}
           meId={pessoa?.id} meNome={pessoa?.nome}
-          onClose={() => setNovaVenda(false)}
+          onClose={() => { setNovaVenda(false); setEditVenda(null); }}
         />
       )}
       {cobrando && (
@@ -207,63 +259,91 @@ export function VendasPage() {
   );
 }
 
-// ─── Card de venda ──────────────────────────────────────────────────────────
-function VendaCard({ venda: v, empresaNome, podeQuitar, onPagar }: {
-  venda: Venda; empresaNome: (id?: string | null) => string; podeQuitar: boolean; onPagar: () => void;
+// ─── Linha de venda (estilo fatura) ─────────────────────────────────────────
+function iniciais(nome: string): string {
+  const p = (nome || "").trim().split(/\s+/);
+  return ((p[0]?.[0] || "") + (p.length > 1 ? p[p.length - 1][0] : "")).toUpperCase() || "–";
+}
+function VendaRow({ venda: v, empresaNome, podeQuitar, podeLancar, podeCobrar, onPagar, onEditar, onExcluir, onCobrar }: {
+  venda: Venda; empresaNome: (id?: string | null) => string;
+  podeQuitar: boolean; podeLancar: boolean; podeCobrar: boolean;
+  onPagar: () => void; onEditar: () => void; onExcluir: () => void; onCobrar: () => void;
 }) {
   const [aberto, setAberto] = useState(false);
+  const itensResumo = v.itens?.map(i => i.descricao).filter(Boolean).slice(0, 3).join(", ");
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
-      <div className="p-3 flex items-center gap-2 flex-wrap">
-        <button type="button" onClick={() => setAberto(a => !a)} className="flex-1 min-w-0 text-left flex items-center gap-2">
-          <span className="text-gray-400 text-xs w-3">{aberto ? "▾" : "▸"}</span>
-          <div className="min-w-0">
-            <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
-              {v.numero} · {v.clienteNomeSnapshot}
-              {v.clienteTipo === "interna" && <span className="ml-1 text-[10px] uppercase text-indigo-500">interna</span>}
-            </div>
-            <div className="text-[11px] text-gray-500">{fmtBR(v.data)}</div>
+    <div className={aberto ? "bg-gray-50/60 dark:bg-gray-800/30" : ""}>
+      <button type="button" onClick={() => setAberto(a => !a)} className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+        <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${v.clienteTipo === "interna" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>{iniciais(v.clienteNomeSnapshot)}</div>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+            {v.clienteNomeSnapshot}
+            {v.clienteTipo === "interna" && <span className="ml-2 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">interna</span>}
           </div>
-        </button>
-        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${STATUS_COR[v.status]}`}>{VENDA_STATUS_LABEL[v.status]}</span>
-        <div className="text-right">
-          <div className="font-bold text-sm text-gray-900 dark:text-gray-100 tabular-nums">{fmtMoeda(v.valorTotal)}</div>
-          {v.status !== "quitada" && v.saldo < v.valorTotal && <div className="text-[10px] text-gray-500">saldo {fmtMoeda(v.saldo)}</div>}
+          <div className="text-xs text-gray-500 truncate">{v.numero} · {fmtBR(v.data)}{itensResumo ? ` · ${itensResumo}` : ""}</div>
         </div>
-      </div>
+        <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ${STATUS_COR[v.status]}`}>{VENDA_STATUS_LABEL[v.status]}</span>
+        <div className="text-right shrink-0 min-w-[84px]">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtMoeda(v.valorTotal)}</div>
+          {v.status === "quitada"
+            ? <div className="text-[10px] text-emerald-600 dark:text-emerald-400">✓ paga</div>
+            : v.saldo < v.valorTotal && <div className="text-[10px] text-gray-500">saldo {fmtMoeda(v.saldo)}</div>}
+        </div>
+        <span className="text-gray-400 text-xs w-3 shrink-0">{aberto ? "▲" : "▼"}</span>
+      </button>
+
       {aberto && (
-        <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2 space-y-2">
-          <div className="text-xs">
-            {v.itens?.map((it, i) => (
-              <div key={i} className="flex justify-between gap-2 text-gray-600 dark:text-gray-300">
-                <span className="truncate">{it.qtd} × {it.descricao}</span>
-                <span className="tabular-nums shrink-0">{fmtMoeda(it.total)}</span>
+        <div className="px-4 pb-4 pl-16 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Itens</div>
+              <div className="space-y-0.5">
+                {v.itens?.map((it, i) => (
+                  <div key={i} className="flex justify-between gap-2 text-xs text-gray-600 dark:text-gray-300 border-b border-gray-100 dark:border-gray-800 last:border-0 py-0.5">
+                    <span className="truncate">{it.qtd} × {it.descricao}</span>
+                    <span className="tabular-nums shrink-0">{fmtMoeda(it.total)}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          {v.observacoes && <div className="text-[11px] text-gray-500 italic">{v.observacoes}</div>}
-          {(v.pagamentos?.length ?? 0) > 0 && (
-            <div className="text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5 border-t border-gray-100 dark:border-gray-800 pt-1.5">
-              <div className="font-semibold text-gray-500 uppercase tracking-wider text-[10px]">Pagamentos</div>
-              {v.pagamentos.map((p, i) => (
-                <div key={i} className="flex justify-between gap-2">
-                  <span className="truncate">
-                    {fmtBR(p.data)} · {p.tipo === "permuta"
-                      ? `permuta${p.permutaVendaNumero ? ` (${p.permutaVendaNumero}${p.permutaEmpresaNome ? ` · ${p.permutaEmpresaNome}` : ""})` : p.permutaDescricao ? ` (${p.permutaDescricao})` : ""}`
-                      : p.formaNome || "pagamento"}
-                    {p.comprovanteUrl && <> · <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 underline">comprovante</a></>}
-                    {p.infoRecebimento && ` · ${p.infoRecebimento}`}
-                  </span>
-                  <span className="tabular-nums shrink-0">{fmtMoeda(p.valor)}</span>
+              {v.observacoes && <div className="text-[11px] text-gray-500 italic mt-1">{v.observacoes}</div>}
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Pagamentos</div>
+              {(v.pagamentos?.length ?? 0) === 0 ? (
+                <div className="text-xs text-gray-400 italic">Nenhum pagamento ainda.</div>
+              ) : (
+                <div className="space-y-0.5">
+                  {v.pagamentos.map((p, i) => (
+                    <div key={i} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 py-0.5">
+                      <span className="shrink-0">{p.tipo === "permuta" ? "🔄" : "💵"}</span>
+                      <span className="flex-1 min-w-0 truncate">
+                        {p.tipo === "permuta"
+                          ? `Permuta${p.permutaVendaNumero ? ` · ${p.permutaVendaNumero}${p.permutaEmpresaNome ? ` (${p.permutaEmpresaNome})` : ""}` : p.permutaDescricao ? ` · ${p.permutaDescricao}` : ""}`
+                          : p.formaNome || "Pagamento"}
+                        {p.infoRecebimento && ` · ${p.infoRecebimento}`}
+                        {p.comprovanteUrl && <> · <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-indigo-600 dark:text-indigo-400 underline">comprovante</a></>}
+                        <span className="text-gray-400"> · {fmtBR(p.data)}</span>
+                      </span>
+                      <span className="tabular-nums shrink-0 font-medium">{fmtMoeda(p.valor)}</span>
+                    </div>
+                  ))}
+                  {v.status !== "quitada" && (
+                    <div className="flex items-center gap-2 text-xs text-gray-500 pt-0.5">
+                      <span className="shrink-0">⏳</span><span className="flex-1">Saldo a receber</span>
+                      <span className="tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(v.saldo)}</span>
+                    </div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
-          )}
-          {v.status !== "quitada" && podeQuitar && (
-            <div className="flex justify-end">
-              <Button size="sm" onClick={onPagar}>💰 Registrar pagamento</Button>
-            </div>
-          )}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            {v.status !== "quitada" && podeQuitar && <Button size="sm" onClick={onPagar}>💰 Registrar pagamento</Button>}
+            {v.status !== "quitada" && podeCobrar && <Button size="sm" variant="secondary" onClick={onCobrar}>💬 Cobrar no WhatsApp</Button>}
+            {podeLancar && <Button size="sm" variant="ghost" onClick={onEditar}>✏️ Editar</Button>}
+            {podeLancar && <Button size="sm" variant="ghost" onClick={onExcluir}>🗑️ Excluir</Button>}
+          </div>
           {v.clienteTipo === "interna" && <div className="text-[10px] text-gray-400">Empresa vendedora: {empresaNome(v.restaurantId)}</div>}
         </div>
       )}
@@ -271,15 +351,16 @@ function VendaCard({ venda: v, empresaNome, podeQuitar, onPagar }: {
   );
 }
 
-// ─── Modal: nova venda ────────────────────────────────────────────────────
-function NovaVendaModal({ rid, produtos, clientes, vendas, meId, meNome, onClose }: {
+// ─── Modal: nova venda / editar ──────────────────────────────────────────────
+function NovaVendaModal({ rid, produtos, clientes, vendas, vendaEdit, meId, meNome, onClose }: {
   rid: string; produtos: VendaProduto[]; clientes: VendaCliente[]; vendas: Venda[];
-  meId?: string; meNome?: string; onClose: () => void;
+  vendaEdit?: Venda | null; meId?: string; meNome?: string; onClose: () => void;
 }) {
-  const [clienteId, setClienteId] = useState("");
-  const [data, setData] = useState(hojeYmd());
-  const [itens, setItens] = useState<VendaItem[]>([]);
-  const [obs, setObs] = useState("");
+  const editando = !!vendaEdit;
+  const [clienteId, setClienteId] = useState(vendaEdit?.clienteId || "");
+  const [data, setData] = useState(vendaEdit?.data || hojeYmd());
+  const [itens, setItens] = useState<VendaItem[]>(vendaEdit?.itens ? [...vendaEdit.itens] : []);
+  const [obs, setObs] = useState(vendaEdit?.observacoes || "");
   const [salvando, setSalvando] = useState(false);
   const clientesAtivos = clientes.filter(c => c.ativo !== false);
   const produtosAtivos = produtos.filter(p => p.ativo !== false);
@@ -312,6 +393,21 @@ function NovaVendaModal({ rid, produtos, clientes, vendas, meId, meNome, onClose
     if (validos.length === 0) { alert("Adicione ao menos um item com descrição e valor."); return; }
     setSalvando(true);
     try {
+      const valorTotal = Math.round(total * 100) / 100;
+      if (editando && vendaEdit) {
+        // Recalcula saldo/status a partir dos pagamentos existentes + novo total.
+        const atu = recomputarVenda({ ...vendaEdit, itens: validos, valorTotal });
+        await updateDoc(doc(db, "vendas", vendaEdit.id), sanitizeForFirestore({
+          clienteId: cliente.id, clienteNomeSnapshot: cliente.nome, clienteTipo: cliente.tipo,
+          clienteWhatsappSnapshot: cliente.whatsapp || null,
+          clienteRestauranteVinculadoId: cliente.tipo === "interna" ? (cliente.restauranteVinculadoId || null) : null,
+          data, itens: validos, valorTotal,
+          observacoes: obs.trim() || null,
+          saldo: atu.saldo, status: atu.status, quitadoEm: atu.quitadoEm,
+        }));
+        onClose();
+        return;
+      }
       const ano = Number(data.slice(0, 4)) || new Date().getFullYear();
       const numero = proximoNumero("VENDA", ano, vendas.map(v => v.numero));
       const id = `venda_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
@@ -321,9 +417,9 @@ function NovaVendaModal({ rid, produtos, clientes, vendas, meId, meNome, onClose
         clienteWhatsappSnapshot: cliente.whatsapp || null,
         clienteRestauranteVinculadoId: cliente.tipo === "interna" ? (cliente.restauranteVinculadoId || null) : null,
         itens: validos,
-        valorTotal: Math.round(total * 100) / 100,
+        valorTotal,
         status: "aberta",
-        pagamentos: [], valorPago: 0, saldo: Math.round(total * 100) / 100,
+        pagamentos: [], valorPago: 0, saldo: valorTotal,
         cobrancaId: null,
         observacoes: obs.trim() || null,
         criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome, quitadoEm: null,
@@ -336,7 +432,7 @@ function NovaVendaModal({ rid, produtos, clientes, vendas, meId, meNome, onClose
   }
 
   return (
-    <Modal title="Nova venda" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={editando ? `Editar ${vendaEdit?.numero}` : "Nova venda"} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <label className="text-xs">
@@ -385,7 +481,7 @@ function NovaVendaModal({ rid, produtos, clientes, vendas, meId, meNome, onClose
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar venda"}</Button>
+          <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : editando ? "Salvar alterações" : "Salvar venda"}</Button>
         </div>
       </div>
     </Modal>
@@ -797,6 +893,25 @@ function CampoMoeda({ label, value, onChange }: { label: string; value: string; 
     </div>
   );
 }
+// Card de indicador (KPI) no topo da aba Vendas.
+function KpiCard({ label, valor, hint }: { label: string; valor: string; hint?: string }) {
+  return (
+    <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-3">
+      <div className="text-[11px] text-gray-500 dark:text-gray-400">{label}</div>
+      <div className="text-lg font-bold text-gray-900 dark:text-gray-100 tabular-nums">{valor}</div>
+      {hint && <div className="text-[10px] text-gray-400">{hint}</div>}
+    </div>
+  );
+}
+// Botão do controle segmentado (filtro de status).
+function Seg({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${ativo ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+      {children}
+    </button>
+  );
+}
 function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
@@ -804,10 +919,4 @@ function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
       {children}
     </button>
   );
-}
-function Chip({ ativo, onClick, cor, children }: { ativo: boolean; onClick: () => void; cor?: "amber" | "blue" | "green"; children: React.ReactNode }) {
-  const base = ativo
-    ? (cor === "amber" ? "bg-amber-600 text-white" : cor === "blue" ? "bg-blue-600 text-white" : cor === "green" ? "bg-emerald-600 text-white" : "bg-indigo-600 text-white")
-    : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 hover:bg-gray-200";
-  return <button type="button" onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${base}`}>{children}</button>;
 }
