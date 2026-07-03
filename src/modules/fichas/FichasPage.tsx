@@ -685,8 +685,9 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
   const novaDim = (dimensaoDeUnidade(unidadeBase) || insumo.dimensao) as FtDimensao;
   const mudouUnidade = unidadeBase !== insumo.unidadeBase;
   const mudouDim = novaDim !== insumo.dimensao;
-  // Fichas que usam este insumo diretamente (afetadas por mudança de unidade).
+  // Fichas que usam este insumo diretamente (candidatas a afetadas pela mudança).
   const afetadas = useMemo(() => fichas.filter(f => f.ativo !== false && (f.ingredientes || []).some(ing => ing.tipo === "insumo" && ing.refId === insumo.id)), [fichas, insumo.id]);
+  const [afetadasSel, setAfetadasSel] = useState<Set<string>>(() => new Set(afetadas.map(f => f.id)));
   // Trocar unidade: mesma dimensão → converte o custo exibido; outra dimensão → mantém.
   function trocarUnidade(nova: string) {
     const oldDim = dimensaoDeUnidade(unidadeBase), newDim = dimensaoDeUnidade(nova);
@@ -718,6 +719,7 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
     // (mantém a quantidade) e marca pra revisão — as quantidades precisam conferência.
     if (mudouUnidade && mudouDim) {
       for (const f of afetadas) {
+        if (!afetadasSel.has(f.id)) continue; // você disse que esta NÃO é afetada
         const ingredientes = (f.ingredientes || []).map(ing => ing.tipo === "insumo" && ing.refId === insumo.id ? { ...ing, unidade: unidadeBase } : ing);
         batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes, revisar: true, revisarMotivo: f.revisarMotivo || `Unidade de "${insumo.nome}" mudou p/ ${labelUnidade(unidadeBase)} — confira as quantidades` }));
       }
@@ -735,11 +737,30 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
             {UNIDADES.filter(u => ["kg", "g", "L", "ml", "un"].includes(u.unidade)).map(u => <option key={u.unidade} value={u.unidade}>{u.label} ({DIMENSAO_LABEL[u.dimensao]})</option>)}
           </Select>
         </div>
-        {mudouUnidade && (
-          <div className={`text-[11px] rounded-lg p-2 ${mudouDim ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200" : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200"}`}>
-            {mudouDim
-              ? <>⚠ Muda de <strong>{DIMENSAO_LABEL[insumo.dimensao]}</strong> para <strong>{DIMENSAO_LABEL[novaDim]}</strong>. {afetadas.length > 0 ? <>Afeta {afetadas.length} ficha(s): {afetadas.slice(0, 6).map(f => f.nome).join(", ")}{afetadas.length > 6 ? "…" : ""}. Elas ficam com o ingrediente em {labelUnidade(unidadeBase)} e marcadas <strong>⚑ revisar</strong> pra você conferir as quantidades.</> : "Nenhuma ficha usa este insumo."}</>
-              : <>Custo convertido pra R$/{labelUnidade(unidadeBase)} automaticamente.</>}
+        {mudouUnidade && !mudouDim && (
+          <div className="text-[11px] rounded-lg p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200">Custo convertido pra R$/{labelUnidade(unidadeBase)} automaticamente.</div>
+        )}
+        {mudouUnidade && mudouDim && (
+          <div className="text-[11px] rounded-lg p-2 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 space-y-1.5">
+            <div>⚠ Muda de <strong>{DIMENSAO_LABEL[insumo.dimensao]}</strong> para <strong>{DIMENSAO_LABEL[novaDim]}</strong>.</div>
+            {afetadas.length === 0
+              ? <div>Nenhuma ficha usa este insumo — só o insumo muda.</div>
+              : <>
+                  <div>Marque as fichas <strong>realmente</strong> afetadas: elas ficam com o ingrediente em {labelUnidade(unidadeBase)} e vão pra <strong>⚑ revisar</strong>. As desmarcadas não mudam.</div>
+                  <div className="flex gap-3 text-indigo-600 dark:text-indigo-400">
+                    <button type="button" onClick={() => setAfetadasSel(new Set(afetadas.map(f => f.id)))} className="hover:underline">marcar todas</button>
+                    <button type="button" onClick={() => setAfetadasSel(new Set())} className="hover:underline">nenhuma</button>
+                    <span className="text-amber-700 dark:text-amber-300">{afetadasSel.size}/{afetadas.length} afetadas</span>
+                  </div>
+                  <div className="max-h-36 overflow-y-auto space-y-0.5 rounded-lg bg-white/60 dark:bg-gray-900/40 p-1.5">
+                    {afetadas.map(f => (
+                      <label key={f.id} className="flex items-center gap-2 cursor-pointer px-1 py-0.5">
+                        <input type="checkbox" checked={afetadasSel.has(f.id)} onChange={ev => setAfetadasSel(s => { const n = new Set(s); if (ev.target.checked) n.add(f.id); else n.delete(f.id); return n; })} className="w-3.5 h-3.5 accent-amber-600" />
+                        <span className="truncate text-gray-700 dark:text-gray-200">{f.nome}</span>
+                      </label>
+                    ))}
+                  </div>
+                </>}
           </div>
         )}
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
