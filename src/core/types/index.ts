@@ -5323,6 +5323,11 @@ export type FtDimensao = "massa" | "volume" | "unidade";
 
 export type FtHistoricoCusto = { custo: number; data: string; por?: string | null };
 
+// Variação de um insumo com fator de correção (rendimento). `fc` é o % de
+// APROVEITAMENTO em relação ao insumo inteiro (100 = inteiro, 92 = descascada,
+// 85 = brunoise). Custo da variação = custo base × (100 / fc) — perda de limpeza.
+export type FtInsumoVariacao = { id: string; nome: string; fc: number };
+
 export type FtInsumo = {
   id: string;
   restaurantId: string;
@@ -5330,11 +5335,12 @@ export type FtInsumo = {
   nomeNormalizado: string;             // pra dedup/busca
   dimensao: FtDimensao;                // fixada pela unidadeBase
   unidadeBase: string;                 // "kg" | "g" | "L" | "ml" | "un" ...
-  custo: number;                       // R$ por unidadeBase
+  custo: number;                       // R$ por unidadeBase (do insumo INTEIRO)
   custoAtualizadoEm?: string | null;   // ISO
   historicoCusto?: FtHistoricoCusto[];
   fornecedorPadrao?: string | null;
   reutilizavel?: boolean;              // ex: óleo de fritura — não pesa custo cheio
+  variacoes?: FtInsumoVariacao[];      // cebola descascada, brunoise, julienne...
   aliases?: string[];
   ativo: boolean;
 };
@@ -5359,7 +5365,8 @@ export type FtIngrediente = {
   qtd: number;
   unidade: string;
   qb?: boolean;                        // quanto baste — não entra no custo/peso
-  fc?: number;                         // fator de correção (≥1) — perda de limpeza
+  variacaoNome?: string | null;        // nome da variação escolhida (ex: "descascada")
+  fc?: number;                         // % de aproveitamento da variação (100 = inteiro)
 };
 
 // Receita: uma FICHA (produto final, vai pro cardápio) OU uma SUBFICHA (preparo

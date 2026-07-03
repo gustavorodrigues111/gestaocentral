@@ -13,7 +13,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo } from "../../core/types";
+import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao } from "../../core/types";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
@@ -358,7 +358,9 @@ function IngredienteRow({ ing, insumoById, subfichas, onPatch, onRemove }: {
     <div className="flex items-center gap-2 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 px-1 -mx-1">
       <span className={`w-2 h-2 rounded-full shrink-0 ${CHIP_TIPO[ehSub ? "subficha" : "insumo"]}`} aria-hidden="true"></span>
       <span className="flex-1 min-w-0 truncate text-sm text-gray-800 dark:text-gray-200">
-        {nome}{ehSub && <span className="ml-1.5 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
+        {nome}
+        {ing.variacaoNome && <span className="ml-1.5 text-[11px] text-indigo-600 dark:text-indigo-400">↳ {ing.variacaoNome}{ing.fc && ing.fc !== 100 ? ` (${ing.fc}%)` : ""}</span>}
+        {ehSub && <span className="ml-1.5 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
       </span>
       {ing.qb
         ? <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">quanto baste</span>
@@ -378,8 +380,12 @@ function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }:
   const sugInsumos = useMemo(() => sugerirInsumos(busca, insumos), [busca, insumos]);
   const sugSubfichas = useMemo(() => subfichas.filter(s => n && normalizarNome(s.nome).includes(n)), [subfichas, n]);
 
-  function pickInsumo(ins: FtInsumo) {
-    onAdd({ id: uid("ing"), tipo: "insumo", refId: ins.id, nomeSnapshot: ins.nome, qtd: 1, unidade: unidadesDaDimensao(ins.dimensao)[0]?.unidade || ins.unidadeBase });
+  function pickInsumo(ins: FtInsumo, variacao?: FtInsumoVariacao) {
+    onAdd({
+      id: uid("ing"), tipo: "insumo", refId: ins.id, nomeSnapshot: ins.nome,
+      qtd: 1, unidade: unidadesDaDimensao(ins.dimensao)[0]?.unidade || ins.unidadeBase,
+      ...(variacao ? { variacaoNome: variacao.nome, fc: variacao.fc } : {}),
+    });
     setBusca("");
   }
   function pickSubficha(sf: FtFicha) {
@@ -405,12 +411,20 @@ function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }:
       {busca && (
         <div className="absolute left-0 right-0 z-10 mt-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden max-h-72 overflow-y-auto">
           {sugInsumos.map(({ insumo, motivo }) => (
-            <button key={insumo.id} type="button" onClick={() => pickInsumo(insumo)} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-              <span className="text-sm flex-1 truncate">{insumo.nome} <span className="text-[11px] text-gray-400">· {DIMENSAO_LABEL[insumo.dimensao]}</span></span>
-              {motivo === "parecido" && <span className="text-[10px] text-amber-600">parecido</span>}
-              {(!insumo.custo || insumo.custo <= 0) && <span className="text-[10px] text-amber-600">sem custo</span>}
-            </button>
+            <div key={insumo.id}>
+              <button type="button" onClick={() => pickInsumo(insumo)} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+                <span className="text-sm flex-1 truncate">{insumo.nome} <span className="text-[11px] text-gray-400">· {DIMENSAO_LABEL[insumo.dimensao]}{(insumo.variacoes?.length ?? 0) > 0 ? " · inteiro" : ""}</span></span>
+                {motivo === "parecido" && <span className="text-[10px] text-amber-600">parecido</span>}
+                {(!insumo.custo || insumo.custo <= 0) && <span className="text-[10px] text-amber-600">sem custo</span>}
+              </button>
+              {(insumo.variacoes || []).map(v => (
+                <button key={v.id} type="button" onClick={() => pickInsumo(insumo, v)} className="w-full text-left flex items-center gap-2 pl-8 pr-3 py-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+                  <span className="text-indigo-500 text-xs shrink-0">↳</span>
+                  <span className="text-sm flex-1 truncate text-indigo-700 dark:text-indigo-300">{v.nome} <span className="text-[10px] text-indigo-400">· {v.fc}% aprov.</span></span>
+                </button>
+              ))}
+            </div>
           ))}
           {sugSubfichas.map(sf => (
             <button key={sf.id} type="button" onClick={() => pickSubficha(sf)} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
@@ -531,19 +545,47 @@ function EditarCustoModal({ insumo, meId, onClose }: { insumo: FtInsumo; meId?: 
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
+  const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
+  const cNum = parseMoeda(custo);
+  function addVar() { setVariacoes(v => [...v, { id: uid("var"), nome: "", fc: 100 }]); }
+  function patchVar(id: string, patch: Partial<FtInsumoVariacao>) { setVariacoes(v => v.map(x => x.id === id ? { ...x, ...patch } : x)); }
   async function salvar() {
     const c = parseMoeda(custo); const now = new Date().toISOString();
     const hist = [...(insumo.historicoCusto || [])];
     if (c > 0 && c !== insumo.custo) hist.push({ custo: c, data: now, por: meId || null });
-    await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil }));
+    const vars = variacoes.filter(v => v.nome.trim()).map(v => ({ id: v.id, nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
+    await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars }));
     onClose();
   }
   return (
-    <Modal title={`Custo — ${insumo.nome}`} onClose={onClose} maxWidth="max-w-sm">
+    <Modal title={`Insumo — ${insumo.nome}`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <CampoMoeda label={`Custo por ${labelUnidade(insumo.unidadeBase)}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
+        <CampoMoeda label={`Custo por ${labelUnidade(insumo.unidadeBase)} (inteiro)`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={reutil} onChange={e => setReutil(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Reutilizável (não pesa custo cheio — ex: óleo de fritura)</label>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Variações (fator de correção)</span>
+            <button type="button" onClick={addVar} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ variação</button>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2">% de aproveitamento em relação ao inteiro (ex: descascada 92%, brunoise 85%). O custo é ajustado sozinho.</p>
+          {variacoes.length === 0 && <div className="text-xs text-gray-400 italic">Nenhuma variação. O insumo é usado inteiro (100%).</div>}
+          <div className="space-y-1.5">
+            {variacoes.map(v => (
+              <div key={v.id} className="flex items-center gap-2">
+                <input value={v.nome} onChange={e => patchVar(v.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: descascada" className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                <div className="flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2">
+                  <input type="number" value={v.fc} onChange={e => patchVar(v.id, { fc: Number(e.target.value) || 0 })} className="w-12 py-1.5 bg-transparent text-right text-sm outline-none dark:text-gray-100" />
+                  <span className="text-xs text-gray-400">%</span>
+                </div>
+                <span className="text-[11px] text-gray-400 w-20 text-right tabular-nums">{cNum > 0 && v.fc > 0 ? fmtMoeda(round2(cNum * 100 / v.fc)) : "—"}</span>
+                <button type="button" onClick={() => setVariacoes(list => list.filter(x => x.id !== v.id))} className="text-gray-400 hover:text-red-600 text-sm">✕</button>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
       </div>
     </Modal>

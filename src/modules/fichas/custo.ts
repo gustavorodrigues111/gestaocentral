@@ -11,7 +11,9 @@ type Ctx = {
 };
 
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
-const fcMul = (ing: FtIngrediente) => (ing.fc && ing.fc >= 1 ? ing.fc : 1);
+// fc = % de aproveitamento da variação (100 = inteiro). Quanto menor o
+// aproveitamento, MAIS produto bruto é preciso → multiplicador 100/fc.
+const fcMul = (ing: FtIngrediente) => (ing.fc && ing.fc > 0 ? 100 / ing.fc : 1);
 
 // Escala o custo de uma subficha pela fração usada do rendimento dela.
 function escala(qtd: number, unidade: string, rend: { qtd: number; unidade: string }, custoTotal: number): number {
