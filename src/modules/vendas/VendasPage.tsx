@@ -435,13 +435,10 @@ function NovaVendaModal({ rid, produtos, clientes, vendas, vendaEdit, meId, meNo
     <Modal title={editando ? `Editar ${vendaEdit?.numero}` : "Nova venda"} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <label className="text-xs">
-            <span className="text-gray-500">Cliente</span>
-            <select value={clienteId} onChange={e => setClienteId(e.target.value)} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-              <option value="">Selecione…</option>
-              {clientesAtivos.map(c => <option key={c.id} value={c.id}>{c.nome}{c.tipo === "interna" ? " (interna)" : ""}</option>)}
-            </select>
-          </label>
+          <Select label="Cliente" value={clienteId} onChange={e => setClienteId(e.target.value)}>
+            <option value="">Selecione…</option>
+            {clientesAtivos.map(c => <option key={c.id} value={c.id}>{c.nome}{c.tipo === "interna" ? " (interna)" : ""}</option>)}
+          </Select>
           <Input label="Data" type="date" value={data} onChange={e => setData(e.target.value)} />
         </div>
 
@@ -573,13 +570,10 @@ function PagamentoModal({ venda, formas, vendasRecebidas, empresaNome, meId, meN
 
         {tipo === "forma" ? (
           <>
-            <label className="text-xs">
-              <span className="text-gray-500">Forma</span>
-              <select value={formaId} onChange={e => setFormaId(e.target.value)} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-                <option value="">Selecione…</option>
-                {formasAtivas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </select>
-            </label>
+            <Select label="Forma" value={formaId} onChange={e => setFormaId(e.target.value)}>
+              <option value="">Selecione…</option>
+              {formasAtivas.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </Select>
             <Input label="Info do recebimento (opcional)" value={info} onChange={e => setInfo(e.target.value)} placeholder="ex: PIX recebido na conta X" />
             <div>
               <label className="text-xs text-gray-500">Comprovante (opcional)</label>
@@ -600,14 +594,13 @@ function PagamentoModal({ venda, formas, vendasRecebidas, empresaNome, meId, meN
                   Nenhuma venda em aberto de <strong>{venda.clienteNomeSnapshot}</strong> pra você usar como permuta. (Lance a venda dessa empresa pra você primeiro, ou registre como permuta externa.)
                 </div>
               ) : (
-                <label className="text-xs">
-                  <span className="text-gray-500">Usar venda de {venda.clienteNomeSnapshot} como permuta</span>
-                  <select value={permutaVendaId} onChange={e => { setPermutaVendaId(e.target.value); const r = reciprocas.find(x => x.id === e.target.value); if (r) setValorStr(maskMoeda(String(Math.round(Math.min(r.saldo, venda.saldo) * 100)))); }} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                <div>
+                  <Select label={`Usar venda de ${venda.clienteNomeSnapshot} como permuta`} value={permutaVendaId} onChange={e => { setPermutaVendaId(e.target.value); const r = reciprocas.find(x => x.id === e.target.value); if (r) setValorStr(maskMoeda(String(Math.round(Math.min(r.saldo, venda.saldo) * 100)))); }}>
                     <option value="">Selecione…</option>
                     {reciprocas.map(r => <option key={r.id} value={r.id}>{r.numero} · saldo {fmtMoeda(r.saldo)}</option>)}
-                  </select>
-                  {permutaSel && <span className="text-[11px] text-gray-500">Quita reciprocamente {permutaSel.numero} ({empresaNome(permutaSel.restaurantId)}) no valor aplicado.</span>}
-                </label>
+                  </Select>
+                  {permutaSel && <span className="block mt-1 text-[11px] text-gray-500">Quita reciprocamente {permutaSel.numero} ({empresaNome(permutaSel.restaurantId)}) no valor aplicado.</span>}
+                </div>
               )
             ) : (
               <Input label="Identifique a compra usada como permuta" value={permutaDesc} onChange={e => setPermutaDesc(e.target.value)} placeholder="ex: NF 123 / produção entregue em jun" />
@@ -686,13 +679,10 @@ function CobrancaModal({ rid, empresaNome, vendas, clientes, meId, meNome, onClo
   return (
     <Modal title="Gerar cobrança (WhatsApp)" onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
-        <label className="text-xs">
-          <span className="text-gray-500">Cliente</span>
-          <select value={clienteId} onChange={e => { setClienteId(e.target.value); setSel(new Set()); }} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-            <option value="">Selecione…</option>
-            {clientes.filter(c => c.ativo !== false).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </select>
-        </label>
+        <Select label="Cliente" value={clienteId} onChange={e => { setClienteId(e.target.value); setSel(new Set()); }}>
+          <option value="">Selecione…</option>
+          {clientes.filter(c => c.ativo !== false).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </Select>
 
         {clienteId && (
           abertasDoCliente.length === 0 ? (
