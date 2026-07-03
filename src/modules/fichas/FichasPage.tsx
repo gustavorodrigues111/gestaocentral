@@ -1138,6 +1138,7 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
 function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCategoria[] }) {
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<"ficha" | "subficha">("ficha");
+  const [editar, setEditar] = useState<FtCategoria | null>(null);
   const ativas = categorias.filter(c => c.ativo !== false).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const doTipo = (t: "ficha" | "subficha") => ativas.filter(c => (c.tipo || "ficha") === t);
   async function add() {
@@ -1151,11 +1152,11 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
       <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}</span></div>
       <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
         {doTipo(t).map(c => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm group">
+          <div key={c.id} onClick={() => setEditar(c)} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" title="Editar categoria">
             <span className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">🏷️</span>
             <span className="flex-1 text-gray-900 dark:text-gray-100">{c.nome}</span>
-            <button type="button" onClick={() => updateDoc(doc(db, "ftCategorias", c.id), { tipo: t === "ficha" ? "subficha" : "ficha" })} className="text-xs text-gray-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">→ {t === "ficha" ? "subficha" : "ficha"}</button>
-            <button type="button" onClick={() => deleteDoc(doc(db, "ftCategorias", c.id))} className="text-xs text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">Excluir</button>
+            {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
+            <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
           </div>
         ))}
       </ListaCard>
@@ -1176,7 +1177,55 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
       </FormCard>
       {secao("ficha", "Categorias de fichas finais", "divisão do cardápio (pratos, drinks…) — pro CMV")}
       {secao("subficha", "Categorias de subfichas", "bases: molhos, caldos, massas…")}
+      {editar && <CategoriaModal categoria={editar} onClose={() => setEditar(null)} />}
     </div>
+  );
+}
+
+function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClose: () => void }) {
+  const [nome, setNome] = useState(categoria.nome);
+  const [tipo, setTipo] = useState<"ficha" | "subficha">((categoria.tipo || "ficha") as "ficha" | "subficha");
+  const [ordem, setOrdem] = useState(String(categoria.ordem ?? 0));
+  const [cmv, setCmv] = useState(categoria.cmvAlvo != null ? String(categoria.cmvAlvo) : "");
+  async function salvar() {
+    if (!nome.trim()) { alert("Dê um nome à categoria."); return; }
+    await updateDoc(doc(db, "ftCategorias", categoria.id), sanitizeForFirestore({
+      nome: nome.trim(), tipo, ordem: Number(ordem) || 0, cmvAlvo: tipo === "ficha" && cmv.trim() ? Number(cmv.replace(",", ".")) : null,
+    }));
+    onClose();
+  }
+  async function excluir() { if (confirm(`Excluir "${categoria.nome}"?`)) { await updateDoc(doc(db, "ftCategorias", categoria.id), { ativo: false }); onClose(); } }
+  return (
+    <Modal title="Editar categoria" onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} />
+        <div className="flex flex-col gap-1">
+          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Grupo</span>
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-start">
+            {([["ficha", "🍽️ Fichas finais"], ["subficha", "🧩 Subfichas"]] as const).map(([t, l]) => (
+              <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+          <span className="text-[11px] text-gray-400">{tipo === "ficha" ? "Divisão do cardápio (pro CMV)." : "Base reutilizável (molhos, caldos…)."}</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Ordem no cardápio</span>
+            <input type="number" value={ordem} onChange={e => setOrdem(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+          </div>
+          {tipo === "ficha" && (
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">CMV alvo (%)</span>
+              <input type="number" value={cmv} onChange={e => setCmv(e.target.value)} placeholder="ex: 30" className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+            </div>
+          )}
+        </div>
+        <div className="flex items-center justify-between pt-2">
+          <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir</Button>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

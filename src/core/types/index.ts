@@ -5381,6 +5381,7 @@ export type FtCategoria = {
   nome: string;
   tipo?: FtCategoriaTipo;
   ordem?: number;
+  cmvAlvo?: number | null;   // % de CMV alvo da categoria (só fichas finais)
   ativo: boolean;
 };
 
