@@ -106,7 +106,14 @@ export function reconciliar(
 
   for (const prod of produtos) {
     const vExato = vincPorChave.get(prod.chave);
-    if (vExato?.ignorar) continue; // marcado como "não é insumo"
+    if (vExato?.ignorar) continue; // marcado como "não é insumo" (some de vez)
+
+    // Vínculo sem insumo (não-ignorar) = "não é nenhum insumo ainda" → vai pra
+    // 'sem insumo' e NÃO é re-sugerido erradamente.
+    if (vExato && !vExato.insumoId) {
+      res.semInsumo.push({ produto: prod, status: "sem_insumo", insumo: null, vinculo: vExato, fatorParaBase: null, fatorAuto: false, custoBase: null, precoNovo: false, fornecedorNovo: false, motivo: "Sem insumo cadastrado" });
+      continue;
+    }
 
     if (vExato && vExato.insumoId) {
       const insumo = insumoById.get(vExato.insumoId) || null;

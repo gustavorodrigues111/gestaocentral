@@ -822,6 +822,28 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
   const defaultEdit = (l: LinhaReconc) => ({ insumoId: l.insumo?.id || "", fator: l.fatorParaBase != null ? String(l.fatorParaBase) : "" });
   const getEdit = (l: LinhaReconc) => edits[l.produto.chave] || defaultEdit(l);
   const setEdit = (l: LinhaReconc, patch: Partial<{ insumoId: string; fator: string }>) => setEdits(e => ({ ...e, [l.produto.chave]: { ...(e[l.produto.chave] || defaultEdit(l)), ...patch } }));
+  // Escolher insumo → autopreenche o fator (conversão direta) se estiver vazio.
+  const escolherInsumo = (l: LinhaReconc, insumoId: string) => {
+    const ins = insumos.find(i => i.id === insumoId);
+    const cur = getEdit(l);
+    const autofat = ins ? fatorAutomatico(l.produto.unidade, ins) : null;
+    setEdit(l, { insumoId, fator: cur.fator || (autofat != null ? String(autofat) : "") });
+  };
+  const linhaVinculo = (l: LinhaReconc, extra?: React.ReactNode) => {
+    const e = getEdit(l); const ins = insumos.find(i => i.id === e.insumoId); const fatorNum = Number(e.fator);
+    const preview = ins && fatorNum > 0 ? custoNaBase(l.produto.ultimo.valorUnitario, fatorNum) : null;
+    return (
+      <div className="flex items-center gap-2 flex-wrap mt-2">
+        <select value={e.insumoId} onChange={ev => escolherInsumo(l, ev.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-44 sm:w-52 shrink-0 shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+        <span className="text-[11px] text-gray-400 shrink-0 w-12 text-right">1 {l.produto.unidade || "un"} =</span>
+        <MiniStepper value={e.fator} onChange={v => setEdit(l, { fator: v })} sufixo={ins ? labelUnidade(ins.unidadeBase) : "base"} />
+        <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0 w-24">{preview != null ? `= ${fmtMoeda(preview)}/${ins ? labelUnidade(ins.unidadeBase) : ""}` : ""}</span>
+        <div className="flex-1" />
+        <button type="button" onClick={() => void aprovarVinculo(l)} disabled={!e.insumoId || !(fatorNum > 0)} className="h-8 text-xs font-medium px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shrink-0 disabled:opacity-40">Vincular</button>
+        {extra}
+      </div>
+    );
+  };
 
   async function aplicarPreco(l: LinhaReconc) {
     if (!l.insumo || l.custoBase == null) return;
@@ -835,38 +857,34 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
     try { for (const l of precosNovos) if (aplicar.has(l.produto.chave)) await aplicarPreco(l); }
     finally { setSalvando(false); }
   }
+  const vincId = (p: { chave: string }) => ("vrec_" + p.chave).replace(/[^a-zA-Z0-9_]/g, "_");
+  async function gravarVinculo(p: LinhaReconc["produto"], patch: { insumoId: string | null; fatorParaBase: number; ignorar: boolean }) {
+    const id = vincId(p);
+    await setDoc(doc(db, "ftVinculosRecebimento", id), sanitizeForFirestore({
+      id, restaurantId: rid, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo, unidadeNota: p.unidade,
+      fornecedor: p.fornecedor || null, aprovado: true, criadoEm: new Date().toISOString(), criadoPor: meId || null, ...patch,
+    } as FtVinculoRecebimento));
+  }
   async function aprovarVinculo(l: LinhaReconc) {
     const e = getEdit(l); const insumo = insumos.find(i => i.id === e.insumoId); const fator = Number(e.fator);
     if (!insumo || !(fator > 0)) { alert("Escolha o insumo e informe um fator válido (> 0)."); return; }
-    const p = l.produto;
-    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
-      id: uid("vrec"), restaurantId: rid, insumoId: insumo.id, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo,
-      unidadeNota: p.unidade, fornecedor: p.fornecedor || null, fatorParaBase: fator, ignorar: false, aprovado: true, criadoEm: new Date().toISOString(), criadoPor: meId || null,
-    } as FtVinculoRecebimento));
+    await gravarVinculo(l.produto, { insumoId: insumo.id, fatorParaBase: fator, ignorar: false });
   }
-  async function ignorar(l: LinhaReconc) {
-    const p = l.produto;
-    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
-      id: uid("vrec"), restaurantId: rid, insumoId: null, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo,
-      unidadeNota: p.unidade, fornecedor: p.fornecedor || null, fatorParaBase: 0, ignorar: true, aprovado: true, criadoEm: new Date().toISOString(), criadoPor: meId || null,
-    } as FtVinculoRecebimento));
-  }
+  async function naoEEste(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: false }); }
+  async function ignorar(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: true }); }
   async function criarInsumo(l: LinhaReconc) {
     const p = l.produto;
     const dim = (dimensaoDeUnidade(p.unidade) || "massa") as FtDimensao;
     const base = dim === "massa" ? "kg" : dim === "volume" ? "L" : "un";
     const fator = fatorAutomatico(p.unidade, { unidadeBase: base } as FtInsumo) ?? 1;
     const custo = custoNaBase(p.ultimo.valorUnitario, fator);
-    const now = new Date().toISOString(); const id = uid("ins");
+    const id = uid("ins");
     await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore({
       id, restaurantId: rid, nome: UP(p.descricaoExemplo), nomeNormalizado: normalizarNome(p.descricaoExemplo), dimensao: dim, unidadeBase: base,
       custo, custoAtualizadoEm: custo > 0 ? p.ultimo.data : null, historicoCusto: custo > 0 ? [{ custo, data: p.ultimo.data, por: meId || null, origem: "recebimento", fornecedor: p.fornecedor || null, notaId: p.ultimo.notaId, notaNumero: p.ultimo.notaNumero }] : [],
       fornecedorPadrao: p.fornecedor || null, reutilizavel: false, aliases: [], ativo: true,
     } as FtInsumo));
-    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
-      id: uid("vrec"), restaurantId: rid, insumoId: id, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo, unidadeNota: p.unidade,
-      fornecedor: p.fornecedor || null, fatorParaBase: fator, ignorar: false, aprovado: true, criadoEm: now, criadoPor: meId || null,
-    } as FtVinculoRecebimento));
+    await gravarVinculo(p, { insumoId: id, fatorParaBase: fator, ignorar: false });
   }
 
   const impactoLinha = (l: LinhaReconc) => (l.insumo && l.custoBase != null) ? impactoNoCmv(l.insumo.id, l.custoBase, insumos, fichas) : [];
@@ -927,29 +945,20 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
               <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">🔗 Vincular produtos</span><Pill n={reconc.sugeridos.length} cor="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" />
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
-              {reconc.sugeridos.map(l => {
-                const e = getEdit(l); const ins = insumos.find(i => i.id === e.insumoId); const fatorNum = Number(e.fator);
-                const preview = ins && fatorNum > 0 ? custoNaBase(l.produto.ultimo.valorUnitario, fatorNum) : null;
-                return (
-                  <div key={l.produto.chave} className={`px-4 py-2.5 ${l.fornecedorNovo ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`}>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.produto.descricaoExemplo}</span>
-                      <span className="text-[11px] text-gray-400">{l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span>
-                      <VerNota notaId={l.produto.ultimo.notaId} />
-                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap mt-2">
-                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-44 sm:w-52 shrink-0 shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
-                      <span className="text-[11px] text-gray-400 shrink-0 w-12 text-right">1 {l.produto.unidade || "un"} =</span>
-                      <MiniStepper value={e.fator} onChange={v => setEdit(l, { fator: v })} sufixo={ins ? labelUnidade(ins.unidadeBase) : "base"} />
-                      <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0 w-24">{preview != null ? `= ${fmtMoeda(preview)}/${ins ? labelUnidade(ins.unidadeBase) : ""}` : ""}</span>
-                      <div className="flex-1" />
-                      <button type="button" onClick={() => void aprovarVinculo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shrink-0">Vincular</button>
-                      <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
-                    </div>
+              {reconc.sugeridos.map(l => (
+                <div key={l.produto.chave} className={`px-4 py-2.5 ${l.fornecedorNovo ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`}>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.produto.descricaoExemplo}</span>
+                    <span className="text-[11px] text-gray-400">{l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span>
+                    <VerNota notaId={l.produto.ultimo.notaId} />
+                    <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                   </div>
-                );
-              })}
+                  {linhaVinculo(l, <>
+                    <button type="button" onClick={() => void naoEEste(l)} title="Não é este insumo — ainda não cadastrado (sai das sugestões, vai pra 'sem insumo')" className="text-xs text-gray-500 hover:text-amber-600 shrink-0">não é este</button>
+                    <button type="button" onClick={() => void ignorar(l)} title="Não é insumo (descartável, limpeza…) — some de vez" className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
+                  </>)}
+                </div>
+              ))}
             </div>
           </section>
         )}
@@ -962,11 +971,16 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
             </div>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {reconc.semInsumo.map(l => (
-                <div key={l.produto.chave} className="flex items-center gap-2 flex-wrap px-4 py-2">
-                  <span className="text-sm flex-1 min-w-[120px] dark:text-gray-200">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}</span></span>
-                  <VerNota notaId={l.produto.ultimo.notaId} />
-                  <button type="button" onClick={() => void criarInsumo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
-                  <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
+                <div key={l.produto.chave} className="px-4 py-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-200">{l.produto.descricaoExemplo}</span>
+                    <span className="text-[11px] text-gray-400">{l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span>
+                    <VerNota notaId={l.produto.ultimo.notaId} />
+                  </div>
+                  {linhaVinculo(l, <>
+                    <button type="button" onClick={() => void criarInsumo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
+                    <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
+                  </>)}
                 </div>
               ))}
             </div>
