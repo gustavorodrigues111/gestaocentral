@@ -58,6 +58,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [anexos, setAnexos] = useState<Anexo[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const camRef = useRef<HTMLInputElement | null>(null);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollPos = useRef(0);
   const temFonte = !!planilhaTexto || anexos.length > 0;
   const catsAtivas = categorias.filter(c => c.ativo !== false);
   const rascunhoId = meId ? `${rid}_${meId}` : rid;
@@ -68,6 +70,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
   const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
   const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number; varExistNorm: string } | null>(null);
+  // Ao fechar um sub-painel (mesclar/dissolver), restaura o scroll da lista.
+  useEffect(() => { if (!dissolver && !mescla && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla]);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -347,6 +351,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
 
   // Abre o painel "esta subficha na verdade é ingrediente/variação".
   function abrirDissolver(sf: FichaRev) {
+    scrollPos.current = scrollRef.current?.scrollTop || 0;
     const unico = sf.ingredientes.length === 1 ? sf.ingredientes[0] : undefined;
     const pk = unico?.principalKey && principais[unico.principalKey] ? unico.principalKey : "";
     const baseNome = pk ? UP(sf.nome).replace(UP(principais[pk].nome), "").trim() : "";
@@ -411,7 +416,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const usoComoSub = useMemo(() => { const c: Record<string, number> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1; return c; }, [fichas]);
   const preparosPorSub = useMemo(() => { const m: Record<string, string[]> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) { if (!m[ing.subfichaFichaId]) m[ing.subfichaFichaId] = []; if (!m[ing.subfichaFichaId].includes(f.nome)) m[ing.subfichaFichaId].push(f.nome); } return m; }, [fichas]);
 
-  const abrirMescla = (aId: string, bId: string) => { const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
+  const abrirMescla = (aId: string, bId: string) => { scrollPos.current = scrollRef.current?.scrollTop || 0; const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
   const ingLabel = (ing: IngRev): string => {
     if (ing.subfichaFichaId) return subNomes[ing.subfichaFichaId] || "?";
     const p = principais[ing.principalKey];
@@ -681,7 +686,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             ))}
           </div>
 
-          <div className="max-h-[55vh] overflow-y-auto pr-1 space-y-4">
+          <div ref={scrollRef} className="max-h-[55vh] overflow-y-auto pr-1 space-y-4">
             {/* PASSO 1 — Ingredientes (insumos + variações) */}
             {passo === 1 && (
               <div className="rounded-xl border border-gray-200 dark:border-gray-800">
