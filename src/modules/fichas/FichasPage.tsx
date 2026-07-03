@@ -254,10 +254,14 @@ function SubfichaCard({ sf, indice, isUltima, custo, insumos, subprodutos, subfi
   function removeIng(id: string) { onPatch({ ingredientes: sf.ingredientes.filter(i => i.id !== id) }); }
 
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm">
       <div className="flex items-center gap-2 p-3 border-b border-gray-100 dark:border-gray-800">
         <span className="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 flex items-center justify-center text-xs font-bold shrink-0">{indice}</span>
-        <input value={sf.nome} onChange={e => onPatch({ nome: e.target.value })} placeholder="nome da etapa" className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none dark:text-gray-100" />
+        <div className="flex-1 min-w-0 flex items-center gap-1">
+          <input value={sf.nome} onChange={e => onPatch({ nome: e.target.value })} placeholder="nome da etapa"
+            className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 py-0.5 dark:text-gray-100" />
+          <span className="text-gray-300 dark:text-gray-600 text-xs shrink-0" aria-hidden="true">✎</span>
+        </div>
         {isUltima && <span className="text-[10px] uppercase text-indigo-500 shrink-0">servido</span>}
         <span className="text-xs font-medium text-gray-500 tabular-nums shrink-0">{fmtMoeda(custo)}</span>
         <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-600 text-xs shrink-0">✕</button>
@@ -354,12 +358,23 @@ function IngredientePicker({ insumos, subprodutos, subfichasDaFicha, sfAtualId, 
 
   const temAlgo = sugInsumos.length || sugSubfichas.length || sugSubprodutos.length;
 
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key !== "Enter" || !busca.trim()) return;
+    e.preventDefault();
+    if (sugInsumos[0]) pickInsumo(sugInsumos[0].insumo);
+    else if (sugSubfichas[0]) pickSubficha(sugSubfichas[0]);
+    else if (sugSubprodutos[0]) pickSubproduto(sugSubprodutos[0]);
+    else if (podeInsumo) setCriandoInsumo(true);
+  }
+
   return (
     <div className="relative">
       <div className="flex items-center gap-2 px-3 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900">
         <span className="text-gray-400 text-sm">🔎</span>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="adicionar ingrediente (busca insumo, etapa ou subproduto)…" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
+        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={onKeyDown} placeholder="+ adicionar ingrediente — digite o nome do insumo, etapa ou subproduto" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
+        {busca && <span className="text-[10px] text-gray-400 shrink-0 hidden sm:inline">Enter pra adicionar</span>}
       </div>
+      {!busca && <div className="mt-1 text-[11px] text-gray-400">Comece a digitar e escolha na lista (ou aperte Enter). Insumo novo → "criar insumo".</div>}
       {busca && (
         <div className="absolute left-0 right-0 z-10 mt-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden max-h-72 overflow-y-auto">
           {sugInsumos.map(({ insumo, motivo }) => (
