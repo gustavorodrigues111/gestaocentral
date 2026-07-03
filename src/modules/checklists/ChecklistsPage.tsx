@@ -7,7 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import { todayYmd } from "../../core/utils/date";
+import { todayYmd, fmtBR } from "../../core/utils/date";
 import { CHECKLIST_FREQ_LABEL, AREAS } from "../../core/types";
 import type { Area, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
@@ -138,7 +138,7 @@ export function ChecklistsPage() {
   }
 
   async function excluirRun(r: ChecklistRun) {
-    if (!confirm(`Excluir essa execução de "${r.templateNomeSnapshot}" (${r.data})?`)) return;
+    if (!confirm(`Excluir essa execução de "${r.templateNomeSnapshot}" (${fmtBR(r.data)})?`)) return;
     await deleteDoc(doc(db, "checklistRuns", r.id));
   }
 

@@ -4,7 +4,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import { todayYmd } from "../../core/utils/date";
+import { todayYmd, fmtBR as fmtDataBR } from "../../core/utils/date";
 import { AREAS } from "../../core/types";
 import type { Area, Pessoa } from "../../core/types";
 
@@ -502,7 +502,7 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
                     : <span className="italic text-gray-400">sem valor</span>;
                   return (
                     <div key={i} className="flex justify-between gap-2">
-                      <span><strong>{v.item.nome}</strong> · {v.item.data} · {v.item.area}{horario}</span>
+                      <span><strong>{v.item.nome}</strong> · {fmtDataBR(v.item.data)} · {v.item.area}{horario}</span>
                       <span className="text-gray-500">{valor}</span>
                     </div>
                   );

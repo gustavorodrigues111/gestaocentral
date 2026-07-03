@@ -63,8 +63,8 @@ const STATUS_LABEL: Record<string, string> = {
 const statusLabel = (s?: unknown) => (s ? STATUS_LABEL[String(s)] || String(s) : "—");
 const fmtDataCurta = (ymd?: unknown) => {
   if (!ymd) return "";
-  const [, m, d] = String(ymd).split("-");
-  return d ? `${d}/${m}` : String(ymd);
+  const [a, m, d] = String(ymd).split("-");
+  return d ? `${d}/${m}/${a}` : String(ymd);
 };
 function addDiasYmd(ymd: string, dias: number): string {
   const d = new Date(`${ymd}T00:00:00`);

@@ -13,6 +13,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
+import { fmtBR } from "../../core/utils/date";
 import type {
   Manutencao, ManutencaoTipo, ManutencaoPeriodicidade,
 } from "../../core/types";
@@ -78,7 +79,7 @@ export function ManutencoesPage() {
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {MANUTENCAO_PERIODICIDADE_LABEL[m.periodicidade]}
-                      {` · próx. vencimento: ${m.proximoVencimento}`}
+                      {` · próx. vencimento: ${fmtBR(m.proximoVencimento)}`}
                       {atrasada && " · ⚠️ VENCIDA"}
                       {proxima && " · ⏰ próximo"}
                     </div>

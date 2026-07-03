@@ -9,7 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { logAudit } from "../../core/audit/versionedChange";
 import { registrarDemissao } from "../trilha/autoEventos";
 import { desativarExamesPorDemissao } from "../exames/gerador";
-import { todayYmd } from "../../core/utils/date";
+import { todayYmd, fmtBR } from "../../core/utils/date";
 import type { Empregado, Pessoa } from "../../core/types";
 
 const MOTIVOS: { id: string; label: string }[] = [
@@ -200,7 +200,7 @@ export function InativarModal({ pessoa, onClose, onInativada, titulo }: Props) {
                 const rest = restaurants.find(r => r.id === emp.restaurantId);
                 return (
                   <li key={emp.id} className="text-gray-700 dark:text-gray-300">
-                    • {rest?.nome || emp.restaurantId} — admissão: {emp.admissaoAtual || "—"}
+                    • {rest?.nome || emp.restaurantId} — admissão: {emp.admissaoAtual ? fmtBR(emp.admissaoAtual) : "—"}
                   </li>
                 );
               })}

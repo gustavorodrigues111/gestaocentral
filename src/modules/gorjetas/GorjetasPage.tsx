@@ -11,7 +11,7 @@ import { MesContextoBanner } from "../../core/ui/MesContextoBanner";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
-  daysInMonth, dowShort, fmtAnoMes, pad2, parseYmd, shiftMonth,
+  daysInMonth, dowShort, fmtAnoMes, fmtBR as fmtDataBR, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { getActiveSplitVersion } from "./splitRules";
@@ -579,14 +579,14 @@ function ListaDiasInline({
     const gs = gsSelecionadas().filter((g) => !g.publicada);
     if (!gs.length) { alert("Selecione dias com gorjeta lançada e ainda não publicada."); return; }
     if (!window.confirm(`Publicar ${gs.length} gorjeta(s)? A divisão é calculada e congelada agora.`)) return;
-    for (const g of gs) { try { await publicarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${g.date}: ${e instanceof Error ? e.message : ""}`); } }
+    for (const g of gs) { try { await publicarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
     setSel(new Set());
   }
   async function pagarSelecionados() {
     const gs = gsSelecionadas().filter((g) => !g.paga);
     if (!gs.length) { alert("Selecione dias com gorjeta pra pagar."); return; }
     if (!window.confirm(`Marcar ${gs.length} gorjeta(s) como PAGAS? (publica as que ainda não estavam). Depois disso esses dias travam pra pedido de ajuste de escala.`)) return;
-    for (const g of gs) { try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${g.date}: ${e instanceof Error ? e.message : ""}`); } }
+    for (const g of gs) { try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
     setSel(new Set());
   }
 

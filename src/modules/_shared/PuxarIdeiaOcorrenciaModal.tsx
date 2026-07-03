@@ -9,6 +9,7 @@ import { useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { fmtBR } from "../../core/utils/date";
 
 type IdeiaLite = {
   id: string;
@@ -148,7 +149,7 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
                 className="w-full text-left p-3 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-colors"
               >
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">🚨 {o.titulo}</div>
-                {o.gravidade && <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 mt-0.5">{o.gravidade}{o.data && ` · ${o.data}`}</div>}
+                {o.gravidade && <div className="text-[10px] uppercase tracking-wider text-rose-600 dark:text-rose-400 mt-0.5">{o.gravidade}{o.data && ` · ${fmtBR(o.data)}`}</div>}
                 {o.descricao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{o.descricao}</div>}
               </button>
             ))}

@@ -13,7 +13,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { AjustesSolicitadosTab } from "./AjustesSolicitadosTab";
 import {
-  daysInMonth, dowShort, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
+  daysInMonth, dowShort, fmtAnoMes, fmtBR, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
 import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
 import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
@@ -1229,7 +1229,7 @@ function Grade({
         .map(er => {
           const empId = [...selecionadas].find(k => k.includes(er.data))?.split("|")[0];
           const nome = empId ? empMap[empId] : "?";
-          return `• ${nome} em ${er.data}: ${er.mensagem} (${er.artigo})`;
+          return `• ${nome} em ${fmtBR(er.data)}: ${er.mensagem} (${er.artigo})`;
         })
         .slice(0, 10)
         .join("\n");

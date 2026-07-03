@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";
+import { fmtBR } from "../../core/utils/date";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -605,7 +606,7 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
                   )}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Admissão: {empregado.admissaoAtual || "—"}
+                  Admissão: {empregado.admissaoAtual ? fmtBR(empregado.admissaoAtual) : "—"}
                   {empregado.vtAtivo && ` · VT R$ ${empregado.vtValorPassagem ?? 0}/passagem × ${empregado.vtPassagensPorDia ?? 0}`}
                 </div>
                 {empregado.periodos && empregado.periodos.length > 1 && (

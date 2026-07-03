@@ -53,7 +53,7 @@ function synthSolId(empId: string): number {
   return -(Math.abs(h) + 1);
 }
 const pad = (n: number) => String(n).padStart(2, "0");
-const fmtDataBR = (ymd: string) => ymd ? ymd.slice(8, 10) + "/" + ymd.slice(5, 7) : "—";
+const fmtDataBR = (ymd: string) => ymd ? ymd.slice(8, 10) + "/" + ymd.slice(5, 7) + "/" + ymd.slice(0, 4) : "—";
 const DIAS_PT = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 function nomeMes(ym: string): string {

@@ -98,7 +98,7 @@ export function HistoricoTab({ shifts, pagamentos, restaurant }: Props) {
                 {noShows.map((s) => (
                   <tr key={s.id} className="text-gray-700 dark:text-gray-200">
                     <td className="px-3 py-2 font-medium">{s.nomeSnapshot}</td>
-                    <td className="px-3 py-2">{s.date}</td>
+                    <td className="px-3 py-2">{dBR(s.date)}</td>
                     <td className="px-3 py-2">{s.area || "—"}</td>
                     <td className="px-3 py-2 italic text-gray-500">{s.observacao || "—"}</td>
                   </tr>

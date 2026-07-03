@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import { parseYmd, pad2, dowShort } from "../../core/utils/date";
+import { parseYmd, pad2, dowShort, fmtBR as fmtDataBR } from "../../core/utils/date";
 import type {
   Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade,
 } from "../../core/types";
@@ -138,7 +138,7 @@ export function PublicarGorjetasModal({
               </p>
               <ul className="text-[12px] text-rose-700 dark:text-rose-300 list-disc pl-5 space-y-0.5">
                 {erros.map((e, i) => (
-                  <li key={i}>{e.date}: {e.msg}</li>
+                  <li key={i}>{fmtDataBR(e.date)}: {e.msg}</li>
                 ))}
               </ul>
             </div>

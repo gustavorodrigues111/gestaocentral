@@ -7,6 +7,7 @@ import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
+import { fmtBR } from "../../core/utils/date";
 import { normalizarAdmissao, reativarAdmissao } from "../../core/admissao/admissaoHelpers";
 import type { Admissao } from "../../core/types";
 
@@ -94,7 +95,7 @@ export function AdmissoesFinalizadas({ rid }: { rid: string }) {
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                   Finalizada em {fmtDateTime(a.finalizadoEm)}
                   {a.finalizadoPor?.nome && ` · por ${a.finalizadoPor.nome}`}
-                  {a.dataAdmissao && ` · admitido ${a.dataAdmissao}`}
+                  {a.dataAdmissao && ` · admitido ${fmtBR(a.dataAdmissao)}`}
                 </div>
               </div>
               <Button

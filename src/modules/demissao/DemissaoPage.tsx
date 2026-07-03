@@ -8,6 +8,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { pickDriveFile } from "../../core/google/drivePicker";
+import { fmtBR } from "../../core/utils/date";
 import {
   ouvirProcessos, iniciarProcesso, cancelarProcesso, atualizarSubtarefa,
   bloquearAcesso, moverColunaProcesso, atualizarProcesso,
@@ -182,7 +183,7 @@ function KanbanView({ processos, onAbrir }: {
                     {DEMISSAO_STATUS_LABEL[p.status]}
                     {p.acessoBloqueadoEm && <span className="ml-1 text-amber-600">🔒</span>}
                   </div>
-                  {p.dataAlvo && <div className="text-[10px] text-gray-500 dark:text-gray-400">📅 {p.dataAlvo}</div>}
+                  {p.dataAlvo && <div className="text-[10px] text-gray-500 dark:text-gray-400">📅 {fmtBR(p.dataAlvo)}</div>}
                   {p.subtarefas && (
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
                       ☑ {p.subtarefas.filter(s => s.feita).length}/{p.subtarefas.length}
@@ -221,7 +222,7 @@ function ListaView({ processos, onAbrir, histórico }: {
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {DEMISSAO_INICIATIVA_LABEL[p.iniciativa]} · {DEMISSAO_STATUS_LABEL[p.status]}
               {p.cargoSnapshot && ` · ${p.cargoSnapshot}`}
-              {p.dataAlvo && ` · 📅 ${p.dataAlvo}`}
+              {p.dataAlvo && ` · 📅 ${fmtBR(p.dataAlvo)}`}
               {p.acessoBloqueadoEm && <span className="ml-1 text-amber-600">🔒 acesso bloqueado</span>}
             </div>
           </div>
@@ -396,7 +397,7 @@ function DetalheDrawer({ proc, autor, onClose }: {
     if (s.atalho.tipo === "contato_contabilidade") {
       contato = getContatoContabilidade(activeRestaurant);
       assunto = `Demissão — ${empNome} (${activeRestaurant.nome})`;
-      corpo = `Olá, ${contato.nome}.\n\nEstamos iniciando o processo de demissão de ${empNome}.\nIniciativa: ${DEMISSAO_INICIATIVA_LABEL[proc.iniciativa]}\n${proc.dataAlvo ? `Data alvo: ${proc.dataAlvo}\n` : ""}${proc.avisoPrevio ? `Aviso prévio: ${proc.avisoPrevio}\n` : ""}\nAguardo retorno.\n\nObrigado.`;
+      corpo = `Olá, ${contato.nome}.\n\nEstamos iniciando o processo de demissão de ${empNome}.\nIniciativa: ${DEMISSAO_INICIATIVA_LABEL[proc.iniciativa]}\n${proc.dataAlvo ? `Data alvo: ${fmtBR(proc.dataAlvo)}\n` : ""}${proc.avisoPrevio ? `Aviso prévio: ${proc.avisoPrevio}\n` : ""}\nAguardo retorno.\n\nObrigado.`;
     } else if (s.atalho.tipo === "contato_clinica") {
       contato = getContatoClinica(activeRestaurant);
       assunto = `Agendamento exame demissional — ${empNome}`;
@@ -506,9 +507,9 @@ function DetalheDrawer({ proc, autor, onClose }: {
               <span>{DEMISSAO_INICIATIVA_LABEL[proc.iniciativa]}</span>
               <span>·</span>
               <span>{DEMISSAO_STATUS_LABEL[proc.status]}</span>
-              {proc.dataAlvo && <><span>·</span><span>📅 {proc.dataAlvo}</span></>}
+              {proc.dataAlvo && <><span>·</span><span>📅 {fmtBR(proc.dataAlvo)}</span></>}
               {proc.avisoPrevio && <><span>·</span><span>Aviso: {proc.avisoPrevio}</span></>}
-              {proc.acessoBloqueadoEm && <><span>·</span><span className="text-amber-600 font-medium">🔒 acesso bloqueado em {proc.acessoBloqueadoEm.slice(0, 10)}</span></>}
+              {proc.acessoBloqueadoEm && <><span>·</span><span className="text-amber-600 font-medium">🔒 acesso bloqueado em {fmtBR(proc.acessoBloqueadoEm)}</span></>}
             </div>
             {proc.motivoIniciacao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">{proc.motivoIniciacao}</div>}
           </div>
@@ -567,7 +568,7 @@ function DetalheDrawer({ proc, autor, onClose }: {
                               {s.ehInativacaoFinal && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ finaliza</span>}
                             </span>
                             {s.link && <a href={s.link} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5">📎 anexo</a>}
-                            {s.dataInformada && <span className="block text-[11px] text-gray-500">📅 {s.dataInformada}</span>}
+                            {s.dataInformada && <span className="block text-[11px] text-gray-500">📅 {fmtBR(s.dataInformada)}</span>}
                             {s.atalho && !s.feita && (
                               <button
                                 onClick={(e) => { e.preventDefault(); abrirAtalho(s); }}
@@ -594,8 +595,8 @@ function DetalheDrawer({ proc, autor, onClose }: {
             <Button variant="danger" onClick={cancelar}>✗ Cancelar processo (reverte tudo)</Button>
           ) : (
             <div className="text-xs text-gray-500">
-              {proc.status === "concluido" && `Concluído em ${proc.concluidoEm?.slice(0, 10)}`}
-              {proc.status === "cancelado" && `Cancelado em ${proc.canceladoEm?.slice(0, 10)} — ${proc.motivoCancelamento}`}
+              {proc.status === "concluido" && `Concluído em ${fmtBR(proc.concluidoEm)}`}
+              {proc.status === "cancelado" && `Cancelado em ${fmtBR(proc.canceladoEm)} — ${proc.motivoCancelamento}`}
             </div>
           )}
           <Button onClick={onClose}>Fechar</Button>
