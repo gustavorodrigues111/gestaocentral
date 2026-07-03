@@ -16,6 +16,8 @@ import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilha
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const UP = (s: string) => (s || "").trim().toUpperCase();
+// Rótulos que a IA às vezes lê como "ingrediente" mas não são.
+const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendimento", "fator de correcao", "fc", "custo", "total", "modo de preparo", "preparo", "ingrediente", "ingredientes", "quantidade", "unidade"]);
 
 type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null };
 type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[] };
@@ -101,7 +103,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         for (const f of ia) cruas.push({
           id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true, categoriaId: matchCategoria(f.categoria),
           rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
-          ings: (f.ingredientes || []).map(ing => ({ nome: UP(ing.nome), qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, principal: UP(ing.insumoPrincipal || ing.nome), variacao: UP(ing.variacao || "") })),
+          ings: (f.ingredientes || []).filter(ing => ing.nome && !RUIDO.has(norm(ing.nome))).map(ing => ({ nome: UP(ing.nome), qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, principal: UP(ing.insumoPrincipal || ing.nome), variacao: UP(ing.variacao || "") })),
         });
         marcar(u.itemIds, "ok");
       } catch (e) { marcar(u.itemIds, "erro"); errosLote.push(e instanceof Error ? e.message : String(e)); }
@@ -143,6 +145,24 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const setVar = (k: string, vNorm: string, patch: Partial<VarInfo>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: p[k].variacoes.map(v => v.norm === vNorm ? { ...v, ...patch } : v) } }));
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
   const catTodas = (id: string) => setFichas(prev => prev.map(f => ({ ...f, categoriaId: id || null })));
+
+  // "Não é variação, é um insumo próprio": tira a variação do principal e cria
+  // um insumo standalone; remapeia os ingredientes que a usavam.
+  function promoverVariacao(pk: string, vNorm: string) {
+    const p = principais[pk]; const v = p?.variacoes.find(x => x.norm === vNorm);
+    if (!p || !v) return;
+    const newKey = norm(v.nome) || uid("p");
+    setPrincipais(prev => {
+      const next = { ...prev };
+      next[pk] = { ...p, variacoes: p.variacoes.filter(x => x.norm !== vNorm) };
+      if (!next[newKey]) {
+        const r = resolverIngrediente({ nome: v.nome, qtd: 1, unidade: p.unidade, qb: false }, insumos, 0);
+        next[newKey] = { key: newKey, nome: UP(v.nome), unidade: p.unidade, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase, temBase: true, variacoes: [] };
+      } else { next[newKey] = { ...next[newKey], temBase: true }; }
+      return next;
+    });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === vNorm ? { ...ing, principalKey: newKey, variacaoNorm: "" } : ing) })));
+  }
 
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
@@ -289,6 +309,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
                         <span className="text-[11px] text-gray-400">aprov.</span>
                         <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
+                        <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
                         <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                       </div>
                     ))}

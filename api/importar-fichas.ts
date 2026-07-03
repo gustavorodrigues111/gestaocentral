@@ -40,6 +40,11 @@ const PROMPT =
   "receita (ex: 'paprica pikante' → 'PÁPRICA PICANTE'). Se o MESMO ingrediente aparecer escrito de formas " +
   "ligeiramente diferentes, use a MESMA grafia em todas. Escreva TODOS os nomes (receita e ingredientes) " +
   "100% EM MAIÚSCULAS.\n" +
+  "10) IGNORE linhas que NÃO são ingredientes: rótulos/cabeçalhos como 'PESO BRUTO', 'PESO LÍQUIDO', " +
+  "'RENDIMENTO', 'FATOR DE CORREÇÃO', 'FC', 'CUSTO', 'TOTAL', 'MODO DE PREPARO', 'INGREDIENTE', 'QUANTIDADE', " +
+  "'UNIDADE'. NÃO os inclua como ingrediente. E CUIDADO: 'ÁGUA COM GÁS' é um INSUMO próprio, não variação de " +
+  "'ÁGUA' — variação é só forma de preparo/corte do mesmo insumo (picada, em cubos, descascada), não um " +
+  "produto diferente.\n" +
   "9) INSUMO PRINCIPAL x VARIAÇÃO: quando um ingrediente é uma FORMA PREPARADA de um insumo, separe: " +
   "'insumoPrincipal' = o insumo base (ex: 'PIMENTA DE CHEIRO', 'PIMENTÃO VERDE', 'CEBOLA BRANCA'), e " +
   "'variacao' = a forma de preparo (ex: 'PICADA', 'TOSTADA', 'EM CUBOS', 'ASSADO SEM PELE'). Se o " +
