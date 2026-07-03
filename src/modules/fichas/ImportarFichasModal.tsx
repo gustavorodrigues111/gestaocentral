@@ -251,6 +251,30 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === vNorm ? { ...ing, principalKey: newKey, variacaoNorm: "" } : ing) })));
   }
 
+  // "Isto é um preparo (ex.: ALHO NO ÓLEO = alho + óleo), não um insumo": cria
+  // uma NOVA subficha vazia e aponta os usos pra ela. Os ingredientes internos
+  // (e rendimento) você monta na tela de Fichas depois. Se vNorm, promove só a
+  // variação; senão, o uso-base do principal.
+  function promoverParaSubficha(pk: string, vNorm?: string) {
+    const p = principais[pk]; if (!p) return;
+    const v = vNorm ? p.variacoes.find(x => x.norm === vNorm) : undefined;
+    if (vNorm && !v) return;
+    const nome = UP(v ? v.nome : p.nome);
+    const newId = uid("fic");
+    const nova: FichaRev = { id: newId, nome, ehSubficha: true, categoriaId: null, incluir: true, rendimento: { qtd: 1, unidade: "kg" }, ingredientes: [] };
+    setFichas(prev => [
+      ...prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing =>
+        ing.principalKey === pk && (vNorm ? ing.variacaoNorm === vNorm : ing.variacaoNorm === "")
+          ? { ...ing, subfichaFichaId: newId, principalKey: "", variacaoNorm: "" } : ing) })),
+      nova,
+    ]);
+    setSubNomes(prev => ({ ...prev, [newId]: nome }));
+    setPrincipais(prev => {
+      const cur = prev[pk]; if (!cur) return prev;
+      return { ...prev, [pk]: vNorm ? { ...cur, variacoes: cur.variacoes.filter(x => x.norm !== vNorm) } : { ...cur, temBase: false } };
+    });
+  }
+
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
@@ -405,6 +429,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         )}
                       </select>
                       <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
+                      <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
                     </div>
                     {p.variacoes.map(v => (
                       <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
@@ -413,7 +438,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         <span className="text-[11px] text-gray-400">aprov.</span>
                         <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
                         <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
-                        <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+                        <button type="button" onClick={() => promoverParaSubficha(p.key, v.norm)} title="É um preparo — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400">é subficha ↧</button>
+                        <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                       </div>
                     ))}
                   </div>
