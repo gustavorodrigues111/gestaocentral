@@ -202,8 +202,8 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
             const c = calcularCusto(f, insumos, fichas);
             const tint = f.revisar ? "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400"
               : fichaPendente(f) ? "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400"
-              : c.insumosSemCusto.length > 0 ? "border-gray-300 dark:border-gray-700 bg-gray-100/70 dark:bg-gray-800/40 hover:border-gray-400"
-              : "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400";
+              : c.insumosSemCusto.length > 0 ? "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400"
+              : "border-emerald-300 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-900/15 hover:border-emerald-400";
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
                 className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${tint}`}>
