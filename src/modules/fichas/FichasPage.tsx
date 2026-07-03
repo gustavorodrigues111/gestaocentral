@@ -681,6 +681,8 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
   const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
   const [unidadeBase, setUnidadeBase] = useState(insumo.unidadeBase);
+  const [vincFichaId, setVincFichaId] = useState(insumo.subprodutoDe?.fichaId || "");
+  const [vincSubId, setVincSubId] = useState(insumo.subprodutoDe?.subId || "");
   const cNum = parseMoeda(custo);
   const novaDim = (dimensaoDeUnidade(unidadeBase) || insumo.dimensao) as FtDimensao;
   const mudouUnidade = unidadeBase !== insumo.unidadeBase;
@@ -701,6 +703,20 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
   const serie = (insumo.historicoCusto || []).filter(h => h.custo > 0).map(h => h.custo);
   function addVar() { setVariacoes(v => [...v, { id: uid("var"), nome: "", fc: 100 }]); }
   function patchVar(id: string, patch: Partial<FtInsumoVariacao>) { setVariacoes(v => v.map(x => x.id === id ? { ...x, ...patch } : x)); }
+  async function vincularSubproduto() {
+    const f = fichas.find(x => x.id === vincFichaId); if (!f) return;
+    let subId = vincSubId;
+    const batch = writeBatch(db);
+    if (!subId) {
+      subId = uid("sp");
+      const novo: FtSubproduto = { id: subId, nome: UP(insumo.nome), nomeNormalizado: normalizarNome(insumo.nome), unidade: insumo.unidadeBase, rendimentoQtd: 1, percentualCusto: 0 };
+      batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ subprodutos: [...(f.subprodutos || []), novo] }));
+    }
+    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ subprodutoDe: { fichaId: f.id, subId } }));
+    await batch.commit();
+    onClose();
+  }
+  async function desvincularSubproduto() { await updateDoc(doc(db, "ftInsumos", insumo.id), { subprodutoDe: null }); onClose(); }
   async function aplicarDoFornecedor(pf: { custoBase: number; data: string; fornecedor: string; notaId: string; notaNumero: string }) {
     const nova: FtHistoricoCusto = { custo: pf.custoBase, data: pf.data, por: meId || null, origem: "recebimento", fornecedor: pf.fornecedor || null, notaId: pf.notaId || null, notaNumero: pf.notaNumero || null };
     const hist = [...(insumo.historicoCusto || []), nova].slice(-20);
@@ -765,6 +781,36 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
         )}
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={reutil} onChange={e => setReutil(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Reutilizável (não pesa custo cheio — ex: óleo de fritura)</label>
+
+        {insumo.ehSubproduto && (
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Subproduto de qual preparo?</div>
+            {insumo.subprodutoDe ? (
+              <div className="text-[11px] text-orange-600 dark:text-orange-400 flex items-center gap-2">
+                🔗 {fichas.find(f => f.id === insumo.subprodutoDe!.fichaId)?.nome || "(preparo removido)"}
+                <button type="button" onClick={() => void desvincularSubproduto()} className="text-gray-400 hover:text-red-600 underline">desvincular</button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[11px] text-gray-400">Este insumo sai de um preparo (ex.: carcaça do frango assado). Vincule ao preparo pra o custo derivar do rateio.</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select value={vincFichaId} onChange={e => { setVincFichaId(e.target.value); setVincSubId(""); }} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[150px] shadow-sm">
+                    <option value="">— escolher preparo —</option>
+                    {fichas.filter(f => f.ativo !== false && f.id !== insumo.id).sort((a, b) => a.nome.localeCompare(b.nome)).map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+                  </select>
+                  {vincFichaId && (
+                    <select value={vincSubId} onChange={e => setVincSubId(e.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shadow-sm">
+                      <option value="">+ criar “{insumo.nome}” neste preparo</option>
+                      {(fichas.find(f => f.id === vincFichaId)?.subprodutos || []).map(sp => <option key={sp.id} value={sp.id}>{sp.nome}</option>)}
+                    </select>
+                  )}
+                  <button type="button" onClick={() => void vincularSubproduto()} disabled={!vincFichaId} className="h-8 text-xs font-medium px-3 rounded-lg bg-orange-600 text-white hover:bg-orange-700 shadow-sm disabled:opacity-40">Vincular</button>
+                </div>
+                <p className="text-[11px] text-gray-400">Depois ajuste o % de rateio no bloco Subprodutos da ficha.</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
           <div className="flex items-center justify-between mb-1">
