@@ -75,6 +75,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const [buscaEscolher, setBuscaEscolher] = useState("");
   const [pickAlvo, setPickAlvo] = useState<string | null>(null); // pk do insumo pra vincular/juntar
   const [buscaPick, setBuscaPick] = useState("");
+  const [pickIns, setPickIns] = useState<string | null>(null); // insumo escolhido, aguardando variação
   // Ao fechar um sub-painel, restaura o scroll.
   useEffect(() => { if (!dissolver && !mescla && !escolher && !pickAlvo && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla, escolher, pickAlvo]);
 
@@ -421,7 +422,18 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
   }
 
-  function abrirPick(pk: string) { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaPick(""); setPickAlvo(pk); }
+  function abrirPick(pk: string) { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaPick(""); setPickIns(null); setPickAlvo(pk); }
+  // Aplica o vínculo a um insumo cadastrado, opcionalmente numa variação DELE.
+  function aplicarVinculoInsumo(pk: string, insumoId: string, variacao?: FtInsumoVariacao) {
+    setPrincipais(prev => {
+      const p = prev[pk]; if (!p) return prev;
+      let variacoes = p.variacoes;
+      if (variacao && !variacoes.some(v => v.norm === norm(variacao.nome))) variacoes = [...variacoes, { norm: norm(variacao.nome), nome: UP(variacao.nome), fc: variacao.fc > 0 ? variacao.fc : 100 }];
+      return { ...prev, [pk]: { ...p, matchInsumoId: insumoId, status: "casado", variacoes } };
+    });
+    if (variacao) { const vN = norm(variacao.nome); setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === "" ? { ...ing, variacaoNorm: vN } : ing) }))); }
+    setPickAlvo(null); setPickIns(null);
+  }
   // Etapa 1 da reclassificação: escolhe a AÇÃO; a ficha-alvo vem no painel.
   function abrirEscolher(subfichaId: string, modo: "subproduto" | "mesclar") { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaEscolher(""); setEscolher({ subfichaId, modo }); }
   function escolherAlvo(targetId: string) {
@@ -652,6 +664,23 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const renderPickInsumo = () => {
     if (!pickAlvo) return null;
     const p = principais[pickAlvo]; if (!p) return null;
+    // Passo 2: escolher variação do insumo cadastrado selecionado.
+    if (pickIns) {
+      const ins = insumos.find(i => i.id === pickIns); if (!ins) { setPickIns(null); return null; }
+      return (
+        <div>
+          <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Como usar “{ins.nome}”?</div>
+          <p className="text-[11px] text-gray-400 mb-2">Este insumo tem variações. Vincule ao inteiro ou a uma variação (aplica o fator de correção nos usos).</p>
+          <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            <button type="button" onClick={() => aplicarVinculoInsumo(pickAlvo, ins.id)} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200">{ins.nome} <span className="text-[11px] text-gray-400">· inteiro (100%)</span></button>
+            {(ins.variacoes || []).map(v => (
+              <button key={v.id} type="button" onClick={() => aplicarVinculoInsumo(pickAlvo, ins.id, v)} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200"><span className="text-indigo-500">↳</span> {v.nome} <span className="text-[11px] text-gray-400">· {v.fc}% aprov.</span></button>
+            ))}
+          </div>
+          <div className="flex justify-between mt-3 pt-3 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={() => setPickIns(null)}>← voltar</Button><Button variant="secondary" onClick={() => setPickAlvo(null)}>Cancelar</Button></div>
+        </div>
+      );
+    }
     const termo = norm(buscaPick);
     const outrosImport = principaisLista.filter(o => o.key !== pickAlvo && (!termo || norm(o.nome).includes(termo)));
     const cadastrados = insumos.filter(i => i.ativo !== false && !i.ehSubproduto && (!termo || norm(i.nome).includes(termo))).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -667,7 +696,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
           ))}
           {cadastrados.length > 0 && <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 dark:bg-gray-800/40">Insumos já cadastrados (vincula)</div>}
           {cadastrados.map(i => (
-            <button key={i.id} type="button" onClick={() => { setPrinc(pickAlvo, { matchInsumoId: i.id, status: "casado" }); setPickAlvo(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200">{i.nome} <span className="text-[11px] text-gray-400">· {labelUnidade(i.unidadeBase)}</span></button>
+            <button key={i.id} type="button" onClick={() => { if ((i.variacoes?.length ?? 0) > 0) setPickIns(i.id); else aplicarVinculoInsumo(pickAlvo, i.id); }} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200 flex items-center justify-between gap-2"><span>{i.nome} <span className="text-[11px] text-gray-400">· {labelUnidade(i.unidadeBase)}</span></span>{(i.variacoes?.length ?? 0) > 0 && <span className="text-[10px] text-indigo-400 shrink-0">{i.variacoes!.length} variação(ões) ›</span>}</button>
           ))}
           {outrosImport.length === 0 && cadastrados.length === 0 && <div className="px-3 py-6 text-center text-sm text-gray-400 italic">Nada encontrado.</div>}
         </div>
