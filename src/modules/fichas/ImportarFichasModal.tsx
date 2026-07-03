@@ -47,6 +47,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   rid: string; insumos: FtInsumo[]; categorias: FtCategoria[]; fichasExistentes: FtFicha[]; meId?: string; meNome?: string; onClose: () => void;
 }) {
   const subfichasSistema = useMemo(() => fichasExistentes.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichasExistentes]);
+  const subprodutosSistema = useMemo(() => fichasExistentes.filter(f => f.ativo !== false).flatMap(f => (f.subprodutos || []).map(sp => ({ ficha: f, sp }))).sort((a, b) => a.sp.nome.localeCompare(b.sp.nome)), [fichasExistentes]);
+  // Resolve nome de um subproduto (do LOTE ou já cadastrado no sistema).
+  const acharSubproduto = (fichaId: string, subId: string) => {
+    const noLote = fichas.find(x => x.id === fichaId)?.subprodutos?.find(s => s.id === subId);
+    if (noLote) return noLote;
+    return fichasExistentes.find(x => x.id === fichaId)?.subprodutos?.find(s => s.id === subId) || null;
+  };
   const [fase, setFase] = useState<"upload" | "processando" | "revisao" | "gravando">("upload");
   const [erro, setErro] = useState("");
   const [fichas, setFichas] = useState<FichaRev[]>([]);
@@ -348,6 +355,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     setPrincipais(prev => { const n = { ...prev }; delete n[pk]; return n; });
   }
 
+  // Vincula a um subproduto JÁ CADASTRADO no sistema (ex.: ÓLEO DE ALHO que já
+  // existe no ALHO NO ÓLEO). Aponta os usos pra ele; não cria nada.
+  function vincularSubprodutoExistente(pk: string, fichaId: string, subId: string) {
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk ? { ...ing, principalKey: "", variacaoNorm: "", subfichaFichaId: null, subprodutoRef: { fichaId, subId } } : ing) })));
+    setPrincipais(prev => { const n = { ...prev }; delete n[pk]; return n; });
+  }
+
   // Assinatura do conteúdo de uma subficha (rendimento + ingredientes), pra
   // detectar se duas são idênticas.
   function assinaturaFicha(f: FichaRev): string {
@@ -515,7 +529,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
       </div>
       <div className="p-2.5 space-y-1">
         {f.ingredientes.map(ing => {
-          const subprod = ing.subprodutoRef ? (fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId)) : null;
+          const subprod = ing.subprodutoRef ? acharSubproduto(ing.subprodutoRef.fichaId, ing.subprodutoRef.subId) : null;
           const sub = ing.subfichaFichaId ? (fichas.find(x => x.id === ing.subfichaFichaId)?.nome || subNomes[ing.subfichaFichaId]) : null;
           const p = ing.principalKey ? principais[ing.principalKey] : undefined;
           const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
@@ -738,7 +752,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
       }
       for (const f of incluidas) {
         const ingredientes: FtIngrediente[] = f.ingredientes.map(ing => {
-          if (ing.subprodutoRef) { const sp = fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId); return { id: uid("ing"), tipo: "subproduto", refId: ing.subprodutoRef.fichaId, subId: ing.subprodutoRef.subId, nomeSnapshot: sp?.nome || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente; }
+          if (ing.subprodutoRef) { const sp = acharSubproduto(ing.subprodutoRef.fichaId, ing.subprodutoRef.subId); return { id: uid("ing"), tipo: "subproduto", refId: ing.subprodutoRef.fichaId, subId: ing.subprodutoRef.subId, nomeSnapshot: sp?.nome || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente; }
           if (ing.subfichaFichaId) return { id: uid("ing"), tipo: "ficha", refId: ing.subfichaFichaId, nomeSnapshot: fichas.find(x => x.id === ing.subfichaFichaId)?.nome || subNomes[ing.subfichaFichaId] || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
           const p = principais[ing.principalKey];
           const insumoId = insumoIdPorPrincipal.get(ing.principalKey) || "";
@@ -846,7 +860,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                         <button type="button" onClick={() => abrirPick(p.key)} title="Vincular a outro insumo / juntar com outro do lote" className="text-[11px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400 shrink-0">🔎</button>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
-                        <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
+                        <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val.startsWith("exist:")) { const [, fid, sid] = val.split(":"); vincularSubprodutoExistente(p.key, fid, sid); } else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{subprodutosSistema.length > 0 && <optgroup label="já cadastrados">{subprodutosSistema.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{sp.nome} · de {ficha.nome}</option>)}</optgroup>}<optgroup label="criar subproduto em…">{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</optgroup></select>
                         {p.ehSubprodutoPendente && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 shrink-0" title="Vira insumo-subproduto sem custo; vincule ao preparo na tela de Fichas">subproduto ⏳</span>}
                       </div>
                       {p.variacoes.map(v => (
