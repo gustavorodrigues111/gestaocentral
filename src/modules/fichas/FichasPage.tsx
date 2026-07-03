@@ -935,6 +935,7 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
     await gravarVinculo(l.produto, { insumoId: insumo.id, fatorParaBase: fator, ignorar: false });
   }
   async function naoEEste(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: false }); }
+  async function desvincular(l: LinhaReconc) { if (l.vinculo) await deleteDoc(doc(db, "ftVinculosRecebimento", l.vinculo.id)); }
   async function ignorar(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: true }); }
   async function criarInsumo(l: LinhaReconc) {
     const p = l.produto;
@@ -991,6 +992,7 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                       <span>· {fmtBR(l.produto.ultimo.data)}</span>
                       <VerNota notaId={l.produto.ultimo.notaId} />
                       <button type="button" onClick={ev => { ev.preventDefault(); setImpacto(impacto === l.produto.chave ? null : l.produto.chave); }} className="text-indigo-500 hover:underline">{impacto === l.produto.chave ? "ocultar impacto" : "impacto no CMV"}</button>
+                      <button type="button" onClick={ev => { ev.preventDefault(); void desvincular(l); }} title="Desvincular — volta pra 'Vincular produtos'" className="text-gray-400 hover:text-amber-600">↩ desvincular</button>
                     </div>
                     {imp && (
                       <div className="mt-1.5 ml-6 rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2 text-[11px] space-y-0.5">
