@@ -407,6 +407,21 @@ function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }
   );
 }
 
+// Stepper compacto (pílula −/+), sem as setinhas nativas do browser.
+function MiniStepper({ value, onChange, sufixo }: { value: string; onChange: (v: string) => void; sufixo: string }) {
+  const num = Number(value) || 0;
+  const passo = num >= 10 ? 1 : num >= 1 ? 0.5 : 0.1;
+  const set = (n: number) => onChange(String(Math.max(0, Math.round(n * 1000) / 1000)));
+  return (
+    <div className="inline-flex items-center h-8 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm px-1 shrink-0">
+      <button type="button" onClick={() => set(num - passo)} className="w-6 h-6 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-base leading-none" aria-label="diminuir">−</button>
+      <input type="number" value={value} onChange={e => onChange(e.target.value)} className="w-12 text-center bg-transparent text-xs outline-none dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+      <span className="text-[10px] text-gray-400 pr-1">{sufixo}</span>
+      <button type="button" onClick={() => set(num + passo)} className="w-6 h-6 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-base leading-none" aria-label="aumentar">+</button>
+    </div>
+  );
+}
+
 const CHIP_TIPO: Record<string, string> = {
   insumo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   subficha: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
@@ -924,12 +939,13 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap mt-2">
-                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
-                      <div className="flex items-center gap-1 text-[11px] text-gray-400"><span>1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shadow-sm" /><span>{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
-                      {preview != null && <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
+                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[150px] shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+                      <span className="text-[11px] text-gray-400 shrink-0">1 {l.produto.unidade} =</span>
+                      <MiniStepper value={e.fator} onChange={v => setEdit(l, { fator: v })} sufixo={ins ? labelUnidade(ins.unidadeBase) : "base"} />
+                      {preview != null && <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums shrink-0">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
                       <div className="flex-1" />
-                      <button type="button" onClick={() => void aprovarVinculo(l)} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">Vincular</button>
-                      <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
+                      <button type="button" onClick={() => void aprovarVinculo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm shrink-0">Vincular</button>
+                      <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
                     </div>
                   </div>
                 );
@@ -949,8 +965,8 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                 <div key={l.produto.chave} className="flex items-center gap-2 flex-wrap px-4 py-2">
                   <span className="text-sm flex-1 min-w-[120px] dark:text-gray-200">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}</span></span>
                   <VerNota notaId={l.produto.ultimo.notaId} />
-                  <button type="button" onClick={() => void criarInsumo(l)} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">criar insumo</button>
-                  <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
+                  <button type="button" onClick={() => void criarInsumo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
+                  <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
                 </div>
               ))}
             </div>
