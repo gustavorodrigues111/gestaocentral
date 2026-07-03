@@ -402,20 +402,25 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
 }
 
 // ─── Stepper pílula ─────────────────────────────────────────────────────────
+const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
+const fmtQtd = (n: number) => String(round3(n)).replace(".", ",");
+const parseQtd = (s: string) => Number(String(s).replace(",", ".")) || 0;
 function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }: {
   qtd: number; unidade: string; unidades: string[]; unidadeTravada: boolean;
   onQtd: (n: number) => void; onUnidade: (u: string) => void;
 }) {
+  const [txt, setTxt] = useState(fmtQtd(qtd));
+  useEffect(() => { if (parseQtd(txt) !== qtd) setTxt(fmtQtd(qtd)); }, [qtd]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div className="inline-flex items-center h-9 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-[0_2px_8px_-3px_rgba(99,102,241,0.4)] dark:shadow-[0_2px_10px_-3px_rgba(99,102,241,0.55)] shrink-0 px-1">
-      <button type="button" onClick={() => onQtd(Math.max(0, round2(qtd - passoDe(qtd))))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="diminuir">−</button>
-      <input type="number" value={qtd} onChange={e => onQtd(Number(e.target.value) || 0)} className="w-10 text-center bg-transparent text-sm outline-none dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+      <button type="button" onClick={() => onQtd(Math.max(0, round3(qtd - passoDe(qtd))))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="diminuir">−</button>
+      <input type="text" inputMode="decimal" value={txt} onChange={e => { const raw = e.target.value.replace(/[^0-9.,]/g, ""); setTxt(raw); onQtd(parseQtd(raw)); }} className="w-12 text-center bg-transparent text-sm outline-none dark:text-gray-100" />
       {unidadeTravada
         ? <span className="text-xs text-gray-400 min-w-[24px] text-center">{labelUnidade(unidade)}</span>
         : <select value={unidade} onChange={e => onUnidade(e.target.value)} className="bg-transparent text-xs font-medium text-gray-500 dark:text-gray-400 outline-none appearance-none text-center cursor-pointer pr-0.5">
             {unidades.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
           </select>}
-      <button type="button" onClick={() => onQtd(round2(qtd + passoDe(qtd)))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="aumentar">+</button>
+      <button type="button" onClick={() => onQtd(round3(qtd + passoDe(qtd)))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="aumentar">+</button>
     </div>
   );
 }
