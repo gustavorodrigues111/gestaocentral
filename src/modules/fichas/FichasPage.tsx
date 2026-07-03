@@ -210,7 +210,9 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                     <div className="text-xs text-gray-500">{catNome(f.categoriaId) ? `${catNome(f.categoriaId)} · ` : ""}rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
-                    {f.ehSubficha && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
+                    {f.ehSubficha
+                      ? <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🧩 subficha</span>
+                      : <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Prato final — vai pro cardápio">🍽️ cardápio</span>}
                     {fichaPendente(f) && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="Sem ingredientes — monte a receita">⏳ pendente</span>}
                     {f.revisar && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" title={f.revisarMotivo || "Precisa de revisão"}>⚑ revisar</span>}
                   </div>
@@ -299,12 +301,15 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                 <option value="">— sem categoria —</option>
                 {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </Select>
-              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300 pb-2 whitespace-nowrap">
-                <input type="checkbox" checked={f.ehSubficha} onChange={e => setF({ ...f, ehSubficha: e.target.checked })} className="w-4 h-4 accent-indigo-600" />
-                É subficha (reutilizável)
-              </label>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo</span>
+                <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 h-9">
+                  <button type="button" onClick={() => setF({ ...f, ehSubficha: false })} className={`px-3 text-xs font-medium rounded-md whitespace-nowrap ${!f.ehSubficha ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🍽️ Prato final</button>
+                  <button type="button" onClick={() => setF({ ...f, ehSubficha: true })} className={`px-3 text-xs font-medium rounded-md whitespace-nowrap ${f.ehSubficha ? "bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 shadow-sm" : "text-gray-500"}`}>🧩 Subficha</button>
+                </div>
+              </div>
             </div>
-            {f.ehSubficha && <div className="text-[11px] text-purple-600 dark:text-purple-400">Subficha: pode ser usada como ingrediente de outras fichas.</div>}
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{f.ehSubficha ? "🧩 Subficha (base) — reutilizável como ingrediente de outras fichas; não vai pro cardápio." : "🍽️ Prato final — vai pro cardápio (entra no CMV)."}</div>
             <div className="border-t border-gray-100 dark:border-gray-800 pt-2">
               <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
                 <input type="checkbox" checked={!!f.revisar} onChange={e => setF({ ...f, revisar: e.target.checked })} className="w-4 h-4 accent-rose-600" />
