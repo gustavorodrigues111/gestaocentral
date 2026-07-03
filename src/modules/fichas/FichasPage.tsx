@@ -3,7 +3,7 @@
 // mistura livre (insumos + subfichas) com aninhamento. Custo em tempo real.
 // Escopo por empresa.
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, setDoc, updateDoc, deleteDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, updateDoc, deleteDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -15,7 +15,7 @@ import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
 import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
-import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
+import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR } from "../../core/utils/date";
@@ -667,19 +667,34 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
           </div>
         ))}
       </ListaCard>
-      {editar && <EditarCustoModal insumo={editar} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
+      {editar && <EditarCustoModal insumo={editar} fichas={fichas} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
       {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
 
-function EditarCustoModal({ insumo, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
+function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
   const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
+  const [unidadeBase, setUnidadeBase] = useState(insumo.unidadeBase);
   const cNum = parseMoeda(custo);
+  const novaDim = (dimensaoDeUnidade(unidadeBase) || insumo.dimensao) as FtDimensao;
+  const mudouUnidade = unidadeBase !== insumo.unidadeBase;
+  const mudouDim = novaDim !== insumo.dimensao;
+  // Fichas que usam este insumo diretamente (afetadas por mudança de unidade).
+  const afetadas = useMemo(() => fichas.filter(f => f.ativo !== false && (f.ingredientes || []).some(ing => ing.tipo === "insumo" && ing.refId === insumo.id)), [fichas, insumo.id]);
+  // Trocar unidade: mesma dimensão → converte o custo exibido; outra dimensão → mantém.
+  function trocarUnidade(nova: string) {
+    const oldDim = dimensaoDeUnidade(unidadeBase), newDim = dimensaoDeUnidade(nova);
+    if (oldDim && newDim && oldDim === newDim && cNum > 0) {
+      const b1 = paraBase(1, nova), b0 = paraBase(1, unidadeBase);
+      if (b1 && b0) setCusto(maskMoeda(String(Math.round(cNum * (b1 / b0) * 100))));
+    }
+    setUnidadeBase(nova);
+  }
   const precoForn = useMemo(() => precosPorFornecedor(insumo.id, recebimentos, vinculos), [insumo.id, recebimentos, vinculos]);
   const serie = (insumo.historicoCusto || []).filter(h => h.custo > 0).map(h => h.custo);
   function addVar() { setVariacoes(v => [...v, { id: uid("var"), nome: "", fc: 100 }]); }
@@ -695,13 +710,35 @@ function EditarCustoModal({ insumo, recebimentos, vinculos, meId, onClose }: { i
     const hist = [...(insumo.historicoCusto || [])];
     if (c > 0 && c !== insumo.custo) hist.push({ custo: c, data: now, por: meId || null });
     const vars = variacoes.filter(v => v.nome.trim()).map(v => ({ id: v.id, nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
-    await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars }));
+    const batch = writeBatch(db);
+    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars, unidadeBase, dimensao: novaDim }));
+    // Mudança de DIMENSÃO: ajusta a unidade do ingrediente nas fichas afetadas
+    // (mantém a quantidade) e marca pra revisão — as quantidades precisam conferência.
+    if (mudouUnidade && mudouDim) {
+      for (const f of afetadas) {
+        const ingredientes = (f.ingredientes || []).map(ing => ing.tipo === "insumo" && ing.refId === insumo.id ? { ...ing, unidade: unidadeBase } : ing);
+        batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes, revisar: true, revisarMotivo: f.revisarMotivo || `Unidade de "${insumo.nome}" mudou p/ ${labelUnidade(unidadeBase)} — confira as quantidades` }));
+      }
+    }
+    await batch.commit();
     onClose();
   }
   return (
     <Modal title={`Insumo — ${insumo.nome}`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <CampoMoeda label={`Custo por ${labelUnidade(insumo.unidadeBase)} (inteiro)`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
+        <div className="grid grid-cols-2 gap-2">
+          <CampoMoeda label={`Custo por ${labelUnidade(unidadeBase)} (inteiro)`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
+          <Select label="Unidade base" value={unidadeBase} onChange={e => trocarUnidade(e.target.value)}>
+            {UNIDADES.filter(u => ["kg", "g", "L", "ml", "un"].includes(u.unidade)).map(u => <option key={u.unidade} value={u.unidade}>{u.label} ({DIMENSAO_LABEL[u.dimensao]})</option>)}
+          </Select>
+        </div>
+        {mudouUnidade && (
+          <div className={`text-[11px] rounded-lg p-2 ${mudouDim ? "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200" : "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200"}`}>
+            {mudouDim
+              ? <>⚠ Muda de <strong>{DIMENSAO_LABEL[insumo.dimensao]}</strong> para <strong>{DIMENSAO_LABEL[novaDim]}</strong>. {afetadas.length > 0 ? <>Afeta {afetadas.length} ficha(s): {afetadas.slice(0, 6).map(f => f.nome).join(", ")}{afetadas.length > 6 ? "…" : ""}. Elas ficam com o ingrediente em {labelUnidade(unidadeBase)} e marcadas <strong>⚑ revisar</strong> pra você conferir as quantidades.</> : "Nenhuma ficha usa este insumo."}</>
+              : <>Custo convertido pra R$/{labelUnidade(unidadeBase)} automaticamente.</>}
+          </div>
+        )}
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={reutil} onChange={e => setReutil(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Reutilizável (não pesa custo cheio — ex: óleo de fritura)</label>
 
