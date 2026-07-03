@@ -193,14 +193,16 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, meId, podeInsumo, onC
           {/* Cabeçalho da ficha */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 space-y-3">
             <Input label="Nome da ficha" value={f.nome} onChange={e => setF({ ...f, nome: e.target.value })} placeholder="ex: Torta de limão" />
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-end">
               <Select label="Tipo" value={f.tipo} onChange={e => setF({ ...f, tipo: e.target.value as FtFichaTipo })}>
                 {(["prato", "drinque", "subproduto"] as FtFichaTipo[]).map(t => <option key={t} value={t}>{FT_FICHA_TIPO_LABEL[t]}</option>)}
               </Select>
-              <Input label="Rende (qtd)" type="number" value={f.rendimentoFinal.qtd} onChange={e => setF({ ...f, rendimentoFinal: { ...f.rendimentoFinal, qtd: Number(e.target.value) || 0 } })} />
-              <Select label="Unidade" value={f.rendimentoFinal.unidade} onChange={e => setF({ ...f, rendimentoFinal: { ...f.rendimentoFinal, unidade: e.target.value } })}>
-                {unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{u.label}</option>)}
-              </Select>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Rendimento final</span>
+                <QtyStepper qtd={f.rendimentoFinal.qtd} unidade={f.rendimentoFinal.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
+                  onQtd={n => setF({ ...f, rendimentoFinal: { ...f.rendimentoFinal, qtd: n } })}
+                  onUnidade={u => setF({ ...f, rendimentoFinal: { ...f.rendimentoFinal, unidade: u } })} />
+              </div>
               <Input label="Categoria" value={f.categoria || ""} onChange={e => setF({ ...f, categoria: e.target.value })} placeholder="opcional" />
             </div>
             {f.tipo === "subproduto" && <div className="text-[11px] text-indigo-600 dark:text-indigo-400">Esta ficha poderá ser usada como ingrediente de outras fichas.</div>}
