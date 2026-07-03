@@ -54,6 +54,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [rascunho, setRascunho] = useState<{ receitasRaw: FichaIA[]; criadoEm: string; nReceitas: number; revisao?: RevSnap } | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
+  const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -278,6 +279,30 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     });
   }
 
+  // Assinatura do conteúdo de uma subficha (rendimento + ingredientes), pra
+  // detectar se duas são idênticas.
+  function assinaturaFicha(f: FichaRev): string {
+    const rend = `${f.rendimento.qtd}${f.rendimento.unidade}`;
+    const ings = f.ingredientes.map(i => `${i.subfichaFichaId || i.principalKey}|${i.variacaoNorm}|${i.qb ? "qb" : i.qtd}|${i.unidade}`).sort().join("~");
+    return `${rend}::${ings}`;
+  }
+
+  // Mescla duas subfichas em uma só: a sobrevivente (aId) fica com o nome e o
+  // conteúdo escolhidos; todos os usos da outra (bId) apontam pra ela; bId sai.
+  function mesclarSubfichas(aId: string, bId: string, nome: string, conteudoId: string) {
+    if (aId === bId) return;
+    const conteudo = fichas.find(f => f.id === conteudoId);
+    setFichas(prev => {
+      let next = prev.map(f => f.id === aId
+        ? { ...f, nome: UP(nome), rendimento: conteudo ? conteudo.rendimento : f.rendimento, ingredientes: conteudo ? conteudo.ingredientes.map(i => ({ ...i, id: uid("ing") })) : f.ingredientes }
+        : f);
+      next = next.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.subfichaFichaId === bId ? { ...ing, subfichaFichaId: aId } : ing) }));
+      return next.filter(f => f.id !== bId);
+    });
+    setSubNomes(prev => { const n = { ...prev }; delete n[bId]; n[aId] = UP(nome); return n; });
+    setMescla(null);
+  }
+
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
@@ -302,6 +327,14 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const fichasFinais = useMemo(() => fichas.filter(f => !f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
   const usoComoSub = useMemo(() => { const c: Record<string, number> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1; return c; }, [fichas]);
 
+  const abrirMescla = (aId: string, bId: string) => { const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
+  const ingLabel = (ing: IngRev): string => {
+    if (ing.subfichaFichaId) return subNomes[ing.subfichaFichaId] || "?";
+    const p = principais[ing.principalKey];
+    const v = ing.variacaoNorm && p ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
+    return (p?.nome || "?") + (v ? ` ↳ ${v.nome}` : "");
+  };
+
   const renderCard = (f: FichaRev) => (
     <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
       <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 flex-wrap">
@@ -310,6 +343,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
         <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
         <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+        {f.ehSubficha && subfichas.length > 1 && (
+          <select value="" onChange={e => { if (e.target.value) abrirMescla(f.id, e.target.value); }} className="text-xs px-2 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300"><option value="">mesclar com…</option>{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
+        )}
         <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
       </div>
       <div className="p-2.5 space-y-1">
@@ -332,6 +368,56 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       </div>
     </div>
   );
+
+  const renderMescla = () => {
+    if (!mescla) return null;
+    const A = fichas.find(f => f.id === mescla.aId), B = fichas.find(f => f.id === mescla.bId);
+    if (!A || !B) return null;
+    const iguais = assinaturaFicha(A) === assinaturaFicha(B);
+    const col = (f: FichaRev, ladoId: string, cor: string) => (
+      <div className={`flex-1 min-w-0 rounded-xl border ${mescla.conteudoId === ladoId ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-200 dark:border-gray-800"}`}>
+        <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
+          <span className="text-sm font-semibold truncate dark:text-gray-100">{f.nome}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${cor}`}>rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+        </div>
+        <div className="p-2.5 space-y-1">
+          {f.ingredientes.map(ing => (
+            <div key={ing.id} className="flex items-center gap-2 text-xs">
+              <span className="flex-1 min-w-0 truncate text-gray-700 dark:text-gray-200">{ingLabel(ing)}</span>
+              <span className="text-gray-500 tabular-nums shrink-0">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
+            </div>
+          ))}
+          {f.ingredientes.length === 0 && <div className="text-xs text-gray-400 italic">Sem ingredientes.</div>}
+        </div>
+        {!iguais && (
+          <label className="flex items-center gap-1.5 px-3 py-2 border-t border-gray-100 dark:border-gray-800 text-xs cursor-pointer">
+            <input type="radio" name="mesclaConteudo" checked={mescla.conteudoId === ladoId} onChange={() => setMescla(m => m && { ...m, conteudoId: ladoId })} className="accent-indigo-600" />
+            Manter estes ingredientes
+          </label>
+        )}
+      </div>
+    );
+    return (
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">Mesclar duas subfichas em uma</span>
+          <span className={`text-[11px] px-2 py-0.5 rounded-full ${iguais ? CHIP.casado : CHIP.conferir}`}>{iguais ? "Ingredientes idênticos" : "Ingredientes diferentes"}</span>
+        </div>
+        <div className="flex gap-3 items-start">{col(A, mescla.aId, CHIP.subficha)}{col(B, mescla.bId, CHIP.subficha)}</div>
+        <div className="mt-3 flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-gray-500">Nome final:</span>
+          <input value={mescla.nome} onChange={e => setMescla(m => m && { ...m, nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[140px] text-sm px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <button type="button" onClick={() => setMescla(m => m && { ...m, nome: A.nome })} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:border-indigo-400">usar nome de {A.nome}</button>
+          <button type="button" onClick={() => setMescla(m => m && { ...m, nome: B.nome })} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:border-indigo-400">usar de {B.nome}</button>
+        </div>
+        {!iguais && <p className="text-[11px] text-gray-400 mt-2">Ingredientes diferentes — escolha qual coluna prevalece. Pra montar uma 3ª versão, mescle e ajuste depois na tela de Fichas.</p>}
+        <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={() => setMescla(null)}>Cancelar</Button>
+          <Button onClick={() => mesclarSubfichas(mescla.aId, mescla.bId, mescla.nome, mescla.conteudoId)} disabled={!mescla.nome.trim()}>Mesclar</Button>
+        </div>
+      </div>
+    );
+  };
 
   async function gravar() {
     if (nSel === 0) { setErro("Selecione ao menos uma receita."); return; }
@@ -494,13 +580,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             )}
 
             {/* PASSO 2 — Subfichas (detectadas + promovidas) */}
-            {passo === 2 && (
+            {passo === 2 && (mescla ? renderMescla() : (
               <div className="space-y-3">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final.</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final, ou use <em>mesclar com…</em> pra juntar duplicadas.</p>
                 {subfichas.map(renderCard)}
                 {subfichas.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma subficha nesta importação.</div>}
               </div>
-            )}
+            ))}
 
             {/* PASSO 3 — Fichas finais */}
             {passo === 3 && (
