@@ -176,11 +176,11 @@ export function VendasPage() {
         </div>
       </header>
 
-      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
+      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
         <TabBtn ativo={tab === "vendas"} onClick={() => setTab("vendas")}>Vendas</TabBtn>
         {podeConfig && <TabBtn ativo={tab === "produtos"} onClick={() => setTab("produtos")}>Produtos</TabBtn>}
         {podeConfig && <TabBtn ativo={tab === "clientes"} onClick={() => setTab("clientes")}>Clientes</TabBtn>}
-        {podeConfig && <TabBtn ativo={tab === "formas"} onClick={() => setTab("formas")}>Formas de pgto</TabBtn>}
+        {podeConfig && <TabBtn ativo={tab === "formas"} onClick={() => setTab("formas")}><span className="sm:hidden">Formas</span><span className="hidden sm:inline">Formas de pgto</span></TabBtn>}
       </nav>
 
       {tab === "vendas" && (
@@ -193,15 +193,13 @@ export function VendasPage() {
             <KpiCard label="Cobranças enviadas" valor={String(cont.cobranca_enviada)} hint="aguardando" />
           </div>
 
-          {/* Filtro segmentado + busca — empilha e rola no mobile */}
+          {/* Filtro segmentado + busca — 2 colunas no mobile (sem rolagem lateral) */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
-            <div className="overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
-              <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 w-max">
-                <Seg ativo={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas ({cont.todas})</Seg>
-                <Seg ativo={filtro === "aberta"} onClick={() => setFiltro("aberta")}>Abertas ({cont.aberta})</Seg>
-                <Seg ativo={filtro === "cobranca_enviada"} onClick={() => setFiltro("cobranca_enviada")}>Cobrança ({cont.cobranca_enviada})</Seg>
-                <Seg ativo={filtro === "quitada"} onClick={() => setFiltro("quitada")}>Quitadas ({cont.quitada})</Seg>
-              </div>
+            <div className="grid grid-cols-2 sm:inline-flex gap-1 sm:gap-0 rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+              <Seg ativo={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas ({cont.todas})</Seg>
+              <Seg ativo={filtro === "aberta"} onClick={() => setFiltro("aberta")}>Abertas ({cont.aberta})</Seg>
+              <Seg ativo={filtro === "cobranca_enviada"} onClick={() => setFiltro("cobranca_enviada")}>Cobrança ({cont.cobranca_enviada})</Seg>
+              <Seg ativo={filtro === "quitada"} onClick={() => setFiltro("quitada")}>Quitadas ({cont.quitada})</Seg>
             </div>
             <div className="flex items-center gap-2 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm w-full sm:w-auto sm:min-w-[200px]">
               <span className="text-gray-400 text-sm">🔎</span>
@@ -899,7 +897,7 @@ function KpiCard({ label, valor, hint }: { label: string; valor: string; hint?: 
 function Seg({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={`px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${ativo ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+      className={`w-full sm:w-auto px-3 py-1.5 text-xs font-medium rounded-md whitespace-nowrap text-center transition-colors ${ativo ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
       {children}
     </button>
   );
@@ -907,7 +905,7 @@ function Seg({ ativo, onClick, children }: { ativo: boolean; onClick: () => void
 function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
-      className={`px-3 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${ativo ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+      className={`flex-1 sm:flex-none px-2 sm:px-3 py-2 text-[13px] sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap text-center ${ativo ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
       {children}
     </button>
   );
