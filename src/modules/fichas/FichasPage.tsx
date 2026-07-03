@@ -654,7 +654,7 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
       </ListaCard>
       {editar && <EditarCustoModal insumo={editar} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
-      {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} meId={meId} onClose={() => setSincronizar(false)} />}
+      {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
@@ -790,10 +790,13 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
 }
 
 // ─── Sincronizar preços do Recebimento ──────────────────────────────────────
-function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }: {
+function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, meId, onClose }: {
   rid: string; reconc: { vinculados: LinhaReconc[]; sugeridos: LinhaReconc[]; semInsumo: LinhaReconc[] };
-  insumos: FtInsumo[]; fichas: FtFicha[]; meId?: string; onClose: () => void;
+  insumos: FtInsumo[]; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; meId?: string; onClose: () => void;
 }) {
+  const notaById = useMemo(() => new Map(recebimentos.map(n => [n.id, n])), [recebimentos]);
+  const notaUrl = (id: string): string | null => { const n = notaById.get(id); return n?.notaDriveUrl || n?.notaPaginas?.[0]?.driveUrl || null; };
+  const VerNota = ({ notaId }: { notaId: string }) => { const url = notaUrl(notaId); return url ? <a href={url} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} className="text-indigo-500 hover:underline">🧾 ver nota</a> : null; };
   const precosNovos = reconc.vinculados.filter(l => l.precoNovo);
   const [aplicar, setAplicar] = useState<Set<string>>(() => new Set(precosNovos.map(l => l.produto.chave)));
   const [edits, setEdits] = useState<Record<string, { insumoId: string; fator: string }>>({});
@@ -853,65 +856,79 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }:
 
   const impactoLinha = (l: LinhaReconc) => (l.insumo && l.custoBase != null) ? impactoNoCmv(l.insumo.id, l.custoBase, insumos, fichas) : [];
 
+  const Pill = ({ n, cor }: { n: number; cor: string }) => <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${cor}`}>{n}</span>;
+
   return (
     <Modal title="🧾 Preços do recebimento" onClose={onClose} maxWidth="max-w-3xl">
-      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+      <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-3">Confira e aplique os preços que chegaram nas notas. Na dúvida sobre a unidade, abra a nota em <span className="text-indigo-500">🧾 ver nota</span>. Nada é aplicado sem você confirmar.</p>
+      <div className="space-y-4 max-h-[68vh] overflow-y-auto pr-1 -mr-1">
+
         {/* Preços novos */}
-        <section>
-          <div className="flex items-center justify-between mb-1">
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Preços novos ({precosNovos.length})</h3>
+        <section className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+          <div className="flex items-center justify-between gap-2 px-4 py-2.5 bg-emerald-50/60 dark:bg-emerald-900/15 border-b border-gray-100 dark:border-gray-800">
+            <div className="flex items-center gap-2"><span className="text-sm font-semibold text-gray-800 dark:text-gray-100">💰 Preços novos</span><Pill n={precosNovos.length} cor="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" /></div>
             {precosNovos.length > 0 && <Button size="sm" onClick={() => void aplicarSelecionados()} disabled={salvando || aplicar.size === 0}>{salvando ? "Aplicando…" : `Aplicar ${aplicar.size}`}</Button>}
           </div>
-          {precosNovos.length === 0 && <div className="text-xs text-gray-400 italic">Nenhum preço novo pra aplicar.</div>}
-          <div className="space-y-1.5">
-            {precosNovos.map(l => {
-              const imp = impacto === l.produto.chave ? impactoLinha(l) : null;
-              return (
-                <div key={l.produto.chave} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <input type="checkbox" checked={aplicar.has(l.produto.chave)} onChange={e => setAplicar(s => { const n = new Set(s); if (e.target.checked) n.add(l.produto.chave); else n.delete(l.produto.chave); return n; })} className="w-4 h-4 accent-emerald-600" />
-                    <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.insumo?.nome}</span>
-                    <span className="text-xs text-gray-500 tabular-nums">{fmtMoeda(l.insumo?.custo || 0)} → <strong className="text-emerald-700 dark:text-emerald-400">{fmtMoeda(l.custoBase || 0)}</strong>/{labelUnidade(l.insumo?.unidadeBase || "")}</span>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap mt-1 pl-6 text-[11px] text-gray-400">
-                    <span>{l.produto.descricaoExemplo} · {l.produto.unidade}</span>
-                    {l.produto.fornecedor && <span>· {l.produto.fornecedor}</span>}
-                    <span>· {fmtBR(l.produto.ultimo.data)}</span>
-                    <button type="button" onClick={() => setImpacto(impacto === l.produto.chave ? null : l.produto.chave)} className="text-indigo-500 hover:underline">{impacto === l.produto.chave ? "ocultar impacto" : "ver impacto no CMV"}</button>
-                  </div>
-                  {imp && (
-                    <div className="mt-1 pl-6 text-[11px] space-y-0.5">
-                      {imp.length === 0 ? <span className="text-gray-400">Não afeta nenhuma ficha.</span> : imp.slice(0, 8).map(x => (
-                        <div key={x.ficha.id} className="flex justify-between"><span className="truncate text-gray-600 dark:text-gray-300">{x.ficha.nome}</span><span className={`tabular-nums ${x.depois > x.antes ? "text-rose-600" : "text-emerald-600"}`}>{fmtMoeda(x.antes)} → {fmtMoeda(x.depois)}</span></div>
-                      ))}
-                      {imp.length > 8 && <span className="text-gray-400">+{imp.length - 8} fichas…</span>}
+          {precosNovos.length === 0
+            ? <div className="px-4 py-4 text-xs text-gray-400 italic">Nenhum preço novo pra aplicar agora.</div>
+            : <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {precosNovos.map(l => {
+                const imp = impacto === l.produto.chave ? impactoLinha(l) : null;
+                return (
+                  <label key={l.produto.chave} className="block px-4 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer">
+                    <div className="flex items-center gap-2.5 flex-wrap">
+                      <input type="checkbox" checked={aplicar.has(l.produto.chave)} onChange={e => setAplicar(s => { const n = new Set(s); if (e.target.checked) n.add(l.produto.chave); else n.delete(l.produto.chave); return n; })} className="w-4 h-4 accent-emerald-600 shrink-0" />
+                      <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.insumo?.nome}</span>
+                      <span className="text-xs tabular-nums text-gray-400">{fmtMoeda(l.insumo?.custo || 0)}</span>
+                      <span className="text-gray-300">→</span>
+                      <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{fmtMoeda(l.custoBase || 0)}/{labelUnidade(l.insumo?.unidadeBase || "")}</span>
                     </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                    <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-1 pl-6 text-[11px] text-gray-400">
+                      <span className="text-gray-500 dark:text-gray-400">{l.produto.descricaoExemplo}</span>
+                      <span>· {l.produto.unidade}</span>
+                      {l.produto.fornecedor && <span>· {l.produto.fornecedor}</span>}
+                      <span>· {fmtBR(l.produto.ultimo.data)}</span>
+                      <VerNota notaId={l.produto.ultimo.notaId} />
+                      <button type="button" onClick={ev => { ev.preventDefault(); setImpacto(impacto === l.produto.chave ? null : l.produto.chave); }} className="text-indigo-500 hover:underline">{impacto === l.produto.chave ? "ocultar impacto" : "impacto no CMV"}</button>
+                    </div>
+                    {imp && (
+                      <div className="mt-1.5 ml-6 rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2 text-[11px] space-y-0.5">
+                        {imp.length === 0 ? <span className="text-gray-400">Não afeta nenhuma ficha.</span> : imp.slice(0, 8).map(x => (
+                          <div key={x.ficha.id} className="flex justify-between gap-2"><span className="truncate text-gray-600 dark:text-gray-300">{x.ficha.nome}</span><span className={`tabular-nums shrink-0 ${x.depois > x.antes ? "text-rose-600" : "text-emerald-600"}`}>{fmtMoeda(x.antes)} → {fmtMoeda(x.depois)}</span></div>
+                        ))}
+                        {imp.length > 8 && <span className="text-gray-400">+{imp.length - 8} fichas…</span>}
+                      </div>
+                    )}
+                  </label>
+                );
+              })}
+            </div>}
         </section>
 
-        {/* Sugeridos — precisam de vínculo/fator */}
+        {/* Vincular produtos */}
         {reconc.sugeridos.length > 0 && (
-          <section>
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Vincular produtos ({reconc.sugeridos.length})</h3>
-            <div className="space-y-1.5">
+          <section className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-indigo-50/60 dark:bg-indigo-900/15 border-b border-gray-100 dark:border-gray-800">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">🔗 Vincular produtos</span><Pill n={reconc.sugeridos.length} cor="bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" />
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {reconc.sugeridos.map(l => {
                 const e = getEdit(l); const ins = insumos.find(i => i.id === e.insumoId); const fatorNum = Number(e.fator);
                 const preview = ins && fatorNum > 0 ? custoNaBase(l.produto.ultimo.valorUnitario, fatorNum) : null;
                 return (
-                  <div key={l.produto.chave} className={`rounded-lg border p-2.5 ${l.fornecedorNovo ? "border-amber-300 dark:border-amber-800" : "border-gray-200 dark:border-gray-800"}`}>
+                  <div key={l.produto.chave} className={`px-4 py-2.5 ${l.fornecedorNovo ? "bg-amber-50/50 dark:bg-amber-900/10" : ""}`}>
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span></span>
-                      <span className="text-[10px] text-gray-400">{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
+                      <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.produto.descricaoExemplo}</span>
+                      <span className="text-[11px] text-gray-400">{l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span>
+                      <VerNota notaId={l.produto.ultimo.notaId} />
+                      <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                     </div>
-                    <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px]"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
-                      <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" /><span className="text-[11px] text-gray-400">{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
-                      {preview != null && <span className="text-[11px] text-emerald-700 dark:text-emerald-400 tabular-nums">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
-                      <button type="button" onClick={() => void aprovarVinculo(l)} className="text-xs font-medium px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">Vincular</button>
+                    <div className="flex items-center gap-2 flex-wrap mt-2">
+                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+                      <div className="flex items-center gap-1 text-[11px] text-gray-400"><span>1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shadow-sm" /><span>{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
+                      {preview != null && <span className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400 tabular-nums">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
+                      <div className="flex-1" />
+                      <button type="button" onClick={() => void aprovarVinculo(l)} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm">Vincular</button>
                       <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
                     </div>
                   </div>
@@ -923,13 +940,16 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }:
 
         {/* Sem insumo */}
         {reconc.semInsumo.length > 0 && (
-          <section>
-            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Produtos sem insumo ({reconc.semInsumo.length})</h3>
-            <div className="space-y-1">
+          <section className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
+              <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">🆕 Produtos sem insumo</span><Pill n={reconc.semInsumo.length} cor="bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300" />
+            </div>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {reconc.semInsumo.map(l => (
-                <div key={l.produto.chave} className="flex items-center gap-2 flex-wrap rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5">
+                <div key={l.produto.chave} className="flex items-center gap-2 flex-wrap px-4 py-2">
                   <span className="text-sm flex-1 min-w-[120px] dark:text-gray-200">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}</span></span>
-                  <button type="button" onClick={() => void criarInsumo(l)} className="text-xs font-medium px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">criar insumo</button>
+                  <VerNota notaId={l.produto.ultimo.notaId} />
+                  <button type="button" onClick={() => void criarInsumo(l)} className="text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm">criar insumo</button>
                   <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
                 </div>
               ))}
