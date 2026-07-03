@@ -140,6 +140,7 @@ service cloud.firestore {
     match /ftPlanosProducao/{id}       { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }
+    match /ftVinculosRecebimento/{id}  { allow read, write: if authed(); }
     match /excecoesStatusSemana/{id} { allow read, write: if authed(); }
     match /excecoesDiaStatus/{id}    { allow read, write: if authed(); }
     match /excecoesApontamentoStatus/{id} { allow read, write: if authed(); }

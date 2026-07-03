@@ -13,10 +13,12 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto } from "../../core/types";
+import type { FtCategoria, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
+import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
+import { fmtBR } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
 
 // ─── utils ──────────────────────────────────────────────────────────────
@@ -47,6 +49,8 @@ export function FichasPage() {
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [categorias, setCategorias] = useState<FtCategoria[]>([]);
+  const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
+  const [vinculos, setVinculos] = useState<FtVinculoRecebimento[]>([]);
   const [editando, setEditando] = useState<FtFicha | null>(null);
   const [importando, setImportando] = useState(false);
 
@@ -58,7 +62,11 @@ export function FichasPage() {
       s => setFichas(s.docs.map(d => normFicha({ id: d.id, ...d.data() } as FtFicha))));
     const u3 = onSnapshot(query(collection(db, "ftCategorias"), where("restaurantId", "==", rid)),
       s => setCategorias(s.docs.map(d => ({ id: d.id, ...d.data() } as FtCategoria))));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(query(collection(db, "recebimentos"), where("restaurantId", "==", rid)),
+      s => setRecebimentos(s.docs.map(d => ({ id: d.id, ...d.data() } as RecebimentoNota))));
+    const u5 = onSnapshot(query(collection(db, "ftVinculosRecebimento"), where("restaurantId", "==", rid)),
+      s => setVinculos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtVinculoRecebimento))));
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [rid]);
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
@@ -99,7 +107,7 @@ export function FichasPage() {
       </nav>
 
       {tab === "fichas" && <ListaFichas fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar} />}
-      {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} meId={pessoa?.id} />}
+      {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
       {tab === "categorias" && podeEditar && <CadastroCategorias rid={rid} categorias={categorias} />}
 
       {importando && (
@@ -574,10 +582,13 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
 }
 
 // ─── Aba Insumos ──────────────────────────────────────────────────────────
-function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; meId?: string }) {
+function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
   const [nome, setNome] = useState(""); const [unidadeBase, setUnidadeBase] = useState("kg"); const [custo, setCusto] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
-  const [soPendentes, setSoPendentes] = useState(false);
+  const [soPendentes, setSoPendentes] = useState(false); const [sincronizar, setSincronizar] = useState(false);
+  const reconc = useMemo(() => reconciliar(agruparProdutos(coletarPrecos(recebimentos)), insumos, vinculos), [recebimentos, insumos, vinculos]);
+  const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
+  const nSugeridos = reconc.sugeridos.length;
   const similares = useMemo(() => sugerirInsumos(nome, insumos), [nome, insumos]);
   const pendentesSub = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe);
   const ativos = insumos.filter(i => i.ativo !== false).filter(i => !soPendentes || (i.ehSubproduto && !i.subprodutoDe)).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -606,6 +617,12 @@ function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos:
         </div>
         {similares.length > 0 && nome.trim() && <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Parecido com: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")} — confira pra não duplicar.</div>}
       </FormCard>
+      {(nPrecoNovo > 0 || nSugeridos > 0) && (
+        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
+          <span className="text-sm text-emerald-800 dark:text-emerald-200">🧾 {nPrecoNovo > 0 ? `${nPrecoNovo} preço(s) novo(s) recebido(s)` : "Recebimento"}{nSugeridos > 0 ? ` · ${nSugeridos} produto(s) pra vincular` : ""}.</span>
+          <button type="button" onClick={() => setSincronizar(true)} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Revisar preços</button>
+        </div>
+      )}
       {pendentesSub.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
           <span className="text-sm text-amber-800 dark:text-amber-200">⏳ {pendentesSub.length} subproduto(s) sem vínculo — vincule ao preparo que os gera (na tela da ficha).</span>
@@ -637,6 +654,7 @@ function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos:
       </ListaCard>
       {editar && <EditarCustoModal insumo={editar} meId={meId} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
+      {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
@@ -686,6 +704,21 @@ function EditarCustoModal({ insumo, meId, onClose }: { insumo: FtInsumo; meId?: 
           </div>
         </div>
 
+        {(insumo.historicoCusto || []).length > 0 && (
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+            <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Histórico de preço</div>
+            <div className="space-y-0.5 max-h-40 overflow-y-auto">
+              {[...(insumo.historicoCusto || [])].reverse().slice(0, 10).map((h, i) => (
+                <div key={i} className="flex items-center gap-2 text-[11px]">
+                  <span className="tabular-nums font-medium text-gray-800 dark:text-gray-200 w-20">{fmtMoeda(h.custo)}</span>
+                  <span className="text-gray-400 w-20">{fmtBR(h.data)}</span>
+                  <span className="text-gray-500 flex-1 truncate">{h.origem === "recebimento" ? `🧾 ${h.fornecedor || "recebimento"}${h.notaNumero ? ` · NF ${h.notaNumero}` : ""}` : "manual"}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
       </div>
     </Modal>
@@ -725,6 +758,158 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
         </Select>
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
       </div>
+    </Modal>
+  );
+}
+
+// ─── Sincronizar preços do Recebimento ──────────────────────────────────────
+function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }: {
+  rid: string; reconc: { vinculados: LinhaReconc[]; sugeridos: LinhaReconc[]; semInsumo: LinhaReconc[] };
+  insumos: FtInsumo[]; fichas: FtFicha[]; meId?: string; onClose: () => void;
+}) {
+  const precosNovos = reconc.vinculados.filter(l => l.precoNovo);
+  const [aplicar, setAplicar] = useState<Set<string>>(() => new Set(precosNovos.map(l => l.produto.chave)));
+  const [edits, setEdits] = useState<Record<string, { insumoId: string; fator: string }>>({});
+  const [impacto, setImpacto] = useState<string | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const insumosSel = insumos.filter(i => i.ativo !== false && !i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
+
+  const getEdit = (l: LinhaReconc) => edits[l.produto.chave] || { insumoId: l.insumo?.id || "", fator: l.fatorParaBase != null ? String(l.fatorParaBase) : "" };
+  const setEdit = (chave: string, patch: Partial<{ insumoId: string; fator: string }>) => setEdits(e => ({ ...e, [chave]: { ...(e[chave] || { insumoId: "", fator: "" }), ...patch } }));
+
+  async function aplicarPreco(l: LinhaReconc) {
+    if (!l.insumo || l.custoBase == null) return;
+    const u = l.produto.ultimo;
+    const nova: FtHistoricoCusto = { custo: l.custoBase, data: u.data, por: meId || null, origem: "recebimento", fornecedor: u.fornecedor || null, notaId: u.notaId || null, notaNumero: u.notaNumero || null };
+    const hist: FtHistoricoCusto[] = [...(l.insumo.historicoCusto || []), nova].slice(-20);
+    await updateDoc(doc(db, "ftInsumos", l.insumo.id), sanitizeForFirestore({ custo: l.custoBase, custoAtualizadoEm: u.data, historicoCusto: hist }));
+  }
+  async function aplicarSelecionados() {
+    setSalvando(true);
+    try { for (const l of precosNovos) if (aplicar.has(l.produto.chave)) await aplicarPreco(l); }
+    finally { setSalvando(false); }
+  }
+  async function aprovarVinculo(l: LinhaReconc) {
+    const e = getEdit(l); const insumo = insumos.find(i => i.id === e.insumoId); const fator = Number(e.fator);
+    if (!insumo || !(fator > 0)) { alert("Escolha o insumo e informe um fator válido (> 0)."); return; }
+    const p = l.produto;
+    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
+      id: uid("vrec"), restaurantId: rid, insumoId: insumo.id, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo,
+      unidadeNota: p.unidade, fornecedor: p.fornecedor || null, fatorParaBase: fator, ignorar: false, aprovado: true, criadoEm: new Date().toISOString(), criadoPor: meId || null,
+    } as FtVinculoRecebimento));
+  }
+  async function ignorar(l: LinhaReconc) {
+    const p = l.produto;
+    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
+      id: uid("vrec"), restaurantId: rid, insumoId: null, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo,
+      unidadeNota: p.unidade, fornecedor: p.fornecedor || null, fatorParaBase: 0, ignorar: true, aprovado: true, criadoEm: new Date().toISOString(), criadoPor: meId || null,
+    } as FtVinculoRecebimento));
+  }
+  async function criarInsumo(l: LinhaReconc) {
+    const p = l.produto;
+    const dim = (dimensaoDeUnidade(p.unidade) || "massa") as FtDimensao;
+    const base = dim === "massa" ? "kg" : dim === "volume" ? "L" : "un";
+    const fator = fatorAutomatico(p.unidade, { unidadeBase: base } as FtInsumo) ?? 1;
+    const custo = custoNaBase(p.ultimo.valorUnitario, fator);
+    const now = new Date().toISOString(); const id = uid("ins");
+    await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore({
+      id, restaurantId: rid, nome: UP(p.descricaoExemplo), nomeNormalizado: normalizarNome(p.descricaoExemplo), dimensao: dim, unidadeBase: base,
+      custo, custoAtualizadoEm: custo > 0 ? p.ultimo.data : null, historicoCusto: custo > 0 ? [{ custo, data: p.ultimo.data, por: meId || null, origem: "recebimento", fornecedor: p.fornecedor || null, notaId: p.ultimo.notaId, notaNumero: p.ultimo.notaNumero }] : [],
+      fornecedorPadrao: p.fornecedor || null, reutilizavel: false, aliases: [], ativo: true,
+    } as FtInsumo));
+    await setDoc(doc(db, "ftVinculosRecebimento", uid("vrec")), sanitizeForFirestore({
+      id: uid("vrec"), restaurantId: rid, insumoId: id, descricaoNorm: p.descricaoNorm, descricaoExemplo: p.descricaoExemplo, unidadeNota: p.unidade,
+      fornecedor: p.fornecedor || null, fatorParaBase: fator, ignorar: false, aprovado: true, criadoEm: now, criadoPor: meId || null,
+    } as FtVinculoRecebimento));
+  }
+
+  const impactoLinha = (l: LinhaReconc) => (l.insumo && l.custoBase != null) ? impactoNoCmv(l.insumo.id, l.custoBase, insumos, fichas) : [];
+
+  return (
+    <Modal title="🧾 Preços do recebimento" onClose={onClose} maxWidth="max-w-3xl">
+      <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+        {/* Preços novos */}
+        <section>
+          <div className="flex items-center justify-between mb-1">
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">Preços novos ({precosNovos.length})</h3>
+            {precosNovos.length > 0 && <Button size="sm" onClick={() => void aplicarSelecionados()} disabled={salvando || aplicar.size === 0}>{salvando ? "Aplicando…" : `Aplicar ${aplicar.size}`}</Button>}
+          </div>
+          {precosNovos.length === 0 && <div className="text-xs text-gray-400 italic">Nenhum preço novo pra aplicar.</div>}
+          <div className="space-y-1.5">
+            {precosNovos.map(l => {
+              const imp = impacto === l.produto.chave ? impactoLinha(l) : null;
+              return (
+                <div key={l.produto.chave} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input type="checkbox" checked={aplicar.has(l.produto.chave)} onChange={e => setAplicar(s => { const n = new Set(s); if (e.target.checked) n.add(l.produto.chave); else n.delete(l.produto.chave); return n; })} className="w-4 h-4 accent-emerald-600" />
+                    <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.insumo?.nome}</span>
+                    <span className="text-xs text-gray-500 tabular-nums">{fmtMoeda(l.insumo?.custo || 0)} → <strong className="text-emerald-700 dark:text-emerald-400">{fmtMoeda(l.custoBase || 0)}</strong>/{labelUnidade(l.insumo?.unidadeBase || "")}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap mt-1 pl-6 text-[11px] text-gray-400">
+                    <span>{l.produto.descricaoExemplo} · {l.produto.unidade}</span>
+                    {l.produto.fornecedor && <span>· {l.produto.fornecedor}</span>}
+                    <span>· {fmtBR(l.produto.ultimo.data)}</span>
+                    <button type="button" onClick={() => setImpacto(impacto === l.produto.chave ? null : l.produto.chave)} className="text-indigo-500 hover:underline">{impacto === l.produto.chave ? "ocultar impacto" : "ver impacto no CMV"}</button>
+                  </div>
+                  {imp && (
+                    <div className="mt-1 pl-6 text-[11px] space-y-0.5">
+                      {imp.length === 0 ? <span className="text-gray-400">Não afeta nenhuma ficha.</span> : imp.slice(0, 8).map(x => (
+                        <div key={x.ficha.id} className="flex justify-between"><span className="truncate text-gray-600 dark:text-gray-300">{x.ficha.nome}</span><span className={`tabular-nums ${x.depois > x.antes ? "text-rose-600" : "text-emerald-600"}`}>{fmtMoeda(x.antes)} → {fmtMoeda(x.depois)}</span></div>
+                      ))}
+                      {imp.length > 8 && <span className="text-gray-400">+{imp.length - 8} fichas…</span>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Sugeridos — precisam de vínculo/fator */}
+        {reconc.sugeridos.length > 0 && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Vincular produtos ({reconc.sugeridos.length})</h3>
+            <div className="space-y-1.5">
+              {reconc.sugeridos.map(l => {
+                const e = getEdit(l); const ins = insumos.find(i => i.id === e.insumoId); const fatorNum = Number(e.fator);
+                const preview = ins && fatorNum > 0 ? custoNaBase(l.produto.ultimo.valorUnitario, fatorNum) : null;
+                return (
+                  <div key={l.produto.chave} className={`rounded-lg border p-2.5 ${l.fornecedorNovo ? "border-amber-300 dark:border-amber-800" : "border-gray-200 dark:border-gray-800"}`}>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span></span>
+                      <span className="text-[10px] text-gray-400">{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap mt-1.5">
+                      <select value={e.insumoId} onChange={ev => setEdit(l.produto.chave, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px]"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+                      <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l.produto.chave, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" /><span className="text-[11px] text-gray-400">{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
+                      {preview != null && <span className="text-[11px] text-emerald-700 dark:text-emerald-400 tabular-nums">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
+                      <button type="button" onClick={() => void aprovarVinculo(l)} className="text-xs font-medium px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">Vincular</button>
+                      <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Sem insumo */}
+        {reconc.semInsumo.length > 0 && (
+          <section>
+            <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">Produtos sem insumo ({reconc.semInsumo.length})</h3>
+            <div className="space-y-1">
+              {reconc.semInsumo.map(l => (
+                <div key={l.produto.chave} className="flex items-center gap-2 flex-wrap rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5">
+                  <span className="text-sm flex-1 min-w-[120px] dark:text-gray-200">{l.produto.descricaoExemplo} <span className="text-[11px] text-gray-400">· {l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}</span></span>
+                  <button type="button" onClick={() => void criarInsumo(l)} className="text-xs font-medium px-2 py-1 rounded bg-emerald-600 text-white hover:bg-emerald-700">criar insumo</button>
+                  <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+      <div className="flex justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
     </Modal>
   );
 }

@@ -5321,7 +5321,31 @@ export type VendaCobranca = {
 
 export type FtDimensao = "massa" | "volume" | "unidade";
 
-export type FtHistoricoCusto = { custo: number; data: string; por?: string | null };
+export type FtHistoricoCusto = {
+  custo: number; data: string; por?: string | null;
+  origem?: "manual" | "recebimento";  // de onde veio o preço
+  fornecedor?: string | null;          // emissor da nota (quando recebimento)
+  notaId?: string | null;              // id do RecebimentoNota
+  notaNumero?: string | null;          // nº da NF, pra referência
+};
+
+// Vínculo entre um produto de nota (descrição livre) e um insumo, com o fator de
+// conversão pra unidade base. É POR FORNECEDOR: nova marca/fornecedor re-confirma
+// (a embalagem — cx, fardo — muda de fornecedor pra fornecedor).
+export type FtVinculoRecebimento = {
+  id: string;
+  restaurantId: string;
+  insumoId: string | null;             // null + ignorar=true → "não é insumo"
+  descricaoNorm: string;               // descricao da NF normalizada (chave de match)
+  descricaoExemplo: string;            // descricao crua, pra exibir
+  unidadeNota: string;                 // unidade como veio na NF ("cx","kg","fardo"…)
+  fornecedor?: string | null;          // emissor; o fator vale por fornecedor
+  fatorParaBase: number;               // unidades-base do insumo por 1 unidade-da-nota (custoBase = valorUnitario / fator)
+  ignorar?: boolean;                   // marcado como "não é insumo" → some da varredura
+  aprovado: boolean;                   // confirmado manualmente
+  criadoEm: string;
+  criadoPor?: string | null;
+};
 
 // Variação de um insumo com fator de correção (rendimento). `fc` é o % de
 // APROVEITAMENTO em relação ao insumo inteiro (100 = inteiro, 92 = descascada,
