@@ -309,10 +309,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     const alvoId = alvo ? alvo.id : sistema ? sistema.id : uid("fic");
     const alvoNome = alvo ? alvo.nome : sistema ? sistema.nome : nome;
     const criar = !alvo && !sistema;
+    // Promover PRINCIPAL: pega uso-base E variações órfãs (variacaoNorm que já não
+    // existe mais no insumo) — senão um uso com variação removida não é remapeado.
+    const varNorms = new Set(p.variacoes.map(x => x.norm));
+    const combina = (ing: IngRev) => ing.principalKey === pk && (vNorm ? ing.variacaoNorm === vNorm : (ing.variacaoNorm === "" || !varNorms.has(ing.variacaoNorm)));
     setFichas(prev => {
       const remapped = prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing =>
-        ing.principalKey === pk && (vNorm ? ing.variacaoNorm === vNorm : ing.variacaoNorm === "")
-          ? { ...ing, subfichaFichaId: alvoId, principalKey: "", variacaoNorm: "" } : ing) }));
+        combina(ing) ? { ...ing, subfichaFichaId: alvoId, principalKey: "", variacaoNorm: "" } : ing) }));
       return criar ? [...remapped, { id: alvoId, nome, ehSubficha: true, categoriaId: null, incluir: true, rendimento: { qtd: 1, unidade: "kg" }, ingredientes: [] }] : remapped;
     });
     setSubNomes(prev => ({ ...prev, [alvoId]: alvoNome }));
