@@ -437,7 +437,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       <div className="p-2.5 space-y-1">
         {f.ingredientes.map(ing => {
           const subprod = ing.subprodutoRef ? (fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId)) : null;
-          const sub = ing.subfichaFichaId ? subNomes[ing.subfichaFichaId] : null;
+          const sub = ing.subfichaFichaId ? (fichas.find(x => x.id === ing.subfichaFichaId)?.nome || subNomes[ing.subfichaFichaId]) : null;
           const p = ing.principalKey ? principais[ing.principalKey] : undefined;
           const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
           const nome = subprod?.nome || sub || (p ? p.nome : "?");
@@ -582,7 +582,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       for (const f of incluidas) {
         const ingredientes: FtIngrediente[] = f.ingredientes.map(ing => {
           if (ing.subprodutoRef) { const sp = fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId); return { id: uid("ing"), tipo: "subproduto", refId: ing.subprodutoRef.fichaId, subId: ing.subprodutoRef.subId, nomeSnapshot: sp?.nome || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente; }
-          if (ing.subfichaFichaId) return { id: uid("ing"), tipo: "ficha", refId: ing.subfichaFichaId, nomeSnapshot: subNomes[ing.subfichaFichaId] || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
+          if (ing.subfichaFichaId) return { id: uid("ing"), tipo: "ficha", refId: ing.subfichaFichaId, nomeSnapshot: fichas.find(x => x.id === ing.subfichaFichaId)?.nome || subNomes[ing.subfichaFichaId] || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
           const p = principais[ing.principalKey];
           const insumoId = insumoIdPorPrincipal.get(ing.principalKey) || "";
           const v = ing.variacaoNorm ? p?.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
