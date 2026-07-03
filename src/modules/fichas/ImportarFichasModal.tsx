@@ -339,6 +339,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1;
     return c;
   }, [fichas]);
+  // Nomes dos preparos que usam cada insumo (pra tooltip no "N uso(s)").
+  const preparosPorPrincipal = useMemo(() => {
+    const m: Record<string, string[]> = {};
+    for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId && !ing.subprodutoRef && ing.principalKey) { if (!m[ing.principalKey]) m[ing.principalKey] = []; if (!m[ing.principalKey].includes(f.nome)) m[ing.principalKey].push(f.nome); }
+    return m;
+  }, [fichas]);
 
   const principaisLista = useMemo(() => Object.values(principais).filter(p => (usoPrincipal[p.key] || 0) > 0).sort((a, b) => a.nome.localeCompare(b.nome)), [principais, usoPrincipal]);
   const subLista = useMemo(() => Object.entries(subNomes).filter(([id]) => (usoSub[id] || 0) > 0).map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome)), [subNomes, usoSub]);
@@ -578,7 +584,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                     <div key={p.key}>
                       <div className="flex items-center gap-2 text-sm">
                         <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
-                        <span className="text-[11px] text-gray-400 shrink-0 w-16">{usoPrincipal[p.key]} uso(s)</span>
+                        <span className="text-[11px] text-gray-400 shrink-0 w-16 cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${(preparosPorPrincipal[p.key] || []).join(", ") || "—"}`}>{usoPrincipal[p.key]} uso(s)</span>
                         <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; if (val.startsWith("merge:")) { mesclarPrincipais(p.key, val.slice(6)); return; } setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                           {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
                           <option value="__novo__">+ criar novo insumo</option>
