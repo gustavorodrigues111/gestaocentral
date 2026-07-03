@@ -416,23 +416,27 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
 
   const renderCard = (f: FichaRev) => (
     <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
-      <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 flex-wrap">
-        <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
-        <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[200px] basis-1/2 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
-        {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
-        <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
-        <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[104px]"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+      <div className="p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
+          <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[200px] basis-1/2 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
+          {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
+          <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
+          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
+          <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+        </div>
         {f.ehSubficha && (
-          <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 shrink-0 max-w-[104px]">
-            <option value="">reclassificar…</option>
-            <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
-            {subfichas.filter(o => o.id !== f.id).length > 0 && (
-              <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
-            )}
-          </select>
+          <div className="mt-1.5 pl-6">
+            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[220px]">
+              <option value="">reclassificar…</option>
+              <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
+              {subfichas.filter(o => o.id !== f.id).length > 0 && (
+                <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
+              )}
+            </select>
+          </div>
         )}
-        {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
-        <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
       </div>
       <div className="p-2.5 space-y-1">
         {f.ingredientes.map(ing => {
