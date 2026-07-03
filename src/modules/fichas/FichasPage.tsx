@@ -153,13 +153,12 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
   const [grupo, setGrupo] = useState<"finais" | "subfichas">("finais");
   const [subFiltro, setSubFiltro] = useState<"todas" | "pendentes" | "revisar">("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
-  const catNome = (id?: string | null) => categorias.find(c => c.id === id)?.nome;
   const doGrupo = useMemo(() => fichas.filter(f => f.ativo !== false && (grupo === "subfichas" ? f.ehSubficha : !f.ehSubficha)), [fichas, grupo]);
   const nFinais = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha).length, [fichas]);
   const nSubs = useMemo(() => fichas.filter(f => f.ativo !== false && f.ehSubficha).length, [fichas]);
   const nPend = useMemo(() => doGrupo.filter(fichaPendente).length, [doGrupo]);
   const nRev = useMemo(() => doGrupo.filter(f => f.revisar).length, [doGrupo]);
-  const catsGrupo = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha"));
+  const catsGrupo = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha")).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const lista = useMemo(() => doGrupo
     .filter(f => subFiltro === "todas" ? true : subFiltro === "pendentes" ? fichaPendente(f) : !!f.revisar)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
@@ -198,8 +197,8 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
       {lista.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nada nesse filtro.</div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {lista.map(f => {
+        (() => {
+          const renderCard = (f: FtFicha) => {
             const c = calcularCusto(f, insumos, fichas);
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
@@ -207,7 +206,7 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome || "(sem nome)"}</div>
-                    <div className="text-xs text-gray-500">{catNome(f.categoriaId) ? `${catNome(f.categoriaId)} · ` : ""}rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</div>
+                    <div className="text-xs text-gray-500">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</div>
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {f.ehSubficha
@@ -228,8 +227,23 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                 </div>
               </button>
             );
-          })}
-        </div>
+          };
+          const catIds = new Set(catsGrupo.map(c => c.id));
+          const grupos: { nome: string; itens: FtFicha[] }[] = [
+            ...catsGrupo.map(cat => ({ nome: cat.nome, itens: lista.filter(f => f.categoriaId === cat.id) })),
+            { nome: "Sem categoria", itens: lista.filter(f => !f.categoriaId || !catIds.has(f.categoriaId)) },
+          ].filter(g => g.itens.length > 0);
+          return (
+            <div className="space-y-5">
+              {grupos.map(g => (
+                <div key={g.nome}>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">{g.nome} <span className="text-gray-400 font-normal normal-case">· {g.itens.length}</span></div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{g.itens.map(renderCard)}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })()
       )}
     </div>
   );
@@ -1150,6 +1164,13 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
   const [editar, setEditar] = useState<FtCategoria | null>(null);
   const ativas = categorias.filter(c => c.ativo !== false).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const doTipo = (t: "ficha" | "subficha") => ativas.filter(c => (c.tipo || "ficha") === t);
+  // Reordena a categoria dentro do grupo (renumera ordem sequencialmente).
+  async function mover(t: "ficha" | "subficha", id: string, dir: -1 | 1) {
+    const arr = doTipo(t); const idx = arr.findIndex(c => c.id === id); const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= arr.length) return;
+    const nova = [...arr]; [nova[idx], nova[j]] = [nova[j], nova[idx]];
+    await Promise.all(nova.map((c, i) => updateDoc(doc(db, "ftCategorias", c.id), { ordem: i })));
+  }
   async function add() {
     if (!nome.trim()) return;
     const id = uid("cat");
@@ -1160,12 +1181,16 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
     <div>
       <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}</span></div>
       <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
-        {doTipo(t).map(c => (
-          <div key={c.id} onClick={() => setEditar(c)} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 cursor-pointer" title="Editar categoria">
+        {doTipo(t).map((c, i, arr) => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
+            <div className="flex flex-col shrink-0 -my-1">
+              <button type="button" onClick={() => void mover(t, c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
+              <button type="button" onClick={() => void mover(t, c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
+            </div>
             <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t === "ficha" ? "bg-indigo-100 dark:bg-indigo-900/40" : "bg-purple-100 dark:bg-purple-900/40"}`}>{t === "ficha" ? "🍽️" : "🧩"}</span>
-            <span className="flex-1 text-gray-900 dark:text-gray-100">{c.nome}</span>
+            <span onClick={() => setEditar(c)} className="flex-1 text-gray-900 dark:text-gray-100 cursor-pointer" title="Editar categoria">{c.nome}</span>
             {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
-            <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
+            <button type="button" onClick={() => setEditar(c)} className="text-xs text-indigo-600 dark:text-indigo-400">Editar</button>
           </div>
         ))}
       </ListaCard>
