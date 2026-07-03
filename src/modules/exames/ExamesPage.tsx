@@ -28,6 +28,7 @@ import type {
   ExameTipoConfig, ExameEmpregado, Empregado, Cargo,
 } from "../../core/types";
 import { tipoAplicaAoCargoObj } from "./aplicabilidade";
+import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 
 type Tab = "vencimentos" | "porEmpregado" | "porTipo" | "config";
 type JanelaVenc = "atrasados" | "15" | "30" | "60" | "90" | "180" | "todos";
@@ -295,9 +296,9 @@ function CardExame({ exame, onAbrir, forceAtrasado }: {
           </div>
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {exame.cargoSnapshot && `${exame.cargoSnapshot} · `}
-            Vence: <span className={atrasado ? "text-red-600 font-medium" : ""}>{exame.proximoVencimento}</span>
+            Vence: <span className={atrasado ? "text-red-600 font-medium" : ""}>{fmtBR(exame.proximoVencimento)}</span>
             {atrasado ? ` · ⚠ ${-dias} dia(s) atrasado` : dias === 0 ? " · hoje" : ` · em ${dias} dia(s)`}
-            {exame.ultimaRealizacao && ` · última: ${exame.ultimaRealizacao}`}
+            {exame.ultimaRealizacao && ` · última: ${fmtBR(exame.ultimaRealizacao)}`}
           </div>
         </div>
         {(exame.historico?.length ?? 0) > 0 && (
@@ -889,7 +890,7 @@ function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExiste
           </label>
           {exameExistente && (
             <div className="p-2 text-xs bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-md text-blue-900 dark:text-blue-200">
-              Cadastro mestre já existe. Vai dar baixa + criar próximo ciclo (vencimento será {addDias(realizadoEm, tipo?.periodicidadeDias || 365)}).
+              Cadastro mestre já existe. Vai dar baixa + criar próximo ciclo (vencimento será {fmtBR(addDias(realizadoEm, tipo?.periodicidadeDias || 365))}).
             </div>
           )}
           <div className="grid grid-cols-2 gap-3">
@@ -981,11 +982,11 @@ function ExameDetalheModal({ exame, onClose, autor }: {
           <div className="grid grid-cols-2 gap-2">
             <div>
               <div className="text-xs text-gray-500">Próximo vencimento</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100">{exame.proximoVencimento}</div>
+              <div className="font-medium text-gray-900 dark:text-gray-100">{fmtBR(exame.proximoVencimento)}</div>
             </div>
             <div>
               <div className="text-xs text-gray-500">Última realização</div>
-              <div className="font-medium text-gray-900 dark:text-gray-100">{exame.ultimaRealizacao || "—"}</div>
+              <div className="font-medium text-gray-900 dark:text-gray-100">{exame.ultimaRealizacao ? fmtBR(exame.ultimaRealizacao) : "—"}</div>
             </div>
             <div>
               <div className="text-xs text-gray-500">Periodicidade</div>
@@ -1007,12 +1008,12 @@ function ExameDetalheModal({ exame, onClose, autor }: {
               <div className="space-y-1.5">
                 {exame.historico.slice().reverse().map(h => (
                   <div key={h.id} className="text-xs bg-gray-50 dark:bg-gray-800/40 p-2 rounded-md">
-                    <div className="font-medium text-gray-900 dark:text-gray-100">{h.realizadoEm}{h.fornecedor && ` · ${h.fornecedor}`}</div>
+                    <div className="font-medium text-gray-900 dark:text-gray-100">{fmtBR(h.realizadoEm)}{h.fornecedor && ` · ${h.fornecedor}`}</div>
                     {h.anexoUrl && (
                       <a href={h.anexoUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">📎 {h.anexoNome || "Resultado"}</a>
                     )}
                     {h.observacao && <div className="text-gray-600 dark:text-gray-400 mt-0.5">{h.observacao}</div>}
-                    <div className="text-[10px] text-gray-400 mt-0.5">Registrado por {h.registradoPorNome || "—"} em {h.registradoEm.slice(0, 16).replace("T", " ")}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5">Registrado por {h.registradoPorNome || "—"} em {fmtBRDateTime(h.registradoEm)}</div>
                   </div>
                 ))}
               </div>

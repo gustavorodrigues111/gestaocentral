@@ -7,7 +7,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
-import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
+import { fmtBR as fmtDataBR, nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVRModal } from "./ExportarVRModal";
 import type { VRPDFLinha } from "./gerarVRPDF";
@@ -513,7 +513,7 @@ export function VRPage() {
           <ul className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
             {lotes.filter((l) => l.status === "cancelado").map((l) => (
               <li key={l.id}>
-                ✕ Cancelado em {l.canceladoEm?.slice(0, 10)} — {l.motivoCancelamento || "(sem motivo)"} · {fmtBR(l.totalGeral)}
+                ✕ Cancelado em {fmtDataBR(l.canceladoEm)} — {l.motivoCancelamento || "(sem motivo)"} · {fmtBR(l.totalGeral)}
               </li>
             ))}
           </ul>
