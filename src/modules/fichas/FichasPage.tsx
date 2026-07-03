@@ -646,7 +646,7 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
       )}
       <ListaCard vazio={ativos.length === 0} vazioTexto={soPendentes ? "Nenhum subproduto pendente." : "Nenhum insumo cadastrado."}>
         {ativos.map(ins => (
-          <div key={ins.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
+          <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar insumo">
             <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
             <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
@@ -660,9 +660,9 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
               ? <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums shrink-0">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></span>
               : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
             <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button type="button" onClick={() => setEditar(ins)} className="text-xs text-indigo-600 dark:text-indigo-400">Custo</button>
-              <button type="button" onClick={() => setMesclar(ins)} className="text-xs text-gray-500">Mesclar</button>
-              <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", ins.id), { ativo: false })} className="text-xs text-gray-400 hover:text-red-600">Excluir</button>
+              <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
+              <button type="button" onClick={e => { e.stopPropagation(); setMesclar(ins); }} className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Mesclar</button>
+              <button type="button" onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${ins.nome}"?`)) void updateDoc(doc(db, "ftInsumos", ins.id), { ativo: false }); }} className="text-xs text-gray-400 hover:text-red-600">Excluir</button>
             </div>
           </div>
         ))}
@@ -675,6 +675,7 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
 }
 
 function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
+  const [nome, setNome] = useState(insumo.nome);
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
@@ -710,8 +711,9 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
     const hist = [...(insumo.historicoCusto || [])];
     if (c > 0 && c !== insumo.custo) hist.push({ custo: c, data: now, por: meId || null });
     const vars = variacoes.filter(v => v.nome.trim()).map(v => ({ id: v.id, nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
+    if (!nome.trim()) { alert("O insumo precisa de um nome."); return; }
     const batch = writeBatch(db);
-    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars, unidadeBase, dimensao: novaDim }));
+    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ nome: UP(nome), nomeNormalizado: normalizarNome(nome), custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars, unidadeBase, dimensao: novaDim }));
     // Mudança de DIMENSÃO: ajusta a unidade do ingrediente nas fichas afetadas
     // (mantém a quantidade) e marca pra revisão — as quantidades precisam conferência.
     if (mudouUnidade && mudouDim) {
@@ -724,8 +726,9 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
     onClose();
   }
   return (
-    <Modal title={`Insumo — ${insumo.nome}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title="Editar insumo" onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">
           <CampoMoeda label={`Custo por ${labelUnidade(unidadeBase)} (inteiro)`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
           <Select label="Unidade base" value={unidadeBase} onChange={e => trocarUnidade(e.target.value)}>
