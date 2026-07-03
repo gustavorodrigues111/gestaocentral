@@ -814,7 +814,9 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
   const VerNota = ({ notaId }: { notaId: string }) => { const url = notaUrl(notaId); return url ? <a href={url} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} className="text-indigo-500 hover:underline">🧾 ver nota</a> : null; };
   const precosNovos = reconc.vinculados.filter(l => l.precoNovo);
   const [aplicar, setAplicar] = useState<Set<string>>(() => new Set(precosNovos.map(l => l.produto.chave)));
+  const [precoEdit, setPrecoEdit] = useState<Record<string, string>>({});
   const [edits, setEdits] = useState<Record<string, { insumoId: string; fator: string }>>({});
+  const custoEfetivo = (l: LinhaReconc) => { const v = precoEdit[l.produto.chave]; const n = v != null && v !== "" ? Number(v) : (l.custoBase ?? 0); return isNaN(n) ? (l.custoBase ?? 0) : n; };
   const [impacto, setImpacto] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
   const insumosSel = insumos.filter(i => i.ativo !== false && !i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -846,11 +848,12 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
   };
 
   async function aplicarPreco(l: LinhaReconc) {
-    if (!l.insumo || l.custoBase == null) return;
+    const valor = custoEfetivo(l);
+    if (!l.insumo || !(valor > 0)) return;
     const u = l.produto.ultimo;
-    const nova: FtHistoricoCusto = { custo: l.custoBase, data: u.data, por: meId || null, origem: "recebimento", fornecedor: u.fornecedor || null, notaId: u.notaId || null, notaNumero: u.notaNumero || null };
+    const nova: FtHistoricoCusto = { custo: valor, data: u.data, por: meId || null, origem: "recebimento", fornecedor: u.fornecedor || null, notaId: u.notaId || null, notaNumero: u.notaNumero || null };
     const hist: FtHistoricoCusto[] = [...(l.insumo.historicoCusto || []), nova].slice(-20);
-    await updateDoc(doc(db, "ftInsumos", l.insumo.id), sanitizeForFirestore({ custo: l.custoBase, custoAtualizadoEm: u.data, historicoCusto: hist }));
+    await updateDoc(doc(db, "ftInsumos", l.insumo.id), sanitizeForFirestore({ custo: valor, custoAtualizadoEm: u.data, historicoCusto: hist }));
   }
   async function aplicarSelecionados() {
     setSalvando(true);
@@ -887,7 +890,7 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
     await gravarVinculo(p, { insumoId: id, fatorParaBase: fator, ignorar: false });
   }
 
-  const impactoLinha = (l: LinhaReconc) => (l.insumo && l.custoBase != null) ? impactoNoCmv(l.insumo.id, l.custoBase, insumos, fichas) : [];
+  const impactoLinha = (l: LinhaReconc) => l.insumo ? impactoNoCmv(l.insumo.id, custoEfetivo(l), insumos, fichas) : [];
 
   const Pill = ({ n, cor }: { n: number; cor: string }) => <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${cor}`}>{n}</span>;
 
@@ -914,7 +917,11 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                       <span className="text-sm font-medium flex-1 min-w-[120px] dark:text-gray-100">{l.insumo?.nome}</span>
                       <span className="text-xs tabular-nums text-gray-400">{fmtMoeda(l.insumo?.custo || 0)}</span>
                       <span className="text-gray-300">→</span>
-                      <span className="text-xs font-bold tabular-nums px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">{fmtMoeda(l.custoBase || 0)}/{labelUnidade(l.insumo?.unidadeBase || "")}</span>
+                      <span className="inline-flex items-center h-7 rounded-full bg-emerald-100 dark:bg-emerald-900/40 px-2 shrink-0" onClick={ev => ev.preventDefault()}>
+                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">R$</span>
+                        <input value={precoEdit[l.produto.chave] ?? String(l.custoBase ?? 0)} onChange={ev => setPrecoEdit(p => ({ ...p, [l.produto.chave]: ev.target.value.replace(",", ".") }))} inputMode="decimal" className="w-14 bg-transparent text-xs font-bold text-emerald-700 dark:text-emerald-300 text-right outline-none tabular-nums" />
+                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">/{labelUnidade(l.insumo?.unidadeBase || "")}</span>
+                      </span>
                     </div>
                     <div className="flex items-center gap-x-2 gap-y-0.5 flex-wrap mt-1 pl-6 text-[11px] text-gray-400">
                       <span className="text-gray-500 dark:text-gray-400">{l.produto.descricaoExemplo}</span>
