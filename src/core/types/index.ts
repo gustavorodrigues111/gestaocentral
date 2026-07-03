@@ -5355,18 +5355,33 @@ export type FtCategoria = {
   ativo: boolean;
 };
 
-// Um ingrediente pode ser um INSUMO ou uma SUBFICHA (outra receita reutilizável).
-export type FtIngredienteTipo = "insumo" | "ficha";
+// Um ingrediente pode ser um INSUMO, uma SUBFICHA (outra receita reutilizável)
+// ou um SUBPRODUTO (coproduto gerado por outro preparo — ex.: carcaça do frango
+// assado, caldo do cozimento). Subproduto carrega parte do custo do preparo-pai.
+export type FtIngredienteTipo = "insumo" | "ficha" | "subproduto";
 export type FtIngrediente = {
   id: string;
   tipo: FtIngredienteTipo;
-  refId: string;                       // insumoId | fichaId (subficha)
+  refId: string;                       // insumoId | fichaId (subficha) | fichaId-pai (subproduto)
+  subId?: string;                      // id do subproduto dentro da ficha-pai (tipo "subproduto")
   nomeSnapshot?: string;
   qtd: number;
   unidade: string;
   qb?: boolean;                        // quanto baste — não entra no custo/peso
   variacaoNome?: string | null;        // nome da variação escolhida (ex: "descascada")
   fc?: number;                         // % de aproveitamento da variação (100 = inteiro)
+};
+
+// Subproduto/coproduto de um preparo: além da saída principal, o preparo rende
+// isto. Recebe `percentualCusto` do custo total do preparo (o principal fica com
+// 100 − Σ dos subprodutos). Referenciável como ingrediente em outras fichas.
+export type FtSubproduto = {
+  id: string;
+  nome: string;
+  nomeNormalizado: string;
+  unidade: string;
+  rendimentoQtd: number;               // quanto o preparo rende deste subproduto
+  percentualCusto: number;             // 0–100 do custo total do preparo
 };
 
 // Receita: uma FICHA (produto final, vai pro cardápio) OU uma SUBFICHA (preparo
@@ -5382,6 +5397,7 @@ export type FtFicha = {
   categoriaId?: string | null;
   rendimento: { qtd: number; unidade: string };
   ingredientes: FtIngrediente[];
+  subprodutos?: FtSubproduto[];        // coprodutos gerados por este preparo
   modoPreparo?: string | null;
   fotoUrl?: string | null;
   observacoes?: string | null;

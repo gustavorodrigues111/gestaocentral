@@ -1,6 +1,8 @@
-// Engine de custo das receitas. Composição plana: cada ingrediente é um insumo
-// ou uma subficha (outra receita reutilizável). Recursivo com anti-ciclo.
-// Q.b. não entra no custo; fator de correção multiplica a quantidade.
+// Engine de custo das receitas. Composição plana: cada ingrediente é um insumo,
+// uma subficha (outra receita reutilizável) ou um subproduto (coproduto de outro
+// preparo). Recursivo com anti-ciclo. Q.b. não entra; fator de correção
+// multiplica a quantidade. Preparo com subprodutos rateia o custo: o principal
+// fica com 100 − Σ(% dos subprodutos).
 import type { FtFicha, FtIngrediente, FtInsumo } from "../../core/types";
 import { paraBase } from "./unidades";
 
@@ -15,7 +17,13 @@ const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 // aproveitamento, MAIS produto bruto é preciso → multiplicador 100/fc.
 const fcMul = (ing: FtIngrediente) => (ing.fc && ing.fc > 0 ? 100 / ing.fc : 1);
 
-// Escala o custo de uma subficha pela fração usada do rendimento dela.
+// % do custo total que fica com a saída PRINCIPAL (100 − Σ dos subprodutos).
+function pctPrincipal(f: FtFicha): number {
+  const somaSub = (f.subprodutos || []).reduce((s, sp) => s + (sp.percentualCusto || 0), 0);
+  return Math.max(0, 100 - somaSub) / 100;
+}
+
+// Escala o custo pela fração usada do rendimento.
 function escala(qtd: number, unidade: string, rend: { qtd: number; unidade: string }, custoTotal: number): number {
   const usado = paraBase(qtd, unidade);
   const total = paraBase(rend.qtd, rend.unidade);
@@ -39,13 +47,22 @@ function custoIngrediente(ing: FtIngrediente, ctx: Ctx, visited: Set<string>): n
     return (emBaseIng / baseDaUnidadeBase) * (ins.custo || 0);
   }
 
-  // tipo "ficha" → subficha (receita reutilizável)
+  if (ing.tipo === "subproduto") {
+    const pai = ctx.fichas.get(ing.refId);
+    const sp = pai?.subprodutos?.find(x => x.id === ing.subId);
+    if (!pai || !sp || visited.has(pai.id)) return 0;
+    const custoAlocado = custoBrutoFicha(pai, ctx, visited) * ((sp.percentualCusto || 0) / 100);
+    return escala(qty, ing.unidade, { qtd: sp.rendimentoQtd, unidade: sp.unidade }, custoAlocado);
+  }
+
+  // tipo "ficha" → subficha (consome a saída PRINCIPAL dela)
   const sub = ctx.fichas.get(ing.refId);
   if (!sub || visited.has(sub.id)) return 0;
-  return escala(qty, ing.unidade, sub.rendimento, custoFicha(sub, ctx, visited));
+  return escala(qty, ing.unidade, sub.rendimento, custoBrutoFicha(sub, ctx, visited) * pctPrincipal(sub));
 }
 
-function custoFicha(ficha: FtFicha, ctx: Ctx, visited: Set<string>): number {
+// Custo BRUTO do preparo = Σ ingredientes (antes do rateio pra subprodutos).
+function custoBrutoFicha(ficha: FtFicha, ctx: Ctx, visited: Set<string>): number {
   if (visited.has(ficha.id)) return 0;
   visited.add(ficha.id);
   const total = (ficha.ingredientes || []).reduce((s, ing) => s + custoIngrediente(ing, ctx, visited), 0);
@@ -53,10 +70,13 @@ function custoFicha(ficha: FtFicha, ctx: Ctx, visited: Set<string>): number {
   return total;
 }
 
+export type CustoSubproduto = { id: string; nome: string; percentual: number; custo: number; porRendimento: number };
 export type CustoResultado = {
-  total: number;
-  porRendimento: number;
+  total: number;           // custo alocado à saída PRINCIPAL (bruto × %principal)
+  porRendimento: number;   // total / rendimento.qtd
+  bruto: number;           // Σ ingredientes (custo total do preparo)
   insumosSemCusto: string[];
+  subprodutos: CustoSubproduto[];
 };
 
 export function calcularCusto(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFicha[]): CustoResultado {
@@ -65,9 +85,14 @@ export function calcularCusto(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFic
     fichas: new Map(fichas.map(f => [f.id, f])),
     semCusto: new Set<string>(),
   };
-  const total = round2(custoFicha(ficha, ctx, new Set()));
+  const bruto = round2(custoBrutoFicha(ficha, ctx, new Set()));
+  const total = round2(bruto * pctPrincipal(ficha));
   const rend = ficha.rendimento?.qtd || 0;
-  return { total, porRendimento: rend > 0 ? round2(total / rend) : 0, insumosSemCusto: [...ctx.semCusto] };
+  const subprodutos: CustoSubproduto[] = (ficha.subprodutos || []).map(sp => {
+    const custo = round2(bruto * ((sp.percentualCusto || 0) / 100));
+    return { id: sp.id, nome: sp.nome, percentual: sp.percentualCusto || 0, custo, porRendimento: sp.rendimentoQtd > 0 ? round2(custo / sp.rendimentoQtd) : 0 };
+  });
+  return { total, porRendimento: rend > 0 ? round2(total / rend) : 0, bruto, insumosSemCusto: [...ctx.semCusto], subprodutos };
 }
 
 // CMV% e markup (Cardápio — Fase 4).

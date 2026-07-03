@@ -13,7 +13,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao } from "../../core/types";
+import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto } from "../../core/types";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
@@ -220,17 +220,25 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
   // Subfichas disponíveis como ingrediente (reutilizáveis, exceto a própria).
   const subfichasDisp = useMemo(() => fichas.filter(x => x.ehSubficha && x.ativo !== false && x.id !== f.id), [fichas, f.id]);
+  // Subprodutos de OUTRAS fichas, disponíveis como ingrediente.
+  const subprodutosDisp = useMemo(() => fichas.filter(x => x.ativo !== false && x.id !== f.id).flatMap(x => (x.subprodutos || []).map(sp => ({ ficha: x, sp }))), [fichas, f.id]);
   const catsAtivas = categorias.filter(c => c.ativo !== false);
+  const somaPctSub = (f.subprodutos || []).reduce((s, sp) => s + (sp.percentualCusto || 0), 0);
 
   function addIngrediente(ing: FtIngrediente) { setF(p => ({ ...p, ingredientes: [...p.ingredientes, ing] })); }
   function patchIng(id: string, patch: Partial<FtIngrediente>) { setF(p => ({ ...p, ingredientes: p.ingredientes.map(i => i.id === id ? { ...i, ...patch } : i) })); }
   function removeIng(id: string) { setF(p => ({ ...p, ingredientes: p.ingredientes.filter(i => i.id !== id) })); }
+  function addSubproduto() { setF(p => ({ ...p, subprodutos: [...(p.subprodutos || []), { id: uid("sp"), nome: "", nomeNormalizado: "", unidade: p.rendimento.unidade, rendimentoQtd: 1, percentualCusto: 0 }] })); }
+  function patchSub(id: string, patch: Partial<FtSubproduto>) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).map(sp => sp.id === id ? { ...sp, ...patch } : sp) })); }
+  function removeSub(id: string) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).filter(sp => sp.id !== id) })); }
 
   async function salvar() {
     if (!f.nome.trim()) { alert("Dê um nome pra receita."); return; }
+    if (somaPctSub > 100) { alert("A soma dos % dos subprodutos passou de 100%."); return; }
     setSalvando(true);
     try {
-      await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome) }));
+      const subprodutos = (f.subprodutos || []).filter(sp => sp.nome.trim()).map(sp => ({ ...sp, nome: UP(sp.nome), nomeNormalizado: normalizarNome(sp.nome) }));
+      await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome), subprodutos }));
       onClose();
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e))); }
     finally { setSalvando(false); }
@@ -281,12 +289,37 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
             {f.ingredientes.length > 0 && (
               <div className="space-y-1">
                 {f.ingredientes.map(ing => (
-                  <IngredienteRow key={ing.id} ing={ing} insumoById={insumoById} subfichas={subfichasDisp}
+                  <IngredienteRow key={ing.id} ing={ing} insumoById={insumoById} subfichas={subfichasDisp} subprodutos={subprodutosDisp}
                     onPatch={p => patchIng(ing.id, p)} onRemove={() => removeIng(ing.id)} />
                 ))}
               </div>
             )}
-            <IngredientePicker insumos={insumos} subfichas={subfichasDisp} rid={rid} meId={meId} podeInsumo={podeInsumo} onAdd={addIngrediente} />
+            <IngredientePicker insumos={insumos} subfichas={subfichasDisp} subprodutos={subprodutosDisp} rid={rid} meId={meId} podeInsumo={podeInsumo} onAdd={addIngrediente} />
+          </div>
+
+          {/* Subprodutos (coprodutos) */}
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Subprodutos</div>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full ${somaPctSub > 100 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>Principal fica com {Math.max(0, 100 - somaPctSub)}%</span>
+            </div>
+            <p className="text-[11px] text-gray-400">Coprodutos que este preparo também rende (ex.: carcaça, caldo do cozimento). Cada um leva um % do custo total; o resto fica no produto principal. Depois entram como ingrediente em outras fichas.</p>
+            {(f.subprodutos || []).map(sp => {
+              const r = custo.subprodutos.find(x => x.id === sp.id);
+              return (
+                <div key={sp.id} className="flex items-center gap-2 flex-wrap py-1 border-t border-gray-100 dark:border-gray-800 first:border-0">
+                  <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                  <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">rende</span>
+                    <input type="number" value={sp.rendimentoQtd} onChange={e => patchSub(sp.id, { rendimentoQtd: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                    <select value={sp.unidade} onChange={e => patchSub(sp.id, { unidade: e.target.value })} className="px-1.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100">{unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{labelUnidade(u.unidade)}</option>)}</select>
+                  </div>
+                  <div className="flex items-center gap-1"><input type="number" value={sp.percentualCusto} onChange={e => patchSub(sp.id, { percentualCusto: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-[11px] text-gray-400">% custo</span></div>
+                  <span className="text-[11px] text-gray-500 w-20 text-right tabular-nums">{r ? fmtMoeda(r.custo) : "—"}</span>
+                  <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-sm px-1">✕</button>
+                </div>
+              );
+            })}
+            <button type="button" onClick={addSubproduto} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ adicionar subproduto</button>
           </div>
 
           {/* Modo de preparo */}
@@ -299,9 +332,17 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
 
         {/* Painel de custo */}
         <div className="rounded-2xl bg-gray-50 dark:bg-gray-800/50 p-4 lg:sticky lg:top-4">
-          <div className="text-[11px] text-gray-500">Custo total</div>
+          <div className="text-[11px] text-gray-500">{custo.subprodutos.length > 0 ? "Custo do produto principal" : "Custo total"}</div>
           <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtMoeda(custo.total)}</div>
           <div className="text-xs text-gray-500 mb-3">{fmtMoeda(custo.porRendimento)} por {labelUnidade(f.rendimento.unidade)}</div>
+          {custo.subprodutos.length > 0 && (
+            <div className="text-[11px] text-gray-500 border-t border-gray-200 dark:border-gray-700 pt-2 mb-3 space-y-0.5">
+              <div className="flex justify-between"><span>Custo do preparo</span><span className="tabular-nums">{fmtMoeda(custo.bruto)}</span></div>
+              {custo.subprodutos.map(sp => (
+                <div key={sp.id} className="flex justify-between text-gray-400"><span className="truncate">↳ {sp.nome || "subproduto"} ({sp.percentual}%)</span><span className="tabular-nums shrink-0">{fmtMoeda(sp.custo)}</span></div>
+              ))}
+            </div>
+          )}
           {custo.insumosSemCusto.length > 0 && (
             <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
               ⚠ Sem custo: {custo.insumosSemCusto.slice(0, 6).join(", ")}{custo.insumosSemCusto.length > 6 ? "…" : ""}. Cadastre na aba Insumos.
@@ -335,20 +376,28 @@ function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }
 const CHIP_TIPO: Record<string, string> = {
   insumo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   subficha: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  subproduto: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300",
 };
 
-function IngredienteRow({ ing, insumoById, subfichas, onPatch, onRemove }: {
-  ing: FtIngrediente; insumoById: Map<string, FtInsumo>; subfichas: FtFicha[];
+function IngredienteRow({ ing, insumoById, subfichas, subprodutos, onPatch, onRemove }: {
+  ing: FtIngrediente; insumoById: Map<string, FtInsumo>; subfichas: FtFicha[]; subprodutos: { ficha: FtFicha; sp: FtSubproduto }[];
   onPatch: (p: Partial<FtIngrediente>) => void; onRemove: () => void;
 }) {
   let nome = ing.nomeSnapshot || "?";
   let unidadesOpc: string[] = [ing.unidade];
   let travada = true;
   const ehSub = ing.tipo === "ficha";
+  const ehSubprod = ing.tipo === "subproduto";
+  let subprodPai = "";
   if (ing.tipo === "insumo") {
     const ins = insumoById.get(ing.refId);
     nome = ins?.nome || ing.nomeSnapshot || "(insumo removido)";
     if (ins) { unidadesOpc = unidadesDaDimensao(ins.dimensao).map(u => u.unidade); travada = unidadesOpc.length <= 1; }
+  } else if (ehSubprod) {
+    const hit = subprodutos.find(x => x.ficha.id === ing.refId && x.sp.id === ing.subId);
+    nome = hit?.sp.nome || ing.nomeSnapshot || "(subproduto)";
+    subprodPai = hit?.ficha.nome || "";
+    unidadesOpc = [hit?.sp.unidade || ing.unidade];
   } else {
     const sf = subfichas.find(s => s.id === ing.refId);
     nome = sf?.nome || ing.nomeSnapshot || "(subficha)";
@@ -356,11 +405,12 @@ function IngredienteRow({ ing, insumoById, subfichas, onPatch, onRemove }: {
   }
   return (
     <div className="flex items-center gap-2 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 px-1 -mx-1">
-      <span className={`w-2 h-2 rounded-full shrink-0 ${CHIP_TIPO[ehSub ? "subficha" : "insumo"]}`} aria-hidden="true"></span>
+      <span className={`w-2 h-2 rounded-full shrink-0 ${CHIP_TIPO[ehSubprod ? "subproduto" : ehSub ? "subficha" : "insumo"]}`} aria-hidden="true"></span>
       <span className="flex-1 min-w-0 truncate text-sm text-gray-800 dark:text-gray-200">
         {nome}
         {ing.variacaoNome && <span className="ml-1.5 text-[11px] text-indigo-600 dark:text-indigo-400">↳ {ing.variacaoNome}{ing.fc && ing.fc !== 100 ? ` (${ing.fc}%)` : ""}</span>}
         {ehSub && <span className="ml-1.5 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
+        {ehSubprod && <span className="ml-1.5 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" title={subprodPai ? `de ${subprodPai}` : ""}>subproduto</span>}
       </span>
       {ing.qb
         ? <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">quanto baste</span>
@@ -371,14 +421,15 @@ function IngredienteRow({ ing, insumoById, subfichas, onPatch, onRemove }: {
   );
 }
 
-function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }: {
-  insumos: FtInsumo[]; subfichas: FtFicha[]; rid: string; meId?: string; podeInsumo: boolean; onAdd: (ing: FtIngrediente) => void;
+function IngredientePicker({ insumos, subfichas, subprodutos, rid, meId, podeInsumo, onAdd }: {
+  insumos: FtInsumo[]; subfichas: FtFicha[]; subprodutos: { ficha: FtFicha; sp: FtSubproduto }[]; rid: string; meId?: string; podeInsumo: boolean; onAdd: (ing: FtIngrediente) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [criando, setCriando] = useState(false);
   const n = normalizarNome(busca);
   const sugInsumos = useMemo(() => sugerirInsumos(busca, insumos), [busca, insumos]);
   const sugSubfichas = useMemo(() => subfichas.filter(s => n && normalizarNome(s.nome).includes(n)), [subfichas, n]);
+  const sugSubprodutos = useMemo(() => subprodutos.filter(({ sp }) => n && normalizarNome(sp.nome).includes(n)), [subprodutos, n]);
 
   function pickInsumo(ins: FtInsumo, variacao?: FtInsumoVariacao) {
     onAdd({
@@ -392,11 +443,16 @@ function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }:
     onAdd({ id: uid("ing"), tipo: "ficha", refId: sf.id, nomeSnapshot: sf.nome, qtd: 1, unidade: sf.rendimento.unidade });
     setBusca("");
   }
+  function pickSubproduto(ficha: FtFicha, sp: FtSubproduto) {
+    onAdd({ id: uid("ing"), tipo: "subproduto", refId: ficha.id, subId: sp.id, nomeSnapshot: sp.nome, qtd: 1, unidade: sp.unidade });
+    setBusca("");
+  }
   function onKeyDown(e: React.KeyboardEvent) {
     if (e.key !== "Enter" || !busca.trim()) return;
     e.preventDefault();
     if (sugInsumos[0]) pickInsumo(sugInsumos[0].insumo);
     else if (sugSubfichas[0]) pickSubficha(sugSubfichas[0]);
+    else if (sugSubprodutos[0]) pickSubproduto(sugSubprodutos[0].ficha, sugSubprodutos[0].sp);
     else if (podeInsumo) setCriando(true);
   }
 
@@ -404,7 +460,7 @@ function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }:
     <div className="relative">
       <div className="flex items-center gap-2 px-3 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900">
         <span className="text-gray-400 text-sm">🔎</span>
-        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={onKeyDown} placeholder="+ adicionar ingrediente — insumo ou subficha" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
+        <input value={busca} onChange={e => setBusca(e.target.value)} onKeyDown={onKeyDown} placeholder="+ adicionar ingrediente — insumo, subficha ou subproduto" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
         {busca && <span className="text-[10px] text-gray-400 shrink-0 hidden sm:inline">Enter pra adicionar</span>}
       </div>
       {!busca && <div className="mt-1 text-[11px] text-gray-400">Digite e escolha na lista. Insumo novo → "criar insumo".</div>}
@@ -430,6 +486,12 @@ function IngredientePicker({ insumos, subfichas, rid, meId, podeInsumo, onAdd }:
             <button key={sf.id} type="button" onClick={() => pickSubficha(sf)} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
               <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></span>
               <span className="text-sm flex-1 truncate">{sf.nome}</span><span className="text-[10px] uppercase text-purple-500">subficha</span>
+            </button>
+          ))}
+          {sugSubprodutos.map(({ ficha, sp }) => (
+            <button key={ficha.id + sp.id} type="button" onClick={() => pickSubproduto(ficha, sp)} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
+              <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0"></span>
+              <span className="text-sm flex-1 truncate">{sp.nome} <span className="text-[11px] text-gray-400">· de {ficha.nome}</span></span><span className="text-[10px] uppercase text-orange-500">subproduto</span>
             </button>
           ))}
           {podeInsumo && (

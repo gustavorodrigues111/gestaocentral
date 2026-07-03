@@ -9,7 +9,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao } from "../../core/types";
+import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto } from "../../core/types";
 import { labelUnidade } from "./unidades";
 import { normalizarNome as norm } from "./dedup";
 import { fmtBRDateTime } from "../../core/utils/date";
@@ -20,8 +20,8 @@ const UP = (s: string) => (s || "").trim().toUpperCase();
 // Rótulos que a IA às vezes lê como "ingrediente" mas não são.
 const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendimento", "fator de correcao", "fc", "custo", "total", "modo de preparo", "preparo", "ingrediente", "ingredientes", "quantidade", "unidade"]);
 
-type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null };
-type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[] };
+type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null; subprodutoRef?: { fichaId: string; subId: string } };
+type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[]; subprodutos?: FtSubproduto[] };
 type VarInfo = { norm: string; nome: string; fc: number };
 type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[] };
 
@@ -279,6 +279,21 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     });
   }
 
+  // "Isto é um subproduto do preparo X" (ex.: CARCAÇA sai do FRANGO ASSADO):
+  // adiciona um subproduto (0% custo por padrão) na ficha produtora e aponta os
+  // usos pra ele. O % de rateio você ajusta na tela de Fichas.
+  function promoverParaSubproduto(pk: string, produtorId: string) {
+    const p = principais[pk]; if (!p) return;
+    const nome = UP(p.nome);
+    const subId = uid("sp");
+    const novo: FtSubproduto = { id: subId, nome, nomeNormalizado: norm(nome), unidade: p.unidade, rendimentoQtd: 1, percentualCusto: 0 };
+    setFichas(prev => prev.map(f => {
+      const ingredientes = f.ingredientes.map(ing => ing.principalKey === pk ? { ...ing, principalKey: "", variacaoNorm: "", subfichaFichaId: null, subprodutoRef: { fichaId: produtorId, subId } } : ing);
+      return f.id === produtorId ? { ...f, ingredientes, subprodutos: [...(f.subprodutos || []), novo] } : { ...f, ingredientes };
+    }));
+    setPrincipais(prev => { const n = { ...prev }; delete n[pk]; return n; });
+  }
+
   // Assinatura do conteúdo de uma subficha (rendimento + ingredientes), pra
   // detectar se duas são idênticas.
   function assinaturaFicha(f: FichaRev): string {
@@ -350,16 +365,18 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       </div>
       <div className="p-2.5 space-y-1">
         {f.ingredientes.map(ing => {
+          const subprod = ing.subprodutoRef ? (fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId)) : null;
           const sub = ing.subfichaFichaId ? subNomes[ing.subfichaFichaId] : null;
           const p = ing.principalKey ? principais[ing.principalKey] : undefined;
           const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
-          const nome = sub || (p ? p.nome : "?");
+          const nome = subprod?.nome || sub || (p ? p.nome : "?");
           return (
             <div key={ing.id} className="flex items-center gap-2 text-sm">
               <span className="w-28 sm:w-56 shrink-0 truncate text-gray-700 dark:text-gray-200">{nome}{v && <span className="text-indigo-600 dark:text-indigo-400"> ↳ {v.nome}</span>}</span>
               <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
               <div className="flex-1" />
-              {sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
+              {subprod ? <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">subproduto</span>
+                : sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
                 : <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP[p?.status || "novo"]}`}>{(p?.status || "novo") === "casado" ? "reconhecido" : (p?.status || "novo")}</span>}
             </div>
           );
@@ -427,7 +444,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       const incluidas = fichas.filter(f => f.incluir);
       // principais usados
       const usadosKeys = new Set<string>();
-      for (const f of incluidas) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) usadosKeys.add(ing.principalKey);
+      for (const f of incluidas) for (const ing of f.ingredientes) if (!ing.subfichaFichaId && !ing.subprodutoRef && ing.principalKey) usadosKeys.add(ing.principalKey);
       // cria/atualiza insumos (1 por principal), com variações
       const insumoIdPorPrincipal = new Map<string, string>();
       for (const key of usadosKeys) {
@@ -451,6 +468,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
       }
       for (const f of incluidas) {
         const ingredientes: FtIngrediente[] = f.ingredientes.map(ing => {
+          if (ing.subprodutoRef) { const sp = fichas.find(x => x.id === ing.subprodutoRef!.fichaId)?.subprodutos?.find(s => s.id === ing.subprodutoRef!.subId); return { id: uid("ing"), tipo: "subproduto", refId: ing.subprodutoRef.fichaId, subId: ing.subprodutoRef.subId, nomeSnapshot: sp?.nome || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente; }
           if (ing.subfichaFichaId) return { id: uid("ing"), tipo: "ficha", refId: ing.subfichaFichaId, nomeSnapshot: subNomes[ing.subfichaFichaId] || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
           const p = principais[ing.principalKey];
           const insumoId = insumoIdPorPrincipal.get(ing.principalKey) || "";
@@ -459,7 +477,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         });
         batch.set(doc(db, "ftFichas", f.id), sanitizeForFirestore({
           id: f.id, restaurantId: rid, nome: UP(f.nome), nomeNormalizado: norm(f.nome), ehSubficha: f.ehSubficha, categoriaId: f.categoriaId,
-          rendimento: f.rendimento, ingredientes, ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
+          rendimento: f.rendimento, ingredientes, subprodutos: f.subprodutos || [], ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
         } as FtFicha));
       }
       await batch.commit();
@@ -560,6 +578,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         </select>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
+                        {fichas.length > 0 && (
+                          <select value="" onChange={e => { if (e.target.value) promoverParaSubproduto(p.key, e.target.value); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subproduto de…</option>{fichas.map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
+                        )}
                       </div>
                       {p.variacoes.map(v => (
                         <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
