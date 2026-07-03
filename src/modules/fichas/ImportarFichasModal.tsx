@@ -282,6 +282,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === vNorm ? { ...ing, principalKey: newKey, variacaoNorm: "" } : ing) })));
   }
 
+  // Remove a variação do insumo E devolve os usos dela pro insumo BASE (não deixa
+  // ingrediente órfão apontando pra variação inexistente).
+  function removerVariacao(pk: string, vNorm: string) {
+    setPrincipais(prev => { const p = prev[pk]; if (!p) return prev; return { ...prev, [pk]: { ...p, variacoes: p.variacoes.filter(x => x.norm !== vNorm), temBase: true } }; });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === vNorm ? { ...ing, variacaoNorm: "" } : ing) })));
+  }
+
   // "Esta variação é a mesma que aquela" (ex.: PICADA = BRUNOISE): funde a
   // variação `de` na `para`, dentro do MESMO insumo. Os usos passam pra `para`.
   function mesclarVariacoes(pk: string, deNorm: string, paraNorm: string) {
@@ -824,7 +831,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                           )}
                           <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
                           <select value="" onChange={e => { const val = e.target.value; if (val === "__nova__") promoverParaSubficha(p.key, v.norm); else if (val) promoverParaSubficha(p.key, v.norm, val); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[100px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
-                          <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+                          <button type="button" onClick={() => removerVariacao(p.key, v.norm)} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       ))}
                     </div>
