@@ -200,9 +200,12 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
         (() => {
           const renderCard = (f: FtFicha) => {
             const c = calcularCusto(f, insumos, fichas);
+            const tint = f.revisar ? "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400"
+              : fichaPendente(f) ? "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400"
+              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700";
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
-                className="text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${tint}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome || "(sem nome)"}</div>
