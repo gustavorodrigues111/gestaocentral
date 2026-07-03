@@ -229,6 +229,24 @@ export function EscalaPage() {
     });
   }, [empregados, ano, mes]);
 
+  // Dias ainda NÃO fechados na praticada (empregado ativo, dia passado/hoje sem
+  // status em real). Usado pra travar o "Encerrar mês" enquanto houver pendência.
+  const diasPendentesPraticada = useMemo(() => {
+    if (!escala) return 0;
+    const ultimoDia = daysInMonth(ano, mes);
+    const hojeStr = ymdFromDate(hoje);
+    let count = 0;
+    for (const e of empregadosDoMes) {
+      for (let dia = 1; dia <= ultimoDia; dia++) {
+        const date = `${ano}-${pad2(mes)}-${pad2(dia)}`;
+        if (date > hojeStr) break;                 // não conta dias futuros
+        if (!empregadoAtivoEm(e, date)) continue;
+        if (!escala.real?.[e.id]?.[date]) count++;
+      }
+    }
+    return count;
+  }, [escala, empregadosDoMes, ano, mes, hoje]);
+
   // Calcula a escala derivada (dos workSchedules) pra cada empregado do mês
   const derivados = useMemo(() => {
     const m: Record<string, { [date: string]: DerivedDay }> = {};
@@ -753,15 +771,24 @@ export function EscalaPage() {
                 🔓 Reabrir prevista
               </Button>
             )}
-            {/* PRATICADA: Fechar / Reabrir praticada (= fechar mês) — só quando versao === "real" */}
+            {/* PRATICADA: Encerrar / Reabrir o MÊS (congela a praticada). O
+                fechamento dia a dia é no Análise de Ponto; aqui é o lock final. */}
             {versao === "real" && !fechada && podeConfig && (
-              <Button variant="danger" size="sm" onClick={() => setShowFecharMes(true)}>
-                🔒 Fechar praticada
-              </Button>
+              <div className="flex items-center gap-2">
+                {diasPendentesPraticada > 0 && (
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400">
+                    {diasPendentesPraticada} dia(s) a fechar no Análise de Ponto
+                  </span>
+                )}
+                <Button variant="danger" size="sm" disabled={diasPendentesPraticada > 0} onClick={() => setShowFecharMes(true)}
+                  title={diasPendentesPraticada > 0 ? "Feche todos os dias no Análise de Ponto antes de encerrar o mês" : "Congela a praticada do mês (read-only)"}>
+                  🔒 Encerrar mês
+                </Button>
+              </div>
             )}
             {versao === "real" && fechada && podeReabrir && (
               <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
-                🔓 Reabrir praticada
+                🔓 Reabrir mês
               </Button>
             )}
           </div>
@@ -915,6 +942,7 @@ export function EscalaPage() {
           ano={ano}
           mes={mes}
           escala={escala}
+          diasPendentes={diasPendentesPraticada}
           onClose={() => setShowFecharMes(false)}
         />
       )}
@@ -973,7 +1001,7 @@ function BannerStatus({
         <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Prevista — mês fechado (read-only)">
           <p>
             O mês foi encerrado. Tudo travado pra preservar o histórico de gorjetas e VT.
-            Pra alterar alguma coisa aqui, é preciso reabrir a Praticada (botão "🔓 Reabrir praticada"
+            Pra alterar alguma coisa aqui, é preciso reabrir o mês (botão "🔓 Reabrir mês"
             no topo — só aparece pra quem tem permissão de reabertura).
           </p>
         </PainelExplicativo>
@@ -1074,8 +1102,8 @@ function BannerStatus({
       </p>
       <p>
         É a fonte usada pra calcular gorjetas e pra detectar divergências de VT (dias a devolver
-        ou a receber). No fim do mês, trave ela com <strong>🔒 Fechar praticada</strong> pra consolidar
-        gorjetas e VT.
+        ou a receber). Depois de fechar todos os dias no Análise de Ponto, trave o mês com
+        <strong> 🔒 Encerrar mês</strong> pra consolidar gorjetas e VT.
       </p>
       <p className="text-amber-700 dark:text-amber-300">
         ✏️ <strong>Aqui a praticada é só leitura.</strong> Os ajustes do dia-a-dia (falta, atestado,

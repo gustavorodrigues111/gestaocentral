@@ -984,6 +984,11 @@ export function FechamentoTab({
         <p className="text-[11px] text-gray-500 mt-2">
           Escolha um colaborador pelo chip. <span className="text-emerald-700 dark:text-emerald-300 font-semibold">✓ verde</span> = período fechado · <span className="text-amber-700 dark:text-amber-300 font-semibold">● amarelo</span> = ainda tem dias a fechar · <span className="text-gray-400 font-semibold">○ cinza</span> = sem vínculo no app.
         </p>
+        {mesEncerrado
+          ? <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">🔒 Mês encerrado — pra fechar/editar dias, reabra no módulo Escala (🔓 Reabrir mês)</div>
+          : previstaFechada
+          ? <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">🟢 Mês aberto — feche os dias aqui; o "Encerrar mês" (lock final) fica no módulo Escala</div>
+          : null}
       </div>
 
       {/* Toggle de visão */}

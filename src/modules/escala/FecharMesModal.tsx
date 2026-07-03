@@ -15,10 +15,11 @@ type Props = {
   ano: number;
   mes: number;
   escala: EscalaMes | null;
+  diasPendentes?: number;
   onClose: () => void;
 };
 
-export function FecharMesModal({ rid, ano, mes, escala, onClose }: Props) {
+export function FecharMesModal({ rid, ano, mes, escala, diasPendentes = 0, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const [motivo, setMotivo] = useState("");
   const [saving, setSaving] = useState(false);
@@ -126,10 +127,16 @@ export function FecharMesModal({ rid, ano, mes, escala, onClose }: Props) {
   }
 
   return (
-    <Modal title={`🔒 Fechar ${nomeMes(mes)} ${ano}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={`🔒 Encerrar ${nomeMes(mes)} ${ano}`} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
+        {diasPendentes > 0 && (
+          <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-200">
+            🚫 Ainda há <strong>{diasPendentes} dia(s)</strong> a fechar na praticada. Feche todos os dias no
+            <strong> Análise de Ponto → Fechamento</strong> antes de encerrar o mês.
+          </div>
+        )}
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
-          ⚠ Ao fechar:
+          ⚠ Encerrar o mês (congela a praticada):
           <ul className="list-disc ml-5 mt-1 text-xs space-y-0.5">
             <li>Escala (Prevista e Real) fica <strong>read-only</strong></li>
             <li>Gorjetas não podem mais ser editadas</li>
@@ -180,8 +187,9 @@ export function FecharMesModal({ rid, ano, mes, escala, onClose }: Props) {
 
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button variant="danger" onClick={fechar} disabled={!podeFechar || saving}>
-            {saving ? "Fechando..." : "🔒 Confirmar fechamento"}
+          <Button variant="danger" onClick={fechar} disabled={!podeFechar || saving || diasPendentes > 0}
+            title={diasPendentes > 0 ? "Feche os dias pendentes no Análise de Ponto antes de encerrar" : undefined}>
+            {saving ? "Encerrando..." : "🔒 Encerrar mês"}
           </Button>
         </div>
       </div>
