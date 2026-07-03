@@ -385,6 +385,21 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setDissolver(null);
   }
 
+  // "Esta subficha é subproduto de outro preparo" (ex.: ÓLEO DE ALHO sai do ALHO
+  // NO ÓLEO): cria o subproduto (0%) no produtor, aponta os usos e remove a
+  // subficha. O % de rateio você ajusta na tela de Fichas.
+  function subfichaViraSubproduto(subfichaId: string, produtorId: string) {
+    const sf = fichas.find(f => f.id === subfichaId); if (!sf || produtorId === subfichaId) return;
+    scrollPos.current = scrollRef.current?.scrollTop || 0;
+    const nome = UP(sf.nome); const subId = uid("sp");
+    const novo: FtSubproduto = { id: subId, nome, nomeNormalizado: norm(nome), unidade: sf.rendimento.unidade, rendimentoQtd: sf.rendimento.qtd || 1, percentualCusto: 0 };
+    setFichas(prev => prev
+      .map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.subfichaFichaId === subfichaId ? { ...ing, subfichaFichaId: null, principalKey: "", variacaoNorm: "", subprodutoRef: { fichaId: produtorId, subId } } : ing) }))
+      .map(f => f.id === produtorId ? { ...f, subprodutos: [...(f.subprodutos || []), novo] } : f)
+      .filter(f => f.id !== subfichaId));
+    setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
+  }
+
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
@@ -438,9 +453,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         </div>
         {f.ehSubficha && (
           <div className="mt-1.5 pl-6">
-            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[220px]">
+            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); else if (v.startsWith("subprod:")) subfichaViraSubproduto(f.id, v.slice(8)); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[220px]">
               <option value="">reclassificar…</option>
               <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
+              {fichas.filter(o => o.id !== f.id).length > 0 && (
+                <optgroup label="↦ é subproduto de…">{fichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`subprod:${o.id}`}>{o.nome}</option>)}</optgroup>
+              )}
               {subfichas.filter(o => o.id !== f.id).length > 0 && (
                 <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
               )}
