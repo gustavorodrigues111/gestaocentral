@@ -1113,7 +1113,9 @@ export function FechamentoTab({
                       className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
                       💬 Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}
                     </button>
+                    {mesEncerrado && <span className="text-[11px] text-amber-600 dark:text-amber-400">🔒 Mês encerrado — reabra na Escala pra fechar dias</span>}
                     <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
+                      title={mesEncerrado ? "Mês já encerrado — reabra no módulo de Escala pra editar a praticada e fechar dias" : selDias.size === 0 ? "Selecione ao menos 1 dia" : "Fechar os dias selecionados"}
                       className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
                       {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
                     </button>
@@ -1158,8 +1160,13 @@ export function FechamentoTab({
                   Selecionar todos ({totalPendentes} dia(s) · {pendentesPorEmp.length} pessoa(s))
                 </label>
                 <div className="flex-1" />
-                <span className="text-[11px] text-gray-400">{pendSel.size} selecionado(s)</span>
+                {mesEncerrado
+                  ? <span className="text-[11px] text-amber-600 dark:text-amber-400">🔒 Mês encerrado — reabra no módulo de Escala pra fechar dias</span>
+                  : pendSel.size === 0
+                  ? <span className="text-[11px] text-gray-400">Selecione ao menos 1 dia pra fechar</span>
+                  : <span className="text-[11px] text-gray-400">{pendSel.size} selecionado(s)</span>}
                 <button type="button" disabled={pendSel.size === 0 || salvando || mesEncerrado} onClick={() => void fecharPendentesSel()}
+                  title={mesEncerrado ? "Mês já encerrado — reabra no módulo de Escala pra editar a praticada e fechar dias" : pendSel.size === 0 ? "Selecione ao menos 1 dia" : "Fechar os dias selecionados"}
                   className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
                   {salvando ? "Fechando…" : `🔒 Fechar selecionados${pendSel.size ? ` (${pendSel.size})` : ""}`}
                 </button>
