@@ -55,6 +55,8 @@ export type ModuleId =
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
+  // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
+  | "vendas"
   // Exames médicos do empregado (Fase 7)
   | "exames"
   // Processo de Demissão (Fase 8)
@@ -5198,4 +5200,114 @@ export type RecebimentoNota = {
   conferidoPor?: { id: string; nome: string };
   excluidoEm?: string;                // ISO — soft delete (vai pra "Excluídos"; some sozinho em 60 dias)
   excluidoPor?: { id: string; nome: string };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VENDAS — registro de vendas fora do sistema fiscal principal das empresas.
+//  Casos de uso: vendas entre as próprias empresas (sem nota), permutas que se
+//  quitam entre si, e vendas sem margem que só precisam de registro.
+//  "Empresa" = restaurante. Cliente pode ser interno (outra empresa do sistema)
+//  ou externo. Cadastros: produtos e clientes POR EMPRESA; formas de pagamento
+//  GLOBAIS.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type VendaProduto = {
+  id: string;
+  restaurantId: string;                // por empresa
+  nome: string;
+  precoPadrao?: number | null;
+  unidade?: string | null;             // "un", "kg", "cx"...
+  ativo: boolean;
+};
+
+export type VendaClienteTipo = "interna" | "externa";
+export type VendaCliente = {
+  id: string;
+  restaurantId: string;                // empresa que cadastrou
+  nome: string;
+  tipo: VendaClienteTipo;
+  restauranteVinculadoId?: string | null; // se interna → id do outro restaurante
+  whatsapp?: string | null;
+  contato?: string | null;
+  ativo: boolean;
+};
+
+export type VendaFormaPagamento = {
+  id: string;
+  nome: string;                        // GLOBAL (sem restaurantId)
+  ativo: boolean;
+};
+
+export type VendaItem = {
+  produtoId?: string | null;           // null = linha livre
+  descricao: string;
+  qtd: number;
+  precoUnit: number;
+  total: number;
+};
+
+export type VendaPagamentoTipo = "forma" | "permuta";
+export type VendaPagamento = {
+  id: string;
+  tipo: VendaPagamentoTipo;
+  valor: number;
+  data: string;                        // YYYY-MM-DD
+  // tipo "forma":
+  formaId?: string | null;
+  formaNome?: string | null;
+  comprovanteUrl?: string | null;
+  comprovanteNome?: string | null;
+  infoRecebimento?: string | null;     // texto livre ("PIX recebido", etc)
+  // tipo "permuta":
+  permutaVendaId?: string | null;      // interna: id da venda recíproca quitada
+  permutaVendaNumero?: string | null;
+  permutaEmpresaNome?: string | null;
+  permutaDescricao?: string | null;    // externa: texto livre identificando a compra
+  registradoPor?: string;
+  registradoPorNome?: string;
+  registradoEm: string;                // ISO
+};
+
+export type VendaStatus = "aberta" | "cobranca_enviada" | "quitada";
+export const VENDA_STATUS_LABEL: Record<VendaStatus, string> = {
+  aberta: "Aberta",
+  cobranca_enviada: "Cobrança enviada",
+  quitada: "Quitada",
+};
+
+export type Venda = {
+  id: string;
+  restaurantId: string;                // empresa vendedora
+  numero: string;                      // "VENDA-2026-001"
+  data: string;                        // YYYY-MM-DD
+  clienteId: string;
+  clienteNomeSnapshot: string;
+  clienteTipo: VendaClienteTipo;
+  clienteWhatsappSnapshot?: string | null;
+  clienteRestauranteVinculadoId?: string | null; // se interna
+  itens: VendaItem[];
+  valorTotal: number;
+  status: VendaStatus;
+  pagamentos: VendaPagamento[];
+  valorPago: number;
+  saldo: number;
+  cobrancaId?: string | null;
+  observacoes?: string | null;
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+  quitadoEm?: string | null;
+};
+
+export type VendaCobranca = {
+  id: string;
+  restaurantId: string;
+  numero: string;                      // "COB-2026-001"
+  clienteId: string;
+  clienteNomeSnapshot: string;
+  vendaIds: string[];
+  valorTotal: number;
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
 };

@@ -50,6 +50,7 @@ import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
 import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { ContasFixasPage } from "../../modules/contasFixas/ContasFixasPage";
 import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
+import { VendasPage } from "../../modules/vendas/VendasPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
 import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais/FerramentasCredenciaisPage";
@@ -101,6 +102,7 @@ function ModuleRouter() {
     case "tarefas":       return <TarefasPage key={k} />;
     case "contasFixas":   return <ContasFixasPage key={k} />;
     case "manutencoes":   return <ManutencoesPage key={k} />;
+    case "vendas":        return <VendasPage key={k} />;
     case "exames":        return <ExamesPage key={k} />;
     case "demissao":      return <DemissaoPage key={k} />;
     case "ferramentasCredenciais": return <FerramentasCredenciaisPage key={k} />;

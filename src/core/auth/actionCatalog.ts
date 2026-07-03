@@ -529,6 +529,20 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "vendas",
+    icon: "🧾",
+    label: "Vendas",
+    desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas)",
+    area: "gestao",
+    acoes: [
+      { id: "ver",       label: "Ver vendas e cobranças", sensivel: true },
+      { id: "lancar",    label: "Lançar nova venda", sensivel: true },
+      { id: "quitar",    label: "Registrar pagamento / quitar venda (inclui permuta)", sensivel: true },
+      { id: "cobrar",    label: "Gerar cobrança (WhatsApp)", sensivel: true },
+      { id: "config",    label: "Cadastrar produtos, clientes e formas de pagamento" },
+    ],
+  },
+  {
     id: "exames",
     icon: "🩺",
     label: "Exames Médicos",
