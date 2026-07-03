@@ -953,6 +953,15 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                     <VerNota notaId={l.produto.ultimo.notaId} />
                     <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${l.fornecedorNovo ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "text-gray-400"}`}>{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                   </div>
+                  {l.fornecedorNovo && (l.vinculosOutros?.length ?? 0) > 0 && (
+                    <div className="flex items-center gap-2 mt-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                      <span>Mesma embalagem de outro fornecedor?</span>
+                      <select value="" onChange={ev => { const o = l.vinculosOutros![Number(ev.target.value)]; if (o) setEdit(l, { insumoId: o.insumoId, fator: String(o.fatorParaBase) }); }} className="text-[11px] px-1.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                        <option value="">usar mesmo fator de…</option>
+                        {l.vinculosOutros!.map((o, i) => <option key={i} value={i}>{o.fornecedor} · 1 {l.produto.unidade} = {o.fatorParaBase}</option>)}
+                      </select>
+                    </div>
+                  )}
                   {linhaVinculo(l, <>
                     <button type="button" onClick={() => void naoEEste(l)} title="Não é este insumo — ainda não cadastrado (sai das sugestões, vai pra 'sem insumo')" className="text-xs text-gray-500 hover:text-amber-600 shrink-0">não é este</button>
                     <button type="button" onClick={() => void ignorar(l)} title="Não é insumo (descartável, limpeza…) — some de vez" className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>

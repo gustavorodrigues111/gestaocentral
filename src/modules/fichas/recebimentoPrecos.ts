@@ -84,6 +84,7 @@ export type LinhaReconc = {
   precoNovo: boolean;             // preço mais novo/diferente do atual do insumo
   fornecedorNovo: boolean;        // produto já vinculado, mas fornecedor novo → re-confirma
   motivo: string;                 // porquê da sugestão / observação
+  vinculosOutros?: { fornecedor: string; fatorParaBase: number; insumoId: string }[]; // vínculos do mesmo produto em outros fornecedores
 };
 
 export type Reconciliacao = { vinculados: LinhaReconc[]; sugeridos: LinhaReconc[]; semInsumo: LinhaReconc[] };
@@ -130,7 +131,8 @@ export function reconciliar(
     if (outros.length > 0) {
       const insumo = insumoById.get(outros[0].insumoId!) || null;
       const fatorAuto = insumo ? fatorAutomatico(prod.unidade, insumo) : null;
-      res.sugeridos.push({ produto: prod, status: "sugerido", insumo, vinculo: null, fatorParaBase: fatorAuto, fatorAuto: fatorAuto != null, custoBase: insumo && fatorAuto ? custoNaBase(prod.ultimo.valorUnitario, fatorAuto) : null, precoNovo: false, fornecedorNovo: true, motivo: `Novo fornecedor (${prod.fornecedor || "?"}) — confirme o fator` });
+      const vinculosOutros = outros.map(v => ({ fornecedor: v.fornecedor || "—", fatorParaBase: v.fatorParaBase, insumoId: v.insumoId! }));
+      res.sugeridos.push({ produto: prod, status: "sugerido", insumo, vinculo: null, fatorParaBase: fatorAuto, fatorAuto: fatorAuto != null, custoBase: insumo && fatorAuto ? custoNaBase(prod.ultimo.valorUnitario, fatorAuto) : null, precoNovo: false, fornecedorNovo: true, motivo: `Novo fornecedor (${prod.fornecedor || "?"}) — confirme o fator`, vinculosOutros });
       continue;
     }
 
