@@ -30,15 +30,13 @@ import type {
 import { tipoAplicaAoCargoObj } from "./aplicabilidade";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 
-type Tab = "vencimentos" | "porEmpregado" | "porTipo" | "config";
-type JanelaVenc = "atrasados" | "15" | "30" | "60" | "90" | "180" | "todos";
+type Tab = "porEmpregado" | "config";
 
 export function ExamesPage() {
   const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
-  const [tab, setTab] = useState<Tab>("vencimentos");
-  const [janela, setJanela] = useState<JanelaVenc>("30");
+  const [tab, setTab] = useState<Tab>("porEmpregado");
   const [tipos, setTipos] = useState<ExameTipoConfig[]>([]);
   const [exames, setExames] = useState<ExameEmpregado[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -67,42 +65,7 @@ export function ExamesPage() {
     return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);
 
-  const hoje = new Date().toISOString().slice(0, 10);
   const ativos = useMemo(() => exames.filter(e => e.ativo), [exames]);
-
-  const atrasados = useMemo(
-    () => ativos
-      .filter(e => e.proximoVencimento < hoje)
-      .sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento)),
-    [ativos, hoje],
-  );
-
-  // Contagens pra mostrar nos chips
-  const contagens = useMemo(() => {
-    const r = { atrasados: atrasados.length, "15": 0, "30": 0, "60": 0, "90": 0, "180": 0, todos: ativos.length };
-    const dentro = (dias: number) => ativos.filter(e => {
-      if (e.proximoVencimento < hoje) return false;
-      const limite = addDias(hoje, dias);
-      return e.proximoVencimento <= limite;
-    }).length;
-    r["15"] = dentro(15);
-    r["30"] = dentro(30);
-    r["60"] = dentro(60);
-    r["90"] = dentro(90);
-    r["180"] = dentro(180);
-    return r;
-  }, [ativos, atrasados, hoje]);
-
-  // Filtra pelo chip ativo
-  const exibidos = useMemo(() => {
-    if (janela === "atrasados") return atrasados;
-    if (janela === "todos") return ativos.slice().sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento));
-    const dias = parseInt(janela);
-    const limite = addDias(hoje, dias);
-    return ativos
-      .filter(e => e.proximoVencimento >= hoje && e.proximoVencimento <= limite)
-      .sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento));
-  }, [janela, ativos, atrasados, hoje]);
 
   async function rodarGerador() {
     if (!pessoa) return;
@@ -126,8 +89,8 @@ export function ExamesPage() {
       <header className="flex items-center justify-between mb-4 gap-2">
         <div className="flex gap-2">
           {pessoa?.isMaster && (
-            <Button size="sm" variant="ghost" onClick={rodarGerador} disabled={gerando} title="Cria tarefas-pai pros exames cuja janela de antecedência chegou">
-              {gerando ? "Gerando…" : "🔁 Gerar pendentes"}
+            <Button size="sm" variant="ghost" onClick={rodarGerador} disabled={gerando} title="Cria automaticamente tarefas no módulo Tarefas para agendar os exames que estão entrando no prazo (janela de antecedência configurada). Não duplica tarefas já criadas.">
+              {gerando ? "Gerando…" : "📋 Gerar tarefas de agendamento"}
             </Button>
           )}
           <Button onClick={() => setLancandoNovo(true)}>+ Lançar exame</Button>
@@ -145,46 +108,10 @@ export function ExamesPage() {
       )}
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        <TabButton ativo={tab === "vencimentos"} onClick={() => setTab("vencimentos")}>Vencimentos</TabButton>
         <TabButton ativo={tab === "porEmpregado"} onClick={() => setTab("porEmpregado")}>Por empregado</TabButton>
-        <TabButton ativo={tab === "porTipo"} onClick={() => setTab("porTipo")}>Por tipo</TabButton>
         {pessoa?.isMaster && <TabButton ativo={tab === "config"} onClick={() => setTab("config")}>Configuração</TabButton>}
       </nav>
 
-      {tab === "vencimentos" && (
-        <div>
-          {/* Chips de janela */}
-          <div className="flex gap-2 mb-3 overflow-x-auto pb-1">
-            <Chip ativo={janela === "atrasados"} onClick={() => setJanela("atrasados")} cor="red">
-              🔥 Atrasados {contagens.atrasados > 0 && `(${contagens.atrasados})`}
-            </Chip>
-            <Chip ativo={janela === "15"} onClick={() => setJanela("15")}>
-              Próximos 15d {contagens["15"] > 0 && `(${contagens["15"]})`}
-            </Chip>
-            <Chip ativo={janela === "30"} onClick={() => setJanela("30")}>
-              30d {contagens["30"] > 0 && `(${contagens["30"]})`}
-            </Chip>
-            <Chip ativo={janela === "60"} onClick={() => setJanela("60")}>
-              60d {contagens["60"] > 0 && `(${contagens["60"]})`}
-            </Chip>
-            <Chip ativo={janela === "90"} onClick={() => setJanela("90")}>
-              90d {contagens["90"] > 0 && `(${contagens["90"]})`}
-            </Chip>
-            <Chip ativo={janela === "180"} onClick={() => setJanela("180")}>
-              180d {contagens["180"] > 0 && `(${contagens["180"]})`}
-            </Chip>
-            <Chip ativo={janela === "todos"} onClick={() => setJanela("todos")}>
-              Todos ({contagens.todos})
-            </Chip>
-          </div>
-          <ListaExames
-            exames={exibidos}
-            onAbrir={setExameSelecionado}
-            vazio={janela === "atrasados" ? "✅ Nenhum exame atrasado." : `Nenhum exame na janela selecionada.`}
-            atrasado={janela === "atrasados"}
-          />
-        </div>
-      )}
       {tab === "porEmpregado" && (
         <ListaPorEmpregado
           empregados={empregados} cargos={cargos} tipos={tipos} exames={ativos}
@@ -192,7 +119,6 @@ export function ExamesPage() {
           onLancar={(empregado, tipo) => setLancarPrefill({ empregado, tipo })}
         />
       )}
-      {tab === "porTipo" && <ListaPorTipo exames={ativos} tipos={tipos} onAbrir={setExameSelecionado} />}
       {tab === "config" && pessoa?.isMaster && <ConfigTab tipos={tipos} rid={rid} pessoaId={pessoa.id} cargos={cargos} />}
 
       {exameSelecionado && (
@@ -253,22 +179,6 @@ function Chip({ ativo, onClick, cor, children }: {
 
 // ─── Listas ────────────────────────────────────────────────────────────
 
-function ListaExames({ exames, onAbrir, vazio, atrasado }: {
-  exames: ExameEmpregado[];
-  onAbrir: (e: ExameEmpregado) => void;
-  vazio: string;
-  atrasado?: boolean;
-}) {
-  if (exames.length === 0) {
-    return <div className="text-center py-12 text-gray-500 dark:text-gray-400">{vazio}</div>;
-  }
-  return (
-    <div className="space-y-2">
-      {exames.map(e => <CardExame key={e.id} exame={e} onAbrir={() => onAbrir(e)} forceAtrasado={atrasado} />)}
-    </div>
-  );
-}
-
 function CardExame({ exame, onAbrir, forceAtrasado }: {
   exame: ExameEmpregado;
   onAbrir: () => void;
@@ -317,12 +227,16 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
   onAbrir: (e: ExameEmpregado) => void;
   onLancar: (emp: Empregado, tipo: ExameTipoConfig) => void;
 }) {
+  const [filtro, setFiltro] = useState<"todos" | "vencidos" | "aVencer">("todos");
   const cargoById = useMemo(() => new Map(cargos.map(c => [c.id, c])), [cargos]);
   const tiposAtivos = useMemo(() => tipos.filter(t => t.ativo), [tipos]);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const limite30 = addDias(hoje, 30);
 
   // Todos os empregados ATIVOS com cargo → cruza com os exames EXIGIDOS pelo
-  // cargo. Falta cadastrar (sem realização) → destaque vermelho pra controle.
-  const linhas = useMemo(() => {
+  // cargo. Cada item ganha um status de vencimento pra alimentar os filtros.
+  // status: "falta" (sem prazo) | "vencido" | "aVencer" (≤30d) | "emDia".
+  const linhasBase = useMemo(() => {
     const out = empregados
       .filter(e => e.estaAtivo !== false && e.cargoId)
       .map(e => {
@@ -331,34 +245,90 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
         const itens = requeridos.map(t => {
           const exame = exames.find(x => x.empregadoId === e.id && x.tipoId === t.id && x.ativo);
           const falta = !exame || !exame.ultimaRealizacao;
-          return { tipo: t, exame, falta };
+          const venc = exame?.proximoVencimento;
+          const status: "falta" | "vencido" | "aVencer" | "emDia" =
+            falta || !venc ? "falta"
+              : venc < hoje ? "vencido"
+              : venc <= limite30 ? "aVencer"
+              : "emDia";
+          return { tipo: t, exame, falta, status };
         });
-        return { emp: e, cargo, itens, pendencias: itens.filter(i => i.falta).length };
+        return {
+          emp: e, cargo, itens,
+          nFalta: itens.filter(i => i.status === "falta").length,
+          nVencido: itens.filter(i => i.status === "vencido").length,
+          nAVencer: itens.filter(i => i.status === "aVencer").length,
+        };
       })
       .filter(l => l.itens.length > 0);
-    out.sort((a, b) => (b.pendencias - a.pendencias) || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
+    // Ordena por urgência: sem prazo > vencidos > a vencer > nome.
+    out.sort((a, b) =>
+      (b.nFalta - a.nFalta) || (b.nVencido - a.nVencido) || (b.nAVencer - a.nAVencer)
+      || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
     return out;
-  }, [empregados, cargoById, tiposAtivos, exames]);
+  }, [empregados, cargoById, tiposAtivos, exames, hoje, limite30]);
 
-  if (linhas.length === 0) return <div className="text-center py-12 text-gray-500">Nenhum empregado CLT com cargo e exames exigidos.</div>;
-  const totalPend = linhas.reduce((s, l) => s + l.pendencias, 0);
+  const contagem = useMemo(() => {
+    let vencidos = 0, aVencer = 0, todos = 0;
+    linhasBase.forEach(l => l.itens.forEach(it => {
+      todos++;
+      if (it.status === "vencido") vencidos++;
+      else if (it.status === "aVencer") aVencer++;
+    }));
+    return { todos, vencidos, aVencer };
+  }, [linhasBase]);
+
+  // Aplica o filtro nos itens e descarta empregados sem item correspondente.
+  const linhas = useMemo(() => {
+    if (filtro === "todos") return linhasBase;
+    const alvo = filtro === "vencidos" ? "vencido" : "aVencer";
+    return linhasBase
+      .map(l => ({ ...l, itens: l.itens.filter(it => it.status === alvo) }))
+      .filter(l => l.itens.length > 0);
+  }, [linhasBase, filtro]);
+
+  const totalFalta = linhasBase.reduce((s, l) => s + l.nFalta, 0);
 
   return (
     <div className="space-y-3">
-      {totalPend > 0 && (
+      {/* Chips de filtro de vencimento */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        <Chip ativo={filtro === "todos"} onClick={() => setFiltro("todos")}>
+          Todos ({contagem.todos})
+        </Chip>
+        <Chip ativo={filtro === "vencidos"} onClick={() => setFiltro("vencidos")} cor="red">
+          🔥 Vencidos {contagem.vencidos > 0 && `(${contagem.vencidos})`}
+        </Chip>
+        <Chip ativo={filtro === "aVencer"} onClick={() => setFiltro("aVencer")}>
+          A vencer em 30d {contagem.aVencer > 0 && `(${contagem.aVencer})`}
+        </Chip>
+      </div>
+
+      {totalFalta > 0 && filtro === "todos" && (
         <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
-          ⚠ <strong>{totalPend}</strong> exame(s) sem prazo cadastrado. Registre a data de realização pra controlar os vencimentos.
+          ⚠ <strong>{totalFalta}</strong> exame(s) sem prazo cadastrado. Registre a data de realização pra controlar os vencimentos.
         </div>
       )}
-      {linhas.map(({ emp, cargo, itens, pendencias }) => (
-        <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
+
+      {linhasBase.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">Nenhum empregado CLT com cargo e exames exigidos.</div>
+      ) : linhas.length === 0 ? (
+        <div className="text-center py-12 text-gray-500">
+          {filtro === "vencidos" ? "✅ Nenhum exame vencido." : "✅ Nenhum exame vencendo nos próximos 30 dias."}
+        </div>
+      ) : linhas.map(({ emp, cargo, itens, nFalta, nVencido, nAVencer }) => (
+        <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${(nFalta + nVencido) > 0 ? "border-red-200 dark:border-red-800" : nAVencer > 0 ? "border-amber-200 dark:border-amber-800" : "border-gray-200 dark:border-gray-800"}`}>
           <div className="p-3 flex items-center justify-between gap-2">
             <div className="min-w-0">
               <span className="font-semibold text-gray-900 dark:text-gray-100">{emp.nome}</span>
               {cargo && <span className="ml-2 text-xs text-gray-500">{cargo.nome}{cargo.area ? ` · ${cargo.area}` : ""}</span>}
             </div>
-            {pendencias > 0
-              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{pendencias} pendente(s)</span>
+            {nFalta > 0
+              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{nFalta} sem prazo</span>
+              : nVencido > 0
+              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">{nVencido} vencido(s)</span>
+              : nAVencer > 0
+              ? <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">{nAVencer} a vencer</span>
               : <span className="shrink-0 text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">em dia</span>}
           </div>
           <div className="px-3 pb-3 space-y-1.5">
@@ -378,36 +348,6 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function ListaPorTipo({ exames, tipos, onAbrir }: { exames: ExameEmpregado[]; tipos: ExameTipoConfig[]; onAbrir: (e: ExameEmpregado) => void }) {
-  const grupos = new Map<string, ExameEmpregado[]>();
-  exames.forEach(e => {
-    const arr = grupos.get(e.tipoId) || [];
-    arr.push(e);
-    grupos.set(e.tipoId, arr);
-  });
-  if (grupos.size === 0) return <div className="text-center py-12 text-gray-500">Nenhum exame cadastrado.</div>;
-  return (
-    <div className="space-y-3">
-      {Array.from(grupos.entries()).map(([tipoId, exs]) => {
-        const tipo = tipos.find(t => t.id === tipoId);
-        return (
-          <details key={tipoId} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
-            <summary className="p-3 cursor-pointer font-semibold text-gray-900 dark:text-gray-100">
-              {tipo?.nome || exs[0]?.tipoNomeSnapshot}
-              <span className="ml-2 text-xs text-gray-500 font-normal">{exs.length} empregado(s)</span>
-            </summary>
-            <div className="px-3 pb-3 space-y-1.5">
-              {exs.sort((a, b) => a.proximoVencimento.localeCompare(b.proximoVencimento)).map(e => (
-                <CardExame key={e.id} exame={e} onAbrir={() => onAbrir(e)} />
-              ))}
-            </div>
-          </details>
-        );
-      })}
     </div>
   );
 }
