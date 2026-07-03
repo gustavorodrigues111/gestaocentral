@@ -39,11 +39,16 @@ const PROMPT =
   "8) NOMES: corrija erros óbvios de digitação e padronize o nome canônico de cada ingrediente e da " +
   "receita (ex: 'paprica pikante' → 'PÁPRICA PICANTE'). Se o MESMO ingrediente aparecer escrito de formas " +
   "ligeiramente diferentes, use a MESMA grafia em todas. Escreva TODOS os nomes (receita e ingredientes) " +
-  "100% EM MAIÚSCULAS.\n\n" +
+  "100% EM MAIÚSCULAS.\n" +
+  "9) INSUMO PRINCIPAL x VARIAÇÃO: quando um ingrediente é uma FORMA PREPARADA de um insumo, separe: " +
+  "'insumoPrincipal' = o insumo base (ex: 'PIMENTA DE CHEIRO', 'PIMENTÃO VERDE', 'CEBOLA BRANCA'), e " +
+  "'variacao' = a forma de preparo (ex: 'PICADA', 'TOSTADA', 'EM CUBOS', 'ASSADO SEM PELE'). Se o " +
+  "ingrediente já é o insumo inteiro/cru, use insumoPrincipal = o próprio nome e variacao = \"\". Agrupe " +
+  "sob o MESMO insumoPrincipal todas as formas do mesmo insumo.\n\n" +
   "Responda SOMENTE um objeto JSON (sem texto antes/depois), neste formato:\n" +
   '{ "fichas": [ { "nome": "...", "ehSubficha": true, "categoria": "", ' +
   '"rendimento": { "qtd": 0, "unidade": "kg" }, ' +
-  '"ingredientes": [ { "nome": "...", "qtd": 0, "unidade": "g", "qb": false } ] } ] }\n\n' +
+  '"ingredientes": [ { "nome": "...", "qtd": 0, "unidade": "g", "qb": false, "insumoPrincipal": "...", "variacao": "" } ] } ] }\n\n' +
   "PLANILHA:\n";
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {

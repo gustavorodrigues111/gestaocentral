@@ -7,7 +7,7 @@ import type { FtDimensao, FtInsumo } from "../../core/types";
 import { dimensaoDeUnidade } from "./unidades";
 import { sugerirInsumos } from "./dedup";
 
-export type IngredienteIA = { nome: string; qtd: number; unidade: string; qb?: boolean };
+export type IngredienteIA = { nome: string; qtd: number; unidade: string; qb?: boolean; insumoPrincipal?: string; variacao?: string };
 // Cada "Preparo" da planilha vira UMA receita (lista plana de ingredientes).
 export type FichaIA = {
   nome: string;

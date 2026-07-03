@@ -1,29 +1,32 @@
-// Tela de revisão do import de receitas por IA (planilha/PDF/print/foto).
-// Fluxo: upload → reconhecimento + processamento em partes (progresso) →
-// revisão: (1) ingredientes ÚNICOS (dedup, casado/novo, editável) + (2) receitas
-// (incluir/excluir, categoria em lote) → grava.
+// Revisão do import de receitas por IA. A IA lê (planilha/PDF/print/foto),
+// separa insumo principal × variação e a gente reconhece subfichas (ingrediente
+// com nome de uma das receitas do lote). Revisão: (1) ingredientes agrupados por
+// insumo (principal + variações c/ % de aproveitamento) + subfichas; (2) receitas
+// (incluir/excluir, categoria em lote) → grava deduplicado.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo } from "../../core/types";
+import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao } from "../../core/types";
 import { labelUnidade } from "./unidades";
-import { normalizarNome } from "./dedup";
+import { normalizarNome as norm } from "./dedup";
 import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo } from "./importar";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const UP = (s: string) => (s || "").trim().toUpperCase();
 
-type IngRev = { id: string; nome: string; qtd: number; unidade: string; qb: boolean; chave: string };
+type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null };
 type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[] };
-type Resol = { chave: string; nome: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string };
+type VarInfo = { norm: string; nome: string; fc: number };
+type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[] };
 
 const CHIP: Record<string, string> = {
   casado: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   novo: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
   conferir: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  subficha: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
 };
 
 export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, onClose }: {
@@ -32,7 +35,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [fase, setFase] = useState<"upload" | "processando" | "revisao" | "gravando">("upload");
   const [erro, setErro] = useState("");
   const [fichas, setFichas] = useState<FichaRev[]>([]);
-  const [resol, setResol] = useState<Record<string, Resol>>({});
+  const [principais, setPrincipais] = useState<Record<string, Principal>>({});
+  const [subNomes, setSubNomes] = useState<Record<string, string>>({}); // fichaId(subficha) -> nome
   const [itens, setItens] = useState<{ id: string; nome: string; status: "pendente" | "lendo" | "ok" | "erro" }[]>([]);
   const [feito, setFeito] = useState(0);
   const [planilhaTexto, setPlanilhaTexto] = useState("");
@@ -52,24 +56,21 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
 
   function matchCategoria(nome?: string): string | null {
     if (!nome) return null;
-    const n = normalizarNome(nome);
-    return catsAtivas.find(c => normalizarNome(c.nome) === n)?.id || null;
+    const n = norm(nome);
+    return catsAtivas.find(c => norm(c.nome) === n)?.id || null;
   }
-
   async function addArquivos(files: FileList | File[]) {
     setErro("");
     for (const file of Array.from(files)) {
       const nome = file.name.toLowerCase();
       const ehPlanilha = /\.(xlsx|xls|csv)$/.test(nome) || file.type.includes("sheet") || file.type === "text/csv";
-      try {
-        if (ehPlanilha) { const texto = await planilhaParaTexto(file); if (!texto.trim()) { setErro("Não consegui ler a planilha."); continue; } setPlanilhaTexto(texto); setPlanilhaNome(file.name); }
-        else { const ax = await fileParaAnexo(file); setAnexos(prev => [...prev, ax]); }
-      } catch (e) { setErro(e instanceof Error ? e.message : String(e)); }
+      try { if (ehPlanilha) { const t = await planilhaParaTexto(file); if (!t.trim()) { setErro("Não consegui ler a planilha."); continue; } setPlanilhaTexto(t); setPlanilhaNome(file.name); } else { const ax = await fileParaAnexo(file); setAnexos(p => [...p, ax]); } }
+      catch (e) { setErro(e instanceof Error ? e.message : String(e)); }
     }
   }
   async function onPaste(e: React.ClipboardEvent) {
     const items = e.clipboardData?.items; if (!items) return;
-    for (const it of Array.from(items)) if (it.type.startsWith("image/")) { const blob = it.getAsFile(); if (blob) { const ax = await fileParaAnexo(blob); setAnexos(prev => [...prev, ax]); } }
+    for (const it of Array.from(items)) if (it.type.startsWith("image/")) { const b = it.getAsFile(); if (b) { const ax = await fileParaAnexo(b); setAnexos(p => [...p, ax]); } }
   }
 
   async function analisar() {
@@ -77,70 +78,90 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setErro("");
     const LOTE = 3;
     const blocos = planilhaTexto ? dividirEmBlocos(planilhaTexto) : [];
-    type Unidade = { itemIds: string[]; payload: { planilha?: string; anexos?: Anexo[] } };
-    const unidades: Unidade[] = [];
-    const itensIniciais: { id: string; nome: string; status: "pendente" }[] = [];
+    type Un = { itemIds: string[]; payload: { planilha?: string; anexos?: Anexo[] } };
+    const unidades: Un[] = [];
+    const itensIni: { id: string; nome: string; status: "pendente" }[] = [];
     if (blocos.length > 1) {
       const comId = blocos.map(b => ({ id: uid("it"), nome: nomeDoBloco(b), bloco: b }));
-      comId.forEach(x => itensIniciais.push({ id: x.id, nome: x.nome, status: "pendente" }));
+      comId.forEach(x => itensIni.push({ id: x.id, nome: x.nome, status: "pendente" }));
       for (let i = 0; i < comId.length; i += LOTE) { const g = comId.slice(i, i + LOTE); unidades.push({ itemIds: g.map(x => x.id), payload: { planilha: g.map(x => x.bloco).join("\n\n") } }); }
-    } else if (planilhaTexto.trim()) {
-      const id = uid("it"); itensIniciais.push({ id, nome: planilhaNome || "planilha", status: "pendente" });
-      unidades.push({ itemIds: [id], payload: { planilha: planilhaTexto } });
-    }
-    for (const a of anexos) { const id = uid("it"); itensIniciais.push({ id, nome: a.nome, status: "pendente" }); unidades.push({ itemIds: [id], payload: { anexos: [a] } }); }
+    } else if (planilhaTexto.trim()) { const id = uid("it"); itensIni.push({ id, nome: planilhaNome || "planilha", status: "pendente" }); unidades.push({ itemIds: [id], payload: { planilha: planilhaTexto } }); }
+    for (const a of anexos) { const id = uid("it"); itensIni.push({ id, nome: a.nome, status: "pendente" }); unidades.push({ itemIds: [id], payload: { anexos: [a] } }); }
 
-    setItens(itensIniciais); setFeito(0); setFase("processando");
+    setItens(itensIni); setFeito(0); setFase("processando");
     const marcar = (ids: string[], status: "lendo" | "ok" | "erro") => setItens(prev => prev.map(it => ids.includes(it.id) ? { ...it, status } : it));
 
-    const coletadas: FichaRev[] = [];
+    // 1ª passada: coleta receitas cruas.
+    const cruas: { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; rendimento: { qtd: number; unidade: string }; ings: { nome: string; qtd: number; unidade: string; qb: boolean; principal: string; variacao: string }[] }[] = [];
     const errosLote: string[] = [];
     for (const u of unidades) {
       marcar(u.itemIds, "lendo");
       try {
         const ia = await importarFichasIA(u.payload);
-        for (const f of ia) {
-          coletadas.push({
-            id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true, categoriaId: matchCategoria(f.categoria), incluir: true,
-            rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
-            ingredientes: (f.ingredientes || []).map(ing => { const nome = UP(ing.nome); return { id: uid("ing"), nome, qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, chave: normalizarNome(nome) }; }),
-          });
-        }
+        for (const f of ia) cruas.push({
+          id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true, categoriaId: matchCategoria(f.categoria),
+          rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
+          ings: (f.ingredientes || []).map(ing => ({ nome: UP(ing.nome), qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, principal: UP(ing.insumoPrincipal || ing.nome), variacao: UP(ing.variacao || "") })),
+        });
         marcar(u.itemIds, "ok");
       } catch (e) { marcar(u.itemIds, "erro"); errosLote.push(e instanceof Error ? e.message : String(e)); }
       setFeito(f => f + u.itemIds.length);
     }
-    if (coletadas.length === 0) { setErro(errosLote[0] || "A IA não encontrou nenhuma receita."); setFase("upload"); return; }
+    if (cruas.length === 0) { setErro(errosLote[0] || "A IA não encontrou nenhuma receita."); setFase("upload"); return; }
 
-    // Resolve ingredientes ÚNICOS (dedup por nome normalizado).
-    const mapa: Record<string, Resol> = {};
-    for (const f of coletadas) for (const ing of f.ingredientes) {
-      if (mapa[ing.chave]) continue;
-      const r = resolverIngrediente({ nome: ing.nome, qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb }, insumos, 0);
-      mapa[ing.chave] = { chave: ing.chave, nome: ing.nome, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase };
-    }
-    setFichas(coletadas); setResol(mapa);
+    // Nomes das receitas do lote → pra reconhecer subfichas.
+    const fichaPorNome = new Map<string, string>();
+    for (const c of cruas) fichaPorNome.set(norm(c.nome), c.id);
+    const subN: Record<string, string> = {};
+
+    const princ: Record<string, Principal> = {};
+    const fichasRev: FichaRev[] = cruas.map(c => ({
+      id: c.id, nome: c.nome, ehSubficha: c.ehSubficha, categoriaId: c.categoriaId, incluir: true, rendimento: c.rendimento,
+      ingredientes: c.ings.map(ing => {
+        const chave = norm(ing.nome);
+        const subId = fichaPorNome.get(chave);
+        if (subId && subId !== c.id) { subN[subId] = ing.nome; return { id: uid("ing"), qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb, principalKey: "", variacaoNorm: "", subfichaFichaId: subId }; }
+        const pk = norm(ing.principal) || chave;
+        const vNorm = norm(ing.variacao);
+        if (!princ[pk]) {
+          const r = resolverIngrediente({ nome: ing.principal || ing.nome, qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb }, insumos, 0);
+          princ[pk] = { key: pk, nome: UP(ing.principal || ing.nome), unidade: ing.unidade, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase, temBase: false, variacoes: [] };
+        }
+        if (vNorm) { if (!princ[pk].variacoes.some(v => v.norm === vNorm)) princ[pk].variacoes.push({ norm: vNorm, nome: UP(ing.variacao), fc: 100 }); }
+        else princ[pk].temBase = true;
+        return { id: uid("ing"), qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb, principalKey: pk, variacaoNorm: vNorm, subfichaFichaId: null };
+      }),
+    }));
+
+    setFichas(fichasRev); setPrincipais(princ); setSubNomes(subN);
     if (errosLote.length) setErro(`${errosLote.length} parte(s) falharam e ficaram de fora.`);
     setFase("revisao");
   }
 
-  // ── edições ──
-  const setResolNome = (chave: string, nome: string) => setResol(p => ({ ...p, [chave]: { ...p[chave], nome } }));
-  const setResolMatch = (chave: string, valor: string) => setResol(p => ({ ...p, [chave]: { ...p[chave], matchInsumoId: valor === "__novo__" ? null : valor, status: valor === "__novo__" ? "novo" : "casado" } }));
+  // edições
+  const setPrinc = (k: string, patch: Partial<Principal>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], ...patch } }));
+  const setVar = (k: string, vNorm: string, patch: Partial<VarInfo>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: p[k].variacoes.map(v => v.norm === vNorm ? { ...v, ...patch } : v) } }));
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
   const catTodas = (id: string) => setFichas(prev => prev.map(f => ({ ...f, categoriaId: id || null })));
 
-  const unicos = useMemo(() => Object.values(resol).sort((a, b) => a.nome.localeCompare(b.nome)), [resol]);
-  const ocorrencias = useMemo(() => {
+  const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
-    for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) c[ing.chave] = (c[ing.chave] || 0) + 1;
+    for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
     return c;
   }, [fichas]);
+  const usoSub = useMemo(() => {
+    const c: Record<string, number> = {};
+    for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1;
+    return c;
+  }, [fichas]);
+
+  const principaisLista = useMemo(() => Object.values(principais).filter(p => (usoPrincipal[p.key] || 0) > 0).sort((a, b) => a.nome.localeCompare(b.nome)), [principais, usoPrincipal]);
+  const subLista = useMemo(() => Object.entries(subNomes).filter(([id]) => (usoSub[id] || 0) > 0).map(([id, nome]) => ({ id, nome })).sort((a, b) => a.nome.localeCompare(b.nome)), [subNomes, usoSub]);
   const cont = useMemo(() => {
     let casado = 0, novo = 0, conferir = 0;
-    for (const u of unicos) { if ((ocorrencias[u.chave] || 0) === 0) continue; if (u.status === "casado") casado++; else if (u.status === "novo") novo++; else conferir++; }
-    return { casado, novo, conferir };
-  }, [unicos, ocorrencias]);
+    for (const p of principaisLista) { if (p.status === "casado") casado++; else if (p.status === "novo") novo++; else conferir++; }
+    return { casado, novo, conferir, subs: subLista.length, insumos: principaisLista.length };
+  }, [principaisLista, subLista]);
   const nSel = fichas.filter(f => f.incluir).length;
 
   async function gravar() {
@@ -149,32 +170,42 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     try {
       const batch = writeBatch(db); const now = new Date().toISOString();
       const incluidas = fichas.filter(f => f.incluir);
-      // chaves usadas pelas receitas incluídas
-      const chavesUsadas = new Set<string>();
-      for (const f of incluidas) for (const ing of f.ingredientes) chavesUsadas.add(ing.chave);
-      // cria insumos novos (1 por chave sem match)
-      const novoIdPorChave = new Map<string, string>();
-      for (const chave of chavesUsadas) {
-        const r = resol[chave]; if (!r || r.matchInsumoId) continue;
-        const id = uid("ins"); novoIdPorChave.set(chave, id);
-        batch.set(doc(db, "ftInsumos", id), sanitizeForFirestore({
-          id, restaurantId: rid, nome: UP(r.nome), nomeNormalizado: chave, dimensao: r.novoDimensao, unidadeBase: r.novoUnidadeBase,
-          custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null, reutilizavel: false, variacoes: [], aliases: [], ativo: true,
-        } as FtInsumo));
+      // principais usados
+      const usadosKeys = new Set<string>();
+      for (const f of incluidas) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) usadosKeys.add(ing.principalKey);
+      // cria/atualiza insumos (1 por principal), com variações
+      const insumoIdPorPrincipal = new Map<string, string>();
+      for (const key of usadosKeys) {
+        const p = principais[key]; if (!p) continue;
+        const varsImport: FtInsumoVariacao[] = p.variacoes.map(v => ({ id: uid("var"), nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
+        if (p.matchInsumoId) {
+          insumoIdPorPrincipal.set(key, p.matchInsumoId);
+          if (varsImport.length) {
+            const exist = insumos.find(i => i.id === p.matchInsumoId);
+            const jaTem = new Set((exist?.variacoes || []).map(v => norm(v.nome)));
+            const merge = [...(exist?.variacoes || []), ...varsImport.filter(v => !jaTem.has(norm(v.nome)))];
+            batch.update(doc(db, "ftInsumos", p.matchInsumoId), sanitizeForFirestore({ variacoes: merge }));
+          }
+        } else {
+          const id = uid("ins"); insumoIdPorPrincipal.set(key, id);
+          batch.set(doc(db, "ftInsumos", id), sanitizeForFirestore({
+            id, restaurantId: rid, nome: UP(p.nome), nomeNormalizado: key, dimensao: p.novoDimensao, unidadeBase: p.novoUnidadeBase,
+            custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null, reutilizavel: false, variacoes: varsImport, aliases: [], ativo: true,
+          } as FtInsumo));
+        }
       }
       for (const f of incluidas) {
         const ingredientes: FtIngrediente[] = f.ingredientes.map(ing => {
-          const r = resol[ing.chave];
-          const refId = r?.matchInsumoId || novoIdPorChave.get(ing.chave) || "";
-          const nomeSnap = r?.matchInsumoId ? (insumos.find(i => i.id === r.matchInsumoId)?.nome || UP(r.nome)) : UP(r?.nome || ing.nome);
-          return { id: uid("ing"), tipo: "insumo", refId, nomeSnapshot: nomeSnap, qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
+          if (ing.subfichaFichaId) return { id: uid("ing"), tipo: "ficha", refId: ing.subfichaFichaId, nomeSnapshot: subNomes[ing.subfichaFichaId] || "", qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
+          const p = principais[ing.principalKey];
+          const insumoId = insumoIdPorPrincipal.get(ing.principalKey) || "";
+          const v = ing.variacaoNorm ? p?.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
+          return { id: uid("ing"), tipo: "insumo", refId: insumoId, nomeSnapshot: UP(p?.nome || ""), qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb, ...(v ? { variacaoNome: UP(v.nome), fc: v.fc } : {}) } as FtIngrediente;
         });
-        const ficha: FtFicha = {
-          id: f.id, restaurantId: rid, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome),
-          ehSubficha: f.ehSubficha, categoriaId: f.categoriaId, rendimento: f.rendimento, ingredientes,
-          ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
-        };
-        batch.set(doc(db, "ftFichas", f.id), sanitizeForFirestore(ficha));
+        batch.set(doc(db, "ftFichas", f.id), sanitizeForFirestore({
+          id: f.id, restaurantId: rid, nome: UP(f.nome), nomeNormalizado: norm(f.nome), ehSubficha: f.ehSubficha, categoriaId: f.categoriaId,
+          rendimento: f.rendimento, ingredientes, ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
+        } as FtFicha));
       }
       await batch.commit();
       onClose();
@@ -200,7 +231,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           {temFonte && (
             <div className="mt-3 space-y-1.5">
               {planilhaTexto && <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800"><span>📄</span><span className="flex-1 truncate">{planilhaNome || "planilha"}</span><button type="button" onClick={() => { setPlanilhaTexto(""); setPlanilhaNome(""); }} className="text-gray-400 hover:text-red-600 text-xs">remover</button></div>}
-              {anexos.map((a, i) => <div key={i} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800"><span>{a.mediaType === "application/pdf" ? "📕" : "🖼️"}</span><span className="flex-1 truncate">{a.nome}</span><button type="button" onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-600 text-xs">remover</button></div>)}
+              {anexos.map((a, i) => <div key={i} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800"><span>{a.mediaType === "application/pdf" ? "📕" : "🖼️"}</span><span className="flex-1 truncate">{a.nome}</span><button type="button" onClick={() => setAnexos(p => p.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-600 text-xs">remover</button></div>)}
             </div>
           )}
           {erro && <div className="text-sm text-red-600 mt-3">{erro}</div>}
@@ -217,49 +248,69 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               <div key={it.id} className="flex items-center gap-2 text-sm px-2 py-1.5 rounded-lg">
                 <span className="w-5 text-center shrink-0">{it.status === "ok" ? <span className="text-emerald-600">✓</span> : it.status === "erro" ? <span className="text-red-500">✕</span> : it.status === "lendo" ? <span className="inline-block animate-spin">◌</span> : <span className="text-gray-300">•</span>}</span>
                 <span className={`flex-1 min-w-0 truncate ${it.status === "ok" ? "text-gray-800 dark:text-gray-200" : it.status === "lendo" ? "text-indigo-600 dark:text-indigo-400" : "text-gray-400"}`}>{it.nome}</span>
-                {it.status === "lendo" && <span className="text-[10px] text-indigo-400 shrink-0">lendo…</span>}
               </div>
             ))}
           </div>
-          <p className="text-[11px] text-gray-400 mt-3">Roda no navegador: pode <strong>alternar de janela/app</strong> à vontade, mas <strong>não feche esta aba</strong> nem saia da tela até terminar.</p>
+          <p className="text-[11px] text-gray-400 mt-3">Roda no navegador: pode <strong>alternar de janela/app</strong>, mas <strong>não feche esta aba</strong> até terminar.</p>
         </div>
       )}
 
       {(fase === "revisao" || fase === "gravando") && (
         <div>
           <div className="flex items-center gap-2 flex-wrap mb-2 text-xs">
-            <span className="text-gray-600 dark:text-gray-300 font-medium">{fichas.length} receita(s) · {unicos.length} ingrediente(s):</span>
+            <span className="text-gray-600 dark:text-gray-300 font-medium">{fichas.length} receita(s) · {cont.insumos} insumo(s){cont.subs ? ` · ${cont.subs} subficha(s)` : ""}:</span>
             <span className={`px-2 py-0.5 rounded-full ${CHIP.casado}`}>{cont.casado} casados</span>
             <span className={`px-2 py-0.5 rounded-full ${CHIP.novo}`}>{cont.novo} novos</span>
             {cont.conferir > 0 && <span className={`px-2 py-0.5 rounded-full ${CHIP.conferir}`}>{cont.conferir} a conferir</span>}
             <div className="flex-1" />
             <span className="text-gray-400">Categoria de todas:</span>
-            <select onChange={e => catTodas(e.target.value)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              <option value="">— escolher —</option>
-              {catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
+            <select onChange={e => catTodas(e.target.value)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           </div>
 
           <div className="max-h-[55vh] overflow-y-auto pr-1 space-y-4">
-            {/* 1) Ingredientes únicos */}
+            {/* Ingredientes (insumos + variações) */}
             <div className="rounded-xl border border-gray-200 dark:border-gray-800">
-              <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200">Ingredientes ({unicos.length}) — confira antes de gravar</div>
-              <div className="p-2 space-y-1">
-                {unicos.filter(u => (ocorrencias[u.chave] || 0) > 0).map(u => (
-                  <div key={u.chave} className="flex items-center gap-2 text-sm">
-                    <input value={u.nome} onChange={e => setResolNome(u.chave, e.target.value.toUpperCase())} className="w-32 sm:w-52 shrink-0 bg-transparent text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" title="nome do ingrediente (editável)" />
-                    <span className="text-[11px] text-gray-400 shrink-0 w-20">{ocorrencias[u.chave]} receita(s)</span>
-                    <select value={u.matchInsumoId ?? "__novo__"} onChange={e => setResolMatch(u.chave, e.target.value)} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                      {u.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
-                      <option value="__novo__">+ criar novo insumo</option>
-                    </select>
-                    <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[u.status]}`}>{u.status === "casado" ? "reconhecido" : u.status}</span>
+              <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200">Insumos ({cont.insumos}) — principal + variações</div>
+              <div className="p-2 space-y-2">
+                {principaisLista.map(p => (
+                  <div key={p.key}>
+                    <div className="flex items-center gap-2 text-sm">
+                      <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
+                      <span className="text-[11px] text-gray-400 shrink-0 w-16">{usoPrincipal[p.key]} uso(s)</span>
+                      <select value={p.matchInsumoId ?? "__novo__"} onChange={e => setPrinc(p.key, e.target.value === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: e.target.value, status: "casado" })} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                        {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
+                        <option value="__novo__">+ criar novo insumo</option>
+                      </select>
+                      <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
+                    </div>
+                    {p.variacoes.map(v => (
+                      <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
+                        <span className="text-indigo-500 text-xs shrink-0">↳</span>
+                        <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
+                        <span className="text-[11px] text-gray-400">aprov.</span>
+                        <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
+                        <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+                      </div>
+                    ))}
                   </div>
                 ))}
+                {subLista.length > 0 && (
+                  <div className="border-t border-gray-100 dark:border-gray-800 pt-2 mt-1">
+                    <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">Reconhecidas como subficha</div>
+                    {subLista.map(s => (
+                      <div key={s.id} className="flex items-center gap-2 text-sm py-0.5">
+                        <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0"></span>
+                        <span className="flex-1 truncate text-gray-800 dark:text-gray-200">{s.nome}</span>
+                        <span className="text-[11px] text-gray-400">{usoSub[s.id]} uso(s)</span>
+                        <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* 2) Receitas */}
+            {/* Receitas */}
             <div className="space-y-3">
               {fichas.map(f => (
                 <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
@@ -272,13 +323,17 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                   </div>
                   <div className="p-2.5 space-y-1">
                     {f.ingredientes.map(ing => {
-                      const r = resol[ing.chave];
+                      const sub = ing.subfichaFichaId ? subNomes[ing.subfichaFichaId] : null;
+                      const p = ing.principalKey ? principais[ing.principalKey] : undefined;
+                      const v = p && ing.variacaoNorm ? p.variacoes.find(x => x.norm === ing.variacaoNorm) : undefined;
+                      const nome = sub || (p ? p.nome : "?");
                       return (
                         <div key={ing.id} className="flex items-center gap-2 text-sm">
-                          <span className="w-28 sm:w-52 shrink-0 truncate text-gray-700 dark:text-gray-200">{r?.nome || ing.nome}</span>
+                          <span className="w-28 sm:w-56 shrink-0 truncate text-gray-700 dark:text-gray-200">{nome}{v && <span className="text-indigo-600 dark:text-indigo-400"> ↳ {v.nome}</span>}</span>
                           <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
                           <div className="flex-1" />
-                          <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[r?.status || "novo"]}`}>{(r?.status || "novo") === "casado" ? "reconhecido" : (r?.status || "novo")}</span>
+                          {sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
+                            : <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP[p?.status || "novo"]}`}>{(p?.status || "novo") === "casado" ? "reconhecido" : (p?.status || "novo")}</span>}
                         </div>
                       );
                     })}
