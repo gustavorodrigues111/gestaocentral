@@ -242,13 +242,16 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   function promoverVariacao(pk: string, vNorm: string) {
     const p = principais[pk]; const v = p?.variacoes.find(x => x.norm === vNorm);
     if (!p || !v) return;
-    const newKey = norm(v.nome) || uid("p");
+    // Nome completo (principal + variação) — ex.: "ÁGUA" + "COM GÁS" → "ÁGUA COM
+    // GÁS". Senão viraria só "COM GÁS" e parece que sumiu da lista.
+    const nomeCheio = UP(`${p.nome} ${v.nome}`);
+    const newKey = norm(nomeCheio) || uid("p");
     setPrincipais(prev => {
       const next = { ...prev };
       next[pk] = { ...p, variacoes: p.variacoes.filter(x => x.norm !== vNorm) };
       if (!next[newKey]) {
-        const r = resolverIngrediente({ nome: v.nome, qtd: 1, unidade: p.unidade, qb: false }, insumos, 0);
-        next[newKey] = { key: newKey, nome: UP(v.nome), unidade: p.unidade, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase, temBase: true, variacoes: [] };
+        const r = resolverIngrediente({ nome: nomeCheio, qtd: 1, unidade: p.unidade, qb: false }, insumos, 0);
+        next[newKey] = { key: newKey, nome: nomeCheio, unidade: p.unidade, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase, temBase: true, variacoes: [] };
       } else { next[newKey] = { ...next[newKey], temBase: true }; }
       return next;
     });
