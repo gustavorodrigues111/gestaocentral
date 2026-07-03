@@ -10,7 +10,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtDimensao, FtFicha, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto } from "../../core/types";
-import { labelUnidade } from "./unidades";
+import { labelUnidade, paraBase } from "./unidades";
 import { normalizarNome as norm } from "./dedup";
 import { fmtBRDateTime } from "../../core/utils/date";
 import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo, type FichaIA } from "./importar";
@@ -22,6 +22,17 @@ const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendime
 
 type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null; subprodutoRef?: { fichaId: string; subId: string } };
 type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[]; subprodutos?: FtSubproduto[] };
+
+// Fator de correção sugerido: subficha de 1 insumo → aproveitamento =
+// rendimento / quantidade do insumo (ex.: rende 1kg de 1,5kg de alho = 66,7%).
+function fcSugeridoDe(sf: FichaRev): number | null {
+  if (sf.ingredientes.length !== 1) return null;
+  const ing = sf.ingredientes[0];
+  const rendBase = paraBase(sf.rendimento.qtd, sf.rendimento.unidade);
+  const ingBase = paraBase(ing.qtd, ing.unidade);
+  if (!rendBase || !ingBase || ingBase <= 0) return null;
+  return Math.round((rendBase / ingBase) * 1000) / 10;
+}
 type VarInfo = { norm: string; nome: string; fc: number };
 type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[]; ehSubprodutoPendente?: boolean };
 
@@ -55,6 +66,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const [salvando, setSalvando] = useState(false);
   const [passo, setPasso] = useState<1 | 2 | 3>(1); // wizard: 1 ingredientes · 2 subfichas · 3 fichas
   const [mescla, setMescla] = useState<{ aId: string; bId: string; nome: string; conteudoId: string } | null>(null);
+  const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number } | null>(null);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -329,6 +341,41 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setMescla(null);
   }
 
+  // Abre o painel "esta subficha na verdade é ingrediente/variação".
+  function abrirDissolver(sf: FichaRev) {
+    const unico = sf.ingredientes.length === 1 ? sf.ingredientes[0] : undefined;
+    const pk = unico?.principalKey && principais[unico.principalKey] ? unico.principalKey : "";
+    const baseNome = pk ? UP(sf.nome).replace(UP(principais[pk].nome), "").trim() : "";
+    setDissolver({ subfichaId: sf.id, modo: pk ? "variacao" : "insumo", principalKey: pk, varNome: baseNome || "LIMPO", fc: fcSugeridoDe(sf) ?? 100 });
+  }
+
+  // Dissolve a subficha num INSUMO próprio (checa duplicata → unifica).
+  function dissolverEmInsumo(subfichaId: string) {
+    const sf = fichas.find(f => f.id === subfichaId); if (!sf) return;
+    const nome = UP(sf.nome); const key = norm(nome);
+    setPrincipais(prev => {
+      if (prev[key]) return { ...prev, [key]: { ...prev[key], temBase: true } };
+      const r = resolverIngrediente({ nome, qtd: 1, unidade: sf.rendimento.unidade, qb: false }, insumos, 0);
+      return { ...prev, [key]: { key, nome, unidade: sf.rendimento.unidade, matchInsumoId: r.matchInsumoId, status: r.status, sugestoes: r.sugestoes, novoDimensao: r.novoDimensao, novoUnidadeBase: r.novoUnidadeBase, temBase: true, variacoes: [] } };
+    });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.subfichaFichaId === subfichaId ? { ...ing, subfichaFichaId: null, principalKey: key, variacaoNorm: "" } : ing) })).filter(f => f.id !== subfichaId));
+    setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
+    setDissolver(null);
+  }
+
+  // Dissolve a subficha numa VARIAÇÃO de um insumo, com fator de correção.
+  function dissolverEmVariacao(subfichaId: string, principalKey: string, varNome: string, fc: number) {
+    const vNorm = norm(varNome) || "corrigido";
+    setPrincipais(prev => {
+      const p = prev[principalKey]; if (!p) return prev;
+      if (p.variacoes.some(v => v.norm === vNorm)) return prev;
+      return { ...prev, [principalKey]: { ...p, variacoes: [...p.variacoes, { norm: vNorm, nome: UP(varNome), fc: fc > 0 ? fc : 100 }] } };
+    });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.subfichaFichaId === subfichaId ? { ...ing, subfichaFichaId: null, principalKey, variacaoNorm: vNorm } : ing) })).filter(f => f.id !== subfichaId));
+    setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
+    setDissolver(null);
+  }
+
   const usoPrincipal = useMemo(() => {
     const c: Record<string, number> = {};
     for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (!ing.subfichaFichaId) c[ing.principalKey] = (c[ing.principalKey] || 0) + 1;
@@ -375,8 +422,14 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
         <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
         <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
-        {f.ehSubficha && subfichas.length > 1 && (
-          <select value="" onChange={e => { if (e.target.value) abrirMescla(f.id, e.target.value); }} className="text-xs px-2 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300"><option value="">mesclar com…</option>{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={o.id}>{o.nome}</option>)}</select>
+        {f.ehSubficha && (
+          <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v.startsWith("merge:")) abrirMescla(f.id, v.slice(6)); }} className="text-xs px-2 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300">
+            <option value="">reclassificar…</option>
+            <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
+            {subfichas.filter(o => o.id !== f.id).length > 0 && (
+              <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
+            )}
+          </select>
         )}
         <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
       </div>
@@ -448,6 +501,47 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         <div className="flex justify-end gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={() => setMescla(null)}>Cancelar</Button>
           <Button onClick={() => mesclarSubfichas(mescla.aId, mescla.bId, mescla.nome, mescla.conteudoId)} disabled={!mescla.nome.trim()}>Mesclar</Button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDissolver = () => {
+    if (!dissolver) return null;
+    const sf = fichas.find(f => f.id === dissolver.subfichaId);
+    if (!sf) return null;
+    const dupInsumo = principais[norm(UP(sf.nome))];
+    const podeVar = principaisLista.length > 0;
+    return (
+      <div>
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">“{sf.nome}” não é subficha</div>
+        <p className="text-[11px] text-gray-400 mb-3">Às vezes o preparo é só um insumo com fator de correção (ex.: ALHO PESO LIMPO = ALHO rendendo menos). Resolva como ingrediente ou variação.</p>
+        <div className="space-y-2">
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="radio" name="dissolverModo" checked={dissolver.modo === "variacao"} disabled={!podeVar} onChange={() => setDissolver(d => d && { ...d, modo: "variacao" })} className="accent-indigo-600 mt-1" />
+            <div className="flex-1">
+              <div className={podeVar ? "" : "text-gray-400"}>É uma <strong>variação</strong> de um ingrediente (com fator de correção){!podeVar && " — nenhum ingrediente na lista"}</div>
+              {dissolver.modo === "variacao" && podeVar && (
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  <select value={dissolver.principalKey} onChange={e => setDissolver(d => d && { ...d, principalKey: e.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"><option value="">qual ingrediente?</option>{principaisLista.map(p => <option key={p.key} value={p.key}>{p.nome}</option>)}</select>
+                  <input value={dissolver.varNome} onChange={e => setDissolver(d => d && { ...d, varNome: e.target.value.toUpperCase() })} placeholder="nome (ex: PESO LIMPO)" className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-40" />
+                  <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">aprov.</span><input type="number" value={dissolver.fc} onChange={e => setDissolver(d => d && { ...d, fc: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100" /><span className="text-[11px] text-gray-400">%</span></div>
+                  {fcSugeridoDe(sf) != null && <span className="text-[10px] text-gray-400">sugerido: {fcSugeridoDe(sf)}%</span>}
+                </div>
+              )}
+            </div>
+          </label>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input type="radio" name="dissolverModo" checked={dissolver.modo === "insumo"} onChange={() => setDissolver(d => d && { ...d, modo: "insumo" })} className="accent-indigo-600 mt-1" />
+            <div className="flex-1">
+              <div>É um <strong>ingrediente</strong> próprio (vai pra lista de insumos)</div>
+              {dissolver.modo === "insumo" && dupInsumo && <div className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Já existe “{dupInsumo.nome}” na lista — será unificado.</div>}
+            </div>
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={() => setDissolver(null)}>Cancelar</Button>
+          <Button onClick={() => dissolver.modo === "variacao" ? dissolverEmVariacao(sf.id, dissolver.principalKey, dissolver.varNome, dissolver.fc) : dissolverEmInsumo(sf.id)} disabled={dissolver.modo === "variacao" && (!dissolver.principalKey || !dissolver.varNome.trim())}>Confirmar</Button>
         </div>
       </div>
     );
@@ -621,7 +715,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
             )}
 
             {/* PASSO 2 — Subfichas (detectadas + promovidas) */}
-            {passo === 2 && (mescla ? renderMescla() : (
+            {passo === 2 && (mescla ? renderMescla() : dissolver ? renderDissolver() : (
               <div className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">Preparos-base reutilizáveis: os que a IA reconheceu, os usados como ingrediente dentro de outras fichas e os que você promoveu. Desmarque <em>subficha</em> pra tratar como ficha final, ou use <em>mesclar com…</em> pra juntar duplicadas.</p>
                 {subfichas.map(renderCard)}
