@@ -801,8 +801,9 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }:
   const [salvando, setSalvando] = useState(false);
   const insumosSel = insumos.filter(i => i.ativo !== false && !i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
 
-  const getEdit = (l: LinhaReconc) => edits[l.produto.chave] || { insumoId: l.insumo?.id || "", fator: l.fatorParaBase != null ? String(l.fatorParaBase) : "" };
-  const setEdit = (chave: string, patch: Partial<{ insumoId: string; fator: string }>) => setEdits(e => ({ ...e, [chave]: { ...(e[chave] || { insumoId: "", fator: "" }), ...patch } }));
+  const defaultEdit = (l: LinhaReconc) => ({ insumoId: l.insumo?.id || "", fator: l.fatorParaBase != null ? String(l.fatorParaBase) : "" });
+  const getEdit = (l: LinhaReconc) => edits[l.produto.chave] || defaultEdit(l);
+  const setEdit = (l: LinhaReconc, patch: Partial<{ insumoId: string; fator: string }>) => setEdits(e => ({ ...e, [l.produto.chave]: { ...(e[l.produto.chave] || defaultEdit(l)), ...patch } }));
 
   async function aplicarPreco(l: LinhaReconc) {
     if (!l.insumo || l.custoBase == null) return;
@@ -907,8 +908,8 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, meId, onClose }:
                       <span className="text-[10px] text-gray-400">{l.fornecedorNovo ? "novo fornecedor" : l.motivo}</span>
                     </div>
                     <div className="flex items-center gap-2 flex-wrap mt-1.5">
-                      <select value={e.insumoId} onChange={ev => setEdit(l.produto.chave, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px]"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
-                      <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l.produto.chave, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" /><span className="text-[11px] text-gray-400">{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
+                      <select value={e.insumoId} onChange={ev => setEdit(l, { insumoId: ev.target.value })} className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px]"><option value="">— qual insumo? —</option>{insumosSel.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}</select>
+                      <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">1 {l.produto.unidade} =</span><input type="number" value={e.fator} onChange={ev => setEdit(l, { fator: ev.target.value })} className="w-16 px-1.5 py-1.5 text-right text-xs rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" /><span className="text-[11px] text-gray-400">{ins ? labelUnidade(ins.unidadeBase) : "base"}</span></div>
                       {preview != null && <span className="text-[11px] text-emerald-700 dark:text-emerald-400 tabular-nums">= {fmtMoeda(preview)}/{ins ? labelUnidade(ins.unidadeBase) : ""}</span>}
                       <button type="button" onClick={() => void aprovarVinculo(l)} className="text-xs font-medium px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">Vincular</button>
                       <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600">ignorar</button>
