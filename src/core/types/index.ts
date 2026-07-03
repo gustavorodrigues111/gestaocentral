@@ -5339,11 +5339,22 @@ export type FtInsumo = {
   ativo: boolean;
 };
 
-export type FtIngredienteTipo = "insumo" | "subficha" | "subproduto";
+// Categoria criada pelo usuário (Drinks, Pratos principais, Entradas, Pratos
+// frios...). Aplica tanto a fichas finais quanto a subfichas.
+export type FtCategoria = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  ordem?: number;
+  ativo: boolean;
+};
+
+// Um ingrediente pode ser um INSUMO ou uma SUBFICHA (outra receita reutilizável).
+export type FtIngredienteTipo = "insumo" | "ficha";
 export type FtIngrediente = {
   id: string;
   tipo: FtIngredienteTipo;
-  refId: string;                       // insumoId | subfichaId | fichaId(subproduto)
+  refId: string;                       // insumoId | fichaId (subficha)
   nomeSnapshot?: string;
   qtd: number;
   unidade: string;
@@ -5351,37 +5362,24 @@ export type FtIngrediente = {
   fc?: number;                         // fator de correção (≥1) — perda de limpeza
 };
 
-export type FtSubficha = {
-  id: string;
-  nome: string;
-  rendimento: { qtd: number; unidade: string };
-  modoPreparo?: string | null;
-  ingredientes: FtIngrediente[];
-};
-
-export type FtFichaTipo = "prato" | "drinque" | "subproduto";
-export const FT_FICHA_TIPO_LABEL: Record<FtFichaTipo, string> = {
-  prato: "Prato",
-  drinque: "Drinque",
-  subproduto: "Subproduto",
-};
-
+// Receita: uma FICHA (produto final, vai pro cardápio) OU uma SUBFICHA (preparo
+// reutilizável que entra como ingrediente de outras). `ehSubficha` diferencia.
+// Composição = lista PLANA de ingredientes (insumos e/ou subfichas), com
+// aninhamento recursivo.
 export type FtFicha = {
   id: string;
   restaurantId: string;
   nome: string;
   nomeNormalizado: string;
-  tipo: FtFichaTipo;
-  descricao?: string | null;
-  categoria?: string | null;
-  fotoUrl?: string | null;
-  rendimentoFinal: { qtd: number; unidade: string };
-  subfichas: FtSubficha[];
+  ehSubficha: boolean;                 // true = componente reutilizável
+  categoriaId?: string | null;
+  rendimento: { qtd: number; unidade: string };
+  ingredientes: FtIngrediente[];
   modoPreparo?: string | null;
-  louca?: string | null;
-  equipamentos?: string[];
+  fotoUrl?: string | null;
+  observacoes?: string | null;
   markupAlvo?: number | null;
-  cmvAlvo?: number | null;             // % alvo de CMV
+  cmvAlvo?: number | null;             // % alvo de CMV (só ficha final)
   ativo: boolean;
   criadoEm: string;
   criadoPor?: string;

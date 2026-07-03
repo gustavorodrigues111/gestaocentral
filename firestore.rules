@@ -136,6 +136,7 @@ service cloud.firestore {
     match /vendasCobrancas/{id}        { allow read, write: if authed(); }
     match /ftInsumos/{id}              { allow read, write: if authed(); }
     match /ftFichas/{id}               { allow read, write: if authed(); }
+    match /ftCategorias/{id}           { allow read, write: if authed(); }
     match /ftPlanosProducao/{id}       { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /excecoesStatusSemana/{id} { allow read, write: if authed(); }

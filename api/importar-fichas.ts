@@ -26,22 +26,20 @@ const PROMPT =
   "2) UNIDADES: normalize para exatamente uma destas: 'kg','g','L','ml','un','porção','fatia','dose'. " +
   "Mapeie KG→kg, G→g, LT/L/LITRO→L, ML→ml, UN/UND/UNID→un, PORÇÃO/PORÇÕES→porção, FATIA→fatia, DOSE→dose. " +
   "Se não reconhecer, use a mais próxima entre kg/g/L/ml/un.\n" +
-  "3) ESTRUTURA da planilha: ela tem BLOCOS. Um bloco começa numa linha 'Preparo' cujo valor ao lado é o " +
-  "NOME do preparo (uma ETAPA/subficha), seguida por uma linha 'Rendimento' (quantidade + unidade) e depois " +
-  "uma tabela com colunas 'Ingrediente | Quantidade | Unidade'.\n" +
-  "4) Um PRATO pode ter VÁRIOS blocos 'Preparo' (etapas: massa, recheio, montagem, finalização). Agrupe " +
-  "blocos que claramente pertencem ao mesmo prato numa única ficha com várias subfichas. Se não der pra ter " +
-  "certeza, trate cada bloco como sua PRÓPRIA ficha.\n" +
-  "5) TIPO da ficha: 'prato' (padrão), 'drinque' (se for bebida), ou 'subproduto' se o nome indicar um " +
-  "preparo-base usado em outras fichas (ex: começa com 'Base de', 'Molho', 'Massa', 'Caldo').\n" +
-  "6) Ingredientes 'q.b.', 'a gosto', 'quanto baste' → qb:true e qtd:0.\n" +
-  "7) O rendimento da FICHA (rendimentoFinal) = rendimento da última etapa (a servida). Se houver só um " +
-  "bloco, rendimentoFinal = rendimento dele.\n\n" +
+  "3) ESTRUTURA: a fonte tem BLOCOS. Um bloco começa numa linha 'Preparo' cujo valor ao lado é o NOME do " +
+  "preparo, seguida por uma linha 'Rendimento' (quantidade + unidade) e depois uma tabela com colunas " +
+  "'Ingrediente | Quantidade | Unidade'.\n" +
+  "4) Cada bloco 'Preparo' vira UMA receita (uma 'ficha' na saída), com a lista PLANA de ingredientes dele.\n" +
+  "5) 'ehSubficha': marque TRUE se o preparo é uma BASE/componente reutilizável (nome começa com 'Base de', " +
+  "'Molho', 'Massa', 'Caldo', 'Recheio', etc, ou a unidade de rendimento é kg/L). Marque FALSE se é um prato/" +
+  "drinque final servido (rendimento em porções/un/dose). Na dúvida, use true.\n" +
+  "6) 'categoria': se der pra inferir uma categoria do cardápio (ex: 'Molhos', 'Massas', 'Drinks', 'Pratos " +
+  "principais', 'Entradas'), coloque; senão deixe \"\".\n" +
+  "7) Ingredientes 'q.b.', 'a gosto', 'quanto baste' → qb:true e qtd:0.\n\n" +
   "Responda SOMENTE um objeto JSON (sem texto antes/depois), neste formato:\n" +
-  '{ "fichas": [ { "nome": "...", "tipo": "prato|drinque|subproduto", ' +
+  '{ "fichas": [ { "nome": "...", "ehSubficha": true, "categoria": "", ' +
   '"rendimento": { "qtd": 0, "unidade": "kg" }, ' +
-  '"subfichas": [ { "nome": "...", "rendimento": { "qtd": 0, "unidade": "kg" }, ' +
-  '"ingredientes": [ { "nome": "...", "qtd": 0, "unidade": "g", "qb": false } ] } ] } ] }\n\n' +
+  '"ingredientes": [ { "nome": "...", "qtd": 0, "unidade": "g", "qb": false } ] } ] }\n\n' +
   "PLANILHA:\n";
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {

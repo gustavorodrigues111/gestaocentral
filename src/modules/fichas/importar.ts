@@ -8,8 +8,14 @@ import { dimensaoDeUnidade } from "./unidades";
 import { sugerirInsumos } from "./dedup";
 
 export type IngredienteIA = { nome: string; qtd: number; unidade: string; qb?: boolean };
-export type SubfichaIA = { nome: string; rendimento: { qtd: number; unidade: string }; ingredientes: IngredienteIA[] };
-export type FichaIA = { nome: string; tipo: string; rendimento: { qtd: number; unidade: string }; subfichas: SubfichaIA[] };
+// Cada "Preparo" da planilha vira UMA receita (lista plana de ingredientes).
+export type FichaIA = {
+  nome: string;
+  ehSubficha?: boolean;
+  categoria?: string;
+  rendimento: { qtd: number; unidade: string };
+  ingredientes: IngredienteIA[];
+};
 
 // Lê o arquivo e transforma cada aba em texto tabular ("A | B | C" por linha).
 export async function planilhaParaTexto(file: File): Promise<string> {
