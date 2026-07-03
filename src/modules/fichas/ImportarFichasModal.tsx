@@ -258,6 +258,14 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === vNorm ? { ...ing, principalKey: newKey, variacaoNorm: "" } : ing) })));
   }
 
+  // "Esta variação é a mesma que aquela" (ex.: PICADA = BRUNOISE): funde a
+  // variação `de` na `para`, dentro do MESMO insumo. Os usos passam pra `para`.
+  function mesclarVariacoes(pk: string, deNorm: string, paraNorm: string) {
+    if (deNorm === paraNorm) return;
+    setPrincipais(prev => { const p = prev[pk]; if (!p) return prev; return { ...prev, [pk]: { ...p, variacoes: p.variacoes.filter(v => v.norm !== deNorm) } }; });
+    setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.principalKey === pk && ing.variacaoNorm === deNorm ? { ...ing, variacaoNorm: paraNorm } : ing) })));
+  }
+
   // "Isto é um preparo (ex.: ALHO NO ÓLEO = alho + óleo), não um insumo": cria
   // uma NOVA subficha vazia e aponta os usos pra ela. Os ingredientes internos
   // (e rendimento) você monta na tela de Fichas depois. Se vNorm, promove só a
@@ -591,6 +599,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                           <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
                           <span className="text-[11px] text-gray-400">aprov.</span>
                           <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
+                          {p.variacoes.length > 1 && (
+                            <select value="" onChange={e => { if (e.target.value) mesclarVariacoes(p.key, v.norm, e.target.value); }} title="Esta variação é a mesma que outra deste insumo" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[96px]"><option value="">= mesma que…</option>{p.variacoes.filter(o => o.norm !== v.norm).map(o => <option key={o.norm} value={o.norm}>{o.nome}</option>)}</select>
+                          )}
                           <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
                           <button type="button" onClick={() => promoverParaSubficha(p.key, v.norm)} title="É um preparo — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400">é subficha ↧</button>
                           <button type="button" onClick={() => setPrinc(p.key, { variacoes: p.variacoes.filter(x => x.norm !== v.norm) })} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
