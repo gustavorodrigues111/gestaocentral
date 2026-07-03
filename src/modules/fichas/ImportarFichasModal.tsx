@@ -11,7 +11,7 @@ import type { FtFicha, FtFichaTipo, FtIngrediente, FtInsumo, FtSubficha } from "
 import { FT_FICHA_TIPO_LABEL } from "../../core/types";
 import { labelUnidade } from "./unidades";
 import { normalizarNome } from "./dedup";
-import { importarFichasIA, planilhaParaTexto, resolverIngrediente, type IngredienteResol } from "./importar";
+import { fileParaAnexo, importarFichasIA, planilhaParaTexto, resolverIngrediente, type Anexo, type IngredienteResol } from "./importar";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
@@ -30,15 +30,53 @@ export function ImportarFichasModal({ rid, insumos, meId, meNome, onClose }: {
   const [fase, setFase] = useState<"upload" | "lendo" | "revisao" | "gravando">("upload");
   const [erro, setErro] = useState("");
   const [fichas, setFichas] = useState<FichaRev[]>([]);
+  const [planilhaTexto, setPlanilhaTexto] = useState<string>("");
+  const [planilhaNome, setPlanilhaNome] = useState<string>("");
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const camRef = useRef<HTMLInputElement | null>(null);
 
-  async function escolher(file: File) {
+  const temFonte = !!planilhaTexto || anexos.length > 0;
+
+  // Classifica cada arquivo: planilha vira texto; imagem/PDF vira anexo base64.
+  async function addArquivos(files: FileList | File[]) {
+    setErro("");
+    for (const file of Array.from(files)) {
+      const nome = file.name.toLowerCase();
+      const ehPlanilha = /\.(xlsx|xls|csv)$/.test(nome) || file.type.includes("sheet") || file.type === "text/csv";
+      try {
+        if (ehPlanilha) {
+          const texto = await planilhaParaTexto(file);
+          if (!texto.trim()) { setErro("Não consegui ler conteúdo da planilha."); continue; }
+          setPlanilhaTexto(texto); setPlanilhaNome(file.name);
+        } else {
+          const ax = await fileParaAnexo(file);
+          setAnexos(prev => [...prev, ax]);
+        }
+      } catch (e) {
+        setErro(e instanceof Error ? e.message : String(e));
+      }
+    }
+  }
+
+  // Colar print (Cmd/Ctrl+V) — pega imagem da área de transferência.
+  async function onPaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const it of Array.from(items)) {
+      if (it.type.startsWith("image/")) {
+        const blob = it.getAsFile();
+        if (blob) { const ax = await fileParaAnexo(blob); setAnexos(prev => [...prev, ax]); }
+      }
+    }
+  }
+
+  async function analisar() {
+    if (!temFonte) return;
     setErro(""); setFase("lendo");
     try {
-      const texto = await planilhaParaTexto(file);
-      if (!texto.trim()) throw new Error("Não consegui ler conteúdo da planilha.");
-      const ia = await importarFichasIA(texto);
-      if (ia.length === 0) throw new Error("A IA não encontrou nenhuma ficha na planilha.");
+      const ia = await importarFichasIA({ planilha: planilhaTexto, anexos });
+      if (ia.length === 0) throw new Error("A IA não encontrou nenhuma ficha. Tente uma imagem mais nítida ou outro arquivo.");
       let k = 0;
       const rev: FichaRev[] = ia.map(f => ({
         id: uid("fic"),
@@ -136,22 +174,53 @@ export function ImportarFichasModal({ rid, insumos, meId, meNome, onClose }: {
   }
 
   return (
-    <Modal title="Importar fichas da planilha (IA)" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title="Importar receita (IA)" onClose={onClose} maxWidth="max-w-3xl">
       {fase === "upload" && (
-        <div className="text-center py-8">
-          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) escolher(f); }} />
-          <div className="text-4xl mb-3">📄</div>
-          <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">Escolha a planilha (.xlsx) com suas fichas técnicas.</p>
-          <p className="text-xs text-gray-400 mb-4">A IA vai estruturar as fichas e você revisa antes de gravar. Nada é salvo automaticamente.</p>
-          {erro && <div className="text-sm text-red-600 mb-3">{erro}</div>}
-          <Button onClick={() => inputRef.current?.click()}>Escolher planilha</Button>
+        <div className="py-1" onPaste={onPaste}>
+          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,application/pdf,image/*" multiple className="hidden" onChange={e => { if (e.target.files) void addArquivos(e.target.files); e.currentTarget.value = ""; }} />
+          <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { if (e.target.files) void addArquivos(e.target.files); e.currentTarget.value = ""; }} />
+
+          <div className="rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 p-6 text-center">
+            <div className="text-4xl mb-2">🧾</div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">Importe uma receita de <strong>planilha, PDF, print ou foto</strong> (inclusive manuscrito).</p>
+            <p className="text-xs text-gray-400 mt-1 mb-4">A IA estrutura e você revisa antes de gravar. Nada é salvo automaticamente.</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="secondary" onClick={() => inputRef.current?.click()}>📎 Anexar arquivo</Button>
+              <Button variant="secondary" onClick={() => camRef.current?.click()}>📷 Tirar foto</Button>
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">Ou cole um print aqui (Ctrl/Cmd + V)</p>
+          </div>
+
+          {temFonte && (
+            <div className="mt-3 space-y-1.5">
+              {planilhaTexto && (
+                <div className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800">
+                  <span>📄</span><span className="flex-1 truncate">{planilhaNome || "planilha"}</span>
+                  <button type="button" onClick={() => { setPlanilhaTexto(""); setPlanilhaNome(""); }} className="text-gray-400 hover:text-red-600 text-xs">remover</button>
+                </div>
+              )}
+              {anexos.map((a, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-800">
+                  <span>{a.mediaType === "application/pdf" ? "📕" : "🖼️"}</span><span className="flex-1 truncate">{a.nome}</span>
+                  <button type="button" onClick={() => setAnexos(prev => prev.filter((_, idx) => idx !== i))} className="text-gray-400 hover:text-red-600 text-xs">remover</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {erro && <div className="text-sm text-red-600 mt-3">{erro}</div>}
+
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+            <Button onClick={analisar} disabled={!temFonte}>✨ Analisar</Button>
+          </div>
         </div>
       )}
 
       {fase === "lendo" && (
         <div className="text-center py-12 text-gray-500">
           <div className="text-3xl mb-3 animate-pulse">🤖</div>
-          Lendo a planilha e estruturando as fichas… <span className="block text-xs text-gray-400 mt-1">(pode levar alguns segundos)</span>
+          Lendo a receita e estruturando as fichas… <span className="block text-xs text-gray-400 mt-1">(pode levar alguns segundos)</span>
         </div>
       )}
 

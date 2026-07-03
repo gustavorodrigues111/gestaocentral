@@ -27,14 +27,32 @@ export async function planilhaParaTexto(file: File): Promise<string> {
   return partes.join("\n\n");
 }
 
-export async function importarFichasIA(planilha: string): Promise<FichaIA[]> {
+export type Anexo = { data: string; mediaType: string; nome: string };
+
+// Lê um arquivo (imagem/PDF) como base64 SEM prefixo, pra mandar ao Claude.
+export async function fileParaAnexo(file: File): Promise<Anexo> {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunk)));
+  }
+  const data = btoa(bin);
+  const isPdf = file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf");
+  const mediaType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
+  return { data, mediaType, nome: file.name || (isPdf ? "documento.pdf" : "imagem") };
+}
+
+export async function importarFichasIA(payload: { planilha?: string; anexos?: Anexo[] }): Promise<FichaIA[]> {
+  const anexos = (payload.anexos || []).map(a => ({ data: a.data, mediaType: a.mediaType }));
   const resp = await fetch("/api/importar-fichas", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...(await authHeader()) },
-    body: JSON.stringify({ planilha }),
+    body: JSON.stringify({ planilha: payload.planilha || "", anexos }),
   });
   const data = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status} ao processar a planilha.`);
+  if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status} ao processar a receita.`);
   return Array.isArray((data as { fichas?: FichaIA[] }).fichas) ? (data as { fichas: FichaIA[] }).fichas : [];
 }
 

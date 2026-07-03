@@ -16,9 +16,10 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 const PROMPT =
-  "Você recebe o TEXTO de uma planilha de FICHAS TÉCNICAS de um restaurante (produção de pratos, " +
-  "drinques e preparos-base), em português. Cada célula está separada por ' | ' e cada aba vem marcada " +
-  "com '=== Aba: NOME ==='.\n\n" +
+  "Você recebe uma ou mais FICHAS TÉCNICAS de um restaurante (produção de pratos, drinques e preparos-" +
+  "base), em português. A fonte pode ser: o TEXTO de uma planilha (abaixo, células separadas por ' | ' e " +
+  "abas marcadas com '=== Aba: NOME ==='), e/ou uma IMAGEM/PDF anexado (foto, print ou até manuscrito). " +
+  "Se for imagem/manuscrito, leia com atenção; se um número estiver ilegível, use 0 (não invente).\n\n" +
   "Estruture em JSON. Regras IMPORTANTES:\n" +
   "1) NÚMEROS estão em formato brasileiro: a VÍRGULA é separador DECIMAL (ex: '2,777' = 2.777; " +
   "'0,630' = 0.63; '4,000' = 4). Converta para número com ponto decimal.\n" +
@@ -52,14 +53,23 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada nas env vars da Vercel." }); return; }
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { planilha?: string } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as
+    { planilha?: string; anexos?: Array<{ data?: string; mediaType?: string }> } | null;
   const planilha = (body?.planilha || "").toString().slice(0, 60_000); // corta planilhas gigantes
-  if (!planilha.trim()) { res.status(400).json({ error: "Planilha vazia." }); return; }
+  const anexos = Array.isArray(body?.anexos)
+    ? body!.anexos.filter((a) => a && typeof a.data === "string" && a.data).slice(0, 8)
+    : [];
+  if (!planilha.trim() && anexos.length === 0) { res.status(400).json({ error: "Nada pra importar (sem planilha nem anexo)." }); return; }
+
+  const blocks = anexos.map((a) => a.mediaType === "application/pdf"
+    ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: a.data } }
+    : { type: "image", source: { type: "base64", media_type: a.mediaType || "image/jpeg", data: a.data } });
+  const textoFinal = planilha.trim() ? planilha : "(a receita está na imagem/PDF anexado acima)";
 
   const payload = {
     model: MODEL,
     max_tokens: 12000,
-    messages: [{ role: "user", content: [{ type: "text", text: PROMPT + planilha }] }],
+    messages: [{ role: "user", content: [...blocks, { type: "text", text: PROMPT + textoFinal }] }],
   };
 
   const ctrl = new AbortController();

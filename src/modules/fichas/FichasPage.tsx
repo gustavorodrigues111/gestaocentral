@@ -77,7 +77,7 @@ export function FichasPage() {
         </div>
         {tab === "fichas" && podeEditar && (
           <div className="flex gap-2 w-full sm:w-auto">
-            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>📄 Importar planilha</Button>
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>✨ Importar receita</Button>
             <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, pessoa?.id, pessoa?.nome))}>+ Nova ficha</Button>
           </div>
         )}
