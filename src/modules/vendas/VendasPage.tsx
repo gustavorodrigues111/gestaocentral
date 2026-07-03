@@ -16,6 +16,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
 import { whatsLink } from "../../core/excecoes/whatsapp";
 import { fmtBR } from "../../core/utils/date";
@@ -646,27 +647,22 @@ function CadastroProdutos({ rid, produtos }: { rid: string; produtos: VendaProdu
   }
   const ativos = produtos.filter(p => p.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-        <Input label="Produto" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Costela suína" />
-        <label className="text-xs"><span className="text-gray-500">Preço padrão</span>
-          <div className="mt-0.5 flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2"><span className="text-gray-400 text-xs">R$</span>
-            <input value={preco} onChange={e => setPreco(maskMoeda(e.target.value))} inputMode="numeric" placeholder="0,00" className="w-full px-1 py-2 bg-transparent text-right outline-none" /></div>
-        </label>
-        <Input label="Unidade" value={unidade} onChange={e => setUnidade(e.target.value)} placeholder="un, kg, cx" />
-        <Button onClick={add}>+ Adicionar</Button>
-      </div>
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-        {ativos.length === 0 ? <div className="p-4 text-sm text-gray-500 text-center">Nenhum produto.</div> : ativos.map(p => (
-          <div key={p.id} className="flex items-center justify-between gap-2 p-2.5 text-sm">
-            <span className="text-gray-800 dark:text-gray-200">{p.nome}{p.unidade ? ` · ${p.unidade}` : ""}</span>
-            <div className="flex items-center gap-3">
-              {p.precoPadrao ? <span className="text-gray-500 tabular-nums">{fmtMoeda(p.precoPadrao)}</span> : null}
-              <button type="button" onClick={() => updateDoc(doc(db, "vendasProdutos", p.id), { ativo: false })} className="text-red-500 hover:text-red-700 text-xs">excluir</button>
-            </div>
-          </div>
+    <div className="space-y-4">
+      <FormCard titulo="Novo produto">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_170px_130px_auto] gap-3 items-end">
+          <Input label="Produto" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Costela suína" />
+          <CampoMoeda label="Preço padrão" value={preco} onChange={e => setPreco(maskMoeda(e.target.value))} />
+          <Input label="Unidade" value={unidade} onChange={e => setUnidade(e.target.value)} placeholder="un, kg, cx" />
+          <Button onClick={add}>+ Adicionar</Button>
+        </div>
+      </FormCard>
+      <ListaCard vazio={ativos.length === 0} vazioTexto="Nenhum produto cadastrado.">
+        {ativos.map(p => (
+          <ItemLinha key={p.id} emoji="📦" titulo={p.nome} sub={p.unidade || undefined}
+            direita={p.precoPadrao ? <span className="text-gray-600 dark:text-gray-300 font-medium tabular-nums">{fmtMoeda(p.precoPadrao)}</span> : null}
+            onExcluir={() => updateDoc(doc(db, "vendasProdutos", p.id), { ativo: false })} />
         ))}
-      </div>
+      </ListaCard>
     </div>
   );
 }
@@ -693,38 +689,33 @@ function CadastroClientes({ rid, clientes, restaurants }: { rid: string; cliente
   const ativos = clientes.filter(c => c.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const outrasEmpresas = restaurants.filter(r => r.id !== rid);
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
-        <label className="text-xs"><span className="text-gray-500">Tipo</span>
-          <select value={tipo} onChange={e => setTipo(e.target.value as "externa" | "interna")} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+    <div className="space-y-4">
+      <FormCard titulo="Novo cliente">
+        <div className="grid grid-cols-1 sm:grid-cols-[200px_1fr_180px_auto] gap-3 items-end">
+          <Select label="Tipo" value={tipo} onChange={e => setTipo(e.target.value as "externa" | "interna")}>
             <option value="externa">Externa</option>
             <option value="interna">Interna (empresa do sistema)</option>
-          </select>
-        </label>
-        {tipo === "interna" ? (
-          <label className="text-xs"><span className="text-gray-500">Empresa</span>
-            <select value={restVinc} onChange={e => setRestVinc(e.target.value)} className="mt-0.5 w-full px-2 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+          </Select>
+          {tipo === "interna" ? (
+            <Select label="Empresa" value={restVinc} onChange={e => setRestVinc(e.target.value)}>
               <option value="">Selecione…</option>
               {outrasEmpresas.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-            </select>
-          </label>
-        ) : (
-          <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Fulano / Empresa X" />
-        )}
-        <Input label="WhatsApp" value={whats} onChange={e => setWhats(e.target.value)} placeholder="(91) 90000-0000" />
-        <Button onClick={add}>+ Adicionar</Button>
-      </div>
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-        {ativos.length === 0 ? <div className="p-4 text-sm text-gray-500 text-center">Nenhum cliente.</div> : ativos.map(c => (
-          <div key={c.id} className="flex items-center justify-between gap-2 p-2.5 text-sm">
-            <span className="text-gray-800 dark:text-gray-200">{c.nome} {c.tipo === "interna" && <span className="text-[10px] uppercase text-indigo-500">interna</span>}</span>
-            <div className="flex items-center gap-3">
-              {c.whatsapp && <span className="text-gray-500 text-xs">{c.whatsapp}</span>}
-              <button type="button" onClick={() => updateDoc(doc(db, "vendasClientes", c.id), { ativo: false })} className="text-red-500 hover:text-red-700 text-xs">excluir</button>
-            </div>
-          </div>
+            </Select>
+          ) : (
+            <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Fulano / Empresa X" />
+          )}
+          <Input label="WhatsApp" value={whats} onChange={e => setWhats(e.target.value)} placeholder="(91) 90000-0000" />
+          <Button onClick={add}>+ Adicionar</Button>
+        </div>
+      </FormCard>
+      <ListaCard vazio={ativos.length === 0} vazioTexto="Nenhum cliente cadastrado.">
+        {ativos.map(c => (
+          <ItemLinha key={c.id} emoji={c.tipo === "interna" ? "🏢" : "👤"}
+            titulo={c.nome} badge={c.tipo === "interna" ? "interna" : undefined}
+            sub={c.whatsapp || undefined}
+            onExcluir={() => updateDoc(doc(db, "vendasClientes", c.id), { ativo: false })} />
         ))}
-      </div>
+      </ListaCard>
     </div>
   );
 }
@@ -739,25 +730,73 @@ function CadastroFormas({ formas }: { formas: VendaFormaPagamento[] }) {
   }
   const ativas = formas.filter(f => f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   return (
-    <div className="space-y-3">
-      <div className="text-[11px] text-gray-500">Formas de pagamento são globais (valem pra todas as empresas). Permuta é um tipo à parte no pagamento — não precisa cadastrar aqui.</div>
-      <div className="flex gap-2 items-end">
-        <Input label="Forma de pagamento" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: PIX, Dinheiro, Transferência" />
-        <Button onClick={add}>+ Adicionar</Button>
-      </div>
-      <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-        {ativas.length === 0 ? <div className="p-4 text-sm text-gray-500 text-center">Nenhuma forma cadastrada.</div> : ativas.map(f => (
-          <div key={f.id} className="flex items-center justify-between gap-2 p-2.5 text-sm">
-            <span className="text-gray-800 dark:text-gray-200">{f.nome}</span>
-            <button type="button" onClick={() => deleteDoc(doc(db, "vendasFormasPagamento", f.id))} className="text-red-500 hover:text-red-700 text-xs">excluir</button>
-          </div>
+    <div className="space-y-4">
+      <FormCard titulo="Nova forma de pagamento" nota="Globais — valem pra todas as empresas. Permuta é um tipo à parte no pagamento, não precisa cadastrar aqui.">
+        <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-end">
+          <Input label="Forma de pagamento" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: PIX, Dinheiro, Transferência" />
+          <Button onClick={add}>+ Adicionar</Button>
+        </div>
+      </FormCard>
+      <ListaCard vazio={ativas.length === 0} vazioTexto="Nenhuma forma cadastrada.">
+        {ativas.map(f => (
+          <ItemLinha key={f.id} emoji="💳" titulo={f.nome}
+            onExcluir={() => deleteDoc(doc(db, "vendasFormasPagamento", f.id))} />
         ))}
-      </div>
+      </ListaCard>
     </div>
   );
 }
 
 // ─── UI atoms ───────────────────────────────────────────────────────────────
+// Card do formulário "adicionar" — borda suave + sombra, acabamento moderno.
+function FormCard({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4">
+      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">{titulo}</div>
+      {children}
+      {nota && <div className="mt-2 text-[11px] text-gray-400">{nota}</div>}
+    </div>
+  );
+}
+// Container da lista de cadastros.
+function ListaCard({ vazio, vazioTexto, children }: { vazio: boolean; vazioTexto: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+      {vazio ? <div className="p-8 text-sm text-gray-400 text-center">{vazioTexto}</div> : children}
+    </div>
+  );
+}
+// Linha de item na lista de cadastros.
+function ItemLinha({ emoji, titulo, sub, badge, direita, onExcluir }: {
+  emoji: string; titulo: string; sub?: string; badge?: string; direita?: React.ReactNode; onExcluir: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group">
+      <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">{emoji}</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+          {titulo}
+          {badge && <span className="ml-2 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{badge}</span>}
+        </div>
+        {sub && <div className="text-xs text-gray-500 truncate">{sub}</div>}
+      </div>
+      {direita}
+      <button type="button" onClick={onExcluir} className="text-gray-400 hover:text-red-600 text-xs opacity-0 group-hover:opacity-100 transition-opacity shrink-0">Excluir</button>
+    </div>
+  );
+}
+// Campo de moeda com a MESMA altura do Input (prefixo R$).
+function CampoMoeda({ label, value, onChange }: { label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">{label}</label>
+      <div className="flex items-center gap-1 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:border-indigo-500">
+        <span className="text-gray-400 text-xs">R$</span>
+        <input value={value} onChange={onChange} inputMode="numeric" placeholder="0,00" className="w-full py-2 bg-transparent text-right text-sm outline-none dark:text-gray-100" />
+      </div>
+    </div>
+  );
+}
 function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button type="button" onClick={onClick}
