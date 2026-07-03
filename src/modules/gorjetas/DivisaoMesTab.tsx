@@ -452,6 +452,14 @@ export function DivisaoMesTab({
       {/* Filtro de unidade vive no header da GorjetasPage (pills compartilhados
           entre tabs Lançamentos e Divisão do mês). */}
 
+      {/* Aviso: o ponto do mês ainda não foi encerrado — a praticada pode mudar
+          e a divisão junto. Fechar/encerrar o mês no Análise de Ponto primeiro. */}
+      {!escala?.fechadoEm && (
+        <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200">
+          ⚠ O ponto de {nomeMes(mes)}/{ano} <strong>ainda não está encerrado</strong>. Como a praticada pode mudar, a divisão da gorjeta pode variar. Feche os dias e <strong>encerre o mês no Análise de Ponto → Fechamento</strong> antes de fechar a gorjeta.
+        </div>
+      )}
+
       {/* Banner: escala foi alterada após publicação — snapshot defasado.
           Sticky no topo pra ficar visível mesmo com a tabela grande rolada. */}
       {escalaDesatualizada && (

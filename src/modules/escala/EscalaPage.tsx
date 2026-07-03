@@ -20,7 +20,7 @@ import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIV
 import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
-import { FecharMesModal, ReabrirMesModal } from "./FecharMesModal";
+import { ReabrirMesModal } from "./FecharMesModal";
 import { InversaoDomingoModal } from "./InversaoDomingoModal";
 import { ExportarEscalaModal } from "./ExportarEscalaModal";
 // SumarioMesModal removido da Escala — o conteúdo (gorjetas, VT, divergências)
@@ -101,7 +101,6 @@ export function EscalaPage() {
   // a tela alternava entre redirect → conteúdo (ex: durante load de
   // perfis), a sequência de hooks mudava e React crashava (tela em branco).
   const [showFeriasLote, setShowFeriasLote] = useState(false);
-  const [showFecharMes, setShowFecharMes] = useState(false);
   const [showReabrirMes, setShowReabrirMes] = useState(false);
   const [showInversao, setShowInversao] = useState(false);
   const [filtroUnidadeId, setFiltroUnidadeId] = useState<string>("");  // "" = todas
@@ -771,20 +770,13 @@ export function EscalaPage() {
                 🔓 Reabrir prevista
               </Button>
             )}
-            {/* PRATICADA: Encerrar / Reabrir o MÊS (congela a praticada). O
-                fechamento dia a dia é no Análise de Ponto; aqui é o lock final. */}
+            {/* PRATICADA: o "Encerrar mês" (lock final) agora fica no Análise de
+                Ponto → Fechamento (onde os dias são fechados). Aqui sobra só o
+                Reabrir, pra quem tem permissão. */}
             {versao === "real" && !fechada && podeConfig && (
-              <div className="flex items-center gap-2">
-                {diasPendentesPraticada > 0 && (
-                  <span className="text-[11px] text-amber-600 dark:text-amber-400">
-                    {diasPendentesPraticada} dia(s) a fechar no Análise de Ponto
-                  </span>
-                )}
-                <Button variant="danger" size="sm" disabled={diasPendentesPraticada > 0} onClick={() => setShowFecharMes(true)}
-                  title={diasPendentesPraticada > 0 ? "Feche todos os dias no Análise de Ponto antes de encerrar o mês" : "Congela a praticada do mês (read-only)"}>
-                  🔒 Encerrar mês
-                </Button>
-              </div>
+              <span className="text-[11px] text-gray-400">
+                Encerrar o mês agora é no <strong>Análise de Ponto → Fechamento</strong>{diasPendentesPraticada > 0 ? ` (${diasPendentesPraticada} dia(s) a fechar)` : ""}.
+              </span>
             )}
             {versao === "real" && fechada && podeReabrir && (
               <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
@@ -936,16 +928,6 @@ export function EscalaPage() {
         />
       )}
 
-      {showFecharMes && (
-        <FecharMesModal
-          rid={rid}
-          ano={ano}
-          mes={mes}
-          escala={escala}
-          diasPendentes={diasPendentesPraticada}
-          onClose={() => setShowFecharMes(false)}
-        />
-      )}
       {showReabrirMes && (
         <ReabrirMesModal
           rid={rid}

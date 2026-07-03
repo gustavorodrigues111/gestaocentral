@@ -16,6 +16,10 @@ import { analisarPonto, ROTULOS, type Ocorrencia, type PontoColaborador, type Po
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
 import { Modal } from "../../core/ui/Modal";
+import { useAuth } from "../../core/auth/AuthContext";
+import { canConfig } from "../../core/auth/permissions";
+import { daysInMonth, pad2 } from "../../core/utils/date";
+import { FecharMesModal } from "../escala/FecharMesModal";
 import { BatidasDiaModal } from "./BatidasDiaModal";
 import { AfastamentoModal } from "./AfastamentoModal";
 
@@ -181,6 +185,9 @@ export function FechamentoTab({
   por: { id: string; nome: string };
   podeAprovar?: boolean;
 }) {
+  const { pessoa: me } = useAuth();
+  const podeEncerrar = canConfig(me, rid, "escala");
+  const [showEncerrar, setShowEncerrar] = useState(false);
   const [mes, setMes] = useState(mesInicial);
   // Faixa de dias dentro do mês (padrão = mês inteiro). Permite conferir "todo
   // mundo fechado até o dia X" (ex.: pra pagar gorjeta/rescisão até certo dia).
@@ -482,6 +489,30 @@ export function FechamentoTab({
   const mesEncerrado = !!escala?.fechadoEm;
   const realAjustesSel = appIdSel ? escala?.realAjustes?.[appIdSel] : undefined;
   const fechadoEm = (date: string) => realAjustesSel?.[date]?.origem === "solides_sync";
+
+  // Dias pendentes no MÊS inteiro (independe da visão/faixa) — pra habilitar o
+  // "Encerrar mês" e os banners de estado.
+  const pendentesGlobais = useMemo(() => {
+    let n = 0;
+    for (const col of colaboradores) {
+      if (!col.emp) continue;
+      const aj = escala?.realAjustes?.[col.emp.id] || {};
+      for (const d of espelhoDe(col)) {
+        if (d.demitido || d.futuro || d.date >= hojeYmd) continue;
+        if ((aj[d.date] as AjusteEscalaMeta | undefined)?.origem === "solides_sync") continue;
+        n++;
+      }
+    }
+    return n;
+  }, [colaboradores, escala, espelhoDe, hojeYmd]);
+  const temColabsFechaveis = colaboradores.some((c) => !!c.emp);
+  // Mês já venceu = último dia do mês selecionado ficou no passado.
+  const mesVencido = (() => {
+    const [y, m] = mes.split("-").map(Number);
+    const ultimo = `${mes}-${pad2(daysInMonth(y, m))}`;
+    return ultimo < hojeYmd;
+  })();
+  const anoMes = (() => { const [y, m] = mes.split("-").map(Number); return { ano: y, mes: m }; })();
 
   // Status exibido: dia fechado mostra o que foi gravado na praticada; senão, edição/sugestão.
   const statusDe = (date: string): ScheduleStatus | undefined => {
@@ -984,12 +1015,30 @@ export function FechamentoTab({
         <p className="text-[11px] text-gray-500 mt-2">
           Escolha um colaborador pelo chip. <span className="text-emerald-700 dark:text-emerald-300 font-semibold">✓ verde</span> = período fechado · <span className="text-amber-700 dark:text-amber-300 font-semibold">● amarelo</span> = ainda tem dias a fechar · <span className="text-gray-400 font-semibold">○ cinza</span> = sem vínculo no app.
         </p>
-        {mesEncerrado
-          ? <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">🔒 Mês encerrado — pra fechar/editar dias, reabra no módulo Escala (🔓 Reabrir mês)</div>
-          : previstaFechada
-          ? <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">🟢 Mês aberto — feche os dias aqui; o "Encerrar mês" (lock final) fica no módulo Escala</div>
-          : null}
+        {mesEncerrado ? (
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">🔒 Mês encerrado — pra fechar/editar dias, reabra no módulo Escala (🔓 Reabrir mês)</div>
+        ) : previstaFechada && temColabsFechaveis ? (
+          pendentesGlobais === 0 ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3">
+              <span className="text-sm text-emerald-800 dark:text-emerald-200">✅ Todos os dias do mês estão fechados{mesVencido ? " e o mês já venceu" : ""}. Encerre o mês pra consolidar gorjeta e VT.</span>
+              <div className="flex-1" />
+              {podeEncerrar && <button type="button" onClick={() => setShowEncerrar(true)} className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white shrink-0">🔒 Encerrar mês</button>}
+            </div>
+          ) : (
+            <div className={`mt-3 flex flex-wrap items-center gap-2 rounded-xl border p-3 ${mesVencido ? "border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20"}`}>
+              <span className={`text-sm ${mesVencido ? "text-rose-800 dark:text-rose-200" : "text-amber-800 dark:text-amber-200"}`}>
+                {mesVencido ? "🚨 Mês vencido e ainda não encerrado — " : "⏳ "}faltam <strong>{pendentesGlobais} dia(s)</strong> a fechar antes de encerrar o mês.
+              </span>
+              <div className="flex-1" />
+              {podeEncerrar && <button type="button" disabled title="Feche todos os dias antes de encerrar o mês" className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 text-white opacity-40 cursor-not-allowed shrink-0">🔒 Encerrar mês</button>}
+            </div>
+          )
+        ) : null}
       </div>
+
+      {showEncerrar && (
+        <FecharMesModal rid={rid} ano={anoMes.ano} mes={anoMes.mes} escala={escala} diasPendentes={pendentesGlobais} onClose={() => setShowEncerrar(false)} />
+      )}
 
       {/* Toggle de visão */}
       {colaboradores.length > 0 && (
