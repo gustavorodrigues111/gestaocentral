@@ -457,7 +457,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               <option value="">reclassificar…</option>
               <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
               {fichas.filter(o => o.id !== f.id).length > 0 && (
-                <optgroup label="↦ é subproduto de…">{fichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`subprod:${o.id}`}>{o.nome}</option>)}</optgroup>
+                <optgroup label="↦ é subproduto de…">{fichas.filter(o => o.id !== f.id).sort((a, b) => a.nome.localeCompare(b.nome)).map(o => <option key={o.id} value={`subprod:${o.id}`}>{o.nome}</option>)}</optgroup>
               )}
               {subfichas.filter(o => o.id !== f.id).length > 0 && (
                 <optgroup label="⇄ mesclar com subficha">{subfichas.filter(o => o.id !== f.id).map(o => <option key={o.id} value={`merge:${o.id}`}>{o.nome}</option>)}</optgroup>
@@ -731,7 +731,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         </select>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
-                        <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{fichas.map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
+                        <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
                         {p.ehSubprodutoPendente && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 shrink-0" title="Vira insumo-subproduto sem custo; vincule ao preparo na tela de Fichas">subproduto ⏳</span>}
                       </div>
                       {p.variacoes.map(v => (
