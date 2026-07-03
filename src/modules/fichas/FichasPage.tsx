@@ -34,7 +34,9 @@ function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
 type Tab = "fichas" | "insumos" | "categorias";
-type FiltroTipo = "todas" | "finais" | "subfichas";
+type FiltroTipo = "todas" | "finais" | "subfichas" | "pendentes";
+// Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
+const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
 
 export function FichasPage() {
   const { pessoa } = useAuth();
@@ -144,9 +146,10 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
   const [filtro, setFiltro] = useState<FiltroTipo>("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
   const catNome = (id?: string | null) => categorias.find(c => c.id === id)?.nome;
+  const nPendentes = useMemo(() => fichas.filter(f => f.ativo !== false && fichaPendente(f)).length, [fichas]);
   const lista = useMemo(() => fichas
     .filter(f => f.ativo !== false)
-    .filter(f => filtro === "todas" || (filtro === "finais" ? !f.ehSubficha : f.ehSubficha))
+    .filter(f => filtro === "todas" ? true : filtro === "pendentes" ? fichaPendente(f) : filtro === "finais" ? !f.ehSubficha : f.ehSubficha)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
     .sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, filtro, catFiltro]);
 
@@ -160,10 +163,10 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-          {(["todas", "finais", "subfichas"] as FiltroTipo[]).map(t => (
+          {(["todas", "finais", "subfichas", "pendentes"] as FiltroTipo[]).map(t => (
             <button key={t} type="button" onClick={() => setFiltro(t)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md ${filtro === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>
-              {t === "todas" ? "Todas" : t === "finais" ? "Fichas finais" : "Subfichas"}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${filtro === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"} ${t === "pendentes" && nPendentes > 0 && filtro !== t ? "text-amber-700 dark:text-amber-400" : ""}`}>
+              {t === "todas" ? "Todas" : t === "finais" ? "Fichas finais" : t === "subfichas" ? "Subfichas" : `⏳ Pendentes${nPendentes > 0 ? ` (${nPendentes})` : ""}`}
             </button>
           ))}
         </div>
@@ -189,7 +192,10 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                     <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome || "(sem nome)"}</div>
                     <div className="text-xs text-gray-500">{catNome(f.categoriaId) ? `${catNome(f.categoriaId)} · ` : ""}rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</div>
                   </div>
-                  {f.ehSubficha && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 shrink-0">subficha</span>}
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {f.ehSubficha && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
+                    {fichaPendente(f) && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="Sem ingredientes — monte a receita">⏳ pendente</span>}
+                  </div>
                 </div>
                 <div className="mt-3 flex items-end justify-between">
                   <div>
@@ -562,8 +568,10 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
 function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; meId?: string }) {
   const [nome, setNome] = useState(""); const [unidadeBase, setUnidadeBase] = useState("kg"); const [custo, setCusto] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
+  const [soPendentes, setSoPendentes] = useState(false);
   const similares = useMemo(() => sugerirInsumos(nome, insumos), [nome, insumos]);
-  const ativos = insumos.filter(i => i.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
+  const pendentesSub = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe);
+  const ativos = insumos.filter(i => i.ativo !== false).filter(i => !soPendentes || (i.ehSubproduto && !i.subprodutoDe)).sort((a, b) => a.nome.localeCompare(b.nome));
   async function add() {
     if (!nome.trim()) return;
     if (similares.some(s => s.motivo === "igual")) { if (!confirm("Já existe um insumo com esse nome. Cadastrar mesmo assim?")) return; }
@@ -589,7 +597,13 @@ function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos:
         </div>
         {similares.length > 0 && nome.trim() && <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Parecido com: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")} — confira pra não duplicar.</div>}
       </FormCard>
-      <ListaCard vazio={ativos.length === 0} vazioTexto="Nenhum insumo cadastrado.">
+      {pendentesSub.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+          <span className="text-sm text-amber-800 dark:text-amber-200">⏳ {pendentesSub.length} subproduto(s) sem vínculo — vincule ao preparo que os gera (na tela da ficha).</span>
+          <button type="button" onClick={() => setSoPendentes(s => !s)} className="ml-auto text-xs font-medium px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40">{soPendentes ? "Ver todos" : "Ver só pendentes"}</button>
+        </div>
+      )}
+      <ListaCard vazio={ativos.length === 0} vazioTexto={soPendentes ? "Nenhum subproduto pendente." : "Nenhum insumo cadastrado."}>
         {ativos.map(ins => (
           <div key={ins.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
             <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
