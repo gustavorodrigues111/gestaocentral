@@ -269,10 +269,9 @@ function SubfichaCard({ sf, indice, isUltima, custo, insumos, subprodutos, subfi
       <div className="p-3 space-y-2">
         <div className="flex items-center gap-2 text-xs text-gray-500">
           <span>Rende</span>
-          <input type="number" value={sf.rendimento.qtd} onChange={e => onPatch({ rendimento: { ...sf.rendimento, qtd: Number(e.target.value) || 0 } })} className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right" />
-          <select value={sf.rendimento.unidade} onChange={e => onPatch({ rendimento: { ...sf.rendimento, unidade: e.target.value } })} className="px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-            {unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{u.label}</option>)}
-          </select>
+          <QtyStepper qtd={sf.rendimento.qtd} unidade={sf.rendimento.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
+            onQtd={n => onPatch({ rendimento: { ...sf.rendimento, qtd: n } })}
+            onUnidade={u => onPatch({ rendimento: { ...sf.rendimento, unidade: u } })} />
         </div>
 
         {sf.ingredientes.length > 0 && (
@@ -293,6 +292,33 @@ function SubfichaCard({ sf, indice, isUltima, custo, insumos, subprodutos, subfi
   );
 }
 
+// Passo do stepper conforme a magnitude (mais prático em quantidades grandes).
+function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
+const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
+
+// Stepper − [qtd] + com unidade acoplada (mesma altura, alinhado).
+function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }: {
+  qtd: number; unidade: string; unidades: string[]; unidadeTravada: boolean;
+  onQtd: (n: number) => void; onUnidade: (u: string) => void;
+}) {
+  return (
+    <div className="inline-flex items-stretch h-9 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm overflow-hidden shrink-0">
+      <button type="button" onClick={() => onQtd(Math.max(0, round2(qtd - passoDe(qtd))))} className="px-2.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none">−</button>
+      <input type="number" value={qtd} onChange={e => onQtd(Number(e.target.value) || 0)} className="w-14 text-center bg-transparent text-sm outline-none border-x border-gray-200 dark:border-gray-700 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+      <button type="button" onClick={() => onQtd(round2(qtd + passoDe(qtd)))} className="px-2.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none border-r border-gray-200 dark:border-gray-700">+</button>
+      <select value={unidade} onChange={e => onUnidade(e.target.value)} disabled={unidadeTravada} className="px-2 bg-gray-50 dark:bg-gray-800/60 text-xs font-medium text-gray-600 dark:text-gray-300 outline-none appearance-none text-center disabled:opacity-80 cursor-pointer disabled:cursor-default">
+        {unidades.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
+      </select>
+    </div>
+  );
+}
+
+const CHIP_TIPO: Record<string, string> = {
+  etapa: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300",
+  subproduto: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
+  insumo: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+};
+
 // ─── Linha de ingrediente já adicionado ───────────────────────────────────
 function IngredienteRow({ ing, insumoById, subfichasDaFicha, subprodutos, onPatch, onRemove }: {
   ing: FtIngrediente; insumoById: Map<string, FtInsumo>; subfichasDaFicha: FtSubficha[]; subprodutos: FtFicha[];
@@ -300,33 +326,30 @@ function IngredienteRow({ ing, insumoById, subfichasDaFicha, subprodutos, onPatc
 }) {
   let nome = ing.nomeSnapshot || "?";
   let unidadesOpc: string[] = [ing.unidade];
-  let tag = "";
+  let tipoTag: "insumo" | "etapa" | "subproduto" = "insumo";
   if (ing.tipo === "insumo") {
     const ins = insumoById.get(ing.refId);
     nome = ins?.nome || ing.nomeSnapshot || "(insumo removido)";
     unidadesOpc = ins ? unidadesDaDimensao(ins.dimensao).map(u => u.unidade) : [ing.unidade];
   } else if (ing.tipo === "subficha") {
     const sf = subfichasDaFicha.find(s => s.id === ing.refId);
-    nome = sf?.nome || ing.nomeSnapshot || "(etapa)"; tag = "etapa"; unidadesOpc = [sf?.rendimento.unidade || ing.unidade];
+    nome = sf?.nome || ing.nomeSnapshot || "(etapa)"; tipoTag = "etapa"; unidadesOpc = [sf?.rendimento.unidade || ing.unidade];
   } else {
     const sp = subprodutos.find(s => s.id === ing.refId);
-    nome = sp?.nome || ing.nomeSnapshot || "(subproduto)"; tag = "subproduto"; unidadesOpc = [sp?.rendimentoFinal.unidade || ing.unidade];
+    nome = sp?.nome || ing.nomeSnapshot || "(subproduto)"; tipoTag = "subproduto"; unidadesOpc = [sp?.rendimentoFinal.unidade || ing.unidade];
   }
   return (
-    <div className="flex items-center gap-2 text-sm">
-      <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{nome}{tag && <span className="ml-1.5 text-[10px] uppercase text-indigo-500">{tag}</span>}</span>
-      {ing.qb ? (
-        <span className="text-xs text-gray-500 italic">q.b.</span>
-      ) : (
-        <>
-          <input type="number" value={ing.qtd} onChange={e => onPatch({ qtd: Number(e.target.value) || 0 })} className="w-16 px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right text-xs" />
-          <select value={ing.unidade} onChange={e => onPatch({ unidade: e.target.value })} disabled={unidadesOpc.length <= 1} className="px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs disabled:opacity-70">
-            {unidadesOpc.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
-          </select>
-        </>
-      )}
-      <button type="button" onClick={() => onPatch({ qb: !ing.qb })} title="quanto baste" className={`text-[10px] px-1.5 py-1 rounded ${ing.qb ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "text-gray-400 hover:text-gray-600"}`}>q.b.</button>
-      <button type="button" onClick={onRemove} className="text-gray-400 hover:text-red-600 text-xs">✕</button>
+    <div className="flex items-center gap-2 py-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/40 px-1 -mx-1">
+      <span className={`w-2 h-2 rounded-full shrink-0 ${CHIP_TIPO[tipoTag]}`} aria-hidden="true"></span>
+      <span className="flex-1 min-w-0 truncate text-sm text-gray-800 dark:text-gray-200">
+        {nome}
+        {tipoTag !== "insumo" && <span className={`ml-1.5 text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full ${CHIP_TIPO[tipoTag]}`}>{tipoTag}</span>}
+      </span>
+      {ing.qb
+        ? <span className="text-[11px] font-medium px-2 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">quanto baste</span>
+        : <QtyStepper qtd={ing.qtd} unidade={ing.unidade} unidades={unidadesOpc} unidadeTravada={unidadesOpc.length <= 1} onQtd={n => onPatch({ qtd: n })} onUnidade={u => onPatch({ unidade: u })} />}
+      <button type="button" onClick={() => onPatch({ qb: !ing.qb })} title="quanto baste (não pesa custo)" className={`text-[10px] font-bold px-2 py-1.5 rounded-lg shrink-0 transition-colors ${ing.qb ? "bg-amber-500 text-white" : "text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>q.b.</button>
+      <button type="button" onClick={onRemove} title="remover" className="text-gray-400 hover:text-red-600 text-sm shrink-0 px-1">✕</button>
     </div>
   );
 }
