@@ -1,0 +1,215 @@
+// Fase 2 — tela de revisão do import de fichas por IA.
+// Fluxo: escolher .xlsx → IA estrutura → revisar (casado/novo/conferir) →
+// aprovar e gravar (cria insumos novos + fichas).
+import { useRef, useState } from "react";
+import { doc, writeBatch } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { Button } from "../../core/ui/Button";
+import { Modal } from "../../core/ui/Modal";
+import type { FtFicha, FtFichaTipo, FtIngrediente, FtInsumo, FtSubficha } from "../../core/types";
+import { FT_FICHA_TIPO_LABEL } from "../../core/types";
+import { labelUnidade } from "./unidades";
+import { normalizarNome } from "./dedup";
+import { importarFichasIA, planilhaParaTexto, resolverIngrediente, type IngredienteResol } from "./importar";
+
+const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+type SubRev = { id: string; nome: string; rendimento: { qtd: number; unidade: string }; ingredientes: IngredienteResol[] };
+type FichaRev = { id: string; nome: string; tipo: FtFichaTipo; rendimento: { qtd: number; unidade: string }; subfichas: SubRev[] };
+
+const CHIP: Record<string, string> = {
+  casado: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  novo: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
+  conferir: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+};
+
+export function ImportarFichasModal({ rid, insumos, meId, meNome, onClose }: {
+  rid: string; insumos: FtInsumo[]; meId?: string; meNome?: string; onClose: () => void;
+}) {
+  const [fase, setFase] = useState<"upload" | "lendo" | "revisao" | "gravando">("upload");
+  const [erro, setErro] = useState("");
+  const [fichas, setFichas] = useState<FichaRev[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  async function escolher(file: File) {
+    setErro(""); setFase("lendo");
+    try {
+      const texto = await planilhaParaTexto(file);
+      if (!texto.trim()) throw new Error("Não consegui ler conteúdo da planilha.");
+      const ia = await importarFichasIA(texto);
+      if (ia.length === 0) throw new Error("A IA não encontrou nenhuma ficha na planilha.");
+      let k = 0;
+      const rev: FichaRev[] = ia.map(f => ({
+        id: uid("fic"),
+        nome: f.nome || "(sem nome)",
+        tipo: (["prato", "drinque", "subproduto"].includes(f.tipo) ? f.tipo : "prato") as FtFichaTipo,
+        rendimento: f.rendimento || { qtd: 1, unidade: "porção" },
+        subfichas: (f.subfichas || []).map(sf => ({
+          id: uid("sf"),
+          nome: sf.nome || "Preparo",
+          rendimento: sf.rendimento || { qtd: 1, unidade: "porção" },
+          ingredientes: (sf.ingredientes || []).map(ing => resolverIngrediente(ing, insumos, k++)),
+        })),
+      }));
+      setFichas(rev);
+      setFase("revisao");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setFase("upload");
+    }
+  }
+
+  function setMatch(fichaId: string, subId: string, ingId: string, valor: string) {
+    setFichas(prev => prev.map(f => f.id !== fichaId ? f : {
+      ...f,
+      subfichas: f.subfichas.map(sf => sf.id !== subId ? sf : {
+        ...sf,
+        ingredientes: sf.ingredientes.map(ing => ing.id !== ingId ? ing : {
+          ...ing,
+          matchInsumoId: valor === "__novo__" ? null : valor,
+          status: valor === "__novo__" ? "novo" : "casado",
+        }),
+      }),
+    }));
+  }
+  function setFicha(fichaId: string, patch: Partial<FichaRev>) {
+    setFichas(prev => prev.map(f => f.id === fichaId ? { ...f, ...patch } : f));
+  }
+
+  const contagem = (() => {
+    let casado = 0, novo = 0, conferir = 0;
+    for (const f of fichas) for (const sf of f.subfichas) for (const ing of sf.ingredientes) {
+      if (ing.status === "casado") casado++; else if (ing.status === "novo") novo++; else conferir++;
+    }
+    return { casado, novo, conferir };
+  })();
+
+  async function gravar() {
+    setFase("gravando");
+    try {
+      const batch = writeBatch(db);
+      const now = new Date().toISOString();
+      // 1) cria insumos novos (dedup por nome normalizado).
+      const novoIdPorNome = new Map<string, string>();
+      for (const f of fichas) for (const sf of f.subfichas) for (const ing of sf.ingredientes) {
+        if (ing.matchInsumoId) continue;
+        const chave = normalizarNome(ing.nome);
+        if (!chave || novoIdPorNome.has(chave)) continue;
+        const id = uid("ins");
+        novoIdPorNome.set(chave, id);
+        batch.set(doc(db, "ftInsumos", id), sanitizeForFirestore({
+          id, restaurantId: rid, nome: ing.nome.trim(), nomeNormalizado: chave,
+          dimensao: ing.novoDimensao, unidadeBase: ing.novoUnidadeBase,
+          custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null,
+          reutilizavel: false, aliases: [], ativo: true,
+        } as FtInsumo));
+      }
+      // 2) cria as fichas.
+      for (const f of fichas) {
+        const subfichas: FtSubficha[] = f.subfichas.map(sf => ({
+          id: sf.id, nome: sf.nome, rendimento: sf.rendimento,
+          ingredientes: sf.ingredientes.map(ing => {
+            const refId = ing.matchInsumoId || novoIdPorNome.get(normalizarNome(ing.nome)) || "";
+            const nomeSnap = ing.matchInsumoId
+              ? (insumos.find(i => i.id === ing.matchInsumoId)?.nome || ing.nome)
+              : ing.nome;
+            return {
+              id: uid("ing"), tipo: "insumo", refId, nomeSnapshot: nomeSnap,
+              qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb,
+            } as FtIngrediente;
+          }),
+        }));
+        const ficha: FtFicha = {
+          id: f.id, restaurantId: rid, nome: f.nome, nomeNormalizado: normalizarNome(f.nome),
+          tipo: f.tipo, rendimentoFinal: f.rendimento, subfichas, ativo: true,
+          criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
+        };
+        batch.set(doc(db, "ftFichas", f.id), sanitizeForFirestore(ficha));
+      }
+      await batch.commit();
+      onClose();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : String(e));
+      setFase("revisao");
+    }
+  }
+
+  return (
+    <Modal title="Importar fichas da planilha (IA)" onClose={onClose} maxWidth="max-w-3xl">
+      {fase === "upload" && (
+        <div className="text-center py-8">
+          <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) escolher(f); }} />
+          <div className="text-4xl mb-3">📄</div>
+          <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">Escolha a planilha (.xlsx) com suas fichas técnicas.</p>
+          <p className="text-xs text-gray-400 mb-4">A IA vai estruturar as fichas e você revisa antes de gravar. Nada é salvo automaticamente.</p>
+          {erro && <div className="text-sm text-red-600 mb-3">{erro}</div>}
+          <Button onClick={() => inputRef.current?.click()}>Escolher planilha</Button>
+        </div>
+      )}
+
+      {fase === "lendo" && (
+        <div className="text-center py-12 text-gray-500">
+          <div className="text-3xl mb-3 animate-pulse">🤖</div>
+          Lendo a planilha e estruturando as fichas… <span className="block text-xs text-gray-400 mt-1">(pode levar alguns segundos)</span>
+        </div>
+      )}
+
+      {(fase === "revisao" || fase === "gravando") && (
+        <div>
+          <div className="flex items-center gap-2 flex-wrap mb-3 text-xs">
+            <span className="text-gray-600 dark:text-gray-300 font-medium">{fichas.length} ficha(s):</span>
+            <span className={`px-2 py-0.5 rounded-full ${CHIP.casado}`}>{contagem.casado} casados</span>
+            <span className={`px-2 py-0.5 rounded-full ${CHIP.novo}`}>{contagem.novo} novos</span>
+            {contagem.conferir > 0 && <span className={`px-2 py-0.5 rounded-full ${CHIP.conferir}`}>{contagem.conferir} a conferir</span>}
+          </div>
+
+          <div className="space-y-3 max-h-[55vh] overflow-y-auto pr-1">
+            {fichas.map(f => (
+              <div key={f.id} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
+                  <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value })} className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
+                  <select value={f.tipo} onChange={e => setFicha(f.id, { tipo: e.target.value as FtFichaTipo })} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    {(["prato", "drinque", "subproduto"] as FtFichaTipo[]).map(t => <option key={t} value={t}>{FT_FICHA_TIPO_LABEL[t]}</option>)}
+                  </select>
+                  <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+                </div>
+                <div className="p-2.5 space-y-2">
+                  {f.subfichas.map(sf => (
+                    <div key={sf.id}>
+                      <div className="text-[10px] uppercase tracking-wider text-gray-400 mb-1">{sf.nome} · rende {sf.rendimento.qtd} {labelUnidade(sf.rendimento.unidade)}</div>
+                      <div className="space-y-1">
+                        {sf.ingredientes.map(ing => (
+                          <div key={ing.id} className="flex items-center gap-2 text-sm">
+                            <span className="w-28 sm:w-40 shrink-0 truncate text-gray-700 dark:text-gray-200" title={ing.nome}>{ing.nome}</span>
+                            <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
+                            <select value={ing.matchInsumoId ?? "__novo__"} onChange={e => setMatch(f.id, sf.id, ing.id, e.target.value)}
+                              className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                              {ing.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
+                              <option value="__novo__">+ criar novo insumo "{ing.nome}"</option>
+                            </select>
+                            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[ing.status]}`}>{ing.status}</span>
+                          </div>
+                        ))}
+                        {sf.ingredientes.length === 0 && <div className="text-xs text-gray-400 italic">Sem ingredientes.</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {erro && <div className="text-sm text-red-600 mt-3">{erro}</div>}
+          <div className="flex items-center justify-between gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <span className="text-[11px] text-gray-400">Os insumos "novos" entram sem custo — depois você lança o custo na aba Insumos.</span>
+            <div className="flex gap-2">
+              <Button variant="secondary" onClick={onClose} disabled={fase === "gravando"}>Cancelar</Button>
+              <Button onClick={gravar} disabled={fase === "gravando"}>{fase === "gravando" ? "Gravando…" : `Aprovar e gravar ${fichas.length} ficha(s)`}</Button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}

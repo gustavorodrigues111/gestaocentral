@@ -19,6 +19,7 @@ import { FT_FICHA_TIPO_LABEL } from "../../core/types";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
+import { ImportarFichasModal } from "./ImportarFichasModal";
 
 // ─── util moeda ───────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -41,6 +42,7 @@ export function FichasPage() {
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [editando, setEditando] = useState<FtFicha | null>(null);
+  const [importando, setImportando] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -74,7 +76,10 @@ export function FichasPage() {
           <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         </div>
         {tab === "fichas" && podeEditar && (
-          <Button className="w-full sm:w-auto" onClick={() => setEditando(novaFicha(rid, pessoa?.id, pessoa?.nome))}>+ Nova ficha</Button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>📄 Importar planilha</Button>
+            <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, pessoa?.id, pessoa?.nome))}>+ Nova ficha</Button>
+          </div>
         )}
       </header>
 
@@ -88,6 +93,10 @@ export function FichasPage() {
       )}
       {tab === "insumos" && podeInsumo && (
         <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} meId={pessoa?.id} />
+      )}
+
+      {importando && (
+        <ImportarFichasModal rid={rid} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
       )}
     </div>
   );
