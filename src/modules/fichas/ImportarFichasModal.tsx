@@ -286,7 +286,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     const p = principais[pk]; if (!p) return;
     const v = vNorm ? p.variacoes.find(x => x.norm === vNorm) : undefined;
     if (vNorm && !v) return;
-    const nome = UP(v ? v.nome : p.nome);
+    // Nome completo (principal + variação) pra não virar só "COZIDO" sem contexto.
+    const nome = v ? UP(`${p.nome} ${v.nome}`) : UP(p.nome);
     const newId = uid("fic");
     const nova: FichaRev = { id: newId, nome, ehSubficha: true, categoriaId: null, incluir: true, rendimento: { qtd: 1, unidade: "kg" }, ingredientes: [] };
     setFichas(prev => [
@@ -405,6 +406,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
   const subfichas = useMemo(() => fichas.filter(f => f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
   const fichasFinais = useMemo(() => fichas.filter(f => !f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
   const usoComoSub = useMemo(() => { const c: Record<string, number> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) c[ing.subfichaFichaId] = (c[ing.subfichaFichaId] || 0) + 1; return c; }, [fichas]);
+  const preparosPorSub = useMemo(() => { const m: Record<string, string[]> = {}; for (const f of fichas) if (f.incluir) for (const ing of f.ingredientes) if (ing.subfichaFichaId) { if (!m[ing.subfichaFichaId]) m[ing.subfichaFichaId] = []; if (!m[ing.subfichaFichaId].includes(f.nome)) m[ing.subfichaFichaId].push(f.nome); } return m; }, [fichas]);
 
   const abrirMescla = (aId: string, bId: string) => { const a = fichas.find(f => f.id === aId); setMescla({ aId, bId, nome: a?.nome || "", conteudoId: aId }); };
   const ingLabel = (ing: IngRev): string => {
@@ -420,7 +422,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         <div className="flex items-center gap-2 flex-wrap">
           <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
           <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[200px] basis-1/2 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
-          {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0">usada em {usoComoSub[f.id]}</span>}
+          {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0 cursor-help underline decoration-dotted underline-offset-2" title={`Usada em: ${(preparosPorSub[f.id] || []).join(", ") || "—"}`}>usada em {usoComoSub[f.id]}</span>}
           <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
           <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
