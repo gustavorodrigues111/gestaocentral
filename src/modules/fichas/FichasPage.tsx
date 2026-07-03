@@ -34,7 +34,7 @@ function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
 type Tab = "fichas" | "insumos" | "categorias";
-type FiltroTipo = "todas" | "finais" | "subfichas" | "pendentes";
+type FiltroTipo = "todas" | "finais" | "subfichas" | "pendentes" | "revisar";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
 const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
 
@@ -147,9 +147,10 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
   const [catFiltro, setCatFiltro] = useState<string>("");
   const catNome = (id?: string | null) => categorias.find(c => c.id === id)?.nome;
   const nPendentes = useMemo(() => fichas.filter(f => f.ativo !== false && fichaPendente(f)).length, [fichas]);
+  const nRevisar = useMemo(() => fichas.filter(f => f.ativo !== false && f.revisar).length, [fichas]);
   const lista = useMemo(() => fichas
     .filter(f => f.ativo !== false)
-    .filter(f => filtro === "todas" ? true : filtro === "pendentes" ? fichaPendente(f) : filtro === "finais" ? !f.ehSubficha : f.ehSubficha)
+    .filter(f => filtro === "todas" ? true : filtro === "pendentes" ? fichaPendente(f) : filtro === "revisar" ? !!f.revisar : filtro === "finais" ? !f.ehSubficha : f.ehSubficha)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
     .sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, filtro, catFiltro]);
 
@@ -163,10 +164,10 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-          {(["todas", "finais", "subfichas", "pendentes"] as FiltroTipo[]).map(t => (
+          {(["todas", "finais", "subfichas", "pendentes", "revisar"] as FiltroTipo[]).map(t => (
             <button key={t} type="button" onClick={() => setFiltro(t)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md ${filtro === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"} ${t === "pendentes" && nPendentes > 0 && filtro !== t ? "text-amber-700 dark:text-amber-400" : ""}`}>
-              {t === "todas" ? "Todas" : t === "finais" ? "Fichas finais" : t === "subfichas" ? "Subfichas" : `⏳ Pendentes${nPendentes > 0 ? ` (${nPendentes})` : ""}`}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${filtro === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"} ${t === "pendentes" && nPendentes > 0 && filtro !== t ? "text-amber-700 dark:text-amber-400" : ""} ${t === "revisar" && nRevisar > 0 && filtro !== t ? "text-rose-600 dark:text-rose-400" : ""}`}>
+              {t === "todas" ? "Todas" : t === "finais" ? "Fichas finais" : t === "subfichas" ? "Subfichas" : t === "pendentes" ? `⏳ Pendentes${nPendentes > 0 ? ` (${nPendentes})` : ""}` : `⚑ Revisar${nRevisar > 0 ? ` (${nRevisar})` : ""}`}
             </button>
           ))}
         </div>
@@ -195,6 +196,7 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {f.ehSubficha && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">subficha</span>}
                     {fichaPendente(f) && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="Sem ingredientes — monte a receita">⏳ pendente</span>}
+                    {f.revisar && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" title={f.revisarMotivo || "Precisa de revisão"}>⚑ revisar</span>}
                   </div>
                 </div>
                 <div className="mt-3 flex items-end justify-between">
@@ -287,6 +289,13 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               </label>
             </div>
             {f.ehSubficha && <div className="text-[11px] text-purple-600 dark:text-purple-400">Subficha: pode ser usada como ingrediente de outras fichas.</div>}
+            <div className="border-t border-gray-100 dark:border-gray-800 pt-2">
+              <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
+                <input type="checkbox" checked={!!f.revisar} onChange={e => setF({ ...f, revisar: e.target.checked })} className="w-4 h-4 accent-rose-600" />
+                <span className={f.revisar ? "text-rose-600 dark:text-rose-400 font-medium" : ""}>⚑ Precisa de revisão</span>
+              </label>
+              {f.revisar && <input value={f.revisarMotivo || ""} onChange={e => setF({ ...f, revisarMotivo: e.target.value })} placeholder="Por quê? (ex: rendimento errado, falta ingrediente…)" className="mt-1.5 w-full text-sm px-2 py-1.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-white dark:bg-gray-900 dark:text-gray-100" />}
+            </div>
           </div>
 
           {/* Ingredientes */}

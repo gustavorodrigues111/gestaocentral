@@ -5405,6 +5405,8 @@ export type FtFicha = {
   observacoes?: string | null;
   markupAlvo?: number | null;
   cmvAlvo?: number | null;             // % alvo de CMV (só ficha final)
+  revisar?: boolean;                   // marcada como "precisa revisão"
+  revisarMotivo?: string | null;       // por quê precisa revisar
   ativo: boolean;
   criadoEm: string;
   criadoPor?: string;

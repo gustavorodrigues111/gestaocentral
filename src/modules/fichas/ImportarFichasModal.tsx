@@ -21,7 +21,7 @@ const UP = (s: string) => (s || "").trim().toUpperCase();
 const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendimento", "fator de correcao", "fc", "custo", "total", "modo de preparo", "preparo", "ingrediente", "ingredientes", "quantidade", "unidade"]);
 
 type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null; subprodutoRef?: { fichaId: string; subId: string } };
-type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[]; subprodutos?: FtSubproduto[] };
+type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[]; subprodutos?: FtSubproduto[]; revisar?: boolean; revisarMotivo?: string };
 
 // Fator de correção sugerido: subficha de 1 insumo → aproveitamento =
 // rendimento / quantidade do insumo (ex.: rende 1kg de 1,5kg de alho = 66,7%).
@@ -461,6 +461,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
           <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+          <button type="button" onClick={() => setFicha(f.id, { revisar: !f.revisar })} title="Marcar que esta ficha precisa de revisão" className={`text-[13px] shrink-0 leading-none ${f.revisar ? "text-rose-600" : "text-gray-300 hover:text-rose-400"}`}>⚑</button>
         </div>
         {f.ehSubficha && (
           <div className="mt-1.5 pl-6">
@@ -470,6 +471,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
               {fichas.filter(o => o.id !== f.id).length > 0 && <option value="__subproduto__">↦ é subproduto de outra ficha</option>}
               {subfichas.filter(o => o.id !== f.id).length > 0 && <option value="__mesclar__">⇄ é a mesma que outra subficha</option>}
             </select>
+          </div>
+        )}
+        {f.revisar && (
+          <div className="mt-1.5 pl-6 flex items-center gap-2">
+            <span className="text-[11px] text-rose-600 shrink-0">⚑ revisar:</span>
+            <input value={f.revisarMotivo || ""} onChange={e => setFicha(f.id, { revisarMotivo: e.target.value })} placeholder="motivo (ex: rendimento errado, falta ingrediente…)" className="flex-1 text-xs px-2 py-1 rounded border border-rose-300 dark:border-rose-800 bg-white dark:bg-gray-900 dark:text-gray-100" />
           </div>
         )}
       </div>
@@ -663,7 +670,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         });
         batch.set(doc(db, "ftFichas", f.id), sanitizeForFirestore({
           id: f.id, restaurantId: rid, nome: UP(f.nome), nomeNormalizado: norm(f.nome), ehSubficha: f.ehSubficha, categoriaId: f.categoriaId,
-          rendimento: f.rendimento, ingredientes, subprodutos: f.subprodutos || [], ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
+          rendimento: f.rendimento, ingredientes, subprodutos: f.subprodutos || [], revisar: !!f.revisar, revisarMotivo: f.revisar ? (f.revisarMotivo || null) : null, ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
         } as FtFicha));
       }
       await batch.commit();
