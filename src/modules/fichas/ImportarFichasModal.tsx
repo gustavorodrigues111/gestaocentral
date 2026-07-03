@@ -73,8 +73,10 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const [dissolver, setDissolver] = useState<{ subfichaId: string; modo: "insumo" | "variacao"; principalKey: string; varNome: string; fc: number; varExistNorm: string } | null>(null);
   const [escolher, setEscolher] = useState<{ subfichaId: string; modo: "subproduto" | "mesclar" } | null>(null);
   const [buscaEscolher, setBuscaEscolher] = useState("");
-  // Ao fechar um sub-painel (mesclar/dissolver/escolher), restaura o scroll.
-  useEffect(() => { if (!dissolver && !mescla && !escolher && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla, escolher]);
+  const [pickAlvo, setPickAlvo] = useState<string | null>(null); // pk do insumo pra vincular/juntar
+  const [buscaPick, setBuscaPick] = useState("");
+  // Ao fechar um sub-painel, restaura o scroll.
+  useEffect(() => { if (!dissolver && !mescla && !escolher && !pickAlvo && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla, escolher, pickAlvo]);
 
   // Carrega rascunho salvo (leitura crua da IA + revisão editada, se houver) pra
   // retomar sem gastar IA de novo.
@@ -409,6 +411,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
   }
 
+  function abrirPick(pk: string) { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaPick(""); setPickAlvo(pk); }
   // Etapa 1 da reclassificação: escolhe a AÇÃO; a ficha-alvo vem no painel.
   function abrirEscolher(subfichaId: string, modo: "subproduto" | "mesclar") { scrollPos.current = scrollRef.current?.scrollTop || 0; setBuscaEscolher(""); setEscolher({ subfichaId, modo }); }
   function escolherAlvo(targetId: string) {
@@ -636,6 +639,33 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     );
   };
 
+  const renderPickInsumo = () => {
+    if (!pickAlvo) return null;
+    const p = principais[pickAlvo]; if (!p) return null;
+    const termo = norm(buscaPick);
+    const outrosImport = principaisLista.filter(o => o.key !== pickAlvo && (!termo || norm(o.nome).includes(termo)));
+    const cadastrados = insumos.filter(i => i.ativo !== false && !i.ehSubproduto && (!termo || norm(i.nome).includes(termo))).sort((a, b) => a.nome.localeCompare(b.nome));
+    return (
+      <div>
+        <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-1">Vincular “{p.nome}” a…</div>
+        <p className="text-[11px] text-gray-400 mb-2">Um insumo <strong>já cadastrado</strong> (vincula ao existente) ou <strong>outro item desta importação</strong> (funde os dois).</p>
+        <input autoFocus value={buscaPick} onChange={e => setBuscaPick(e.target.value)} placeholder="🔎 buscar…" className="w-full text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 mb-2" />
+        <div className="max-h-[45vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {outrosImport.length > 0 && <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 dark:bg-gray-800/40">Desta importação (funde)</div>}
+          {outrosImport.map(o => (
+            <button key={o.key} type="button" onClick={() => { mesclarPrincipais(pickAlvo, o.key); setPickAlvo(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200">↔ é o mesmo que <strong>{o.nome}</strong></button>
+          ))}
+          {cadastrados.length > 0 && <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-gray-400 bg-gray-50 dark:bg-gray-800/40">Insumos já cadastrados (vincula)</div>}
+          {cadastrados.map(i => (
+            <button key={i.id} type="button" onClick={() => { setPrinc(pickAlvo, { matchInsumoId: i.id, status: "casado" }); setPickAlvo(null); }} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:text-gray-200">{i.nome} <span className="text-[11px] text-gray-400">· {labelUnidade(i.unidadeBase)}</span></button>
+          ))}
+          {outrosImport.length === 0 && cadastrados.length === 0 && <div className="px-3 py-6 text-center text-sm text-gray-400 italic">Nada encontrado.</div>}
+        </div>
+        <div className="flex justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={() => setPickAlvo(null)}>Cancelar</Button></div>
+      </div>
+    );
+  };
+
   async function gravar() {
     if (nSel === 0) { setErro("Selecione ao menos uma receita."); return; }
     setFase("gravando");
@@ -754,7 +784,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
 
           <div ref={scrollRef} className="max-h-[55vh] overflow-y-auto pr-1 space-y-4">
             {/* PASSO 1 — Ingredientes (insumos + variações) */}
-            {passo === 1 && (
+            {passo === 1 && pickAlvo && renderPickInsumo()}
+            {passo === 1 && !pickAlvo && (
               <div className="rounded-xl border border-gray-200 dark:border-gray-800">
                 <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 text-xs font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2 flex-wrap">
                   <span>Insumos ({cont.insumos}) — principal + variações</span>
@@ -768,16 +799,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                       <div className="flex items-center gap-2 text-sm">
                         <input value={p.nome} onChange={e => setPrinc(p.key, { nome: e.target.value.toUpperCase() })} className="w-32 sm:w-52 shrink-0 bg-transparent font-medium text-gray-800 dark:text-gray-200 outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" />
                         <span className="text-[11px] text-gray-400 shrink-0 w-16 cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${(preparosPorPrincipal[p.key] || []).join(", ") || "—"}`}>{usoPrincipal[p.key]} uso(s)</span>
-                        <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; if (val.startsWith("merge:")) { mesclarPrincipais(p.key, val.slice(6)); return; } setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                        <select value={p.matchInsumoId ?? "__novo__"} onChange={e => { const val = e.target.value; setPrinc(p.key, val === "__novo__" ? { matchInsumoId: null, status: "novo" } : { matchInsumoId: val, status: "casado" }); }} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                           {p.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}
+                          {p.matchInsumoId && !p.sugestoes.some(s => s.id === p.matchInsumoId) && (() => { const i = insumos.find(x => x.id === p.matchInsumoId); return i ? <option value={i.id}>{i.nome} · {labelUnidade(i.unidadeBase)}</option> : null; })()}
                           <option value="__novo__">+ criar novo insumo</option>
-                          {principaisLista.some(o => o.key !== p.key) && (
-                            <optgroup label="↔ Juntar com outro desta importação">
-                              {principaisLista.filter(o => o.key !== p.key).map(o => <option key={o.key} value={`merge:${o.key}`}>é o mesmo que {o.nome}</option>)}
-                            </optgroup>
-                          )}
-                          {(() => { const sugIds = new Set(p.sugestoes.map(s => s.id)); const outros = insumos.filter(i => i.ativo !== false && !i.ehSubproduto && !sugIds.has(i.id)).sort((a, b) => a.nome.localeCompare(b.nome)); return outros.length > 0 ? <optgroup label="🔎 vincular a insumo já cadastrado">{outros.map(i => <option key={i.id} value={i.id}>{i.nome} · {labelUnidade(i.unidadeBase)}</option>)}</optgroup> : null; })()}
                         </select>
+                        <button type="button" onClick={() => abrirPick(p.key)} title="Vincular a outro insumo / juntar com outro do lote" className="text-[11px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400 shrink-0">🔎</button>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
                         <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
