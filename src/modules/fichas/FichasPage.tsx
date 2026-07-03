@@ -28,6 +28,8 @@ function maskMoeda(raw: string): string {
 function parseMoeda(m: string): number { const d = (m || "").replace(/\D/g, ""); return d ? parseInt(d, 10) / 100 : 0; }
 function fmtMoeda(n: number): string { return (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" }); }
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+// Nomes de insumos/fichas 100% MAIÚSCULOS (padrão do módulo).
+const UP = (s: string) => (s || "").trim().toUpperCase();
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
@@ -228,7 +230,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     if (!f.nome.trim()) { alert("Dê um nome pra receita."); return; }
     setSalvando(true);
     try {
-      await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: f.nome.trim(), nomeNormalizado: normalizarNome(f.nome) }));
+      await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome) }));
       onClose();
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e))); }
     finally { setSalvando(false); }
@@ -444,7 +446,7 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
     const dim = dimensaoDeUnidade(unidadeBase) as FtDimensao;
     const id = uid("ins"); const now = new Date().toISOString(); const c = parseMoeda(custo);
     const ins: FtInsumo = {
-      id, restaurantId: rid, nome: nome.trim(), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase, custo: c,
+      id, restaurantId: rid, nome: UP(nome), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase, custo: c,
       custoAtualizadoEm: c > 0 ? now : null, historicoCusto: c > 0 ? [{ custo: c, data: now, por: meId || null }] : [],
       fornecedorPadrao: fornecedor.trim() || null, reutilizavel: false, aliases: [], ativo: true,
     };
@@ -481,7 +483,7 @@ function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos:
     const dim = dimensaoDeUnidade(unidadeBase) as FtDimensao;
     const id = uid("ins"); const now = new Date().toISOString(); const c = parseMoeda(custo);
     await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore({
-      id, restaurantId: rid, nome: nome.trim(), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase,
+      id, restaurantId: rid, nome: UP(nome), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase,
       custo: c, custoAtualizadoEm: c > 0 ? now : null, historicoCusto: c > 0 ? [{ custo: c, data: now, por: meId || null }] : [],
       fornecedorPadrao: null, reutilizavel: false, aliases: [], ativo: true,
     } as FtInsumo));

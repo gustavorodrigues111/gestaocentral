@@ -13,6 +13,9 @@ import { normalizarNome } from "./dedup";
 import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilhaParaTexto, resolverIngrediente, type Anexo, type IngredienteResol } from "./importar";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+// Padrão do módulo: nomes de ingredientes/fichas 100% MAIÚSCULOS (evita
+// divergência por caixa).
+const UP = (s: string) => (s || "").trim().toUpperCase();
 
 type FichaRev = {
   id: string; nome: string; ehSubficha: boolean; categoriaId: string | null;
@@ -117,9 +120,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         const ia = await importarFichasIA(u.payload);
         for (const f of ia) {
           coletadas.push({
-            id: uid("fic"), nome: f.nome || "(sem nome)", ehSubficha: f.ehSubficha ?? true,
+            id: uid("fic"), nome: UP(f.nome) || "(SEM NOME)", ehSubficha: f.ehSubficha ?? true,
             categoriaId: matchCategoria(f.categoria), rendimento: f.rendimento || { qtd: 1, unidade: "kg" },
-            ingredientes: (f.ingredientes || []).map(ing => resolverIngrediente(ing, insumos, k++)),
+            ingredientes: (f.ingredientes || []).map(ing => resolverIngrediente({ ...ing, nome: UP(ing.nome) }, insumos, k++)),
           });
         }
         marcar(u.itemIds, "ok");
@@ -127,7 +130,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         marcar(u.itemIds, "erro");
         errosLote.push(e instanceof Error ? e.message : String(e));
       }
-      setFeito(f => f + 1);
+      setFeito(f => f + u.itemIds.length);   // progresso por receita, não por lote
     }
 
     if (coletadas.length === 0) {
@@ -146,6 +149,9 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
     }));
   }
   function setFicha(fichaId: string, patch: Partial<FichaRev>) { setFichas(prev => prev.map(f => f.id === fichaId ? { ...f, ...patch } : f)); }
+  function setIngNome(fichaId: string, ingId: string, nome: string) {
+    setFichas(prev => prev.map(f => f.id !== fichaId ? f : { ...f, ingredientes: f.ingredientes.map(ing => ing.id !== ingId ? ing : { ...ing, nome }) }));
+  }
 
   const contagem = (() => {
     let casado = 0, novo = 0, conferir = 0;
@@ -164,18 +170,18 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
         if (!chave || novoIdPorNome.has(chave)) continue;
         const id = uid("ins"); novoIdPorNome.set(chave, id);
         batch.set(doc(db, "ftInsumos", id), sanitizeForFirestore({
-          id, restaurantId: rid, nome: ing.nome.trim(), nomeNormalizado: chave, dimensao: ing.novoDimensao, unidadeBase: ing.novoUnidadeBase,
+          id, restaurantId: rid, nome: UP(ing.nome), nomeNormalizado: chave, dimensao: ing.novoDimensao, unidadeBase: ing.novoUnidadeBase,
           custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null, reutilizavel: false, aliases: [], ativo: true,
         } as FtInsumo));
       }
       for (const f of fichas) {
         const ingredientes: FtIngrediente[] = f.ingredientes.map(ing => {
           const refId = ing.matchInsumoId || novoIdPorNome.get(normalizarNome(ing.nome)) || "";
-          const nomeSnap = ing.matchInsumoId ? (insumos.find(i => i.id === ing.matchInsumoId)?.nome || ing.nome) : ing.nome;
+          const nomeSnap = ing.matchInsumoId ? (insumos.find(i => i.id === ing.matchInsumoId)?.nome || UP(ing.nome)) : UP(ing.nome);
           return { id: uid("ing"), tipo: "insumo", refId, nomeSnapshot: nomeSnap, qtd: ing.qtd, unidade: ing.unidade, qb: ing.qb } as FtIngrediente;
         });
         const ficha: FtFicha = {
-          id: f.id, restaurantId: rid, nome: f.nome, nomeNormalizado: normalizarNome(f.nome),
+          id: f.id, restaurantId: rid, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome),
           ehSubficha: f.ehSubficha, categoriaId: f.categoriaId, rendimento: f.rendimento, ingredientes,
           ativo: true, criadoEm: now, criadoPor: meId, criadoPorNome: meNome,
         };
@@ -277,7 +283,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                 <div className="p-2.5 space-y-1">
                   {f.ingredientes.map(ing => (
                     <div key={ing.id} className="flex items-center gap-2 text-sm">
-                      <span className="w-28 sm:w-40 shrink-0 truncate text-gray-700 dark:text-gray-200" title={ing.nome}>{ing.nome}</span>
+                      <input value={ing.nome} onChange={e => setIngNome(f.id, ing.id, e.target.value.toUpperCase())}
+                        className="w-28 sm:w-44 shrink-0 bg-transparent text-gray-800 dark:text-gray-200 text-sm outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5" title="nome do ingrediente (editável)" />
                       <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
                       <select value={ing.matchInsumoId ?? "__novo__"} onChange={e => setMatch(f.id, ing.id, e.target.value)} className="flex-1 min-w-0 text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                         {ing.sugestoes.map(s => <option key={s.id} value={s.id}>{s.nome} · {labelUnidade(s.unidadeBase)}</option>)}

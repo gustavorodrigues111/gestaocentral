@@ -35,7 +35,11 @@ const PROMPT =
   "drinque final servido (rendimento em porções/un/dose). Na dúvida, use true.\n" +
   "6) 'categoria': se der pra inferir uma categoria do cardápio (ex: 'Molhos', 'Massas', 'Drinks', 'Pratos " +
   "principais', 'Entradas'), coloque; senão deixe \"\".\n" +
-  "7) Ingredientes 'q.b.', 'a gosto', 'quanto baste' → qb:true e qtd:0.\n\n" +
+  "7) Ingredientes 'q.b.', 'a gosto', 'quanto baste' → qb:true e qtd:0.\n" +
+  "8) NOMES: corrija erros óbvios de digitação e padronize o nome canônico de cada ingrediente e da " +
+  "receita (ex: 'paprica pikante' → 'PÁPRICA PICANTE'). Se o MESMO ingrediente aparecer escrito de formas " +
+  "ligeiramente diferentes, use a MESMA grafia em todas. Escreva TODOS os nomes (receita e ingredientes) " +
+  "100% EM MAIÚSCULAS.\n\n" +
   "Responda SOMENTE um objeto JSON (sem texto antes/depois), neste formato:\n" +
   '{ "fichas": [ { "nome": "...", "ehSubficha": true, "categoria": "", ' +
   '"rendimento": { "qtd": 0, "unidade": "kg" }, ' +
