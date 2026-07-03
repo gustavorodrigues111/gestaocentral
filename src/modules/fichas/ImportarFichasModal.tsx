@@ -23,7 +23,7 @@ const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendime
 type IngRev = { id: string; qtd: number; unidade: string; qb: boolean; principalKey: string; variacaoNorm: string; subfichaFichaId: string | null; subprodutoRef?: { fichaId: string; subId: string } };
 type FichaRev = { id: string; nome: string; ehSubficha: boolean; categoriaId: string | null; incluir: boolean; rendimento: { qtd: number; unidade: string }; ingredientes: IngRev[]; subprodutos?: FtSubproduto[] };
 type VarInfo = { norm: string; nome: string; fc: number };
-type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[] };
+type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[]; ehSubprodutoPendente?: boolean };
 
 const CHIP: Record<string, string> = {
   casado: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
@@ -462,7 +462,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
           const id = uid("ins"); insumoIdPorPrincipal.set(key, id);
           batch.set(doc(db, "ftInsumos", id), sanitizeForFirestore({
             id, restaurantId: rid, nome: UP(p.nome), nomeNormalizado: key, dimensao: p.novoDimensao, unidadeBase: p.novoUnidadeBase,
-            custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null, reutilizavel: false, variacoes: varsImport, aliases: [], ativo: true,
+            custo: 0, custoAtualizadoEm: null, historicoCusto: [], fornecedorPadrao: null, reutilizavel: false, variacoes: varsImport, aliases: [],
+            ...(p.ehSubprodutoPendente ? { ehSubproduto: true, subprodutoDe: null } : {}), ativo: true,
           } as FtInsumo));
         }
       }
@@ -578,9 +579,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, meId, meNome, on
                         </select>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <button type="button" onClick={() => promoverParaSubficha(p.key)} title="Isto é um preparo (ex.: alho no óleo) — virar subficha" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-600 hover:border-purple-400 shrink-0">é subficha ↧</button>
-                        {fichas.length > 0 && (
-                          <select value="" onChange={e => { if (e.target.value) promoverParaSubproduto(p.key, e.target.value); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subproduto de…</option>{fichas.map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
-                        )}
+                        <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{fichas.map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</select>
+                        {p.ehSubprodutoPendente && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 shrink-0" title="Vira insumo-subproduto sem custo; vincule ao preparo na tela de Fichas">subproduto ⏳</span>}
                       </div>
                       {p.variacoes.map(v => (
                         <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">

@@ -5342,6 +5342,8 @@ export type FtInsumo = {
   reutilizavel?: boolean;              // ex: óleo de fritura — não pesa custo cheio
   variacoes?: FtInsumoVariacao[];      // cebola descascada, brunoise, julienne...
   aliases?: string[];
+  ehSubproduto?: boolean;              // não é comprado — sai de um preparo (ex.: carcaça)
+  subprodutoDe?: { fichaId: string; subId: string } | null; // vínculo: custo deriva do rateio do preparo
   ativo: boolean;
 };
 

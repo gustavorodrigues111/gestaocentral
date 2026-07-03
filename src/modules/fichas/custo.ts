@@ -39,8 +39,19 @@ function custoIngrediente(ing: FtIngrediente, ctx: Ctx, visited: Set<string>): n
   if (ing.tipo === "insumo") {
     const ins = ctx.insumos.get(ing.refId);
     if (!ins) { ctx.semCusto.add(ing.nomeSnapshot || "?"); return 0; }
-    if (!ins.custo || ins.custo <= 0) ctx.semCusto.add(ins.nome);
     if (ins.reutilizavel) return 0;
+    // Insumo vinculado a um subproduto: custo deriva do rateio do preparo-pai.
+    if (ins.subprodutoDe) {
+      const pai = ctx.fichas.get(ins.subprodutoDe.fichaId);
+      const sp = pai?.subprodutos?.find(x => x.id === ins.subprodutoDe!.subId);
+      if (!pai || !sp || visited.has(pai.id)) { ctx.semCusto.add(ins.nome); return 0; }
+      const custoAlocado = custoBrutoFicha(pai, ctx, visited) * ((sp.percentualCusto || 0) / 100);
+      const rendBase = paraBase(sp.rendimentoQtd, sp.unidade);
+      const emBaseIng = paraBase(qty, ing.unidade);
+      if (emBaseIng == null || !rendBase || rendBase <= 0) return 0;
+      return emBaseIng * (custoAlocado / rendBase);
+    }
+    if (!ins.custo || ins.custo <= 0) ctx.semCusto.add(ins.nome);
     const emBaseIng = paraBase(qty, ing.unidade);
     const baseDaUnidadeBase = paraBase(1, ins.unidadeBase);
     if (emBaseIng == null || !baseDaUnidadeBase) return 0; // unidade incompatível

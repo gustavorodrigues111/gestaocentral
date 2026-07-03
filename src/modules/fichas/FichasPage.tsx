@@ -306,16 +306,27 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
             <p className="text-[11px] text-gray-400">Coprodutos que este preparo também rende (ex.: carcaça, caldo do cozimento). Cada um leva um % do custo total; o resto fica no produto principal. Depois entram como ingrediente em outras fichas.</p>
             {(f.subprodutos || []).map(sp => {
               const r = custo.subprodutos.find(x => x.id === sp.id);
+              const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false);
+              const pendentes = insumos.filter(i => i.ehSubproduto && !i.subprodutoDe && i.ativo !== false);
               return (
-                <div key={sp.id} className="flex items-center gap-2 flex-wrap py-1 border-t border-gray-100 dark:border-gray-800 first:border-0">
-                  <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-                  <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">rende</span>
-                    <input type="number" value={sp.rendimentoQtd} onChange={e => patchSub(sp.id, { rendimentoQtd: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-                    <select value={sp.unidade} onChange={e => patchSub(sp.id, { unidade: e.target.value })} className="px-1.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100">{unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{labelUnidade(u.unidade)}</option>)}</select>
+                <div key={sp.id} className="py-1 border-t border-gray-100 dark:border-gray-800 first:border-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                    <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">rende</span>
+                      <input type="number" value={sp.rendimentoQtd} onChange={e => patchSub(sp.id, { rendimentoQtd: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                      <select value={sp.unidade} onChange={e => patchSub(sp.id, { unidade: e.target.value })} className="px-1.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100">{unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{labelUnidade(u.unidade)}</option>)}</select>
+                    </div>
+                    <div className="flex items-center gap-1"><input type="number" value={sp.percentualCusto} onChange={e => patchSub(sp.id, { percentualCusto: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-[11px] text-gray-400">% custo</span></div>
+                    <span className="text-[11px] text-gray-500 w-20 text-right tabular-nums">{r ? fmtMoeda(r.custo) : "—"}</span>
+                    <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-sm px-1">✕</button>
                   </div>
-                  <div className="flex items-center gap-1"><input type="number" value={sp.percentualCusto} onChange={e => patchSub(sp.id, { percentualCusto: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-[11px] text-gray-400">% custo</span></div>
-                  <span className="text-[11px] text-gray-500 w-20 text-right tabular-nums">{r ? fmtMoeda(r.custo) : "—"}</span>
-                  <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-sm px-1">✕</button>
+                  <div className="pl-1 mt-1 text-[11px]">
+                    {vinc
+                      ? <span className="text-orange-600 dark:text-orange-400">🔗 vinculado ao insumo “{vinc.nome}” <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", vinc.id), { subprodutoDe: null })} className="text-gray-400 hover:text-red-600 underline ml-1">desvincular</button></span>
+                      : pendentes.length > 0
+                        ? <span className="text-gray-500">Vincular insumo-subproduto pendente: <select value="" onChange={e => { if (e.target.value) updateDoc(doc(db, "ftInsumos", e.target.value), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); }} className="text-[11px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select> <span className="text-gray-400">(salve a ficha depois)</span></span>
+                        : null}
+                  </div>
                 </div>
               );
             })}
@@ -583,10 +594,14 @@ function CadastroInsumos({ rid, insumos, fichas, meId }: { rid: string; insumos:
           <div key={ins.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
             <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
             <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}</div>
+              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
+                {ins.ehSubproduto && <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "subproduto 🔗" : "subproduto ⏳ sem vínculo"}</span>}
+              </div>
               <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}</div>
             </div>
-            {ins.custo > 0
+            {ins.ehSubproduto
+              ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
+              : ins.custo > 0
               ? <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums shrink-0">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></span>
               : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
             <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
