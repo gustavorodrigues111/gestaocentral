@@ -367,6 +367,21 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
 
+  {
+    id: "planoDeAcao",
+    icon: "🎯",
+    label: "Plano de Ação",
+    desc: "Ações com responsável, prazo e status",
+    area: "time",
+    acoes: [
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+      { id: "criar",     label: "Criar ação (avulsa)" },
+      { id: "gerenciar", label: "Gerenciar no Kanban (ver todas + mover)" },
+      { id: "ver",       label: "Ver ações" },
+      { id: "editar",    label: "Editar / mudar status / responsável" },
+    ],
+  },
+
   // ─── GESTÃO ──────────────────────────────────────────────────────────────
   {
     id: "comunicados",

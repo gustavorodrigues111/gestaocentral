@@ -46,7 +46,7 @@ export type ModuleId =
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
   | "horarios"
   // Time
-  | "escala" | "freelas" | "reunioes" | "trilha" | "ideias"
+  | "escala" | "freelas" | "reunioes" | "trilha" | "ideias" | "planoDeAcao"
   // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
   | "rotinas"
   // Escritório
@@ -78,6 +78,41 @@ export type ModuleId =
   // Planner — agenda pessoal do dono (Google Calendar), single-user. Roteia em
   // /planner (fora do escopo de restaurante). Fica na seção "master".
   | "planner";
+
+// ─── PLANO DE AÇÃO ───
+// A Ação é a unidade executável do sistema. Nasce avulsa, ou a partir de uma
+// ocorrência / ideia / reunião (origem). Tem responsável (pessoa), prazo, status
+// e um log imutável de tratativas. Coleção `acoes`.
+export type PlanoAcaoStatus = "aberta" | "em_andamento" | "concluida" | "cancelada";
+export const ACAO_STATUS_LABEL: Record<PlanoAcaoStatus, string> = {
+  aberta: "Aberta", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada",
+};
+export type AcaoPrioridade = "baixa" | "media" | "alta";
+export type AcaoOrigemTipo = "ocorrencia" | "ideia" | "reuniao" | "avulsa";
+export type AcaoLog = {
+  id: string; em: string; autorId?: string | null; autorNome?: string;
+  tipo: "criada" | "status" | "andamento" | "comentario"; texto: string;
+};
+export type Acao = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  descricao?: string;
+  responsavelId?: string | null;      // pessoaId
+  responsavelNome?: string;           // snapshot
+  prazo?: string | null;              // YYYY-MM-DD
+  status: PlanoAcaoStatus;
+  prioridade?: AcaoPrioridade;
+  origem: { tipo: AcaoOrigemTipo; refId?: string | null; reuniaoId?: string | null; label?: string };
+  log: AcaoLog[];
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+  atualizadoEm?: string;
+  concluidoEm?: string | null;
+  concluidoPor?: string | null;
+  ativo: boolean;
+};
 
 // ─── PERMISSÕES ───
 
