@@ -397,7 +397,11 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     if (somaPctSub > 100) { alert("A soma dos % dos subprodutos passou de 100%."); return; }
     setSalvando(true);
     try {
-      const subprodutos = (f.subprodutos || []).filter(sp => sp.nome.trim()).map(sp => ({ ...sp, nome: UP(sp.nome), nomeNormalizado: normalizarNome(sp.nome) }));
+      // Subproduto vinculado a um insumo herda o nome do insumo (não some no save).
+      const subprodutos = (f.subprodutos || [])
+        .map(sp => { const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false); return { ...sp, nome: sp.nome.trim() || (vinc ? vinc.nome : "") }; })
+        .filter(sp => sp.nome.trim())
+        .map(sp => ({ ...sp, nome: UP(sp.nome), nomeNormalizado: normalizarNome(sp.nome) }));
       await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome), subprodutos }));
       onClose();
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e))); }
@@ -569,7 +573,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               return (
                 <div key={sp.id} className="py-2 border-t border-gray-100 dark:border-gray-800 first:border-0 space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                    <input value={sp.nome || (vinc ? vinc.nome : "")} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] text-gray-400">rende</span>
                       <QtyStepper qtd={sp.rendimentoQtd} unidade={sp.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
@@ -588,7 +592,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                         ? <span className="text-orange-600 dark:text-orange-400">🔗 vinculado ao insumo “{vinc.nome}” <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", vinc.id), { subprodutoDe: null })} className="text-gray-400 hover:text-red-600 underline ml-1">desvincular</button></span>
                         : <>
                             <span className="text-gray-500">Vincular insumo-subproduto pendente:</span>
-                            <select value="" onChange={e => { if (e.target.value) updateDoc(doc(db, "ftInsumos", e.target.value), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); }} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select>
+                            <select value="" onChange={e => { const id = e.target.value; if (!id) return; const ins = pendentes.find(i => i.id === id); updateDoc(doc(db, "ftInsumos", id), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); if (ins && !sp.nome.trim()) patchSub(sp.id, { nome: ins.nome, unidade: ins.unidadeBase }); }} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select>
                             <span className="text-gray-400">(salve a ficha depois)</span>
                           </>}
                     </div>
