@@ -9,7 +9,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd, fmtBR } from "../../core/utils/date";
-import { CHECKLIST_FREQ_LABEL, AREAS } from "../../core/types";
+import { CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL, AREAS } from "../../core/types";
 import type { Area, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
@@ -261,6 +261,7 @@ export function ChecklistsPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
                           {t.area && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">{t.area}</span>}
+                          {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
                           <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
                             {CHECKLIST_FREQ_LABEL[t.frequencia]}
                           </span>
@@ -374,6 +375,7 @@ export function ChecklistsPage() {
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
                         {t.area && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">{t.area}</span>}
+                        {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
                         <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
                           {CHECKLIST_FREQ_LABEL[t.frequencia]}
                         </span>
