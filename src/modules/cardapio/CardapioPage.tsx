@@ -2,7 +2,7 @@
 // por restaurante (Comidas, Bebidas, Vinhos) em abas; cada um editado por dentro
 // com o mesmo editor/designer. O site puxa daqui. Doc: cardapioEstruturado/{rid}
 // = { cardapios: [...], layout (visual compartilhado) }.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -41,6 +41,9 @@ export function CardapioPage() {
   const [pdfItensEm, setPdfItensEm] = useState<string>("");
   const [extraindo, setExtraindo] = useState(false);
   const [extraErr, setExtraErr] = useState("");
+  const [buscaItem, setBuscaItem] = useState("");
+  const itensRef = useRef(pdfItens);
+  itensRef.current = pdfItens;
   const { config: siteCfg, save: saveSite } = useSiteConfig(rid, restaurant?.nome || "");
   const modoCard: "editor" | "pdf" = siteCfg?.cardapioModo === "pdf" ? "pdf" : siteCfg?.cardapioModo === "editor" ? "editor" : (siteCfg?.cardapioPdfPtUrl || siteCfg?.cardapioPdfEnUrl) ? "pdf" : "editor";
   const setModoCard = (m: "editor" | "pdf") => { if (me) void saveSite({ cardapioModo: m }, me.id); };
@@ -115,6 +118,16 @@ export function CardapioPage() {
     finally { setExtraindo(false); }
   }
 
+  // Edição da lista sombra (título/preço), com salvamento automático.
+  async function salvarPdfItens(next: { id: string; titulo: string; preco: string }[]) {
+    setPdfItens(next);
+    try { await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, cardapioPdfItens: next, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }); }
+    catch (e) { setExtraErr(e instanceof Error ? e.message : String(e)); }
+  }
+  const patchPdfItem = (id: string, patch: Partial<{ titulo: string; preco: string }>) => setPdfItens(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  const addPdfItem = () => void salvarPdfItens([...itensRef.current, { id: uid(), titulo: "", preco: "" }]);
+  const removePdfItem = (id: string) => void salvarPdfItens(itensRef.current.filter(i => i.id !== id));
+
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Cardápio.</p></div>;
   if (cardapios === null) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
@@ -140,29 +153,51 @@ export function CardapioPage() {
         siteCfg ? <div className="space-y-4">
           <CardapioPdfPanel rid={rid} config={siteCfg} podeEditar={podeEditar} meId={me?.id || ""} onSave={async (parcial) => { if (me) await saveSite(parcial, me.id); }} />
           {podeEditar && (
-            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
                   <h3 className="font-bold text-gray-900 dark:text-gray-100">🤖 Preços pras fichas técnicas</h3>
-                  <p className="text-[12px] text-gray-500 dark:text-gray-400 max-w-lg">A IA lê o PDF e extrai os itens + preços — usados <strong>só internamente</strong> pra vincular o preço de venda nas fichas técnicas (CMV). Não muda o site.</p>
+                  <p className="text-[12px] text-gray-500 dark:text-gray-400 max-w-lg">A IA lê o PDF e extrai os itens + preços — usados <strong>só internamente</strong> pra vincular o preço de venda nas fichas técnicas (CMV). Não aparece no site.</p>
                 </div>
-                <button type="button" onClick={() => void extrairPrecos()} disabled={extraindo || !siteCfg.cardapioPdfPtUrl} className="text-sm font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0">{extraindo ? "Lendo o PDF…" : pdfItens.length ? "Reler PDF (IA)" : "Extrair itens e preços (IA)"}</button>
+                <button type="button" onClick={() => void extrairPrecos()} disabled={extraindo || !siteCfg.cardapioPdfPtUrl} className="text-sm font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0">{extraindo ? "Lendo o PDF…" : pdfItens.length ? "🔄 Reler PDF (IA)" : "✨ Extrair itens e preços (IA)"}</button>
               </div>
               {extraErr && <p className="text-xs text-rose-600">⚠ {extraErr}</p>}
-              {pdfItens.length > 0 && (
-                <div className="space-y-1">
-                  <div className="text-[11px] text-gray-400">{pdfItens.length} itens extraídos{pdfItensEm ? ` · ${fmtBRDateTime(pdfItensEm)}` : ""}. Revise e vincule aos pratos na aba Fichas Técnicas → Custo & CMV.</div>
-                  <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-                    {pdfItens.map(i => (
-                      <div key={i.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
-                        <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-100">{i.titulo}</span>
-                        <span className="text-gray-500 tabular-nums shrink-0">{i.preco || "—"}</span>
+              {!siteCfg.cardapioPdfPtUrl ? (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400">Suba o PDF (português) acima pra habilitar a extração.</p>
+              ) : pdfItens.length === 0 ? (
+                <p className="text-[12px] text-gray-400 italic">Nenhum item ainda. Clique em "Extrair" pra a IA ler o PDF — depois você revisa aqui.</p>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-500">{pdfItens.length} {pdfItens.length === 1 ? "item" : "itens"}{pdfItens.filter(i => !i.preco.trim()).length > 0 ? ` · ${pdfItens.filter(i => !i.preco.trim()).length} sem preço` : ""}{pdfItensEm ? ` · lido ${fmtBRDateTime(pdfItensEm)}` : ""}</span>
+                    <div className="flex-1" />
+                    {pdfItens.length > 8 && (
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">🔎</span>
+                        <input value={buscaItem} onChange={e => setBuscaItem(e.target.value)} placeholder="filtrar…" className="h-8 w-40 pl-7 pr-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100" />
                       </div>
-                    ))}
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/40 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
+                      <span className="flex-1">Item</span><span className="w-28 text-right">Preço</span><span className="w-6" />
+                    </div>
+                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+                      {pdfItens.filter(i => !buscaItem.trim() || i.titulo.toLowerCase().includes(buscaItem.trim().toLowerCase())).map(i => (
+                        <div key={i.id} className="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                          <input value={i.titulo} onChange={e => patchPdfItem(i.id, { titulo: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="nome do item" className="flex-1 min-w-0 bg-transparent text-sm text-gray-800 dark:text-gray-100 outline-none border-b border-transparent focus:border-indigo-400 px-0.5" />
+                          <input value={i.preco} onChange={e => patchPdfItem(i.id, { preco: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="—" className={`w-28 text-right bg-transparent text-sm outline-none border-b border-transparent focus:border-indigo-400 px-0.5 tabular-nums ${i.preco.trim() ? "text-gray-700 dark:text-gray-200" : "text-amber-500"}`} />
+                          <button type="button" onClick={() => removePdfItem(i.id)} title="remover" className="w-6 text-gray-300 hover:text-red-600 text-sm opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <button type="button" onClick={addPdfItem} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ adicionar item</button>
+                    <span className="text-[11px] text-gray-400">Revise os preços e vincule aos pratos em Fichas Técnicas → Custo & CMV.</span>
                   </div>
                 </div>
               )}
-              {!siteCfg.cardapioPdfPtUrl && <p className="text-[11px] text-amber-600">Suba o PDF (português) acima pra habilitar a extração.</p>}
             </div>
           )}
         </div>
