@@ -372,14 +372,14 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     const nome = UP(f.nome).replace(UP(insumoUnico.nome), "").replace(/\s+/g, " ").trim() || "LIMPO";
     const rb = paraBase(f.rendimento.qtd, f.rendimento.unidade);
     const ib = paraBase(ingUnico.qtd, ingUnico.unidade);
-    const fc = rb && ib && ib > 0 ? Math.round((rb / ib) * 1000) / 10 : 100;
+    const fc = rb && ib && ib > 0 ? Math.round((rb / ib) * 100) : 100; // fc inteiro
     setConverter({ nome, fc });
   }
   async function confirmarConverter() {
     if (!ingUnico || !insumoUnico || !converter) return;
     const nomeVar = UP(converter.nome).trim();
     if (!nomeVar) { alert("Dê um nome pra variação (ex: LIMPO)."); return; }
-    const fc = converter.fc > 0 ? converter.fc : 100;
+    const fc = Math.round(converter.fc > 0 ? converter.fc : 100); // fc sempre inteiro
     setSalvando(true);
     try {
       const batch = writeBatch(db);
@@ -589,7 +589,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
             <div className="flex items-end gap-3">
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Aproveitamento (fc)</span>
-                <div className="flex items-center gap-1"><input type="number" value={converter.fc} onChange={e => setConverter(c => c && { ...c, fc: Number(e.target.value) || 0 })} className="w-20 px-2 py-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-xs text-gray-400">%</span></div>
+                <div className="flex items-center gap-1"><input type="number" step={1} value={converter.fc} onChange={e => setConverter(c => c && { ...c, fc: Math.round(Number(e.target.value) || 0) })} className="w-20 px-2 py-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-xs text-gray-400">%</span></div>
               </div>
               <p className="text-[11px] text-gray-400 flex-1">Calculado do rendimento ({fmtQtd(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)}) ÷ quantidade usada ({fmtQtd(ingUnico.qtd)} {labelUnidade(ingUnico.unidade)}). Ajuste se precisar.</p>
             </div>

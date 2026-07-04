@@ -32,7 +32,7 @@ function fcSugeridoDe(sf: FichaRev): number | null {
   const rendBase = paraBase(sf.rendimento.qtd, sf.rendimento.unidade);
   const ingBase = paraBase(ing.qtd, ing.unidade);
   if (!rendBase || !ingBase || ingBase <= 0) return null;
-  return Math.round((rendBase / ingBase) * 1000) / 10;
+  return Math.round((rendBase / ingBase) * 100); // fc inteiro
 }
 type VarInfo = { norm: string; nome: string; fc: number };
 type Principal = { key: string; nome: string; unidade: string; matchInsumoId: string | null; status: "casado" | "conferir" | "novo"; sugestoes: FtInsumo[]; novoDimensao: FtDimensao; novoUnidadeBase: string; temBase: boolean; variacoes: VarInfo[]; ehSubprodutoPendente?: boolean };
@@ -274,7 +274,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const addVariacaoExistente = (k: string, nome: string, fc: number) => setPrincipais(p => {
     const ex = p[k].variacoes;
     if (ex.some(v => norm(v.nome) === norm(nome))) return p;
-    return { ...p, [k]: { ...p[k], variacoes: [...ex, { norm: norm(nome) || uid("v"), nome: UP(nome), fc: fc > 0 ? fc : 100 }] } };
+    return { ...p, [k]: { ...p[k], variacoes: [...ex, { norm: norm(nome) || uid("v"), nome: UP(nome), fc: Math.round(fc > 0 ? fc : 100) }] } };
   });
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
   const catTodas = (id: string, soSub?: boolean) => setFichas(prev => prev.map(f => (soSub === undefined || f.ehSubficha === soSub) ? { ...f, categoriaId: id || null } : f));
@@ -425,7 +425,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     setPrincipais(prev => {
       const p = prev[principalKey]; if (!p) return prev;
       if (p.variacoes.some(v => v.norm === vNorm)) return prev;
-      return { ...prev, [principalKey]: { ...p, variacoes: [...p.variacoes, { norm: vNorm, nome: UP(varNome), fc: fc > 0 ? fc : 100 }] } };
+      return { ...prev, [principalKey]: { ...p, variacoes: [...p.variacoes, { norm: vNorm, nome: UP(varNome), fc: Math.round(fc > 0 ? fc : 100) }] } };
     });
     setFichas(prev => prev.map(f => ({ ...f, ingredientes: f.ingredientes.map(ing => ing.subfichaFichaId === subfichaId ? { ...ing, subfichaFichaId: null, principalKey, variacaoNorm: vNorm } : ing) })).filter(f => f.id !== subfichaId));
     setSubNomes(prev => { const n = { ...prev }; delete n[subfichaId]; return n; });
@@ -651,7 +651,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                       <select value={dissolver.varExistNorm} onChange={e => { const v = varsExist.find(x => x.norm === e.target.value); setDissolver(d => d && (v ? { ...d, varExistNorm: v.norm, varNome: v.nome, fc: v.fc } : { ...d, varExistNorm: "" })); }} className="text-xs px-2 py-1.5 rounded border border-indigo-300 dark:border-indigo-800 bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300"><option value="">+ nova variação</option>{varsExist.map(v => <option key={v.norm} value={v.norm}>usar “{v.nome}” ({v.fc}%)</option>)}</select>
                     )}
                     <input value={dissolver.varNome} disabled={usarExist} onChange={e => setDissolver(d => d && { ...d, varNome: e.target.value.toUpperCase() })} placeholder="nome (ex: PESO LIMPO)" className="text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 w-40 disabled:opacity-60" />
-                    <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">aprov.</span><input type="number" value={dissolver.fc} disabled={usarExist} onChange={e => setDissolver(d => d && { ...d, fc: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100 disabled:opacity-60" /><span className="text-[11px] text-gray-400">%</span></div>
+                    <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">aprov.</span><input type="number" value={dissolver.fc} disabled={usarExist} onChange={e => setDissolver(d => d && { ...d, fc: Math.round(Number(e.target.value) || 0) })} className="w-14 px-1.5 py-1.5 text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100 disabled:opacity-60" /><span className="text-[11px] text-gray-400">%</span></div>
                     {!usarExist && fcSugeridoDe(sf) != null && <span className="text-[10px] text-gray-400">sugerido: {fcSugeridoDe(sf)}%</span>}
                     {usarExist && <span className="text-[10px] text-indigo-500">mantém o % da variação existente</span>}
                   </div>
@@ -758,7 +758,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
       const insumoIdPorPrincipal = new Map<string, string>();
       for (const key of usadosKeys) {
         const p = principais[key]; if (!p) continue;
-        const varsImport: FtInsumoVariacao[] = p.variacoes.filter(v => v.nome.trim()).map(v => ({ id: uid("var"), nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
+        const varsImport: FtInsumoVariacao[] = p.variacoes.filter(v => v.nome.trim()).map(v => ({ id: uid("var"), nome: UP(v.nome), fc: Math.round(v.fc > 0 ? v.fc : 100) }));
         if (p.matchInsumoId) {
           insumoIdPorPrincipal.set(key, p.matchInsumoId);
           if (varsImport.length) {
@@ -912,7 +912,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                           <span className="text-indigo-500 text-xs shrink-0">↳</span>
                           <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} placeholder="nome (ex: SEM LIMPO)" className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5 placeholder:text-gray-300 placeholder:normal-case" />
                           <span className="text-[11px] text-gray-400">aprov.</span>
-                          <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
+                          <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Math.round(Number(e.target.value) || 0) })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
                           {p.variacoes.length > 1 && (
                             <select value="" onChange={e => { if (e.target.value) mesclarVariacoes(p.key, v.norm, e.target.value); }} title="Esta variação é a mesma que outra deste insumo" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[96px]"><option value="">= mesma que…</option>{p.variacoes.filter(o => o.norm !== v.norm).map(o => <option key={o.norm} value={o.norm}>{o.nome}</option>)}</select>
                           )}
