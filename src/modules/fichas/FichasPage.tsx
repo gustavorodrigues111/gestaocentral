@@ -500,7 +500,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                 </div>
                 <select value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })} className="w-full px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100 h-9">
                   <option value="">— sem categoria —</option>
-                  {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+                  {ordenarCats(catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha"))).map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
