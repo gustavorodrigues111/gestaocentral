@@ -2,7 +2,7 @@
 // preço de venda (vinculado ao cardápio ao vivo, ou manual), CMV% e margem.
 // Preço nunca é copiado: vem do cardápio por vínculo e atualiza sozinho.
 import { useMemo, useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { CardapioEstruturado, FtCategoria, FtFicha, FtInsumo } from "../../core/types";
@@ -55,6 +55,7 @@ function precoDe(f: FtFicha, itens: Map<string, CardItem>): { preco: number | nu
 export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; cardapio: CardItem[] }) {
   const [busca, setBusca] = useState("");
   const [abrir, setAbrir] = useState<FtFicha | null>(null);
+  const [lote, setLote] = useState(false);
   const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
@@ -89,6 +90,7 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
             <button key={m} type="button" onClick={() => setPrecoModo(m)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${precoModo === m ? "bg-white dark:bg-gray-900 text-emerald-700 dark:text-emerald-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
           ))}
         </div>
+        {cardapio.length > 0 && <Button variant="secondary" size="sm" onClick={() => setLote(true)}>🔗 Vincular preços do cardápio</Button>}
       </div>
       {cardapio.length === 0 && <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">Nenhum item de cardápio encontrado — os preços de venda só poderão ser manuais até o cardápio ser montado no módulo de Sites/Cardápio.</div>}
       {grupos.map(g => (
@@ -134,7 +136,52 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
       ))}
       {grupos.length === 0 && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhum prato final.</div>}
       {abrir && <FichaCustoModal ficha={abrir} insumos={insumosCalc} fichas={fichas} preco={precoDe(abrir, itensMap).preco} cmvAlvo={catsFicha.find(c => c.id === abrir.categoriaId)?.cmvAlvo ?? null} onClose={() => setAbrir(null)} />}
+      {lote && <VincularLoteModal fichas={finais} cardapio={cardOrdenado} itensMap={itensMap} onClose={() => setLote(false)} />}
     </div>
+  );
+}
+
+// Vincular preços do cardápio em lote: sugere o item por nome e você confirma.
+function VincularLoteModal({ fichas, cardapio, itensMap, onClose }: { fichas: FtFicha[]; cardapio: CardItem[]; itensMap: Map<string, CardItem>; onClose: () => void }) {
+  const pendentes = useMemo(() => fichas.filter(f => !f.cardapioItemId || !itensMap.has(f.cardapioItemId)).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, itensMap]);
+  const sugestao = (f: FtFicha) => { const n = normalizarNome(f.nome); return cardapio.find(i => { const t = normalizarNome(i.titulo); return t === n || (t.length >= 4 && n.length >= 4 && (t.includes(n) || n.includes(t))); }); };
+  const [sel, setSel] = useState<Record<string, string>>(() => Object.fromEntries(pendentes.map(f => [f.id, sugestao(f)?.id || ""])));
+  const [salvando, setSalvando] = useState(false);
+  const nSel = Object.values(sel).filter(Boolean).length;
+  async function vincular() {
+    setSalvando(true);
+    try {
+      const batch = writeBatch(db);
+      for (const f of pendentes) { const id = sel[f.id]; if (id) batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ cardapioItemId: id, precoVendaManual: null })); }
+      await batch.commit(); onClose();
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
+  }
+  return (
+    <Modal title="🔗 Vincular preços do cardápio" onClose={onClose} maxWidth="max-w-2xl">
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Sugerimos o item do cardápio por nome. Confira, ajuste os que precisam, e vincule. O preço passa a vir do cardápio (ao vivo).</p>
+        {pendentes.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-6">Todos os pratos já têm preço vinculado. 🎉</div>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {pendentes.map(f => (
+              <div key={f.id} className="flex items-center gap-2 px-3 py-2 flex-wrap">
+                <span className="flex-1 min-w-[140px] text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{UP(f.nome)}</span>
+                <span className="text-gray-300">→</span>
+                <select value={sel[f.id] || ""} onChange={e => setSel(s => ({ ...s, [f.id]: e.target.value }))} className={`h-8 text-xs px-2 rounded-lg border bg-white dark:bg-gray-900 max-w-[260px] ${sel[f.id] ? "border-emerald-300 dark:border-emerald-700 text-gray-700 dark:text-gray-200" : "border-dashed border-gray-300 dark:border-gray-600 text-gray-400"}`}>
+                  <option value="">— pular —</option>
+                  {cardapio.map(i => <option key={i.id} value={i.id}>{i.titulo}{i.preco ? ` · ${i.preco}` : ""}</option>)}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="flex items-center justify-between pt-1">
+          <span className="text-[11px] text-gray-400">{nSel} de {pendentes.length} selecionados</span>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={vincular} disabled={salvando || nSel === 0}>{salvando ? "Vinculando…" : `Vincular ${nSel}`}</Button></div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
