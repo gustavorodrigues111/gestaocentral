@@ -149,110 +149,93 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
   return (
     <Modal title={`▶ ${template.nome}`} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
-        {/* Header info */}
-        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 text-sm">
-          <div className="grid grid-cols-2 gap-3">
+        {/* Header info — empilha no mobile */}
+        <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Data</label>
-              <input
-                type="date"
-                value={data}
-                onChange={(e) => setData(e.target.value)}
-                disabled={isReadonly}
-                className="w-full mt-0.5 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-60"
-              />
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} disabled={isReadonly}
+                className="w-full mt-1 h-11 px-3 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-60" />
             </div>
             <div>
               <label className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Executor</label>
-              <select
-                value={executor}
-                onChange={(e) => setExecutor(e.target.value)}
-                disabled={isReadonly}
-                className="w-full mt-0.5 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-60"
-              >
+              <select value={executor} onChange={(e) => setExecutor(e.target.value)} disabled={isReadonly}
+                className="w-full mt-1 h-11 px-3 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-60">
                 <option value="">— eu mesmo: {me?.nome || ""} —</option>
-                {empregadosOrdenados.map(e => (
-                  <option key={e.id} value={e.id}>{e.nome}</option>
-                ))}
+                {empregadosOrdenados.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
             </div>
           </div>
-          {/* Stats progresso */}
-          <div className="mt-3 flex items-center gap-3">
-            <div className="flex-1 bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full transition-all ${pct === 100 ? "bg-emerald-500" : "bg-indigo-500"}`}
-                style={{ width: `${pct}%` }}
-              />
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{stats.feitos}/{stats.total} feitos</span>
+              <span className="text-xs text-gray-500">{pct}%{stats.obrigatoriosTotal > 0 ? ` · obrig. ${stats.obrigatoriosFeitos}/${stats.obrigatoriosTotal}` : ""}</span>
             </div>
-            <span className="text-xs font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">
-              {stats.feitos}/{stats.total} ({pct}%)
-            </span>
+            <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden">
+              <div className={`h-full transition-all ${pct === 100 ? "bg-emerald-500" : "bg-indigo-500"}`} style={{ width: `${pct}%` }} />
+            </div>
           </div>
-          {stats.obrigatoriosTotal > 0 && (
-            <div className="text-[11px] text-gray-500 mt-1">
-              Obrigatórios: {stats.obrigatoriosFeitos}/{stats.obrigatoriosTotal}
-            </div>
-          )}
         </div>
 
-        {/* Itens */}
-        <div className="space-y-1 max-h-[50vh] overflow-y-auto">
+        {/* Itens — mobile-first: toque grande, texto legível */}
+        <div className="space-y-2 max-h-[52vh] overflow-y-auto -mx-1 px-1">
           {template.itens.map((item, idx) => {
             const r = resultados.find(rr => rr.itemId === item.id) || { itemId: item.id, textoSnapshot: item.texto, feito: false };
             return (
               <div
                 key={item.id}
-                className={`p-2 rounded border ${
+                className={`rounded-2xl border ${
                   r.feito
-                    ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800"
+                    ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-300 dark:border-emerald-800"
                     : item.obrigatorio
                       ? "bg-white dark:bg-gray-900 border-amber-200 dark:border-amber-800"
                       : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
                 }`}
               >
-                <label className="flex items-start gap-3 cursor-pointer">
+                <label className="flex items-start gap-3 cursor-pointer p-3.5">
                   <input
                     type="checkbox"
                     checked={r.feito}
                     onChange={(e) => patchItem(item.id, { feito: e.target.checked })}
                     disabled={isReadonly}
-                    className="mt-1 w-5 h-5 cursor-pointer"
+                    className="mt-0.5 w-7 h-7 rounded-md accent-emerald-600 cursor-pointer shrink-0"
                   />
-                  <div className="flex-1">
-                    <div className={`text-sm ${r.feito ? "line-through text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>
-                      <span className="text-xs text-gray-500 font-mono mr-1">{idx + 1}.</span>
+                  <div className="flex-1 min-w-0">
+                    <div className={`text-[15px] leading-snug ${r.feito ? "line-through text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+                      <span className="text-gray-400 mr-1">{idx + 1}.</span>
                       {item.texto}
-                      {item.obrigatorio && <span className="text-rose-600 ml-1">*</span>}
+                      {item.obrigatorio && <span className="text-rose-500 ml-1">*</span>}
                     </div>
-                    {item.descricao && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 whitespace-pre-wrap">💡 {item.descricao}</div>}
-                    {item.fotoGuiaUrl && <a href={item.fotoGuiaUrl} target="_blank" rel="noreferrer" className="inline-block mt-1"><img src={item.fotoGuiaUrl} alt="guia" className="w-14 h-14 rounded-lg object-cover border border-gray-200 dark:border-gray-700" title="Foto-guia: como deve ficar" /></a>}
+                    {item.descricao && <div className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap">💡 {item.descricao}</div>}
+                    {item.fotoGuiaUrl && <a href={item.fotoGuiaUrl} target="_blank" rel="noreferrer" className="inline-block mt-1.5"><img src={item.fotoGuiaUrl} alt="guia" className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" title="Foto-guia: como deve ficar" /></a>}
                   </div>
                 </label>
                 {/* Foto-prova */}
                 {(item.exigeFoto || r.fotoUrl) && (
-                  <div className="ml-7 mt-1 flex items-center gap-2">
+                  <div className="px-3.5 pb-3 pl-14 flex items-center gap-2 flex-wrap">
                     {isReadonly
-                      ? (r.fotoUrl ? <a href={r.fotoUrl} target="_blank" rel="noreferrer"><img src={r.fotoUrl} alt="prova" className="w-14 h-14 rounded-lg object-cover border border-gray-200 dark:border-gray-700" /></a> : <span className="text-[11px] text-gray-400">sem foto</span>)
-                      : <><span className={`text-[11px] ${item.exigeFoto && r.feito && !r.fotoUrl ? "text-rose-600 font-medium" : "text-gray-500"}`}>Foto-prova{item.exigeFoto ? " (obrigatória)" : ""}:</span>
+                      ? (r.fotoUrl ? <a href={r.fotoUrl} target="_blank" rel="noreferrer"><img src={r.fotoUrl} alt="prova" className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" /></a> : <span className="text-xs text-gray-400">sem foto</span>)
+                      : <><span className={`text-xs ${item.exigeFoto && r.feito && !r.fotoUrl ? "text-rose-600 font-medium" : "text-gray-500"}`}>Foto-prova{item.exigeFoto ? " (obrigatória)" : ""}:</span>
                         <FotoUpload rid={restaurantId} pathPrefix={`prova_${template.id}_${item.id}`} url={r.fotoUrl} onChange={(u) => patchItem(item.id, { fotoUrl: u || undefined })} label="foto" /></>}
                   </div>
                 )}
                 {(item.exigeObs || r.observacao) && !isReadonly && (
-                  <textarea
-                    value={r.observacao || ""}
-                    onChange={(e) => patchItem(item.id, { observacao: e.target.value })}
-                    placeholder={item.exigeObs ? "Observação obrigatória..." : "Observação (opcional)"}
-                    rows={1}
-                    className={`w-full mt-1 ml-7 px-2 py-1 text-xs rounded border ${
-                      item.exigeObs && r.feito && !r.observacao
-                        ? "border-rose-300 bg-rose-50 dark:bg-rose-900/10"
-                        : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
-                    }`}
-                  />
+                  <div className="px-3.5 pb-3 pl-14">
+                    <textarea
+                      value={r.observacao || ""}
+                      onChange={(e) => patchItem(item.id, { observacao: e.target.value })}
+                      placeholder={item.exigeObs ? "Observação obrigatória…" : "Observação (opcional)"}
+                      rows={2}
+                      className={`w-full px-3 py-2 text-sm rounded-lg border resize-y ${
+                        item.exigeObs && r.feito && !r.observacao
+                          ? "border-rose-300 bg-rose-50 dark:bg-rose-900/10"
+                          : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+                      }`}
+                    />
+                  </div>
                 )}
                 {isReadonly && r.observacao && (
-                  <div className="text-xs text-gray-600 dark:text-gray-400 italic ml-7 mt-1">{r.observacao}</div>
+                  <div className="px-3.5 pb-3 pl-14 text-sm text-gray-600 dark:text-gray-400 italic">{r.observacao}</div>
                 )}
               </div>
             );
@@ -275,13 +258,13 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
         {!isReadonly && (
-          <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <Button variant="secondary" onClick={onClose}>Fechar</Button>
-            <Button variant="secondary" onClick={() => salvar(false)} disabled={saving}>
-              {saving ? "..." : "💾 Salvar rascunho"}
+          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900">
+            <Button variant="secondary" onClick={onClose} className="w-full sm:w-auto">Fechar</Button>
+            <Button variant="secondary" onClick={() => salvar(false)} disabled={saving} className="w-full sm:w-auto">
+              {saving ? "…" : "💾 Rascunho"}
             </Button>
-            <Button onClick={() => salvar(true)} disabled={saving}>
-              {saving ? "..." : "✓ Finalizar"}
+            <Button onClick={() => salvar(true)} disabled={saving} className="w-full sm:w-auto">
+              {saving ? "…" : "✓ Finalizar"}
             </Button>
           </div>
         )}
