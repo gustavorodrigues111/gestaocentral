@@ -1840,35 +1840,42 @@ function CategoriasModal({ rid, categorias, fichas, insumos, tipo, onClose }: { 
   );
 }
 function CadastroCategorias({ rid, categorias, fichas, insumos, tipo }: { rid: string; categorias: FtCategoria[]; fichas: FtFicha[]; insumos: FtInsumo[]; tipo: FtCategoriaTipo }) {
-  const [nome, setNome] = useState("");
+  const [busca, setBusca] = useState("");
   const [editar, setEditar] = useState<FtCategoria | null>(null);
   const manual = tipo === "ficha";
   const meta = CAT_META[tipo];
-  const lista = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === tipo));
+  const todas = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === tipo));
+  const buscaNorm = normalizarNome(busca);
+  const lista = buscaNorm ? todas.filter(c => normalizarNome(c.nome).includes(buscaNorm)) : todas;
   // Reordena a categoria (só pratos finais — bases/insumos são alfabéticos).
   async function mover(id: string, dir: -1 | 1) {
-    const idx = lista.findIndex(c => c.id === id); const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= lista.length) return;
-    const nova = [...lista]; [nova[idx], nova[j]] = [nova[j], nova[idx]];
+    const idx = todas.findIndex(c => c.id === id); const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= todas.length) return;
+    const nova = [...todas]; [nova[idx], nova[j]] = [nova[j], nova[idx]];
     await Promise.all(nova.map((c, i) => updateDoc(doc(db, "ftCategorias", c.id), { ordem: i })));
   }
-  async function add() {
-    if (!nome.trim()) return;
+  async function nova() {
+    const nome = window.prompt(`Nova categoria (${meta.ph.replace("ex: ", "ex.: ")}):`);
+    if (!nome || !nome.trim()) return;
     const id = uid("cat");
-    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem: lista.length, ativo: true } as FtCategoria));
-    setNome("");
+    try { await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem: todas.length, ativo: true } as FtCategoria)); }
+    catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); }
   }
   return (
     <div className="space-y-3">
-      <div className="flex items-end gap-2">
-        <div className="flex-1"><Input label="Nova categoria" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder={meta.ph} /></div>
-        <Button onClick={add}>+ Adicionar</Button>
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar categoria…" className="w-full h-9 pl-9 pr-8 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+          {busca && <button type="button" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm">✕</button>}
+        </div>
+        <Button onClick={nova}>+ Nova categoria</Button>
       </div>
       {!manual && <div className="text-[11px] text-gray-400">Ordem alfabética automática.</div>}
-      <ListaCard vazio={lista.length === 0} vazioTexto="Nenhuma categoria ainda.">
+      <ListaCard vazio={lista.length === 0} vazioTexto={busca ? "Nenhuma categoria com esse nome." : "Nenhuma categoria ainda."}>
         {lista.map((c, i, arr) => (
           <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40">
-            {manual && (
+            {manual && !busca && (
               <div className="flex flex-col shrink-0 -my-1">
                 <button type="button" onClick={() => void mover(c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
                 <button type="button" onClick={() => void mover(c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
