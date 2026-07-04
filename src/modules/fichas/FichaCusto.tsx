@@ -137,7 +137,7 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio, cardapioPd
       {nVinculados > 0 && (
         <div className="text-[12px] text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2 flex items-start gap-2">
           <span className="text-base leading-none">🔗</span>
-          <span><b>{nVinculados} {nVinculados === 1 ? "preço vinculado" : "preços vinculados"}</b> a partir da leitura do cardápio{cardapioPdfEm ? <> (PDF lido em <b>{fmtDataCurta(cardapioPdfEm)}</b>)</> : ""}. Cada preço mostra o item de cardápio que foi identificado — confira e, se algum estiver errado, clique em <b>trocar</b>.</span>
+          <span><b>{nVinculados} {nVinculados === 1 ? "preço vinculado" : "preços vinculados"}</b> a partir da leitura do cardápio{cardapioPdfEm ? <> (PDF lido em <b>{fmtDataCurta(cardapioPdfEm)}</b>)</> : ""}. Cada preço mostra o item de cardápio que foi identificado — confira e, se algum estiver errado, clique em <b>remover</b> pra escolher outro.</span>
         </div>
       )}
       {grupos.map(g => (
@@ -305,7 +305,7 @@ function PrecoCell({ f, fonte, preco, item, cardapio, onVincular, onDesvincular,
     );
   }
   if (fonte === "cardapio") {
-    return <div className="flex items-center gap-1.5 flex-wrap"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5 max-w-[170px] truncate" title={`Identificado no cardápio como: ${item?.titulo || "—"}`}>🔗 {item?.titulo ? UP(item.titulo) : "cardápio"}</span><button type="button" onClick={onDesvincular} className="text-[10px] text-gray-400 hover:text-red-600 underline shrink-0">trocar</button></div>;
+    return <div className="flex items-center gap-1.5 flex-wrap"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5 max-w-[170px] truncate" title={`Identificado no cardápio como: ${item?.titulo || "—"}`}>🔗 {item?.titulo ? UP(item.titulo) : "cardápio"}</span><button type="button" onClick={onDesvincular} title="Remove o vínculo e libera pra escolher outro" className="text-[10px] text-gray-400 hover:text-red-600 underline shrink-0">remover</button></div>;
   }
   if (fonte === "manual") {
     return <div className="flex items-center gap-1.5"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-gray-400">manual</span><button type="button" onClick={() => { setTxt(preco != null ? String(preco).replace(".", ",") : ""); setEditandoManual(true); }} className="text-[10px] text-gray-400 hover:text-indigo-600 underline">editar</button></div>;
