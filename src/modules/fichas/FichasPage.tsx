@@ -1511,54 +1511,81 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
 // Mescla duas fichas (bases ou pratos) duplicadas: quem usa ESTA passa a usar a
 // outra; esta é desativada.
 function MesclarFichaModal({ ficha, fichas, onClose, onDone }: { ficha: FtFicha; fichas: FtFicha[]; onClose: () => void; onDone: () => void }) {
-  const [alvoId, setAlvoId] = useState(""); const [nomeFinal, setNomeFinal] = useState(""); const [salvando, setSalvando] = useState(false);
+  const [outraId, setOutraId] = useState(""); const [prevalece, setPrevalece] = useState<"esta" | "outra">("outra"); const [nomeFinal, setNomeFinal] = useState(""); const [salvando, setSalvando] = useState(false);
   const candidatos = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && !!f.ehSubficha === !!ficha.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome));
-  const usam = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && (f.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === ficha.id));
-  const alvo = fichas.find(f => f.id === alvoId) || null;
+  const outra = fichas.find(f => f.id === outraId) || null;
+  const mantida = prevalece === "esta" ? ficha : outra;
+  const removida = prevalece === "esta" ? outra : ficha;
+  function escolher(p: "esta" | "outra") { setPrevalece(p); const m = p === "esta" ? ficha : outra; if (m) setNomeFinal(m.nome); }
+  function selecionarOutra(id: string) { setOutraId(id); const a = fichas.find(f => f.id === id); setPrevalece("outra"); setNomeFinal(a ? a.nome : ""); }
   async function mesclar() {
-    if (!alvo) { alert("Escolha qual ficha prevalece."); return; }
-    const nomeOk = UP(nomeFinal).trim() || alvo.nome;
-    if (!confirm(`Mesclar "${ficha.nome}" em "${alvo.nome}" (nome final: "${nomeOk}")? "${ficha.nome}" será desativada.`)) return;
+    if (!mantida || !removida) { alert("Escolha a outra ficha."); return; }
+    const nomeOk = UP(nomeFinal).trim() || mantida.nome;
+    if (!confirm(`Manter "${mantida.nome}" e desativar "${removida.nome}" (nome final: "${nomeOk}")?`)) return;
     setSalvando(true);
     try {
       const batch = writeBatch(db);
-      // quem usava a ficha desativada passa a apontar pra que prevalece
-      for (const f of usam) {
-        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === ficha.id) ? { ...ing, refId: alvo.id, nomeSnapshot: nomeOk } : ing);
+      // quem usava a REMOVIDA passa a apontar pra MANTIDA
+      for (const f of fichas.filter(x => x.ativo !== false && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === removida.id))) {
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === removida.id) ? { ...ing, refId: mantida.id, nomeSnapshot: nomeOk } : ing);
         batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
       }
-      // atualiza o snapshot também em quem já usava a que prevalece (nome pode ter mudado)
-      for (const f of fichas.filter(x => x.ativo !== false && x.id !== ficha.id && x.id !== alvo.id && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === alvo.id))) {
-        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === alvo.id) ? { ...ing, nomeSnapshot: nomeOk } : ing);
+      // atualiza snapshot em quem já usava a MANTIDA (nome pode ter mudado)
+      for (const f of fichas.filter(x => x.ativo !== false && x.id !== removida.id && x.id !== mantida.id && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === mantida.id))) {
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === mantida.id) ? { ...ing, nomeSnapshot: nomeOk } : ing);
         batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
       }
-      batch.update(doc(db, "ftFichas", alvo.id), sanitizeForFirestore({ nome: nomeOk, nomeNormalizado: normalizarNome(nomeOk) }));
-      batch.update(doc(db, "ftFichas", ficha.id), { ativo: false });
+      batch.update(doc(db, "ftFichas", mantida.id), sanitizeForFirestore({ nome: nomeOk, nomeNormalizado: normalizarNome(nomeOk) }));
+      batch.update(doc(db, "ftFichas", removida.id), { ativo: false });
       await batch.commit();
       onDone();
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
   }
+  const custoUsos = (f: FtFicha) => fichas.filter(x => x.ativo !== false && x.id !== f.id && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === f.id)).length;
+  const coluna = (f: FtFicha, key: "esta" | "outra") => {
+    const sel = prevalece === key; const usos = custoUsos(f);
+    return (
+      <button type="button" onClick={() => escolher(key)} className={`text-left rounded-xl border-2 p-3 transition-colors ${sel ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"}`}>
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${sel ? "border-indigo-500" : "border-gray-300 dark:border-gray-600"}`}>{sel && <span className="w-2 h-2 rounded-full bg-indigo-500" />}</span>
+          <span className="text-[10px] uppercase font-bold text-indigo-600 dark:text-indigo-300">{sel ? "prevalece" : "usar esta"}</span>
+        </div>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{UP(f.nome)}</div>
+        <div className="text-[11px] text-gray-500 mb-1.5">rende {fmtQtd(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)} · {(f.ingredientes || []).length} ingr. · usada em {usos}</div>
+        <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-0.5 max-h-40 overflow-y-auto">
+          {(f.ingredientes || []).map(ing => <li key={ing.id} className="flex justify-between gap-2"><span className="truncate">{ing.qb ? "• " : ""}{ing.nomeSnapshot || "?"}</span><span className="text-gray-400 tabular-nums shrink-0">{ing.qb ? "q.b." : `${fmtQtd(ing.qtd)} ${labelUnidade(ing.unidade)}`}</span></li>)}
+          {(f.ingredientes || []).length === 0 && <li className="text-gray-400 italic">sem ingredientes</li>}
+        </ul>
+      </button>
+    );
+  };
   return (
-    <Modal title={`Mesclar "${ficha.nome}"`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={`Mesclar "${UP(ficha.nome)}"`} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">Junta com outra {ficha.ehSubficha ? "base" : "ficha"} duplicada. A escolhida <strong>prevalece</strong> (mantém os ingredientes); "{ficha.nome}" é desativada e quem a usava passa a apontar pra ela.</p>
-        <Select label="Qual ficha prevalece" value={alvoId} onChange={e => { setAlvoId(e.target.value); const a = fichas.find(f => f.id === e.target.value); setNomeFinal(a ? a.nome : ""); }}>
-          <option value="">Selecione…</option>
+        <p className="text-sm text-gray-600 dark:text-gray-300">Junta duas {ficha.ehSubficha ? "bases" : "fichas"} duplicadas. Escolha qual <strong>prevalece</strong> (mantém os ingredientes); a outra é desativada e quem a usava passa a apontar pra que ficou.</p>
+        <Select label="Mesclar com" value={outraId} onChange={e => selecionarOutra(e.target.value)}>
+          <option value="">Selecione a outra ficha…</option>
           {candidatos.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
         </Select>
-        {alvo && (
-          <div className="space-y-1.5">
-            <Input label="Nome final" value={nomeFinal} onChange={e => setNomeFinal(e.target.value.toUpperCase())} />
-            <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
-              <span className="text-gray-400">usar:</span>
-              <button type="button" onClick={() => setNomeFinal(ficha.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(ficha.nome)}</button>
-              <button type="button" onClick={() => setNomeFinal(alvo.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(alvo.nome)}</button>
-              <span className="text-gray-400">ou escreva um novo acima.</span>
+        {outra && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              {coluna(ficha, "esta")}
+              {coluna(outra, "outra")}
             </div>
-          </div>
+            <div className="space-y-1.5">
+              <Input label="Nome final" value={nomeFinal} onChange={e => setNomeFinal(e.target.value.toUpperCase())} />
+              <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                <span className="text-gray-400">usar:</span>
+                <button type="button" onClick={() => setNomeFinal(ficha.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(ficha.nome)}</button>
+                <button type="button" onClick={() => setNomeFinal(outra.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(outra.nome)}</button>
+                <span className="text-gray-400">ou escreva um novo acima.</span>
+              </div>
+            </div>
+            {removida && <p className="text-[11px] text-gray-400">Ao mesclar, "{UP(removida.nome)}" é desativada e suas {custoUsos(removida)} referência(s) vão pra "{UP(mantida?.nome || "")}".</p>}
+          </>
         )}
-        {alvo && usam.length > 0 && <p className="text-[11px] text-gray-400">{usam.length} ficha(s) que usam "{ficha.nome}" serão religadas.</p>}
-        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando || !alvoId}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando || !outraId}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
       </div>
     </Modal>
   );
