@@ -7,7 +7,7 @@ import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { AREAS, CHECKLIST_TURNO_LABEL } from "../../core/types";
-import type { Area, ChecklistItemTemplate, ChecklistTemplate, ChecklistTurno, Pessoa } from "../../core/types";
+import type { Area, Cargo, ChecklistItemTemplate, ChecklistTemplate, ChecklistTurno, Empregado, Pessoa } from "../../core/types";
 import { FotoUpload } from "./FotoUpload";
 
 type Props = {
@@ -38,14 +38,29 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
   useEffect(() => {
     if (!restaurantId) return;
-    const u = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", restaurantId)), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false)));
-    return () => u();
+    const u1 = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", restaurantId)), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false)));
+    const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", restaurantId)), snap => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
+    const u3 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", restaurantId)), snap => setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo)));
+    return () => { u1(); u2(); u3(); };
   }, [restaurantId]);
   const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
   const nomePorId = useMemo(() => Object.fromEntries(pessoas.map(p => [p.id, p.nome])), [pessoas]);
+  // Área de cada pessoa: empregado ativo → cargo → área.
+  const areaPorPessoa = useMemo(() => {
+    const cargoArea = new Map(cargos.map(c => [c.id, c.area]));
+    const m = new Map<string, Area>();
+    for (const e of empregados) { if (e.pessoaId && e.estaAtivo) { const a = cargoArea.get(e.cargoId); if (a) m.set(e.pessoaId, a); } }
+    return m;
+  }, [empregados, cargos]);
   const toggleFuncao = (a: Area) => setFuncoes(s => s.includes(a) ? s.filter(x => x !== a) : [...s, a]);
+  const toggleResp = (id: string) => setResponsaveisIds(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  // Pessoas das áreas selecionadas + as já escolhidas que ficaram fora da área.
+  const pessoasDaArea = useMemo(() => pessoasOrd.filter(p => { const a = areaPorPessoa.get(p.id); return a != null && funcoes.includes(a); }), [pessoasOrd, areaPorPessoa, funcoes]);
+  const respForaArea = useMemo(() => responsaveisIds.filter(id => !pessoasDaArea.some(p => p.id === id)), [responsaveisIds, pessoasDaArea]);
 
   function toggleDow(d: number) {
     setDiasSemana(s => s.includes(d) ? s.filter(x => x !== d) : [...s, d].sort());
@@ -179,16 +194,23 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
             </div>
           </div>
           <div>
-            <div className="text-[11px] text-gray-500 mb-1">Pessoas específicas</div>
-            <div className="flex flex-wrap gap-1.5 items-center">
-              {responsaveisIds.map(id => (
-                <span key={id} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">{nomePorId[id] || "?"}<button type="button" onClick={() => setResponsaveisIds(s => s.filter(x => x !== id))} className="hover:text-rose-600">×</button></span>
-              ))}
-              <select value="" onChange={(e) => { const id = e.target.value; if (id && !responsaveisIds.includes(id)) setResponsaveisIds(s => [...s, id]); }} className="text-xs px-3 py-1.5 rounded-full border border-dashed border-gray-300 dark:border-gray-600 bg-transparent text-gray-500 cursor-pointer">
-                <option value="">+ pessoa…</option>
-                {pessoasOrd.filter(p => !responsaveisIds.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select>
-            </div>
+            <div className="text-[11px] text-gray-500 mb-1">Pessoas específicas <span className="text-gray-400">(cinza = fora · índigo = responsável)</span></div>
+            {funcoes.length === 0 ? (
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 shadow-sm shadow-rose-200/60 dark:shadow-none">👤 Selecione uma área acima pra escolher as pessoas</div>
+            ) : pessoasDaArea.length === 0 ? (
+              <div className="text-[11px] text-gray-400">Nenhuma pessoa cadastrada {funcoes.length === 1 ? `em ${funcoes[0]}` : "nessas áreas"}.</div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {pessoasDaArea.map(p => <button key={p.id} type="button" onClick={() => toggleResp(p.id)} className={CHIP(responsaveisIds.includes(p.id))}>{p.nome}</button>)}
+              </div>
+            )}
+            {respForaArea.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {respForaArea.map(id => (
+                  <span key={id} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" title="Selecionada, mas fora das áreas atuais">{nomePorId[id] || "?"}<button type="button" onClick={() => setResponsaveisIds(s => s.filter(x => x !== id))} className="hover:text-rose-600">×</button></span>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
