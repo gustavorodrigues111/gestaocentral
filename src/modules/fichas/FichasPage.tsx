@@ -1079,15 +1079,30 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
     onClose();
   }
   async function desvincularSubproduto() { await updateDoc(doc(db, "ftInsumos", insumo.id), { subprodutoDe: null }); onClose(); }
-  // Reclassificar: cadastrado como subproduto por engano.
+  // Reclassificar: isto não é (ou não deveria ser) um insumo.
   const [reclSub, setReclSub] = useState("");       // subficha alvo: "__nova__" | id existente
+  const [reclSubprod, setReclSubprod] = useState(""); // subproduto alvo: "__pendente__" | "exist:fid:sid"
   const [reclBusy, setReclBusy] = useState(false);
   const subfichasSist = useMemo(() => fichas.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
+  const subprodutosSist = useMemo(() => fichas.filter(f => f.ativo !== false).flatMap(f => (f.subprodutos || []).map(sp => ({ ficha: f, sp }))).sort((a, b) => a.sp.nome.localeCompare(b.sp.nome)), [fichas]);
   // Vira insumo normal — só tira a marca de subproduto.
   async function virarIngrediente() {
     setReclBusy(true);
     try { await updateDoc(doc(db, "ftInsumos", insumo.id), { ehSubproduto: false, subprodutoDe: null }); onClose(); }
     catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
+  }
+  // Vira subproduto: marca ehSubproduto e (se escolhido) vincula a um preparo.
+  async function virarSubproduto(alvo: string) {
+    setReclBusy(true);
+    try {
+      if (alvo.startsWith("exist:")) {
+        const [, fid, sid] = alvo.split(":");
+        await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ ehSubproduto: true, subprodutoDe: { fichaId: fid, subId: sid } }));
+      } else {
+        await updateDoc(doc(db, "ftInsumos", insumo.id), { ehSubproduto: true, subprodutoDe: null });
+      }
+      onClose();
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
   }
   // Vira subficha: cria nova (ou usa existente), religa quem usava o insumo e o desativa.
   async function virarSubficha() {
@@ -1217,23 +1232,31 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
                 <p className="text-[11px] text-gray-400">Depois ajuste o % de rateio no bloco Subprodutos da ficha.</p>
               </div>
             )}
-            {/* Reclassificar: não é subproduto de verdade */}
-            <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-800">
-              <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1">Não é um subproduto?</div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <button type="button" onClick={() => void virarIngrediente()} disabled={reclBusy} className="h-8 text-xs font-medium px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-400 disabled:opacity-40">É um ingrediente normal</button>
-                <span className="text-[11px] text-gray-300">ou é subficha:</span>
-                <select value={reclSub} onChange={e => setReclSub(e.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm">
-                  <option value="">— escolher subficha —</option>
-                  <option value="__nova__">＋ criar “{UP(insumo.nome)}” como subficha</option>
-                  {subfichasSist.length > 0 && <optgroup label="já cadastradas">{subfichasSist.map(f => <option key={f.id} value={f.id}>{UP(f.nome)}</option>)}</optgroup>}
-                </select>
-                <button type="button" onClick={() => void virarSubficha()} disabled={reclBusy || !reclSub} className="h-8 text-xs font-medium px-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 shadow-sm disabled:opacity-40">Converter</button>
-              </div>
-              <p className="text-[11px] text-gray-400 mt-1">Virar subficha desativa este insumo e religa quem o usava — as fichas afetadas ficam pra revisão.</p>
-            </div>
           </div>
         )}
+
+        {/* Reclassificar — isto não é um insumo */}
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">O que isto é de verdade?</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {insumo.ehSubproduto
+              ? <button type="button" onClick={() => void virarIngrediente()} disabled={reclBusy} className="h-8 text-xs font-medium px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-400 disabled:opacity-40">🧂 É um insumo normal</button>
+              : (
+                <select value={reclSubprod} onChange={e => { const v = e.target.value; setReclSubprod(""); if (v) void virarSubproduto(v); }} disabled={reclBusy} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 max-w-[190px] shadow-sm">
+                  <option value="">↦ é subproduto…</option>
+                  <option value="__pendente__">⏳ marcar como subproduto (vincular depois)</option>
+                  {subprodutosSist.length > 0 && <optgroup label="vincular a existente">{subprodutosSist.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{UP(sp.nome)} · de {ficha.nome}</option>)}</optgroup>}
+                </select>
+              )}
+            <select value={reclSub} onChange={e => setReclSub(e.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm">
+              <option value="">🧩 é subficha…</option>
+              <option value="__nova__">＋ criar “{UP(insumo.nome)}” como subficha</option>
+              {subfichasSist.length > 0 && <optgroup label="já cadastradas">{subfichasSist.map(f => <option key={f.id} value={f.id}>{UP(f.nome)}</option>)}</optgroup>}
+            </select>
+            <button type="button" onClick={() => void virarSubficha()} disabled={reclBusy || !reclSub} className="h-8 text-xs font-medium px-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 shadow-sm disabled:opacity-40">Converter</button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">Virar subficha desativa este insumo e religa quem o usava (fichas afetadas → revisão). Virar subproduto mantém o insumo, mas o custo passa a derivar do preparo.</p>
+        </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
           <div className="flex items-center justify-between mb-1">
