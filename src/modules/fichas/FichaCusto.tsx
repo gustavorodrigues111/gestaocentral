@@ -43,6 +43,16 @@ export function parsePreco(s?: string): number | null {
   return isNaN(v) || v <= 0 ? null : v;
 }
 
+// Agrupa itens do cardápio por seção (pros seletores de vínculo), seções em
+// ordem alfabética e itens por título. Sem seção → "Outros" (vai pro fim).
+function agruparPorSecao(itens: CardItem[]): { secao: string; itens: CardItem[] }[] {
+  const m = new Map<string, CardItem[]>();
+  for (const i of itens) { const s = (i.secao || "").trim() || "Outros"; if (!m.has(s)) m.set(s, []); m.get(s)!.push(i); }
+  return [...m.entries()]
+    .map(([secao, its]) => ({ secao, itens: its.slice().sort((a, b) => a.titulo.localeCompare(b.titulo)) }))
+    .sort((a, b) => (a.secao === "Outros" ? 1 : 0) - (b.secao === "Outros" ? 1 : 0) || a.secao.localeCompare(b.secao));
+}
+
 type FontePreco = "cardapio" | "manual" | "quebrado" | "nenhum";
 function precoDe(f: FtFicha, itens: Map<string, CardItem>): { preco: number | null; fonte: FontePreco; item?: CardItem } {
   if (f.cardapioItemId) {
@@ -207,7 +217,7 @@ function VincularLoteModal({ fichas, cardapio, itensMap, onClose }: { fichas: Ft
                 <span className="text-gray-300">→</span>
                 <select value={sel[f.id] || ""} onChange={e => setSel(s => ({ ...s, [f.id]: e.target.value }))} className={`h-8 text-xs px-2 rounded-lg border bg-white dark:bg-gray-900 max-w-[260px] ${sel[f.id] ? "border-emerald-300 dark:border-emerald-700 text-gray-700 dark:text-gray-200" : "border-dashed border-gray-300 dark:border-gray-600 text-gray-400"}`}>
                   <option value="">— pular —</option>
-                  {cardapio.map(i => <option key={i.id} value={i.id}>{i.titulo}{i.preco ? ` · ${i.preco}` : ""}</option>)}
+                  {agruparPorSecao(cardapio).map(g => <optgroup key={g.secao} label={UP(g.secao)}>{g.itens.map(i => <option key={i.id} value={i.id}>{i.titulo}{i.preco ? ` · ${i.preco}` : ""}</option>)}</optgroup>)}
                 </select>
               </div>
             ))}
@@ -308,7 +318,7 @@ function PrecoCell({ f, fonte, preco, item, cardapio, onVincular, onDesvincular,
         <option value="">definir preço…</option>
         {sug && <optgroup label="sugerido do cardápio"><option value={sug.id}>✨ {sug.titulo}{sug.preco ? ` · ${sug.preco}` : ""}</option></optgroup>}
         <option value="__manual__">✏️ preço manual…</option>
-        {cardapio.length > 0 && <optgroup label="vincular ao cardápio">{cardapio.map(i => <option key={i.id} value={i.id}>{i.titulo}{i.preco ? ` · ${i.preco}` : ""}</option>)}</optgroup>}
+        {agruparPorSecao(cardapio).map(g => <optgroup key={g.secao} label={UP(g.secao)}>{g.itens.map(i => <option key={i.id} value={i.id}>{i.titulo}{i.preco ? ` · ${i.preco}` : ""}</option>)}</optgroup>)}
       </select>
     </div>
   );
