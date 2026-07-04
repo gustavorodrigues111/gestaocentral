@@ -9,6 +9,7 @@ import { EventosPublicaPage } from "./modules/eventos/EventosPublicaPage";
 import { TrabalhePublicaPage } from "./modules/sites/TrabalhePublicaPage";
 import { ReservasPublicaPage } from "./modules/sites/ReservasPublicaPage";
 import { PoliticaPrivacidadePage } from "./modules/sites/PoliticaPrivacidadePage";
+import { PrivacidadePlataformaPage } from "./modules/sites/PrivacidadePlataformaPage";
 import { ExcluirDadosPage } from "./modules/sites/ExcluirDadosPage";
 import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
 import { CardapioRedirect } from "./modules/sites/CardapioRedirect";
@@ -54,6 +55,8 @@ function App() {
           <Route path="/trabalhe/:rid" element={<TrabalhePublicaPage />} />
           <Route path="/reservas/:rid" element={<ReservasPublicaPage />} />
           <Route path="/politica/:slug" element={<PoliticaPrivacidadePage />} />
+          {/* Política de privacidade da plataforma (usada pra publicar o app do WhatsApp na Meta) */}
+          <Route path="/privacidade" element={<PrivacidadePlataformaPage />} />
           <Route path="/r/excluir-dados/:rid" element={<ExcluirDadosPage />} />
           <Route path="/site/:slug" element={<SitePublicaPage />} />
           <Route path="/site-preview/:rid" element={<SitePreviewPage />} />
