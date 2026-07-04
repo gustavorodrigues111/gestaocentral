@@ -191,7 +191,7 @@ export function FichasPage() {
         <CriarInsumoModal rid={rid} nomeInicial="" insumos={insumos} categorias={categorias} meId={pessoa?.id} onCriado={() => setCriandoInsumo(false)} onClose={() => setCriandoInsumo(false)} />
       )}
       {catModal && podeEditar && (
-        <CategoriasModal rid={rid} categorias={categorias} tipo={catModal} onClose={() => setCatModal(null)} />
+        <CategoriasModal rid={rid} categorias={categorias} fichas={fichas} insumos={insumos} tipo={catModal} onClose={() => setCatModal(null)} />
       )}
     </div>
   );
@@ -366,6 +366,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   const [f, setF] = useState<FtFicha>(fichaInicial);
   const [salvando, setSalvando] = useState(false);
   const [converter, setConverter] = useState<{ nome: string; fc: number } | null>(null);
+  const [mesclando, setMesclando] = useState(false);
   const custo = useMemo(() => calcularCusto(f, insumos, fichas), [f, insumos, fichas]);
   const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
   // Ficha com 1 único ingrediente-insumo → candidata a virar variação desse insumo.
@@ -643,12 +644,15 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
       <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir ficha</Button>
+          <Button variant="ghost" size="sm" onClick={() => setMesclando(true)} title="Juntar com outra ficha duplicada — quem usa esta passa a usar a outra">🔀 Mesclar com outra</Button>
           {insumoUnico && (
             <Button variant="ghost" size="sm" onClick={abrirConverter} title="Esta ficha tem 1 ingrediente só — transforme em variação (fator de correção) desse insumo">🔀 Converter em variação de ingrediente</Button>
           )}
         </div>
         <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
       </div>
+
+      {mesclando && <MesclarFichaModal ficha={f} fichas={fichas} onClose={() => setMesclando(false)} onDone={() => { setMesclando(false); onClose(); }} />}
 
       {converter && insumoUnico && ingUnico && (
         <Modal title="🔀 Converter em variação de ingrediente" onClose={() => setConverter(null)} maxWidth="max-w-md">
@@ -1488,6 +1492,42 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
   );
 }
 
+// Mescla duas fichas (bases ou pratos) duplicadas: quem usa ESTA passa a usar a
+// outra; esta é desativada.
+function MesclarFichaModal({ ficha, fichas, onClose, onDone }: { ficha: FtFicha; fichas: FtFicha[]; onClose: () => void; onDone: () => void }) {
+  const [alvoId, setAlvoId] = useState(""); const [salvando, setSalvando] = useState(false);
+  const candidatos = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && !!f.ehSubficha === !!ficha.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome));
+  const usam = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && (f.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === ficha.id));
+  async function mesclar() {
+    const alvo = fichas.find(f => f.id === alvoId);
+    if (!alvo) { alert("Escolha a ficha destino."); return; }
+    if (!confirm(`Mesclar "${ficha.nome}" em "${alvo.nome}"? "${ficha.nome}" será desativada.`)) return;
+    setSalvando(true);
+    try {
+      const batch = writeBatch(db);
+      for (const f of usam) {
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === ficha.id) ? { ...ing, refId: alvo.id, nomeSnapshot: alvo.nome } : ing);
+        batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
+      }
+      batch.update(doc(db, "ftFichas", ficha.id), { ativo: false });
+      await batch.commit();
+      onDone();
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
+  }
+  return (
+    <Modal title={`Mesclar "${ficha.nome}"`} onClose={onClose} maxWidth="max-w-sm">
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Junta com outra {ficha.ehSubficha ? "base" : "ficha"} duplicada. As {usam.length} ficha(s) que usam "{ficha.nome}" passam a apontar pra ela; esta é desativada.</p>
+        <Select label="Ficha destino" value={alvoId} onChange={e => setAlvoId(e.target.value)}>
+          <option value="">Selecione…</option>
+          {candidatos.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+        </Select>
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando || !alvoId}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
 // ─── Sincronizar preços do Recebimento ──────────────────────────────────────
 function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, meId, onClose }: {
   rid: string; reconc: { vinculados: LinhaReconc[]; sugeridos: LinhaReconc[]; semInsumo: LinhaReconc[] };
@@ -1704,14 +1744,14 @@ const CAT_META: Record<FtCategoriaTipo, { titulo: string; icone: string; bg: str
   subficha: { titulo: "🧩 Categorias de bases", icone: "🧩", bg: "bg-purple-100 dark:bg-purple-900/40", ph: "ex: MOLHOS, CALDOS" },
   insumo: { titulo: "🧂 Categorias de insumos", icone: "🧂", bg: "bg-gray-100 dark:bg-gray-800", ph: "ex: HORTIFRÚTI, CARNES, SECOS" },
 };
-function CategoriasModal({ rid, categorias, tipo, onClose }: { rid: string; categorias: FtCategoria[]; tipo: FtCategoriaTipo; onClose: () => void }) {
+function CategoriasModal({ rid, categorias, fichas, insumos, tipo, onClose }: { rid: string; categorias: FtCategoria[]; fichas: FtFicha[]; insumos: FtInsumo[]; tipo: FtCategoriaTipo; onClose: () => void }) {
   return (
     <Modal title={CAT_META[tipo].titulo} onClose={onClose} maxWidth="max-w-lg">
-      <CadastroCategorias rid={rid} categorias={categorias} tipo={tipo} />
+      <CadastroCategorias rid={rid} categorias={categorias} fichas={fichas} insumos={insumos} tipo={tipo} />
     </Modal>
   );
 }
-function CadastroCategorias({ rid, categorias, tipo }: { rid: string; categorias: FtCategoria[]; tipo: FtCategoriaTipo }) {
+function CadastroCategorias({ rid, categorias, fichas, insumos, tipo }: { rid: string; categorias: FtCategoria[]; fichas: FtFicha[]; insumos: FtInsumo[]; tipo: FtCategoriaTipo }) {
   const [nome, setNome] = useState("");
   const [editar, setEditar] = useState<FtCategoria | null>(null);
   const manual = tipo === "ficha";
@@ -1753,16 +1793,24 @@ function CadastroCategorias({ rid, categorias, tipo }: { rid: string; categorias
           </div>
         ))}
       </ListaCard>
-      {editar && <CategoriaModal categoria={editar} onClose={() => setEditar(null)} />}
+      {editar && <CategoriaModal categoria={editar} categorias={categorias} fichas={fichas} insumos={insumos} onClose={() => setEditar(null)} />}
     </div>
   );
 }
 
-function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClose: () => void }) {
+function CategoriaModal({ categoria, categorias, fichas, insumos, onClose }: { categoria: FtCategoria; categorias: FtCategoria[]; fichas: FtFicha[]; insumos: FtInsumo[]; onClose: () => void }) {
   const tipo = (categoria.tipo || "ficha") as FtCategoriaTipo;
   const [nome, setNome] = useState(categoria.nome);
   const [ordem, setOrdem] = useState(String(categoria.ordem ?? 0));
   const [cmv, setCmv] = useState(categoria.cmvAlvo != null ? String(categoria.cmvAlvo) : "");
+  const [excluindo, setExcluindo] = useState(false);
+  const [destino, setDestino] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Itens que ficariam órfãos se excluir esta categoria.
+  const afetados: { id: string; nome: string; col: string }[] = tipo === "insumo"
+    ? insumos.filter(i => i.ativo !== false && i.categoriaId === categoria.id).map(i => ({ id: i.id, nome: i.nome, col: "ftInsumos" }))
+    : fichas.filter(f => f.ativo !== false && f.categoriaId === categoria.id).map(f => ({ id: f.id, nome: f.nome, col: "ftFichas" }));
+  const outras = ordenarCats(categorias.filter(c => c.ativo !== false && c.id !== categoria.id && (c.tipo || "ficha") === tipo));
   async function salvar() {
     if (!nome.trim()) { alert("Dê um nome à categoria."); return; }
     await updateDoc(doc(db, "ftCategorias", categoria.id), sanitizeForFirestore({
@@ -1770,7 +1818,40 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
     }));
     onClose();
   }
-  async function excluir() { if (confirm(`Excluir "${categoria.nome}"?`)) { await updateDoc(doc(db, "ftCategorias", categoria.id), { ativo: false }); onClose(); } }
+  function pedirExcluir() {
+    if (afetados.length === 0) { if (confirm(`Excluir "${categoria.nome}"?`)) void confirmarExcluir(); return; }
+    setExcluindo(true);
+  }
+  async function confirmarExcluir() {
+    setBusy(true);
+    try {
+      const batch = writeBatch(db);
+      for (const p of afetados) batch.update(doc(db, p.col, p.id), { categoriaId: destino || null });
+      batch.update(doc(db, "ftCategorias", categoria.id), { ativo: false });
+      await batch.commit();
+      onClose();
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setBusy(false); }
+  }
+  if (excluindo) {
+    return (
+      <Modal title={`Excluir "${UP(categoria.nome)}"`} onClose={() => setExcluindo(false)} maxWidth="max-w-md">
+        <div className="space-y-3 text-sm">
+          <p className="text-gray-600 dark:text-gray-300"><strong>{afetados.length}</strong> {tipo === "insumo" ? "insumo(s)" : "ficha(s)"} usam esta categoria. Pra onde mover antes de excluir?</p>
+          <Select label="Mover para" value={destino} onChange={e => setDestino(e.target.value)}>
+            <option value="">— sem categoria —</option>
+            {outras.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          </Select>
+          <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {afetados.map(p => <div key={p.id} className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 truncate">{UP(p.nome)}</div>)}
+          </div>
+          <div className="flex items-center justify-end gap-2 pt-1">
+            <Button variant="secondary" onClick={() => setExcluindo(false)}>Cancelar</Button>
+            <Button onClick={confirmarExcluir} disabled={busy}>{busy ? "Excluindo…" : destino ? "Mover e excluir" : "Deixar sem categoria e excluir"}</Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title="Editar categoria" onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
@@ -1790,7 +1871,7 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
           <div className="text-[11px] text-gray-400">Listada em ordem alfabética automática — sem ordem manual.</div>
         )}
         <div className="flex items-center justify-between pt-2">
-          <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir</Button>
+          <Button variant="ghost" size="sm" onClick={pedirExcluir}>🗑️ Excluir</Button>
           <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
         </div>
       </div>
