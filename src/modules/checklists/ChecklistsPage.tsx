@@ -12,6 +12,7 @@ import { todayYmd, fmtBR } from "../../core/utils/date";
 import { CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL, AREAS } from "../../core/types";
 import type { Area, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
+import { ImportarChecklistModal } from "./ImportarChecklistModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
 
 type Tab = "hoje" | "templates" | "historico";
@@ -42,6 +43,7 @@ export function ChecklistsPage() {
   const [loading, setLoading] = useState(true);
 
   const [editTemplate, setEditTemplate] = useState<ChecklistTemplate | "new" | null>(null);
+  const [importando, setImportando] = useState(false);
   const [runEditor, setRunEditor] = useState<{ template: ChecklistTemplate; run: ChecklistRun | null } | null>(null);
 
   const [filtroArea, setFiltroArea] = useState<"todas" | Area>("todas");
@@ -184,10 +186,11 @@ export function ChecklistsPage() {
 
   return (
     <div className="max-w-5xl">
-      <div className="flex items-start justify-end mb-4 flex-wrap gap-3">
-        {podeConfig && abaEfetiva === "templates" && (
+      <div className="flex items-start justify-end mb-4 flex-wrap gap-2">
+        {podeConfig && abaEfetiva === "templates" && (<>
+          <Button variant="secondary" onClick={() => setImportando(true)}>📥 Importar</Button>
           <Button onClick={() => setEditTemplate("new")}>+ Novo template</Button>
-        )}
+        </>)}
       </div>
 
       {/* Tabs */}
@@ -471,6 +474,13 @@ export function ChecklistsPage() {
           template={editTemplate === "new" ? null : editTemplate}
           restaurantId={rid}
           onClose={() => setEditTemplate(null)}
+        />
+      )}
+      {importando && (
+        <ImportarChecklistModal
+          rid={rid}
+          onClose={() => setImportando(false)}
+          onCriado={(tpl) => { setImportando(false); setEditTemplate(tpl); }}
         />
       )}
       {runEditor && (
