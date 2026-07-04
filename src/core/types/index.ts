@@ -46,7 +46,7 @@ export type ModuleId =
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
   | "horarios"
   // Time
-  | "escala" | "freelas" | "reunioes" | "trilha" | "ideias" | "planoDeAcao"
+  | "escala" | "freelas" | "reunioes" | "trilha" | "ideias" | "planoDeAcao" | "whatsappInbox"
   // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
   | "rotinas"
   // Escritório

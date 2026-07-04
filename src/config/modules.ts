@@ -36,6 +36,7 @@ export const MODULES: ModuleDef[] = [
   { id: "ideias",      area: "ops", subarea: "Gestão da Operação",     label: "Banco de Ideias", icon: "💡", status: "ativo", etapa: "beta",               desc: "Ideias para discutir em reuniões", dependsOn: ["reunioes"] },
   { id: "rotinas",     area: "ops", subarea: "Gestão da Operação",     label: "Rotinas",         icon: "🔁", status: "ativo", etapa: "beta",               desc: "Lembretes recorrentes de tarefas do sistema (fechar ponto, conferências) atribuídos a pessoas — aparecem na Central de Avisos no dia devido", dependsOn: ["pessoas"] },
   { id: "planoDeAcao", area: "ops", subarea: "Gestão da Operação",     label: "Plano de Ação",   icon: "🎯", status: "ativo", etapa: "beta",               desc: "Ações com responsável, prazo e status — nascem avulsas ou de ocorrências, ideias e reuniões; alimentam a Central de Avisos", dependsOn: ["pessoas"] },
+  { id: "whatsappInbox", area: "ops", subarea: "Gestão da Operação",   label: "WhatsApp",        icon: "💬", status: "ativo", etapa: "em_desenvolvimento", desc: "Caixa de entrada do WhatsApp do planejamento.app: recebe e responde mensagens dos usuários (número único da plataforma)" },
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "master", subarea: "Master",              label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },

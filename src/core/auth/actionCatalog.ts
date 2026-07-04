@@ -383,6 +383,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
 
+  {
+    id: "whatsappInbox",
+    icon: "💬",
+    label: "WhatsApp (caixa de entrada)",
+    desc: "Ver e responder as mensagens recebidas no WhatsApp da plataforma",
+    area: "time",
+    acoes: [
+      { id: "ver",       label: "Ver conversas recebidas" },
+      { id: "responder", label: "Responder mensagens" },
+    ],
+  },
+
   // ─── GESTÃO ──────────────────────────────────────────────────────────────
   {
     id: "comunicados",

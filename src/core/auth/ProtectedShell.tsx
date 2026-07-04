@@ -30,6 +30,7 @@ import { ReunioesPage } from "../../modules/reunioes/ReunioesPage";
 import { TrilhaPage } from "../../modules/trilha/TrilhaPage";
 import { OcorrenciasPage } from "../../modules/ocorrencias/OcorrenciasPage";
 import { PlanoDeAcaoPage } from "../../modules/planoDeAcao/PlanoDeAcaoPage";
+import { WhatsappInboxPage } from "../../modules/whatsapp/WhatsappInboxPage";
 import { RotinasPage } from "../../modules/rotinas/RotinasPage";
 import { ChecklistsPage } from "../../modules/checklists/ChecklistsPage";
 import { ReservasPage } from "../../modules/reservas/ReservasPage";
@@ -87,6 +88,7 @@ function ModuleRouter() {
     case "trilha":        return <TrilhaPage key={k} />;
     case "ocorrencias":   return <OcorrenciasPage key={k} />;
     case "planoDeAcao":   return <PlanoDeAcaoPage key={k} />;
+    case "whatsappInbox": return <WhatsappInboxPage key={k} />;
     case "rotinas":       return <RotinasPage key={k} />;
     case "checklists":    return <ChecklistsPage key={k} />;
     case "reservas":      return <ReservasPage key={k} />;
