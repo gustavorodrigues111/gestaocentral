@@ -58,7 +58,7 @@ export const MODULES: ModuleDef[] = [
   // ── Ciclo de Vida do Empregado ───────────────────────────────────
   { id: "admissao",    area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Admissão",    icon: "🪪", status: "ativo", etapa: "beta",               desc: "Processo de admissão: formulário compartilhável + kanban", dependsOn: ["pessoas"] },
   { id: "demissao",    area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Demissão",    icon: "👋", status: "ativo", etapa: "beta",               desc: "Processo de demissão com kanban, fluxo de subtarefas e cascata de inativação (acesso, exames, tarefas)", dependsOn: ["pessoas"] },
-  { id: "trilha",      area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Trilha do Empregado", icon: "🎯", status: "ativo", etapa: "em_desenvolvimento", desc: "Histórico cronológico completo do empregado (admissão, demissão, férias, exames, advertências, ponto, promoções). Sensível — só perfis autorizados acessam.", dependsOn: ["pessoas"] },
+  { id: "trilha",      area: "dp", subarea: "Ciclo de Vida do Empregado", label: "Trilha do Empregado", icon: "🛤️", status: "ativo", etapa: "em_desenvolvimento", desc: "Histórico cronológico completo do empregado (admissão, demissão, férias, exames, advertências, ponto, promoções). Sensível — só perfis autorizados acessam.", dependsOn: ["pessoas"] },
 
   // ── Operação Diária ──────────────────────────────────────────────
   { id: "escala",      area: "dp", subarea: "Operação Diária",         label: "Escala",          icon: "📅", status: "ativo", etapa: "beta",               desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
