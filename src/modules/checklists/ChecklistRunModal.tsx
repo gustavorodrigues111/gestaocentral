@@ -33,6 +33,8 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
     run?.itens || template.itens.map(i => ({ itemId: i.id, textoSnapshot: i.texto, feito: false, observacao: undefined })),
   );
   const [obsGeral, setObsGeral] = useState(run?.observacaoGeral || "");
+  const [obsAbertas, setObsAbertas] = useState<Set<string>>(new Set());  // itens com campo de obs aberto sob demanda
+  const [obsGeralAberta, setObsGeralAberta] = useState(false);
   const [saving, setSaving] = useState(false);
   const [salvoEm, setSalvoEm] = useState<"" | "salvando" | "salvo">(run ? "salvo" : "");
   const [err, setErr] = useState("");
@@ -179,8 +181,8 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
             </div>
           </div>
 
-        {/* Itens — mobile-first: toque grande, texto legível */}
-        <div className="space-y-2 max-h-[52vh] overflow-y-auto -mx-1 px-1">
+        {/* Itens — mobile-first: toque grande, texto legível (scroll único: o do modal) */}
+        <div className="space-y-2">
           {template.itens.map((item, idx) => {
             const r = resultados.find(rr => rr.itemId === item.id) || { itemId: item.id, textoSnapshot: item.texto, feito: false };
             return (
@@ -221,14 +223,15 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                         <FotoUpload rid={restaurantId} pathPrefix={`prova_${template.id}_${item.id}`} url={r.fotoUrl} onChange={(u) => patchItem(item.id, { fotoUrl: u || undefined })} label="foto" /></>}
                   </div>
                 )}
-                {(item.exigeObs || r.observacao) && !isReadonly && (
+                {(item.exigeObs || r.observacao || obsAbertas.has(item.id)) && !isReadonly && (
                   <div className="px-3.5 pb-3 pl-14">
                     <textarea
                       value={r.observacao || ""}
                       onChange={(e) => patchItem(item.id, { observacao: e.target.value })}
-                      placeholder={item.exigeObs ? "Observação obrigatória…" : "Observação (opcional)"}
+                      placeholder={item.exigeObs ? "Observação obrigatória…" : "Observação sobre o item…"}
                       rows={2}
-                      className={`w-full px-3 py-2 text-sm rounded-lg border resize-y ${
+                      autoFocus={obsAbertas.has(item.id) && !r.observacao}
+                      className={`w-full px-3 py-2 text-sm rounded-lg border resize-none ${
                         item.exigeObs && r.feito && !r.observacao
                           ? "border-rose-300 bg-rose-50 dark:bg-rose-900/10"
                           : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
@@ -236,38 +239,39 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                     />
                   </div>
                 )}
+                {!isReadonly && !item.exigeObs && !r.observacao && !obsAbertas.has(item.id) && (
+                  <div className="px-3.5 pb-2.5 pl-14">
+                    <button type="button" onClick={() => setObsAbertas(s => new Set(s).add(item.id))} className="text-[11px] text-gray-400 hover:text-indigo-600">💬 observação</button>
+                  </div>
+                )}
                 {isReadonly && r.observacao && (
-                  <div className="px-3.5 pb-3 pl-14 text-sm text-gray-600 dark:text-gray-400 italic">{r.observacao}</div>
+                  <div className="px-3.5 pb-3 pl-14 text-sm text-gray-600 dark:text-gray-400 italic">💬 {r.observacao}</div>
                 )}
               </div>
             );
           })}
         </div>
 
-        {/* Observação geral */}
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação geral</label>
-          <textarea
-            value={obsGeral}
-            onChange={(e) => setObsGeral(e.target.value)}
-            disabled={isReadonly}
-            rows={2}
-            placeholder="Notas, exceções, contexto..."
-            className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y disabled:opacity-60"
-          />
-        </div>
+        {/* Observação geral — só quando precisa (sem barra de rolagem própria) */}
+        {!isReadonly ? (
+          (obsGeral || obsGeralAberta) ? (
+            <div className="pt-1">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação geral</label>
+              <textarea value={obsGeral} onChange={(e) => setObsGeral(e.target.value)} rows={2} autoFocus={obsGeralAberta && !obsGeral} placeholder="Notas do checklist inteiro…" className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 resize-none" />
+            </div>
+          ) : (
+            <button type="button" onClick={() => setObsGeralAberta(true)} className="text-xs text-gray-400 hover:text-indigo-600">＋ observação geral</button>
+          )
+        ) : (obsGeral && (
+          <div className="pt-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação geral:</span> <span className="text-sm text-gray-600 dark:text-gray-400 italic">{obsGeral}</span></div>
+        ))}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
         {!isReadonly && (
-          <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900">
-            <Button variant="secondary" onClick={onClose} className="w-full sm:w-auto">Fechar</Button>
-            <Button variant="secondary" onClick={() => salvar(false)} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "…" : "💾 Rascunho"}
-            </Button>
-            <Button onClick={() => salvar(true)} disabled={saving} className="w-full sm:w-auto">
-              {saving ? "…" : "✓ Finalizar"}
-            </Button>
+          <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800 sticky bottom-0 bg-white dark:bg-gray-900">
+            <Button variant="secondary" onClick={() => void salvar(false)} disabled={saving} className="flex-1">Fechar</Button>
+            <Button onClick={() => void salvar(true)} disabled={saving} className="flex-1">{saving ? "…" : "✓ Finalizar"}</Button>
           </div>
         )}
         {isReadonly && (
