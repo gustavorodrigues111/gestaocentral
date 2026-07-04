@@ -338,7 +338,14 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   function removeIng(id: string) { setF(p => ({ ...p, ingredientes: p.ingredientes.filter(i => i.id !== id) })); }
   function addSubproduto() { setF(p => ({ ...p, subprodutos: [...(p.subprodutos || []), { id: uid("sp"), nome: "", nomeNormalizado: "", unidade: p.rendimento.unidade, rendimentoQtd: 1, percentualCusto: 0 }] })); }
   function patchSub(id: string, patch: Partial<FtSubproduto>) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).map(sp => sp.id === id ? { ...sp, ...patch } : sp) })); }
-  function removeSub(id: string) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).filter(sp => sp.id !== id) })); }
+  function removeSub(id: string) {
+    // Devolve pra "pendentes" qualquer insumo-subproduto que estava vinculado a
+    // esta saída — senão fica órfão (subprodutoDe aponta pra um subId que sumiu).
+    for (const i of insumos.filter(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === id && i.ativo !== false)) {
+      updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }).catch(() => {});
+    }
+    setF(p => ({ ...p, subprodutos: (p.subprodutos || []).filter(sp => sp.id !== id) }));
+  }
 
   async function salvar() {
     if (!f.nome.trim()) { alert("Dê um nome pra receita."); return; }
@@ -353,6 +360,10 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   }
   async function excluir() {
     if (!confirm(`Excluir "${f.nome}"?`)) return;
+    // Solta os insumos-subproduto vinculados a esta ficha → voltam pra pendentes.
+    for (const i of insumos.filter(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.ativo !== false)) {
+      updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }).catch(() => {});
+    }
     await updateDoc(doc(db, "ftFichas", f.id), { ativo: false });
     onClose();
   }
