@@ -27,12 +27,15 @@ const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> 
   concluido: { label: "produção confirmada", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
 };
 
-// Nome automático do plano pelo dia de produção + sequência (02, 03…) quando há
-// mais de um plano no mesmo dia. Ex.: "Produção de terça", "Produção de terça 02".
+// Nome automático do plano: "Produção de <dia da semana> <D de mês de AAAA>",
+// + sequência (02, 03…) quando há mais de um plano no mesmo dia.
+// Ex.: "Produção de sábado 4 de julho de 2026", "…de julho de 2026 02".
 const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
 function nomeAutoPlano(data: string, planos: FtPlanoProducao[], selfId: string): string {
   const d = new Date((data || "") + "T00:00:00");
-  const base = isNaN(d.getTime()) ? "Produção" : `Produção de ${DIAS_SEMANA[d.getDay()]}`;
+  const base = isNaN(d.getTime())
+    ? "Produção"
+    : `Produção de ${DIAS_SEMANA[d.getDay()]} ${d.toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" })}`;
   const n = planos.filter(pp => pp.ativo !== false && pp.data === data && pp.id !== selfId).length;
   return n > 0 ? `${base} ${String(n + 1).padStart(2, "0")}` : base;
 }
