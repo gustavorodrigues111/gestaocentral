@@ -930,6 +930,16 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
     .filter(i => !catFiltro ? true : catFiltro === "__sem__" ? (!i.categoriaId || !catIds.has(i.categoriaId)) : (i.categoriaId || "") === catFiltro)
     .filter(i => !buscaNorm || normalizarNome(i.nome).includes(buscaNorm))
     .sort((a, b) => a.nome.localeCompare(b.nome));
+  // Cria categoria de insumo na hora (via prompt) e já vincula ao insumo.
+  async function novaCatInsumo(insId: string) {
+    const nome = window.prompt("Nova categoria de insumo:");
+    if (!nome || !nome.trim()) return;
+    const id = uid("cat");
+    try {
+      await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo: "insumo", ordem: catsIns.length, ativo: true } as FtCategoria));
+      await updateDoc(doc(db, "ftInsumos", insId), { categoriaId: id });
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); }
+  }
   const renderRow = (ins: FtInsumo) => (
     <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar insumo">
       <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
@@ -939,6 +949,13 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
         </div>
         <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}</div>
       </div>
+      <select value={ins.categoriaId || ""} onClick={e => e.stopPropagation()}
+        onChange={e => { e.stopPropagation(); const v = e.target.value; if (v === "__nova__") void novaCatInsumo(ins.id); else void updateDoc(doc(db, "ftInsumos", ins.id), { categoriaId: v || null }); }}
+        title="Categoria do insumo" className={`h-8 w-[150px] shrink-0 text-xs px-2 rounded-lg border bg-white dark:bg-gray-900 cursor-pointer ${ins.categoriaId ? "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200" : "border-dashed border-gray-300 dark:border-gray-600 text-gray-400"}`}>
+        <option value="">— sem categoria —</option>
+        {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+        <option value="__nova__">+ nova categoria…</option>
+      </select>
       {ins.ehSubproduto
         ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
         : ins.custo > 0
