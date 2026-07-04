@@ -18,7 +18,7 @@ import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNo
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
-import { fmtBR } from "../../core/utils/date";
+import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
 
 // ─── utils ──────────────────────────────────────────────────────────────
@@ -52,6 +52,20 @@ export function FichasPage() {
   const [vinculos, setVinculos] = useState<FtVinculoRecebimento[]>([]);
   const [editando, setEditando] = useState<FtFicha | null>(null);
   const [importando, setImportando] = useState(false);
+  const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
+
+  const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
+  useEffect(() => {
+    if (!rid || !rascunhoId) return;
+    const u = onSnapshot(doc(db, "ftImportRascunhos", rascunhoId), snap => {
+      if (!snap.exists()) { setRascunho(null); return; }
+      const d = snap.data() as { nReceitas?: number; criadoEm?: string; revisao?: unknown; receitasRaw?: unknown[] };
+      const n = d.nReceitas || (Array.isArray(d.receitasRaw) ? d.receitasRaw.length : 0);
+      if (!n && !d.revisao) { setRascunho(null); return; }
+      setRascunho({ nReceitas: n, criadoEm: d.criadoEm || "", comEdicoes: !!d.revisao });
+    }, () => setRascunho(null));
+    return () => u();
+  }, [rid, rascunhoId]);
 
   useEffect(() => {
     if (!rid) return;
@@ -91,9 +105,15 @@ export function FichasPage() {
           <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         </div>
         {tab === "fichas" && podeEditar && (
-          <div className="flex gap-2 w-full sm:w-auto flex-wrap">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            {rascunho && (
+              <button type="button" onClick={() => setImportando(true)}
+                className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded-full border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/25 text-amber-800 dark:text-amber-200 hover:border-amber-400 shrink-0"
+                title={`${rascunho.comEdicoes ? "Rascunho com suas edições" : "Leitura da IA salva"}${rascunho.criadoEm ? " em " + fmtBRDateTime(rascunho.criadoEm) : ""}. Clique pra retomar.`}>
+                📌 Rascunho em andamento · {rascunho.nReceitas} receita{rascunho.nReceitas === 1 ? "" : "s"}
+              </button>
+            )}
             <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>✨ Importar receita</Button>
-            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, true, pessoa?.id, pessoa?.nome))}>+ Subficha</Button>
             <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, false, pessoa?.id, pessoa?.nome))}>+ Nova ficha</Button>
           </div>
         )}
@@ -213,13 +233,18 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
         (() => {
           const renderCard = (f: FtFicha) => {
             const c = calcularCusto(f, insumosCalc, fichas);
-            const tint = f.revisar ? "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400"
-              : fichaPendente(f) ? "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400"
-              : c.insumosSemCusto.length > 0 ? "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400"
-              : "border-emerald-300 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-900/15 hover:border-emerald-400";
+            // Estado da ficha (mesma prioridade da cor do card): revisar → pendente
+            // → faltam preços → completa. Todo card carrega um selo.
+            const estado = f.revisar
+              ? { seal: "⚑ revisar", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300", title: f.revisarMotivo || "Precisa de revisão", tint: "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400" }
+              : fichaPendente(f)
+              ? { seal: "⏳ pendente", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", title: "Sem ingredientes — monte a receita", tint: "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400" }
+              : c.insumosSemCusto.length > 0
+              ? { seal: "💲 faltam preços", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300", title: `${c.insumosSemCusto.length} insumo(s) sem custo — a receita está montada, falta preço`, tint: "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400" }
+              : { seal: "✅ completa", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", title: "Receita montada e com todos os custos", tint: "border-emerald-300 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-900/15 hover:border-emerald-400" };
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
-                className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${tint}`}>
+                className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${estado.tint}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome || "(sem nome)"}</div>
@@ -229,8 +254,7 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                     {f.ehSubficha
                       ? <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🧩 subficha</span>
                       : <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Prato final — vai pro cardápio">🍽️ cardápio</span>}
-                    {fichaPendente(f) && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" title="Sem ingredientes — monte a receita">⏳ pendente</span>}
-                    {f.revisar && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" title={f.revisarMotivo || "Precisa de revisão"}>⚑ revisar</span>}
+                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${estado.cls}`} title={estado.title}>{estado.seal}</span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-end justify-between">
