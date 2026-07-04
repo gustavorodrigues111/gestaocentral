@@ -514,7 +514,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                 ))}
               </div>
             )}
-            <IngredientePicker insumos={insumos} subfichas={subfichasDisp} subprodutos={subprodutosDisp} rid={rid} meId={meId} podeInsumo={podeInsumo} onAdd={addIngrediente} />
+            <IngredientePicker insumos={insumos} subfichas={subfichasDisp} subprodutos={subprodutosDisp} categorias={categorias} rid={rid} meId={meId} podeInsumo={podeInsumo} onAdd={addIngrediente} />
           </div>
 
           {/* Subprodutos (coprodutos) */}
@@ -775,8 +775,8 @@ function IngredienteRow({ ing, insumoById, subfichas, subprodutos, onPatch, onRe
   );
 }
 
-function IngredientePicker({ insumos, subfichas, subprodutos, rid, meId, podeInsumo, onAdd }: {
-  insumos: FtInsumo[]; subfichas: FtFicha[]; subprodutos: { ficha: FtFicha; sp: FtSubproduto }[]; rid: string; meId?: string; podeInsumo: boolean; onAdd: (ing: FtIngrediente) => void;
+function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, meId, podeInsumo, onAdd }: {
+  insumos: FtInsumo[]; subfichas: FtFicha[]; subprodutos: { ficha: FtFicha; sp: FtSubproduto }[]; categorias?: FtCategoria[]; rid: string; meId?: string; podeInsumo: boolean; onAdd: (ing: FtIngrediente) => void;
 }) {
   const [busca, setBusca] = useState("");
   const [criando, setCriando] = useState(false);
@@ -856,7 +856,7 @@ function IngredientePicker({ insumos, subfichas, subprodutos, rid, meId, podeIns
         </div>
       )}
       {criando && (
-        <CriarInsumoModal rid={rid} nomeInicial={busca.trim()} insumos={insumos} meId={meId}
+        <CriarInsumoModal rid={rid} nomeInicial={busca.trim()} insumos={insumos} categorias={categorias} meId={meId}
           onCriado={(ins) => { setCriando(false); setBusca(""); pickInsumo(ins); }} onClose={() => setCriando(false)} />
       )}
     </div>
