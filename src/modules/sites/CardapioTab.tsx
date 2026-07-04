@@ -57,7 +57,18 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
       {modo === "editor" ? (
         <CardapioEditor rid={rid} podeEditar={podeEditar} nomeRestaurante={nomeRestaurante} />
       ) : (
-      <div className="space-y-4">
+        <CardapioPdfPanel rid={rid} config={config} podeEditar={podeEditar} meId={me?.id || ""} onSave={async (parcial) => { if (me) await save(parcial, me.id); }} />
+      )}
+    </div>
+  );
+}
+
+// Painel de PDFs do cardápio (PT/EN) + atalhos — reutilizável no módulo Cardápio.
+export function CardapioPdfPanel({ rid, config, podeEditar, meId, onSave }: {
+  rid: string; config: SiteConfig; podeEditar: boolean; meId: string; onSave: (parcial: Partial<SiteConfig>) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-4">
       <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-900 dark:text-indigo-200">
         <p className="font-semibold mb-1">📋 Cardápios em PDF</p>
         <p className="text-[13px] opacity-90">
@@ -65,40 +76,9 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
           não precisa clicar em "salvar". O site público atualiza na hora. Máx {TAMANHO_MAX_MB}MB cada.
         </p>
       </div>
-
-      <CardapioCard
-        rid={rid}
-        idioma="pt"
-        label="Português"
-        bandeira="🇧🇷"
-        url={config.cardapioPdfPtUrl}
-        atualizadoEm={config.cardapioPdfPtAtualizadoEm}
-        atualizadoPor={config.cardapioPdfPtAtualizadoPor}
-        podeEditar={podeEditar}
-        meId={me?.id || ""}
-        onSave={async (parcial) => { if (me) await save(parcial, me.id); }}
-      />
-
-      <CardapioCard
-        rid={rid}
-        idioma="en"
-        label="English"
-        bandeira="🇺🇸"
-        url={config.cardapioPdfEnUrl}
-        atualizadoEm={config.cardapioPdfEnAtualizadoEm}
-        atualizadoPor={config.cardapioPdfEnAtualizadoPor}
-        podeEditar={podeEditar}
-        meId={me?.id || ""}
-        onSave={async (parcial) => { if (me) await save(parcial, me.id); }}
-      />
-
-      <AtalhosCardapio
-        config={config}
-        podeEditar={podeEditar}
-        onSave={async (parcial) => { if (me) await save(parcial, me.id); }}
-      />
-      </div>
-      )}
+      <CardapioCard rid={rid} idioma="pt" label="Português" bandeira="🇧🇷" url={config.cardapioPdfPtUrl} atualizadoEm={config.cardapioPdfPtAtualizadoEm} atualizadoPor={config.cardapioPdfPtAtualizadoPor} podeEditar={podeEditar} meId={meId} onSave={onSave} />
+      <CardapioCard rid={rid} idioma="en" label="English" bandeira="🇺🇸" url={config.cardapioPdfEnUrl} atualizadoEm={config.cardapioPdfEnAtualizadoEm} atualizadoPor={config.cardapioPdfEnAtualizadoPor} podeEditar={podeEditar} meId={meId} onSave={onSave} />
+      <AtalhosCardapio config={config} podeEditar={podeEditar} onSave={onSave} />
     </div>
   );
 }

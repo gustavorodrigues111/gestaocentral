@@ -12,6 +12,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { CardapioEditor } from "../sites/CardapioEditor";
+import { CardapioPdfPanel } from "../sites/CardapioTab";
+import { useSiteConfig } from "../sites/useSiteConfig";
 import { CardapioConfig } from "./CardapioConfig";
 import { carregarFontesCardapio } from "../sites/shared/FontePicker";
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
@@ -33,6 +35,9 @@ export function CardapioPage() {
   const [cardapios, setCardapios] = useState<CardapioMenu[] | null>(null);
   const [sel, setSel] = useState<string>("");
   const [sharedLayout, setSharedLayout] = useState<CardapioLayout | null>(null);
+  const { config: siteCfg, save: saveSite } = useSiteConfig(rid, restaurant?.nome || "");
+  const modoCard: "editor" | "pdf" = siteCfg?.cardapioModo === "pdf" ? "pdf" : siteCfg?.cardapioModo === "editor" ? "editor" : (siteCfg?.cardapioPdfPtUrl || siteCfg?.cardapioPdfEnUrl) ? "pdf" : "editor";
+  const setModoCard = (m: "editor" | "pdf") => { if (me) void saveSite({ cardapioModo: m }, me.id); };
 
   async function carregar() {
     const ref = doc(db, "cardapioEstruturado", rid);
@@ -96,7 +101,20 @@ export function CardapioPage() {
       <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📋 Cardápios — {restaurant.nome}</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400">Monte aqui os cardápios do restaurante. O site puxa estas informações — atualizou aqui, atualiza lá.</p>
 
+      {/* Modo: item a item (estruturado) × subir PDF pronto. Grava no SiteConfig. */}
+      {siteCfg && (
+        <div className="flex gap-2">
+          <button type="button" onClick={() => setModoCard("editor")} disabled={!podeEditar}
+            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "editor" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>📝 Montar aqui (item a item)</button>
+          <button type="button" onClick={() => setModoCard("pdf")} disabled={!podeEditar}
+            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "pdf" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>📄 Subir cardápio em PDF</button>
+        </div>
+      )}
 
+      {modoCard === "pdf" ? (
+        siteCfg ? <CardapioPdfPanel rid={rid} config={siteCfg} podeEditar={podeEditar} meId={me?.id || ""} onSave={async (parcial) => { if (me) await saveSite(parcial, me.id); }} />
+          : <div className="text-gray-400 py-8 text-center text-sm">Carregando…</div>
+      ) : (<>
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto whitespace-nowrap">
         {cardapios.map((c) => (
           <button key={c.id} type="button" onClick={() => setSel(c.id)}
@@ -132,6 +150,7 @@ export function CardapioPage() {
             sharedLayout={sharedLayout || undefined} menuLayoutProprio={!!atual.layoutProprio} menuLayout={atual.layout} />
         </div>
       ) : null}
+      </>)}
     </div>
   );
 }
