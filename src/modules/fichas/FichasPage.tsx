@@ -931,9 +931,9 @@ function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos,
                   <div className="text-xs text-gray-500">{st === "vinculado" ? `de ${pai}` : st === "quebrado" ? "o preparo/saída sumiu — religue a outro" : "falta vincular ao preparo que o gera"} · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
                 </div>
               </div>
-              {st === "vinculado"
-                ? <button type="button" onClick={() => void desvincular(ins)} className="text-xs text-gray-400 hover:text-red-600 underline shrink-0">desvincular</button>
-                : <button type="button" onClick={() => setEditar(ins)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 shrink-0">Vincular →</button>}
+              {st === "pendente"
+                ? <button type="button" onClick={() => setEditar(ins)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 shrink-0">Vincular →</button>
+                : <button type="button" onClick={() => void desvincular(ins)} className="text-xs text-gray-400 hover:text-red-600 underline shrink-0" title="Remover o vínculo — volta pra pendente">desvincular</button>}
             </div>
           );
         })}
@@ -1138,8 +1138,8 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
   const catsIns = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").sort((a, b) => a.nome.localeCompare(b.nome));
   const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
   const [unidadeBase, setUnidadeBase] = useState(insumo.unidadeBase);
-  const [vincFichaId, setVincFichaId] = useState(insumo.subprodutoDe?.fichaId || "");
-  const [vincSubId, setVincSubId] = useState(insumo.subprodutoDe?.subId || "");
+  const [vincFichaId, setVincFichaId] = useState("");
+  const [vincSubId, setVincSubId] = useState("");
   const cNum = parseMoeda(custo);
   const novaDim = (dimensaoDeUnidade(unidadeBase) || insumo.dimensao) as FtDimensao;
   const mudouUnidade = unidadeBase !== insumo.unidadeBase;
