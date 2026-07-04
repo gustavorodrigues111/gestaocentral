@@ -150,6 +150,13 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const compras = useAvisoSource({ ...base,
     gates: [["compras", "receberAvisos"]], collectionName: "pedidos", filtros: [["status", "in", ["rascunho", "aprovado", "enviado"]]] });
 
+  // ── Plano de Ação: minhas ações + minhas produções (pessoais) ──
+  const minhaAcao = useAvisoSource({ ...base,
+    gates: [["planoDeAcao", "receberAvisos"]], collectionName: "acoes",
+    filtros: [["responsavelId", "==", pid || "__none__"]] });
+  const minhaProducao = useAvisoSource({ ...base,
+    gates: [["planoDeAcao", "receberAvisos"]], collectionName: "ftPlanosProducao" });
+
   // ── Fontes agregadas — Pessoas & DP ──
   const ideias = useAvisoSource({ ...base,
     gates: [["ideias", "receberAvisos"]], collectionName: "ideias", filtros: [["status", "==", "aberta"]] });
@@ -297,6 +304,36 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     agg(compras, { tipo: "compras", icone: "🛒", modulo: "compras", label: "Compras",
       sing: "pedido em aberto", plural: "pedidos em aberto" });
 
+    // ── Plano de Ação: minhas ações abertas (agregado por restaurante) ──
+    for (const rid of Object.keys(minhaAcao)) {
+      const abertas = (minhaAcao[rid] || []).filter(d => d.status === "aberta" || d.status === "em_andamento");
+      if (abertas.length === 0) continue;
+      const atrasadas = abertas.filter(d => d.prazo && String(d.prazo) < hoje).length;
+      const em = abertas.reduce((mx, d) => { const t = String(d.criadoEm || ""); return t > mx ? t : mx; }, "");
+      out.push({
+        id: `acoes_${rid}`, tipo: "acoes", icone: atrasadas ? "⏰" : "🎯", titulo: "Plano de Ação",
+        descricao: `${abertas.length} ${abertas.length === 1 ? "ação sua em aberto" : "ações suas em aberto"}${atrasadas ? ` · ${atrasadas} atrasada${atrasadas === 1 ? "" : "s"}` : ""}`,
+        em, restauranteId: rid, restauranteNome: nomePorRid[rid] || "Restaurante",
+        cta: "Abrir Plano de Ação", href: `/r/${rid}/planoDeAcao`, categoria: "Plano de Ação", categoriaIcone: "🎯",
+      });
+    }
+    // ── Plano de Ação: produções atribuídas a mim e não produzidas ──
+    for (const rid of Object.keys(minhaProducao)) {
+      let n = 0; let ultima = "";
+      for (const d of minhaProducao[rid] || []) {
+        if (d.status === "concluido") continue;
+        const itens = Array.isArray(d.itens) ? (d.itens as Array<{ responsavelId?: string; produzidoEm?: string }>) : [];
+        for (const it of itens) if (it.responsavelId === pid && !it.produzidoEm) { n++; const t = String(d.data || d.criadoEm || ""); if (t > ultima) ultima = t; }
+      }
+      if (n === 0) continue;
+      out.push({
+        id: `producao_${rid}`, tipo: "producao_atribuida", icone: "🍳", titulo: "Produção atribuída",
+        descricao: `${n} ${n === 1 ? "produção pra você fazer" : "produções pra você fazer"}`,
+        em: ultima, restauranteId: rid, restauranteNome: nomePorRid[rid] || "Restaurante",
+        cta: "Ver no Plano de Ação", href: `/r/${rid}/planoDeAcao`, categoria: "Plano de Ação", categoriaIcone: "🎯",
+      });
+    }
+
     agg(ideias, { tipo: "ideias", icone: "💡", modulo: "ideias", label: "Ideias",
       sing: "ideia nova pra avaliar", plural: "ideias novas pra avaliar" });
     agg(admissoes, { tipo: "admissao", icone: "🧳", modulo: "admissao", label: "Admissão", campoData: "iniciadoEm",
@@ -319,6 +356,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     nomePorRid, rotinas, conclusoesIds, pid,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
+    minhaAcao, minhaProducao,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──
