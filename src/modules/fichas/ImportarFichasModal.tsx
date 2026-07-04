@@ -17,6 +17,7 @@ import { dividirEmBlocos, fileParaAnexo, importarFichasIA, nomeDoBloco, planilha
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const UP = (s: string) => (s || "").trim().toUpperCase();
+const fmt3 = (n: number) => (n || 0).toFixed(3).replace(".", ","); // medida: 3 casas c/ vírgula
 // Rótulos que a IA às vezes lê como "ingrediente" mas não são.
 const RUIDO = new Set(["peso bruto", "peso liquido", "peso liquido kg", "rendimento", "fator de correcao", "fc", "custo", "total", "modo de preparo", "preparo", "ingrediente", "ingredientes", "quantidade", "unidade"]);
 
@@ -507,7 +508,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
           <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
           <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
-          <span className="text-[11px] text-gray-500 shrink-0">rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+          <span className="text-[11px] text-gray-500 shrink-0">rende {fmt3(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)}</span>
           <button type="button" onClick={() => setFicha(f.id, { revisar: !f.revisar })} title="Marcar que esta ficha precisa de revisão" className={`text-[13px] shrink-0 leading-none ${f.revisar ? "text-rose-600" : "text-gray-300 hover:text-rose-400"}`}>⚑</button>
         </div>
         {f.ehSubficha && (
@@ -537,7 +538,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
           return (
             <div key={ing.id} className="flex items-center gap-2 text-sm">
               <span className="w-28 sm:w-56 shrink-0 truncate text-gray-700 dark:text-gray-200">{nome}{v && <span className="text-indigo-600 dark:text-indigo-400"> ↳ {v.nome}</span>}</span>
-              <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
+              <span className="text-xs text-gray-500 tabular-nums shrink-0 w-16 text-right">{ing.qb ? "q.b." : `${fmt3(ing.qtd)} ${labelUnidade(ing.unidade)}`}</span>
               <div className="flex-1" />
               {subprod ? <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">subproduto</span>
                 : sub ? <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${CHIP.subficha}`}>subficha</span>
@@ -559,13 +560,13 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
       <div className={`flex-1 min-w-0 rounded-xl border ${mescla.conteudoId === ladoId ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-200 dark:border-gray-800"}`}>
         <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
           <span className="text-sm font-semibold truncate dark:text-gray-100">{f.nome}</span>
-          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${cor}`}>rende {f.rendimento.qtd} {labelUnidade(f.rendimento.unidade)}</span>
+          <span className={`text-[10px] px-1.5 py-0.5 rounded-full shrink-0 ${cor}`}>rende {fmt3(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)}</span>
         </div>
         <div className="p-2.5 space-y-1">
           {f.ingredientes.map(ing => (
             <div key={ing.id} className="flex items-center gap-2 text-xs">
               <span className="flex-1 min-w-0 truncate text-gray-700 dark:text-gray-200">{ingLabel(ing)}</span>
-              <span className="text-gray-500 tabular-nums shrink-0">{ing.qb ? "q.b." : `${ing.qtd} ${labelUnidade(ing.unidade)}`}</span>
+              <span className="text-gray-500 tabular-nums shrink-0">{ing.qb ? "q.b." : `${fmt3(ing.qtd)} ${labelUnidade(ing.unidade)}`}</span>
             </div>
           ))}
           {f.ingredientes.length === 0 && <div className="text-xs text-gray-400 italic">Sem ingredientes.</div>}
