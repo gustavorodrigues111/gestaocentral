@@ -179,6 +179,7 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Templates de checklist e execuções",
     area: "appmise",
     acoes: [
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "executar",   label: "Executar checklist do dia" },
       { id: "verTime",    label: "Ver execuções de todos" },
       { id: "configurar", label: "Criar/editar templates" },

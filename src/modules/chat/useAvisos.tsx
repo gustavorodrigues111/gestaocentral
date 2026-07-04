@@ -150,6 +150,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const compras = useAvisoSource({ ...base,
     gates: [["compras", "receberAvisos"]], collectionName: "pedidos", filtros: [["status", "in", ["rascunho", "aprovado", "enviado"]]] });
 
+  // ── Checklists: os atribuídos a mim, pendentes hoje ──
+  const checklistTpl = useAvisoSource({ ...base,
+    gates: [["checklists", "receberAvisos"]], collectionName: "checklistTemplates", filtros: [["ativo", "==", true]] });
+  const checklistRun = useAvisoSource({ ...base,
+    gates: [["checklists", "receberAvisos"]], collectionName: "checklistRuns" });
+
   // ── Plano de Ação: minhas ações + minhas produções (pessoais) ──
   const minhaAcao = useAvisoSource({ ...base,
     gates: [["planoDeAcao", "receberAvisos"]], collectionName: "acoes",
@@ -304,6 +310,34 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     agg(compras, { tipo: "compras", icone: "🛒", modulo: "compras", label: "Compras",
       sing: "pedido em aberto", plural: "pedidos em aberto" });
 
+    // ── Checklists atribuídos a mim, pendentes hoje (agregado por restaurante) ──
+    const dowHoje = new Date(hoje + "T12:00:00").getDay();
+    for (const rid of Object.keys(checklistTpl)) {
+      const runs = (checklistRun[rid] || []) as Array<{ templateId?: string; data?: string; status?: string }>;
+      const ultimo = (tid: string) => runs.filter(r => r.templateId === tid).sort((a, b) => String(b.data).localeCompare(String(a.data)))[0];
+      let n = 0;
+      for (const t of (checklistTpl[rid] || []) as Array<Record<string, unknown>>) {
+        const resp = Array.isArray(t.responsaveisIds) ? (t.responsaveisIds as string[]) : [];
+        if (!resp.includes(pid)) continue;                       // só os atribuídos a mim
+        const freq = t.frequencia;
+        let due = false;
+        if (freq === "diaria") { const ds = Array.isArray(t.diasSemana) ? (t.diasSemana as number[]) : []; due = ds.length === 0 || ds.includes(dowHoje); }
+        else if (freq === "semanal") { const u = ultimo(t.id as string); due = !u || (new Date(hoje).getTime() - new Date(String(u.data) + "T00:00:00").getTime()) / 864e5 >= 7; }
+        else if (freq === "mensal") { const u = ultimo(t.id as string); due = !u || String(u.data).slice(0, 7) !== hoje.slice(0, 7); }
+        if (!due) continue;
+        const feitoHoje = runs.some(r => r.templateId === t.id && r.data === hoje && r.status === "completo");
+        if (freq === "diaria" && feitoHoje) continue;
+        n++;
+      }
+      if (n === 0) continue;
+      out.push({
+        id: `checklists_${rid}`, tipo: "checklists", icone: "✅", titulo: "Checklists do dia",
+        descricao: `${n} ${n === 1 ? "checklist atribuído a você" : "checklists atribuídos a você"}`,
+        em: hoje, restauranteId: rid, restauranteNome: nomePorRid[rid] || "Restaurante",
+        cta: "Abrir checklists", href: `/r/${rid}/checklists`, categoria: "Checklists", categoriaIcone: "✅",
+      });
+    }
+
     // ── Plano de Ação: minhas ações abertas (agregado por restaurante) ──
     for (const rid of Object.keys(minhaAcao)) {
       const abertas = (minhaAcao[rid] || []).filter(d => d.status === "aberta" || d.status === "em_andamento");
@@ -356,7 +390,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     nomePorRid, rotinas, conclusoesIds, pid,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
-    minhaAcao, minhaProducao,
+    minhaAcao, minhaProducao, checklistTpl, checklistRun,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──
