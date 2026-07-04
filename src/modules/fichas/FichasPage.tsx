@@ -914,11 +914,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
             </div>
           </div>
         : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
-      <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-        <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
-        <button type="button" onClick={e => { e.stopPropagation(); setMesclar(ins); }} className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Mesclar</button>
-        <button type="button" onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${ins.nome}"?`)) void updateDoc(doc(db, "ftInsumos", ins.id), { ativo: false }); }} className="text-xs text-gray-400 hover:text-red-600">Excluir</button>
-      </div>
+      <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>
     </div>
   );
   const catIds = new Set(catsIns.map(c => c.id));
@@ -971,14 +967,14 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
           ))}
         </div>
       )}
-      {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
+      {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onMesclar={() => { const i = editar; setEditar(null); setMesclar(i); }} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
       {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
 
-function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
+function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, meId, onMesclar, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onMesclar?: () => void; onClose: () => void }) {
   const [nome, setNome] = useState(insumo.nome);
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
@@ -1235,7 +1231,13 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
           </div>
         )}
 
-        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-200 dark:border-gray-800 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            {onMesclar && <Button variant="ghost" size="sm" onClick={onMesclar}>🔀 Mesclar com outro</Button>}
+            <Button variant="ghost" size="sm" onClick={() => { if (confirm(`Excluir "${insumo.nome}"?`)) { void updateDoc(doc(db, "ftInsumos", insumo.id), { ativo: false }); onClose(); } }}>🗑️ Excluir</Button>
+          </div>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
+        </div>
       </div>
     </Modal>
   );
