@@ -254,7 +254,7 @@ export function FichasPage() {
       )}
 
       {modoEfetivo === "plano" ? (
-        <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} restauranteNome={activeRestaurant?.nome} />
+        <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} categorias={categorias} meId={pessoa?.id} meNome={pessoa?.nome} restauranteNome={activeRestaurant?.nome} />
       ) : modoEfetivo === "ver" ? (
         <div className="space-y-3">
           {can("fichas", "cardapio") && (
