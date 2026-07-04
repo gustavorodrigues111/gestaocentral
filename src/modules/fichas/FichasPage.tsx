@@ -1704,6 +1704,8 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, categorias, rece
   const custoEfetivo = (l: LinhaReconc) => { const v = precoEdit[l.produto.chave]; const n = v != null && v !== "" ? Number(v) : (l.custoBase ?? 0); return isNaN(n) ? (l.custoBase ?? 0) : n; };
   const [impacto, setImpacto] = useState<string | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [expandido, setExpandido] = useState<Set<string>>(new Set());  // produtos "sem insumo" com o seletor aberto
+  const toggleExp = (chave: string) => setExpandido(s => { const n = new Set(s); if (n.has(chave)) n.delete(chave); else n.add(chave); return n; });
   const insumosSel = insumos.filter(i => i.ativo !== false && !i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
 
   const defaultEdit = (l: LinhaReconc) => ({ insumoId: l.insumo?.id || "", fator: l.fatorParaBase != null ? String(l.fatorParaBase) : "" });
@@ -1884,10 +1886,18 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, categorias, rece
                     <span className="text-[11px] text-gray-400">{l.produto.unidade} · {fmtMoeda(l.produto.ultimo.valorUnitario)}{l.produto.fornecedor ? ` · ${l.produto.fornecedor}` : ""}</span>
                     <VerNota notaId={l.produto.ultimo.notaId} />
                   </div>
-                  {linhaVinculo(l, <>
-                    <button type="button" onClick={() => setCriarDe(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
-                    <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
-                  </>)}
+                  {expandido.has(l.produto.chave) ? (
+                    linhaVinculo(l, <>
+                      <button type="button" onClick={() => setCriarDe(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
+                      <button type="button" onClick={() => toggleExp(l.produto.chave)} className="text-xs text-gray-400 hover:text-gray-700 shrink-0">fechar</button>
+                    </>)
+                  ) : (
+                    <div className="flex items-center gap-2 flex-wrap mt-2">
+                      <button type="button" onClick={() => toggleExp(l.produto.chave)} className="h-8 text-xs font-medium px-3 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0">🔗 insumo existente</button>
+                      <button type="button" onClick={() => setCriarDe(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
+                      <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
