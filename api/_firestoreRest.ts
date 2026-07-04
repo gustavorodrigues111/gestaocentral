@@ -1,49 +1,45 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  _firestoreRest — grava no Firestore a partir do backend (Vercel) SEM
-//  firebase-admin: minta um access token de uma service account (JWT RS256 via
-//  node:crypto) e usa a REST API do Firestore. Usado pelo webhook do WhatsApp,
-//  que é chamado pela Meta (sem usuário logado), então precisa escrever server-side.
+//  firebase-admin e SEM service-account key (a org bloqueia criação de chaves
+//  de SA via política iam.disableServiceAccountKeyCreation).
 //
-//  Env var: FIREBASE_SERVICE_ACCOUNT — JSON da service account (ou base64 dele).
-//  (Firebase Console → Configurações → Contas de serviço → Gerar nova chave.)
+//  Em vez disso, o backend faz login como um USUÁRIO DE SERVIÇO do Firebase Auth
+//  (o mesmo Auth que o app já usa), pega um ID token via Identity Toolkit e usa
+//  a REST API do Firestore com esse token — que respeita as security rules
+//  (as coleções do webhook liberam write pra qualquer usuário autenticado).
+//  Usado pelo webhook do WhatsApp, chamado pela Meta (sem usuário logado).
+//
+//  Env vars:
+//   - WEBHOOK_FB_EMAIL      → email do usuário de serviço (criado no Firebase Auth)
+//   - WEBHOOK_FB_PASSWORD   → senha desse usuário
+//   - FIREBASE_WEB_API_KEY  → API key web (fallback: VITE_FIREBASE_API_KEY, já na Vercel)
 // ════════════════════════════════════════════════════════════════════════════
-import crypto from "node:crypto";
 
-type SA = { client_email: string; private_key: string; project_id?: string };
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "gestaocentral-85b13";
+const API_KEY = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY || "";
+const SVC_EMAIL = process.env.WEBHOOK_FB_EMAIL || "";
+const SVC_PASSWORD = process.env.WEBHOOK_FB_PASSWORD || "";
 
-function getSA(): SA | null {
-  const raw = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!raw) return null;
-  try {
-    const txt = raw.trim().startsWith("{") ? raw : Buffer.from(raw, "base64").toString("utf8");
-    const sa = JSON.parse(txt) as SA;
-    return sa.client_email && sa.private_key ? sa : null;
-  } catch { return null; }
+export function firestoreDisponivel(): boolean {
+  return !!(API_KEY && SVC_EMAIL && SVC_PASSWORD);
 }
 
-export function firestoreDisponivel(): boolean { return !!getSA(); }
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "gestaocentral-85b13";
-const b64url = (b: Buffer) => b.toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
-
+// ─── ID token do usuário de serviço (cache com expiração) ───────────────────
 let tokenCache: { token: string; exp: number } | null = null;
-async function accessToken(): Promise<string> {
+async function idToken(): Promise<string> {
   const now = Date.now();
   if (tokenCache && tokenCache.exp > now + 60_000) return tokenCache.token;
-  const sa = getSA();
-  if (!sa) throw new Error("FIREBASE_SERVICE_ACCOUNT não configurada.");
-  const iat = Math.floor(now / 1000);
-  const header = b64url(Buffer.from(JSON.stringify({ alg: "RS256", typ: "JWT" })));
-  const claim = b64url(Buffer.from(JSON.stringify({ iss: sa.client_email, scope: "https://www.googleapis.com/auth/datastore", aud: "https://oauth2.googleapis.com/token", iat, exp: iat + 3600 })));
-  const signer = crypto.createSign("RSA-SHA256"); signer.update(`${header}.${claim}`); signer.end();
-  const jwt = `${header}.${claim}.${b64url(signer.sign(sa.private_key))}`;
-  const resp = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: jwt }),
+  if (!firestoreDisponivel()) throw new Error("Credenciais do webhook não configuradas (WEBHOOK_FB_EMAIL/PASSWORD).");
+  const resp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: SVC_EMAIL, password: SVC_PASSWORD, returnSecureToken: true }),
   });
-  const j = (await resp.json()) as { access_token?: string; error_description?: string };
-  if (!j.access_token) throw new Error("Falha ao obter token da service account: " + (j.error_description || ""));
-  tokenCache = { token: j.access_token, exp: now + 3500_000 };
-  return j.access_token;
+  const j = (await resp.json()) as { idToken?: string; expiresIn?: string; error?: { message?: string } };
+  if (!j.idToken) throw new Error("Falha no login do usuário de serviço: " + (j.error?.message || resp.status));
+  const ttlMs = (parseInt(j.expiresIn || "3600", 10) || 3600) * 1000;
+  tokenCache = { token: j.idToken, exp: now + ttlMs };
+  return j.idToken;
 }
 
 // Converte um valor JS pro formato de campo da REST API do Firestore.
@@ -60,7 +56,7 @@ function encVal(v: unknown): Record<string, unknown> | null {
 
 // Cria um doc com id conhecido. 409 (já existe) = ok (dedupe). Devolve true se gravou/existia.
 export async function firestoreCriar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
-  const token = await accessToken();
+  const token = await idToken();
   const fields: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(obj)) { const e = encVal(v); if (e) fields[k] = e; }
   const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}?documentId=${encodeURIComponent(docId)}`;
