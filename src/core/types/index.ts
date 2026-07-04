@@ -5435,6 +5435,7 @@ export type FtFicha = {
   cmvAlvo?: number | null;             // % alvo de CMV (só ficha final)
   revisar?: boolean;                   // marcada como "precisa revisão"
   revisarMotivo?: string | null;       // por quê precisa revisar
+  semConverter?: boolean;              // usuário dispensou virar variação de ingrediente
   ativo: boolean;
   criadoEm: string;
   criadoPor?: string;

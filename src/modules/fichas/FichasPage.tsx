@@ -361,6 +361,11 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
       setF(p => ({ ...p, categoriaId: id }));
     } catch (e) { alert("Erro ao criar categoria: " + (e instanceof Error ? e.message : String(e))); }
   }
+  // Usuário dispensou converter esta ficha em variação → não perguntar de novo.
+  async function dispensarConverter() {
+    setF(p => ({ ...p, semConverter: true }));
+    try { await updateDoc(doc(db, "ftFichas", f.id), { semConverter: true }); } catch { /* ficha ainda não salva; fica no state */ }
+  }
   // Abre o painel "converter esta ficha em variação do ingrediente único".
   function abrirConverter() {
     if (!ingUnico || !insumoUnico) return;
@@ -419,12 +424,12 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                   onQtd={n => setF({ ...f, rendimento: { ...f.rendimento, qtd: n } })}
                   onUnidade={u => setF({ ...f, rendimento: { ...f.rendimento, unidade: u } })} />
               </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center justify-between">
+              <div className="flex flex-col gap-1 min-w-0">
+                <div className="flex items-center gap-2">
                   <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">{f.ehSubficha ? "Categoria (base)" : "Categoria (cardápio)"}</span>
-                  <button type="button" onClick={() => void novaCategoria()} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">+ nova categoria</button>
+                  <button type="button" onClick={() => void novaCategoria()} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">+ nova</button>
                 </div>
-                <select value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100 h-9">
+                <select value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })} className="w-full px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100 h-9">
                   <option value="">— sem categoria —</option>
                   {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </select>
@@ -450,6 +455,17 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
           {/* Ingredientes */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
             <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Ingredientes</div>
+            {insumoUnico && !f.semConverter && !converter && (
+              <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 flex items-center gap-3 flex-wrap">
+                <div className="text-xs text-indigo-800 dark:text-indigo-200 flex-1 min-w-[200px]">
+                  💡 Esta ficha tem <strong>1 ingrediente só</strong> ({insumoUnico.nome}). Talvez faça mais sentido como <strong>variação</strong> desse insumo (com fator de correção), em vez de uma ficha.
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <Button size="sm" onClick={abrirConverter}>Converter</Button>
+                  <Button variant="ghost" size="sm" onClick={() => void dispensarConverter()}>Não, manter ficha</Button>
+                </div>
+              </div>
+            )}
             {f.ingredientes.length > 0 && (
               <div className="space-y-1">
                 {f.ingredientes.map(ing => (
@@ -473,24 +489,32 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false);
               const pendentes = insumos.filter(i => i.ehSubproduto && !i.subprodutoDe && i.ativo !== false);
               return (
-                <div key={sp.id} className="py-1 border-t border-gray-100 dark:border-gray-800 first:border-0">
+                <div key={sp.id} className="py-2 border-t border-gray-100 dark:border-gray-800 first:border-0 space-y-1.5">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-                    <div className="flex items-center gap-1"><span className="text-[11px] text-gray-400">rende</span>
-                      <input type="number" value={sp.rendimentoQtd} onChange={e => patchSub(sp.id, { rendimentoQtd: Number(e.target.value) || 0 })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-                      <select value={sp.unidade} onChange={e => patchSub(sp.id, { unidade: e.target.value })} className="px-1.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100">{unidadesRendimento().map(u => <option key={u.unidade} value={u.unidade}>{labelUnidade(u.unidade)}</option>)}</select>
+                    <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-gray-400">rende</span>
+                      <QtyStepper qtd={sp.rendimentoQtd} unidade={sp.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
+                        onQtd={n => patchSub(sp.id, { rendimentoQtd: n })} onUnidade={u => patchSub(sp.id, { unidade: u })} />
                     </div>
-                    <div className="flex items-center gap-1"><input type="number" value={sp.percentualCusto} onChange={e => patchSub(sp.id, { percentualCusto: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })} className="w-14 px-1.5 py-1.5 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-[11px] text-gray-400">% custo</span></div>
-                    <span className="text-[11px] text-gray-500 w-20 text-right tabular-nums">{r ? fmtMoeda(r.custo) : "—"}</span>
-                    <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-sm px-1">✕</button>
+                    <div className="inline-flex items-center h-9 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm px-2 gap-1 shrink-0">
+                      <input type="text" inputMode="decimal" value={sp.percentualCusto} onChange={e => patchSub(sp.id, { percentualCusto: Math.max(0, Math.min(100, Number(String(e.target.value).replace(",", ".")) || 0)) })} className="w-10 text-right bg-transparent text-sm outline-none dark:text-gray-100" />
+                      <span className="text-[11px] text-gray-400">% custo</span>
+                    </div>
+                    <span className="text-xs text-gray-500 w-20 text-right tabular-nums shrink-0">{r ? fmtMoeda(r.custo) : "—"}</span>
+                    <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-base px-1 shrink-0">✕</button>
                   </div>
-                  <div className="pl-1 mt-1 text-[11px]">
-                    {vinc
-                      ? <span className="text-orange-600 dark:text-orange-400">🔗 vinculado ao insumo “{vinc.nome}” <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", vinc.id), { subprodutoDe: null })} className="text-gray-400 hover:text-red-600 underline ml-1">desvincular</button></span>
-                      : pendentes.length > 0
-                        ? <span className="text-gray-500">Vincular insumo-subproduto pendente: <select value="" onChange={e => { if (e.target.value) updateDoc(doc(db, "ftInsumos", e.target.value), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); }} className="text-[11px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select> <span className="text-gray-400">(salve a ficha depois)</span></span>
-                        : null}
-                  </div>
+                  {(vinc || pendentes.length > 0) && (
+                    <div className="flex items-center gap-2 flex-wrap text-[11px] pl-0.5">
+                      {vinc
+                        ? <span className="text-orange-600 dark:text-orange-400">🔗 vinculado ao insumo “{vinc.nome}” <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", vinc.id), { subprodutoDe: null })} className="text-gray-400 hover:text-red-600 underline ml-1">desvincular</button></span>
+                        : <>
+                            <span className="text-gray-500">Vincular insumo-subproduto pendente:</span>
+                            <select value="" onChange={e => { if (e.target.value) updateDoc(doc(db, "ftInsumos", e.target.value), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); }} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select>
+                            <span className="text-gray-400">(salve a ficha depois)</span>
+                          </>}
+                    </div>
+                  )}
                 </div>
               );
             })}
