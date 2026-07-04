@@ -16,6 +16,7 @@ import { CardapioPdfPanel } from "../sites/CardapioTab";
 import { useSiteConfig } from "../sites/useSiteConfig";
 import { CardapioConfig } from "./CardapioConfig";
 import { carregarFontesCardapio } from "../sites/shared/FontePicker";
+import { normalizarNome } from "../fichas/dedup";
 import { authHeader } from "../../core/firebase/idToken";
 import { fmtBRDateTime } from "../../core/utils/date";
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
@@ -113,7 +114,17 @@ export function CardapioPage() {
       const resp = await fetch("/api/extrair-cardapio", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url }) });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status}`);
-      const itens: PdfItem[] = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { titulo: string; preco?: string; secao?: string }[] }).itens : []).map(i => ({ id: uid(), titulo: i.titulo, preco: i.preco || "", secao: (i.secao || "").trim() }));
+      // Preserva o id de itens que já existiam (mesmo nome) pra NÃO quebrar os
+      // vínculos de preço das fichas ao reler o PDF. Só itens novos ganham id novo.
+      const prev = itensRef.current;
+      const usados = new Set<string>();
+      const acharId = (titulo: string) => {
+        const n = normalizarNome(titulo);
+        const hit = prev.find(p => !usados.has(p.id) && normalizarNome(p.titulo) === n);
+        if (hit) { usados.add(hit.id); return hit.id; }
+        return uid();
+      };
+      const itens: PdfItem[] = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { titulo: string; preco?: string; secao?: string }[] }).itens : []).map(i => ({ id: acharId(i.titulo), titulo: i.titulo, preco: i.preco || "", secao: (i.secao || "").trim() }));
       const now = new Date().toISOString();
       await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, cardapioPdfItens: itens, cardapioPdfItensEm: now, atualizadoEm: now, atualizadoPor: me?.id }), { merge: true });
       setPdfItens(itens); setPdfItensEm(now);

@@ -75,19 +75,24 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio, cardapioPd
     if (cardapio.length === 0) return;
     const porNome = new Map<string, CardItem>();
     for (const i of cardapio) { const n = normalizarNome(i.titulo); if (n && !porNome.has(n)) porNome.set(n, i); }
-    const paraLigar: { f: FtFicha; it: CardItem }[] = [];
+    const paraLigar: { f: FtFicha; it: CardItem; chave: string }[] = [];
     for (const f of fichas) {
       if (f.ativo === false || f.ehSubficha) continue;
-      if (f.cardapioItemId || f.precoVendaManual != null || autoFeitos.current.has(f.id)) continue;
+      const vinculoVivo = !!f.cardapioItemId && itensMap.has(f.cardapioItemId);
+      const manual = f.precoVendaManual != null && !f.cardapioItemId;
+      if (vinculoVivo || manual) continue; // já resolvido; quebrado (id morto) segue elegível → cura
       const it = porNome.get(normalizarNome(f.nome));
-      if (it) paraLigar.push({ f, it });
+      if (!it || it.id === f.cardapioItemId) continue;
+      const chave = `${f.id}:${it.id}`;              // permite re-vincular a um id novo (após reler PDF)
+      if (autoFeitos.current.has(chave)) continue;
+      paraLigar.push({ f, it, chave });
     }
     if (paraLigar.length === 0) return;
-    for (const { f } of paraLigar) autoFeitos.current.add(f.id);
+    for (const { chave } of paraLigar) autoFeitos.current.add(chave);
     const batch = writeBatch(db);
     for (const { f, it } of paraLigar) batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ cardapioItemId: it.id, precoVendaManual: null }));
     batch.commit().catch(() => {});
-  }, [cardapio, fichas]);
+  }, [cardapio, fichas, itensMap]);
 
   const nVinculados = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha && f.cardapioItemId && itensMap.has(f.cardapioItemId)).length, [fichas, itensMap]);
   const grupos = useMemo(() => {
