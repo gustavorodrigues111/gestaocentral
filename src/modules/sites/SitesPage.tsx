@@ -5,7 +5,6 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
-import { CardapioTab } from "./CardapioTab";
 import { PreviewTab } from "./PreviewTab";
 
 type Tab = "geral" | "cardapio" | "preview";
@@ -89,7 +88,11 @@ export function SitesPage() {
         />
       )}
       {tab === "cardapio" && (
-        <CardapioTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeCardapio} />
+        <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-6 text-center space-y-2">
+          <div className="text-3xl">📋</div>
+          <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">O cardápio agora é editado no módulo <strong>Cardápio</strong></div>
+          <p className="text-[13px] text-indigo-700 dark:text-indigo-300 max-w-md mx-auto">Lá você escolhe entre montar item a item ou subir um PDF — e o site puxa daqui, do mesmo jeito. Abra o módulo <strong>Cardápio</strong> no menu lateral.</p>
+        </div>
       )}
       {tab === "preview" && (
         <PreviewTab rid={rid} nomeRestaurante={activeRestaurant.nome} />
