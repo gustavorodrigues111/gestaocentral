@@ -195,7 +195,8 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
   const st = statsFrom(resMap);
   const pct = Math.round((st.feitos / Math.max(1, st.total)) * 100);
   const empregadosOrdenados = [...empregados].filter(e => e.estaAtivo).sort((a, b) => a.nome.localeCompare(b.nome));
-  const inputTa = "w-full px-3 py-2 text-sm rounded-lg border resize-none";
+  // text-base (16px) evita o zoom automático do iOS/Safari ao focar o campo.
+  const inputTa = "w-full px-3 py-2 text-base rounded-lg border resize-none";
 
   return (
     <Modal title={`▶ ${template.nome}`} onClose={onClose} maxWidth="max-w-2xl">
