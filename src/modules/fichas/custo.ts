@@ -106,6 +106,22 @@ export function calcularCusto(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFic
   return { total, porRendimento: rend > 0 ? round2(total / rend) : 0, bruto, insumosSemCusto: [...ctx.semCusto], subprodutos };
 }
 
+// Custo de CADA ingrediente do preparo (nível de topo) — pra a ficha de custo.
+export type CustoLinha = { nome: string; tipo: FtIngrediente["tipo"]; qtd: number; unidade: string; qb: boolean; custo: number; semCusto: boolean };
+export function custoPorIngrediente(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFicha[]): CustoLinha[] {
+  const ctx: Ctx = { insumos: new Map(insumos.map(i => [i.id, i])), fichas: new Map(fichas.map(f => [f.id, f])), semCusto: new Set<string>() };
+  return (ficha.ingredientes || []).map(ing => {
+    let nome = ing.nomeSnapshot || "?";
+    if (ing.tipo === "insumo") { const i = ctx.insumos.get(ing.refId); if (i) nome = i.nome; }
+    else if (ing.tipo === "ficha") { const f = ctx.fichas.get(ing.refId); if (f) nome = f.nome; }
+    else if (ing.tipo === "subproduto") { const p = ctx.fichas.get(ing.refId); const sp = p?.subprodutos?.find(s => s.id === ing.subId); if (sp) nome = sp.nome; }
+    if (ing.variacaoNome) nome += ` (${ing.variacaoNome})`;
+    const antes = ctx.semCusto.size;
+    const custo = round2(custoIngrediente(ing, ctx, new Set()));
+    return { nome, tipo: ing.tipo, qtd: ing.qtd || 0, unidade: ing.unidade, qb: !!ing.qb, custo, semCusto: ctx.semCusto.size > antes || (!ing.qb && custo <= 0 && ing.tipo === "insumo") };
+  });
+}
+
 // Preço MÉDIO dos últimos 3 meses (média simples dos registros de custo no
 // período). Sem mudança no período → cai no último preço conhecido.
 export function precoMedio3m(insumo: FtInsumo, hojeIso: string): number {

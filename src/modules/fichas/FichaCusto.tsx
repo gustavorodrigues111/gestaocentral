@@ -6,11 +6,15 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { CardapioEstruturado, FtCategoria, FtFicha, FtInsumo } from "../../core/types";
-import { calcularCusto, cmvPct, insumosComMedia, markup } from "./custo";
+import { calcularCusto, cmvPct, custoPorIngrediente, insumosComMedia, markup } from "./custo";
 import { normalizarNome } from "./dedup";
+import { labelUnidade } from "./unidades";
+import { Modal } from "../../core/ui/Modal";
+import { Button } from "../../core/ui/Button";
 
 const UP = (s: string) => (s || "").trim().toUpperCase();
 const fmtMoeda = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
 
 export type CardItem = { id: string; titulo: string; preco: string; secao: string };
 
@@ -50,6 +54,7 @@ function precoDe(f: FtFicha, itens: Map<string, CardItem>): { preco: number | nu
 
 export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; cardapio: CardItem[] }) {
   const [busca, setBusca] = useState("");
+  const [abrir, setAbrir] = useState<FtFicha | null>(null);
   const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
@@ -111,7 +116,7 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
                   const cmvCor = cmv == null ? "text-gray-400" : (alvo != null && cmv > alvo) ? "text-rose-600 dark:text-rose-400 font-semibold" : "text-emerald-600 dark:text-emerald-400";
                   return (
                     <tr key={f.id} className="align-middle">
-                      <td className="px-3 py-2 text-gray-900 dark:text-gray-100 font-medium">{UP(f.nome)}{c.insumosSemCusto.length > 0 && <span className="ml-1.5 text-[10px] text-amber-600" title={`Faltam preços: ${c.insumosSemCusto.slice(0, 5).join(", ")}`}>⚠</span>}</td>
+                      <td className="px-3 py-2 text-gray-900 dark:text-gray-100 font-medium"><button type="button" onClick={() => setAbrir(f)} className="text-left hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">{UP(f.nome)}</button>{c.insumosSemCusto.length > 0 && <span className="ml-1.5 text-[10px] text-amber-600" title={`Faltam preços: ${c.insumosSemCusto.slice(0, 5).join(", ")}`}>⚠</span>}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-200">{custo > 0 ? fmtMoeda(custo) : "—"}</td>
                       <td className="px-3 py-2">
                         <PrecoCell f={f} fonte={fonte} preco={preco} item={item} cardapio={cardOrdenado}
@@ -128,7 +133,61 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
         </div>
       ))}
       {grupos.length === 0 && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhum prato final.</div>}
+      {abrir && <FichaCustoModal ficha={abrir} insumos={insumosCalc} fichas={fichas} preco={precoDe(abrir, itensMap).preco} cmvAlvo={catsFicha.find(c => c.id === abrir.categoriaId)?.cmvAlvo ?? null} onClose={() => setAbrir(null)} />}
     </div>
+  );
+}
+
+// Ficha de custo (read-only): breakdown por ingrediente + CMV/margem.
+function FichaCustoModal({ ficha, insumos, fichas, preco, cmvAlvo, onClose }: { ficha: FtFicha; insumos: FtInsumo[]; fichas: FtFicha[]; preco: number | null; cmvAlvo: number | null; onClose: () => void }) {
+  const c = calcularCusto(ficha, insumos, fichas);
+  const linhas = custoPorIngrediente(ficha, insumos, fichas);
+  const custoPorc = c.porRendimento || c.total;
+  const cmv = preco ? cmvPct(custoPorc, preco) : null;
+  const mk = preco ? markup(custoPorc, preco) : null;
+  const cmvCor = cmv == null ? "text-gray-400" : (cmvAlvo != null && cmv > cmvAlvo) ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400";
+  return (
+    <Modal title={`💰 Custo — ${UP(ficha.nome)}`} onClose={onClose} maxWidth="max-w-2xl">
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[["Custo do preparo", fmtMoeda(c.total), "text-gray-900 dark:text-gray-100"],
+            ["Custo por porção", custoPorc > 0 ? fmtMoeda(custoPorc) : "—", "text-gray-900 dark:text-gray-100"],
+            ["Preço de venda", preco != null ? fmtMoeda(preco) : "—", "text-gray-900 dark:text-gray-100"],
+            ["CMV", cmv != null ? `${cmv}%` : "—", cmvCor]].map(([lbl, val, cor], k) => (
+            <div key={k} className="rounded-xl bg-gray-50 dark:bg-gray-800/50 p-2.5">
+              <div className="text-[10px] uppercase tracking-wide text-gray-400">{lbl}</div>
+              <div className={`text-lg font-bold tabular-nums ${cor}`}>{val}</div>
+            </div>
+          ))}
+        </div>
+        {mk != null && <div className="text-[11px] text-gray-500">Markup {mk}× · {cmvAlvo != null ? `CMV alvo da categoria ${cmvAlvo}%` : "sem CMV alvo na categoria"}</div>}
+        <table className="w-full text-sm border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden">
+          <thead>
+            <tr className="bg-gray-50 dark:bg-gray-800/40 text-[11px] uppercase tracking-wide text-gray-500">
+              <th className="text-left font-semibold px-3 py-1.5">Ingrediente</th>
+              <th className="text-right font-semibold px-3 py-1.5 w-28">Quantidade</th>
+              <th className="text-right font-semibold px-3 py-1.5 w-24">Custo</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {linhas.map((l, k) => (
+              <tr key={k}>
+                <td className="px-3 py-1.5 text-gray-800 dark:text-gray-100">{l.tipo === "ficha" ? "🧩 " : l.tipo === "subproduto" ? "🔄 " : ""}{UP(l.nome)}{l.semCusto && <span className="ml-1.5 text-[10px] text-amber-600">⚠ sem custo</span>}</td>
+                <td className="px-3 py-1.5 text-right text-gray-500 tabular-nums">{l.qb ? "q.b." : `${fmtQtd(l.qtd)} ${labelUnidade(l.unidade)}`}</td>
+                <td className="px-3 py-1.5 text-right text-gray-700 dark:text-gray-200 tabular-nums">{l.custo > 0 ? fmtMoeda(l.custo) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {c.subprodutos.length > 0 && (
+          <div className="text-[11px] text-gray-500 space-y-0.5">
+            <div className="font-semibold">Rateio dos subprodutos (saem deste custo):</div>
+            {c.subprodutos.map(sp => <div key={sp.id} className="flex justify-between"><span>↳ {UP(sp.nome)} ({sp.percentual}%)</span><span className="tabular-nums">{fmtMoeda(sp.custo)}</span></div>)}
+          </div>
+        )}
+        <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+      </div>
+    </Modal>
   );
 }
 
