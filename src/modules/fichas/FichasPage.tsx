@@ -13,7 +13,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
-import type { FtCategoria, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
+import type { FtCategoria, FtCategoriaTipo, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
 import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
@@ -35,16 +35,31 @@ const UP = (s: string) => (s || "").trim().toUpperCase();
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
-type Tab = "fichas" | "insumos" | "categorias";
+type Tab = "pratos" | "bases" | "insumos" | "categorias";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
 const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
+
+// Estado da ficha (mesma prioridade da cor do card): revisar → pendente →
+// faltam preços → completa. Usado por filtros, contadores e selo do card.
+type EstadoFicha = "revisar" | "pendente" | "faltam" | "completa";
+function estadoDaFicha(f: FtFicha, insumosCalc: FtInsumo[], fichas: FtFicha[]): EstadoFicha {
+  if (f.revisar) return "revisar";
+  if (fichaPendente(f)) return "pendente";
+  return calcularCusto(f, insumosCalc, fichas).insumosSemCusto.length > 0 ? "faltam" : "completa";
+}
+const ESTADO_UI: Record<EstadoFicha, { seal: string; cls: string; tint: string; title: string }> = {
+  revisar: { seal: "⚑ revisar", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300", tint: "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400", title: "Precisa de revisão" },
+  pendente: { seal: "⏳ pendente", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", tint: "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400", title: "Sem ingredientes — monte a receita" },
+  faltam: { seal: "💲 faltam preços", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300", tint: "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400", title: "Receita montada, falta preço de algum insumo" },
+  completa: { seal: "✅ completa", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", tint: "border-emerald-300 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-900/15 hover:border-emerald-400", title: "Receita montada e com todos os custos" },
+};
 
 export function FichasPage() {
   const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
-  const [tab, setTab] = useState<Tab>("fichas");
+  const [tab, setTab] = useState<Tab>("pratos");
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [categorias, setCategorias] = useState<FtCategoria[]>([]);
@@ -104,7 +119,7 @@ export function FichasPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">📋 Fichas Técnicas</h1>
           <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         </div>
-        {tab === "fichas" && podeEditar && (
+        {(tab === "pratos" || tab === "bases") && podeEditar && (
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             {rascunho && (
               <button type="button" onClick={() => setImportando(true)}
@@ -114,18 +129,19 @@ export function FichasPage() {
               </button>
             )}
             <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>✨ Importar receita</Button>
-            <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, false, pessoa?.id, pessoa?.nome))}>+ Nova ficha</Button>
+            <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, tab === "bases", pessoa?.id, pessoa?.nome))}>{tab === "bases" ? "+ Nova base" : "+ Nova ficha"}</Button>
           </div>
         )}
       </header>
 
-      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        <TabBtn ativo={tab === "fichas"} onClick={() => setTab("fichas")}>Fichas ({fichas.filter(f => f.ativo !== false).length})</TabBtn>
+      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
+        <TabBtn ativo={tab === "pratos"} onClick={() => setTab("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
+        <TabBtn ativo={tab === "bases"} onClick={() => setTab("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
         {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => setTab("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false).length})</TabBtn>}
         {podeEditar && <TabBtn ativo={tab === "categorias"} onClick={() => setTab("categorias")}>Categorias ({categorias.filter(c => c.ativo !== false).length})</TabBtn>}
       </nav>
 
-      {tab === "fichas" && <ListaFichas fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar} />}
+      {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar} />}
       {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
       {tab === "categorias" && podeEditar && <CadastroCategorias rid={rid} categorias={categorias} />}
 
@@ -167,43 +183,50 @@ function novaFicha(rid: string, ehSubficha: boolean, meId?: string, meNome?: str
 }
 
 // ─── Lista de fichas ──────────────────────────────────────────────────────
-function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
-  fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; onEditar: (f: FtFicha) => void; podeEditar: boolean;
+function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar }: {
+  grupo: "finais" | "subfichas"; fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; onEditar: (f: FtFicha) => void; podeEditar: boolean;
 }) {
-  const [grupo, setGrupo] = useState<"finais" | "subfichas">("finais");
-  const [subFiltro, setSubFiltro] = useState<"todas" | "pendentes" | "revisar">("todas");
+  const [subFiltro, setSubFiltro] = useState<"todas" | EstadoFicha>("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
   const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
+  useEffect(() => { setSubFiltro("todas"); setCatFiltro(""); }, [grupo]);
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
   const doGrupo = useMemo(() => fichas.filter(f => f.ativo !== false && (grupo === "subfichas" ? f.ehSubficha : !f.ehSubficha)), [fichas, grupo]);
-  const nFinais = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha).length, [fichas]);
-  const nSubs = useMemo(() => fichas.filter(f => f.ativo !== false && f.ehSubficha).length, [fichas]);
-  const nPend = useMemo(() => doGrupo.filter(fichaPendente).length, [doGrupo]);
-  const nRev = useMemo(() => doGrupo.filter(f => f.revisar).length, [doGrupo]);
+  // Estado de cada ficha do grupo, calculado 1x (dirige filtros, contadores e selo).
+  const estados = useMemo(() => {
+    const m = new Map<string, EstadoFicha>();
+    for (const f of doGrupo) m.set(f.id, estadoDaFicha(f, insumosCalc, fichas));
+    return m;
+  }, [doGrupo, insumosCalc, fichas]);
+  const cont = useMemo(() => {
+    const c = { revisar: 0, pendente: 0, faltam: 0, completa: 0 };
+    for (const e of estados.values()) c[e]++;
+    return c;
+  }, [estados]);
   const catsGrupo = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha")).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const lista = useMemo(() => doGrupo
-    .filter(f => subFiltro === "todas" ? true : subFiltro === "pendentes" ? fichaPendente(f) : !!f.revisar)
+    .filter(f => subFiltro === "todas" ? true : estados.get(f.id) === subFiltro)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
-    .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro]);
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro, estados]);
 
   if (fichas.filter(f => f.ativo !== false).length === 0) return (
     <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
-      Nenhuma ficha ainda. Crie uma ficha, uma subficha, ou importe uma receita.
+      Nenhuma ficha ainda. Crie uma ficha de prato final, uma ficha de base, ou importe uma receita.
     </div>
   );
 
+  const filtros: [("todas" | EstadoFicha), string, string][] = [
+    ["todas", "Todas", "text-gray-500"],
+    ["pendente", `⏳ Pendentes${cont.pendente ? ` (${cont.pendente})` : ""}`, "text-amber-700 dark:text-amber-400"],
+    ["revisar", `⚑ Revisar${cont.revisar ? ` (${cont.revisar})` : ""}`, "text-rose-600 dark:text-rose-400"],
+    ["faltam", `💲 Faltam preços${cont.faltam ? ` (${cont.faltam})` : ""}`, "text-blue-600 dark:text-blue-400"],
+    ["completa", `✅ Prontas${cont.completa ? ` (${cont.completa})` : ""}`, "text-emerald-600 dark:text-emerald-400"],
+  ];
   return (
     <div className="space-y-3">
-      {/* Grupo primário + modo de preço */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-          {([["finais", `Fichas finais (${nFinais})`], ["subfichas", `Subfichas (${nSubs})`]] as const).map(([g, label]) => (
-            <button key={g} type="button" onClick={() => { setGrupo(g); setSubFiltro("todas"); setCatFiltro(""); }}
-              className={`px-4 py-1.5 text-xs font-medium rounded-md ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{label}</button>
-          ))}
-        </div>
-        <div className="flex-1" />
+      {/* Modo de preço */}
+      <div className="flex items-center gap-2 flex-wrap justify-end">
         <span className="text-[11px] text-gray-400 hidden sm:inline">Custo por:</span>
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
           {([["ultimo", "Último preço"], ["media", "Média 3 meses"]] as const).map(([m, label]) => (
@@ -212,11 +235,11 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
           ))}
         </div>
       </div>
-      {/* Filtros dentro do grupo */}
+      {/* Filtros por estado (cor) */}
       <div className="flex items-center gap-2 flex-wrap">
-        {([["todas", "Todas"], ["pendentes", `⏳ Pendentes${nPend > 0 ? ` (${nPend})` : ""}`], ["revisar", `⚑ Revisar${nRev > 0 ? ` (${nRev})` : ""}`]] as const).map(([t, label]) => (
+        {filtros.map(([t, label, hint]) => (
           <button key={t} type="button" onClick={() => setSubFiltro(t)}
-            className={`px-3 py-1 text-xs font-medium rounded-full border ${subFiltro === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"} ${t === "pendentes" && nPend > 0 && subFiltro !== t ? "text-amber-700 dark:text-amber-400" : ""} ${t === "revisar" && nRev > 0 && subFiltro !== t ? "text-rose-600 dark:text-rose-400" : ""}`}>{label}</button>
+            className={`px-3 py-1 text-xs font-medium rounded-full border ${subFiltro === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : `border-gray-200 dark:border-gray-800 ${t !== "todas" && cont[t as EstadoFicha] > 0 ? hint : "text-gray-500"}`}`}>{label}</button>
         ))}
         <div className="flex-1" />
         {catsGrupo.length > 0 && (
@@ -233,15 +256,7 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
         (() => {
           const renderCard = (f: FtFicha) => {
             const c = calcularCusto(f, insumosCalc, fichas);
-            // Estado da ficha (mesma prioridade da cor do card): revisar → pendente
-            // → faltam preços → completa. Todo card carrega um selo.
-            const estado = f.revisar
-              ? { seal: "⚑ revisar", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300", title: f.revisarMotivo || "Precisa de revisão", tint: "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400" }
-              : fichaPendente(f)
-              ? { seal: "⏳ pendente", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", title: "Sem ingredientes — monte a receita", tint: "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400" }
-              : c.insumosSemCusto.length > 0
-              ? { seal: "💲 faltam preços", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300", title: `${c.insumosSemCusto.length} insumo(s) sem custo — a receita está montada, falta preço`, tint: "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400" }
-              : { seal: "✅ completa", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", title: "Receita montada e com todos os custos", tint: "border-emerald-300 dark:border-emerald-800/70 bg-emerald-50 dark:bg-emerald-900/15 hover:border-emerald-400" };
+            const estado = ESTADO_UI[estados.get(f.id) || "completa"];
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
                 className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${estado.tint}`}>
@@ -252,9 +267,9 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {f.ehSubficha
-                      ? <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🧩 subficha</span>
+                      ? <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🧩 base</span>
                       : <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Prato final — vai pro cardápio">🍽️ cardápio</span>}
-                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${estado.cls}`} title={estado.title}>{estado.seal}</span>
+                    <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${estado.cls}`} title={f.revisar ? (f.revisarMotivo || estado.title) : estado.title}>{estado.seal}</span>
                   </div>
                 </div>
                 <div className="mt-3 flex items-end justify-between">
@@ -297,8 +312,13 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
 }) {
   const [f, setF] = useState<FtFicha>(fichaInicial);
   const [salvando, setSalvando] = useState(false);
+  const [converter, setConverter] = useState<{ nome: string; fc: number } | null>(null);
   const custo = useMemo(() => calcularCusto(f, insumos, fichas), [f, insumos, fichas]);
   const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
+  // Ficha com 1 único ingrediente-insumo → candidata a virar variação desse insumo.
+  const ingUnico = f.ingredientes.length === 1 && f.ingredientes[0].tipo === "insumo" ? f.ingredientes[0] : null;
+  const insumoUnico = ingUnico ? insumoById.get(ingUnico.refId) || null : null;
+  const fichasQueUsam = useMemo(() => fichas.filter(x => x.ativo !== false && x.id !== f.id && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === f.id)), [fichas, f.id]);
   // Subfichas disponíveis como ingrediente (reutilizáveis, exceto a própria).
   const subfichasDisp = useMemo(() => fichas.filter(x => x.ehSubficha && x.ativo !== false && x.id !== f.id), [fichas, f.id]);
   // Subprodutos de OUTRAS fichas, disponíveis como ingrediente.
@@ -329,6 +349,54 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     await updateDoc(doc(db, "ftFichas", f.id), { ativo: false });
     onClose();
   }
+  // Cria categoria nova (do grupo atual) e já seleciona na ficha.
+  async function novaCategoria() {
+    const nome = window.prompt(`Nova categoria de ${f.ehSubficha ? "base" : "prato final"}:`);
+    if (!nome || !nome.trim()) return;
+    const id = uid("cat");
+    const tipo: FtCategoriaTipo = f.ehSubficha ? "subficha" : "ficha";
+    const ordem = Math.max(0, ...catsAtivas.filter(c => (c.tipo || "ficha") === tipo).map(c => c.ordem ?? 0)) + 1;
+    try {
+      await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: nome.trim(), tipo, ordem, ativo: true } as FtCategoria));
+      setF(p => ({ ...p, categoriaId: id }));
+    } catch (e) { alert("Erro ao criar categoria: " + (e instanceof Error ? e.message : String(e))); }
+  }
+  // Abre o painel "converter esta ficha em variação do ingrediente único".
+  function abrirConverter() {
+    if (!ingUnico || !insumoUnico) return;
+    const nome = UP(f.nome).replace(UP(insumoUnico.nome), "").replace(/\s+/g, " ").trim() || "LIMPO";
+    const rb = paraBase(f.rendimento.qtd, f.rendimento.unidade);
+    const ib = paraBase(ingUnico.qtd, ingUnico.unidade);
+    const fc = rb && ib && ib > 0 ? Math.round((rb / ib) * 1000) / 10 : 100;
+    setConverter({ nome, fc });
+  }
+  async function confirmarConverter() {
+    if (!ingUnico || !insumoUnico || !converter) return;
+    const nomeVar = UP(converter.nome).trim();
+    if (!nomeVar) { alert("Dê um nome pra variação (ex: LIMPO)."); return; }
+    const fc = converter.fc > 0 ? converter.fc : 100;
+    setSalvando(true);
+    try {
+      const batch = writeBatch(db);
+      // 1. adiciona a variação ao insumo (sem duplicar por nome)
+      const jaTem = (insumoUnico.variacoes || []).find(v => normalizarNome(v.nome) === normalizarNome(nomeVar));
+      const variacoes = jaTem
+        ? (insumoUnico.variacoes || []).map(v => v === jaTem ? { ...v, fc } : v)
+        : [...(insumoUnico.variacoes || []), { id: uid("var"), nome: nomeVar, fc }];
+      batch.update(doc(db, "ftInsumos", insumoUnico.id), sanitizeForFirestore({ variacoes }));
+      // 2. religa quem usava esta ficha → passa a usar o insumo com a variação
+      for (const x of fichasQueUsam) {
+        const ingredientes = x.ingredientes.map(i => (i.tipo === "ficha" && i.refId === f.id)
+          ? ({ ...i, tipo: "insumo", refId: insumoUnico!.id, nomeSnapshot: insumoUnico!.nome, variacaoNome: nomeVar, fc } as FtIngrediente)
+          : i);
+        batch.update(doc(db, "ftFichas", x.id), sanitizeForFirestore({ ingredientes }));
+      }
+      // 3. desativa esta ficha (virou variação)
+      batch.update(doc(db, "ftFichas", f.id), { ativo: false });
+      await batch.commit();
+      onClose();
+    } catch (e) { alert("Erro ao converter: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-4">
@@ -351,19 +419,25 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                   onQtd={n => setF({ ...f, rendimento: { ...f.rendimento, qtd: n } })}
                   onUnidade={u => setF({ ...f, rendimento: { ...f.rendimento, unidade: u } })} />
               </div>
-              <Select label={f.ehSubficha ? "Categoria (base)" : "Categoria (cardápio)"} value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })}>
-                <option value="">— sem categoria —</option>
-                {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </Select>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">{f.ehSubficha ? "Categoria (base)" : "Categoria (cardápio)"}</span>
+                  <button type="button" onClick={() => void novaCategoria()} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">+ nova categoria</button>
+                </div>
+                <select value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100 h-9">
+                  <option value="">— sem categoria —</option>
+                  {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                </select>
+              </div>
               <div className="flex flex-col gap-1">
                 <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo</span>
                 <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 h-9">
                   <button type="button" onClick={() => setF({ ...f, ehSubficha: false })} className={`px-3 text-xs font-medium rounded-md whitespace-nowrap ${!f.ehSubficha ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🍽️ Prato final</button>
-                  <button type="button" onClick={() => setF({ ...f, ehSubficha: true })} className={`px-3 text-xs font-medium rounded-md whitespace-nowrap ${f.ehSubficha ? "bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 shadow-sm" : "text-gray-500"}`}>🧩 Subficha</button>
+                  <button type="button" onClick={() => setF({ ...f, ehSubficha: true })} className={`px-3 text-xs font-medium rounded-md whitespace-nowrap ${f.ehSubficha ? "bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 shadow-sm" : "text-gray-500"}`}>🧩 Base</button>
                 </div>
               </div>
             </div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">{f.ehSubficha ? "🧩 Subficha (base) — reutilizável como ingrediente de outras fichas; não vai pro cardápio." : "🍽️ Prato final — vai pro cardápio (entra no CMV)."}</div>
+            <div className="text-[11px] text-gray-500 dark:text-gray-400">{f.ehSubficha ? "🧩 Ficha de base — reutilizável como ingrediente de outras fichas; não vai pro cardápio." : "🍽️ Ficha de prato final — vai pro cardápio (entra no CMV)."}</div>
             <div className="border-t border-gray-100 dark:border-gray-800 pt-2">
               <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
                 <input type="checkbox" checked={!!f.revisar} onChange={e => setF({ ...f, revisar: e.target.checked })} className="w-4 h-4 accent-rose-600" />
@@ -452,10 +526,46 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
         </div>
       </div>
 
-      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir ficha</Button>
+      <div className="mt-6 pt-4 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir ficha</Button>
+          {insumoUnico && (
+            <Button variant="ghost" size="sm" onClick={abrirConverter} title="Esta ficha tem 1 ingrediente só — transforme em variação (fator de correção) desse insumo">🔀 Converter em variação de ingrediente</Button>
+          )}
+        </div>
         <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
       </div>
+
+      {converter && insumoUnico && ingUnico && (
+        <Modal title="🔀 Converter em variação de ingrediente" onClose={() => setConverter(null)} maxWidth="max-w-md">
+          <div className="space-y-3 text-sm">
+            <p className="text-gray-600 dark:text-gray-300">
+              Esta ficha vira uma <strong>variação</strong> do insumo <strong>{insumoUnico.nome}</strong> com um fator de correção.
+              A ficha “{UP(f.nome)}” é desativada e quem a usa passa a usar <strong>{insumoUnico.nome}</strong> na variação.
+            </p>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Nome da variação</span>
+              <input value={converter.nome} onChange={e => setConverter(c => c && { ...c, nome: e.target.value.toUpperCase() })} placeholder="ex: LIMPO" className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+            </div>
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Aproveitamento (fc)</span>
+                <div className="flex items-center gap-1"><input type="number" value={converter.fc} onChange={e => setConverter(c => c && { ...c, fc: Number(e.target.value) || 0 })} className="w-20 px-2 py-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /><span className="text-xs text-gray-400">%</span></div>
+              </div>
+              <p className="text-[11px] text-gray-400 flex-1">Calculado do rendimento ({fmtQtd(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)}) ÷ quantidade usada ({fmtQtd(ingUnico.qtd)} {labelUnidade(ingUnico.unidade)}). Ajuste se precisar.</p>
+            </div>
+            {fichasQueUsam.length > 0 && (
+              <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
+                Usada em <strong>{fichasQueUsam.length}</strong> ficha(s) — serão religadas automaticamente ao insumo com esta variação.
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 pt-1">
+              <Button variant="secondary" onClick={() => setConverter(null)}>Cancelar</Button>
+              <Button onClick={confirmarConverter} disabled={salvando || !converter.nome.trim()}>{salvando ? "Convertendo…" : "Confirmar conversão"}</Button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -1252,7 +1362,7 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
       <FormCard titulo="Nova categoria">
         <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-3 items-end">
           <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-end mb-0.5">
-            {([["ficha", "Fichas"], ["subficha", "Subfichas"]] as const).map(([t, l]) => (
+            {([["ficha", "🍽️ Pratos finais"], ["subficha", "🧩 Bases"]] as const).map(([t, l]) => (
               <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
           </div>
@@ -1260,8 +1370,8 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
           <Button onClick={add}>+ Adicionar</Button>
         </div>
       </FormCard>
-      {secao("ficha", "Categorias de fichas finais", "divisão do cardápio (pratos, drinks…) — pro CMV")}
-      {secao("subficha", "Categorias de subfichas", "bases: molhos, caldos, massas…")}
+      {secao("ficha", "Categorias de pratos finais", "divisão do cardápio (pratos, drinks…) — pro CMV")}
+      {secao("subficha", "Categorias de bases", "bases: molhos, caldos, massas…")}
       {editar && <CategoriaModal categoria={editar} onClose={() => setEditar(null)} />}
     </div>
   );
@@ -1287,7 +1397,7 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Grupo</span>
           <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-start">
-            {([["ficha", "🍽️ Fichas finais"], ["subficha", "🧩 Subfichas"]] as const).map(([t, l]) => (
+            {([["ficha", "🍽️ Pratos finais"], ["subficha", "🧩 Bases"]] as const).map(([t, l]) => (
               <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
           </div>
