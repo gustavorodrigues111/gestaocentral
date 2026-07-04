@@ -88,6 +88,15 @@ export function FichasPage() {
   const [criandoInsumo, setCriandoInsumo] = useState(false);
   const [catModal, setCatModal] = useState<FtCategoriaTipo | null>(null);
   const [, setUnidadesTick] = useState(0); // força re-render quando chegam unidades custom
+  // Filtros da lista de fichas — no topo pra PERSISTIR ao entrar/sair do editor.
+  const [subFiltro, setSubFiltro] = useState<"todas" | EstadoFicha>("todas");
+  const [catFiltro, setCatFiltro] = useState("");
+  const [busca, setBusca] = useState("");
+  const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
+  function irPara(t: Tab) {
+    if ((t === "pratos" || t === "bases") && t !== tab) { setSubFiltro("todas"); setCatFiltro(""); setBusca(""); }
+    setTab(t);
+  }
   const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
 
   const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
@@ -165,12 +174,13 @@ export function FichasPage() {
       </header>
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        <TabBtn ativo={tab === "pratos"} onClick={() => setTab("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
-        <TabBtn ativo={tab === "bases"} onClick={() => setTab("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
-        {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => setTab("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false).length})</TabBtn>}
+        <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
+        <TabBtn ativo={tab === "bases"} onClick={() => irPara("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
+        {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => irPara("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false).length})</TabBtn>}
       </nav>
 
-      {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar} />}
+      {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar}
+        subFiltro={subFiltro} setSubFiltro={setSubFiltro} catFiltro={catFiltro} setCatFiltro={setCatFiltro} busca={busca} setBusca={setBusca} precoModo={precoModo} setPrecoModo={setPrecoModo} />}
       {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
 
       {importando && (
@@ -217,14 +227,13 @@ function novaFicha(rid: string, ehSubficha: boolean, meId?: string, meNome?: str
 }
 
 // ─── Lista de fichas ──────────────────────────────────────────────────────
-function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar }: {
+function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar, subFiltro, setSubFiltro, catFiltro, setCatFiltro, busca, setBusca, precoModo, setPrecoModo }: {
   grupo: "finais" | "subfichas"; fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; onEditar: (f: FtFicha) => void; podeEditar: boolean;
+  subFiltro: "todas" | EstadoFicha; setSubFiltro: (v: "todas" | EstadoFicha) => void;
+  catFiltro: string; setCatFiltro: (v: string) => void;
+  busca: string; setBusca: (v: string) => void;
+  precoModo: "ultimo" | "media"; setPrecoModo: (v: "ultimo" | "media") => void;
 }) {
-  const [subFiltro, setSubFiltro] = useState<"todas" | EstadoFicha>("todas");
-  const [catFiltro, setCatFiltro] = useState<string>("");
-  const [busca, setBusca] = useState("");
-  const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
-  useEffect(() => { setSubFiltro("todas"); setCatFiltro(""); setBusca(""); }, [grupo]);
   const buscaNorm = normalizarNome(busca);
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
