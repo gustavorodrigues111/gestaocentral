@@ -1,13 +1,14 @@
-import { useState } from "react";
-import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { AREAS, CHECKLIST_FREQ_LABEL } from "../../core/types";
-import type { Area, ChecklistFrequencia, ChecklistItemTemplate, ChecklistTemplate } from "../../core/types";
+import { AREAS, CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL } from "../../core/types";
+import type { Area, ChecklistFrequencia, ChecklistItemTemplate, ChecklistTemplate, ChecklistTurno, Pessoa } from "../../core/types";
+import { FotoUpload } from "./FotoUpload";
 
 type Props = {
   template: ChecklistTemplate | null;
@@ -26,13 +27,25 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
   const [descricao, setDescricao] = useState(template?.descricao || "");
   const [area, setArea] = useState<Area | "">(template?.area || "");
   const [frequencia, setFrequencia] = useState<ChecklistFrequencia>(template?.frequencia || "diaria");
+  const [turno, setTurno] = useState<ChecklistTurno | "">(template?.turno || "");
   const [diasSemana, setDiasSemana] = useState<number[]>(template?.diasSemana || []);
   const [horarioRef, setHorarioRef] = useState(template?.horarioReferencia || "");
+  const [funcoes, setFuncoes] = useState<Area[]>(template?.funcoes || []);
+  const [responsaveisIds, setResponsaveisIds] = useState<string[]>(template?.responsaveisIds || []);
   const [ativo, setAtivo] = useState(template?.ativo ?? true);
   const [itens, setItens] = useState<ChecklistItemTemplate[]>(template?.itens || []);
   const [novoItem, setNovoItem] = useState("");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    if (!restaurantId) return;
+    const u = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", restaurantId)), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false)));
+    return () => u();
+  }, [restaurantId]);
+  const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
+  const nomePorId = useMemo(() => Object.fromEntries(pessoas.map(p => [p.id, p.nome])), [pessoas]);
+  const toggleFuncao = (a: Area) => setFuncoes(s => s.includes(a) ? s.filter(x => x !== a) : [...s, a]);
 
   function toggleDow(d: number) {
     setDiasSemana(s => s.includes(d) ? s.filter(x => x !== d) : [...s, d].sort());
@@ -82,8 +95,11 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
         descricao: descricao.trim() || undefined,
         area: area || undefined,
         frequencia,
+        turno: turno || null,
         diasSemana: frequencia === "diaria" && diasSemana.length > 0 ? diasSemana : undefined,
         horarioReferencia: horarioRef || undefined,
+        funcoes: funcoes.length > 0 ? funcoes : undefined,
+        responsaveisIds: responsaveisIds.length > 0 ? responsaveisIds : undefined,
         itens,
         ativo,
         criadoEm: template?.criadoEm || now,
@@ -156,6 +172,40 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
           />
         </div>
 
+        {/* Turno + atribuição */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Turno</label>
+            <select value={turno} onChange={(e) => setTurno(e.target.value as ChecklistTurno | "")} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">Sem turno</option>
+              {(["abertura", "meio", "fechamento"] as ChecklistTurno[]).map(t => <option key={t} value={t}>{CHECKLIST_TURNO_LABEL[t]}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Responsáveis (pessoas)</label>
+            <select value="" onChange={(e) => { const id = e.target.value; if (id && !responsaveisIds.includes(id)) setResponsaveisIds(s => [...s, id]); }} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">+ adicionar pessoa…</option>
+              {pessoasOrd.filter(p => !responsaveisIds.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+            </select>
+            {responsaveisIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {responsaveisIds.map(id => (
+                  <span key={id} className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">{nomePorId[id] || "?"}<button type="button" onClick={() => setResponsaveisIds(s => s.filter(x => x !== id))} className="hover:text-rose-600">×</button></span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Funções responsáveis (área)</label>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {AREAS.map(a => (
+              <button key={a} type="button" onClick={() => toggleFuncao(a)} className={`px-2.5 py-1 text-xs rounded-full border ${funcoes.includes(a) ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-800 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{a}</button>
+            ))}
+          </div>
+          <p className="text-[10px] text-gray-500 mt-1">Vazio (pessoas e funções) = qualquer pessoa com permissão vê o checklist.</p>
+        </div>
+
         {/* Dias da semana (só se diária) */}
         {frequencia === "diaria" && (
           <div>
@@ -197,15 +247,24 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
                     onChange={(e) => patchItem(item.id, { texto: e.target.value })}
                     className="text-sm"
                   />
-                  <div className="flex gap-3 text-xs text-gray-600 dark:text-gray-400">
+                  <div className="flex gap-3 text-xs text-gray-600 dark:text-gray-400 flex-wrap">
                     <label className="flex items-center gap-1 cursor-pointer">
                       <input type="checkbox" checked={item.obrigatorio} onChange={(e) => patchItem(item.id, { obrigatorio: e.target.checked })} />
                       <span>Obrigatório</span>
                     </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
+                    <label className="flex items-center gap-1 cursor-pointer" title="Quando marcar feito, obriga escrever uma observação">
                       <input type="checkbox" checked={!!item.exigeObs} onChange={(e) => patchItem(item.id, { exigeObs: e.target.checked })} />
-                      <span>Exige obs.</span>
+                      <span>Exige observação</span>
                     </label>
+                    <label className="flex items-center gap-1 cursor-pointer" title="Quando marcar feito, obriga anexar uma foto de prova">
+                      <input type="checkbox" checked={!!item.exigeFoto} onChange={(e) => patchItem(item.id, { exigeFoto: e.target.checked })} />
+                      <span>Exige foto</span>
+                    </label>
+                  </div>
+                  <textarea value={item.descricao || ""} onChange={(e) => patchItem(item.id, { descricao: e.target.value })} rows={1} placeholder="Como fazer (instrução, opcional)…" className="w-full px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-gray-500">Foto-guia:</span>
+                    <FotoUpload rid={restaurantId} pathPrefix={`guia_${item.id}`} url={item.fotoGuiaUrl} onChange={(u) => patchItem(item.id, { fotoGuiaUrl: u || undefined })} label="foto-guia" />
                   </div>
                 </div>
                 <div className="flex flex-col gap-1">

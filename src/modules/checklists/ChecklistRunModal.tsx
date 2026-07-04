@@ -10,6 +10,7 @@ import type {
   ChecklistRun, ChecklistRunItemResultado, ChecklistRunStatus,
   ChecklistTemplate, Empregado,
 } from "../../core/types";
+import { FotoUpload } from "./FotoUpload";
 
 type Props = {
   template: ChecklistTemplate;
@@ -88,15 +89,16 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
         if (!ok) { setSaving(false); return; }
       }
 
-      // Validação: items que exigem obs precisam ter obs preenchida (só pra os marcados)
+      // Validação: items que exigem obs/foto precisam ter (só pros marcados)
       for (const item of template.itens) {
-        if (item.exigeObs) {
-          const r = resultados.find(rr => rr.itemId === item.id);
-          if (r?.feito && !r.observacao?.trim()) {
-            setErr(`Item "${item.texto}" exige observação quando marcado.`);
-            setSaving(false);
-            return;
-          }
+        const r = resultados.find(rr => rr.itemId === item.id);
+        if (item.exigeObs && r?.feito && !r.observacao?.trim()) {
+          setErr(`Item "${item.texto}" exige observação quando marcado.`);
+          setSaving(false); return;
+        }
+        if (item.exigeFoto && r?.feito && !r.fotoUrl) {
+          setErr(`Item "${item.texto}" exige foto quando marcado.`);
+          setSaving(false); return;
         }
       }
 
@@ -223,8 +225,19 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                       {item.texto}
                       {item.obrigatorio && <span className="text-rose-600 ml-1">*</span>}
                     </div>
+                    {item.descricao && <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 whitespace-pre-wrap">💡 {item.descricao}</div>}
+                    {item.fotoGuiaUrl && <a href={item.fotoGuiaUrl} target="_blank" rel="noreferrer" className="inline-block mt-1"><img src={item.fotoGuiaUrl} alt="guia" className="w-14 h-14 rounded-lg object-cover border border-gray-200 dark:border-gray-700" title="Foto-guia: como deve ficar" /></a>}
                   </div>
                 </label>
+                {/* Foto-prova */}
+                {(item.exigeFoto || r.fotoUrl) && (
+                  <div className="ml-7 mt-1 flex items-center gap-2">
+                    {isReadonly
+                      ? (r.fotoUrl ? <a href={r.fotoUrl} target="_blank" rel="noreferrer"><img src={r.fotoUrl} alt="prova" className="w-14 h-14 rounded-lg object-cover border border-gray-200 dark:border-gray-700" /></a> : <span className="text-[11px] text-gray-400">sem foto</span>)
+                      : <><span className={`text-[11px] ${item.exigeFoto && r.feito && !r.fotoUrl ? "text-rose-600 font-medium" : "text-gray-500"}`}>Foto-prova{item.exigeFoto ? " (obrigatória)" : ""}:</span>
+                        <FotoUpload rid={restaurantId} pathPrefix={`prova_${template.id}_${item.id}`} url={r.fotoUrl} onChange={(u) => patchItem(item.id, { fotoUrl: u || undefined })} label="foto" /></>}
+                  </div>
+                )}
                 {(item.exigeObs || r.observacao) && !isReadonly && (
                   <textarea
                     value={r.observacao || ""}
