@@ -29,6 +29,7 @@ export function ProducaoView({ fichas, insumos, categorias }: { fichas: FtFicha[
   const bn = normalizarNome(busca);
   const lista = useMemo(() => fichas
     .filter(f => f.ativo !== false && (grupo === "bases" ? f.ehSubficha : !f.ehSubficha))
+    .filter(f => grupo === "bases" || !f.foraDoCardapio)
     .filter(f => (f.ingredientes || []).length > 0)
     .filter(f => !bn || normalizarNome(f.nome).includes(bn))
     .sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, grupo, bn]);

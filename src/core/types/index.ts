@@ -5454,6 +5454,7 @@ export type FtFicha = {
   categoriaId?: string | null;
   rendimento: { qtd: number; unidade: string };
   producaoPadrao?: number | null;      // prato final: qtd de porções que a ficha de PRODUÇÃO abre por padrão
+  foraDoCardapio?: boolean;            // prato final inativo no cardápio (não aparece na Visualização)
   cardapioItemId?: string | null;      // prato final: vínculo ao item do cardápio (preço de venda ao vivo)
   precoVendaManual?: number | null;    // preço de venda manual (quando não vinculado ao cardápio)
   ingredientes: FtIngrediente[];

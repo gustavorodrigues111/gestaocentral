@@ -75,7 +75,7 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio, cardapioPd
   const cardOrdenado = useMemo(() => [...cardapio].sort((a, b) => a.titulo.localeCompare(b.titulo)), [cardapio]);
   const catsFicha = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "ficha").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const bn = normalizarNome(busca);
-  const finais = fichas.filter(f => f.ativo !== false && !f.ehSubficha).filter(f => !bn || normalizarNome(f.nome).includes(bn));
+  const finais = fichas.filter(f => f.ativo !== false && !f.ehSubficha && !f.foraDoCardapio).filter(f => !bn || normalizarNome(f.nome).includes(bn));
 
   // Auto-vínculo: quando o nome do prato bate EXATAMENTE (normalizado) com um item
   // do cardápio, vincula sozinho. Só match forte — nomes parecidos ficam de sugestão
@@ -87,7 +87,7 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio, cardapioPd
     for (const i of cardapio) { const n = normalizarNome(i.titulo); if (n && !porNome.has(n)) porNome.set(n, i); }
     const paraLigar: { f: FtFicha; it: CardItem; chave: string }[] = [];
     for (const f of fichas) {
-      if (f.ativo === false || f.ehSubficha) continue;
+      if (f.ativo === false || f.ehSubficha || f.foraDoCardapio) continue;
       const vinculoVivo = !!f.cardapioItemId && itensMap.has(f.cardapioItemId);
       const manual = f.precoVendaManual != null && !f.cardapioItemId;
       if (vinculoVivo || manual) continue; // já resolvido; quebrado (id morto) segue elegível → cura

@@ -120,8 +120,8 @@ export function FichasPage() {
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
   const [tab, setTab] = useState<Tab>("pratos");
-  const [modo, setModo] = useState<"ver" | "cadastro">("cadastro");
-  const [verModo, setVerModo] = useState<"producao" | "custo" | "plano">("producao");
+  const [modo, setModo] = useState<"ver" | "cadastro" | "plano">("ver");
+  const [verModo, setVerModo] = useState<"producao" | "custo">("producao");
   const [cardapio, setCardapio] = useState<CardItem[]>([]);
   const [cardapioPdfEm, setCardapioPdfEm] = useState("");
   const [planos, setPlanos] = useState<FtPlanoProducao[]>([]);
@@ -194,8 +194,17 @@ export function FichasPage() {
   if (!can("fichas", "ver")) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Fichas Técnicas.</div>;
   const podeEditar = can("fichas", "editarFicha");
   const podeInsumo = can("fichas", "insumos");
-  const modoEfetivo: "ver" | "cadastro" = podeEditar ? modo : "ver";
+  const podeCadastro = podeEditar || podeInsumo;
+  const podePlano = can("fichas", "producao");
+  // Três abas top-level: Visualização · Cadastros · Planejamento (cada uma gated).
+  const modoEfetivo: "ver" | "cadastro" | "plano" =
+    modo === "cadastro" ? (podeCadastro ? "cadastro" : "ver")
+    : modo === "plano" ? (podePlano ? "plano" : "ver")
+    : "ver";
   const emCadastro = modoEfetivo === "cadastro";
+  const modosDisp: [("ver" | "cadastro" | "plano"), string][] = [["ver", "📖 Visualização"]];
+  if (podeCadastro) modosDisp.push(["cadastro", "🗂️ Cadastros"]);
+  if (podePlano) modosDisp.push(["plano", "📅 Planejamento"]);
 
   if (editando) {
     return (
@@ -236,27 +245,26 @@ export function FichasPage() {
         )}
       </header>
 
-      {podeEditar && (
+      {modosDisp.length > 1 && (
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-4">
-          {([["ver", "📖 Visualização"], ["cadastro", "🗂️ Cadastros"]] as const).map(([m, l]) => (
+          {modosDisp.map(([m, l]) => (
             <button key={m} type="button" onClick={() => setModo(m)} className={`px-4 py-1.5 text-sm font-medium rounded-md ${modoEfetivo === m ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
           ))}
         </div>
       )}
 
-      {!emCadastro ? (
+      {modoEfetivo === "plano" ? (
+        <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} restauranteNome={activeRestaurant?.nome} />
+      ) : modoEfetivo === "ver" ? (
         <div className="space-y-3">
-          {(can("fichas", "cardapio") || can("fichas", "producao")) && (
+          {can("fichas", "cardapio") && (
             <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
               <TabBtn ativo={verModo === "producao"} onClick={() => setVerModo("producao")}>👩‍🍳 Produção</TabBtn>
-              {can("fichas", "cardapio") && <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>}
-              {can("fichas", "producao") && <TabBtn ativo={verModo === "plano"} onClick={() => setVerModo("plano")}>📅 Planejamento</TabBtn>}
+              <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>
             </div>
           )}
           {verModo === "custo" && can("fichas", "cardapio")
             ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} cardapioPdfEm={cardapioPdfEm} />
-            : verModo === "plano" && can("fichas", "producao")
-            ? <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} restauranteNome={activeRestaurant?.nome} />
             : <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />}
         </div>
       ) : (<>
@@ -400,7 +408,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar,
             const estado = ESTADO_UI[estados.get(f.id) || "completa"];
             return (
               <button key={f.id} type="button" onClick={() => podeEditar && onEditar(f)}
-                className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${estado.tint}`}>
+                className={`text-left rounded-2xl border shadow-sm p-4 transition-colors ${estado.tint} ${!f.ehSubficha && f.foraDoCardapio ? "opacity-60" : ""}`}>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome || "(sem nome)"}</div>
@@ -409,7 +417,10 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar,
                   <div className="flex flex-col items-end gap-1 shrink-0">
                     {f.ehSubficha
                       ? <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">🧩 base</span>
-                      : <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Prato final — vai pro cardápio">🍽️ cardápio</span>}
+                      : <span role="button" tabIndex={0}
+                          onClick={e => { e.stopPropagation(); if (podeEditar) void updateDoc(doc(db, "ftFichas", f.id), { foraDoCardapio: !f.foraDoCardapio }); }}
+                          title={f.foraDoCardapio ? "Fora do cardápio — clique pra ativar (volta pra Visualização)" : "No cardápio — clique pra inativar (some da Visualização)"}
+                          className={`cursor-pointer text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${f.foraDoCardapio ? "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400" : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"}`}>{f.foraDoCardapio ? "🚫 fora do cardápio" : "🍽️ no cardápio"}</span>}
                     <span className={`text-[10px] uppercase font-bold px-1.5 py-0.5 rounded ${estado.cls}`} title={f.revisar ? (f.revisarMotivo || estado.title) : estado.title}>{estado.seal}</span>
                   </div>
                 </div>
