@@ -971,6 +971,45 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
     onClose();
   }
   async function desvincularSubproduto() { await updateDoc(doc(db, "ftInsumos", insumo.id), { subprodutoDe: null }); onClose(); }
+  // Reclassificar: cadastrado como subproduto por engano.
+  const [reclSub, setReclSub] = useState("");       // subficha alvo: "__nova__" | id existente
+  const [reclBusy, setReclBusy] = useState(false);
+  const subfichasSist = useMemo(() => fichas.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
+  // Vira insumo normal — só tira a marca de subproduto.
+  async function virarIngrediente() {
+    setReclBusy(true);
+    try { await updateDoc(doc(db, "ftInsumos", insumo.id), { ehSubproduto: false, subprodutoDe: null }); onClose(); }
+    catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
+  }
+  // Vira subficha: cria nova (ou usa existente), religa quem usava o insumo e o desativa.
+  async function virarSubficha() {
+    if (!reclSub) return;
+    setReclBusy(true);
+    try {
+      const batch = writeBatch(db);
+      let sfId = reclSub, sfNome = "";
+      if (reclSub === "__nova__") {
+        sfId = uid("fic"); sfNome = UP(insumo.nome);
+        batch.set(doc(db, "ftFichas", sfId), sanitizeForFirestore({
+          id: sfId, restaurantId: insumo.restaurantId, nome: sfNome, nomeNormalizado: normalizarNome(insumo.nome),
+          ehSubficha: true, categoriaId: null, rendimento: { qtd: 1, unidade: insumo.unidadeBase },
+          ingredientes: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId,
+        } as FtFicha));
+      } else {
+        sfNome = fichas.find(f => f.id === reclSub)?.nome || "";
+      }
+      // Religa quem usava o insumo como ingrediente → passa a usar a subficha.
+      for (const f of fichas.filter(f => f.ativo !== false && (f.ingredientes || []).some(ing => ing.tipo === "insumo" && ing.refId === insumo.id))) {
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "insumo" && ing.refId === insumo.id)
+          ? ({ ...ing, tipo: "ficha", refId: sfId, nomeSnapshot: sfNome, variacaoNome: null, fc: undefined } as FtIngrediente)
+          : ing);
+        batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes, revisar: true, revisarMotivo: f.revisarMotivo || `"${insumo.nome}" virou subficha — confira quantidade/unidade` }));
+      }
+      batch.update(doc(db, "ftInsumos", insumo.id), { ativo: false, ehSubproduto: false, subprodutoDe: null });
+      await batch.commit();
+      onClose();
+    } catch (e) { alert("Erro ao converter: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
+  }
   async function aplicarDoFornecedor(pf: { custoBase: number; data: string; fornecedor: string; notaId: string; notaNumero: string }) {
     const nova: FtHistoricoCusto = { custo: pf.custoBase, data: pf.data, por: meId || null, origem: "recebimento", fornecedor: pf.fornecedor || null, notaId: pf.notaId || null, notaNumero: pf.notaNumero || null };
     const hist = [...(insumo.historicoCusto || []), nova].slice(-20);
@@ -1063,6 +1102,21 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
                 <p className="text-[11px] text-gray-400">Depois ajuste o % de rateio no bloco Subprodutos da ficha.</p>
               </div>
             )}
+            {/* Reclassificar: não é subproduto de verdade */}
+            <div className="mt-3 pt-3 border-t border-dashed border-gray-200 dark:border-gray-800">
+              <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1">Não é um subproduto?</div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button type="button" onClick={() => void virarIngrediente()} disabled={reclBusy} className="h-8 text-xs font-medium px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-400 disabled:opacity-40">É um ingrediente normal</button>
+                <span className="text-[11px] text-gray-300">ou é subficha:</span>
+                <select value={reclSub} onChange={e => setReclSub(e.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm">
+                  <option value="">— escolher subficha —</option>
+                  <option value="__nova__">＋ criar “{UP(insumo.nome)}” como subficha</option>
+                  {subfichasSist.length > 0 && <optgroup label="já cadastradas">{subfichasSist.map(f => <option key={f.id} value={f.id}>{UP(f.nome)}</option>)}</optgroup>}
+                </select>
+                <button type="button" onClick={() => void virarSubficha()} disabled={reclBusy || !reclSub} className="h-8 text-xs font-medium px-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 shadow-sm disabled:opacity-40">Converter</button>
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Virar subficha desativa este insumo e religa quem o usava — as fichas afetadas ficam pra revisão.</p>
+            </div>
           </div>
         )}
 
