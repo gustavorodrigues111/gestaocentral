@@ -1014,6 +1014,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   const reconc = useMemo(() => reconciliar(agruparProdutos(coletarPrecos(recebimentos)), insumos, vinculos), [recebimentos, insumos, vinculos]);
   const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
   const nSugeridos = reconc.sugeridos.length;
+  const nSemInsumo = reconc.semInsumo.length;
   const catsIns = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo"));
   const catIds = new Set(catsIns.map(c => c.id));
   // Onde cada insumo é usado (nome das fichas que o têm como ingrediente).
@@ -1117,9 +1118,9 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
           </select>
         )}
       </div>
-      {(nPrecoNovo > 0 || nSugeridos > 0) && (
+      {(nPrecoNovo > 0 || nSugeridos > 0 || nSemInsumo > 0) && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
-          <span className="text-sm text-emerald-800 dark:text-emerald-200">🧾 {nPrecoNovo > 0 ? `${nPrecoNovo} preço(s) novo(s) recebido(s)` : "Recebimento"}{nSugeridos > 0 ? ` · ${nSugeridos} produto(s) pra vincular` : ""}.</span>
+          <span className="text-sm text-emerald-800 dark:text-emerald-200">🧾 {[nPrecoNovo > 0 ? `${nPrecoNovo} preço(s) novo(s)` : "", nSugeridos > 0 ? `${nSugeridos} pra vincular` : "", nSemInsumo > 0 ? `${nSemInsumo} produto(s) sem insumo` : ""].filter(Boolean).join(" · ")} do recebimento.</span>
           <button type="button" onClick={() => setSincronizar(true)} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Revisar preços</button>
         </div>
       )}
