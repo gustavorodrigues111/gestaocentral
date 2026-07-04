@@ -15,7 +15,7 @@ import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtCategoriaTipo, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
 import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
-import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
+import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadeSugerida, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
 import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
@@ -709,7 +709,7 @@ function IngredientePicker({ insumos, subfichas, subprodutos, rid, meId, podeIns
   function pickInsumo(ins: FtInsumo, variacao?: FtInsumoVariacao) {
     onAdd({
       id: uid("ing"), tipo: "insumo", refId: ins.id, nomeSnapshot: ins.nome,
-      qtd: 1, unidade: unidadesDaDimensao(ins.dimensao)[0]?.unidade || ins.unidadeBase,
+      qtd: 1, unidade: unidadeSugerida(ins.dimensao),
       ...(variacao ? { variacaoNome: variacao.nome, fc: variacao.fc } : {}),
     });
     setBusca("");

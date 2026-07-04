@@ -35,6 +35,15 @@ export function unidadesDaDimensao(dim: FtDimensao): UnidadeDef[] {
   return UNIDADES.filter(u => u.dimensao === dim);
 }
 
+// Unidade SUGERIDA ao adicionar um ingrediente: prefere a maior (kg, L, un) —
+// mais natural em ficha técnica. O usuário adapta depois se precisar.
+const SUGERIDA: Record<FtDimensao, string> = { massa: "kg", volume: "L", unidade: "un" };
+export function unidadeSugerida(dim: FtDimensao): string {
+  const pref = SUGERIDA[dim];
+  const opc = unidadesDaDimensao(dim);
+  return opc.some(u => u.unidade === pref) ? pref : (opc[0]?.unidade || pref);
+}
+
 // Unidades oferecidas pra RENDIMENTO (inclui porções/fatias/doses).
 export function unidadesRendimento(): UnidadeDef[] {
   return UNIDADES;
