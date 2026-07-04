@@ -123,6 +123,7 @@ export function FichasPage() {
   const [modo, setModo] = useState<"ver" | "cadastro">("cadastro");
   const [verModo, setVerModo] = useState<"producao" | "custo" | "plano">("producao");
   const [cardapio, setCardapio] = useState<CardItem[]>([]);
+  const [cardapioPdfEm, setCardapioPdfEm] = useState("");
   const [planos, setPlanos] = useState<FtPlanoProducao[]>([]);
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
@@ -179,8 +180,11 @@ export function FichasPage() {
       s => setVinculos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtVinculoRecebimento))));
     const u6 = onSnapshot(query(collection(db, "ftUnidades"), where("restaurantId", "==", rid)),
       s => { registrarUnidadesCustom(s.docs.map(d => d.data() as { unidade: string; label?: string })); setUnidadesTick(t => t + 1); });
-    const u7 = onSnapshot(doc(db, "cardapioEstruturado", rid),
-      s => setCardapio(flatCardapio(s.exists() ? (s.data() as CardapioEstruturado) : null)));
+    const u7 = onSnapshot(doc(db, "cardapioEstruturado", rid), s => {
+      const d = s.exists() ? (s.data() as CardapioEstruturado) : null;
+      setCardapio(flatCardapio(d));
+      setCardapioPdfEm(d?.cardapioPdfItensEm || "");
+    });
     const u8 = onSnapshot(query(collection(db, "ftPlanosProducao"), where("restaurantId", "==", rid)),
       s => setPlanos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtPlanoProducao))));
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
@@ -250,7 +254,7 @@ export function FichasPage() {
             </div>
           )}
           {verModo === "custo" && can("fichas", "cardapio")
-            ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} />
+            ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} cardapioPdfEm={cardapioPdfEm} />
             : verModo === "plano" && can("fichas", "producao")
             ? <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} />
             : <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />}

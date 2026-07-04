@@ -1,7 +1,7 @@
 // Visualização de CUSTO & CMV (financeiro). Lista os pratos finais com custo,
 // preço de venda (vinculado ao cardápio ao vivo, ou manual), CMV% e margem.
 // Preço nunca é copiado: vem do cardápio por vínculo e atualiza sozinho.
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -15,6 +15,7 @@ import { Button } from "../../core/ui/Button";
 const UP = (s: string) => (s || "").trim().toUpperCase();
 const fmtMoeda = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
+const fmtDataCurta = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR"); };
 
 export type CardItem = { id: string; titulo: string; preco: string; secao: string };
 
@@ -53,7 +54,7 @@ function precoDe(f: FtFicha, itens: Map<string, CardItem>): { preco: number | nu
   return { preco: null, fonte: "nenhum" };
 }
 
-export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; cardapio: CardItem[] }) {
+export function CustoCmvView({ fichas, insumos, categorias, cardapio, cardapioPdfEm }: { fichas: FtFicha[]; insumos: FtInsumo[]; categorias: FtCategoria[]; cardapio: CardItem[]; cardapioPdfEm?: string }) {
   const [busca, setBusca] = useState("");
   const [abrir, setAbrir] = useState<FtFicha | null>(null);
   const [lote, setLote] = useState(false);
@@ -65,6 +66,30 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
   const catsFicha = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "ficha").sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
   const bn = normalizarNome(busca);
   const finais = fichas.filter(f => f.ativo !== false && !f.ehSubficha).filter(f => !bn || normalizarNome(f.nome).includes(bn));
+
+  // Auto-vínculo: quando o nome do prato bate EXATAMENTE (normalizado) com um item
+  // do cardápio, vincula sozinho. Só match forte — nomes parecidos ficam de sugestão
+  // no seletor pra você confirmar. Idempotente (não re-processa o mesmo id).
+  const autoFeitos = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (cardapio.length === 0) return;
+    const porNome = new Map<string, CardItem>();
+    for (const i of cardapio) { const n = normalizarNome(i.titulo); if (n && !porNome.has(n)) porNome.set(n, i); }
+    const paraLigar: { f: FtFicha; it: CardItem }[] = [];
+    for (const f of fichas) {
+      if (f.ativo === false || f.ehSubficha) continue;
+      if (f.cardapioItemId || f.precoVendaManual != null || autoFeitos.current.has(f.id)) continue;
+      const it = porNome.get(normalizarNome(f.nome));
+      if (it) paraLigar.push({ f, it });
+    }
+    if (paraLigar.length === 0) return;
+    for (const { f } of paraLigar) autoFeitos.current.add(f.id);
+    const batch = writeBatch(db);
+    for (const { f, it } of paraLigar) batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ cardapioItemId: it.id, precoVendaManual: null }));
+    batch.commit().catch(() => {});
+  }, [cardapio, fichas]);
+
+  const nVinculados = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha && f.cardapioItemId && itensMap.has(f.cardapioItemId)).length, [fichas, itensMap]);
   const grupos = useMemo(() => {
     const ids = new Set(catsFicha.map(c => c.id));
     return [
@@ -93,7 +118,13 @@ export function CustoCmvView({ fichas, insumos, categorias, cardapio }: { fichas
         </div>
         {cardapio.length > 0 && <Button variant="secondary" size="sm" onClick={() => setLote(true)}>🔗 Vincular preços do cardápio</Button>}
       </div>
-      {cardapio.length === 0 && <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">Nenhum item de cardápio encontrado — os preços de venda só poderão ser manuais até o cardápio ser montado no módulo de Sites/Cardápio.</div>}
+      {cardapio.length === 0 && <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">Nenhum item de cardápio encontrado — os preços de venda só poderão ser manuais até o cardápio ser montado no módulo de Cardápio.</div>}
+      {nVinculados > 0 && (
+        <div className="text-[12px] text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2 flex items-start gap-2">
+          <span className="text-base leading-none">🔗</span>
+          <span><b>{nVinculados} {nVinculados === 1 ? "preço vinculado" : "preços vinculados"}</b> a partir da leitura do cardápio{cardapioPdfEm ? <> (PDF lido em <b>{fmtDataCurta(cardapioPdfEm)}</b>)</> : ""}. Cada preço mostra o item de cardápio que foi identificado — confira e, se algum estiver errado, clique em <b>trocar</b>.</span>
+        </div>
+      )}
       {grupos.map(g => (
         <div key={g.cat?.id || "sem"}>
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">{g.cat ? UP(g.cat.nome) : "SEM CATEGORIA"} <span className="text-gray-400 font-normal normal-case">· {g.itens.length}{g.cat?.cmvAlvo != null ? ` · CMV alvo ${g.cat.cmvAlvo}%` : ""}</span></div>
@@ -259,7 +290,7 @@ function PrecoCell({ f, fonte, preco, item, cardapio, onVincular, onDesvincular,
     );
   }
   if (fonte === "cardapio") {
-    return <div className="flex items-center gap-1.5"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400" title={`Do cardápio: ${item?.titulo}`}>🔗 cardápio</span><button type="button" onClick={onDesvincular} className="text-[10px] text-gray-400 hover:text-red-600 underline">trocar</button></div>;
+    return <div className="flex items-center gap-1.5 flex-wrap"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-0.5 max-w-[170px] truncate" title={`Identificado no cardápio como: ${item?.titulo || "—"}`}>🔗 {item?.titulo ? UP(item.titulo) : "cardápio"}</span><button type="button" onClick={onDesvincular} className="text-[10px] text-gray-400 hover:text-red-600 underline shrink-0">trocar</button></div>;
   }
   if (fonte === "manual") {
     return <div className="flex items-center gap-1.5"><span className="text-gray-800 dark:text-gray-100 font-medium tabular-nums">{preco != null ? fmtMoeda(preco) : "—"}</span><span className="text-[10px] text-gray-400">manual</span><button type="button" onClick={() => { setTxt(preco != null ? String(preco).replace(".", ",") : ""); setEditandoManual(true); }} className="text-[10px] text-gray-400 hover:text-indigo-600 underline">editar</button></div>;
