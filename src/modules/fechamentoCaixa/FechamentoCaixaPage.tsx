@@ -592,7 +592,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
           const base = a.grupo === "comanda" && a.rotulo
             ? `comanda ${a.rotulo.replace(/[⚠·]/g, "").replace(/[\\/:]/g, "-").replace(/\s+/g, " ").trim()}`
             : `${a.grupo}${n}`;
-          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, a.grupo !== "outro");
+          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, false);
           const s = await uploadFileToFolder(turnoId, alvo);
           anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }

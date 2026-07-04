@@ -24,7 +24,7 @@ export const MODULES: ModuleDef[] = [
   { id: "eventos",     area: "ops", subarea: "Atendimento ao Cliente", label: "Eventos",         icon: "🎉", status: "ativo", etapa: "beta",               desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
 
   // ── Produção & Estoque ───────────────────────────────────────────
-  { id: "checklists",  area: "ops", subarea: "Produção & Estoque",     label: "Checklists",      icon: "✅", status: "ativo", etapa: "em_desenvolvimento", desc: "Checklists operacionais", dependsOn: ["pessoas"] },
+  { id: "checklists",  area: "ops", subarea: "Produção & Estoque",     label: "Checklists",      icon: "✅", status: "ativo", etapa: "beta",               desc: "Checklists operacionais", dependsOn: ["pessoas"] },
   { id: "contagens",   area: "ops", subarea: "Produção & Estoque",     label: "Contagens",       icon: "📦", status: "ativo", etapa: "em_desenvolvimento", desc: "Contagens de estoque", dependsOn: ["pessoas"] },
   { id: "compras",     area: "ops", subarea: "Produção & Estoque",     label: "Compras",         icon: "🛒", status: "ativo", etapa: "em_desenvolvimento", desc: "Pedidos baseados em contagens e padrões", dependsOn: ["contagens"] },
   { id: "recebimento", area: "ops", subarea: "Produção & Estoque",     label: "Recebimento",     icon: "🧾", status: "ativo", etapa: "beta"               , desc: "Conferência e recebimento de produtos: digitaliza a nota fiscal (OCR), registra conformidade/divergência e arquiva no Drive por semana" },

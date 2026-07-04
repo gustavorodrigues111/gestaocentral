@@ -1079,7 +1079,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
         for (let i = 0; i < boletosNovos.length; i++) {
           const bf = boletosNovos[i];
           const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
-          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo, true);
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo, false);
           const s = await subirArquivo(central, boletosFolderId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
@@ -1374,7 +1374,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
       for (let i = 0; i < danfeFiles.length; i++) {
         const df = danfeFiles[i];
         const sufixo = danfeFiles.length > 1 ? `nota${i + 1}` : "nota";
-        const alvo = await carimbarImagem(new File([df], `${baseNome} ${sufixo}${ext(df, ".jpg")}`, { type: df.type }), carimbo, true);
+        const alvo = await carimbarImagem(new File([df], `${baseNome} ${sufixo}${ext(df, ".jpg")}`, { type: df.type }), carimbo, false);
         const s = await subirArquivo(central, semanaId, alvo);
         danfePaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
@@ -1386,7 +1386,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
         const acc: BoletoNota[] = [];
         for (let i = 0; i < boletoFiles.length; i++) {
           const bf = boletoFiles[i];
-          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, false);
           const s = await subirArquivo(central, boletosFolderId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
@@ -1735,7 +1735,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < notaFiles.length; i++) {
         const nf = notaFiles[i];
         const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
-        const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo, true);
+        const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo, false);
         const s = await subirArquivo(central, semanaId, alvo);
         notaPaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
@@ -1747,7 +1747,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         for (let i = 0; i < boletoFiles.length; i++) {
           const bf = boletoFiles[i];
           const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
-          const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, true);
+          const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, false);
           const s = await subirArquivo(central, boletosFolderId, alvo);
           boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
@@ -1757,7 +1757,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       for (let i = 0; i < comprovanteFiles.length; i++) {
         const cf = comprovanteFiles[i];
         const sufixo = comprovanteFiles.length > 1 ? `comprovante${i + 1}` : "comprovante";
-        const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo, true);
+        const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo, false);
         const s = await subirArquivo(central, semanaId, alvo);
         comprovantes.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
