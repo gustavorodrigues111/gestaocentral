@@ -231,7 +231,7 @@ export function FichasPage() {
       )}
 
       {!emCadastro ? (
-        <ProducaoView fichas={fichas} insumos={insumos} />
+        <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />
       ) : (<>
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
