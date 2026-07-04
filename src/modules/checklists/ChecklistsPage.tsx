@@ -5,6 +5,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd, fmtBR } from "../../core/utils/date";
@@ -21,8 +22,18 @@ export function ChecklistsPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
-  const podeVer = canVer(me, rid, "checklists");
-  const podeConfig = canConfigurar(me, rid, "checklists");
+  // Permissão POR ABA (com retrocompat pro esquema antigo ver/configurar):
+  //   executar  → aba "Checklists do dia" (preencher)
+  //   configurar→ aba "Templates"
+  //   verTime   → aba "Histórico" (execuções de todos)
+  const isMaster = !!me?.isMaster;
+  const { can } = useCanAcao(rid);
+  const verLegado = canVer(me, rid, "checklists");
+  const configLegado = canConfigurar(me, rid, "checklists");
+  const podeExecutar = isMaster || can("checklists", "executar") || verLegado;
+  const podeConfig = isMaster || can("checklists", "configurar") || configLegado;
+  const podeHistorico = isMaster || can("checklists", "verTime") || podeConfig || verLegado;
+  const podeVer = podeExecutar || podeConfig || podeHistorico;
 
   const [tab, setTab] = useState<Tab>("hoje");
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
@@ -154,6 +165,18 @@ export function ChecklistsPage() {
 
   const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
 
+  // Aba efetiva conforme permissão (cai na primeira que a pessoa pode ver).
+  const abaEfetiva: Tab =
+    (tab === "templates" && podeConfig) ? "templates"
+    : (tab === "historico" && podeHistorico) ? "historico"
+    : podeExecutar ? "hoje"
+    : podeConfig ? "templates"
+    : "historico";
+  const abasDisp: [Tab, string][] = [];
+  if (podeExecutar) abasDisp.push(["hoje", `✅ Checklists do dia (${feitosHoje}/${totalHoje})`]);
+  if (podeConfig) abasDisp.push(["templates", `📋 Templates (${templates.length})`]);
+  if (podeHistorico) abasDisp.push(["historico", `📊 Histórico (${runs.length})`]);
+
   function abrirRunPraTemplate(t: ChecklistTemplate) {
     const existente = runHojeMap[t.id];
     setRunEditor({ template: t, run: existente || null });
@@ -162,23 +185,19 @@ export function ChecklistsPage() {
   return (
     <div className="max-w-5xl">
       <div className="flex items-start justify-end mb-4 flex-wrap gap-3">
-        {podeConfig && tab === "templates" && (
+        {podeConfig && abaEfetiva === "templates" && (
           <Button onClick={() => setEditTemplate("new")}>+ Novo template</Button>
         )}
       </div>
 
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        {([
-          ["hoje",      `📅 Hoje (${feitosHoje}/${totalHoje})`],
-          ["templates", `📋 Templates (${templates.length})`],
-          ["historico", `📊 Histórico (${runs.length})`],
-        ] as const).map(([id, label]) => (
+        {abasDisp.map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              tab === id
+              abaEfetiva === id
                 ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
             }`}
@@ -188,8 +207,8 @@ export function ChecklistsPage() {
         ))}
       </div>
 
-      {/* TAB HOJE */}
-      {tab === "hoje" && (
+      {/* TAB CHECKLISTS DO DIA */}
+      {abaEfetiva === "hoje" && (
         <div className="space-y-3">
           {/* Stats */}
           <div className="grid grid-cols-3 gap-3">
@@ -298,7 +317,7 @@ export function ChecklistsPage() {
       )}
 
       {/* TAB TEMPLATES */}
-      {tab === "templates" && (
+      {abaEfetiva === "templates" && (
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Área:</span>
@@ -381,7 +400,7 @@ export function ChecklistsPage() {
       )}
 
       {/* TAB HISTÓRICO */}
-      {tab === "historico" && (
+      {abaEfetiva === "historico" && (
         <div className="space-y-3">
           <Input
             placeholder="🔍 Buscar (template, executor, data YYYY-MM-DD)..."

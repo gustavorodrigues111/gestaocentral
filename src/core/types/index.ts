@@ -1682,8 +1682,17 @@ export type ChecklistItemTemplate = {
   texto: string;
   ordem: number;
   obrigatorio: boolean;       // se true, run não fecha sem marcar
-  exigeFoto?: boolean;        // futuro: anexar foto (placeholder)
+  exigeFoto?: boolean;        // se true, run exige foto de prova ao marcar feito
   exigeObs?: boolean;         // se true, run pede observação no item
+  descricao?: string;         // instrução de "como fazer" este item
+  fotoGuiaUrl?: string;       // foto de referência (como deve ficar) — Storage
+};
+
+// Turno do checklist (abertura / meio / fechamento). Ajuda a separar as rotinas
+// de abertura das de fechamento no dia.
+export type ChecklistTurno = "abertura" | "meio" | "fechamento";
+export const CHECKLIST_TURNO_LABEL: Record<ChecklistTurno, string> = {
+  abertura: "Abertura", meio: "Meio", fechamento: "Fechamento",
 };
 
 export type ChecklistTemplate = {
@@ -1693,10 +1702,15 @@ export type ChecklistTemplate = {
   descricao?: string;
   area?: Area;                      // opcional — pode ser geral
   frequencia: ChecklistFrequencia;
+  turno?: ChecklistTurno | null;    // abertura / meio / fechamento
   // pra "diaria" — quais dias da semana (0=Dom..6=Sáb). Vazio = todos.
   diasSemana?: number[];
   // horário de referência (ex: "08:00" pra abertura). Pra dashboard.
   horarioReferencia?: string;
+  // Atribuição — quem é responsável por preencher (pessoas e/ou funções/áreas).
+  // Vazio dos dois = qualquer pessoa com permissão.
+  responsaveisIds?: string[];       // pessoaIds
+  funcoes?: Area[];                 // áreas/funções responsáveis
   itens: ChecklistItemTemplate[];
   ativo: boolean;
   criadoEm: string;
@@ -1709,6 +1723,7 @@ export type ChecklistRunItemResultado = {
   textoSnapshot: string;            // snapshot pra preservar mesmo após editar template
   feito: boolean;
   observacao?: string;
+  fotoUrl?: string;                 // foto de prova anexada na execução — Storage
   marcadoEm?: string;               // ISO
 };
 
