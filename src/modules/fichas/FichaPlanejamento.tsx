@@ -24,8 +24,18 @@ const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
 const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> = {
   rascunho: { label: "rascunho", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
   planejado: { label: "planejado", cls: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" },
-  concluido: { label: "concluído", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  concluido: { label: "produção confirmada", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
 };
+
+// Nome automático do plano pelo dia de produção + sequência (02, 03…) quando há
+// mais de um plano no mesmo dia. Ex.: "Produção de terça", "Produção de terça 02".
+const DIAS_SEMANA = ["domingo", "segunda", "terça", "quarta", "quinta", "sexta", "sábado"];
+function nomeAutoPlano(data: string, planos: FtPlanoProducao[], selfId: string): string {
+  const d = new Date((data || "") + "T00:00:00");
+  const base = isNaN(d.getTime()) ? "Produção" : `Produção de ${DIAS_SEMANA[d.getDay()]}`;
+  const n = planos.filter(pp => pp.ativo !== false && pp.data === data && pp.id !== selfId).length;
+  return n > 0 ? `${base} ${String(n + 1).padStart(2, "0")}` : base;
+}
 
 export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, restauranteNome }: { rid: string; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; meId?: string; meNome?: string; restauranteNome?: string }) {
   const [editar, setEditar] = useState<FtPlanoProducao | null>(null);
@@ -43,7 +53,7 @@ export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, r
   function novo(data?: string) {
     setEditar({ id: uid("plano"), restaurantId: rid, nome: "", data: data || new Date().toISOString().slice(0, 10), status: "rascunho", itens: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome });
   }
-  if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} pessoas={pessoas} produtoresIds={produtoresIds} onSaveEquipe={saveEquipe} onClose={() => setEditar(null)} />;
+  if (editar) return <PlanoEditor plano={editar} planos={planos} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} pessoas={pessoas} produtoresIds={produtoresIds} onSaveEquipe={saveEquipe} onClose={() => setEditar(null)} />;
   const lista = planos.filter(p => p.ativo !== false).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   return (
     <div className="space-y-3">
@@ -124,7 +134,7 @@ function CalendarioPlanos({ planos, onAbrir, onNovo }: { planos: FtPlanoProducao
   );
 }
 
-function PlanoEditor({ plano, fichas, insumos, restauranteNome, pessoas, produtoresIds, onSaveEquipe, onClose }: { plano: FtPlanoProducao; fichas: FtFicha[]; insumos: FtInsumo[]; restauranteNome?: string; pessoas: Pessoa[]; produtoresIds: string[]; onSaveEquipe: (ids: string[]) => Promise<void>; onClose: () => void }) {
+function PlanoEditor({ plano, planos, fichas, insumos, restauranteNome, pessoas, produtoresIds, onSaveEquipe, onClose }: { plano: FtPlanoProducao; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; restauranteNome?: string; pessoas: Pessoa[]; produtoresIds: string[]; onSaveEquipe: (ids: string[]) => Promise<void>; onClose: () => void }) {
   const [p, setP] = useState<FtPlanoProducao>(plano);
   const [salvando, setSalvando] = useState(false);
   const [pdf, setPdf] = useState<{ url: string; doc: JsPDFType } | null>(null);
@@ -132,7 +142,10 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, pessoas, produto
   const [etiquetas, setEtiquetas] = useState(false);
   const [picker, setPicker] = useState(false);
   const [equipe, setEquipe] = useState(false);
+  const [nomeEditado, setNomeEditado] = useState(!!plano.nome.trim());
   const produtores = useMemo(() => pessoas.filter(x => (produtoresIds || []).includes(x.id)).sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas, produtoresIds]);
+  // Enquanto o usuário não editar o nome à mão, ele acompanha o dia de produção.
+  useEffect(() => { if (!nomeEditado) setP(prev => ({ ...prev, nome: nomeAutoPlano(prev.data, planos, prev.id) })); }, [p.data, nomeEditado, planos]);
   const itensFicha = useMemo(() => p.itens.map(it => ({ it, ficha: fichas.find(f => f.id === it.fichaId && f.ativo !== false) })).filter(x => x.ficha) as { it: FtPlanoProducao["itens"][number]; ficha: FtFicha }[], [p.itens, fichas]);
   const explosao = useMemo(() => explodirLote(itensFicha.map(x => ({ ficha: x.ficha, qtd: x.it.qtd })), fichas, insumos), [itensFicha, fichas, insumos]);
   const custoItens = useMemo(() => itensFicha.map(({ it, ficha }) => {
@@ -145,16 +158,22 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, pessoas, produto
       perda: planejado > 0 ? Math.round(((planejado - real) / planejado) * 1000) / 10 : 0 };
   }), [itensFicha, insumos, fichas]);
   const custoTotalLote = useMemo(() => custoItens.reduce((s, x) => s + x.custoLote, 0), [custoItens]);
-  function marcarProduzido() {
-    setP(prev => ({ ...prev, status: "concluido", concluidoEm: prev.concluidoEm || new Date().toISOString(), itens: prev.itens.map(i => ({ ...i, rendimentoReal: i.rendimentoReal ?? i.qtd })) }));
+  // Confirmar produção: transforma o rascunho em produção real (persiste na hora).
+  async function confirmarProducao() {
+    const confirmado: FtPlanoProducao = { ...p, status: "concluido", concluidoEm: p.concluidoEm || new Date().toISOString(), nome: p.nome.trim() || nomeAutoPlano(p.data, planos, p.id), itens: p.itens.map(i => ({ ...i, rendimentoReal: i.rendimentoReal ?? i.qtd })) };
+    setSalvando(true);
+    try { await setDoc(doc(db, "ftPlanosProducao", confirmado.id), sanitizeForFirestore(confirmado)); setP(confirmado); }
+    catch (e) { alert("Erro ao confirmar: " + (e instanceof Error ? e.message : String(e))); }
+    finally { setSalvando(false); }
   }
+  function reabrir() { setP(prev => ({ ...prev, status: "rascunho" })); }
   function patchItem(id: string, patch: Partial<FtPlanoProducao["itens"][number]>) { setP(prev => ({ ...prev, itens: prev.itens.map(i => i.id === id ? { ...i, ...patch } : i) })); }
   function removeItem(id: string) { setP(prev => ({ ...prev, itens: prev.itens.filter(i => i.id !== id) })); }
   function removeByFicha(fid: string) { setP(prev => ({ ...prev, itens: prev.itens.filter(i => i.fichaId !== fid) })); }
   function addFicha(f: FtFicha) { setP(prev => ({ ...prev, itens: [...prev.itens, { id: uid("pi"), fichaId: f.id, qtd: f.ehSubficha ? (f.rendimento.qtd || 1) : (f.producaoPadrao || 1) }] })); }
   async function salvar() {
     setSalvando(true);
-    try { await setDoc(doc(db, "ftPlanosProducao", p.id), sanitizeForFirestore({ ...p, nome: p.nome.trim() || `Plano ${fmtBR(p.data)}` })); onClose(); }
+    try { await setDoc(doc(db, "ftPlanosProducao", p.id), sanitizeForFirestore({ ...p, nome: p.nome.trim() || nomeAutoPlano(p.data, planos, p.id) })); onClose(); }
     catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
   }
   async function excluir() { if (confirm("Excluir este plano?")) { await updateDoc(doc(db, "ftPlanosProducao", p.id), { ativo: false }); onClose(); } }
@@ -162,32 +181,31 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, pessoas, produto
     setGerando(true);
     try {
       const { gerarPlanoProducaoPDF } = await import("./gerarPlanoProducaoPDF");
-      const doc = await gerarPlanoProducaoPDF(p, itensFicha, explosao);
+      const doc = await gerarPlanoProducaoPDF(p, itensFicha, explosao, restauranteNome);
       setPdf({ url: doc.output("bloburl") as unknown as string, doc });
     } catch (e) { alert("Erro no PDF: " + (e instanceof Error ? e.message : String(e))); }
     finally { setGerando(false); }
   }
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <button type="button" onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">← Voltar</button>
+        <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${STATUS[p.status].cls}`}>{p.status === "concluido" ? "✅ " : "📝 "}{STATUS[p.status].label}</span>
         <div className="ml-auto flex gap-2">
-          {p.status !== "concluido" && <Button variant="secondary" size="sm" onClick={marcarProduzido} disabled={itensFicha.length === 0}>✅ Marcar como produzido</Button>}
+          {p.status !== "concluido"
+            ? <Button size="sm" onClick={() => void confirmarProducao()} disabled={salvando || itensFicha.length === 0}>✅ Confirmar produção</Button>
+            : <Button variant="ghost" size="sm" onClick={reabrir}>↩︎ Reabrir (rascunho)</Button>}
           <Button variant="secondary" size="sm" onClick={() => setEtiquetas(true)} disabled={itensFicha.length === 0}>🏷️ Etiquetas</Button>
           <Button variant="secondary" size="sm" onClick={() => void preview()} disabled={gerando || itensFicha.length === 0}>{gerando ? "Gerando…" : "🖨️ Exportar PDF"}</Button>
-          <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
+          <Button variant="secondary" size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar rascunho"}</Button>
         </div>
       </div>
 
       {/* Cabeçalho do plano */}
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-[1fr_auto_auto] gap-3 items-end">
-        <Input label="Nome do plano" value={p.nome} onChange={e => setP({ ...p, nome: e.target.value })} placeholder="ex: Produção terça" />
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-3 items-end">
         <div className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Dia de produção</span>
           <input type="date" value={p.data} onChange={e => setP({ ...p, data: e.target.value })} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" /></div>
-        <div className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Status</span>
-          <select value={p.status} onChange={e => setP({ ...p, status: e.target.value as FtPlanoProducao["status"] })} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100">
-            <option value="rascunho">rascunho</option><option value="planejado">planejado</option><option value="concluido">concluído</option>
-          </select></div>
+        <Input label="Nome do plano" value={p.nome} onChange={e => { setNomeEditado(true); setP({ ...p, nome: e.target.value }); }} placeholder="ex: Produção de terça" />
       </div>
 
       {/* O que produzir */}
