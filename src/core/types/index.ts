@@ -1725,6 +1725,16 @@ export type ChecklistRunItemResultado = {
   observacao?: string;
   fotoUrl?: string;                 // foto de prova anexada na execução — Storage
   marcadoEm?: string;               // ISO
+  feitoPorId?: string | null;       // quem marcou (assinatura — multiusuário ao vivo)
+  feitoPorNome?: string | null;
+};
+
+// Log de atividade da execução — quem fez o quê e quando (multiusuário).
+export type ChecklistRunLogTipo = "iniciou" | "marcou" | "desmarcou" | "obs" | "removeu_obs" | "foto" | "finalizou";
+export type ChecklistRunLog = {
+  id: string; em: string;           // ISO
+  autorId?: string | null; autorNome?: string;
+  itemId?: string | null; tipo: ChecklistRunLogTipo; texto: string;
 };
 
 export type ChecklistRunStatus = "rascunho" | "completo" | "incompleto";
@@ -1738,7 +1748,9 @@ export type ChecklistRun = {
   data: string;                     // YYYY-MM-DD
   executorEmpregadoId?: string | null;
   executorNome: string;             // snapshot
-  itens: ChecklistRunItemResultado[];
+  itens: ChecklistRunItemResultado[];   // snapshot/denormalizado (escrito na criação e no finalizar)
+  resultado?: Record<string, ChecklistRunItemResultado>;  // fonte AO VIVO (por itemId) — escrita item a item p/ multiusuário
+  log?: ChecklistRunLog[];              // trilha de atividade (quem marcou/desmarcou/observou)
   totalItens: number;
   feitos: number;
   obrigatoriosFeitos: number;
@@ -1746,6 +1758,7 @@ export type ChecklistRun = {
   status: ChecklistRunStatus;
   iniciadoEm: string;
   finalizadoEm?: string | null;
+  atualizadoEm?: string;
   observacaoGeral?: string;
 };
 
