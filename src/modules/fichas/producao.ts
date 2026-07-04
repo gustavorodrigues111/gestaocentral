@@ -15,12 +15,15 @@ export type ProdNode = {
   subprodutos: ProdIngrediente[];    // subprodutos consumidos (só exibe)
 };
 
-// Fator de escala: alvo ÷ rendimento (na base da dimensão; fallback mesma unidade).
+// Fator de escala: alvo ÷ rendimento (na base da dimensão; fallback mesma
+// unidade). Se o rendimento não foi definido (0), a receita é tratada como
+// "para 1 unidade" → escala direto pelo alvo (ex.: prato final por porção).
 function fatorDe(rend: { qtd: number; unidade: string }, alvoQtd: number, alvoUnidade: string): number {
   const rb = paraBase(rend.qtd, rend.unidade);
   const ab = paraBase(alvoQtd, alvoUnidade);
   if (rb != null && ab != null && rb > 0) return ab / rb;
-  return rend.qtd > 0 ? alvoQtd / rend.qtd : 1;
+  if (rend.qtd > 0) return alvoQtd / rend.qtd;
+  return alvoQtd > 0 ? alvoQtd : 1;
 }
 
 export function montarProducao(

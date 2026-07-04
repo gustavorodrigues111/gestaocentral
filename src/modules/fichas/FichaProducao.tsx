@@ -66,7 +66,7 @@ export function ProducaoView({ fichas, insumos, categorias }: { fichas: FtFicha[
                   <button key={f.id} type="button" onClick={() => setAbrir(f)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
                     <span className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center text-sm shrink-0">{f.ehSubficha ? "🧩" : "🍽️"}</span>
                     <span className="flex-1 min-w-0 font-medium text-gray-900 dark:text-gray-100 truncate">{UP(f.nome)}</span>
-                    <span className="text-xs text-gray-500 shrink-0 tabular-nums">{f.ehSubficha ? `${fmtQtd(f.rendimento.qtd)} ${labelUnidade(f.rendimento.unidade)}` : `${fmtQtd(f.producaoPadrao || f.rendimento.qtd)} porções`}</span>
+                    <span className="text-xs text-gray-500 shrink-0 tabular-nums">{f.ehSubficha ? `${fmtQtd(f.rendimento.qtd || 1)} ${labelUnidade(f.rendimento.unidade)}` : `${fmtQtd(f.producaoPadrao || f.rendimento.qtd || 1)} porções`}</span>
                     <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Abrir →</span>
                   </button>
                 ))}
