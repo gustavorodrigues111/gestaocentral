@@ -2,7 +2,7 @@
 // reutilizável), ambas com CATEGORIA (criadas pelo usuário). Composição por
 // mistura livre (insumos + subfichas) com aninhamento. Custo em tempo real.
 // Escopo por empresa.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, onSnapshot, query, setDoc, updateDoc, deleteDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -34,6 +34,34 @@ const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slic
 const UP = (s: string) => (s || "").trim().toUpperCase();
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
+
+// MIGRAÇÃO: subproduto passa a ser SÓ a saída da ficha (ficha.subprodutos[]),
+// referenciado direto por tipo "subproduto" — sem insumo-espelho (ehSubproduto).
+// Converte os espelhos VÁLIDOS: religa os ingredientes que os usavam pro tipo
+// "subproduto" e desativa o espelho. Idempotente (some da fonte após rodar).
+async function migrarSubprodutosParaFicha(insumos: FtInsumo[], fichas: FtFicha[]): Promise<number> {
+  const validos = insumos.filter(i => i.ativo !== false && i.ehSubproduto && i.subprodutoDe
+    && fichas.some(f => f.ativo !== false && f.id === i.subprodutoDe!.fichaId && (f.subprodutos || []).some(s => s.id === i.subprodutoDe!.subId)));
+  if (validos.length === 0) return 0;
+  const alvo = new Map(validos.map(h => [h.id, h.subprodutoDe!]));
+  const batch = writeBatch(db);
+  for (const f of fichas) {
+    if (f.ativo === false) continue;
+    let mudou = false;
+    const ingredientes = (f.ingredientes || []).map(ing => {
+      if (ing.tipo === "insumo" && alvo.has(ing.refId)) {
+        const sp = alvo.get(ing.refId)!;
+        mudou = true;
+        return { ...ing, tipo: "subproduto", refId: sp.fichaId, subId: sp.subId, variacaoNome: null, fc: undefined } as FtIngrediente;
+      }
+      return ing;
+    });
+    if (mudou) batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
+  }
+  for (const h of validos) batch.update(doc(db, "ftInsumos", h.id), { ativo: false, ehSubproduto: false, subprodutoDe: null });
+  await batch.commit();
+  return validos.length;
+}
 
 // Cria uma unidade de medida customizada (ex.: maço) e a registra pra uso imediato.
 async function criarUnidadeMedida(rid: string): Promise<string | null> {
@@ -97,6 +125,13 @@ export function FichasPage() {
     if ((t === "pratos" || t === "bases") && t !== tab) { setSubFiltro("todas"); setCatFiltro(""); setBusca(""); }
     setTab(t);
   }
+  // Migração 1x: converte insumos-espelho de subproduto no modelo direto.
+  const migrouRef = useRef(false);
+  useEffect(() => {
+    if (migrouRef.current || !rid || fichas.length === 0 || insumos.length === 0) return;
+    migrouRef.current = true;
+    void migrarSubprodutosParaFicha(insumos, fichas).catch(() => { migrouRef.current = false; });
+  }, [rid, fichas, insumos]);
   const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
 
   const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
@@ -181,7 +216,7 @@ export function FichasPage() {
 
       {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar}
         subFiltro={subFiltro} setSubFiltro={setSubFiltro} catFiltro={catFiltro} setCatFiltro={setCatFiltro} busca={busca} setBusca={setBusca} precoModo={precoModo} setPrecoModo={setPrecoModo} />}
-      {tab === "bases" && podeInsumo && <SubprodutosPanel insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
+      {tab === "bases" && <SubprodutosPanel fichas={fichas} onEditarFicha={setEditando} />}
       {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
 
       {importando && (
@@ -385,25 +420,14 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   function removeIng(id: string) { setF(p => ({ ...p, ingredientes: p.ingredientes.filter(i => i.id !== id) })); }
   function addSubproduto() { setF(p => ({ ...p, subprodutos: [...(p.subprodutos || []), { id: uid("sp"), nome: "", nomeNormalizado: "", unidade: p.rendimento.unidade, rendimentoQtd: 1, percentualCusto: 0 }] })); }
   function patchSub(id: string, patch: Partial<FtSubproduto>) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).map(sp => sp.id === id ? { ...sp, ...patch } : sp) })); }
-  function removeSub(id: string) {
-    // Devolve pra "pendentes" qualquer insumo-subproduto que estava vinculado a
-    // esta saída — senão fica órfão (subprodutoDe aponta pra um subId que sumiu).
-    for (const i of insumos.filter(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === id && i.ativo !== false)) {
-      updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }).catch(() => {});
-    }
-    setF(p => ({ ...p, subprodutos: (p.subprodutos || []).filter(sp => sp.id !== id) }));
-  }
+  function removeSub(id: string) { setF(p => ({ ...p, subprodutos: (p.subprodutos || []).filter(sp => sp.id !== id) })); }
 
   async function salvar() {
     if (!f.nome.trim()) { alert("Dê um nome pra receita."); return; }
     if (somaPctSub > 100) { alert("A soma dos % dos subprodutos passou de 100%."); return; }
     setSalvando(true);
     try {
-      // Subproduto vinculado a um insumo herda o nome do insumo (não some no save).
-      const subprodutos = (f.subprodutos || [])
-        .map(sp => { const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false); return { ...sp, nome: sp.nome.trim() || (vinc ? vinc.nome : "") }; })
-        .filter(sp => sp.nome.trim())
-        .map(sp => ({ ...sp, nome: UP(sp.nome), nomeNormalizado: normalizarNome(sp.nome) }));
+      const subprodutos = (f.subprodutos || []).filter(sp => sp.nome.trim()).map(sp => ({ ...sp, nome: UP(sp.nome), nomeNormalizado: normalizarNome(sp.nome) }));
       await setDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ...f, nome: UP(f.nome), nomeNormalizado: normalizarNome(f.nome), subprodutos }));
       onClose();
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : String(e))); }
@@ -411,10 +435,6 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
   }
   async function excluir() {
     if (!confirm(`Excluir "${f.nome}"?`)) return;
-    // Solta os insumos-subproduto vinculados a esta ficha → voltam pra pendentes.
-    for (const i of insumos.filter(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.ativo !== false)) {
-      updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }).catch(() => {});
-    }
     await updateDoc(doc(db, "ftFichas", f.id), { ativo: false });
     onClose();
   }
@@ -570,12 +590,10 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
             )}
             {(f.subprodutos || []).map(sp => {
               const r = custo.subprodutos.find(x => x.id === sp.id);
-              const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false);
-              const pendentes = insumos.filter(i => i.ehSubproduto && !i.subprodutoDe && i.ativo !== false);
               return (
-                <div key={sp.id} className="py-2 border-t border-gray-100 dark:border-gray-800 first:border-0 space-y-1.5">
+                <div key={sp.id} className="py-2 border-t border-gray-100 dark:border-gray-800 first:border-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <input value={sp.nome || (vinc ? vinc.nome : "")} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                    <input value={sp.nome} onChange={e => patchSub(sp.id, { nome: e.target.value.toUpperCase() })} placeholder="ex: CARCAÇA" className="flex-1 min-w-[120px] h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
                     <div className="flex items-center gap-1.5">
                       <span className="text-[11px] text-gray-400">rende</span>
                       <QtyStepper qtd={sp.rendimentoQtd} unidade={sp.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
@@ -588,17 +606,6 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                     <span className="text-xs text-gray-500 w-20 text-right tabular-nums shrink-0">{r ? fmtMoeda(r.custo) : "—"}</span>
                     <button type="button" onClick={() => removeSub(sp.id)} title="remover" className="text-gray-400 hover:text-red-600 text-base px-1 shrink-0">✕</button>
                   </div>
-                  {(vinc || pendentes.length > 0) && (
-                    <div className="flex items-center gap-2 flex-wrap text-[11px] pl-0.5">
-                      {vinc
-                        ? <span className="text-orange-600 dark:text-orange-400">🔗 vinculado ao insumo “{vinc.nome}” <button type="button" onClick={() => updateDoc(doc(db, "ftInsumos", vinc.id), { subprodutoDe: null })} className="text-gray-400 hover:text-red-600 underline ml-1">desvincular</button></span>
-                        : <>
-                            <span className="text-gray-500">Vincular insumo-subproduto pendente:</span>
-                            <select value="" onChange={e => { const id = e.target.value; if (!id) return; const ins = pendentes.find(i => i.id === id); updateDoc(doc(db, "ftInsumos", id), { subprodutoDe: { fichaId: f.id, subId: sp.id } }); if (ins && !sp.nome.trim()) patchSub(sp.id, { nome: ins.nome, unidade: ins.unidadeBase }); }} className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100"><option value="">escolher…</option>{pendentes.map(i => <option key={i.id} value={i.id}>{i.nome}</option>)}</select>
-                            <span className="text-gray-400">(salve a ficha depois)</span>
-                          </>}
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -895,52 +902,37 @@ function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, m
   );
 }
 
-// Subprodutos (coprodutos que saem de preparos) — vivem na aba Bases, não em
-// Insumos, porque são PRODUZIDOS (não comprados). Referenciáveis como ingrediente.
-function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos, meId }: { insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
-  const [editar, setEditar] = useState<FtInsumo | null>(null);
-  const subs = insumos.filter(i => i.ativo !== false && i.ehSubproduto);
+// Subprodutos (coprodutos que saem de preparos) — no modelo direto, são as
+// SAÍDAS das fichas (ficha.subprodutos[]). Este painel só lista, agrupado por
+// preparo; a gestão (nome, %, rendimento) é na própria ficha.
+function SubprodutosPanel({ fichas, onEditarFicha }: { fichas: FtFicha[]; onEditarFicha: (f: FtFicha) => void }) {
+  const lista = fichas.filter(f => f.ativo !== false).flatMap(f => (f.subprodutos || []).map(sp => ({ ficha: f, sp }))).sort((a, b) => a.sp.nome.localeCompare(b.sp.nome));
   const usoMap = useMemo(() => {
     const m = new Map<string, string[]>();
-    for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") { const a = m.get(ing.refId) || []; if (!a.includes(f.nome)) a.push(f.nome); m.set(ing.refId, a); } }
+    for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "subproduto" && ing.subId) { const k = `${ing.refId}:${ing.subId}`; const a = m.get(k) || []; if (!a.includes(f.nome)) a.push(f.nome); m.set(k, a); } }
     return m;
   }, [fichas]);
-  // Resolve o preparo-pai; null se o vínculo aponta pra ficha/saída inexistente (quebrado).
-  const paiDe = (i: FtInsumo) => { if (!i.subprodutoDe) return null; const f = fichas.find(x => x.id === i.subprodutoDe!.fichaId && x.ativo !== false); const sp = f?.subprodutos?.find(s => s.id === i.subprodutoDe!.subId); return f && sp ? f.nome : null; };
-  const estado = (i: FtInsumo): "pendente" | "quebrado" | "vinculado" => !i.subprodutoDe ? "pendente" : paiDe(i) ? "vinculado" : "quebrado";
-  const ord = { pendente: 0, quebrado: 1, vinculado: 2 };
-  const lista = [...subs].sort((a, b) => (ord[estado(a)] - ord[estado(b)]) || a.nome.localeCompare(b.nome));
-  const nAtencao = subs.filter(i => estado(i) !== "vinculado").length;
-  if (subs.length === 0) return null;
-  async function desvincular(i: FtInsumo) { try { await updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }); } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); } }
+  if (lista.length === 0) return null;
   return (
     <div className="mt-6">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saem de preparos · {subs.length}{nAtencao > 0 ? ` · ${nAtencao} pra resolver` : ""}</span></div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saídas dos preparos · {lista.length}</span></div>
       <ListaCard vazio={false} vazioTexto="">
-        {lista.map(ins => {
-          const st = estado(ins); const pai = paiDe(ins); const uso = usoMap.get(ins.id) || [];
-          const badge = st === "vinculado" ? { txt: "🔗 vinculado", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" }
-            : st === "quebrado" ? { txt: "⚠ vínculo quebrado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" }
-            : { txt: "⏳ sem vínculo", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
+        {lista.map(({ ficha, sp }) => {
+          const uso = usoMap.get(`${ficha.id}:${sp.id}`) || [];
           return (
-            <div key={ins.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
-              <div onClick={() => setEditar(ins)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" title="Editar / vincular subproduto">
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0 ${st === "vinculado" ? "bg-orange-50 dark:bg-orange-900/20" : st === "quebrado" ? "bg-rose-50 dark:bg-rose-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>{st === "vinculado" ? "🔄" : st === "quebrado" ? "⚠" : "⏳"}</div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}<span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span></div>
-                  <div className="text-xs text-gray-500">{st === "vinculado" ? `de ${pai}` : st === "quebrado" ? "o preparo/saída sumiu — religue a outro" : "falta vincular ao preparo que o gera"} · {uso.length > 0
-                    ? <span className="cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${uso.slice(0, 40).join(", ")}${uso.length > 40 ? "…" : ""}`}>usado em {uso.length} ficha{uso.length === 1 ? "" : "s"}</span>
-                    : "não usado"}</div>
-                </div>
+            <div key={ficha.id + sp.id} onClick={() => onEditarFicha(ficha)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Abrir o preparo que o gera">
+              <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-base shrink-0">🔄</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{UP(sp.nome)}</div>
+                <div className="text-xs text-gray-500">de {UP(ficha.nome)} · rende {fmtQtd(sp.rendimentoQtd)} {labelUnidade(sp.unidade)} · {sp.percentualCusto}% do custo · {uso.length > 0
+                  ? <span className="cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${uso.slice(0, 40).join(", ")}${uso.length > 40 ? "…" : ""}`}>usado em {uso.length} ficha{uso.length === 1 ? "" : "s"}</span>
+                  : "não usado"}</div>
               </div>
-              {st === "pendente"
-                ? <button type="button" onClick={() => setEditar(ins)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 shrink-0">Vincular →</button>
-                : <button type="button" onClick={() => void desvincular(ins)} className="text-xs text-gray-400 hover:text-red-600 underline shrink-0" title="Remover o vínculo — volta pra pendente">desvincular</button>}
+              <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Abrir preparo →</span>
             </div>
           );
         })}
       </ListaCard>
-      {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
     </div>
   );
 }
@@ -1176,34 +1168,13 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
     onClose();
   }
   async function desvincularSubproduto() { await updateDoc(doc(db, "ftInsumos", insumo.id), { subprodutoDe: null }); onClose(); }
-  // Reclassificar: isto não é (ou não deveria ser) um insumo.
+  // Reclassificar: isto na verdade é uma subficha.
   const [reclSub, setReclSub] = useState("");       // subficha alvo: "__nova__" | id existente
-  const [reclSubprod, setReclSubprod] = useState(""); // subproduto alvo: "__pendente__" | "exist:fid:sid"
   const [reclBusy, setReclBusy] = useState(false);
   const subfichasSist = useMemo(() => fichas.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
-  const subprodutosSist = useMemo(() => fichas.filter(f => f.ativo !== false).flatMap(f => (f.subprodutos || []).map(sp => ({ ficha: f, sp }))).sort((a, b) => a.sp.nome.localeCompare(b.sp.nome)), [fichas]);
   // Vínculo válido só se a ficha-pai e a saída ainda existem (senão está quebrado).
   const paiSubproduto = insumo.subprodutoDe ? fichas.find(f => f.id === insumo.subprodutoDe!.fichaId && f.ativo !== false) : null;
   const vinculoValido = !!(paiSubproduto && paiSubproduto.subprodutos?.some(s => s.id === insumo.subprodutoDe!.subId));
-  // Vira insumo normal — só tira a marca de subproduto.
-  async function virarIngrediente() {
-    setReclBusy(true);
-    try { await updateDoc(doc(db, "ftInsumos", insumo.id), { ehSubproduto: false, subprodutoDe: null }); onClose(); }
-    catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
-  }
-  // Vira subproduto: marca ehSubproduto e (se escolhido) vincula a um preparo.
-  async function virarSubproduto(alvo: string) {
-    setReclBusy(true);
-    try {
-      if (alvo.startsWith("exist:")) {
-        const [, fid, sid] = alvo.split(":");
-        await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ ehSubproduto: true, subprodutoDe: { fichaId: fid, subId: sid } }));
-      } else {
-        await updateDoc(doc(db, "ftInsumos", insumo.id), { ehSubproduto: true, subprodutoDe: null });
-      }
-      onClose();
-    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setReclBusy(false); }
-  }
   // Vira subficha: cria nova (ou usa existente), religa quem usava o insumo e o desativa.
   async function virarSubficha() {
     if (!reclSub) return;
@@ -1337,19 +1308,10 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
           </div>
         )}
 
-        {/* Reclassificar — isto não é um insumo */}
+        {/* Reclassificar — isto na verdade é uma subficha */}
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">O que isto é de verdade?</div>
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Isto na verdade é uma subficha?</div>
           <div className="flex items-center gap-2 flex-wrap">
-            {insumo.ehSubproduto
-              ? <button type="button" onClick={() => void virarIngrediente()} disabled={reclBusy} className="h-8 text-xs font-medium px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-400 disabled:opacity-40">🧂 É um insumo normal</button>
-              : (
-                <select value={reclSubprod} onChange={e => { const v = e.target.value; setReclSubprod(""); if (v) void virarSubproduto(v); }} disabled={reclBusy} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0 max-w-[190px] shadow-sm">
-                  <option value="">↦ é subproduto…</option>
-                  <option value="__pendente__">⏳ marcar como subproduto (vincular depois)</option>
-                  {subprodutosSist.length > 0 && <optgroup label="vincular a existente">{subprodutosSist.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{UP(sp.nome)} · de {ficha.nome}</option>)}</optgroup>}
-                </select>
-              )}
             <select value={reclSub} onChange={e => setReclSub(e.target.value)} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[140px] shadow-sm">
               <option value="">🧩 é subficha…</option>
               <option value="__nova__">＋ criar “{UP(insumo.nome)}” como subficha</option>
@@ -1357,7 +1319,7 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
             </select>
             <button type="button" onClick={() => void virarSubficha()} disabled={reclBusy || !reclSub} className="h-8 text-xs font-medium px-3 rounded-lg bg-purple-600 text-white hover:bg-purple-700 shadow-sm disabled:opacity-40">Converter</button>
           </div>
-          <p className="text-[11px] text-gray-400 mt-1">Virar subficha desativa este insumo e religa quem o usava (fichas afetadas → revisão). Virar subproduto mantém o insumo, mas o custo passa a derivar do preparo.</p>
+          <p className="text-[11px] text-gray-400 mt-1">Vira subficha, desativa este insumo e religa quem o usava (fichas afetadas → revisão). Coproduto de um preparo? Adicione como saída na ficha que o gera.</p>
         </div>
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
