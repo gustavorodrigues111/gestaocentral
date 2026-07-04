@@ -29,15 +29,26 @@ const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> 
 
 export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, restauranteNome }: { rid: string; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; meId?: string; meNome?: string; restauranteNome?: string }) {
   const [editar, setEditar] = useState<FtPlanoProducao | null>(null);
-  function novo() {
-    setEditar({ id: uid("plano"), restaurantId: rid, nome: "", data: new Date().toISOString().slice(0, 10), status: "rascunho", itens: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome });
+  const [vista, setVista] = useState<"lista" | "cal">("lista");
+  function novo(data?: string) {
+    setEditar({ id: uid("plano"), restaurantId: rid, nome: "", data: data || new Date().toISOString().slice(0, 10), status: "rascunho", itens: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome });
   }
   if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} onClose={() => setEditar(null)} />;
   const lista = planos.filter(p => p.ativo !== false).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   return (
     <div className="space-y-3">
-      <div className="flex justify-end"><Button onClick={novo}>+ Novo plano</Button></div>
-      {lista.length === 0 ? (
+      <div className="flex items-center gap-2">
+        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+          {([["lista", "📋 Lista"], ["cal", "📅 Calendário"]] as const).map(([v, l]) => (
+            <button key={v} type="button" onClick={() => setVista(v)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${vista === v ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <Button onClick={() => novo()}>+ Novo plano</Button>
+      </div>
+      {vista === "cal" ? (
+        <CalendarioPlanos planos={lista} onAbrir={setEditar} onNovo={novo} />
+      ) : lista.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhum plano de produção ainda. Crie um pra escalar várias fichas de uma vez e sair com a lista de insumos.</div>
       ) : (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
@@ -53,6 +64,50 @@ export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, r
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Calendário mensal dos planos de produção (por dia). Clica no plano → abre;
+// clica no "+" do dia → novo plano naquele dia.
+function CalendarioPlanos({ planos, onAbrir, onNovo }: { planos: FtPlanoProducao[]; onAbrir: (p: FtPlanoProducao) => void; onNovo: (data: string) => void }) {
+  const hojeIso = new Date().toISOString().slice(0, 10);
+  const [ym, setYm] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const primeiro = new Date(ym.y, ym.m, 1);
+  const inicioSemana = primeiro.getDay();
+  const diasNoMes = new Date(ym.y, ym.m + 1, 0).getDate();
+  const celulas: (string | null)[] = [];
+  for (let i = 0; i < inicioSemana; i++) celulas.push(null);
+  for (let d = 1; d <= diasNoMes; d++) celulas.push(`${ym.y}-${String(ym.m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  const porDia = useMemo(() => { const m = new Map<string, FtPlanoProducao[]>(); for (const p of planos) { if (!p.data) continue; const arr = m.get(p.data) || []; arr.push(p); m.set(p.data, arr); } return m; }, [planos]);
+  const mesNome = primeiro.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  function nav(delta: number) { setYm(s => { const total = s.y * 12 + s.m + delta; return { y: Math.floor(total / 12), m: ((total % 12) + 12) % 12 }; }); }
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-3">
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => nav(-1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 text-lg">‹</button>
+        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 capitalize">{mesNome}</div>
+        <button type="button" onClick={() => nav(1)} className="w-8 h-8 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-500 text-lg">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center text-[10px] uppercase tracking-wide text-gray-400 mb-1">
+        {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map(d => <div key={d}>{d}</div>)}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {celulas.map((iso, i) => iso === null ? <div key={i} /> : (
+          <div key={i} className={`group min-h-[70px] rounded-lg border p-1 ${iso === hojeIso ? "border-indigo-400 dark:border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10" : "border-gray-200 dark:border-gray-800"}`}>
+            <div className="flex items-center justify-between">
+              <span className={`text-[11px] ${iso === hojeIso ? "text-indigo-600 dark:text-indigo-300 font-bold" : "text-gray-400"}`}>{Number(iso.slice(8))}</span>
+              <button type="button" onClick={() => onNovo(iso)} title="novo plano neste dia" className="text-[13px] leading-none text-gray-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity">＋</button>
+            </div>
+            <div className="space-y-0.5 mt-0.5">
+              {(porDia.get(iso) || []).slice(0, 3).map(p => (
+                <button key={p.id} type="button" onClick={() => onAbrir(p)} title={`${p.nome || "(plano)"} · ${STATUS[p.status].label}`} className={`w-full text-left text-[10px] px-1 py-0.5 rounded truncate ${STATUS[p.status].cls}`}>{p.nome || "(plano)"}</button>
+              ))}
+              {(porDia.get(iso) || []).length > 3 && <div className="text-[9px] text-gray-400 pl-1">+{(porDia.get(iso) || []).length - 3} mais</div>}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
