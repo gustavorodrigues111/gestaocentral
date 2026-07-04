@@ -40,12 +40,13 @@ const parseBRL = (s: string): number | undefined => { const t = (s || "").replac
 const fmtMilhar = (raw: string): string => { const n = parseBRL(raw); return n != null ? n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : raw; };
 const diaLabel = (s: string) => s.split("-").reverse().join("."); // dd.mm.aaaa
 
-// Sugestão de turno/data pelo horário: almoço (<17h), jantar (≥17h); madrugada
-// (0-5h) = fechamento do jantar do dia anterior.
+// Sugestão de turno/data pelo horário: almoço (<18h), jantar (≥18h); madrugada
+// (0-5h) = fechamento do jantar do dia anterior. É só um palpite — a checagem
+// de consistência (checarTurnoData) confirma na hora de fechar.
 function sugerirTurnoData(now: Date): { data: string; turno: TurnoCaixa } {
   const h = now.getHours();
   if (h >= 0 && h < 5) { const o = new Date(now); o.setDate(now.getDate() - 1); return { data: ymd(o), turno: "jantar" }; }
-  return { data: ymd(now), turno: h < 17 ? "almoco" : "jantar" };
+  return { data: ymd(now), turno: h < 18 ? "almoco" : "jantar" };
 }
 function medianN(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b); const m = Math.floor(s.length / 2);
@@ -481,6 +482,21 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   const [salvo, setSalvo] = useState(false);
   const [erro, setErro] = useState("");
   const leituraSeq = useRef(0);
+  const [confirmarDT, setConfirmarDT] = useState<string | null>(null);  // mensagem da inconsistência dia/turno
+  const dtConfirmadoRef = useRef(false);
+
+  // Confere o dia/turno marcados contra o horário REAL de fechamento (agora).
+  // Devolve a mensagem da inconsistência, ou null se está coerente.
+  function checarTurnoData(agora: Date): string | null {
+    const hoje = ymd(agora);
+    const h = agora.getHours(), mm = String(agora.getMinutes()).padStart(2, "0");
+    if (data > hoje) return `A data marcada (${fmtData(data)}) está no futuro.`;
+    if (data === hoje && turno === "jantar" && h < 18) return `Agora são ${String(h).padStart(2, "0")}:${mm} e está marcado como JANTAR de hoje — o jantar só fecha à noite. Confira o turno.`;
+    if (data === hoje && turno === "almoco" && h >= 23) return `Está quase meia-noite (${String(h).padStart(2, "0")}:${mm}) e marcado como ALMOÇO de hoje — não seria o jantar?`;
+    const diffDias = Math.round((new Date(`${hoje}T12:00:00`).getTime() - new Date(`${data}T12:00:00`).getTime()) / 864e5);
+    if (diffDias > 1) return `O fechamento está marcado para ${fmtData(data)} — ${diffDias} dias atrás. Confira a data.`;
+    return null;
+  }
 
   // OCR do comprovante Altec → lê SÓ o faturamento total (+ data/turno).
   async function lerTotal(f: File) {
@@ -550,6 +566,11 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     if (pedirObs) {
       if (movForaDaMedia && !observacao.trim()) { setErro(`O ${TURNO_CAIXA_LABEL[turno].toLowerCase()} veio fora da média — conte rapidamente o que aconteceu nesse turno.`); return; }
       if (!movForaDaMedia && !semOcorrencia && !observacao.trim()) { setErro('Marque "Foi tudo normal" ou escreva uma observação sobre o turno.'); return; }
+    }
+    // Confirma dia/turno se estiverem inconsistentes com o horário de fechamento.
+    if (!dtConfirmadoRef.current) {
+      const problema = checarTurnoData(new Date());
+      if (problema) { setConfirmarDT(problema); return; }
     }
     setSalvando(true);
     try {
@@ -790,6 +811,36 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
         {comandaManual && (
           <ComandaModal comandas={comandasCad} onClose={() => setComandaManual(null)}
             onPick={(rot) => { const f = comandaManual; setComandaManual(null); setAnexos((prev) => prev.map((a) => a.file === f ? { ...a, rotulo: rot } : a)); }} />
+        )}
+
+        {confirmarDT && (
+          <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setConfirmarDT(null)}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start gap-2">
+                <span className="text-2xl">⚠️</span>
+                <div><h3 className="font-bold text-gray-900 dark:text-gray-100">Confirme o dia e o turno</h3><p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">{confirmarDT}</p></div>
+              </div>
+              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 space-y-3">
+                <div className="text-[11px] text-gray-500">Fechando agora: <b>{fmtDataHora(new Date().toISOString())}</b></div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data deste fechamento</label>
+                  <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-full h-11 px-3 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
+                  <div className="flex gap-2">
+                    {(["almoco", "jantar"] as TurnoCaixa[]).map((t) => (
+                      <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-2.5 rounded-lg border text-sm font-medium ${turno === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>{TURNO_CAIXA_LABEL[t]}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" onClick={() => setConfirmarDT(null)}>Cancelar</Button>
+                <Button onClick={() => { dtConfirmadoRef.current = true; setConfirmarDT(null); void salvar(); }}>Confirmar e fechar</Button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </Modal>
