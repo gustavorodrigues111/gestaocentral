@@ -979,8 +979,10 @@ function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, m
         </div>
       )}
       {criando && (
-        <CriarInsumoModal rid={rid} nomeInicial={busca.trim()} insumos={insumos} categorias={categorias} meId={meId}
-          onCriado={(ins) => { setCriando(false); setBusca(""); pickInsumo(ins); }} onClose={() => setCriando(false)} />
+        <CriarInsumoModal rid={rid} nomeInicial={busca.trim()} insumos={insumos} categorias={categorias} meId={meId} permitirBase
+          onCriado={(ins) => { setCriando(false); setBusca(""); pickInsumo(ins); }}
+          onCriadoSubficha={(sf) => { setCriando(false); setBusca(""); pickSubficha(sf); }}
+          onClose={() => setCriando(false)} />
       )}
     </div>
   );
@@ -1021,18 +1023,45 @@ function SubprodutosPanel({ fichas, onEditarFicha }: { fichas: FtFicha[]; onEdit
   );
 }
 
-function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriado, onClose }: {
-  rid: string; nomeInicial: string; insumos: FtInsumo[]; categorias?: FtCategoria[]; meId?: string; onCriado: (ins: FtInsumo) => void; onClose: () => void;
+function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, permitirBase, onCriado, onCriadoSubficha, onClose }: {
+  rid: string; nomeInicial: string; insumos: FtInsumo[]; categorias?: FtCategoria[]; meId?: string; permitirBase?: boolean;
+  onCriado: (ins: FtInsumo) => void; onCriadoSubficha?: (sf: FtFicha) => void; onClose: () => void;
 }) {
+  const [tipo, setTipo] = useState<"insumo" | "base">("insumo");
   const [nome, setNome] = useState(nomeInicial);
   const [unidadeBase, setUnidadeBase] = useState("kg");
   const [custo, setCusto] = useState("");
   const [fornecedor, setFornecedor] = useState("");
   const [categoriaId, setCategoriaId] = useState("");
-  const catsIns = (categorias || []).filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").sort((a, b) => a.nome.localeCompare(b.nome));
-  const similares = useMemo(() => sugerirInsumos(nome, insumos), [nome, insumos]);
+  const [rendQtd, setRendQtd] = useState("1");
+  const [rendUnidade, setRendUnidade] = useState("kg");
+  const tipoCat = tipo === "base" ? "subficha" : "insumo";
+  const cats = (categorias || []).filter(c => c.ativo !== false && (c.tipo || "ficha") === tipoCat).sort((a, b) => a.nome.localeCompare(b.nome));
+  const similares = useMemo(() => tipo === "insumo" ? sugerirInsumos(nome, insumos) : [], [tipo, nome, insumos]);
+  // Cria categoria do tipo certo (insumo ou subficha/base) via prompt.
+  async function criarCat(): Promise<string> {
+    const n = window.prompt(tipo === "base" ? "Nova categoria de base:" : "Nova categoria de insumo:");
+    if (!n || !n.trim()) return "";
+    const id = uid("cat");
+    try { await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(n), tipo: tipoCat, ordem: cats.length, ativo: true } as FtCategoria)); return id; }
+    catch { return ""; }
+  }
   async function salvar() {
     if (!nome.trim()) return;
+    if (tipo === "base") {
+      // Rascunho de base: sem ingredientes, marcado pra revisão. Preenche depois.
+      const id = uid("fic"); const now = new Date().toISOString();
+      const sf: FtFicha = {
+        id, restaurantId: rid, nome: UP(nome), nomeNormalizado: normalizarNome(nome), ehSubficha: true, categoriaId: categoriaId || null,
+        rendimento: { qtd: Number(rendQtd.replace(",", ".")) || 1, unidade: rendUnidade },
+        ingredientes: [], subprodutos: [], ativo: true,
+        revisar: true, revisarMotivo: "Base criada rápida — falta preencher os ingredientes",
+        criadoEm: now, criadoPor: meId,
+      };
+      await setDoc(doc(db, "ftFichas", id), sanitizeForFirestore(sf));
+      onCriadoSubficha?.(sf);
+      return;
+    }
     const dim = dimensaoDeUnidade(unidadeBase) as FtDimensao;
     const id = uid("ins"); const now = new Date().toISOString(); const c = parseMoeda(custo);
     const ins: FtInsumo = {
@@ -1044,23 +1073,46 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriad
     onCriado(ins);
   }
   return (
-    <Modal title="Novo insumo" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={tipo === "base" ? "Nova base (subficha)" : "Novo insumo"} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder="ex: SAL REFINADO" />
+        {permitirBase && onCriadoSubficha && (
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            {([["insumo", "🧂 Insumo"], ["base", "🧩 Base (subficha)"]] as const).map(([t, l]) => (
+              <button key={t} type="button" onClick={() => { setTipo(t); setCategoriaId(""); }} className={`py-1.5 text-xs font-medium rounded-md text-center ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+        )}
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder={tipo === "base" ? "ex: MOLHO DE TOMATE" : "ex: SAL REFINADO"} />
         {similares.length > 0 && <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2 text-[11px] text-amber-800 dark:text-amber-200">Já existe parecido: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")}. Confira pra não duplicar.</div>}
-        <div className="grid grid-cols-2 gap-2">
-          <Select label="Unidade base" value={unidadeBase} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(rid); if (nu) setUnidadeBase(nu); } else setUnidadeBase(e.target.value); }}>
-            {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
-            <option value="__nova__">+ criar unidade…</option>
-          </Select>
-          <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
-        </div>
-        <Select label="Categoria" value={categoriaId} onChange={async e => { if (e.target.value === "__nova__") { const id = await criarCategoriaInsumoPrompt(rid, categorias || []); if (id) setCategoriaId(id); } else setCategoriaId(e.target.value); }}>
+        {tipo === "base" ? (
+          <>
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Rendimento</span>
+              <div className="flex gap-2">
+                <input value={rendQtd} onChange={e => setRendQtd(e.target.value.replace(/[^0-9.,]/g, ""))} inputMode="decimal" className="w-24 h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 text-right tabular-nums" />
+                <select value={rendUnidade} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(rid); if (nu) setRendUnidade(nu); } else setRendUnidade(e.target.value); }} className="flex-1 h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100">
+                  {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
+                  <option value="__nova__">+ criar unidade…</option>
+                </select>
+              </div>
+            </div>
+            <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-2 text-[11px] text-rose-700 dark:text-rose-300">⚑ Cria um rascunho de base já marcado como <b>“precisa de revisão”</b> — os ingredientes você preenche depois, em Cadastros → Bases.</div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-2">
+            <Select label="Unidade base" value={unidadeBase} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(rid); if (nu) setUnidadeBase(nu); } else setUnidadeBase(e.target.value); }}>
+              {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
+              <option value="__nova__">+ criar unidade…</option>
+            </Select>
+            <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
+          </div>
+        )}
+        <Select label="Categoria" value={categoriaId} onChange={async e => { if (e.target.value === "__nova__") { const id = await criarCat(); if (id) setCategoriaId(id); } else setCategoriaId(e.target.value); }}>
           <option value="">— sem categoria —</option>
-          {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          {cats.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
           <option value="__nova__">+ criar categoria…</option>
         </Select>
-        <Input label="Fornecedor (opcional)" value={fornecedor} onChange={e => setFornecedor(e.target.value)} />
+        {tipo === "insumo" && <Input label="Fornecedor (opcional)" value={fornecedor} onChange={e => setFornecedor(e.target.value)} />}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Criar e usar</Button></div>
       </div>
     </Modal>
