@@ -899,35 +899,39 @@ function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, m
 // Insumos, porque são PRODUZIDOS (não comprados). Referenciáveis como ingrediente.
 function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos, meId }: { insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
   const [editar, setEditar] = useState<FtInsumo | null>(null);
-  const subs = insumos.filter(i => i.ativo !== false && i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
+  // Só os PENDENTES (sem vínculo) precisam de ação aqui. Os vinculados já estão
+  // resolvidos — geridos na seção "Saídas do preparo" da ficha-mãe.
+  const pendentes = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe).sort((a, b) => a.nome.localeCompare(b.nome));
+  const nVinculados = insumos.filter(i => i.ativo !== false && i.ehSubproduto && i.subprodutoDe).length;
   const usoMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") m.set(ing.refId, (m.get(ing.refId) || 0) + 1); }
     return m;
   }, [fichas]);
-  const paiDe = (i: FtInsumo) => i.subprodutoDe ? (fichas.find(f => f.id === i.subprodutoDe!.fichaId)?.nome || "(preparo removido)") : null;
-  if (subs.length === 0) return null;
+  if (pendentes.length === 0) {
+    return nVinculados > 0 ? <div className="mt-6 text-[11px] text-gray-400">🔄 {nVinculados} subproduto(s) já vinculado(s) — geridos no próprio preparo (Saídas do preparo).</div> : null;
+  }
   return (
     <div className="mt-6">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saem de preparos (não são comprados) · {subs.length}</span></div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos pendentes <span className="text-gray-400 font-normal normal-case">· falta vincular ao preparo que os gera · {pendentes.length}</span></div>
       <ListaCard vazio={false} vazioTexto="">
-        {subs.map(ins => {
-          const pai = paiDe(ins); const uso = usoMap.get(ins.id) || 0;
+        {pendentes.map(ins => {
+          const uso = usoMap.get(ins.id) || 0;
           return (
             <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar subproduto">
-              <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-base shrink-0">🔄</div>
+              <div className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-base shrink-0">⏳</div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
-                  <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "🔗 vinculado" : "⏳ sem vínculo"}</span>
+                  <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⏳ sem vínculo</span>
                 </div>
-                <div className="text-xs text-gray-500">{pai ? `de ${pai}` : "vincule ao preparo que o gera"} · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
+                <div className="text-xs text-gray-500">vincule ao preparo que o gera · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
               </div>
-              <span className="text-[11px] text-gray-400 shrink-0">custo do preparo</span>
-              <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>
+              <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Resolver</span>
             </div>
           );
         })}
       </ListaCard>
+      {nVinculados > 0 && <div className="mt-1.5 text-[11px] text-gray-400">🔄 + {nVinculados} já vinculado(s), geridos no próprio preparo.</div>}
       {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
     </div>
   );
