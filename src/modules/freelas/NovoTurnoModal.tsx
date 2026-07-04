@@ -8,6 +8,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { AREAS, type Area, type Empregado, type FreelaIntervalo, type FreelaShift, type Pessoa } from "../../core/types";
 import { onlyDigits, resolverPixWhats } from "./helpers";
 import { SeletorSemana } from "./SeletorSemana";
@@ -61,12 +62,18 @@ export function NovoTurnoModal({
   // hoje (abrir é ação por botão). Avulso já abre o turno.
   const statusAlvo: "agendado" | "aberto" = isAvulso ? "aberto" : "agendado";
 
-  // Empregados ativos do restaurante
+  // "Ativo como EMPREGADO neste dia": empregado comum usa estaAtivo; freela
+  // mensalista só é empregado DENTRO do período de cobertura — fora dele volta a
+  // ser freela (senão, lançar turno antes/depois do período o mostra como
+  // empregado da casa, que ele não é).
+  const ativoComoEmpEm = (e: Empregado) => e.freelaMensalista ? empregadoAtivoEm(e, date) : e.estaAtivo;
+
+  // Empregados ativos do restaurante NESTA data
   const empregadosAtivos = useMemo(
     () => empregados
-      .filter((e) => e.restaurantId === restaurantId && e.estaAtivo)
+      .filter((e) => e.restaurantId === restaurantId && ativoComoEmpEm(e))
       .sort((a, b) => a.nome.localeCompare(b.nome)),
-    [empregados, restaurantId],
+    [empregados, restaurantId, date],
   );
 
   // Freelas = pessoas vinculadas ao restaurante com PIX e que NÃO são
@@ -77,10 +84,10 @@ export function NovoTurnoModal({
   const cpfsEmpregadosDesteRest = useMemo(
     () => new Set(
       empregados
-        .filter((e) => e.restaurantId === restaurantId && e.estaAtivo && e.cpf)
+        .filter((e) => e.restaurantId === restaurantId && ativoComoEmpEm(e) && e.cpf)
         .map((e) => onlyDigits(e.cpf)),
     ),
-    [empregados, restaurantId],
+    [empregados, restaurantId, date],
   );
   const freelas = useMemo(
     () => pessoas
