@@ -480,10 +480,25 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
           {/* Subprodutos (coprodutos) */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">Subprodutos</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{(f.subprodutos || []).length > 0 ? "Saídas do preparo" : "Subprodutos"}</div>
               <span className={`text-[11px] px-2 py-0.5 rounded-full ${somaPctSub > 100 ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>Principal fica com {Math.max(0, 100 - somaPctSub)}%</span>
             </div>
-            <p className="text-[11px] text-gray-400">Coprodutos que este preparo também rende (ex.: carcaça, caldo do cozimento). Cada um leva um % do custo total; o resto fica no produto principal. Depois entram como ingrediente em outras fichas.</p>
+            <p className="text-[11px] text-gray-400">Coprodutos que este preparo também rende (ex.: carcaça, caldo do cozimento). O custo do preparo é <strong>dividido</strong> entre a saída principal e os subprodutos por %; cada saída tem o seu próprio rendimento (não é o mesmo do topo). Depois entram como ingrediente em outras fichas.</p>
+            {/* Saída PRINCIPAL — mesmo rendimento do topo (vinculado, não duplicado). */}
+            {(f.subprodutos || []).length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap py-2 rounded-lg bg-indigo-50/60 dark:bg-indigo-900/15 px-2">
+                <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 shrink-0">principal</span>
+                <span className="flex-1 min-w-[100px] text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{f.nome || "(principal)"}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] text-gray-400">rende</span>
+                  <QtyStepper qtd={f.rendimento.qtd} unidade={f.rendimento.unidade} unidades={unidadesRendimento().map(u => u.unidade)} unidadeTravada={false}
+                    onQtd={n => setF({ ...f, rendimento: { ...f.rendimento, qtd: n } })} onUnidade={u => setF({ ...f, rendimento: { ...f.rendimento, unidade: u } })} />
+                </div>
+                <span className="inline-flex items-center justify-center h-9 rounded-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 px-3 text-sm text-gray-600 dark:text-gray-300 shrink-0 tabular-nums">{Math.max(0, 100 - somaPctSub)}<span className="text-[11px] text-gray-400 ml-1">% custo</span></span>
+                <span className="text-xs text-gray-700 dark:text-gray-200 font-medium w-20 text-right tabular-nums shrink-0">{fmtMoeda(custo.total)}</span>
+                <span className="w-5 shrink-0" />
+              </div>
+            )}
             {(f.subprodutos || []).map(sp => {
               const r = custo.subprodutos.find(x => x.id === sp.id);
               const vinc = insumos.find(i => i.subprodutoDe && i.subprodutoDe.fichaId === f.id && i.subprodutoDe.subId === sp.id && i.ativo !== false);
