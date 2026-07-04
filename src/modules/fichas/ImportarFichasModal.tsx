@@ -536,7 +536,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
         {/* Linha 2: chips (tipo, categoria, reclassificar) */}
         <div className="flex items-center gap-1.5 flex-wrap pl-6">
           <label className="h-8 flex items-center gap-1.5 px-3 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300 cursor-pointer shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
-          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 border-0 text-gray-600 dark:text-gray-300 shrink-0 max-w-[140px] cursor-pointer"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 border-0 text-gray-600 dark:text-gray-300 shrink-0 max-w-[140px] cursor-pointer"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}</select>
           {f.ehSubficha && (
             <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v === "__subproduto__") abrirEscolher(f.id, "subproduto"); else if (v === "__mesclar__") abrirEscolher(f.id, "mesclar"); }} className="h-8 px-3 text-xs rounded-full bg-purple-50 dark:bg-purple-900/20 border-0 text-purple-700 dark:text-purple-300 shrink-0 max-w-[180px] cursor-pointer">
               <option value="">reclassificar…</option>
@@ -935,7 +935,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                 {subfichas.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap text-xs">
                     <span className="text-gray-400">Categoria de todas as subfichas:</span>
-                    <select onChange={e => catTodas(e.target.value, true)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "subficha").map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                    <select onChange={e => catTodas(e.target.value, true)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "subficha").map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}</select>
                   </div>
                 )}
                 {subfichas.map(renderCard)}
@@ -948,7 +948,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
               <div className="space-y-3">
                 <div className="flex items-center gap-2 flex-wrap text-xs">
                   <span className="text-gray-400">Categoria de todas:</span>
-                  <select onChange={e => catTodas(e.target.value, false)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "ficha").map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+                  <select onChange={e => catTodas(e.target.value, false)} className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"><option value="">— escolher —</option>{catsAtivas.filter(c => (c.tipo || "ficha") === "ficha").map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}</select>
                 </div>
                 {fichasFinais.map(renderCard)}
                 {fichasFinais.length === 0 && <div className="text-sm text-gray-400 italic py-6 text-center">Nenhuma ficha final — tudo virou subficha.</div>}

@@ -245,7 +245,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
         {catsGrupo.length > 0 && (
           <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
             <option value="">Todas categorias</option>
-            {catsGrupo.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            {catsGrupo.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
           </select>
         )}
       </div>
@@ -357,7 +357,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
     const tipo: FtCategoriaTipo = f.ehSubficha ? "subficha" : "ficha";
     const ordem = Math.max(0, ...catsAtivas.filter(c => (c.tipo || "ficha") === tipo).map(c => c.ordem ?? 0)) + 1;
     try {
-      await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: nome.trim(), tipo, ordem, ativo: true } as FtCategoria));
+      await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem, ativo: true } as FtCategoria));
       setF(p => ({ ...p, categoriaId: id }));
     } catch (e) { alert("Erro ao criar categoria: " + (e instanceof Error ? e.message : String(e))); }
   }
@@ -431,7 +431,7 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
                 </div>
                 <select value={f.categoriaId || ""} onChange={e => setF({ ...f, categoriaId: e.target.value || null })} className="w-full px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100 h-9">
                   <option value="">— sem categoria —</option>
-                  {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  {catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -1374,7 +1374,7 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
   async function add() {
     if (!nome.trim()) return;
     const id = uid("cat");
-    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: nome.trim(), tipo, ordem: ativas.length, ativo: true } as FtCategoria));
+    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem: ativas.length, ativo: true } as FtCategoria));
     setNome("");
   }
   const secao = (t: "ficha" | "subficha", titulo: string, nota: string) => (
@@ -1388,7 +1388,7 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
               <button type="button" onClick={() => void mover(t, c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
             </div>
             <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t === "ficha" ? "bg-indigo-100 dark:bg-indigo-900/40" : "bg-purple-100 dark:bg-purple-900/40"}`}>{t === "ficha" ? "🍽️" : "🧩"}</span>
-            <span onClick={() => setEditar(c)} className="flex-1 text-gray-900 dark:text-gray-100 cursor-pointer" title="Editar categoria">{c.nome}</span>
+            <span onClick={() => setEditar(c)} className="flex-1 text-gray-900 dark:text-gray-100 cursor-pointer" title="Editar categoria">{UP(c.nome)}</span>
             {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
             <button type="button" onClick={() => setEditar(c)} className="text-xs text-indigo-600 dark:text-indigo-400">Editar</button>
           </div>
@@ -1405,7 +1405,7 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
               <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
           </div>
-          <Input label="Categoria" value={nome} onChange={e => setNome(e.target.value)} placeholder={tipo === "ficha" ? "ex: Pratos principais, Drinks" : "ex: Molhos, Caldos"} />
+          <Input label="Categoria" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder={tipo === "ficha" ? "ex: PRATOS PRINCIPAIS, DRINKS" : "ex: MOLHOS, CALDOS"} />
           <Button onClick={add}>+ Adicionar</Button>
         </div>
       </FormCard>
@@ -1424,7 +1424,7 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
   async function salvar() {
     if (!nome.trim()) { alert("Dê um nome à categoria."); return; }
     await updateDoc(doc(db, "ftCategorias", categoria.id), sanitizeForFirestore({
-      nome: nome.trim(), tipo, ordem: Number(ordem) || 0, cmvAlvo: tipo === "ficha" && cmv.trim() ? Number(cmv.replace(",", ".")) : null,
+      nome: UP(nome), tipo, ordem: Number(ordem) || 0, cmvAlvo: tipo === "ficha" && cmv.trim() ? Number(cmv.replace(",", ".")) : null,
     }));
     onClose();
   }
@@ -1432,7 +1432,7 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
   return (
     <Modal title="Editar categoria" onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} />
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} />
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Grupo</span>
           <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-start">
