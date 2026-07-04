@@ -908,6 +908,7 @@ export type Pessoa = {
   nome: string;
   cpf?: string;                // obrigatório na UI nova; opcional só pra docs migrados sem CPF
   whatsapp?: string;
+  whatsappOptIn?: boolean;     // aceita receber avisos/lembretes pelo WhatsApp
   pix?: string;                // chave PIX (CPF, email, telefone ou chave aleatória) — obrigatório pra freelas
   isMaster: boolean;
   restaurantIds: string[];
