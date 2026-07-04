@@ -958,20 +958,22 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
         {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
         <option value="__nova__">+ nova categoria…</option>
       </select>
-      {ins.ehSubproduto
-        ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
-        : ins.custo > 0
-        ? <div className="flex items-center gap-4 shrink-0 tabular-nums">
-            <div className="text-right w-20 hidden sm:block" title="Média dos últimos 3 meses">
-              <div className="text-[9px] uppercase text-gray-400 leading-none">média 3m</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400">{fmtMoeda(precoMedio3m(ins, hoje))}</div>
-            </div>
-            <div className="text-right w-24">
-              <div className="text-[9px] uppercase text-gray-400 leading-none">último</div>
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></div>
-            </div>
+      <div className="flex items-center gap-4 shrink-0 tabular-nums">
+        <div className="text-right w-20 hidden sm:block" title="Média dos últimos 3 meses">
+          <div className="text-[9px] uppercase text-gray-400 leading-none">média 3m</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400">{!ins.ehSubproduto && ins.custo > 0 ? fmtMoeda(precoMedio3m(ins, hoje)) : "—"}</div>
+        </div>
+        <div className="text-right w-24">
+          <div className="text-[9px] uppercase text-gray-400 leading-none">último</div>
+          <div className="text-sm">
+            {ins.ehSubproduto
+              ? <span className="text-[11px] text-gray-400 font-normal">do preparo</span>
+              : ins.custo > 0
+              ? <span className="font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></span>
+              : <span className="text-[11px] font-medium text-amber-600 dark:text-amber-400">sem custo</span>}
           </div>
-        : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
+        </div>
+      </div>
       <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>
     </div>
   );
