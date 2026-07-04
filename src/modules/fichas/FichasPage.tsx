@@ -229,7 +229,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
   const catsGrupo = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha")));
   const lista = useMemo(() => doGrupo
     .filter(f => subFiltro === "todas" ? true : estados.get(f.id) === subFiltro)
-    .filter(f => !catFiltro || f.categoriaId === catFiltro)
+    .filter(f => !catFiltro ? true : catFiltro === "__sem__" ? (!f.categoriaId || !catsGrupo.some(c => c.id === f.categoriaId)) : f.categoriaId === catFiltro)
     .filter(f => !buscaNorm || normalizarNome(f.nome).includes(buscaNorm))
     .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro, estados, buscaNorm]);
 
@@ -273,6 +273,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
         {catsGrupo.length > 0 && (
           <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
             <option value="">Todas categorias</option>
+            <option value="__sem__">Sem categoria</option>
             {catsGrupo.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
           </select>
         )}
@@ -881,6 +882,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
   const nSugeridos = reconc.sugeridos.length;
   const catsIns = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo"));
+  const catIds = new Set(catsIns.map(c => c.id));
   const buscaNorm = normalizarNome(busca);
   const semCusto = (i: FtInsumo) => !i.ehSubproduto && !(i.custo > 0);
   const pendente = (i: FtInsumo) => !!i.ehSubproduto && !i.subprodutoDe;
@@ -888,7 +890,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   const nPend = insumos.filter(i => i.ativo !== false && pendente(i)).length;
   const ativos = insumos.filter(i => i.ativo !== false)
     .filter(i => filtro === "todas" ? true : filtro === "semcusto" ? semCusto(i) : pendente(i))
-    .filter(i => !catFiltro || (i.categoriaId || "") === catFiltro)
+    .filter(i => !catFiltro ? true : catFiltro === "__sem__" ? (!i.categoriaId || !catIds.has(i.categoriaId)) : (i.categoriaId || "") === catFiltro)
     .filter(i => !buscaNorm || normalizarNome(i.nome).includes(buscaNorm))
     .sort((a, b) => a.nome.localeCompare(b.nome));
   const renderRow = (ins: FtInsumo) => (
@@ -917,7 +919,6 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
       <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>
     </div>
   );
-  const catIds = new Set(catsIns.map(c => c.id));
   const grupos = [
     ...catsIns.map(cat => ({ nome: UP(cat.nome), itens: ativos.filter(i => i.categoriaId === cat.id) })),
     { nome: "Sem categoria", itens: ativos.filter(i => !i.categoriaId || !catIds.has(i.categoriaId)) },
@@ -945,6 +946,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
         {catsIns.length > 0 && (
           <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
             <option value="">Todas categorias</option>
+            <option value="__sem__">Sem categoria</option>
             {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
           </select>
         )}
