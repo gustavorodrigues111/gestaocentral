@@ -698,14 +698,16 @@ function PrecoRapido({ insumo, meId }: { insumo: FtInsumo; meId?: string }) {
     finally { setSalvando(false); }
   }
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="flex-1 min-w-0 text-[11px] text-gray-700 dark:text-gray-200 truncate" title={insumo.nome}>{insumo.nome}</span>
-      <div className="flex items-center gap-1 h-7 px-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 shrink-0">
-        <span className="text-[10px] text-gray-400">R$</span>
-        <input value={v} onChange={e => setV(maskMoeda(e.target.value))} onKeyDown={e => { if (e.key === "Enter") void salvar(); }} inputMode="numeric" placeholder="0,00" className="w-14 bg-transparent text-right text-xs outline-none dark:text-gray-100" />
-        <span className="text-[10px] text-gray-400">/{labelUnidade(insumo.unidadeBase)}</span>
+    <div className="space-y-1 border-t border-amber-200/60 dark:border-amber-800/40 pt-1.5 first:border-0 first:pt-0">
+      <div className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate" title={insumo.nome}>{insumo.nome}</div>
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 h-8 px-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 flex-1 min-w-0">
+          <span className="text-[10px] text-gray-400">R$</span>
+          <input value={v} onChange={e => setV(maskMoeda(e.target.value))} onKeyDown={e => { if (e.key === "Enter") void salvar(); }} inputMode="numeric" placeholder="0,00" className="flex-1 min-w-0 bg-transparent text-right text-xs outline-none dark:text-gray-100" />
+          <span className="text-[10px] text-gray-400 shrink-0">/{labelUnidade(insumo.unidadeBase)}</span>
+        </div>
+        <button type="button" onClick={() => void salvar()} disabled={salvando || !(parseMoeda(v) > 0)} className="h-8 px-3 rounded-lg bg-amber-600 text-white text-[11px] font-medium hover:bg-amber-700 disabled:opacity-40 shrink-0">{salvando ? "…" : "Salvar"}</button>
       </div>
-      <button type="button" onClick={() => void salvar()} disabled={salvando || !(parseMoeda(v) > 0)} className="h-7 px-2 rounded-lg bg-amber-600 text-white text-[11px] font-medium hover:bg-amber-700 disabled:opacity-40 shrink-0">{salvando ? "…" : "Salvar"}</button>
     </div>
   );
 }
