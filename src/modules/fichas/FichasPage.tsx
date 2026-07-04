@@ -16,7 +16,7 @@ import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
 import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
 import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
-import { calcularCusto } from "./custo";
+import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
@@ -153,6 +153,9 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
   const [grupo, setGrupo] = useState<"finais" | "subfichas">("finais");
   const [subFiltro, setSubFiltro] = useState<"todas" | "pendentes" | "revisar">("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
+  const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
+  const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
   const doGrupo = useMemo(() => fichas.filter(f => f.ativo !== false && (grupo === "subfichas" ? f.ehSubficha : !f.ehSubficha)), [fichas, grupo]);
   const nFinais = useMemo(() => fichas.filter(f => f.ativo !== false && !f.ehSubficha).length, [fichas]);
   const nSubs = useMemo(() => fichas.filter(f => f.ativo !== false && f.ehSubficha).length, [fichas]);
@@ -172,12 +175,22 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
 
   return (
     <div className="space-y-3">
-      {/* Grupo primário */}
-      <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-        {([["finais", `Fichas finais (${nFinais})`], ["subfichas", `Subfichas (${nSubs})`]] as const).map(([g, label]) => (
-          <button key={g} type="button" onClick={() => { setGrupo(g); setSubFiltro("todas"); setCatFiltro(""); }}
-            className={`px-4 py-1.5 text-xs font-medium rounded-md ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{label}</button>
-        ))}
+      {/* Grupo primário + modo de preço */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+          {([["finais", `Fichas finais (${nFinais})`], ["subfichas", `Subfichas (${nSubs})`]] as const).map(([g, label]) => (
+            <button key={g} type="button" onClick={() => { setGrupo(g); setSubFiltro("todas"); setCatFiltro(""); }}
+              className={`px-4 py-1.5 text-xs font-medium rounded-md ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{label}</button>
+          ))}
+        </div>
+        <div className="flex-1" />
+        <span className="text-[11px] text-gray-400 hidden sm:inline">Custo por:</span>
+        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+          {([["ultimo", "Último preço"], ["media", "Média 3 meses"]] as const).map(([m, label]) => (
+            <button key={m} type="button" onClick={() => setPrecoModo(m)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-md ${precoModo === m ? "bg-white dark:bg-gray-900 text-emerald-700 dark:text-emerald-300 shadow-sm" : "text-gray-500"}`}>{label}</button>
+          ))}
+        </div>
       </div>
       {/* Filtros dentro do grupo */}
       <div className="flex items-center gap-2 flex-wrap">
@@ -199,7 +212,7 @@ function ListaFichas({ fichas, insumos, categorias, onEditar, podeEditar }: {
       ) : (
         (() => {
           const renderCard = (f: FtFicha) => {
-            const c = calcularCusto(f, insumos, fichas);
+            const c = calcularCusto(f, insumosCalc, fichas);
             const tint = f.revisar ? "border-rose-300 dark:border-rose-800/70 bg-rose-50 dark:bg-rose-900/15 hover:border-rose-400"
               : fichaPendente(f) ? "border-amber-300 dark:border-amber-800/70 bg-amber-50 dark:bg-amber-900/15 hover:border-amber-400"
               : c.insumosSemCusto.length > 0 ? "border-blue-300 dark:border-blue-800/70 bg-blue-50 dark:bg-blue-900/15 hover:border-blue-400"
@@ -641,6 +654,7 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
   const [nome, setNome] = useState(""); const [unidadeBase, setUnidadeBase] = useState("kg"); const [custo, setCusto] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
   const [soPendentes, setSoPendentes] = useState(false); const [sincronizar, setSincronizar] = useState(false);
+  const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const reconc = useMemo(() => reconciliar(agruparProdutos(coletarPrecos(recebimentos)), insumos, vinculos), [recebimentos, insumos, vinculos]);
   const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
   const nSugeridos = reconc.sugeridos.length;
@@ -697,7 +711,16 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
             {ins.ehSubproduto
               ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
               : ins.custo > 0
-              ? <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums shrink-0">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></span>
+              ? <div className="flex items-center gap-4 shrink-0 tabular-nums">
+                  <div className="text-right w-20 hidden sm:block" title="Média dos últimos 3 meses">
+                    <div className="text-[9px] uppercase text-gray-400 leading-none">média 3m</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{fmtMoeda(precoMedio3m(ins, hoje))}</div>
+                  </div>
+                  <div className="text-right w-24">
+                    <div className="text-[9px] uppercase text-gray-400 leading-none">último</div>
+                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></div>
+                  </div>
+                </div>
               : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
             <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
               <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>

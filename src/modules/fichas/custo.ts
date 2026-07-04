@@ -106,6 +106,24 @@ export function calcularCusto(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFic
   return { total, porRendimento: rend > 0 ? round2(total / rend) : 0, bruto, insumosSemCusto: [...ctx.semCusto], subprodutos };
 }
 
+// Preço MÉDIO dos últimos 3 meses (média simples dos registros de custo no
+// período). Sem mudança no período → cai no último preço conhecido.
+export function precoMedio3m(insumo: FtInsumo, hojeIso: string): number {
+  const hist = (insumo.historicoCusto || []).filter(h => (h.custo || 0) > 0);
+  if (hist.length === 0) return insumo.custo || 0;
+  const d = new Date(hojeIso); d.setMonth(d.getMonth() - 3);
+  const limite = d.toISOString().slice(0, 10);
+  const recentes = hist.filter(h => (h.data || "").slice(0, 10) >= limite);
+  const base = recentes.length ? recentes : [hist[hist.length - 1]];
+  return round2(base.reduce((s, h) => s + h.custo, 0) / base.length);
+}
+
+// Devolve os insumos com o custo trocado pelo preço médio 3m (pra recalcular
+// fichas nesse modo sem mexer no motor).
+export function insumosComMedia(insumos: FtInsumo[], hojeIso: string): FtInsumo[] {
+  return insumos.map(i => i.ehSubproduto ? i : { ...i, custo: precoMedio3m(i, hojeIso) });
+}
+
 // CMV% e markup (Cardápio — Fase 4).
 export function cmvPct(custo: number, precoVenda: number): number | null {
   if (!precoVenda) return null;
