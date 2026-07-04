@@ -19,6 +19,8 @@ type Props = {
 const DOW_LABELS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 // Chip arredondado padrão (selecionado × não).
 const CHIP = (active: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`;
+// Chip de dia da semana: largura igual (grid de 7 colunas) pra caber tudo numa linha no mobile.
+const CHIP_DOW = (active: boolean) => `w-full px-0 py-1.5 text-xs font-medium rounded-full border transition-colors text-center ${active ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`;
 
 export function ChecklistTemplateModal({ template, restaurantId, onClose }: Props) {
   const { pessoa: me } = useAuth();
@@ -165,11 +167,13 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
             ))}
           </div>
           {quando === "dias" && (
-            <div className="flex flex-wrap gap-1.5 mt-2 items-center">
-              {DOW_LABELS.map((label, i) => (
-                <button key={i} type="button" onClick={() => toggleDow(i)} className={CHIP(diasSemana.includes(i))}>{label}</button>
-              ))}
-              <span className="text-[11px] text-gray-400 ml-1">{diasSemana.length === 0 ? "= todos os dias" : ""}</span>
+            <div className="mt-2">
+              <div className="grid grid-cols-7 gap-1">
+                {[1, 2, 3, 4, 5, 6, 0].map(i => (
+                  <button key={i} type="button" onClick={() => toggleDow(i)} className={CHIP_DOW(diasSemana.includes(i))}>{DOW_LABELS[i]}</button>
+                ))}
+              </div>
+              {diasSemana.length === 0 && <span className="text-[11px] text-gray-400 mt-1 block">= todos os dias</span>}
             </div>
           )}
         </div>
