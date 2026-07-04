@@ -1509,33 +1509,53 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
 // Mescla duas fichas (bases ou pratos) duplicadas: quem usa ESTA passa a usar a
 // outra; esta é desativada.
 function MesclarFichaModal({ ficha, fichas, onClose, onDone }: { ficha: FtFicha; fichas: FtFicha[]; onClose: () => void; onDone: () => void }) {
-  const [alvoId, setAlvoId] = useState(""); const [salvando, setSalvando] = useState(false);
+  const [alvoId, setAlvoId] = useState(""); const [nomeFinal, setNomeFinal] = useState(""); const [salvando, setSalvando] = useState(false);
   const candidatos = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && !!f.ehSubficha === !!ficha.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome));
   const usam = fichas.filter(f => f.ativo !== false && f.id !== ficha.id && (f.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === ficha.id));
+  const alvo = fichas.find(f => f.id === alvoId) || null;
   async function mesclar() {
-    const alvo = fichas.find(f => f.id === alvoId);
-    if (!alvo) { alert("Escolha a ficha destino."); return; }
-    if (!confirm(`Mesclar "${ficha.nome}" em "${alvo.nome}"? "${ficha.nome}" será desativada.`)) return;
+    if (!alvo) { alert("Escolha qual ficha prevalece."); return; }
+    const nomeOk = UP(nomeFinal).trim() || alvo.nome;
+    if (!confirm(`Mesclar "${ficha.nome}" em "${alvo.nome}" (nome final: "${nomeOk}")? "${ficha.nome}" será desativada.`)) return;
     setSalvando(true);
     try {
       const batch = writeBatch(db);
+      // quem usava a ficha desativada passa a apontar pra que prevalece
       for (const f of usam) {
-        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === ficha.id) ? { ...ing, refId: alvo.id, nomeSnapshot: alvo.nome } : ing);
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === ficha.id) ? { ...ing, refId: alvo.id, nomeSnapshot: nomeOk } : ing);
         batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
       }
+      // atualiza o snapshot também em quem já usava a que prevalece (nome pode ter mudado)
+      for (const f of fichas.filter(x => x.ativo !== false && x.id !== ficha.id && x.id !== alvo.id && (x.ingredientes || []).some(i => i.tipo === "ficha" && i.refId === alvo.id))) {
+        const ingredientes = f.ingredientes.map(ing => (ing.tipo === "ficha" && ing.refId === alvo.id) ? { ...ing, nomeSnapshot: nomeOk } : ing);
+        batch.update(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
+      }
+      batch.update(doc(db, "ftFichas", alvo.id), sanitizeForFirestore({ nome: nomeOk, nomeNormalizado: normalizarNome(nomeOk) }));
       batch.update(doc(db, "ftFichas", ficha.id), { ativo: false });
       await batch.commit();
       onDone();
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
   }
   return (
-    <Modal title={`Mesclar "${ficha.nome}"`} onClose={onClose} maxWidth="max-w-sm">
+    <Modal title={`Mesclar "${ficha.nome}"`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <p className="text-sm text-gray-600 dark:text-gray-300">Junta com outra {ficha.ehSubficha ? "base" : "ficha"} duplicada. As {usam.length} ficha(s) que usam "{ficha.nome}" passam a apontar pra ela; esta é desativada.</p>
-        <Select label="Ficha destino" value={alvoId} onChange={e => setAlvoId(e.target.value)}>
+        <p className="text-sm text-gray-600 dark:text-gray-300">Junta com outra {ficha.ehSubficha ? "base" : "ficha"} duplicada. A escolhida <strong>prevalece</strong> (mantém os ingredientes); "{ficha.nome}" é desativada e quem a usava passa a apontar pra ela.</p>
+        <Select label="Qual ficha prevalece" value={alvoId} onChange={e => { setAlvoId(e.target.value); const a = fichas.find(f => f.id === e.target.value); setNomeFinal(a ? a.nome : ""); }}>
           <option value="">Selecione…</option>
           {candidatos.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
         </Select>
+        {alvo && (
+          <div className="space-y-1.5">
+            <Input label="Nome final" value={nomeFinal} onChange={e => setNomeFinal(e.target.value.toUpperCase())} />
+            <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+              <span className="text-gray-400">usar:</span>
+              <button type="button" onClick={() => setNomeFinal(ficha.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(ficha.nome)}</button>
+              <button type="button" onClick={() => setNomeFinal(alvo.nome)} className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:text-indigo-600">{UP(alvo.nome)}</button>
+              <span className="text-gray-400">ou escreva um novo acima.</span>
+            </div>
+          </div>
+        )}
+        {alvo && usam.length > 0 && <p className="text-[11px] text-gray-400">{usam.length} ficha(s) que usam "{ficha.nome}" serão religadas.</p>}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando || !alvoId}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
       </div>
     </Modal>
