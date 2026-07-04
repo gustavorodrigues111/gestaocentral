@@ -1808,7 +1808,7 @@ function CategoriaModal({ categoria, categorias, fichas, insumos, onClose }: { c
   const [ordem, setOrdem] = useState(String(categoria.ordem ?? 0));
   const [cmv, setCmv] = useState(categoria.cmvAlvo != null ? String(categoria.cmvAlvo) : "");
   const [excluindo, setExcluindo] = useState(false);
-  const [destino, setDestino] = useState("");
+  const [destinos, setDestinos] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   // Itens que ficariam órfãos se excluir esta categoria.
   const afetados: { id: string; nome: string; col: string }[] = tipo === "insumo"
@@ -1830,27 +1830,39 @@ function CategoriaModal({ categoria, categorias, fichas, insumos, onClose }: { c
     setBusy(true);
     try {
       const batch = writeBatch(db);
-      for (const p of afetados) batch.update(doc(db, p.col, p.id), { categoriaId: destino || null });
+      for (const p of afetados) batch.update(doc(db, p.col, p.id), { categoriaId: destinos[p.id] || null });
       batch.update(doc(db, "ftCategorias", categoria.id), { ativo: false });
       await batch.commit();
       onClose();
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setBusy(false); }
   }
   if (excluindo) {
+    const algumMovido = afetados.some(p => destinos[p.id]);
     return (
-      <Modal title={`Excluir "${UP(categoria.nome)}"`} onClose={() => setExcluindo(false)} maxWidth="max-w-md">
+      <Modal title={`Excluir "${UP(categoria.nome)}"`} onClose={() => setExcluindo(false)} maxWidth="max-w-lg">
         <div className="space-y-3 text-sm">
-          <p className="text-gray-600 dark:text-gray-300"><strong>{afetados.length}</strong> {tipo === "insumo" ? "insumo(s)" : "ficha(s)"} usam esta categoria. Pra onde mover antes de excluir?</p>
-          <Select label="Mover para" value={destino} onChange={e => setDestino(e.target.value)}>
-            <option value="">— sem categoria —</option>
-            {outras.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
-          </Select>
-          <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-            {afetados.map(p => <div key={p.id} className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 truncate">{UP(p.nome)}</div>)}
+          <p className="text-gray-600 dark:text-gray-300"><strong>{afetados.length}</strong> {tipo === "insumo" ? "insumo(s)" : "ficha(s)"} usam esta categoria. Escolha a categoria de cada um (ou deixe "sem categoria").</p>
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-gray-400 shrink-0">Aplicar a todos:</span>
+            <select onChange={e => { const v = e.target.value; setDestinos(Object.fromEntries(afetados.map(p => [p.id, v]))); }} className="h-8 flex-1 min-w-0 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+              <option value="">— sem categoria —</option>
+              {outras.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+            </select>
+          </div>
+          <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {afetados.map(p => (
+              <div key={p.id} className="flex items-center gap-2 px-3 py-2">
+                <span className="flex-1 min-w-0 text-xs text-gray-700 dark:text-gray-200 truncate">{UP(p.nome)}</span>
+                <select value={destinos[p.id] || ""} onChange={e => setDestinos(d => ({ ...d, [p.id]: e.target.value }))} className="h-8 w-[160px] shrink-0 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                  <option value="">— sem categoria —</option>
+                  {outras.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+                </select>
+              </div>
+            ))}
           </div>
           <div className="flex items-center justify-end gap-2 pt-1">
             <Button variant="secondary" onClick={() => setExcluindo(false)}>Cancelar</Button>
-            <Button onClick={confirmarExcluir} disabled={busy}>{busy ? "Excluindo…" : destino ? "Mover e excluir" : "Deixar sem categoria e excluir"}</Button>
+            <Button onClick={confirmarExcluir} disabled={busy}>{busy ? "Excluindo…" : algumMovido ? "Aplicar e excluir" : "Deixar sem categoria e excluir"}</Button>
           </div>
         </div>
       </Modal>
