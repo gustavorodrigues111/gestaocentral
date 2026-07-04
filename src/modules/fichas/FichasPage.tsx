@@ -74,6 +74,7 @@ export function FichasPage() {
   const [vinculos, setVinculos] = useState<FtVinculoRecebimento[]>([]);
   const [editando, setEditando] = useState<FtFicha | null>(null);
   const [importando, setImportando] = useState(false);
+  const [criandoInsumo, setCriandoInsumo] = useState(false);
   const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
 
   const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
@@ -139,6 +140,9 @@ export function FichasPage() {
             <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, tab === "bases", pessoa?.id, pessoa?.nome))}>{tab === "bases" ? "+ Nova base" : "+ Nova ficha"}</Button>
           </div>
         )}
+        {tab === "insumos" && podeInsumo && (
+          <Button className="w-full sm:w-auto" onClick={() => setCriandoInsumo(true)}>+ Criar insumo</Button>
+        )}
       </header>
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
@@ -154,6 +158,9 @@ export function FichasPage() {
 
       {importando && (
         <ImportarFichasModal rid={rid} insumos={insumos} categorias={categorias} fichasExistentes={fichas} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
+      )}
+      {criandoInsumo && (
+        <CriarInsumoModal rid={rid} nomeInicial="" insumos={insumos} meId={pessoa?.id} onCriado={() => setCriandoInsumo(false)} onClose={() => setCriandoInsumo(false)} />
       )}
     </div>
   );
@@ -842,41 +849,26 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
 
 // ─── Aba Insumos ──────────────────────────────────────────────────────────
 function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
-  const [nome, setNome] = useState(""); const [unidadeBase, setUnidadeBase] = useState("kg"); const [custo, setCusto] = useState("");
+  const [busca, setBusca] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
   const [soPendentes, setSoPendentes] = useState(false); const [sincronizar, setSincronizar] = useState(false);
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const reconc = useMemo(() => reconciliar(agruparProdutos(coletarPrecos(recebimentos)), insumos, vinculos), [recebimentos, insumos, vinculos]);
   const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
   const nSugeridos = reconc.sugeridos.length;
-  const similares = useMemo(() => sugerirInsumos(nome, insumos), [nome, insumos]);
   const pendentesSub = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe);
-  const ativos = insumos.filter(i => i.ativo !== false).filter(i => !soPendentes || (i.ehSubproduto && !i.subprodutoDe)).sort((a, b) => a.nome.localeCompare(b.nome));
-  async function add() {
-    if (!nome.trim()) return;
-    if (similares.some(s => s.motivo === "igual")) { if (!confirm("Já existe um insumo com esse nome. Cadastrar mesmo assim?")) return; }
-    const dim = dimensaoDeUnidade(unidadeBase) as FtDimensao;
-    const id = uid("ins"); const now = new Date().toISOString(); const c = parseMoeda(custo);
-    await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore({
-      id, restaurantId: rid, nome: UP(nome), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase,
-      custo: c, custoAtualizadoEm: c > 0 ? now : null, historicoCusto: c > 0 ? [{ custo: c, data: now, por: meId || null }] : [],
-      fornecedorPadrao: null, reutilizavel: false, aliases: [], ativo: true,
-    } as FtInsumo));
-    setNome(""); setCusto("");
-  }
+  const buscaNorm = normalizarNome(busca);
+  const ativos = insumos.filter(i => i.ativo !== false)
+    .filter(i => !soPendentes || (i.ehSubproduto && !i.subprodutoDe))
+    .filter(i => !buscaNorm || normalizarNome(i.nome).includes(buscaNorm))
+    .sort((a, b) => a.nome.localeCompare(b.nome));
   return (
     <div className="space-y-4">
-      <FormCard titulo="Novo insumo">
-        <div className="grid grid-cols-1 sm:grid-cols-[1fr_160px_150px_auto] gap-3 items-end">
-          <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Sal refinado" />
-          <Select label="Unidade base" value={unidadeBase} onChange={e => setUnidadeBase(e.target.value)}>
-            {UNIDADES.filter(u => ["kg", "g", "L", "ml", "un"].includes(u.unidade)).map(u => <option key={u.unidade} value={u.unidade}>{u.label} ({DIMENSAO_LABEL[u.dimensao]})</option>)}
-          </Select>
-          <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
-          <Button onClick={add}>+ Adicionar</Button>
-        </div>
-        {similares.length > 0 && nome.trim() && <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Parecido com: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")} — confira pra não duplicar.</div>}
-      </FormCard>
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar insumo pelo nome…" className="w-full h-10 pl-9 pr-8 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+        {busca && <button type="button" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm">✕</button>}
+      </div>
       {(nPrecoNovo > 0 || nSugeridos > 0) && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
           <span className="text-sm text-emerald-800 dark:text-emerald-200">🧾 {nPrecoNovo > 0 ? `${nPrecoNovo} preço(s) novo(s) recebido(s)` : "Recebimento"}{nSugeridos > 0 ? ` · ${nSugeridos} produto(s) pra vincular` : ""}.</span>
@@ -889,7 +881,7 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
           <button type="button" onClick={() => setSoPendentes(s => !s)} className="ml-auto text-xs font-medium px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40">{soPendentes ? "Ver todos" : "Ver só pendentes"}</button>
         </div>
       )}
-      <ListaCard vazio={ativos.length === 0} vazioTexto={soPendentes ? "Nenhum subproduto pendente." : "Nenhum insumo cadastrado."}>
+      <ListaCard vazio={ativos.length === 0} vazioTexto={busca ? "Nenhum insumo com esse nome." : soPendentes ? "Nenhum subproduto pendente." : "Nenhum insumo cadastrado."}>
         {ativos.map(ins => (
           <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar insumo">
             <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
