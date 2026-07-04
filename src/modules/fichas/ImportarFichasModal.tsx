@@ -502,31 +502,33 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
 
   const renderCard = (f: FichaRev) => (
     <div key={f.id} className={`rounded-xl border overflow-hidden ${f.incluir ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-50"}`}>
-      <div className="p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex items-center gap-2 flex-wrap">
+      <div className="p-2.5 bg-gray-50 dark:bg-gray-800/40 border-b border-gray-100 dark:border-gray-800 space-y-1.5">
+        {/* Linha 1: nome + info */}
+        <div className="flex items-center gap-2">
           <input type="checkbox" checked={f.incluir} onChange={e => setFicha(f.id, { incluir: e.target.checked })} className="w-4 h-4 accent-indigo-600 shrink-0" title="incluir esta receita" />
-          <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-[200px] basis-1/2 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
+          <input value={f.nome} onChange={e => setFicha(f.id, { nome: e.target.value.toUpperCase() })} className="flex-1 min-w-0 bg-transparent text-sm font-semibold outline-none border-b border-dashed border-gray-300 dark:border-gray-600 focus:border-solid focus:border-indigo-500 px-0.5 dark:text-gray-100" />
           {f.ehSubficha && (usoComoSub[f.id] || 0) > 0 && <span className="text-[11px] text-gray-400 shrink-0 cursor-help underline decoration-dotted underline-offset-2" title={`Usada em: ${(preparosPorSub[f.id] || []).join(", ") || "—"}`}>usada em {usoComoSub[f.id]}</span>}
-          <label className="flex items-center gap-1 text-[11px] text-gray-600 dark:text-gray-300 shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
-          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="text-xs px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
           {f.ehSubficha && f.ingredientes.length === 0 && <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0" title="Sem ingredientes — vai ficar pendente pra montar na tela de Fichas">⏳ pendente</span>}
           <span className="text-[11px] text-gray-500 shrink-0">rende {fmt3(f.rendimento.qtd)} {labelUnidade(f.rendimento.unidade)}</span>
           <button type="button" onClick={() => setFicha(f.id, { revisar: !f.revisar })} title="Marcar que esta ficha precisa de revisão" className={`text-[13px] shrink-0 leading-none ${f.revisar ? "text-rose-600" : "text-gray-300 hover:text-rose-400"}`}>⚑</button>
         </div>
-        {f.ehSubficha && (
-          <div className="mt-1.5 pl-6">
-            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v === "__subproduto__") abrirEscolher(f.id, "subproduto"); else if (v === "__mesclar__") abrirEscolher(f.id, "mesclar"); }} className="text-xs px-1.5 py-1 rounded border border-purple-300 dark:border-purple-800 bg-white dark:bg-gray-900 text-purple-700 dark:text-purple-300 max-w-[260px]">
+        {/* Linha 2: chips (tipo, categoria, reclassificar) */}
+        <div className="flex items-center gap-1.5 flex-wrap pl-6">
+          <label className="h-8 flex items-center gap-1.5 px-3 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300 cursor-pointer shrink-0"><input type="checkbox" checked={f.ehSubficha} onChange={e => setFicha(f.id, { ehSubficha: e.target.checked })} className="w-3.5 h-3.5 accent-indigo-600" />subficha</label>
+          <select value={f.categoriaId || ""} onChange={e => setFicha(f.id, { categoriaId: e.target.value || null })} className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 border-0 text-gray-600 dark:text-gray-300 shrink-0 max-w-[140px] cursor-pointer"><option value="">sem categoria</option>{catsAtivas.filter(c => (c.tipo || "ficha") === (f.ehSubficha ? "subficha" : "ficha")).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}</select>
+          {f.ehSubficha && (
+            <select value="" onChange={e => { const v = e.target.value; if (v === "__dissolver__") abrirDissolver(f); else if (v === "__subproduto__") abrirEscolher(f.id, "subproduto"); else if (v === "__mesclar__") abrirEscolher(f.id, "mesclar"); }} className="h-8 px-3 text-xs rounded-full bg-purple-50 dark:bg-purple-900/20 border-0 text-purple-700 dark:text-purple-300 shrink-0 max-w-[180px] cursor-pointer">
               <option value="">reclassificar…</option>
               <option value="__dissolver__">↑ não é subficha (vira ingrediente)</option>
               {fichas.filter(o => o.id !== f.id).length > 0 && <option value="__subproduto__">↦ é subproduto de outra ficha</option>}
               {subfichas.filter(o => o.id !== f.id).length > 0 && <option value="__mesclar__">⇄ é a mesma que outra subficha</option>}
             </select>
-          </div>
-        )}
+          )}
+        </div>
         {f.revisar && (
-          <div className="mt-1.5 pl-6 flex items-center gap-2">
+          <div className="flex items-center gap-2 pl-6">
             <span className="text-[11px] text-rose-600 shrink-0">⚑ revisar:</span>
-            <input value={f.revisarMotivo || ""} onChange={e => setFicha(f.id, { revisarMotivo: e.target.value })} placeholder="motivo (ex: rendimento errado, falta ingrediente…)" className="flex-1 text-xs px-2 py-1 rounded border border-rose-300 dark:border-rose-800 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            <input value={f.revisarMotivo || ""} onChange={e => setFicha(f.id, { revisarMotivo: e.target.value })} placeholder="motivo (ex: rendimento errado, falta ingrediente…)" className="flex-1 text-xs px-2 py-1.5 rounded-lg border border-rose-300 dark:border-rose-800 bg-white dark:bg-gray-900 dark:text-gray-100" />
           </div>
         )}
       </div>
