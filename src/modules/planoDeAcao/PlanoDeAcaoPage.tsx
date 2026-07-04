@@ -13,10 +13,12 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
 import { ACAO_STATUS_LABEL } from "../../core/types";
-import type { Acao, PlanoAcaoStatus, Pessoa } from "../../core/types";
+import type { Acao, FtFicha, FtPlanoProducao, PlanoAcaoStatus, Pessoa } from "../../core/types";
+import { labelUnidade } from "../fichas/unidades";
 import { AcaoModal } from "./AcaoModal";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
 const PRIO_BORDA: Record<string, string> = { alta: "border-rose-500", media: "border-amber-500", baixa: "border-gray-400" };
 const fmtDia = (ymd?: string | null) => { if (!ymd) return ""; const d = new Date(ymd + "T12:00:00"); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }); };
 
@@ -41,6 +43,8 @@ export function PlanoDeAcaoPage() {
 
   const [acoes, setAcoes] = useState<Acao[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [planos, setPlanos] = useState<FtPlanoProducao[]>([]);
+  const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [loading, setLoading] = useState(true);
   const [busca, setBusca] = useState("");
   const [editing, setEditing] = useState<Acao | "new" | null>(null);
@@ -58,8 +62,35 @@ export function PlanoDeAcaoPage() {
     const u2 = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)), snap => {
       setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false));
     });
-    return () => { u1(); u2(); };
+    const u3 = onSnapshot(query(collection(db, "ftPlanosProducao"), where("restaurantId", "==", rid)), snap => {
+      setPlanos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as FtPlanoProducao).filter(p => p.ativo !== false));
+    });
+    const u4 = onSnapshot(query(collection(db, "ftFichas"), where("restaurantId", "==", rid)), snap => {
+      setFichas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as FtFicha));
+    });
+    return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);
+
+  // Produções atribuídas a mim e ainda não marcadas como produzidas (derivadas
+  // das Fichas Técnicas — o dono continua sendo o plano de produção).
+  const fichaById = useMemo(() => new Map(fichas.map(f => [f.id, f])), [fichas]);
+  const minhasProducoes = useMemo(() => {
+    const out: { plano: FtPlanoProducao; item: FtPlanoProducao["itens"][number]; ficha?: FtFicha }[] = [];
+    for (const plano of planos) {
+      if (plano.status === "concluido") continue;
+      for (const item of plano.itens || []) {
+        if (item.responsavelId === me?.id && !item.produzidoEm) out.push({ plano, item, ficha: fichaById.get(item.fichaId) });
+      }
+    }
+    return out.sort((a, b) => (a.plano.data || "").localeCompare(b.plano.data || ""));
+  }, [planos, me?.id, fichaById]);
+
+  async function marcarProduzido(plano: FtPlanoProducao, itemId: string) {
+    const now = new Date().toISOString();
+    const itens = (plano.itens || []).map(i => i.id === itemId ? { ...i, produzidoEm: now, produzidoPorId: me?.id || null, produzidoPorNome: me?.nome || null } : i);
+    try { await updateDoc(doc(db, "ftPlanosProducao", plano.id), sanitizeForFirestore({ itens })); }
+    catch (e) { alert("Falha ao marcar produzido: " + (e instanceof Error ? e.message : String(e))); }
+  }
 
   const today = todayYmd();
   const bn = busca.trim().toLowerCase();
@@ -108,7 +139,7 @@ export function PlanoDeAcaoPage() {
 
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-          {([{ k: "minhas", l: `🙋 Minhas ações${minhasAbertas ? ` (${minhasAbertas})` : ""}` }, { k: "kanban", l: "📊 Todas (Kanban)" }] as const).map(t => (
+          {([{ k: "minhas", l: `🙋 Minhas ações${minhasAbertas + minhasProducoes.length ? ` (${minhasAbertas + minhasProducoes.length})` : ""}` }, { k: "kanban", l: "📊 Todas (Kanban)" }] as const).map(t => (
             <button key={t.k} type="button" onClick={() => setAba(t.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === t.k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"}`}>{t.l}</button>
           ))}
         </div>
@@ -116,22 +147,52 @@ export function PlanoDeAcaoPage() {
 
       {/* MINHAS AÇÕES */}
       {abaEfetiva === "minhas" && (
-        <div className="space-y-2">
+        <div className="space-y-4">
           {loading ? <div className="text-sm text-gray-500">Carregando…</div>
-            : minhas.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhuma ação atribuída a você.{podeCriar ? " Crie uma em “+ Nova ação”." : ""}</div>
-            ) : minhas.map(a => (
-              <button key={a.id} type="button" onClick={() => setEditing(a)} className={`w-full text-left flex items-center gap-3 rounded-xl border-l-4 ${PRIO_BORDA[a.prioridade || "media"]} border-y border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/40 p-3 ${a.status === "concluida" || a.status === "cancelada" ? "opacity-60" : ""}`}>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{a.titulo}</div>
-                  <div className="text-[11px] text-gray-500 flex items-center gap-2 flex-wrap mt-0.5">
-                    <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{ACAO_STATUS_LABEL[a.status]}</span>
-                    {prazoBadge(a)}
+            : (minhas.length === 0 && minhasProducoes.length === 0) ? (
+              <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada atribuído a você.{podeCriar ? " Crie uma ação em “+ Nova ação”." : ""}</div>
+            ) : (
+              <>
+                {minhasProducoes.length > 0 && (
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🍳 Produções atribuídas a você ({minhasProducoes.length})</div>
+                    <div className="space-y-2">
+                      {minhasProducoes.map(({ plano, item, ficha }) => {
+                        const un = ficha?.ehSubficha ? labelUnidade(ficha.rendimento.unidade) : "porções";
+                        return (
+                          <div key={item.id} className="flex items-center gap-3 rounded-xl border-l-4 border-amber-500 border-y border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">🍳 {ficha ? ficha.nome.toUpperCase() : "(ficha)"} <span className="text-gray-400 font-normal">· {fmtQtd(item.qtd)} {un}</span></div>
+                              <div className="text-[11px] text-gray-500 mt-0.5">{plano.nome || "Produção"}{plano.data ? ` · ${new Date(plano.data + "T12:00:00").toLocaleDateString("pt-BR")}` : ""}</div>
+                            </div>
+                            <Button size="sm" onClick={() => void marcarProduzido(plano, item.id)}>✓ Produzi</Button>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-                <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0">Abrir →</span>
-              </button>
-            ))}
+                )}
+                {minhas.length > 0 && (
+                  <div>
+                    {minhasProducoes.length > 0 && <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🎯 Ações</div>}
+                    <div className="space-y-2">
+                      {minhas.map(a => (
+                        <button key={a.id} type="button" onClick={() => setEditing(a)} className={`w-full text-left flex items-center gap-3 rounded-xl border-l-4 ${PRIO_BORDA[a.prioridade || "media"]} border-y border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/40 p-3 ${a.status === "concluida" || a.status === "cancelada" ? "opacity-60" : ""}`}>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{a.titulo}</div>
+                            <div className="text-[11px] text-gray-500 flex items-center gap-2 flex-wrap mt-0.5">
+                              <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{ACAO_STATUS_LABEL[a.status]}</span>
+                              {prazoBadge(a)}
+                            </div>
+                          </div>
+                          <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0">Abrir →</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
         </div>
       )}
 

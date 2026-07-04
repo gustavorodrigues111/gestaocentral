@@ -5426,6 +5426,9 @@ export type FtPlanoItem = {
   responsavelId?: string | null;       // pessoa (produtor) responsável — pra tela do responsável no futuro
   rendimentoReal?: number | null;      // quanto REALMENTE saiu (custo real = custo do lote ÷ real)
   validadeDias?: number | null;        // shelf-life pra etiqueta (Fase 4)
+  produzidoEm?: string | null;         // ISO — quando a pessoa marcou "produzi" (deriva no Plano de Ação)
+  produzidoPorId?: string | null;      // pessoa que marcou como produzido
+  produzidoPorNome?: string | null;
 };
 
 // Config do módulo Fichas Técnicas por restaurante (equipe de produção etc).
