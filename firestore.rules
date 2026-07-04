@@ -137,6 +137,7 @@ service cloud.firestore {
     match /ftInsumos/{id}              { allow read, write: if authed(); }
     match /ftFichas/{id}               { allow read, write: if authed(); }
     match /ftCategorias/{id}           { allow read, write: if authed(); }
+    match /ftUnidades/{id}             { allow read, write: if authed(); }
     match /ftPlanosProducao/{id}       { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }

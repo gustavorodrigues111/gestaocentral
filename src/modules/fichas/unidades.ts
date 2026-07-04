@@ -23,6 +23,24 @@ export const UNIDADES: UnidadeDef[] = [
 
 const BY_UNIT = new Map(UNIDADES.map(u => [u.unidade, u]));
 
+// Unidades base padrão oferecidas no cadastro de insumo.
+const BASE_PADRAO = ["kg", "g", "L", "ml", "un"];
+const customKeys = new Set<string>();
+// Registra unidades customizadas (ex.: "maço", "cabeça") — tratadas como contagem
+// (dimensão unidade, fator 1), como porção/fatia. Idempotente.
+export function registrarUnidadesCustom(list: { unidade: string; label?: string }[]): void {
+  for (const c of list) {
+    const u = (c.unidade || "").trim();
+    if (!u || BY_UNIT.has(u)) continue;
+    const def: UnidadeDef = { unidade: u, dimensao: "unidade", fator: 1, label: (c.label || u).trim() };
+    UNIDADES.push(def); BY_UNIT.set(u, def); customKeys.add(u);
+  }
+}
+// Unidades oferecidas como BASE de um insumo: padrão + customizadas.
+export function unidadesBase(): UnidadeDef[] {
+  return UNIDADES.filter(u => BASE_PADRAO.includes(u.unidade) || customKeys.has(u.unidade));
+}
+
 export const DIMENSAO_LABEL: Record<FtDimensao, string> = {
   massa: "massa", volume: "volume", unidade: "unidade",
 };

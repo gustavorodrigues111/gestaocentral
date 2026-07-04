@@ -15,7 +15,7 @@ import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
 import type { FtCategoria, FtCategoriaTipo, FtDimensao, FtFicha, FtHistoricoCusto, FtIngrediente, FtInsumo, FtInsumoVariacao, FtSubproduto, FtVinculoRecebimento, RecebimentoNota } from "../../core/types";
 import { agruparProdutos, coletarPrecos, custoNaBase, fatorAutomatico, impactoNoCmv, precosPorFornecedor, reconciliar, type LinhaReconc } from "./recebimentoPrecos";
-import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, unidadeSugerida, unidadesDaDimensao, unidadesRendimento, UNIDADES } from "./unidades";
+import { DIMENSAO_LABEL, dimensaoDeUnidade, labelUnidade, paraBase, registrarUnidadesCustom, unidadeSugerida, unidadesBase, unidadesDaDimensao, unidadesRendimento } from "./unidades";
 import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
@@ -34,6 +34,17 @@ const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slic
 const UP = (s: string) => (s || "").trim().toUpperCase();
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
+
+// Cria uma unidade de medida customizada (ex.: maço) e a registra pra uso imediato.
+async function criarUnidadeMedida(rid: string): Promise<string | null> {
+  const nome = window.prompt("Nova unidade de medida (ex: maço, cabeça, bandeja, pote):");
+  const u = (nome || "").trim();
+  if (!u) return null;
+  const id = uid("und");
+  await setDoc(doc(db, "ftUnidades", id), sanitizeForFirestore({ id, restaurantId: rid, unidade: u, label: u, ativo: true }));
+  registrarUnidadesCustom([{ unidade: u, label: u }]);
+  return u;
+}
 
 type Tab = "pratos" | "bases" | "insumos";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
@@ -76,6 +87,7 @@ export function FichasPage() {
   const [importando, setImportando] = useState(false);
   const [criandoInsumo, setCriandoInsumo] = useState(false);
   const [catModal, setCatModal] = useState<FtCategoriaTipo | null>(null);
+  const [, setUnidadesTick] = useState(0); // força re-render quando chegam unidades custom
   const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
 
   const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
@@ -103,7 +115,9 @@ export function FichasPage() {
       s => setRecebimentos(s.docs.map(d => ({ id: d.id, ...d.data() } as RecebimentoNota))));
     const u5 = onSnapshot(query(collection(db, "ftVinculosRecebimento"), where("restaurantId", "==", rid)),
       s => setVinculos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtVinculoRecebimento))));
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u6 = onSnapshot(query(collection(db, "ftUnidades"), where("restaurantId", "==", rid)),
+      s => { registrarUnidadesCustom(s.docs.map(d => d.data() as { unidade: string; label?: string })); setUnidadesTick(t => t + 1); });
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, [rid]);
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
@@ -891,8 +905,9 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriad
         <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder="ex: SAL REFINADO" />
         {similares.length > 0 && <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2 text-[11px] text-amber-800 dark:text-amber-200">Já existe parecido: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")}. Confira pra não duplicar.</div>}
         <div className="grid grid-cols-2 gap-2">
-          <Select label="Unidade base" value={unidadeBase} onChange={e => setUnidadeBase(e.target.value)}>
-            {UNIDADES.filter(u => ["kg", "g", "L", "ml", "un"].includes(u.unidade)).map(u => <option key={u.unidade} value={u.unidade}>{u.label} ({DIMENSAO_LABEL[u.dimensao]})</option>)}
+          <Select label="Unidade base" value={unidadeBase} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(rid); if (nu) setUnidadeBase(nu); } else setUnidadeBase(e.target.value); }}>
+            {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
+            <option value="__nova__">+ criar unidade…</option>
           </Select>
           <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
         </div>
@@ -1181,8 +1196,9 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
         <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} />
         <div className="grid grid-cols-2 gap-2">
           <CampoMoeda label={`Custo por ${labelUnidade(unidadeBase)} (inteiro)`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
-          <Select label="Unidade base" value={unidadeBase} onChange={e => trocarUnidade(e.target.value)}>
-            {UNIDADES.filter(u => ["kg", "g", "L", "ml", "un"].includes(u.unidade)).map(u => <option key={u.unidade} value={u.unidade}>{u.label} ({DIMENSAO_LABEL[u.dimensao]})</option>)}
+          <Select label="Unidade base" value={unidadeBase} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(insumo.restaurantId); if (nu) trocarUnidade(nu); } else trocarUnidade(e.target.value); }}>
+            {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
+            <option value="__nova__">+ criar unidade…</option>
           </Select>
         </div>
         {mudouUnidade && !mudouDim && (
