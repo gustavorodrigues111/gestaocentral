@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -8,9 +8,10 @@ import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { todayYmd } from "../../core/utils/date";
-import { REUNIAO_TIPO_LABEL } from "../../core/types";
-import type { AcaoReuniao, AcaoStatus, Cargo, Empregado, EventoTrilha, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
+import { ACAO_STATUS_LABEL, REUNIAO_TIPO_LABEL } from "../../core/types";
+import type { Acao, AcaoReuniao, AcaoStatus, Empregado, EventoTrilha, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
+import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
 
 type Props = {
   reuniao: Reuniao;
@@ -25,22 +26,27 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const { pessoa: me } = useAuth();
   const [tab, setTab] = useState<Tab>("pauta");
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [cargos, setCargos] = useState<Cargo[]>([]);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Form states (sincronizados com a reuniao real-time)
   const [novoTopico, setNovoTopico] = useState("");
   const [ataDraft, setAtaDraft] = useState(reuniao.ata || "");
-  const [novaAcaoDesc, setNovaAcaoDesc] = useState("");
-  const [novaAcaoResp, setNovaAcaoResp] = useState<string>("");
-  const [novaAcaoPrazo, setNovaAcaoPrazo] = useState<string>("");
   const [puxarAberto, setPuxarAberto] = useState(false);
   const [gerarTipo, setGerarTipo] = useState<"ideia" | "ocorrencia" | null>(null);
   const [geradosIdeias, setGeradosIdeias] = useState<Ideia[]>([]);
   const [geradosOcorrencias, setGeradosOcorrencias] = useState<Ocorrencia[]>([]);
   const [virarTarefaAcao, setVirarTarefaAcao] = useState<AcaoReuniao | null>(null);
   const [virarTarefaPauta, setVirarTarefaPauta] = useState<PautaItem | null>(null);
+  const [virarAcaoPauta, setVirarAcaoPauta] = useState<PautaItem | null>(null);
+  const [novaAcaoAberta, setNovaAcaoAberta] = useState(false);
+  const [acoesReuniao, setAcoesReuniao] = useState<Acao[]>([]);   // ações (Plano de Ação) geradas nesta reunião
+
+  useEffect(() => {
+    const u = onSnapshot(query(collection(db, "acoes"), where("origem.reuniaoId", "==", reuniao.id)), snap =>
+      setAcoesReuniao(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Acao).filter(a => a.ativo !== false)));
+    return () => u();
+  }, [reuniao.id]);
 
   // Ideias e ocorrências geradas NESTA reunião (lookup pra exibir na ata)
   useEffect(() => {
@@ -67,16 +73,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
     return () => unsub();
   }, [restaurantId]);
 
-  useEffect(() => {
-    const q = query(collection(db, "cargos"), where("restaurantId", "==", restaurantId));
-    const unsub = onSnapshot(q, (snap) => {
-      setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo));
-    });
-    return () => unsub();
-  }, [restaurantId]);
 
-  const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
-  const empMap = Object.fromEntries(empregados.map(e => [e.id, e]));
 
   async function patchReuniao(patch: Partial<Reuniao>) {
     setSaving(true);
@@ -287,23 +284,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   }
 
   // ── Ações ────────────────────────────────────────────────────────────────
-  async function adicionarAcao() {
-    const desc = novaAcaoDesc.trim();
-    if (!desc) return;
-    const respEmp = novaAcaoResp ? empMap[novaAcaoResp] : null;
-    const nova: AcaoReuniao = {
-      id: `a_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      descricao: desc,
-      responsavelEmpregadoId: respEmp?.id || null,
-      responsavelNome: respEmp?.nome,
-      prazo: novaAcaoPrazo || null,
-      status: "pendente",
-    };
-    await patchReuniao({ acoes: [...(reuniao.acoes || []), nova] });
-    setNovaAcaoDesc("");
-    setNovaAcaoResp("");
-    setNovaAcaoPrazo("");
-  }
   async function setAcaoStatus(id: string, status: AcaoStatus) {
     const novaList = (reuniao.acoes || []).map(a =>
       a.id === id
@@ -315,6 +295,23 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   async function removerAcao(id: string) {
     if (!confirm("Remover essa ação?")) return;
     await patchReuniao({ acoes: (reuniao.acoes || []).filter(a => a.id !== id) });
+  }
+
+  // Depois de transformar um item da pauta em Ação (Plano de Ação): marca o item
+  // e registra no log da ocorrência/ideia de origem (se o item veio de uma).
+  async function aposVirarAcaoPauta(t: PautaItem, acao: Acao) {
+    await patchReuniao({ pauta: (reuniao.pauta || []).map(x => x.id === t.id ? { ...x, acaoIdGerada: acao.id, discutido: true } : x) });
+    const now = new Date().toISOString();
+    const lg = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id, autorNome: me?.nome, tipo: "comentario" as const, texto: `Virou ação na reunião "${reuniao.titulo}": "${acao.titulo}"${acao.responsavelNome ? ` — resp. ${acao.responsavelNome}` : ""}` };
+    const alvo = t.ocorrenciaId ? { col: "ocorrencias", id: t.ocorrenciaId, ts: "atualizadaEm" } : t.ideiaId ? { col: "ideias", id: t.ideiaId, ts: "atualizadoEm" } : null;
+    if (alvo) {
+      try {
+        const ref = doc(db, alvo.col, alvo.id);
+        const snap = await getDoc(ref);
+        const prev = snap.exists() ? ((snap.data() as { log?: unknown[] }).log || []) : [];
+        await updateDoc(ref, sanitizeForFirestore({ log: [...prev, lg], acaoIdGerada: acao.id, [alvo.ts]: now }));
+      } catch { /* origem pode ter sido removida — segue */ }
+    }
   }
 
   // Cria evento de Trilha pra empregado a partir de uma ação concluída
@@ -345,17 +342,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
     }
   }
 
-  // Empregados ativos por área
-  const empregadosOrdenados = [...empregados]
-    .filter(e => e.estaAtivo)
-    .sort((a, b) => {
-      const ca = cargoMap[a.cargoId];
-      const cb = cargoMap[b.cargoId];
-      const areaA = ca?.area || "ZZ";
-      const areaB = cb?.area || "ZZ";
-      if (areaA !== areaB) return areaA.localeCompare(areaB);
-      return a.nome.localeCompare(b.nome);
-    });
 
   const isPlanejada = reuniao.status === "planejada";
   const isRealizada = reuniao.status === "realizada";
@@ -440,7 +426,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           {([
             ["pauta", `📋 Pauta (${reuniao.pauta?.length || 0})`, true],
             ["ata",   "📝 Ata",                                    !!reuniao.ata],
-            ["acoes", `📌 Ações (${(reuniao.acoes || []).filter(a => a.status === "pendente").length} pend.)`, (reuniao.acoes || []).length > 0],
+            ["acoes", `🎯 Ações (${acoesReuniao.filter(a => a.status === "aberta" || a.status === "em_andamento").length + (reuniao.acoes || []).filter(a => a.status === "pendente").length})`, true],
           ] as const).filter(([_, __, mostrar]) => mostrar).map(([id, label]) => (
             <button
               key={id}
@@ -490,11 +476,15 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                         {t.ideiaId && <span className="text-[10px] text-indigo-600 dark:text-indigo-400">💡 Veio do Banco de Ideias</span>}
                         {t.ocorrenciaId && <span className="text-[10px] text-rose-600 dark:text-rose-400">🚨 Veio das Ocorrências</span>}
                         {t.tarefaIdGerada && <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded">✓ Virou tarefa</span>}
+                        {t.acaoIdGerada && <span className="text-[10px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded">🎯 Virou ação</span>}
                       </div>
                     </div>
                   </div>
                   {podeConfig && (
                     <div className="flex gap-1 flex-wrap">
+                      {!t.acaoIdGerada && (
+                        <Button variant="secondary" size="sm" onClick={() => setVirarAcaoPauta(t)}>🎯 Virar ação</Button>
+                      )}
                       {!t.tarefaIdGerada && (
                         <Button variant="secondary" size="sm" onClick={() => setVirarTarefaPauta(t)}>📋 Virar tarefa</Button>
                       )}
@@ -610,9 +600,30 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
 
         {/* Tab: Ações */}
         {tab === "acoes" && (
-          <div className="space-y-2">
-            {(reuniao.acoes || []).length === 0 && (
-              <div className="text-sm text-gray-500 italic">Sem ações registradas. Adicione abaixo o que ficou de pendente.</div>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">🎯 Ações desta reunião</h4>
+              {podeConfig && <Button size="sm" onClick={() => setNovaAcaoAberta(true)}>🎯 Nova ação</Button>}
+            </div>
+            {acoesReuniao.length === 0 ? (
+              <p className="text-xs text-gray-500 dark:text-gray-400 italic">Nenhuma ação ainda. Use “🎯 Virar ação” num item da pauta, ou “🎯 Nova ação” pra registrar uma decisão nova.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {acoesReuniao.map(a => (
+                  <div key={a.id} className="border rounded-lg p-2.5 bg-indigo-50/40 dark:bg-indigo-900/10 border-indigo-200 dark:border-indigo-800">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{a.titulo}</div>
+                    <div className="text-xs text-gray-500 flex items-center gap-2 flex-wrap mt-0.5">
+                      <span className="px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-gray-800">{ACAO_STATUS_LABEL[a.status]}</span>
+                      {a.responsavelNome && <span>👤 {a.responsavelNome}</span>}
+                      {a.prazo && <span>📅 {new Date(a.prazo + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
+                    </div>
+                  </div>
+                ))}
+                <p className="text-[10px] text-gray-400">Acompanhe e mude o status no módulo Plano de Ação.</p>
+              </div>
+            )}
+            {(reuniao.acoes || []).length > 0 && (
+              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 pt-3 border-t border-gray-200 dark:border-gray-800">Ações antigas (registradas na reunião)</h4>
             )}
             {(reuniao.acoes || []).map((a) => {
               const stCls = a.status === "feito"
@@ -657,38 +668,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
               );
             })}
 
-            {podeConfig && (
-              <div className="border-t border-gray-200 dark:border-gray-800 pt-3 mt-2 space-y-2">
-                <Input
-                  value={novaAcaoDesc}
-                  onChange={(e) => setNovaAcaoDesc(e.target.value)}
-                  placeholder="+ Nova ação"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <select
-                    value={novaAcaoResp}
-                    onChange={(e) => setNovaAcaoResp(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-                  >
-                    <option value="">Sem responsável</option>
-                    {empregadosOrdenados.map(e => (
-                      <option key={e.id} value={e.id}>
-                        {e.nome} ({cargoMap[e.cargoId]?.area || "?"})
-                      </option>
-                    ))}
-                  </select>
-                  <Input
-                    type="date"
-                    value={novaAcaoPrazo}
-                    onChange={(e) => setNovaAcaoPrazo(e.target.value)}
-                    placeholder="Prazo"
-                  />
-                </div>
-                <div className="flex justify-end">
-                  <Button onClick={adicionarAcao} disabled={!novaAcaoDesc.trim()}>+ Adicionar ação</Button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -712,6 +691,23 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           tipo={gerarTipo}
           onClose={() => setGerarTipo(null)}
           onCriar={criarGerado}
+        />
+      )}
+      {virarAcaoPauta && (
+        <VirarAcaoModal
+          rid={restaurantId} meId={me?.id} meNome={me?.nome}
+          origem={{ tipo: "reuniao", refId: virarAcaoPauta.ocorrenciaId || virarAcaoPauta.ideiaId || virarAcaoPauta.id, reuniaoId: reuniao.id, label: virarAcaoPauta.titulo }}
+          tituloInicial={virarAcaoPauta.titulo} descricaoInicial={virarAcaoPauta.descricao}
+          onClose={() => setVirarAcaoPauta(null)}
+          onCriada={(acao) => aposVirarAcaoPauta(virarAcaoPauta, acao)}
+        />
+      )}
+      {novaAcaoAberta && (
+        <VirarAcaoModal
+          rid={restaurantId} meId={me?.id} meNome={me?.nome}
+          origem={{ tipo: "reuniao", reuniaoId: reuniao.id, label: reuniao.titulo }}
+          onClose={() => setNovaAcaoAberta(false)}
+          onCriada={() => { /* a lista atualiza pelo onSnapshot */ }}
         />
       )}
       {virarTarefaAcao && me && (

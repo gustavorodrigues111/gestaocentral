@@ -1445,6 +1445,7 @@ export type PautaItem = {
   notas?: string;                // notas específicas do tópico — vira "ata" implícita
   // Se o tópico foi convertido em tarefa formal no Gestor de Tarefas
   tarefaIdGerada?: string | null;
+  acaoIdGerada?: string | null;  // ação gerada (Plano de Ação) a partir deste item
 };
 
 export type AcaoStatus = "pendente" | "feito" | "cancelado";
