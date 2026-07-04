@@ -21,6 +21,8 @@ import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
 import { ProducaoView } from "./FichaProducao";
+import { CustoCmvView, flatCardapio, type CardItem } from "./FichaCusto";
+import type { CardapioEstruturado } from "../../core/types";
 
 // ─── utils ──────────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -118,6 +120,8 @@ export function FichasPage() {
   const { can } = useCanAcao(rid || "");
   const [tab, setTab] = useState<Tab>("pratos");
   const [modo, setModo] = useState<"ver" | "cadastro">("cadastro");
+  const [verModo, setVerModo] = useState<"producao" | "custo">("producao");
+  const [cardapio, setCardapio] = useState<CardItem[]>([]);
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [categorias, setCategorias] = useState<FtCategoria[]>([]);
@@ -173,7 +177,9 @@ export function FichasPage() {
       s => setVinculos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtVinculoRecebimento))));
     const u6 = onSnapshot(query(collection(db, "ftUnidades"), where("restaurantId", "==", rid)),
       s => { registrarUnidadesCustom(s.docs.map(d => d.data() as { unidade: string; label?: string })); setUnidadesTick(t => t + 1); });
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = onSnapshot(doc(db, "cardapioEstruturado", rid),
+      s => setCardapio(flatCardapio(s.exists() ? (s.data() as CardapioEstruturado) : null)));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [rid]);
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
@@ -231,7 +237,17 @@ export function FichasPage() {
       )}
 
       {!emCadastro ? (
-        <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />
+        <div className="space-y-3">
+          {can("fichas", "cardapio") && (
+            <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+              <TabBtn ativo={verModo === "producao"} onClick={() => setVerModo("producao")}>👩‍🍳 Produção</TabBtn>
+              <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>
+            </div>
+          )}
+          {verModo === "custo" && can("fichas", "cardapio")
+            ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} />
+            : <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />}
+        </div>
       ) : (<>
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
