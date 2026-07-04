@@ -901,8 +901,8 @@ function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos,
   const [editar, setEditar] = useState<FtInsumo | null>(null);
   const subs = insumos.filter(i => i.ativo !== false && i.ehSubproduto);
   const usoMap = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") m.set(ing.refId, (m.get(ing.refId) || 0) + 1); }
+    const m = new Map<string, string[]>();
+    for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") { const a = m.get(ing.refId) || []; if (!a.includes(f.nome)) a.push(f.nome); m.set(ing.refId, a); } }
     return m;
   }, [fichas]);
   // Resolve o preparo-pai; null se o vínculo aponta pra ficha/saída inexistente (quebrado).
@@ -918,7 +918,7 @@ function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos,
       <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saem de preparos · {subs.length}{nAtencao > 0 ? ` · ${nAtencao} pra resolver` : ""}</span></div>
       <ListaCard vazio={false} vazioTexto="">
         {lista.map(ins => {
-          const st = estado(ins); const pai = paiDe(ins); const uso = usoMap.get(ins.id) || 0;
+          const st = estado(ins); const pai = paiDe(ins); const uso = usoMap.get(ins.id) || [];
           const badge = st === "vinculado" ? { txt: "🔗 vinculado", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" }
             : st === "quebrado" ? { txt: "⚠ vínculo quebrado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" }
             : { txt: "⏳ sem vínculo", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
@@ -928,7 +928,9 @@ function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos,
                 <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0 ${st === "vinculado" ? "bg-orange-50 dark:bg-orange-900/20" : st === "quebrado" ? "bg-rose-50 dark:bg-rose-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>{st === "vinculado" ? "🔄" : st === "quebrado" ? "⚠" : "⏳"}</div>
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}<span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span></div>
-                  <div className="text-xs text-gray-500">{st === "vinculado" ? `de ${pai}` : st === "quebrado" ? "o preparo/saída sumiu — religue a outro" : "falta vincular ao preparo que o gera"} · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
+                  <div className="text-xs text-gray-500">{st === "vinculado" ? `de ${pai}` : st === "quebrado" ? "o preparo/saída sumiu — religue a outro" : "falta vincular ao preparo que o gera"} · {uso.length > 0
+                    ? <span className="cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${uso.slice(0, 40).join(", ")}${uso.length > 40 ? "…" : ""}`}>usado em {uso.length} ficha{uso.length === 1 ? "" : "s"}</span>
+                    : "não usado"}</div>
                 </div>
               </div>
               {st === "pendente"
