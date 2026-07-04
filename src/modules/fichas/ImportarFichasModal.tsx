@@ -84,6 +84,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const [pickAlvo, setPickAlvo] = useState<string | null>(null); // pk do insumo pra vincular/juntar
   const [buscaPick, setBuscaPick] = useState("");
   const [pickIns, setPickIns] = useState<string | null>(null); // insumo escolhido, aguardando variação
+  const [varPick, setVarPick] = useState<string | null>(null);  // pk aguardando escolha de variação (modal)
   // Ao fechar um sub-painel, restaura o scroll.
   useEffect(() => { if (!dissolver && !mescla && !escolher && !pickAlvo && scrollRef.current) scrollRef.current.scrollTop = scrollPos.current; }, [dissolver, mescla, escolher, pickAlvo]);
 
@@ -269,6 +270,12 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   const setVar = (k: string, vNorm: string, patch: Partial<VarInfo>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: p[k].variacoes.map(v => v.norm === vNorm ? { ...v, ...patch } : v) } }));
   // Cria uma variação NOVA no insumo (mesmo sem uso — vai ser cadastrada nele).
   const addVariacao = (k: string) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: [...p[k].variacoes, { norm: uid("v"), nome: "", fc: 100 }] } }));
+  // Reaproveita uma variação JÁ cadastrada no insumo (nome + fc), sem duplicar.
+  const addVariacaoExistente = (k: string, nome: string, fc: number) => setPrincipais(p => {
+    const ex = p[k].variacoes;
+    if (ex.some(v => norm(v.nome) === norm(nome))) return p;
+    return { ...p, [k]: { ...p[k], variacoes: [...ex, { norm: norm(nome) || uid("v"), nome: UP(nome), fc: fc > 0 ? fc : 100 }] } };
+  });
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
   const catTodas = (id: string, soSub?: boolean) => setFichas(prev => prev.map(f => (soSub === undefined || f.ehSubficha === soSub) ? { ...f, categoriaId: id || null } : f));
 
@@ -486,6 +493,20 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
     return { casado, novo, conferir, subs: subLista.length, insumos: principaisLista.length };
   }, [principaisLista, subLista]);
   const nSel = fichas.filter(f => f.incluir).length;
+  // A IA só reconhece INSUMO. Aqui cruzamos o nome do "principal" com subfichas
+  // e subprodutos já existentes (do lote ou do sistema) pra sugerir que talvez
+  // ele seja um deles — vira selo "talvez subficha/subproduto" e aparece 1º nos
+  // seletores de reclassificação.
+  const bate = (a: string, b: string) => { const x = norm(a), y = norm(b); return !!x && !!y && (x === y || (x.length >= 4 && y.length >= 4 && (x.includes(y) || y.includes(x)))); };
+  const sugReclass = useMemo(() => {
+    const m: Record<string, { subficha?: { id: string; nome: string }; subproduto?: { ficha: FtFicha; sp: FtSubproduto } }> = {};
+    for (const p of principaisLista) {
+      const sf = subfichasSistema.find(s => bate(s.nome, p.nome)) || fichas.find(s => s.ehSubficha && bate(s.nome, p.nome)) || undefined;
+      const sp = subprodutosSistema.find(({ sp }) => bate(sp.nome, p.nome));
+      if (sf || sp) m[p.key] = { subficha: sf, subproduto: sp };
+    }
+    return m;
+  }, [principaisLista, subfichasSistema, subprodutosSistema, fichas]); // eslint-disable-line react-hooks/exhaustive-deps
   // Split do wizard: passo 2 = subfichas, passo 3 = fichas finais (pratos/drinks).
   const subfichas = useMemo(() => fichas.filter(f => f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
   const fichasFinais = useMemo(() => fichas.filter(f => !f.ehSubficha).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
@@ -872,11 +893,19 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                             <option value="__novo__">+ criar novo insumo</option>
                             <option value="__pesquisar__">🔎 vincular a insumo existente…</option>
                           </select>
-                          <button type="button" onClick={() => addVariacao(p.key)} title="Adicionar variação deste insumo (ex.: SEM LIMPO)" className="h-8 px-3 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300 hover:text-indigo-600 shrink-0">+ variação</button>
-                          <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-0 shrink-0 max-w-[120px] cursor-pointer"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
-                          <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val.startsWith("exist:")) { const [, fid, sid] = val.split(":"); vincularSubprodutoExistente(p.key, fid, sid); } else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-0 shrink-0 max-w-[130px] cursor-pointer"><option value="">é subproduto…</option><option value="__pendente__">⏳ vincular depois</option>{subprodutosSistema.length > 0 && <optgroup label="já cadastrados">{subprodutosSistema.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{sp.nome} · de {ficha.nome}</option>)}</optgroup>}<optgroup label="criar subproduto em…">{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</optgroup></select>
+                          <button type="button" onClick={() => setVarPick(p.key)} title="Adicionar variação — escolher uma já cadastrada no insumo ou criar nova" className="h-8 px-3 rounded-full bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-300 hover:text-indigo-600 shrink-0">+ variação</button>
+                          <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-0 shrink-0 max-w-[120px] cursor-pointer"><option value="">é subficha…</option>{sugReclass[p.key]?.subficha && <optgroup label="sugerida"><option value={sugReclass[p.key].subficha!.id}>✨ {sugReclass[p.key].subficha!.nome}</option></optgroup>}<option value="__nova__">＋ criar nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
+                          <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val.startsWith("exist:")) { const [, fid, sid] = val.split(":"); vincularSubprodutoExistente(p.key, fid, sid); } else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="h-8 px-3 text-xs rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border-0 shrink-0 max-w-[130px] cursor-pointer"><option value="">é subproduto…</option>{sugReclass[p.key]?.subproduto && <optgroup label="sugerido"><option value={`exist:${sugReclass[p.key].subproduto!.ficha.id}:${sugReclass[p.key].subproduto!.sp.id}`}>✨ {sugReclass[p.key].subproduto!.sp.nome} · de {sugReclass[p.key].subproduto!.ficha.nome}</option></optgroup>}<option value="__pendente__">⏳ vincular depois</option>{subprodutosSistema.length > 0 && <optgroup label="já cadastrados">{subprodutosSistema.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{sp.nome} · de {ficha.nome}</option>)}</optgroup>}<optgroup label="criar subproduto em…">{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</optgroup></select>
                           {p.ehSubprodutoPendente && <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 shrink-0" title="Vira insumo-subproduto sem custo; vincule ao preparo na tela de Fichas">subproduto ⏳</span>}
                         </div>
+                        {/* Linha 3: pista de reclassificação (talvez não seja insumo) */}
+                        {sugReclass[p.key] && (
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                            <span className="text-gray-400">talvez seja:</span>
+                            {sugReclass[p.key].subficha && <button type="button" onClick={() => promoverParaSubficha(p.key, undefined, sugReclass[p.key].subficha!.id)} className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 hover:ring-1 hover:ring-purple-400">🧩 subficha “{sugReclass[p.key].subficha!.nome}”</button>}
+                            {sugReclass[p.key].subproduto && <button type="button" onClick={() => vincularSubprodutoExistente(p.key, sugReclass[p.key].subproduto!.ficha.id, sugReclass[p.key].subproduto!.sp.id)} className="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 hover:ring-1 hover:ring-orange-400">↦ subproduto “{sugReclass[p.key].subproduto!.sp.nome}”</button>}
+                          </div>
+                        )}
                       </div>
                       {p.variacoes.map(v => (
                         <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
@@ -888,7 +917,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                             <select value="" onChange={e => { if (e.target.value) mesclarVariacoes(p.key, v.norm, e.target.value); }} title="Esta variação é a mesma que outra deste insumo" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[96px]"><option value="">= mesma que…</option>{p.variacoes.filter(o => o.norm !== v.norm).map(o => <option key={o.norm} value={o.norm}>{o.nome}</option>)}</select>
                           )}
                           <button type="button" onClick={() => promoverVariacao(p.key, v.norm)} title="Não é variação — virar insumo próprio" className="text-[10px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400">é insumo ↑</button>
-                          <select value="" onChange={e => { const val = e.target.value; if (val === "__nova__") promoverParaSubficha(p.key, v.norm); else if (val) promoverParaSubficha(p.key, v.norm, val); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[100px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
+                          <select value="" onChange={e => { const val = e.target.value; if (val === "__nova__") promoverParaSubficha(p.key, v.norm); else if (val) promoverParaSubficha(p.key, v.norm, val); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 max-w-[100px]"><option value="">é subficha…</option><option value="__nova__">＋ criar nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
                           <button type="button" onClick={() => removerVariacao(p.key, v.norm)} title="Não é variação separada — tratar como o insumo base (o ingrediente continua na receita)" className="text-gray-400 hover:text-red-600 text-xs">✕</button>
                         </div>
                       ))}
@@ -942,6 +971,33 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
           </div>
         </div>
       )}
+      {varPick && (() => {
+        const p = principais[varPick];
+        const ins = p?.matchInsumoId ? insumos.find(i => i.id === p.matchInsumoId) : null;
+        const disp = (ins?.variacoes || []).filter(v => !p.variacoes.some(x => norm(x.nome) === norm(v.nome)));
+        return (
+          <Modal title="Adicionar variação" onClose={() => setVarPick(null)} maxWidth="max-w-sm">
+            <div className="space-y-3 text-sm">
+              <p className="text-gray-600 dark:text-gray-300">Variação de <strong>{p?.nome}</strong>{ins ? <> (insumo <strong>{ins.nome}</strong>)</> : ""}.</p>
+              {disp.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-xs font-semibold text-gray-500">Já cadastradas neste insumo</div>
+                  {disp.map(v => (
+                    <button key={v.id} type="button" onClick={() => { addVariacaoExistente(varPick, v.nome, v.fc); setVarPick(null); }} className="w-full text-left px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 flex items-center justify-between">
+                      <span className="font-medium text-gray-800 dark:text-gray-200">{v.nome}</span><span className="text-[11px] text-gray-400">aprov. {v.fc}%</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {ins && disp.length === 0 && <div className="text-xs text-gray-400 italic">Este insumo ainda não tem variações cadastradas.</div>}
+              {!ins && <div className="text-xs text-gray-400 italic">Vincule a um insumo pra reaproveitar variações existentes.</div>}
+              <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
+                <Button onClick={() => { addVariacao(varPick); setVarPick(null); }}>＋ criar nova variação</Button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </Modal>
   );
 }
