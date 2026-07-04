@@ -5375,6 +5375,23 @@ export type FtInsumo = {
 // Categoria criada pelo usuário. Escopo por GRUPO: "ficha" = fichas finais
 // (divisão do cardápio, pro CMV) · "subficha" = bases (molhos, caldos…).
 // Legado sem tipo é tratado como "ficha".
+// Plano de produção em lote: várias fichas + quanto de cada, com responsável e
+// dia. Gera a lista consolidada de insumos (compras) e o que produzir.
+export type FtPlanoItem = { id: string; fichaId: string; qtd: number; responsavel?: string | null };
+export type FtPlanoProducao = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  data: string;                        // dia de produção (ISO yyyy-mm-dd)
+  status: "rascunho" | "planejado" | "concluido";
+  itens: FtPlanoItem[];
+  obs?: string | null;
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+};
+
 export type FtCategoriaTipo = "ficha" | "subficha" | "insumo";
 export type FtCategoria = {
   id: string;

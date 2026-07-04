@@ -56,3 +56,29 @@ export function montarProducao(
   }
   return { id: ficha.id, nome: ficha.nome, alvoQtd, alvoUnidade, modoPreparo: ficha.modoPreparo, ingredientes, bases, subprodutos };
 }
+
+// ─── BOM: lista consolidada de insumos de um LOTE de fichas ────────────────
+export type BomLinha = { nome: string; qtd: number; unidade: string; qb: boolean };
+function coletar(node: ProdNode, ins: ProdIngrediente[], sub: ProdIngrediente[]) {
+  for (const i of node.ingredientes) ins.push(i);
+  for (const s of node.subprodutos) sub.push(s);
+  for (const b of node.bases) coletar(b, ins, sub);
+}
+function consolidar(itens: ProdIngrediente[]): BomLinha[] {
+  const m = new Map<string, BomLinha>();
+  for (const i of itens) {
+    const chave = `${i.nome.trim().toUpperCase()}|${i.unidade}|${i.qb ? "qb" : "q"}`;
+    const at = m.get(chave);
+    if (at) { at.qtd += i.qb ? 0 : i.qtd; }
+    else m.set(chave, { nome: i.nome, unidade: i.unidade, qb: i.qb, qtd: i.qb ? 0 : i.qtd });
+  }
+  return [...m.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+}
+
+export type PlanoExplosao = { nodes: ProdNode[]; insumos: BomLinha[]; subprodutos: BomLinha[] };
+export function explodirLote(itens: { ficha: FtFicha; qtd: number }[], fichas: FtFicha[], insumos: FtInsumo[]): PlanoExplosao {
+  const nodes = itens.filter(it => it.ficha).map(it => montarProducao(it.ficha, it.qtd, it.ficha.rendimento.unidade, fichas, insumos));
+  const ins: ProdIngrediente[] = [], sub: ProdIngrediente[] = [];
+  for (const n of nodes) coletar(n, ins, sub);
+  return { nodes, insumos: consolidar(ins), subprodutos: consolidar(sub) };
+}

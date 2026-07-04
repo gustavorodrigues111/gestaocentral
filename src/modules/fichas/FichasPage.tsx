@@ -22,7 +22,8 @@ import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
 import { ProducaoView } from "./FichaProducao";
 import { CustoCmvView, flatCardapio, type CardItem } from "./FichaCusto";
-import type { CardapioEstruturado } from "../../core/types";
+import { PlanejamentoView } from "./FichaPlanejamento";
+import type { CardapioEstruturado, FtPlanoProducao } from "../../core/types";
 
 // ─── utils ──────────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -120,8 +121,9 @@ export function FichasPage() {
   const { can } = useCanAcao(rid || "");
   const [tab, setTab] = useState<Tab>("pratos");
   const [modo, setModo] = useState<"ver" | "cadastro">("cadastro");
-  const [verModo, setVerModo] = useState<"producao" | "custo">("producao");
+  const [verModo, setVerModo] = useState<"producao" | "custo" | "plano">("producao");
   const [cardapio, setCardapio] = useState<CardItem[]>([]);
+  const [planos, setPlanos] = useState<FtPlanoProducao[]>([]);
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [categorias, setCategorias] = useState<FtCategoria[]>([]);
@@ -179,7 +181,9 @@ export function FichasPage() {
       s => { registrarUnidadesCustom(s.docs.map(d => d.data() as { unidade: string; label?: string })); setUnidadesTick(t => t + 1); });
     const u7 = onSnapshot(doc(db, "cardapioEstruturado", rid),
       s => setCardapio(flatCardapio(s.exists() ? (s.data() as CardapioEstruturado) : null)));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onSnapshot(query(collection(db, "ftPlanosProducao"), where("restaurantId", "==", rid)),
+      s => setPlanos(s.docs.map(d => ({ id: d.id, ...d.data() } as FtPlanoProducao))));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, [rid]);
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
@@ -238,14 +242,17 @@ export function FichasPage() {
 
       {!emCadastro ? (
         <div className="space-y-3">
-          {can("fichas", "cardapio") && (
+          {(can("fichas", "cardapio") || can("fichas", "producao")) && (
             <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
               <TabBtn ativo={verModo === "producao"} onClick={() => setVerModo("producao")}>👩‍🍳 Produção</TabBtn>
-              <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>
+              {can("fichas", "cardapio") && <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>}
+              {can("fichas", "producao") && <TabBtn ativo={verModo === "plano"} onClick={() => setVerModo("plano")}>📅 Planejamento</TabBtn>}
             </div>
           )}
           {verModo === "custo" && can("fichas", "cardapio")
             ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} />
+            : verModo === "plano" && can("fichas", "producao")
+            ? <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} />
             : <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />}
         </div>
       ) : (<>
