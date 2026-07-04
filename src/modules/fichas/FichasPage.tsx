@@ -899,39 +899,45 @@ function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, m
 // Insumos, porque são PRODUZIDOS (não comprados). Referenciáveis como ingrediente.
 function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos, meId }: { insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
   const [editar, setEditar] = useState<FtInsumo | null>(null);
-  // Só os PENDENTES (sem vínculo) precisam de ação aqui. Os vinculados já estão
-  // resolvidos — geridos na seção "Saídas do preparo" da ficha-mãe.
-  const pendentes = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe).sort((a, b) => a.nome.localeCompare(b.nome));
-  const nVinculados = insumos.filter(i => i.ativo !== false && i.ehSubproduto && i.subprodutoDe).length;
+  const subs = insumos.filter(i => i.ativo !== false && i.ehSubproduto);
   const usoMap = useMemo(() => {
     const m = new Map<string, number>();
     for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") m.set(ing.refId, (m.get(ing.refId) || 0) + 1); }
     return m;
   }, [fichas]);
-  if (pendentes.length === 0) {
-    return nVinculados > 0 ? <div className="mt-6 text-[11px] text-gray-400">🔄 {nVinculados} subproduto(s) já vinculado(s) — geridos no próprio preparo (Saídas do preparo).</div> : null;
-  }
+  // Resolve o preparo-pai; null se o vínculo aponta pra ficha/saída inexistente (quebrado).
+  const paiDe = (i: FtInsumo) => { if (!i.subprodutoDe) return null; const f = fichas.find(x => x.id === i.subprodutoDe!.fichaId && x.ativo !== false); const sp = f?.subprodutos?.find(s => s.id === i.subprodutoDe!.subId); return f && sp ? f.nome : null; };
+  const estado = (i: FtInsumo): "pendente" | "quebrado" | "vinculado" => !i.subprodutoDe ? "pendente" : paiDe(i) ? "vinculado" : "quebrado";
+  const ord = { pendente: 0, quebrado: 1, vinculado: 2 };
+  const lista = [...subs].sort((a, b) => (ord[estado(a)] - ord[estado(b)]) || a.nome.localeCompare(b.nome));
+  const nAtencao = subs.filter(i => estado(i) !== "vinculado").length;
+  if (subs.length === 0) return null;
+  async function desvincular(i: FtInsumo) { try { await updateDoc(doc(db, "ftInsumos", i.id), { subprodutoDe: null }); } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); } }
   return (
     <div className="mt-6">
-      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos pendentes <span className="text-gray-400 font-normal normal-case">· falta vincular ao preparo que os gera · {pendentes.length}</span></div>
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saem de preparos · {subs.length}{nAtencao > 0 ? ` · ${nAtencao} pra resolver` : ""}</span></div>
       <ListaCard vazio={false} vazioTexto="">
-        {pendentes.map(ins => {
-          const uso = usoMap.get(ins.id) || 0;
+        {lista.map(ins => {
+          const st = estado(ins); const pai = paiDe(ins); const uso = usoMap.get(ins.id) || 0;
+          const badge = st === "vinculado" ? { txt: "🔗 vinculado", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" }
+            : st === "quebrado" ? { txt: "⚠ vínculo quebrado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" }
+            : { txt: "⏳ sem vínculo", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
           return (
-            <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar subproduto">
-              <div className="w-9 h-9 rounded-full bg-amber-50 dark:bg-amber-900/20 flex items-center justify-center text-base shrink-0">⏳</div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
-                  <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⏳ sem vínculo</span>
+            <div key={ins.id} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
+              <div onClick={() => setEditar(ins)} className="flex items-center gap-3 flex-1 min-w-0 cursor-pointer" title="Editar / vincular subproduto">
+                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-base shrink-0 ${st === "vinculado" ? "bg-orange-50 dark:bg-orange-900/20" : st === "quebrado" ? "bg-rose-50 dark:bg-rose-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>{st === "vinculado" ? "🔄" : st === "quebrado" ? "⚠" : "⏳"}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}<span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${badge.cls}`}>{badge.txt}</span></div>
+                  <div className="text-xs text-gray-500">{st === "vinculado" ? `de ${pai}` : st === "quebrado" ? "o preparo/saída sumiu — religue a outro" : "falta vincular ao preparo que o gera"} · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
                 </div>
-                <div className="text-xs text-gray-500">vincule ao preparo que o gera · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
               </div>
-              <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Resolver</span>
+              {st === "vinculado"
+                ? <button type="button" onClick={() => void desvincular(ins)} className="text-xs text-gray-400 hover:text-red-600 underline shrink-0">desvincular</button>
+                : <button type="button" onClick={() => setEditar(ins)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 shrink-0">Vincular →</button>}
             </div>
           );
         })}
       </ListaCard>
-      {nVinculados > 0 && <div className="mt-1.5 text-[11px] text-gray-400">🔄 + {nVinculados} já vinculado(s), geridos no próprio preparo.</div>}
       {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
     </div>
   );
@@ -1174,6 +1180,9 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
   const [reclBusy, setReclBusy] = useState(false);
   const subfichasSist = useMemo(() => fichas.filter(f => f.ehSubficha && f.ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome)), [fichas]);
   const subprodutosSist = useMemo(() => fichas.filter(f => f.ativo !== false).flatMap(f => (f.subprodutos || []).map(sp => ({ ficha: f, sp }))).sort((a, b) => a.sp.nome.localeCompare(b.sp.nome)), [fichas]);
+  // Vínculo válido só se a ficha-pai e a saída ainda existem (senão está quebrado).
+  const paiSubproduto = insumo.subprodutoDe ? fichas.find(f => f.id === insumo.subprodutoDe!.fichaId && f.ativo !== false) : null;
+  const vinculoValido = !!(paiSubproduto && paiSubproduto.subprodutos?.some(s => s.id === insumo.subprodutoDe!.subId));
   // Vira insumo normal — só tira a marca de subproduto.
   async function virarIngrediente() {
     setReclBusy(true);
@@ -1298,13 +1307,14 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
         {insumo.ehSubproduto && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
             <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">Subproduto de qual preparo?</div>
-            {insumo.subprodutoDe ? (
+            {vinculoValido ? (
               <div className="text-[11px] text-orange-600 dark:text-orange-400 flex items-center gap-2">
-                🔗 {fichas.find(f => f.id === insumo.subprodutoDe!.fichaId)?.nome || "(preparo removido)"}
+                🔗 {paiSubproduto?.nome}
                 <button type="button" onClick={() => void desvincularSubproduto()} className="text-gray-400 hover:text-red-600 underline">desvincular</button>
               </div>
             ) : (
               <div className="space-y-2">
+                {insumo.subprodutoDe && <p className="text-[11px] text-rose-600 dark:text-rose-400">⚠ O vínculo anterior foi removido. Religue a outro preparo.</p>}
                 <p className="text-[11px] text-gray-400">Este insumo sai de um preparo (ex.: carcaça do frango assado). Vincule ao preparo pra o custo derivar do rateio.</p>
                 <div className="flex items-center gap-2 flex-wrap">
                   <select value={vincFichaId} onChange={e => { setVincFichaId(e.target.value); setVincSubId(""); }} className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 flex-1 min-w-[150px] shadow-sm">
