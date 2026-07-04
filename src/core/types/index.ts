@@ -5364,6 +5364,7 @@ export type FtInsumo = {
   historicoCusto?: FtHistoricoCusto[];
   fornecedorPadrao?: string | null;
   reutilizavel?: boolean;              // ex: óleo de fritura — não pesa custo cheio
+  categoriaId?: string | null;         // categoria do insumo (hortifrúti, carnes…)
   variacoes?: FtInsumoVariacao[];      // cebola descascada, brunoise, julienne...
   aliases?: string[];
   ehSubproduto?: boolean;              // não é comprado — sai de um preparo (ex.: carcaça)
@@ -5374,7 +5375,7 @@ export type FtInsumo = {
 // Categoria criada pelo usuário. Escopo por GRUPO: "ficha" = fichas finais
 // (divisão do cardápio, pro CMV) · "subficha" = bases (molhos, caldos…).
 // Legado sem tipo é tratado como "ficha".
-export type FtCategoriaTipo = "ficha" | "subficha";
+export type FtCategoriaTipo = "ficha" | "subficha" | "insumo";
 export type FtCategoria = {
   id: string;
   restaurantId: string;

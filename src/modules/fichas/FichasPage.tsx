@@ -35,14 +35,14 @@ const UP = (s: string) => (s || "").trim().toUpperCase();
 function passoDe(v: number): number { return v >= 1000 ? 100 : v >= 100 ? 10 : v >= 10 ? 5 : 1; }
 const round2 = (n: number) => Math.round((n || 0) * 100) / 100;
 
-type Tab = "pratos" | "bases" | "insumos" | "categorias";
+type Tab = "pratos" | "bases" | "insumos";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
 const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
 
 // Ordena categorias: PRATOS FINAIS (ficha) seguem a ordem manual do cardápio;
-// BASES (subficha) são sempre alfabéticas. Assume lista de um tipo só.
+// BASES e INSUMOS são sempre alfabéticos. Assume lista de um tipo só.
 function ordenarCats(cats: FtCategoria[]): FtCategoria[] {
-  const alfabetico = cats.length > 0 && (cats[0].tipo || "ficha") === "subficha";
+  const alfabetico = cats.length > 0 && (cats[0].tipo || "ficha") !== "ficha";
   return [...cats].sort((a, b) => alfabetico ? a.nome.localeCompare(b.nome) : ((a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome)));
 }
 
@@ -75,6 +75,7 @@ export function FichasPage() {
   const [editando, setEditando] = useState<FtFicha | null>(null);
   const [importando, setImportando] = useState(false);
   const [criandoInsumo, setCriandoInsumo] = useState(false);
+  const [catModal, setCatModal] = useState<FtCategoriaTipo | null>(null);
   const [rascunho, setRascunho] = useState<{ nReceitas: number; criadoEm: string; comEdicoes: boolean } | null>(null);
 
   const rascunhoId = pessoa?.id ? `${rid}_${pessoa.id}` : rid;
@@ -136,12 +137,16 @@ export function FichasPage() {
                 📌 Rascunho em andamento · {rascunho.nReceitas} receita{rascunho.nReceitas === 1 ? "" : "s"}
               </button>
             )}
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setCatModal(tab === "bases" ? "subficha" : "ficha")}>🏷️ Categorias</Button>
             <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setImportando(true)}>✨ Importar receita</Button>
             <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, tab === "bases", pessoa?.id, pessoa?.nome))}>{tab === "bases" ? "+ Nova base" : "+ Nova ficha"}</Button>
           </div>
         )}
         {tab === "insumos" && podeInsumo && (
-          <Button className="w-full sm:w-auto" onClick={() => setCriandoInsumo(true)}>+ Criar insumo</Button>
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
+            <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setCatModal("insumo")}>🏷️ Categorias</Button>
+            <Button className="flex-1 sm:flex-none" onClick={() => setCriandoInsumo(true)}>+ Criar insumo</Button>
+          </div>
         )}
       </header>
 
@@ -149,18 +154,19 @@ export function FichasPage() {
         <TabBtn ativo={tab === "pratos"} onClick={() => setTab("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
         <TabBtn ativo={tab === "bases"} onClick={() => setTab("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
         {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => setTab("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false).length})</TabBtn>}
-        {podeEditar && <TabBtn ativo={tab === "categorias"} onClick={() => setTab("categorias")}>Categorias ({categorias.filter(c => c.ativo !== false).length})</TabBtn>}
       </nav>
 
       {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar} />}
-      {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
-      {tab === "categorias" && podeEditar && <CadastroCategorias rid={rid} categorias={categorias} />}
+      {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
 
       {importando && (
         <ImportarFichasModal rid={rid} insumos={insumos} categorias={categorias} fichasExistentes={fichas} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
       )}
       {criandoInsumo && (
-        <CriarInsumoModal rid={rid} nomeInicial="" insumos={insumos} meId={pessoa?.id} onCriado={() => setCriandoInsumo(false)} onClose={() => setCriandoInsumo(false)} />
+        <CriarInsumoModal rid={rid} nomeInicial="" insumos={insumos} categorias={categorias} meId={pessoa?.id} onCriado={() => setCriandoInsumo(false)} onClose={() => setCriandoInsumo(false)} />
+      )}
+      {catModal && podeEditar && (
+        <CategoriasModal rid={rid} categorias={categorias} tipo={catModal} onClose={() => setCatModal(null)} />
       )}
     </div>
   );
@@ -202,8 +208,10 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
 }) {
   const [subFiltro, setSubFiltro] = useState<"todas" | EstadoFicha>("todas");
   const [catFiltro, setCatFiltro] = useState<string>("");
+  const [busca, setBusca] = useState("");
   const [precoModo, setPrecoModo] = useState<"ultimo" | "media">("ultimo");
-  useEffect(() => { setSubFiltro("todas"); setCatFiltro(""); }, [grupo]);
+  useEffect(() => { setSubFiltro("todas"); setCatFiltro(""); setBusca(""); }, [grupo]);
+  const buscaNorm = normalizarNome(busca);
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const insumosCalc = useMemo(() => precoModo === "media" ? insumosComMedia(insumos, hoje) : insumos, [precoModo, insumos, hoje]);
   const doGrupo = useMemo(() => fichas.filter(f => f.ativo !== false && (grupo === "subfichas" ? f.ehSubficha : !f.ehSubficha)), [fichas, grupo]);
@@ -222,7 +230,8 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
   const lista = useMemo(() => doGrupo
     .filter(f => subFiltro === "todas" ? true : estados.get(f.id) === subFiltro)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
-    .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro, estados]);
+    .filter(f => !buscaNorm || normalizarNome(f.nome).includes(buscaNorm))
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [doGrupo, subFiltro, catFiltro, estados, buscaNorm]);
 
   if (fichas.filter(f => f.ativo !== false).length === 0) return (
     <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">
@@ -239,8 +248,13 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
   ];
   return (
     <div className="space-y-3">
-      {/* Modo de preço */}
-      <div className="flex items-center gap-2 flex-wrap justify-end">
+      {/* Busca + modo de preço */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder={grupo === "subfichas" ? "Buscar base…" : "Buscar prato…"} className="w-full h-9 pl-9 pr-8 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+          {busca && <button type="button" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm">✕</button>}
+        </div>
         <span className="text-[11px] text-gray-400 hidden sm:inline">Custo por:</span>
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
           {([["ultimo", "Último preço"], ["media", "Média 3 meses"]] as const).map(([m, label]) => (
@@ -809,13 +823,15 @@ function IngredientePicker({ insumos, subfichas, subprodutos, rid, meId, podeIns
   );
 }
 
-function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }: {
-  rid: string; nomeInicial: string; insumos: FtInsumo[]; meId?: string; onCriado: (ins: FtInsumo) => void; onClose: () => void;
+function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriado, onClose }: {
+  rid: string; nomeInicial: string; insumos: FtInsumo[]; categorias?: FtCategoria[]; meId?: string; onCriado: (ins: FtInsumo) => void; onClose: () => void;
 }) {
   const [nome, setNome] = useState(nomeInicial);
   const [unidadeBase, setUnidadeBase] = useState("kg");
   const [custo, setCusto] = useState("");
   const [fornecedor, setFornecedor] = useState("");
+  const [categoriaId, setCategoriaId] = useState("");
+  const catsIns = (categorias || []).filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").sort((a, b) => a.nome.localeCompare(b.nome));
   const similares = useMemo(() => sugerirInsumos(nome, insumos), [nome, insumos]);
   async function salvar() {
     if (!nome.trim()) return;
@@ -824,7 +840,7 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
     const ins: FtInsumo = {
       id, restaurantId: rid, nome: UP(nome), nomeNormalizado: normalizarNome(nome), dimensao: dim, unidadeBase, custo: c,
       custoAtualizadoEm: c > 0 ? now : null, historicoCusto: c > 0 ? [{ custo: c, data: now, por: meId || null }] : [],
-      fornecedorPadrao: fornecedor.trim() || null, reutilizavel: false, aliases: [], ativo: true,
+      fornecedorPadrao: fornecedor.trim() || null, reutilizavel: false, categoriaId: categoriaId || null, aliases: [], ativo: true,
     };
     await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore(ins));
     onCriado(ins);
@@ -832,7 +848,7 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
   return (
     <Modal title="Novo insumo" onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Sal refinado" />
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder="ex: SAL REFINADO" />
         {similares.length > 0 && <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-2 text-[11px] text-amber-800 dark:text-amber-200">Já existe parecido: {similares.slice(0, 3).map(s => s.insumo.nome).join(", ")}. Confira pra não duplicar.</div>}
         <div className="grid grid-cols-2 gap-2">
           <Select label="Unidade base" value={unidadeBase} onChange={e => setUnidadeBase(e.target.value)}>
@@ -840,6 +856,12 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
           </Select>
           <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
         </div>
+        {catsIns.length > 0 && (
+          <Select label="Categoria" value={categoriaId} onChange={e => setCategoriaId(e.target.value)}>
+            <option value="">— sem categoria —</option>
+            {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          </Select>
+        )}
         <Input label="Fornecedor (opcional)" value={fornecedor} onChange={e => setFornecedor(e.target.value)} />
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Criar e usar</Button></div>
       </div>
@@ -848,26 +870,88 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, meId, onCriado, onClose }
 }
 
 // ─── Aba Insumos ──────────────────────────────────────────────────────────
-function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
+function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vinculos, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
   const [busca, setBusca] = useState("");
+  const [filtro, setFiltro] = useState<"todas" | "semcusto" | "pendentes">("todas");
+  const [catFiltro, setCatFiltro] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
-  const [soPendentes, setSoPendentes] = useState(false); const [sincronizar, setSincronizar] = useState(false);
+  const [sincronizar, setSincronizar] = useState(false);
   const hoje = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const reconc = useMemo(() => reconciliar(agruparProdutos(coletarPrecos(recebimentos)), insumos, vinculos), [recebimentos, insumos, vinculos]);
   const nPrecoNovo = reconc.vinculados.filter(l => l.precoNovo).length;
   const nSugeridos = reconc.sugeridos.length;
-  const pendentesSub = insumos.filter(i => i.ativo !== false && i.ehSubproduto && !i.subprodutoDe);
+  const catsIns = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo"));
   const buscaNorm = normalizarNome(busca);
+  const semCusto = (i: FtInsumo) => !i.ehSubproduto && !(i.custo > 0);
+  const pendente = (i: FtInsumo) => !!i.ehSubproduto && !i.subprodutoDe;
+  const nSemCusto = insumos.filter(i => i.ativo !== false && semCusto(i)).length;
+  const nPend = insumos.filter(i => i.ativo !== false && pendente(i)).length;
   const ativos = insumos.filter(i => i.ativo !== false)
-    .filter(i => !soPendentes || (i.ehSubproduto && !i.subprodutoDe))
+    .filter(i => filtro === "todas" ? true : filtro === "semcusto" ? semCusto(i) : pendente(i))
+    .filter(i => !catFiltro || (i.categoriaId || "") === catFiltro)
     .filter(i => !buscaNorm || normalizarNome(i.nome).includes(buscaNorm))
     .sort((a, b) => a.nome.localeCompare(b.nome));
+  const renderRow = (ins: FtInsumo) => (
+    <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar insumo">
+      <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
+      <div className="min-w-0 flex-1">
+        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
+          {ins.ehSubproduto && <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "subproduto 🔗" : "subproduto ⏳ sem vínculo"}</span>}
+        </div>
+        <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}</div>
+      </div>
+      {ins.ehSubproduto
+        ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
+        : ins.custo > 0
+        ? <div className="flex items-center gap-4 shrink-0 tabular-nums">
+            <div className="text-right w-20 hidden sm:block" title="Média dos últimos 3 meses">
+              <div className="text-[9px] uppercase text-gray-400 leading-none">média 3m</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">{fmtMoeda(precoMedio3m(ins, hoje))}</div>
+            </div>
+            <div className="text-right w-24">
+              <div className="text-[9px] uppercase text-gray-400 leading-none">último</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></div>
+            </div>
+          </div>
+        : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
+      <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
+        <button type="button" onClick={e => { e.stopPropagation(); setMesclar(ins); }} className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Mesclar</button>
+        <button type="button" onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${ins.nome}"?`)) void updateDoc(doc(db, "ftInsumos", ins.id), { ativo: false }); }} className="text-xs text-gray-400 hover:text-red-600">Excluir</button>
+      </div>
+    </div>
+  );
+  const catIds = new Set(catsIns.map(c => c.id));
+  const grupos = [
+    ...catsIns.map(cat => ({ nome: UP(cat.nome), itens: ativos.filter(i => i.categoriaId === cat.id) })),
+    { nome: "Sem categoria", itens: ativos.filter(i => !i.categoriaId || !catIds.has(i.categoriaId)) },
+  ].filter(g => g.itens.length > 0);
+  const chips: [("todas" | "semcusto" | "pendentes"), string, string][] = [
+    ["todas", "Todos", "text-gray-500"],
+    ["semcusto", `💲 Sem custo${nSemCusto ? ` (${nSemCusto})` : ""}`, "text-amber-700 dark:text-amber-400"],
+    ["pendentes", `⏳ Subprodutos pendentes${nPend ? ` (${nPend})` : ""}`, "text-orange-600 dark:text-orange-400"],
+  ];
   return (
-    <div className="space-y-4">
-      <div className="relative">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar insumo pelo nome…" className="w-full h-10 pl-9 pr-8 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
-        {busca && <button type="button" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm">✕</button>}
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px]">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar insumo…" className="w-full h-9 pl-9 pr-8 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+          {busca && <button type="button" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-sm">✕</button>}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 flex-wrap">
+        {chips.map(([t, label, hint]) => (
+          <button key={t} type="button" onClick={() => setFiltro(t)}
+            className={`px-3 py-1 text-xs font-medium rounded-full border ${filtro === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : `border-gray-200 dark:border-gray-800 ${t !== "todas" ? hint : "text-gray-500"}`}`}>{label}</button>
+        ))}
+        <div className="flex-1" />
+        {catsIns.length > 0 && (
+          <select value={catFiltro} onChange={e => setCatFiltro(e.target.value)} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+            <option value="">Todas categorias</option>
+            {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          </select>
+        )}
       </div>
       {(nPrecoNovo > 0 || nSugeridos > 0) && (
         <div className="flex items-center gap-2 flex-wrap rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
@@ -875,56 +959,32 @@ function CadastroInsumos({ rid, insumos, fichas, recebimentos, vinculos, meId }:
           <button type="button" onClick={() => setSincronizar(true)} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">Revisar preços</button>
         </div>
       )}
-      {pendentesSub.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
-          <span className="text-sm text-amber-800 dark:text-amber-200">⏳ {pendentesSub.length} subproduto(s) sem vínculo — vincule ao preparo que os gera (na tela da ficha).</span>
-          <button type="button" onClick={() => setSoPendentes(s => !s)} className="ml-auto text-xs font-medium px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/40">{soPendentes ? "Ver todos" : "Ver só pendentes"}</button>
+      {ativos.length === 0 ? (
+        <ListaCard vazio vazioTexto={busca ? "Nenhum insumo com esse nome." : filtro === "pendentes" ? "Nenhum subproduto pendente." : filtro === "semcusto" ? "Nenhum insumo sem custo." : "Nenhum insumo cadastrado."}>{null}</ListaCard>
+      ) : (
+        <div className="space-y-4">
+          {grupos.map(g => (
+            <div key={g.nome}>
+              {(catsIns.length > 0) && <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">{g.nome} <span className="text-gray-400 font-normal normal-case">· {g.itens.length}</span></div>}
+              <ListaCard vazio={false} vazioTexto="">{g.itens.map(renderRow)}</ListaCard>
+            </div>
+          ))}
         </div>
       )}
-      <ListaCard vazio={ativos.length === 0} vazioTexto={busca ? "Nenhum insumo com esse nome." : soPendentes ? "Nenhum subproduto pendente." : "Nenhum insumo cadastrado."}>
-        {ativos.map(ins => (
-          <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar insumo">
-            <div className="w-9 h-9 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-base shrink-0">🧂</div>
-            <div className="min-w-0 flex-1">
-              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
-                {ins.ehSubproduto && <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "subproduto 🔗" : "subproduto ⏳ sem vínculo"}</span>}
-              </div>
-              <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}</div>
-            </div>
-            {ins.ehSubproduto
-              ? <span className="text-[10px] text-gray-400 shrink-0">custo do preparo</span>
-              : ins.custo > 0
-              ? <div className="flex items-center gap-4 shrink-0 tabular-nums">
-                  <div className="text-right w-20 hidden sm:block" title="Média dos últimos 3 meses">
-                    <div className="text-[9px] uppercase text-gray-400 leading-none">média 3m</div>
-                    <div className="text-xs text-gray-500 dark:text-gray-400">{fmtMoeda(precoMedio3m(ins, hoje))}</div>
-                  </div>
-                  <div className="text-right w-24">
-                    <div className="text-[9px] uppercase text-gray-400 leading-none">último</div>
-                    <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(ins.custo)}<span className="text-[10px] text-gray-400">/{labelUnidade(ins.unidadeBase)}</span></div>
-                  </div>
-                </div>
-              : <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 shrink-0">sem custo</span>}
-            <div className="flex items-center gap-2 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-              <span className="text-xs text-indigo-600 dark:text-indigo-400">Editar</span>
-              <button type="button" onClick={e => { e.stopPropagation(); setMesclar(ins); }} className="text-xs text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Mesclar</button>
-              <button type="button" onClick={e => { e.stopPropagation(); if (confirm(`Excluir "${ins.nome}"?`)) void updateDoc(doc(db, "ftInsumos", ins.id), { ativo: false }); }} className="text-xs text-gray-400 hover:text-red-600">Excluir</button>
-            </div>
-          </div>
-        ))}
-      </ListaCard>
-      {editar && <EditarCustoModal insumo={editar} fichas={fichas} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
+      {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
       {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
 
-function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
+function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, meId, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onClose: () => void }) {
   const [nome, setNome] = useState(insumo.nome);
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
   const [forn, setForn] = useState(insumo.fornecedorPadrao || "");
   const [reutil, setReutil] = useState(!!insumo.reutilizavel);
+  const [categoriaId, setCategoriaId] = useState(insumo.categoriaId || "");
+  const catsIns = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").sort((a, b) => a.nome.localeCompare(b.nome));
   const [variacoes, setVariacoes] = useState<FtInsumoVariacao[]>(insumo.variacoes || []);
   const [unidadeBase, setUnidadeBase] = useState(insumo.unidadeBase);
   const [vincFichaId, setVincFichaId] = useState(insumo.subprodutoDe?.fichaId || "");
@@ -1015,7 +1075,7 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
     const vars = variacoes.filter(v => v.nome.trim()).map(v => ({ id: v.id, nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
     if (!nome.trim()) { alert("O insumo precisa de um nome."); return; }
     const batch = writeBatch(db);
-    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ nome: UP(nome), nomeNormalizado: normalizarNome(nome), custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, variacoes: vars, unidadeBase, dimensao: novaDim }));
+    batch.update(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ nome: UP(nome), nomeNormalizado: normalizarNome(nome), custo: c, custoAtualizadoEm: c > 0 ? now : insumo.custoAtualizadoEm || null, historicoCusto: hist, fornecedorPadrao: forn.trim() || null, reutilizavel: reutil, categoriaId: categoriaId || null, variacoes: vars, unidadeBase, dimensao: novaDim }));
     // Mudança de DIMENSÃO: ajusta a unidade do ingrediente nas fichas afetadas
     // (mantém a quantidade) e marca pra revisão — as quantidades precisam conferência.
     if (mudouUnidade && mudouDim) {
@@ -1066,6 +1126,13 @@ function EditarCustoModal({ insumo, fichas, recebimentos, vinculos, meId, onClos
         )}
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={reutil} onChange={e => setReutil(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Reutilizável (não pesa custo cheio — ex: óleo de fritura)</label>
+
+        {catsIns.length > 0 && (
+          <Select label="Categoria" value={categoriaId} onChange={e => setCategoriaId(e.target.value)}>
+            <option value="">— sem categoria —</option>
+            {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          </Select>
+        )}
 
         {insumo.ehSubproduto && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
@@ -1421,76 +1488,75 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
   );
 }
 
-// ─── Aba Categorias ────────────────────────────────────────────────────────
-function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCategoria[] }) {
+// ─── Categorias (modal por aba) ────────────────────────────────────────────
+const CAT_META: Record<FtCategoriaTipo, { titulo: string; icone: string; bg: string; ph: string }> = {
+  ficha: { titulo: "🍽️ Categorias de pratos finais", icone: "🍽️", bg: "bg-indigo-100 dark:bg-indigo-900/40", ph: "ex: PRATOS PRINCIPAIS, DRINKS" },
+  subficha: { titulo: "🧩 Categorias de bases", icone: "🧩", bg: "bg-purple-100 dark:bg-purple-900/40", ph: "ex: MOLHOS, CALDOS" },
+  insumo: { titulo: "🧂 Categorias de insumos", icone: "🧂", bg: "bg-gray-100 dark:bg-gray-800", ph: "ex: HORTIFRÚTI, CARNES, SECOS" },
+};
+function CategoriasModal({ rid, categorias, tipo, onClose }: { rid: string; categorias: FtCategoria[]; tipo: FtCategoriaTipo; onClose: () => void }) {
+  return (
+    <Modal title={CAT_META[tipo].titulo} onClose={onClose} maxWidth="max-w-lg">
+      <CadastroCategorias rid={rid} categorias={categorias} tipo={tipo} />
+    </Modal>
+  );
+}
+function CadastroCategorias({ rid, categorias, tipo }: { rid: string; categorias: FtCategoria[]; tipo: FtCategoriaTipo }) {
   const [nome, setNome] = useState("");
-  const [tipo, setTipo] = useState<"ficha" | "subficha">("ficha");
   const [editar, setEditar] = useState<FtCategoria | null>(null);
-  const ativas = categorias.filter(c => c.ativo !== false);
-  const doTipo = (t: "ficha" | "subficha") => ordenarCats(ativas.filter(c => (c.tipo || "ficha") === t));
-  // Reordena a categoria dentro do grupo (renumera ordem sequencialmente).
-  async function mover(t: "ficha" | "subficha", id: string, dir: -1 | 1) {
-    const arr = doTipo(t); const idx = arr.findIndex(c => c.id === id); const j = idx + dir;
-    if (idx < 0 || j < 0 || j >= arr.length) return;
-    const nova = [...arr]; [nova[idx], nova[j]] = [nova[j], nova[idx]];
+  const manual = tipo === "ficha";
+  const meta = CAT_META[tipo];
+  const lista = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === tipo));
+  // Reordena a categoria (só pratos finais — bases/insumos são alfabéticos).
+  async function mover(id: string, dir: -1 | 1) {
+    const idx = lista.findIndex(c => c.id === id); const j = idx + dir;
+    if (idx < 0 || j < 0 || j >= lista.length) return;
+    const nova = [...lista]; [nova[idx], nova[j]] = [nova[j], nova[idx]];
     await Promise.all(nova.map((c, i) => updateDoc(doc(db, "ftCategorias", c.id), { ordem: i })));
   }
   async function add() {
     if (!nome.trim()) return;
     const id = uid("cat");
-    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem: ativas.length, ativo: true } as FtCategoria));
+    await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo, ordem: lista.length, ativo: true } as FtCategoria));
     setNome("");
   }
-  const secao = (t: "ficha" | "subficha", titulo: string, nota: string) => (
-    <div>
-      <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}{t === "subficha" ? " · ordem alfabética automática" : ""}</span></div>
-      <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
-        {doTipo(t).map((c, i, arr) => (
-          <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
-            {t === "ficha" && (
+  return (
+    <div className="space-y-3">
+      <div className="flex items-end gap-2">
+        <div className="flex-1"><Input label="Nova categoria" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder={meta.ph} /></div>
+        <Button onClick={add}>+ Adicionar</Button>
+      </div>
+      {!manual && <div className="text-[11px] text-gray-400">Ordem alfabética automática.</div>}
+      <ListaCard vazio={lista.length === 0} vazioTexto="Nenhuma categoria ainda.">
+        {lista.map((c, i, arr) => (
+          <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40">
+            {manual && (
               <div className="flex flex-col shrink-0 -my-1">
-                <button type="button" onClick={() => void mover(t, c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
-                <button type="button" onClick={() => void mover(t, c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
+                <button type="button" onClick={() => void mover(c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
+                <button type="button" onClick={() => void mover(c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
               </div>
             )}
-            <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t === "ficha" ? "bg-indigo-100 dark:bg-indigo-900/40" : "bg-purple-100 dark:bg-purple-900/40"}`}>{t === "ficha" ? "🍽️" : "🧩"}</span>
+            <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${meta.bg}`}>{meta.icone}</span>
             <span onClick={() => setEditar(c)} className="flex-1 text-gray-900 dark:text-gray-100 cursor-pointer" title="Editar categoria">{UP(c.nome)}</span>
-            {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
+            {tipo === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
             <button type="button" onClick={() => setEditar(c)} className="text-xs text-indigo-600 dark:text-indigo-400">Editar</button>
           </div>
         ))}
       </ListaCard>
-    </div>
-  );
-  return (
-    <div className="space-y-4">
-      <FormCard titulo="Nova categoria">
-        <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr_auto] gap-3 items-end">
-          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-end mb-0.5">
-            {([["ficha", "🍽️ Pratos finais"], ["subficha", "🧩 Bases"]] as const).map(([t, l]) => (
-              <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
-            ))}
-          </div>
-          <Input label="Categoria" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} placeholder={tipo === "ficha" ? "ex: PRATOS PRINCIPAIS, DRINKS" : "ex: MOLHOS, CALDOS"} />
-          <Button onClick={add}>+ Adicionar</Button>
-        </div>
-      </FormCard>
-      {secao("ficha", "Categorias de pratos finais", "divisão do cardápio (pratos, drinks…) — pro CMV")}
-      {secao("subficha", "Categorias de bases", "bases: molhos, caldos, massas…")}
       {editar && <CategoriaModal categoria={editar} onClose={() => setEditar(null)} />}
     </div>
   );
 }
 
 function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClose: () => void }) {
+  const tipo = (categoria.tipo || "ficha") as FtCategoriaTipo;
   const [nome, setNome] = useState(categoria.nome);
-  const [tipo, setTipo] = useState<"ficha" | "subficha">((categoria.tipo || "ficha") as "ficha" | "subficha");
   const [ordem, setOrdem] = useState(String(categoria.ordem ?? 0));
   const [cmv, setCmv] = useState(categoria.cmvAlvo != null ? String(categoria.cmvAlvo) : "");
   async function salvar() {
     if (!nome.trim()) { alert("Dê um nome à categoria."); return; }
     await updateDoc(doc(db, "ftCategorias", categoria.id), sanitizeForFirestore({
-      nome: UP(nome), tipo, ordem: Number(ordem) || 0, cmvAlvo: tipo === "ficha" && cmv.trim() ? Number(cmv.replace(",", ".")) : null,
+      nome: UP(nome), ordem: Number(ordem) || 0, cmvAlvo: tipo === "ficha" && cmv.trim() ? Number(cmv.replace(",", ".")) : null,
     }));
     onClose();
   }
@@ -1499,15 +1565,6 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
     <Modal title="Editar categoria" onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} />
-        <div className="flex flex-col gap-1">
-          <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Grupo</span>
-          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 self-start">
-            {([["ficha", "🍽️ Pratos finais"], ["subficha", "🧩 Bases"]] as const).map(([t, l]) => (
-              <button key={t} type="button" onClick={() => setTipo(t)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
-            ))}
-          </div>
-          <span className="text-[11px] text-gray-400">{tipo === "ficha" ? "Divisão do cardápio (pro CMV)." : "Base reutilizável (molhos, caldos…)."}</span>
-        </div>
         {tipo === "ficha" ? (
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
@@ -1520,7 +1577,7 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
             </div>
           </div>
         ) : (
-          <div className="text-[11px] text-gray-400">🧩 Bases são listadas em ordem alfabética automática — sem ordem manual.</div>
+          <div className="text-[11px] text-gray-400">Listada em ordem alfabética automática — sem ordem manual.</div>
         )}
         <div className="flex items-center justify-between pt-2">
           <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir</Button>
@@ -1532,15 +1589,6 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
 }
 
 // ─── UI atoms ───────────────────────────────────────────────────────────────
-function FormCard({ titulo, nota, children }: { titulo: string; nota?: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4">
-      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-3">{titulo}</div>
-      {children}
-      {nota && <div className="mt-2 text-[11px] text-gray-400">{nota}</div>}
-    </div>
-  );
-}
 function ListaCard({ vazio, vazioTexto, children }: { vazio: boolean; vazioTexto: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
