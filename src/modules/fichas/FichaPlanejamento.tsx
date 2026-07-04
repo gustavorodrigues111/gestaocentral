@@ -322,7 +322,7 @@ function PlanoEditor({ plano, planos, fichas, insumos, categorias, restauranteNo
 // Modal de seleção de ficha/base: escolhe o grupo, busca e clica no card.
 // Card já no plano fica marcado (✓) e clicar remove.
 function FichaPickerModal({ fichas, categorias, jaTem, onAdd, onRemove, onClose }: { fichas: FtFicha[]; categorias: FtCategoria[]; jaTem: Set<string>; onAdd: (f: FtFicha) => void; onRemove: (fid: string) => void; onClose: () => void }) {
-  const [grupo, setGrupo] = useState<"finais" | "bases">("finais");
+  const [grupo, setGrupo] = useState<"finais" | "bases">("bases");  // 99% produz base
   const [busca, setBusca] = useState("");
   const [cat, setCat] = useState("");            // "" = todas · "__sem__" = sem categoria
   const bn = normalizarNome(busca);
@@ -343,7 +343,7 @@ function FichaPickerModal({ fichas, categorias, jaTem, onAdd, onRemove, onClose 
       <div className="space-y-3">
         {/* Toggle grupo — largura total, dividido igual */}
         <div className="grid grid-cols-2 gap-1 rounded-xl bg-gray-100 dark:bg-gray-800 p-1">
-          {([["finais", "🍽️ Pratos finais"], ["bases", "🧩 Bases"]] as const).map(([g, l]) => (
+          {([["bases", "🧩 Bases"], ["finais", "🍽️ Pratos finais"]] as const).map(([g, l]) => (
             <button key={g} type="button" onClick={() => trocaGrupo(g)} className={`py-2 text-sm font-medium rounded-lg text-center ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
           ))}
         </div>
