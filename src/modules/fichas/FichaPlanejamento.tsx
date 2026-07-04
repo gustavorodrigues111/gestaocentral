@@ -27,12 +27,12 @@ const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> 
   concluido: { label: "concluído", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
 };
 
-export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome }: { rid: string; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; meId?: string; meNome?: string }) {
+export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, restauranteNome }: { rid: string; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; meId?: string; meNome?: string; restauranteNome?: string }) {
   const [editar, setEditar] = useState<FtPlanoProducao | null>(null);
   function novo() {
     setEditar({ id: uid("plano"), restaurantId: rid, nome: "", data: new Date().toISOString().slice(0, 10), status: "rascunho", itens: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome });
   }
-  if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} onClose={() => setEditar(null)} />;
+  if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} onClose={() => setEditar(null)} />;
   const lista = planos.filter(p => p.ativo !== false).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   return (
     <div className="space-y-3">
@@ -57,11 +57,12 @@ export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome }:
   );
 }
 
-function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProducao; fichas: FtFicha[]; insumos: FtInsumo[]; onClose: () => void }) {
+function PlanoEditor({ plano, fichas, insumos, restauranteNome, onClose }: { plano: FtPlanoProducao; fichas: FtFicha[]; insumos: FtInsumo[]; restauranteNome?: string; onClose: () => void }) {
   const [p, setP] = useState<FtPlanoProducao>(plano);
   const [salvando, setSalvando] = useState(false);
   const [pdf, setPdf] = useState<{ url: string; doc: JsPDFType } | null>(null);
   const [gerando, setGerando] = useState(false);
+  const [etiquetas, setEtiquetas] = useState(false);
   const itensFicha = useMemo(() => p.itens.map(it => ({ it, ficha: fichas.find(f => f.id === it.fichaId && f.ativo !== false) })).filter(x => x.ficha) as { it: FtPlanoProducao["itens"][number]; ficha: FtFicha }[], [p.itens, fichas]);
   const explosao = useMemo(() => explodirLote(itensFicha.map(x => ({ ficha: x.ficha, qtd: x.it.qtd })), fichas, insumos), [itensFicha, fichas, insumos]);
   const custoItens = useMemo(() => itensFicha.map(({ it, ficha }) => {
@@ -101,6 +102,7 @@ function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProduc
         <button type="button" onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">← Voltar</button>
         <div className="ml-auto flex gap-2">
           {p.status !== "concluido" && <Button variant="secondary" size="sm" onClick={marcarProduzido} disabled={itensFicha.length === 0}>✅ Marcar como produzido</Button>}
+          <Button variant="secondary" size="sm" onClick={() => setEtiquetas(true)} disabled={itensFicha.length === 0}>🏷️ Etiquetas</Button>
           <Button variant="secondary" size="sm" onClick={() => void preview()} disabled={gerando || itensFicha.length === 0}>{gerando ? "Gerando…" : "🖨️ Exportar PDF"}</Button>
           <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
         </div>
@@ -207,7 +209,77 @@ function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProduc
           </div>
         </Modal>
       )}
+
+      {etiquetas && <EtiquetasModal itensFicha={itensFicha} dataProducao={p.data} nomePlano={p.nome} restauranteNome={restauranteNome} onValidade={(id, dias) => patchItem(id, { validadeDias: dias })} onClose={() => setEtiquetas(false)} />}
     </div>
+  );
+}
+
+// Etiquetas de validade: por ficha, define validade (dias) e imprime PDF pra
+// colar no recipiente. Validade = dia de produção + dias.
+function EtiquetasModal({ itensFicha, dataProducao, nomePlano, restauranteNome, onValidade, onClose }: {
+  itensFicha: { it: FtPlanoProducao["itens"][number]; ficha: FtFicha }[];
+  dataProducao: string; nomePlano: string; restauranteNome?: string;
+  onValidade: (id: string, dias: number | null) => void; onClose: () => void;
+}) {
+  const [pdf, setPdf] = useState<{ url: string; doc: JsPDFType } | null>(null);
+  const [gerando, setGerando] = useState(false);
+  const [copias, setCopias] = useState(1);
+  function validadeIso(dias?: number | null) {
+    if (!dias || dias <= 0 || !dataProducao) return "";
+    const d = new Date(dataProducao + "T00:00:00"); d.setDate(d.getDate() + dias);
+    return d.toISOString().slice(0, 10);
+  }
+  async function gerar() {
+    setGerando(true);
+    try {
+      const { gerarEtiquetasPDF } = await import("./gerarEtiquetasPDF");
+      const itens = itensFicha.map(({ it, ficha }) => {
+        const un = ficha.ehSubficha ? labelUnidade(ficha.rendimento.unidade) : "porções";
+        const q = it.rendimentoReal != null && it.rendimentoReal > 0 ? it.rendimentoReal : it.qtd;
+        const vi = validadeIso(it.validadeDias);
+        return { nome: ficha.nome, qtd: `${fmtQtd(q)} ${un}`, produzidoEm: dataProducao ? fmtBR(dataProducao) : "—", validadeEm: vi ? fmtBR(vi) : "", responsavel: it.responsavel || "" };
+      });
+      const doc = await gerarEtiquetasPDF(restauranteNome || "", itens, copias);
+      setPdf({ url: doc.output("bloburl") as unknown as string, doc });
+    } catch (e) { alert("Erro nas etiquetas: " + (e instanceof Error ? e.message : String(e))); }
+    finally { setGerando(false); }
+  }
+  return (
+    <Modal title="🏷️ Etiquetas de validade" onClose={onClose} maxWidth="max-w-2xl">
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Defina a validade (em dias a partir do dia de produção) de cada ficha e imprima as etiquetas pra colar nos recipientes.</p>
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-[52vh] overflow-y-auto">
+          {itensFicha.map(({ it, ficha }) => {
+            const vi = validadeIso(it.validadeDias);
+            return (
+              <div key={it.id} className="flex items-center gap-2 px-3 py-2 flex-wrap">
+                <span className="flex-1 min-w-[140px] text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{UP(ficha.nome)}</span>
+                <div className="inline-flex items-center gap-1">
+                  <span className="text-[11px] text-gray-400">validade</span>
+                  <input type="text" inputMode="numeric" value={it.validadeDias != null ? String(it.validadeDias) : ""} onChange={e => { const v = e.target.value.replace(/[^0-9]/g, ""); onValidade(it.id, v === "" ? null : Number(v)); }} placeholder="—" className="w-14 h-8 text-center px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                  <span className="text-[11px] text-gray-400">dias</span>
+                </div>
+                <span className="text-[11px] w-28 text-right tabular-nums text-gray-500">{vi ? `→ ${fmtBR(vi)}` : "sem validade"}</span>
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between gap-2 flex-wrap pt-1">
+          <label className="inline-flex items-center gap-1.5 text-xs text-gray-500">Cópias por ficha
+            <input type="text" inputMode="numeric" value={String(copias)} onChange={e => setCopias(Math.max(1, Number(e.target.value.replace(/[^0-9]/g, "")) || 1))} className="w-14 h-8 text-center px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+          </label>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={() => void gerar()} disabled={gerando || itensFicha.length === 0}>{gerando ? "Gerando…" : "🖨️ Gerar etiquetas"}</Button></div>
+        </div>
+        <p className="text-[11px] text-gray-400">{nomePlano ? `Plano: ${nomePlano} · ` : ""}Se um lote já foi produzido, a etiqueta usa o rendimento real informado.</p>
+        {pdf && (
+          <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+            <iframe title="etiquetas" src={pdf.url} className="w-full h-[52vh] rounded-lg border border-gray-200 dark:border-gray-700 bg-white" />
+            <div className="flex justify-end"><Button onClick={() => pdf.doc.save(`etiquetas-${normalizarNome(nomePlano || dataProducao).replace(/\s+/g, "-")}.pdf`)}>⬇️ Baixar</Button></div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 

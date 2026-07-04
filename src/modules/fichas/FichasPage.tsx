@@ -256,7 +256,7 @@ export function FichasPage() {
           {verModo === "custo" && can("fichas", "cardapio")
             ? <CustoCmvView fichas={fichas} insumos={insumos} categorias={categorias} cardapio={cardapio} cardapioPdfEm={cardapioPdfEm} />
             : verModo === "plano" && can("fichas", "producao")
-            ? <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} />
+            ? <PlanejamentoView rid={rid} planos={planos} fichas={fichas} insumos={insumos} meId={pessoa?.id} meNome={pessoa?.nome} restauranteNome={activeRestaurant?.nome} />
             : <ProducaoView fichas={fichas} insumos={insumos} categorias={categorias} />}
         </div>
       ) : (<>
