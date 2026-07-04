@@ -5427,6 +5427,7 @@ export type FtFicha = {
   ehSubficha: boolean;                 // true = componente reutilizável
   categoriaId?: string | null;
   rendimento: { qtd: number; unidade: string };
+  producaoPadrao?: number | null;      // prato final: qtd de porções que a ficha de PRODUÇÃO abre por padrão
   ingredientes: FtIngrediente[];
   subprodutos?: FtSubproduto[];        // coprodutos gerados por este preparo
   modoPreparo?: string | null;

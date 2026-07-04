@@ -20,6 +20,7 @@ import { calcularCusto, insumosComMedia, precoMedio3m } from "./custo";
 import { normalizarNome, sugerirInsumos } from "./dedup";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { ImportarFichasModal } from "./ImportarFichasModal";
+import { ProducaoView } from "./FichaProducao";
 
 // ─── utils ──────────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -116,6 +117,7 @@ export function FichasPage() {
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
   const [tab, setTab] = useState<Tab>("pratos");
+  const [modo, setModo] = useState<"ver" | "cadastro">("cadastro");
   const [insumos, setInsumos] = useState<FtInsumo[]>([]);
   const [fichas, setFichas] = useState<FtFicha[]>([]);
   const [categorias, setCategorias] = useState<FtCategoria[]>([]);
@@ -178,6 +180,8 @@ export function FichasPage() {
   if (!can("fichas", "ver")) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Fichas Técnicas.</div>;
   const podeEditar = can("fichas", "editarFicha");
   const podeInsumo = can("fichas", "insumos");
+  const modoEfetivo: "ver" | "cadastro" = podeEditar ? modo : "ver";
+  const emCadastro = modoEfetivo === "cadastro";
 
   if (editando) {
     return (
@@ -196,7 +200,7 @@ export function FichasPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">📋 Fichas Técnicas</h1>
           <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         </div>
-        {(tab === "pratos" || tab === "bases") && podeEditar && (
+        {emCadastro && (tab === "pratos" || tab === "bases") && podeEditar && (
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             {rascunho && (
               <button type="button" onClick={() => setImportando(true)}
@@ -210,7 +214,7 @@ export function FichasPage() {
             <Button className="flex-1 sm:flex-none" onClick={() => setEditando(novaFicha(rid, tab === "bases", pessoa?.id, pessoa?.nome))}>{tab === "bases" ? "+ Nova base" : "+ Nova ficha"}</Button>
           </div>
         )}
-        {tab === "insumos" && podeInsumo && (
+        {emCadastro && tab === "insumos" && podeInsumo && (
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             <Button variant="secondary" className="flex-1 sm:flex-none" onClick={() => setCatModal("insumo")}>🏷️ Categorias</Button>
             <Button className="flex-1 sm:flex-none" onClick={() => setCriandoInsumo(true)}>+ Criar insumo</Button>
@@ -218,6 +222,17 @@ export function FichasPage() {
         )}
       </header>
 
+      {podeEditar && (
+        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-4">
+          {([["ver", "📖 Visualização"], ["cadastro", "🗂️ Cadastros"]] as const).map(([m, l]) => (
+            <button key={m} type="button" onClick={() => setModo(m)} className={`px-4 py-1.5 text-sm font-medium rounded-md ${modoEfetivo === m ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+          ))}
+        </div>
+      )}
+
+      {!emCadastro ? (
+        <ProducaoView fichas={fichas} insumos={insumos} />
+      ) : (<>
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
         <TabBtn ativo={tab === "bases"} onClick={() => irPara("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
@@ -228,6 +243,7 @@ export function FichasPage() {
         subFiltro={subFiltro} setSubFiltro={setSubFiltro} catFiltro={catFiltro} setCatFiltro={setCatFiltro} busca={busca} setBusca={setBusca} precoModo={precoModo} setPrecoModo={setPrecoModo} />}
       {tab === "bases" && <SubprodutosPanel fichas={fichas} onEditarFicha={setEditando} />}
       {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
+      </>)}
 
       {importando && (
         <ImportarFichasModal rid={rid} insumos={insumos} categorias={categorias} fichasExistentes={fichas} meId={pessoa?.id} meNome={pessoa?.nome} onClose={() => setImportando(false)} />
@@ -542,6 +558,16 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               </div>
             </div>
             <div className="text-[11px] text-gray-500 dark:text-gray-400">{f.ehSubficha ? "🧩 Ficha de base — reutilizável como ingrediente de outras fichas; não vai pro cardápio." : "🍽️ Ficha de prato final — vai pro cardápio (entra no CMV)."}</div>
+            {!f.ehSubficha && (
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-2 flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Produção padrão</span>
+                <div className="inline-flex items-center h-8 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 gap-1">
+                  <input type="number" min={0} value={f.producaoPadrao ?? ""} onChange={e => setF({ ...f, producaoPadrao: e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0) })} placeholder="—" className="w-16 text-right bg-transparent text-sm outline-none dark:text-gray-100" />
+                  <span className="text-[11px] text-gray-400">porções</span>
+                </div>
+                <span className="text-[11px] text-gray-400">— com quantas porções a ficha de produção abre por padrão (o cozinheiro pode mudar na hora).</span>
+              </div>
+            )}
             <div className="border-t border-gray-100 dark:border-gray-800 pt-2">
               <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
                 <input type="checkbox" checked={!!f.revisar} onChange={e => setF({ ...f, revisar: e.target.checked })} className="w-4 h-4 accent-rose-600" />
