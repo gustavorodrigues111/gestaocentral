@@ -39,6 +39,13 @@ type Tab = "pratos" | "bases" | "insumos" | "categorias";
 // Ficha "pendente" = sem ingredientes (ex.: promovida no import, falta montar).
 const fichaPendente = (f: FtFicha) => (f.ingredientes || []).length === 0;
 
+// Ordena categorias: PRATOS FINAIS (ficha) seguem a ordem manual do cardápio;
+// BASES (subficha) são sempre alfabéticas. Assume lista de um tipo só.
+function ordenarCats(cats: FtCategoria[]): FtCategoria[] {
+  const alfabetico = cats.length > 0 && (cats[0].tipo || "ficha") === "subficha";
+  return [...cats].sort((a, b) => alfabetico ? a.nome.localeCompare(b.nome) : ((a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome)));
+}
+
 // Estado da ficha (mesma prioridade da cor do card): revisar → pendente →
 // faltam preços → completa. Usado por filtros, contadores e selo do card.
 type EstadoFicha = "revisar" | "pendente" | "faltam" | "completa";
@@ -204,7 +211,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar 
     for (const e of estados.values()) c[e]++;
     return c;
   }, [estados]);
-  const catsGrupo = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha")).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
+  const catsGrupo = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === (grupo === "subfichas" ? "subficha" : "ficha")));
   const lista = useMemo(() => doGrupo
     .filter(f => subFiltro === "todas" ? true : estados.get(f.id) === subFiltro)
     .filter(f => !catFiltro || f.categoriaId === catFiltro)
@@ -1362,8 +1369,8 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
   const [nome, setNome] = useState("");
   const [tipo, setTipo] = useState<"ficha" | "subficha">("ficha");
   const [editar, setEditar] = useState<FtCategoria | null>(null);
-  const ativas = categorias.filter(c => c.ativo !== false).sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome));
-  const doTipo = (t: "ficha" | "subficha") => ativas.filter(c => (c.tipo || "ficha") === t);
+  const ativas = categorias.filter(c => c.ativo !== false);
+  const doTipo = (t: "ficha" | "subficha") => ordenarCats(ativas.filter(c => (c.tipo || "ficha") === t));
   // Reordena a categoria dentro do grupo (renumera ordem sequencialmente).
   async function mover(t: "ficha" | "subficha", id: string, dir: -1 | 1) {
     const arr = doTipo(t); const idx = arr.findIndex(c => c.id === id); const j = idx + dir;
@@ -1379,14 +1386,16 @@ function CadastroCategorias({ rid, categorias }: { rid: string; categorias: FtCa
   }
   const secao = (t: "ficha" | "subficha", titulo: string, nota: string) => (
     <div>
-      <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}</span></div>
+      <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">{titulo} <span className="font-normal text-gray-400">— {nota}{t === "subficha" ? " · ordem alfabética automática" : ""}</span></div>
       <ListaCard vazio={doTipo(t).length === 0} vazioTexto="Nenhuma categoria neste grupo.">
         {doTipo(t).map((c, i, arr) => (
           <div key={c.id} className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 group">
-            <div className="flex flex-col shrink-0 -my-1">
-              <button type="button" onClick={() => void mover(t, c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
-              <button type="button" onClick={() => void mover(t, c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
-            </div>
+            {t === "ficha" && (
+              <div className="flex flex-col shrink-0 -my-1">
+                <button type="button" onClick={() => void mover(t, c.id, -1)} disabled={i === 0} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="subir">▲</button>
+                <button type="button" onClick={() => void mover(t, c.id, 1)} disabled={i === arr.length - 1} className="text-gray-300 hover:text-indigo-600 disabled:opacity-20 leading-none text-xs" aria-label="descer">▼</button>
+              </div>
+            )}
             <span className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${t === "ficha" ? "bg-indigo-100 dark:bg-indigo-900/40" : "bg-purple-100 dark:bg-purple-900/40"}`}>{t === "ficha" ? "🍽️" : "🧩"}</span>
             <span onClick={() => setEditar(c)} className="flex-1 text-gray-900 dark:text-gray-100 cursor-pointer" title="Editar categoria">{UP(c.nome)}</span>
             {t === "ficha" && c.cmvAlvo != null && <span className="text-[11px] text-gray-400">CMV alvo {c.cmvAlvo}%</span>}
@@ -1442,18 +1451,20 @@ function CategoriaModal({ categoria, onClose }: { categoria: FtCategoria; onClos
           </div>
           <span className="text-[11px] text-gray-400">{tipo === "ficha" ? "Divisão do cardápio (pro CMV)." : "Base reutilizável (molhos, caldos…)."}</span>
         </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Ordem no cardápio</span>
-            <input type="number" value={ordem} onChange={e => setOrdem(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
-          </div>
-          {tipo === "ficha" && (
+        {tipo === "ficha" ? (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Ordem no cardápio</span>
+              <input type="number" value={ordem} onChange={e => setOrdem(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
+            </div>
             <div className="flex flex-col gap-1">
               <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">CMV alvo (%)</span>
               <input type="number" value={cmv} onChange={e => setCmv(e.target.value)} placeholder="ex: 30" className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100" />
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-400">🧩 Bases são listadas em ordem alfabética automática — sem ordem manual.</div>
+        )}
         <div className="flex items-center justify-between pt-2">
           <Button variant="ghost" size="sm" onClick={excluir}>🗑️ Excluir</Button>
           <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Salvar</Button></div>
