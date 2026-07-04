@@ -18,7 +18,7 @@ const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(
 
 export type CardItem = { id: string; titulo: string; preco: string; secao: string };
 
-// Achata o doc do cardápio em itens (só os "item" com título).
+// Achata o doc do cardápio em itens (estruturados + os extraídos por IA do PDF).
 export function flatCardapio(d: CardapioEstruturado | null): CardItem[] {
   if (!d) return [];
   const out: CardItem[] = [];
@@ -26,6 +26,7 @@ export function flatCardapio(d: CardapioEstruturado | null): CardItem[] {
     if (p.tipo === "imagem" || !p.titulo?.trim()) continue;
     out.push({ id: p.id, titulo: p.titulo, preco: p.preco || "", secao: sec.nome });
   }
+  for (const it of d.cardapioPdfItens || []) if (it.titulo?.trim()) out.push({ id: it.id, titulo: it.titulo, preco: it.preco || "", secao: "PDF" });
   return out;
 }
 

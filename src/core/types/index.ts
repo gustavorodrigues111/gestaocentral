@@ -3612,6 +3612,10 @@ export type CardapioEstruturado = {
   cardapiosSeedSororoca?: boolean;   // piloto: Bebidas/Vinhos já criados (não recriar)
   layout?: CardapioLayout;           // visual COMPARTILHADO entre os cardápios do restaurante
   secoes?: SecaoCardapio[];          // legado (1 cardápio) — migrado p/ cardapios na carga
+  // Itens "sombra" extraídos por IA de um cardápio em PDF — só pra alimentar o
+  // vínculo de preços das fichas técnicas (não vão pro site).
+  cardapioPdfItens?: { id: string; titulo: string; preco: string }[];
+  cardapioPdfItensEm?: string;       // ISO da última extração
   traduzidoEm?: string;
   traduzidoSig?: string;             // legado: assinatura PT da última tradução
   atualizadoEm: string;

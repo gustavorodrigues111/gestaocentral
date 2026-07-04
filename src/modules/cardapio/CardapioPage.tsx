@@ -16,6 +16,8 @@ import { CardapioPdfPanel } from "../sites/CardapioTab";
 import { useSiteConfig } from "../sites/useSiteConfig";
 import { CardapioConfig } from "./CardapioConfig";
 import { carregarFontesCardapio } from "../sites/shared/FontePicker";
+import { authHeader } from "../../core/firebase/idToken";
+import { fmtBRDateTime } from "../../core/utils/date";
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
 
 const CONFIG = "__config__";
@@ -35,6 +37,10 @@ export function CardapioPage() {
   const [cardapios, setCardapios] = useState<CardapioMenu[] | null>(null);
   const [sel, setSel] = useState<string>("");
   const [sharedLayout, setSharedLayout] = useState<CardapioLayout | null>(null);
+  const [pdfItens, setPdfItens] = useState<{ id: string; titulo: string; preco: string }[]>([]);
+  const [pdfItensEm, setPdfItensEm] = useState<string>("");
+  const [extraindo, setExtraindo] = useState(false);
+  const [extraErr, setExtraErr] = useState("");
   const { config: siteCfg, save: saveSite } = useSiteConfig(rid, restaurant?.nome || "");
   const modoCard: "editor" | "pdf" = siteCfg?.cardapioModo === "pdf" ? "pdf" : siteCfg?.cardapioModo === "editor" ? "editor" : (siteCfg?.cardapioPdfPtUrl || siteCfg?.cardapioPdfEnUrl) ? "pdf" : "editor";
   const setModoCard = (m: "editor" | "pdf") => { if (me) void saveSite({ cardapioModo: m }, me.id); };
@@ -51,6 +57,8 @@ export function CardapioPage() {
     }
     setCardapios(cards);
     setSharedLayout(d?.layout || {});
+    setPdfItens(d?.cardapioPdfItens || []);
+    setPdfItensEm(d?.cardapioPdfItensEm || "");
     setSel((s) => (s && (s === CONFIG || cards.some((c) => c.id === s)) ? s : cards[0]?.id || ""));
   }
   useEffect(() => { void carregar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [rid]);
@@ -90,6 +98,23 @@ export function CardapioPage() {
     void salvarLista(next); if (sel === id) setSel(next[0]?.id || "");
   }
 
+  // Extrai itens+preços do PDF via IA → lista "sombra" pras fichas técnicas.
+  async function extrairPrecos() {
+    const url = siteCfg?.cardapioPdfPtUrl;
+    if (!url) { setExtraErr("Suba o PDF em português primeiro."); return; }
+    setExtraindo(true); setExtraErr("");
+    try {
+      const resp = await fetch("/api/extrair-cardapio", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url }) });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status}`);
+      const itens = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { titulo: string; preco?: string }[] }).itens : []).map(i => ({ id: uid(), titulo: i.titulo, preco: i.preco || "" }));
+      const now = new Date().toISOString();
+      await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, cardapioPdfItens: itens, cardapioPdfItensEm: now, atualizadoEm: now, atualizadoPor: me?.id }), { merge: true });
+      setPdfItens(itens); setPdfItensEm(now);
+    } catch (e) { setExtraErr(e instanceof Error ? e.message : String(e)); }
+    finally { setExtraindo(false); }
+  }
+
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Cardápio.</p></div>;
   if (cardapios === null) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
@@ -112,7 +137,35 @@ export function CardapioPage() {
       )}
 
       {modoCard === "pdf" ? (
-        siteCfg ? <CardapioPdfPanel rid={rid} config={siteCfg} podeEditar={podeEditar} meId={me?.id || ""} onSave={async (parcial) => { if (me) await saveSite(parcial, me.id); }} />
+        siteCfg ? <div className="space-y-4">
+          <CardapioPdfPanel rid={rid} config={siteCfg} podeEditar={podeEditar} meId={me?.id || ""} onSave={async (parcial) => { if (me) await saveSite(parcial, me.id); }} />
+          {podeEditar && (
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <h3 className="font-bold text-gray-900 dark:text-gray-100">🤖 Preços pras fichas técnicas</h3>
+                  <p className="text-[12px] text-gray-500 dark:text-gray-400 max-w-lg">A IA lê o PDF e extrai os itens + preços — usados <strong>só internamente</strong> pra vincular o preço de venda nas fichas técnicas (CMV). Não muda o site.</p>
+                </div>
+                <button type="button" onClick={() => void extrairPrecos()} disabled={extraindo || !siteCfg.cardapioPdfPtUrl} className="text-sm font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0">{extraindo ? "Lendo o PDF…" : pdfItens.length ? "Reler PDF (IA)" : "Extrair itens e preços (IA)"}</button>
+              </div>
+              {extraErr && <p className="text-xs text-rose-600">⚠ {extraErr}</p>}
+              {pdfItens.length > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[11px] text-gray-400">{pdfItens.length} itens extraídos{pdfItensEm ? ` · ${fmtBRDateTime(pdfItensEm)}` : ""}. Revise e vincule aos pratos na aba Fichas Técnicas → Custo & CMV.</div>
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                    {pdfItens.map(i => (
+                      <div key={i.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                        <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-100">{i.titulo}</span>
+                        <span className="text-gray-500 tabular-nums shrink-0">{i.preco || "—"}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {!siteCfg.cardapioPdfPtUrl && <p className="text-[11px] text-amber-600">Suba o PDF (português) acima pra habilitar a extração.</p>}
+            </div>
+          )}
+        </div>
           : <div className="text-gray-400 py-8 text-center text-sm">Carregando…</div>
       ) : (<>
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto whitespace-nowrap">
