@@ -597,11 +597,18 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               ))}
             </div>
           )}
-          {custo.insumosSemCusto.length > 0 && (
-            <div className="text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
-              ⚠ Sem custo: {custo.insumosSemCusto.slice(0, 6).join(", ")}{custo.insumosSemCusto.length > 6 ? "…" : ""}. Cadastre na aba Insumos.
-            </div>
-          )}
+          {custo.insumosSemCusto.length > 0 && (() => {
+            const nomes = new Set(custo.insumosSemCusto);
+            const semPreco = insumos.filter(i => i.ativo !== false && !i.ehSubproduto && nomes.has(i.nome));
+            const outros = custo.insumosSemCusto.filter(n => !semPreco.some(i => i.nome === n));
+            return (
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2.5 space-y-2">
+                <div className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">💲 Faltam preços ({custo.insumosSemCusto.length}) — cadastro rápido</div>
+                {semPreco.map(i => <PrecoRapido key={i.id} insumo={i} meId={meId} />)}
+                {outros.length > 0 && <div className="text-[10px] text-amber-700 dark:text-amber-300">Também sem custo: {outros.join(", ")}.</div>}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -669,6 +676,36 @@ function QtyStepper({ qtd, unidade, unidades, unidadeTravada, onQtd, onUnidade }
             {unidades.map(u => <option key={u} value={u}>{labelUnidade(u)}</option>)}
           </select>}
       <button type="button" onClick={() => onQtd(round3(qtd + passoDe(qtd)))} className="w-7 h-7 rounded-full flex items-center justify-center text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 text-lg leading-none" aria-label="aumentar">+</button>
+    </div>
+  );
+}
+
+// Cadastro rápido de preço de um insumo, direto do painel de custo da ficha.
+// Salva no insumo (custo + histórico) → recalcula a ficha e some da lista.
+function PrecoRapido({ insumo, meId }: { insumo: FtInsumo; meId?: string }) {
+  const [v, setV] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  async function salvar() {
+    const c = parseMoeda(v); if (!(c > 0)) return;
+    setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      const hist = [...(insumo.historicoCusto || []), { custo: c, data: now, por: meId || null }].slice(-20);
+      await updateDoc(doc(db, "ftInsumos", insumo.id), sanitizeForFirestore({ custo: c, custoAtualizadoEm: now, historicoCusto: hist }));
+      // some da lista assim que o snapshot atualizar; limpa por garantia
+      setV("");
+    } catch (e) { alert("Erro ao salvar preço: " + (e instanceof Error ? e.message : String(e))); }
+    finally { setSalvando(false); }
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="flex-1 min-w-0 text-[11px] text-gray-700 dark:text-gray-200 truncate" title={insumo.nome}>{insumo.nome}</span>
+      <div className="flex items-center gap-1 h-7 px-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 shrink-0">
+        <span className="text-[10px] text-gray-400">R$</span>
+        <input value={v} onChange={e => setV(maskMoeda(e.target.value))} onKeyDown={e => { if (e.key === "Enter") void salvar(); }} inputMode="numeric" placeholder="0,00" className="w-14 bg-transparent text-right text-xs outline-none dark:text-gray-100" />
+        <span className="text-[10px] text-gray-400">/{labelUnidade(insumo.unidadeBase)}</span>
+      </div>
+      <button type="button" onClick={() => void salvar()} disabled={salvando || !(parseMoeda(v) > 0)} className="h-7 px-2 rounded-lg bg-amber-600 text-white text-[11px] font-medium hover:bg-amber-700 disabled:opacity-40 shrink-0">{salvando ? "…" : "Salvar"}</button>
     </div>
   );
 }
