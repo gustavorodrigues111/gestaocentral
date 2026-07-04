@@ -922,6 +922,18 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   const nSugeridos = reconc.sugeridos.length;
   const catsIns = ordenarCats(categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo"));
   const catIds = new Set(catsIns.map(c => c.id));
+  // Onde cada insumo é usado (nome das fichas que o têm como ingrediente).
+  const usoMap = useMemo(() => {
+    const m = new Map<string, string[]>();
+    for (const f of fichas) {
+      if (f.ativo === false) continue;
+      for (const ing of f.ingredientes || []) {
+        if (ing.tipo !== "insumo") continue;
+        const arr = m.get(ing.refId) || []; if (!arr.includes(f.nome)) arr.push(f.nome); m.set(ing.refId, arr);
+      }
+    }
+    return m;
+  }, [fichas]);
   const buscaNorm = normalizarNome(busca);
   const semCusto = (i: FtInsumo) => !i.ehSubproduto && !(i.custo > 0);
   const pendente = (i: FtInsumo) => !!i.ehSubproduto && !i.subprodutoDe;
@@ -949,7 +961,11 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
         <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
           {ins.ehSubproduto && <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "subproduto 🔗" : "subproduto ⏳ sem vínculo"}</span>}
         </div>
-        <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}</div>
+        <div className="text-xs text-gray-500">{DIMENSAO_LABEL[ins.dimensao]} · base {labelUnidade(ins.unidadeBase)}{ins.fornecedorPadrao ? ` · ${ins.fornecedorPadrao}` : ""}
+          {(() => { const uso = usoMap.get(ins.id) || []; return uso.length > 0
+            ? <span className="ml-1 text-indigo-500/80 dark:text-indigo-400/80 cursor-help underline decoration-dotted underline-offset-2" title={`Usado em: ${uso.slice(0, 40).join(", ")}${uso.length > 40 ? "…" : ""}`}>· usado em {uso.length} ficha{uso.length === 1 ? "" : "s"}</span>
+            : <span className="ml-1 text-gray-300 dark:text-gray-600">· não usado</span>; })()}
+        </div>
       </div>
       <select value={ins.categoriaId || ""} onClick={e => e.stopPropagation()}
         onChange={e => { e.stopPropagation(); const v = e.target.value; if (v === "__nova__") void novaCatInsumo(ins.id); else void updateDoc(doc(db, "ftInsumos", ins.id), { categoriaId: v || null }); }}
