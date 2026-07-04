@@ -5,6 +5,7 @@
 // fica com 100 − Σ(% dos subprodutos).
 import type { FtFicha, FtIngrediente, FtInsumo } from "../../core/types";
 import { paraBase } from "./unidades";
+import { fatorDe } from "./producao";
 
 type Ctx = {
   insumos: Map<string, FtInsumo>;
@@ -104,6 +105,13 @@ export function calcularCusto(ficha: FtFicha, insumos: FtInsumo[], fichas: FtFic
     return { id: sp.id, nome: sp.nome, percentual: sp.percentualCusto || 0, custo, porRendimento: sp.rendimentoQtd > 0 ? round2(custo / sp.rendimentoQtd) : 0 };
   });
   return { total, porRendimento: rend > 0 ? round2(total / rend) : 0, bruto, insumosSemCusto: [...ctx.semCusto], subprodutos };
+}
+
+// Custo TOTAL de produzir `qtd` de uma ficha (lote) — escala o custo do preparo
+// pelo fator de produção. Usado no Planejamento pra custo teórico vs real do lote.
+export function custoLoteFicha(ficha: FtFicha, qtd: number, insumos: FtInsumo[], fichas: FtFicha[]): number {
+  const fator = fatorDe(ficha.rendimento, qtd, ficha.rendimento?.unidade || "un");
+  return round2(calcularCusto(ficha, insumos, fichas).total * fator);
 }
 
 // Custo de CADA ingrediente do preparo (nível de topo) — pra a ficha de custo.

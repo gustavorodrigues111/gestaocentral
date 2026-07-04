@@ -5381,7 +5381,11 @@ export type FtInsumo = {
 // Legado sem tipo é tratado como "ficha".
 // Plano de produção em lote: várias fichas + quanto de cada, com responsável e
 // dia. Gera a lista consolidada de insumos (compras) e o que produzir.
-export type FtPlanoItem = { id: string; fichaId: string; qtd: number; responsavel?: string | null };
+export type FtPlanoItem = {
+  id: string; fichaId: string; qtd: number; responsavel?: string | null;
+  rendimentoReal?: number | null;      // quanto REALMENTE saiu (custo real = custo do lote ÷ real)
+  validadeDias?: number | null;        // shelf-life pra etiqueta (Fase 4)
+};
 export type FtPlanoProducao = {
   id: string;
   restaurantId: string;
@@ -5391,6 +5395,7 @@ export type FtPlanoProducao = {
   itens: FtPlanoItem[];
   obs?: string | null;
   ativo: boolean;
+  concluidoEm?: string | null;         // ISO de quando foi marcado como produzido
   criadoEm: string;
   criadoPor?: string;
   criadoPorNome?: string;

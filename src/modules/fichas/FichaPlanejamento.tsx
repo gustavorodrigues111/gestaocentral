@@ -12,12 +12,14 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { labelUnidade } from "./unidades";
 import { explodirLote } from "./producao";
+import { custoLoteFicha } from "./custo";
 import { normalizarNome } from "./dedup";
 import { fmtBR } from "../../core/utils/date";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const UP = (s: string) => (s || "").trim().toUpperCase();
 const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
+const fmtMoeda = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const round3 = (n: number) => Math.round((n || 0) * 1000) / 1000;
 const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> = {
   rascunho: { label: "rascunho", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
@@ -62,6 +64,19 @@ function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProduc
   const [gerando, setGerando] = useState(false);
   const itensFicha = useMemo(() => p.itens.map(it => ({ it, ficha: fichas.find(f => f.id === it.fichaId && f.ativo !== false) })).filter(x => x.ficha) as { it: FtPlanoProducao["itens"][number]; ficha: FtFicha }[], [p.itens, fichas]);
   const explosao = useMemo(() => explodirLote(itensFicha.map(x => ({ ficha: x.ficha, qtd: x.it.qtd })), fichas, insumos), [itensFicha, fichas, insumos]);
+  const custoItens = useMemo(() => itensFicha.map(({ it, ficha }) => {
+    const custoLote = custoLoteFicha(ficha, it.qtd, insumos, fichas);
+    const planejado = it.qtd || 0;
+    const real = it.rendimentoReal != null && it.rendimentoReal > 0 ? it.rendimentoReal : planejado;
+    return { it, ficha, custoLote, planejado, real,
+      teoUnit: planejado > 0 ? custoLote / planejado : 0,
+      realUnit: real > 0 ? custoLote / real : 0,
+      perda: planejado > 0 ? Math.round(((planejado - real) / planejado) * 1000) / 10 : 0 };
+  }), [itensFicha, insumos, fichas]);
+  const custoTotalLote = useMemo(() => custoItens.reduce((s, x) => s + x.custoLote, 0), [custoItens]);
+  function marcarProduzido() {
+    setP(prev => ({ ...prev, status: "concluido", concluidoEm: prev.concluidoEm || new Date().toISOString(), itens: prev.itens.map(i => ({ ...i, rendimentoReal: i.rendimentoReal ?? i.qtd })) }));
+  }
   function patchItem(id: string, patch: Partial<FtPlanoProducao["itens"][number]>) { setP(prev => ({ ...prev, itens: prev.itens.map(i => i.id === id ? { ...i, ...patch } : i) })); }
   function removeItem(id: string) { setP(prev => ({ ...prev, itens: prev.itens.filter(i => i.id !== id) })); }
   function addFicha(f: FtFicha) { setP(prev => ({ ...prev, itens: [...prev.itens, { id: uid("pi"), fichaId: f.id, qtd: f.ehSubficha ? (f.rendimento.qtd || 1) : (f.producaoPadrao || 1) }] })); }
@@ -85,6 +100,7 @@ function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProduc
       <div className="flex items-center gap-2">
         <button type="button" onClick={onClose} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">← Voltar</button>
         <div className="ml-auto flex gap-2">
+          {p.status !== "concluido" && <Button variant="secondary" size="sm" onClick={marcarProduzido} disabled={itensFicha.length === 0}>✅ Marcar como produzido</Button>}
           <Button variant="secondary" size="sm" onClick={() => void preview()} disabled={gerando || itensFicha.length === 0}>{gerando ? "Gerando…" : "🖨️ Exportar PDF"}</Button>
           <Button size="sm" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
         </div>
@@ -133,6 +149,49 @@ function PlanoEditor({ plano, fichas, insumos, onClose }: { plano: FtPlanoProduc
           </table>
         )}
         {explosao.subprodutos.length > 0 && <div className="text-[11px] text-gray-400">Usa também (sai de preparos): {explosao.subprodutos.map(s => `${UP(s.nome)}${s.qb ? "" : ` ${fmtQtd(s.qtd)} ${labelUnidade(s.unidade)}`}`).join(", ")}.</div>}
+      </div>
+
+      {/* Custo do lote & rendimento real (custo teórico × real) */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 space-y-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">💰 Custo do lote {custoTotalLote > 0 && <span className="text-gray-400 font-normal">· total {fmtMoeda(custoTotalLote)}</span>}</div>
+          {p.status === "concluido" && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">✅ produzido{p.concluidoEm ? ` em ${fmtBR(p.concluidoEm.slice(0, 10))}` : ""}</span>}
+        </div>
+        {custoItens.length === 0 ? <div className="text-xs text-gray-400 italic">Adicione fichas pra ver o custo.</div> : custoTotalLote <= 0 ? (
+          <div className="text-xs text-amber-600 dark:text-amber-400">Sem custo calculado — cadastre o preço dos insumos (em Cadastros → Insumos) pra ver o custo do lote.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden min-w-[560px]">
+              <thead><tr className="bg-gray-50 dark:bg-gray-800/40 text-[11px] uppercase tracking-wide text-gray-500">
+                <th className="text-left font-semibold px-3 py-1.5">Ficha</th>
+                <th className="text-right font-semibold px-3 py-1.5 w-28">Custo do lote</th>
+                <th className="text-left font-semibold px-3 py-1.5 w-40">Rendimento real</th>
+                <th className="text-right font-semibold px-3 py-1.5 w-28">Custo real/un</th>
+                <th className="text-right font-semibold px-3 py-1.5 w-20">Perda</th>
+              </tr></thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {custoItens.map(x => {
+                  const un = x.ficha.ehSubficha ? labelUnidade(x.ficha.rendimento.unidade) : "porções";
+                  return (
+                    <tr key={x.it.id}>
+                      <td className="px-3 py-1.5 text-gray-800 dark:text-gray-100">{UP(x.ficha.nome)}<span className="text-[11px] text-gray-400"> · plano {fmtQtd(x.planejado)} {un}</span></td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-700 dark:text-gray-200">{x.custoLote > 0 ? fmtMoeda(x.custoLote) : "—"}</td>
+                      <td className="px-3 py-1.5">
+                        <div className="inline-flex items-center gap-1">
+                          <input type="text" inputMode="decimal" value={x.it.rendimentoReal != null ? fmtQtd(x.it.rendimentoReal) : ""} onChange={e => { const v = e.target.value.replace(/[^0-9.,]/g, "").replace(",", "."); patchItem(x.it.id, { rendimentoReal: v === "" ? null : (Number(v) || 0) }); }} placeholder={fmtQtd(x.planejado)} className="w-20 h-8 text-right px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 tabular-nums" />
+                          <span className="text-[11px] text-gray-400">{un}</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-gray-900 dark:text-gray-100 font-medium">{x.realUnit > 0 ? fmtMoeda(x.realUnit) : "—"}{x.realUnit > 0 && x.teoUnit > 0 && x.real !== x.planejado && <span className="block text-[10px] text-gray-400 font-normal">teórico {fmtMoeda(x.teoUnit)}</span>}</td>
+                      <td className={`px-3 py-1.5 text-right tabular-nums ${x.perda > 0 ? "text-rose-600 dark:text-rose-400" : x.perda < 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{x.perda > 0 ? `−${x.perda}%` : x.perda < 0 ? `+${Math.abs(x.perda)}%` : "—"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="text-[11px] text-gray-400">Custo real por unidade = custo do lote ÷ rendimento real. A diferença pro custo teórico é a perda de produção (quebra/sobra).</p>
       </div>
 
       <div className="flex justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
