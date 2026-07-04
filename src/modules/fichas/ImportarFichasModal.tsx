@@ -810,7 +810,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
 
       {fase === "processando" && (
         <div className="py-2">
-          <div className="flex items-center justify-between text-sm mb-2"><span className="font-medium text-gray-700 dark:text-gray-200">Lendo {itens.length} receita(s)…</span><span className="text-xs text-gray-400">{feito}/{itens.length}</span></div>
+          <div className="flex items-center justify-between text-sm mb-2"><span className="font-medium text-gray-700 dark:text-gray-200">{itens.length > 1 ? `Lendo ${itens.length} receita(s)…` : "Identificando receitas…"}</span><span className="text-xs text-gray-400">{feito}/{itens.length}</span></div>
           <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden mb-3"><div className="h-full bg-indigo-600 transition-all" style={{ width: `${itens.length ? Math.round((feito / itens.length) * 100) : 0}%` }} /></div>
           <div className="space-y-1 max-h-[50vh] overflow-y-auto">
             {itens.map(it => (
