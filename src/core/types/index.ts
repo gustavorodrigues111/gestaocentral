@@ -1411,6 +1411,8 @@ export type Ideia = {
   reuniaoId?: string | null;     // legado — se em_pauta/discutida → linkada a uma reunião
   reuniaoIdOrigem?: string | null;   // reunião onde ela foi GERADA
   tarefaIdGerada?: string | null;    // tarefa pra onde ela foi puxada
+  acaoIdGerada?: string | null;      // ação (Plano de Ação) gerada a partir dela
+  log?: AcaoLog[];                   // tratativas (ex.: "virou ação em reunião X")
   puxadaEm?: string | null;
   puxadaPor?: string | null;
   puxadaPorNome?: string;
@@ -1651,6 +1653,8 @@ export type Ocorrencia = {
   // Refs cruzadas (fluxo Ideias/Reuniões/Tarefas)
   reuniaoIdOrigem?: string | null;       // reunião onde foi gerada
   tarefaIdGerada?: string | null;        // tarefa pra onde foi puxada
+  acaoIdGerada?: string | null;          // ação (Plano de Ação) gerada a partir dela
+  log?: AcaoLog[];                       // tratativas (ex.: "virou ação em reunião X")
   puxadaEm?: string | null;
   puxadaPor?: string | null;
   puxadaPorNome?: string;

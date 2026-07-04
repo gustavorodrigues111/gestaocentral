@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
+import type { Acao } from "../../core/types";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer } from "../../core/auth/permissions";
@@ -45,6 +48,12 @@ export function IdeiasPage() {
   const [search, setSearch] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "em_pauta" | "discutidas" | "descartadas" | "todas">("abertas");
   const [editing, setEditing] = useState<Ideia | "new" | null>(null);
+  const [virarDe, setVirarDe] = useState<Ideia | null>(null);
+  async function aposVirarAcao(i: Ideia, acao: Acao) {
+    const now = new Date().toISOString();
+    const lg = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id, autorNome: me?.nome, tipo: "comentario" as const, texto: `Virou ação: "${acao.titulo}"${acao.responsavelNome ? ` — resp. ${acao.responsavelNome}` : ""}` };
+    await updateDoc(doc(db, "ideias", i.id), sanitizeForFirestore({ log: [...(i.log || []), lg], acaoIdGerada: acao.id, atualizadoEm: now }));
+  }
   const [levando, setLevando] = useState<Ideia | null>(null);
   const [aba, setAba] = useState<"registrar" | "kanban">(() => {
     try { return (localStorage.getItem("ideias_aba") as "registrar" | "kanban") || "registrar"; }
@@ -291,6 +300,7 @@ export function IdeiasPage() {
                         {i.categoria}
                       </span>
                     )}
+                    {i.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma ação no Plano de Ação">🎯 virou ação</span>}
                   </div>
                   {(podeModerar || podeExecutar) && (
                     <div className="flex gap-1 flex-wrap">
@@ -302,6 +312,9 @@ export function IdeiasPage() {
                       )}
                       {podeModerar && i.status === "aberta" && (
                         <Button variant="secondary" size="sm" onClick={() => descartar(i)}>🗑 Descartar</Button>
+                      )}
+                      {podeModerar && !i.acaoIdGerada && (
+                        <Button variant="secondary" size="sm" onClick={() => setVirarDe(i)}>🎯 Virar ação</Button>
                       )}
                       {podeModerar && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
@@ -335,6 +348,15 @@ export function IdeiasPage() {
           ideia={editing === "new" ? null : editing}
           restaurantId={rid}
           onClose={() => setEditing(null)}
+        />
+      )}
+      {virarDe && (
+        <VirarAcaoModal
+          rid={rid} meId={me?.id} meNome={me?.nome}
+          origem={{ tipo: "ideia", refId: virarDe.id, label: virarDe.titulo }}
+          tituloInicial={virarDe.titulo} descricaoInicial={virarDe.descricao}
+          onClose={() => setVirarDe(null)}
+          onCriada={(acao) => aposVirarAcao(virarDe, acao)}
         />
       )}
       {levando && (
