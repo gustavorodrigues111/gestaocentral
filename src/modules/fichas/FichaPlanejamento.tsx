@@ -1,12 +1,12 @@
 // Fase 3 — Planejamento de produção (lote). Um plano junta várias fichas (com
 // quanto de cada), atribui responsável e dia, e gera a lista consolidada de
 // insumos (compras) + o que produzir. Export PDF. Sem custo.
-import { useMemo, useState } from "react";
-import { doc, setDoc, updateDoc } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import type { jsPDF as JsPDFType } from "jspdf";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { FtFicha, FtInsumo, FtPlanoProducao } from "../../core/types";
+import type { FtConfig, FtFicha, FtInsumo, FtPlanoProducao, Pessoa } from "../../core/types";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -30,22 +30,34 @@ const STATUS: Record<FtPlanoProducao["status"], { label: string; cls: string }> 
 export function PlanejamentoView({ rid, planos, fichas, insumos, meId, meNome, restauranteNome }: { rid: string; planos: FtPlanoProducao[]; fichas: FtFicha[]; insumos: FtInsumo[]; meId?: string; meNome?: string; restauranteNome?: string }) {
   const [editar, setEditar] = useState<FtPlanoProducao | null>(null);
   const [vista, setVista] = useState<"lista" | "cal">("lista");
+  const [equipeOpen, setEquipeOpen] = useState(false);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [produtoresIds, setProdutoresIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const u1 = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false)));
+    const u2 = onSnapshot(doc(db, "ftConfig", rid), snap => setProdutoresIds((snap.exists() ? (snap.data() as FtConfig).produtoresIds : []) || []));
+    return () => { u1(); u2(); };
+  }, [rid]);
+  async function saveEquipe(ids: string[]) { await setDoc(doc(db, "ftConfig", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, produtoresIds: ids }), { merge: true }); }
   function novo(data?: string) {
     setEditar({ id: uid("plano"), restaurantId: rid, nome: "", data: data || new Date().toISOString().slice(0, 10), status: "rascunho", itens: [], ativo: true, criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome });
   }
-  if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} onClose={() => setEditar(null)} />;
+  if (editar) return <PlanoEditor plano={editar} fichas={fichas} insumos={insumos} restauranteNome={restauranteNome} pessoas={pessoas} produtoresIds={produtoresIds} onSaveEquipe={saveEquipe} onClose={() => setEditar(null)} />;
   const lista = planos.filter(p => p.ativo !== false).sort((a, b) => (b.data || "").localeCompare(a.data || "") || (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
           {([["lista", "📋 Lista"], ["cal", "📅 Calendário"]] as const).map(([v, l]) => (
             <button key={v} type="button" onClick={() => setVista(v)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${vista === v ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
           ))}
         </div>
         <div className="flex-1" />
+        <Button variant="secondary" size="sm" onClick={() => setEquipeOpen(true)}>⚙️ Equipe de produção</Button>
         <Button onClick={() => novo()}>+ Novo plano</Button>
       </div>
+      {equipeOpen && <EquipeProducaoModal pessoas={pessoas} produtoresIds={produtoresIds} onSave={saveEquipe} onClose={() => setEquipeOpen(false)} />}
       {vista === "cal" ? (
         <CalendarioPlanos planos={lista} onAbrir={setEditar} onNovo={novo} />
       ) : lista.length === 0 ? (
@@ -112,12 +124,15 @@ function CalendarioPlanos({ planos, onAbrir, onNovo }: { planos: FtPlanoProducao
   );
 }
 
-function PlanoEditor({ plano, fichas, insumos, restauranteNome, onClose }: { plano: FtPlanoProducao; fichas: FtFicha[]; insumos: FtInsumo[]; restauranteNome?: string; onClose: () => void }) {
+function PlanoEditor({ plano, fichas, insumos, restauranteNome, pessoas, produtoresIds, onSaveEquipe, onClose }: { plano: FtPlanoProducao; fichas: FtFicha[]; insumos: FtInsumo[]; restauranteNome?: string; pessoas: Pessoa[]; produtoresIds: string[]; onSaveEquipe: (ids: string[]) => Promise<void>; onClose: () => void }) {
   const [p, setP] = useState<FtPlanoProducao>(plano);
   const [salvando, setSalvando] = useState(false);
   const [pdf, setPdf] = useState<{ url: string; doc: JsPDFType } | null>(null);
   const [gerando, setGerando] = useState(false);
   const [etiquetas, setEtiquetas] = useState(false);
+  const [picker, setPicker] = useState(false);
+  const [equipe, setEquipe] = useState(false);
+  const produtores = useMemo(() => pessoas.filter(x => (produtoresIds || []).includes(x.id)).sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas, produtoresIds]);
   const itensFicha = useMemo(() => p.itens.map(it => ({ it, ficha: fichas.find(f => f.id === it.fichaId && f.ativo !== false) })).filter(x => x.ficha) as { it: FtPlanoProducao["itens"][number]; ficha: FtFicha }[], [p.itens, fichas]);
   const explosao = useMemo(() => explodirLote(itensFicha.map(x => ({ ficha: x.ficha, qtd: x.it.qtd })), fichas, insumos), [itensFicha, fichas, insumos]);
   const custoItens = useMemo(() => itensFicha.map(({ it, ficha }) => {
@@ -135,6 +150,7 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, onClose }: { pla
   }
   function patchItem(id: string, patch: Partial<FtPlanoProducao["itens"][number]>) { setP(prev => ({ ...prev, itens: prev.itens.map(i => i.id === id ? { ...i, ...patch } : i) })); }
   function removeItem(id: string) { setP(prev => ({ ...prev, itens: prev.itens.filter(i => i.id !== id) })); }
+  function removeByFicha(fid: string) { setP(prev => ({ ...prev, itens: prev.itens.filter(i => i.fichaId !== fid) })); }
   function addFicha(f: FtFicha) { setP(prev => ({ ...prev, itens: [...prev.itens, { id: uid("pi"), fichaId: f.id, qtd: f.ehSubficha ? (f.rendimento.qtd || 1) : (f.producaoPadrao || 1) }] })); }
   async function salvar() {
     setSalvando(true);
@@ -187,11 +203,21 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, onClose }: { pla
               <button type="button" onClick={() => patchItem(it.id, { qtd: round3(it.qtd + (it.qtd >= 10 ? 5 : 1)) })} className="w-6 h-6 text-gray-500 hover:text-indigo-600 text-lg leading-none">+</button>
             </div>
             <span className="text-xs text-gray-400 shrink-0">{ficha.ehSubficha ? labelUnidade(ficha.rendimento.unidade) : "porções"}</span>
-            <input value={it.responsavel || ""} onChange={e => patchItem(it.id, { responsavel: e.target.value })} placeholder="responsável" className="h-8 w-32 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            {produtores.length > 0 ? (
+              <select value={it.responsavelId || ""} onChange={e => { const pid = e.target.value; patchItem(it.id, { responsavelId: pid || null, responsavel: produtores.find(x => x.id === pid)?.nome || null }); }} className="h-8 w-36 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                <option value="">responsável…</option>
+                {it.responsavelId && !produtores.some(x => x.id === it.responsavelId) && <option value={it.responsavelId}>{it.responsavel || "?"}</option>}
+                {produtores.map(x => <option key={x.id} value={x.id}>{x.nome}</option>)}
+              </select>
+            ) : (
+              <button type="button" onClick={() => setEquipe(true)} title="Configure quem pode produzir" className="h-8 text-xs px-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-400 hover:text-indigo-600 hover:border-indigo-400">+ definir equipe</button>
+            )}
             <button type="button" onClick={() => removeItem(it.id)} className="text-gray-400 hover:text-red-600 text-base px-1 shrink-0">✕</button>
           </div>
         ))}
-        <FichaPicker fichas={fichas} jaTem={new Set(p.itens.map(i => i.fichaId))} onAdd={addFicha} />
+        <button type="button" onClick={() => setPicker(true)} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-sm text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10">
+          <span>🔎</span> + adicionar ficha ou base ao plano
+        </button>
       </div>
 
       {/* Lista de insumos (BOM) */}
@@ -266,7 +292,89 @@ function PlanoEditor({ plano, fichas, insumos, restauranteNome, onClose }: { pla
       )}
 
       {etiquetas && <EtiquetasModal itensFicha={itensFicha} dataProducao={p.data} nomePlano={p.nome} restauranteNome={restauranteNome} onValidade={(id, dias) => patchItem(id, { validadeDias: dias })} onClose={() => setEtiquetas(false)} />}
+      {picker && <FichaPickerModal fichas={fichas} jaTem={new Set(p.itens.map(i => i.fichaId))} onAdd={addFicha} onRemove={removeByFicha} onClose={() => setPicker(false)} />}
+      {equipe && <EquipeProducaoModal pessoas={pessoas} produtoresIds={produtoresIds} onSave={onSaveEquipe} onClose={() => setEquipe(false)} />}
     </div>
+  );
+}
+
+// Modal de seleção de ficha/base: escolhe o grupo, busca e clica no card.
+// Card já no plano fica marcado (✓) e clicar remove.
+function FichaPickerModal({ fichas, jaTem, onAdd, onRemove, onClose }: { fichas: FtFicha[]; jaTem: Set<string>; onAdd: (f: FtFicha) => void; onRemove: (fid: string) => void; onClose: () => void }) {
+  const [grupo, setGrupo] = useState<"finais" | "bases">("finais");
+  const [busca, setBusca] = useState("");
+  const bn = normalizarNome(busca);
+  const lista = useMemo(() => fichas
+    .filter(f => f.ativo !== false && (grupo === "bases" ? f.ehSubficha : !f.ehSubficha))
+    .filter(f => (f.ingredientes || []).length > 0)
+    .filter(f => !bn || normalizarNome(f.nome).includes(bn))
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [fichas, grupo, bn]);
+  return (
+    <Modal title="Adicionar ao plano" onClose={onClose} maxWidth="max-w-3xl">
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            {([["finais", "🍽️ Pratos finais"], ["bases", "🧩 Bases"]] as const).map(([g, l]) => (
+              <button key={g} type="button" onClick={() => setGrupo(g)} className={`px-3 py-1.5 text-xs font-medium rounded-md ${grupo === g ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+          <div className="relative flex-1 min-w-[180px]">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔎</span>
+            <input autoFocus value={busca} onChange={e => setBusca(e.target.value)} placeholder={`Buscar ${grupo === "bases" ? "base" : "prato"}…`} className="w-full h-9 pl-9 pr-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+          </div>
+        </div>
+        {lista.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-10">Nada encontrado.</div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[52vh] overflow-y-auto pr-0.5">
+            {lista.map(f => { const tem = jaTem.has(f.id); return (
+              <button key={f.id} type="button" onClick={() => tem ? onRemove(f.id) : onAdd(f)} className={`text-left rounded-xl border p-2.5 transition-colors ${tem ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-gray-800 hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10"}`}>
+                <div className="flex items-start justify-between gap-1">
+                  <span className="text-[13px] font-medium text-gray-800 dark:text-gray-100 leading-tight">{UP(f.nome)}</span>
+                  {tem && <span className="text-emerald-600 text-sm shrink-0">✓</span>}
+                </div>
+                <div className="text-[10px] text-gray-400 mt-1">{f.ehSubficha ? `rende ${fmtQtd(f.rendimento.qtd)} ${labelUnidade(f.rendimento.unidade)}` : "prato final"}</div>
+              </button>
+            ); })}
+          </div>
+        )}
+        <div className="flex justify-between items-center pt-1">
+          <span className="text-[11px] text-gray-400">Clique pra adicionar · ✓ = já no plano (clique remove)</span>
+          <Button onClick={onClose}>Concluir</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Configura a equipe de produção: pessoas que podem ser responsáveis por lotes.
+function EquipeProducaoModal({ pessoas, produtoresIds, onSave, onClose }: { pessoas: Pessoa[]; produtoresIds: string[]; onSave: (ids: string[]) => Promise<void>; onClose: () => void }) {
+  const [sel, setSel] = useState<Set<string>>(() => new Set(produtoresIds));
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const bn = normalizarNome(busca);
+  const lista = useMemo(() => pessoas.slice().sort((a, b) => a.nome.localeCompare(b.nome)).filter(pp => !bn || normalizarNome(pp.nome).includes(bn)), [pessoas, bn]);
+  function toggle(id: string) { setSel(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; }); }
+  async function salvar() { setSalvando(true); try { await onSave([...sel]); onClose(); } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); } }
+  return (
+    <Modal title="⚙️ Equipe de produção" onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Marque quem pode ser responsável por uma produção. Só essas pessoas aparecem no seletor de responsável dos planos.</p>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar pessoa…" className="w-full h-9 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+        <div className="max-h-[50vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.length === 0 ? <div className="text-sm text-gray-400 text-center py-6">Nenhuma pessoa neste restaurante.</div> : lista.map(pp => (
+            <label key={pp.id} className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <input type="checkbox" checked={sel.has(pp.id)} onChange={() => toggle(pp.id)} className="accent-indigo-600 w-4 h-4" />
+              <span className="text-sm text-gray-800 dark:text-gray-100">{pp.nome}</span>
+            </label>
+          ))}
+        </div>
+        <div className="flex justify-between items-center pt-1">
+          <span className="text-[11px] text-gray-400">{sel.size} selecionada{sel.size === 1 ? "" : "s"}</span>
+          <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button></div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -338,26 +446,3 @@ function EtiquetasModal({ itensFicha, dataProducao, nomePlano, restauranteNome, 
   );
 }
 
-function FichaPicker({ fichas, jaTem, onAdd }: { fichas: FtFicha[]; jaTem: Set<string>; onAdd: (f: FtFicha) => void }) {
-  const [busca, setBusca] = useState("");
-  const bn = normalizarNome(busca);
-  const sug = useMemo(() => !bn ? [] : fichas.filter(f => f.ativo !== false && (f.ingredientes || []).length > 0 && !jaTem.has(f.id) && normalizarNome(f.nome).includes(bn)).sort((a, b) => a.nome.localeCompare(b.nome)).slice(0, 8), [fichas, bn, jaTem]);
-  return (
-    <div className="relative">
-      <div className="flex items-center gap-2 px-3 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900">
-        <span className="text-gray-400 text-sm">🔎</span>
-        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="+ adicionar ficha ou base ao plano" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
-      </div>
-      {sug.length > 0 && (
-        <div className="absolute z-10 left-0 right-0 mt-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg overflow-hidden max-h-64 overflow-y-auto">
-          {sug.map(f => (
-            <button key={f.id} type="button" onClick={() => { onAdd(f); setBusca(""); }} className="w-full text-left flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/60">
-              <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded shrink-0 bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">{f.ehSubficha ? "base" : "prato"}</span>
-              <span className="text-sm flex-1 truncate dark:text-gray-100">{UP(f.nome)}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

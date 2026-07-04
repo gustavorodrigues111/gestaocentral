@@ -5383,8 +5383,16 @@ export type FtInsumo = {
 // dia. Gera a lista consolidada de insumos (compras) e o que produzir.
 export type FtPlanoItem = {
   id: string; fichaId: string; qtd: number; responsavel?: string | null;
+  responsavelId?: string | null;       // pessoa (produtor) responsável — pra tela do responsável no futuro
   rendimentoReal?: number | null;      // quanto REALMENTE saiu (custo real = custo do lote ÷ real)
   validadeDias?: number | null;        // shelf-life pra etiqueta (Fase 4)
+};
+
+// Config do módulo Fichas Técnicas por restaurante (equipe de produção etc).
+export type FtConfig = {
+  id: string;                          // = restaurantId
+  restaurantId: string;
+  produtoresIds?: string[];            // pessoas que podem ser responsáveis por produção
 };
 export type FtPlanoProducao = {
   id: string;
