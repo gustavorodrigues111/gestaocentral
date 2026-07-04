@@ -176,11 +176,12 @@ export function FichasPage() {
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
         <TabBtn ativo={tab === "bases"} onClick={() => irPara("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
-        {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => irPara("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false).length})</TabBtn>}
+        {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => irPara("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false && !i.ehSubproduto).length})</TabBtn>}
       </nav>
 
       {(tab === "pratos" || tab === "bases") && <ListaFichas grupo={tab === "bases" ? "subfichas" : "finais"} fichas={fichas} insumos={insumos} categorias={categorias} onEditar={setEditando} podeEditar={podeEditar}
         subFiltro={subFiltro} setSubFiltro={setSubFiltro} catFiltro={catFiltro} setCatFiltro={setCatFiltro} busca={busca} setBusca={setBusca} precoModo={precoModo} setPrecoModo={setPrecoModo} />}
+      {tab === "bases" && podeInsumo && <SubprodutosPanel insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
       {tab === "insumos" && podeInsumo && <CadastroInsumos rid={rid} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={pessoa?.id} />}
 
       {importando && (
@@ -890,6 +891,44 @@ function IngredientePicker({ insumos, subfichas, subprodutos, categorias, rid, m
   );
 }
 
+// Subprodutos (coprodutos que saem de preparos) — vivem na aba Bases, não em
+// Insumos, porque são PRODUZIDOS (não comprados). Referenciáveis como ingrediente.
+function SubprodutosPanel({ insumos, fichas, categorias, recebimentos, vinculos, meId }: { insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
+  const [editar, setEditar] = useState<FtInsumo | null>(null);
+  const subs = insumos.filter(i => i.ativo !== false && i.ehSubproduto).sort((a, b) => a.nome.localeCompare(b.nome));
+  const usoMap = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const f of fichas) { if (f.ativo === false) continue; for (const ing of f.ingredientes || []) if (ing.tipo === "insumo") m.set(ing.refId, (m.get(ing.refId) || 0) + 1); }
+    return m;
+  }, [fichas]);
+  const paiDe = (i: FtInsumo) => i.subprodutoDe ? (fichas.find(f => f.id === i.subprodutoDe!.fichaId)?.nome || "(preparo removido)") : null;
+  if (subs.length === 0) return null;
+  return (
+    <div className="mt-6">
+      <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">🔄 Subprodutos <span className="text-gray-400 font-normal normal-case">· saem de preparos (não são comprados) · {subs.length}</span></div>
+      <ListaCard vazio={false} vazioTexto="">
+        {subs.map(ins => {
+          const pai = paiDe(ins); const uso = usoMap.get(ins.id) || 0;
+          return (
+            <div key={ins.id} onClick={() => setEditar(ins)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 group cursor-pointer" title="Editar subproduto">
+              <div className="w-9 h-9 rounded-full bg-orange-50 dark:bg-orange-900/20 flex items-center justify-center text-base shrink-0">🔄</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{ins.nome}
+                  <span className={`ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${ins.subprodutoDe ? "bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"}`}>{ins.subprodutoDe ? "🔗 vinculado" : "⏳ sem vínculo"}</span>
+                </div>
+                <div className="text-xs text-gray-500">{pai ? `de ${pai}` : "vincule ao preparo que o gera"} · {uso > 0 ? `usado em ${uso} ficha${uso === 1 ? "" : "s"}` : "não usado"}</div>
+              </div>
+              <span className="text-[11px] text-gray-400 shrink-0">custo do preparo</span>
+              <span className="text-xs text-indigo-600 dark:text-indigo-400 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>
+            </div>
+          );
+        })}
+      </ListaCard>
+      {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onClose={() => setEditar(null)} />}
+    </div>
+  );
+}
+
 function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriado, onClose }: {
   rid: string; nomeInicial: string; insumos: FtInsumo[]; categorias?: FtCategoria[]; meId?: string; onCriado: (ins: FtInsumo) => void; onClose: () => void;
 }) {
@@ -940,7 +979,7 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriad
 // ─── Aba Insumos ──────────────────────────────────────────────────────────
 function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vinculos, meId }: { rid: string; insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string }) {
   const [busca, setBusca] = useState("");
-  const [filtro, setFiltro] = useState<"todas" | "semcusto" | "pendentes">("todas");
+  const [filtro, setFiltro] = useState<"todas" | "semcusto">("todas");
   const [catFiltro, setCatFiltro] = useState("");
   const [editar, setEditar] = useState<FtInsumo | null>(null); const [mesclar, setMesclar] = useState<FtInsumo | null>(null);
   const [sincronizar, setSincronizar] = useState(false);
@@ -964,11 +1003,10 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   }, [fichas]);
   const buscaNorm = normalizarNome(busca);
   const semCusto = (i: FtInsumo) => !i.ehSubproduto && !(i.custo > 0);
-  const pendente = (i: FtInsumo) => !!i.ehSubproduto && !i.subprodutoDe;
-  const nSemCusto = insumos.filter(i => i.ativo !== false && semCusto(i)).length;
-  const nPend = insumos.filter(i => i.ativo !== false && pendente(i)).length;
-  const ativos = insumos.filter(i => i.ativo !== false)
-    .filter(i => filtro === "todas" ? true : filtro === "semcusto" ? semCusto(i) : pendente(i))
+  const nSemCusto = insumos.filter(i => i.ativo !== false && !i.ehSubproduto && semCusto(i)).length;
+  // Subprodutos (saem de preparos) NÃO são insumos comprados — vivem na aba Bases.
+  const ativos = insumos.filter(i => i.ativo !== false && !i.ehSubproduto)
+    .filter(i => filtro === "todas" ? true : semCusto(i))
     .filter(i => !catFiltro ? true : catFiltro === "__sem__" ? (!i.categoriaId || !catIds.has(i.categoriaId)) : (i.categoriaId || "") === catFiltro)
     .filter(i => !buscaNorm || normalizarNome(i.nome).includes(buscaNorm))
     .sort((a, b) => a.nome.localeCompare(b.nome));
@@ -1025,10 +1063,9 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
     ...catsIns.map(cat => ({ nome: UP(cat.nome), itens: ativos.filter(i => i.categoriaId === cat.id) })),
     { nome: "Sem categoria", itens: ativos.filter(i => !i.categoriaId || !catIds.has(i.categoriaId)) },
   ].filter(g => g.itens.length > 0);
-  const chips: [("todas" | "semcusto" | "pendentes"), string, string][] = [
+  const chips: [("todas" | "semcusto"), string, string][] = [
     ["todas", "Todos", "text-gray-500"],
     ["semcusto", `💲 Sem custo${nSemCusto ? ` (${nSemCusto})` : ""}`, "text-amber-700 dark:text-amber-400"],
-    ["pendentes", `⏳ Subprodutos pendentes${nPend ? ` (${nPend})` : ""}`, "text-orange-600 dark:text-orange-400"],
   ];
   return (
     <div className="space-y-3">
@@ -1060,7 +1097,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
         </div>
       )}
       {ativos.length === 0 ? (
-        <ListaCard vazio vazioTexto={busca ? "Nenhum insumo com esse nome." : filtro === "pendentes" ? "Nenhum subproduto pendente." : filtro === "semcusto" ? "Nenhum insumo sem custo." : "Nenhum insumo cadastrado."}>{null}</ListaCard>
+        <ListaCard vazio vazioTexto={busca ? "Nenhum insumo com esse nome." : filtro === "semcusto" ? "Nenhum insumo sem custo." : "Nenhum insumo cadastrado."}>{null}</ListaCard>
       ) : (
         <div className="space-y-4">
           {grupos.map(g => (
