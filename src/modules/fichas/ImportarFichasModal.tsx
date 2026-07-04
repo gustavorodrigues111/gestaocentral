@@ -267,6 +267,8 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
   // edições
   const setPrinc = (k: string, patch: Partial<Principal>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], ...patch } }));
   const setVar = (k: string, vNorm: string, patch: Partial<VarInfo>) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: p[k].variacoes.map(v => v.norm === vNorm ? { ...v, ...patch } : v) } }));
+  // Cria uma variação NOVA no insumo (mesmo sem uso — vai ser cadastrada nele).
+  const addVariacao = (k: string) => setPrincipais(p => ({ ...p, [k]: { ...p[k], variacoes: [...p[k].variacoes, { norm: uid("v"), nome: "", fc: 100 }] } }));
   const setFicha = (id: string, patch: Partial<FichaRev>) => setFichas(prev => prev.map(f => f.id === id ? { ...f, ...patch } : f));
   const catTodas = (id: string, soSub?: boolean) => setFichas(prev => prev.map(f => (soSub === undefined || f.ehSubficha === soSub) ? { ...f, categoriaId: id || null } : f));
 
@@ -733,7 +735,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
       const insumoIdPorPrincipal = new Map<string, string>();
       for (const key of usadosKeys) {
         const p = principais[key]; if (!p) continue;
-        const varsImport: FtInsumoVariacao[] = p.variacoes.map(v => ({ id: uid("var"), nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
+        const varsImport: FtInsumoVariacao[] = p.variacoes.filter(v => v.nome.trim()).map(v => ({ id: uid("var"), nome: UP(v.nome), fc: v.fc > 0 ? v.fc : 100 }));
         if (p.matchInsumoId) {
           insumoIdPorPrincipal.set(key, p.matchInsumoId);
           if (varsImport.length) {
@@ -859,6 +861,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                           <option value="__novo__">+ criar novo insumo</option>
                         </select>
                         <button type="button" onClick={() => abrirPick(p.key)} title="Vincular a outro insumo / juntar com outro do lote" className="text-[11px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400 shrink-0">🔎</button>
+                        <button type="button" onClick={() => addVariacao(p.key)} title="Adicionar variação deste insumo (ex.: SEM LIMPO)" className="text-[11px] px-1.5 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-indigo-600 hover:border-indigo-400 shrink-0">+ var</button>
                         <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ${CHIP[p.status]}`}>{p.status === "casado" ? "reconhecido" : p.status}</span>
                         <select value="" onChange={e => { const v = e.target.value; if (v === "__nova__") promoverParaSubficha(p.key); else if (v) promoverParaSubficha(p.key, undefined, v); }} title="É um preparo — subficha nova ou existente" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[110px]"><option value="">é subficha…</option><option value="__nova__">+ nova subficha</option>{subfichas.length > 0 && <optgroup label="desta importação">{subfichas.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}{subfichasSistema.length > 0 && <optgroup label="já cadastradas">{subfichasSistema.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}</optgroup>}</select>
                         <select value="" onChange={e => { const val = e.target.value; if (val === "__pendente__") setPrinc(p.key, { ehSubprodutoPendente: true, matchInsumoId: null, status: "novo" }); else if (val.startsWith("exist:")) { const [, fid, sid] = val.split(":"); vincularSubprodutoExistente(p.key, fid, sid); } else if (val) promoverParaSubproduto(p.key, val); }} title="Isto é um subproduto que sai de outro preparo (ex.: carcaça do frango assado)" className="text-[10px] px-1 py-1 rounded border border-gray-300 dark:border-gray-700 text-gray-500 bg-white dark:bg-gray-900 shrink-0 max-w-[120px]"><option value="">é subproduto de…</option><option value="__pendente__">⏳ vincular depois</option>{subprodutosSistema.length > 0 && <optgroup label="já cadastrados">{subprodutosSistema.map(({ ficha, sp }) => <option key={ficha.id + sp.id} value={`exist:${ficha.id}:${sp.id}`}>{sp.nome} · de {ficha.nome}</option>)}</optgroup>}<optgroup label="criar subproduto em…">{[...fichas].sort((a, b) => a.nome.localeCompare(b.nome)).map(fx => <option key={fx.id} value={fx.id}>{fx.nome}</option>)}</optgroup></select>
@@ -867,7 +870,7 @@ export function ImportarFichasModal({ rid, insumos, categorias, fichasExistentes
                       {p.variacoes.map(v => (
                         <div key={v.norm} className="flex items-center gap-2 text-sm pl-6 mt-1">
                           <span className="text-indigo-500 text-xs shrink-0">↳</span>
-                          <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5" />
+                          <input value={v.nome} onChange={e => setVar(p.key, v.norm, { nome: e.target.value.toUpperCase() })} placeholder="nome (ex: SEM LIMPO)" className="w-28 sm:w-40 shrink-0 bg-transparent text-indigo-700 dark:text-indigo-300 outline-none border-b border-dashed border-indigo-300 dark:border-indigo-700 focus:border-solid px-0.5 placeholder:text-gray-300 placeholder:normal-case" />
                           <span className="text-[11px] text-gray-400">aprov.</span>
                           <div className="flex items-center rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5"><input type="number" value={v.fc} onChange={e => setVar(p.key, v.norm, { fc: Number(e.target.value) || 0 })} className="w-12 py-1 bg-transparent text-right text-xs outline-none dark:text-gray-100" /><span className="text-[10px] text-gray-400">%</span></div>
                           {p.variacoes.length > 1 && (
