@@ -1344,17 +1344,37 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
 
 function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtInsumo; insumos: FtInsumo[]; fichas: FtFicha[]; onClose: () => void }) {
   const [alvoId, setAlvoId] = useState(""); const [salvando, setSalvando] = useState(false);
+  const [comoVar, setComoVar] = useState(false);
+  const [varSel, setVarSel] = useState("__nova__");
+  const [varNome, setVarNome] = useState("");
+  const [varFc, setVarFc] = useState(100);
   const candidatos = insumos.filter(i => i.ativo !== false && i.id !== insumo.id && i.dimensao === insumo.dimensao).sort((a, b) => a.nome.localeCompare(b.nome));
+  const alvo = insumos.find(i => i.id === alvoId) || null;
+  // Sugere o nome da variação a partir da diferença dos nomes (ex.: "SALSINHA PICADA" − "SALSINHA" → "PICADA").
+  function ligarVariacao(a: FtInsumo | null, on: boolean) {
+    setComoVar(on);
+    if (on && a) { setVarSel("__nova__"); setVarNome(UP(insumo.nome).replace(UP(a.nome), "").replace(/\s+/g, " ").trim() || "VARIAÇÃO"); }
+  }
   async function mesclar() {
-    const alvo = insumos.find(i => i.id === alvoId);
     if (!alvo) { alert("Escolha o insumo destino."); return; }
-    if (!confirm(`Mesclar "${insumo.nome}" em "${alvo.nome}"?`)) return;
+    let variacao: { nome: string; fc: number; novo?: boolean } | null = null;
+    if (comoVar) {
+      if (varSel !== "__nova__") { const v = (alvo.variacoes || []).find(x => x.id === varSel); if (v) variacao = { nome: v.nome, fc: v.fc }; }
+      else { const nm = UP(varNome).trim(); if (!nm) { alert("Dê um nome à variação."); return; } variacao = { nome: nm, fc: Math.round(varFc > 0 ? varFc : 100), novo: true }; }
+    }
+    if (!confirm(`Mesclar "${insumo.nome}" em "${alvo.nome}"${variacao ? ` como variação “${variacao.nome}”` : ""}?`)) return;
     setSalvando(true);
     try {
+      if (variacao?.novo && !(alvo.variacoes || []).some(v => normalizarNome(v.nome) === normalizarNome(variacao!.nome))) {
+        await updateDoc(doc(db, "ftInsumos", alvo.id), sanitizeForFirestore({ variacoes: [...(alvo.variacoes || []), { id: uid("var"), nome: variacao.nome, fc: variacao.fc }] }));
+      }
       for (const f of fichas) {
         let mudou = false;
         const ingredientes = f.ingredientes.map(ing => {
-          if (ing.tipo === "insumo" && ing.refId === insumo.id) { mudou = true; return { ...ing, refId: alvo.id, nomeSnapshot: alvo.nome }; }
+          if (ing.tipo === "insumo" && ing.refId === insumo.id) {
+            mudou = true;
+            return variacao ? { ...ing, refId: alvo.id, nomeSnapshot: alvo.nome, variacaoNome: variacao.nome, fc: variacao.fc } : { ...ing, refId: alvo.id, nomeSnapshot: alvo.nome, variacaoNome: null, fc: undefined } as FtIngrediente;
+          }
           return ing;
         });
         if (mudou) await updateDoc(doc(db, "ftFichas", f.id), sanitizeForFirestore({ ingredientes }));
@@ -1369,10 +1389,33 @@ function MesclarInsumoModal({ insumo, insumos, fichas, onClose }: { insumo: FtIn
     <Modal title={`Mesclar "${insumo.nome}"`} onClose={onClose} maxWidth="max-w-sm">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-300">Escolha o insumo correto. As fichas que usam "{insumo.nome}" passam a apontar pra ele.</p>
-        <Select label="Insumo destino" value={alvoId} onChange={e => setAlvoId(e.target.value)}>
+        <Select label="Insumo destino" value={alvoId} onChange={e => { setAlvoId(e.target.value); ligarVariacao(insumos.find(i => i.id === e.target.value) || null, comoVar); }}>
           <option value="">Selecione…</option>
           {candidatos.map(i => <option key={i.id} value={i.id}>{i.nome} ({labelUnidade(i.unidadeBase)})</option>)}
         </Select>
+        {alvo && (
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={comoVar} onChange={e => ligarVariacao(alvo, e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+            <span>“{insumo.nome}” é uma <strong>variação</strong> de “{alvo.nome}”</span>
+          </label>
+        )}
+        {alvo && comoVar && (
+          <div className="space-y-2 pl-6">
+            <Select label="Variação" value={varSel} onChange={e => setVarSel(e.target.value)}>
+              <option value="__nova__">＋ criar nova variação</option>
+              {(alvo.variacoes || []).map(v => <option key={v.id} value={v.id}>{v.nome} ({v.fc}%)</option>)}
+            </Select>
+            {varSel === "__nova__" && (
+              <div className="flex items-end gap-2">
+                <div className="flex-1"><Input label="Nome da variação" value={varNome} onChange={e => setVarNome(e.target.value.toUpperCase())} placeholder="ex: PICADA" /></div>
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Aprov. %</span>
+                  <input type="number" step={1} value={varFc} onChange={e => setVarFc(Math.round(Number(e.target.value) || 0))} className="w-20 px-2 py-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={mesclar} disabled={salvando}>{salvando ? "Mesclando…" : "Mesclar"}</Button></div>
       </div>
     </Modal>
