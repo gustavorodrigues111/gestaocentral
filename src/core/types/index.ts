@@ -3614,7 +3614,7 @@ export type CardapioEstruturado = {
   secoes?: SecaoCardapio[];          // legado (1 cardápio) — migrado p/ cardapios na carga
   // Itens "sombra" extraídos por IA de um cardápio em PDF — só pra alimentar o
   // vínculo de preços das fichas técnicas (não vão pro site).
-  cardapioPdfItens?: { id: string; titulo: string; preco: string }[];
+  cardapioPdfItens?: { id: string; titulo: string; preco: string; secao?: string }[];
   cardapioPdfItensEm?: string;       // ISO da última extração
   traduzidoEm?: string;
   traduzidoSig?: string;             // legado: assinatura PT da última tradução

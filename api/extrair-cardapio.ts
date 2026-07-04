@@ -17,13 +17,14 @@ type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) =>
 
 const PROMPT =
   "Você recebe o PDF de um CARDÁPIO de restaurante (pode estar diagramado, com seções, imagens e preços). " +
-  "Extraia CADA item VENDÁVEL com seu preço. Regras:\n" +
+  "Extraia CADA item VENDÁVEL com seu preço e a SEÇÃO em que ele aparece. Regras:\n" +
   "1) titulo = o nome do prato/bebida EXATAMENTE como aparece no cardápio (sem a descrição).\n" +
   "2) preco = o texto do preço como aparece (ex: '45', 'R$ 45,00', '32'). Se o item não tiver preço visível, use \"\".\n" +
-  "3) IGNORE cabeçalhos de seção, textos decorativos, observações ('consulte o garçom'), e logos.\n" +
-  "4) Se um mesmo prato tiver vários tamanhos/preços, gere uma linha por tamanho, com o tamanho no titulo (ex: 'CHOPP 300ml').\n" +
-  "5) NÃO invente itens nem preços. Se não der pra ler, omita.\n\n" +
-  "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"itens\": [ { \"titulo\": \"...\", \"preco\": \"...\" } ] }";
+  "3) secao = o nome do cabeçalho/categoria sob o qual o item aparece (ex: 'ENTRADAS', 'PRATOS PRINCIPAIS', 'DRINKS', 'SOBREMESAS', 'VINHOS TINTOS'). Use EXATAMENTE o texto do cabeçalho da seção. Se o item não estiver sob nenhuma seção clara, use \"\".\n" +
+  "4) NÃO trate os cabeçalhos de seção como itens; eles só preenchem o campo 'secao' dos itens abaixo deles. IGNORE textos decorativos, observações ('consulte o garçom') e logos.\n" +
+  "5) Se um mesmo prato tiver vários tamanhos/preços, gere uma linha por tamanho, com o tamanho no titulo (ex: 'CHOPP 300ml'), repetindo a mesma secao.\n" +
+  "6) NÃO invente itens, preços nem seções. Se não der pra ler, omita.\n\n" +
+  "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"itens\": [ { \"titulo\": \"...\", \"preco\": \"...\", \"secao\": \"...\" } ] }";
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -68,10 +69,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
     if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { itens?: Array<{ titulo?: string; preco?: string }> };
+    const parsed = JSON.parse(m[0]) as { itens?: Array<{ titulo?: string; preco?: string; secao?: string }> };
     const itens = (Array.isArray(parsed.itens) ? parsed.itens : [])
       .filter((i) => i && typeof i.titulo === "string" && i.titulo.trim())
-      .map((i) => ({ titulo: String(i.titulo).trim(), preco: (i.preco ?? "").toString().trim() }));
+      .map((i) => ({ titulo: String(i.titulo).trim(), preco: (i.preco ?? "").toString().trim(), secao: (i.secao ?? "").toString().trim() }));
     res.status(200).json({ itens });
   } catch (e) {
     const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${REQ_TIMEOUT_MS / 1000}s) na leitura do PDF.` : (e instanceof Error ? e.message : "Falha ao processar.");

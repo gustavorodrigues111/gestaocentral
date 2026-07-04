@@ -27,7 +27,7 @@ export function flatCardapio(d: CardapioEstruturado | null): CardItem[] {
     if (p.tipo === "imagem" || !p.titulo?.trim()) continue;
     out.push({ id: p.id, titulo: p.titulo, preco: p.preco || "", secao: sec.nome });
   }
-  for (const it of d.cardapioPdfItens || []) if (it.titulo?.trim()) out.push({ id: it.id, titulo: it.titulo, preco: it.preco || "", secao: "PDF" });
+  for (const it of d.cardapioPdfItens || []) if (it.titulo?.trim()) out.push({ id: it.id, titulo: it.titulo, preco: it.preco || "", secao: it.secao?.trim() || "PDF" });
   return out;
 }
 

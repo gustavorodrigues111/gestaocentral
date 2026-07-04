@@ -22,6 +22,9 @@ import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../co
 
 const CONFIG = "__config__";
 
+type PdfItem = { id: string; titulo: string; preco: string; secao?: string };
+const SEM_SECAO = "Sem seção";
+
 const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
 
 export function CardapioPage() {
@@ -37,7 +40,7 @@ export function CardapioPage() {
   const [cardapios, setCardapios] = useState<CardapioMenu[] | null>(null);
   const [sel, setSel] = useState<string>("");
   const [sharedLayout, setSharedLayout] = useState<CardapioLayout | null>(null);
-  const [pdfItens, setPdfItens] = useState<{ id: string; titulo: string; preco: string }[]>([]);
+  const [pdfItens, setPdfItens] = useState<PdfItem[]>([]);
   const [pdfItensEm, setPdfItensEm] = useState<string>("");
   const [extraindo, setExtraindo] = useState(false);
   const [extraErr, setExtraErr] = useState("");
@@ -110,7 +113,7 @@ export function CardapioPage() {
       const resp = await fetch("/api/extrair-cardapio", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url }) });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status}`);
-      const itens = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { titulo: string; preco?: string }[] }).itens : []).map(i => ({ id: uid(), titulo: i.titulo, preco: i.preco || "" }));
+      const itens: PdfItem[] = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { titulo: string; preco?: string; secao?: string }[] }).itens : []).map(i => ({ id: uid(), titulo: i.titulo, preco: i.preco || "", secao: (i.secao || "").trim() }));
       const now = new Date().toISOString();
       await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, cardapioPdfItens: itens, cardapioPdfItensEm: now, atualizadoEm: now, atualizadoPor: me?.id }), { merge: true });
       setPdfItens(itens); setPdfItensEm(now);
@@ -119,13 +122,14 @@ export function CardapioPage() {
   }
 
   // Edição da lista sombra (título/preço), com salvamento automático.
-  async function salvarPdfItens(next: { id: string; titulo: string; preco: string }[]) {
+  async function salvarPdfItens(next: PdfItem[]) {
     setPdfItens(next);
     try { await setDoc(doc(db, "cardapioEstruturado", rid), sanitizeForFirestore({ id: rid, restaurantId: rid, cardapioPdfItens: next, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }); }
     catch (e) { setExtraErr(e instanceof Error ? e.message : String(e)); }
   }
-  const patchPdfItem = (id: string, patch: Partial<{ titulo: string; preco: string }>) => setPdfItens(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
-  const addPdfItem = () => void salvarPdfItens([...itensRef.current, { id: uid(), titulo: "", preco: "" }]);
+  const patchPdfItem = (id: string, patch: Partial<PdfItem>) => setPdfItens(prev => prev.map(i => i.id === id ? { ...i, ...patch } : i));
+  const addPdfItem = (secao?: string) => void salvarPdfItens([...itensRef.current, { id: uid(), titulo: "", preco: "", secao: secao || "" }]);
+  const renomearSecao = (de: string, para: string) => { const p = para.trim(); void salvarPdfItens(itensRef.current.map(i => (i.secao || "").trim() === de.trim() ? { ...i, secao: p } : i)); };
   const removePdfItem = (id: string) => void salvarPdfItens(itensRef.current.filter(i => i.id !== id));
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -169,7 +173,7 @@ export function CardapioPage() {
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs text-gray-500">{pdfItens.length} {pdfItens.length === 1 ? "item" : "itens"}{pdfItens.filter(i => !i.preco.trim()).length > 0 ? ` · ${pdfItens.filter(i => !i.preco.trim()).length} sem preço` : ""}{pdfItensEm ? ` · lido ${fmtBRDateTime(pdfItensEm)}` : ""}</span>
+                    <span className="text-xs text-gray-500">{pdfItens.length} {pdfItens.length === 1 ? "item" : "itens"}{(() => { const n = new Set(pdfItens.map(i => (i.secao || "").trim() || SEM_SECAO)).size; return n > 1 ? ` · ${n} seções` : ""; })()}{pdfItens.filter(i => !i.preco.trim()).length > 0 ? ` · ${pdfItens.filter(i => !i.preco.trim()).length} sem preço` : ""}{pdfItensEm ? ` · lido ${fmtBRDateTime(pdfItensEm)}` : ""}</span>
                     <div className="flex-1" />
                     {pdfItens.length > 8 && (
                       <div className="relative">
@@ -178,22 +182,40 @@ export function CardapioPage() {
                       </div>
                     )}
                   </div>
-                  <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
-                    <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/40 text-[10px] uppercase tracking-wide text-gray-500 font-semibold">
-                      <span className="flex-1">Item</span><span className="w-28 text-right">Preço</span><span className="w-6" />
-                    </div>
-                    <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
-                      {pdfItens.filter(i => !buscaItem.trim() || i.titulo.toLowerCase().includes(buscaItem.trim().toLowerCase())).map(i => (
-                        <div key={i.id} className="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                          <input value={i.titulo} onChange={e => patchPdfItem(i.id, { titulo: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="nome do item" className="flex-1 min-w-0 bg-transparent text-sm text-gray-800 dark:text-gray-100 outline-none border-b border-transparent focus:border-indigo-400 px-0.5" />
-                          <input value={i.preco} onChange={e => patchPdfItem(i.id, { preco: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="—" className={`w-28 text-right bg-transparent text-sm outline-none border-b border-transparent focus:border-indigo-400 px-0.5 tabular-nums ${i.preco.trim() ? "text-gray-700 dark:text-gray-200" : "text-amber-500"}`} />
-                          <button type="button" onClick={() => removePdfItem(i.id)} title="remover" className="w-6 text-gray-300 hover:text-red-600 text-sm opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                  {(() => {
+                    const q = buscaItem.trim().toLowerCase();
+                    const vis = pdfItens.filter(i => !q || i.titulo.toLowerCase().includes(q) || (i.secao || "").toLowerCase().includes(q));
+                    const ordem: string[] = [];
+                    const mapa = new Map<string, PdfItem[]>();
+                    for (const i of vis) { const s = (i.secao || "").trim() || SEM_SECAO; if (!mapa.has(s)) { mapa.set(s, []); ordem.push(s); } mapa.get(s)!.push(i); }
+                    if (ordem.length === 0) return <div className="text-[12px] text-gray-400 italic px-1 py-3">Nenhum item bate com o filtro.</div>;
+                    return (
+                      <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                        <div className="max-h-[28rem] overflow-y-auto">
+                          {ordem.map(secao => (
+                            <div key={secao}>
+                              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 dark:bg-gray-800/60 sticky top-0 z-[1] border-b border-gray-200 dark:border-gray-800">
+                                <input defaultValue={secao === SEM_SECAO ? "" : secao} placeholder={SEM_SECAO} onBlur={e => { const de = secao === SEM_SECAO ? "" : secao; const para = e.target.value.trim(); if (para !== de) renomearSecao(de, para); }} title="renomear seção" className="flex-1 min-w-0 bg-transparent text-[11px] font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300 outline-none border-b border-transparent focus:border-indigo-400" />
+                                <span className="text-[10px] text-gray-400 shrink-0">{mapa.get(secao)!.length}</span>
+                                <button type="button" onClick={() => addPdfItem(secao === SEM_SECAO ? "" : secao)} title="adicionar item nesta seção" className="text-[11px] text-indigo-500 hover:text-indigo-700 shrink-0">+ item</button>
+                              </div>
+                              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {mapa.get(secao)!.map(i => (
+                                  <div key={i.id} className="flex items-center gap-2 px-3 py-1.5 group hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                                    <input value={i.titulo} onChange={e => patchPdfItem(i.id, { titulo: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="nome do item" className="flex-1 min-w-0 bg-transparent text-sm text-gray-800 dark:text-gray-100 outline-none border-b border-transparent focus:border-indigo-400 px-0.5" />
+                                    <input value={i.preco} onChange={e => patchPdfItem(i.id, { preco: e.target.value })} onBlur={() => void salvarPdfItens(itensRef.current)} placeholder="—" className={`w-28 text-right bg-transparent text-sm outline-none border-b border-transparent focus:border-indigo-400 px-0.5 tabular-nums ${i.preco.trim() ? "text-gray-700 dark:text-gray-200" : "text-amber-500"}`} />
+                                    <button type="button" onClick={() => removePdfItem(i.id)} title="remover" className="w-6 text-gray-300 hover:text-red-600 text-sm opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </div>
+                      </div>
+                    );
+                  })()}
                   <div className="flex items-center justify-between">
-                    <button type="button" onClick={addPdfItem} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ adicionar item</button>
+                    <button type="button" onClick={() => addPdfItem()} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ adicionar item</button>
                     <span className="text-[11px] text-gray-400">Revise os preços e vincule aos pratos em Fichas Técnicas → Custo & CMV.</span>
                   </div>
                 </div>
