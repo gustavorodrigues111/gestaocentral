@@ -63,6 +63,16 @@ async function migrarSubprodutosParaFicha(insumos: FtInsumo[], fichas: FtFicha[]
   return validos.length;
 }
 
+// Cria uma categoria de insumo (via prompt) e devolve o id, pra vincular na hora.
+async function criarCategoriaInsumoPrompt(rid: string, categorias: FtCategoria[]): Promise<string | null> {
+  const nome = window.prompt("Nova categoria de insumo:");
+  if (!nome || !nome.trim()) return null;
+  const id = uid("cat");
+  const ordem = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").length;
+  await setDoc(doc(db, "ftCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome: UP(nome), tipo: "insumo", ordem, ativo: true } as FtCategoria));
+  return id;
+}
+
 // Cria uma unidade de medida customizada (ex.: maço) e a registra pra uso imediato.
 async function criarUnidadeMedida(rid: string): Promise<string | null> {
   const nome = window.prompt("Nova unidade de medida (ex: maço, cabeça, bandeja, pote):");
@@ -645,6 +655,16 @@ function FichaEditor({ rid, fichaInicial, insumos, fichas, categorias, meId, pod
               </div>
             );
           })()}
+          {fichasQueUsam.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">🔗 Usada em {fichasQueUsam.length} ficha{fichasQueUsam.length === 1 ? "" : "s"}</div>
+              <div className="max-h-40 overflow-y-auto space-y-0.5">
+                {fichasQueUsam.slice().sort((a, b) => a.nome.localeCompare(b.nome)).map(x => (
+                  <div key={x.id} className="text-[11px] text-gray-600 dark:text-gray-300 truncate">• {UP(x.nome)}</div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -971,12 +991,11 @@ function CriarInsumoModal({ rid, nomeInicial, insumos, categorias, meId, onCriad
           </Select>
           <CampoMoeda label={`Custo por ${unidadeBase}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
         </div>
-        {catsIns.length > 0 && (
-          <Select label="Categoria" value={categoriaId} onChange={e => setCategoriaId(e.target.value)}>
-            <option value="">— sem categoria —</option>
-            {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
-          </Select>
-        )}
+        <Select label="Categoria" value={categoriaId} onChange={async e => { if (e.target.value === "__nova__") { const id = await criarCategoriaInsumoPrompt(rid, categorias || []); if (id) setCategoriaId(id); } else setCategoriaId(e.target.value); }}>
+          <option value="">— sem categoria —</option>
+          {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          <option value="__nova__">+ criar categoria…</option>
+        </Select>
         <Input label="Fornecedor (opcional)" value={fornecedor} onChange={e => setFornecedor(e.target.value)} />
         <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={salvar}>Criar e usar</Button></div>
       </div>
@@ -1118,7 +1137,7 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
       )}
       {editar && <EditarCustoModal insumo={editar} fichas={fichas} categorias={categorias} recebimentos={recebimentos} vinculos={vinculos} meId={meId} onMesclar={() => { const i = editar; setEditar(null); setMesclar(i); }} onClose={() => setEditar(null)} />}
       {mesclar && <MesclarInsumoModal insumo={mesclar} insumos={insumos} fichas={fichas} onClose={() => setMesclar(null)} />}
-      {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
+      {sincronizar && <SincronizarPrecosModal rid={rid} reconc={reconc} insumos={insumos} fichas={fichas} categorias={categorias} recebimentos={recebimentos} meId={meId} onClose={() => setSincronizar(false)} />}
     </div>
   );
 }
@@ -1270,12 +1289,11 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
         <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={reutil} onChange={e => setReutil(e.target.checked)} className="w-4 h-4 accent-indigo-600" />Reutilizável (não pesa custo cheio — ex: óleo de fritura)</label>
 
-        {catsIns.length > 0 && (
-          <Select label="Categoria" value={categoriaId} onChange={e => setCategoriaId(e.target.value)}>
-            <option value="">— sem categoria —</option>
-            {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
-          </Select>
-        )}
+        <Select label="Categoria" value={categoriaId} onChange={async e => { if (e.target.value === "__nova__") { const id = await criarCategoriaInsumoPrompt(insumo.restaurantId, categorias); if (id) setCategoriaId(id); } else setCategoriaId(e.target.value); }}>
+          <option value="">— sem categoria —</option>
+          {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          <option value="__nova__">+ criar categoria…</option>
+        </Select>
 
         {insumo.ehSubproduto && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
@@ -1554,10 +1572,11 @@ function MesclarFichaModal({ ficha, fichas, onClose, onDone }: { ficha: FtFicha;
 }
 
 // ─── Sincronizar preços do Recebimento ──────────────────────────────────────
-function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, meId, onClose }: {
+function SincronizarPrecosModal({ rid, reconc, insumos, fichas, categorias, recebimentos, meId, onClose }: {
   rid: string; reconc: { vinculados: LinhaReconc[]; sugeridos: LinhaReconc[]; semInsumo: LinhaReconc[] };
-  insumos: FtInsumo[]; fichas: FtFicha[]; recebimentos: RecebimentoNota[]; meId?: string; onClose: () => void;
+  insumos: FtInsumo[]; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; meId?: string; onClose: () => void;
 }) {
+  const [criarDe, setCriarDe] = useState<LinhaReconc | null>(null);
   const notaById = useMemo(() => new Map(recebimentos.map(n => [n.id, n])), [recebimentos]);
   const notaUrl = (id: string): string | null => { const n = notaById.get(id); return n?.notaDriveUrl || n?.notaPaginas?.[0]?.driveUrl || null; };
   const VerNota = ({ notaId }: { notaId: string }) => { const url = notaUrl(notaId); return url ? <a href={url} target="_blank" rel="noreferrer" onClick={ev => ev.stopPropagation()} className="text-indigo-500 hover:underline">🧾 ver nota</a> : null; };
@@ -1625,19 +1644,19 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
   async function naoEEste(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: false }); }
   async function desvincular(l: LinhaReconc) { if (l.vinculo) await deleteDoc(doc(db, "ftVinculosRecebimento", l.vinculo.id)); }
   async function ignorar(l: LinhaReconc) { await gravarVinculo(l.produto, { insumoId: null, fatorParaBase: 0, ignorar: true }); }
-  async function criarInsumo(l: LinhaReconc) {
+  async function criarInsumoConfirmado(l: LinhaReconc, dados: { nome: string; base: string; custo: number; categoriaId: string; fornecedor: string }) {
     const p = l.produto;
-    const dim = (dimensaoDeUnidade(p.unidade) || "massa") as FtDimensao;
-    const base = dim === "massa" ? "kg" : dim === "volume" ? "L" : "un";
-    const fator = fatorAutomatico(p.unidade, { unidadeBase: base } as FtInsumo) ?? 1;
-    const custo = custoNaBase(p.ultimo.valorUnitario, fator);
+    const dim = (dimensaoDeUnidade(dados.base) || "massa") as FtDimensao;
+    const fator = fatorAutomatico(p.unidade, { unidadeBase: dados.base } as FtInsumo) ?? 1;
+    const custo = dados.custo;
     const id = uid("ins");
     await setDoc(doc(db, "ftInsumos", id), sanitizeForFirestore({
-      id, restaurantId: rid, nome: UP(p.descricaoExemplo), nomeNormalizado: normalizarNome(p.descricaoExemplo), dimensao: dim, unidadeBase: base,
+      id, restaurantId: rid, nome: UP(dados.nome), nomeNormalizado: normalizarNome(dados.nome), dimensao: dim, unidadeBase: dados.base,
       custo, custoAtualizadoEm: custo > 0 ? p.ultimo.data : null, historicoCusto: custo > 0 ? [{ custo, data: p.ultimo.data, por: meId || null, origem: "recebimento", fornecedor: p.fornecedor || null, notaId: p.ultimo.notaId, notaNumero: p.ultimo.notaNumero }] : [],
-      fornecedorPadrao: p.fornecedor || null, reutilizavel: false, aliases: [], ativo: true,
+      fornecedorPadrao: dados.fornecedor || null, reutilizavel: false, categoriaId: dados.categoriaId || null, aliases: [], ativo: true,
     } as FtInsumo));
     await gravarVinculo(p, { insumoId: id, fatorParaBase: fator, ignorar: false });
+    setCriarDe(null);
   }
 
   const impactoLinha = (l: LinhaReconc) => l.insumo ? impactoNoCmv(l.insumo.id, custoEfetivo(l), insumos, fichas) : [];
@@ -1749,7 +1768,7 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
                     <VerNota notaId={l.produto.ultimo.notaId} />
                   </div>
                   {linhaVinculo(l, <>
-                    <button type="button" onClick={() => void criarInsumo(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
+                    <button type="button" onClick={() => setCriarDe(l)} className="h-8 text-xs font-medium px-3 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm shrink-0">criar insumo</button>
                     <button type="button" onClick={() => void ignorar(l)} className="text-xs text-gray-400 hover:text-red-600 shrink-0">ignorar</button>
                   </>)}
                 </div>
@@ -1759,6 +1778,50 @@ function SincronizarPrecosModal({ rid, reconc, insumos, fichas, recebimentos, me
         )}
       </div>
       <div className="flex justify-end mt-3 pt-3 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button></div>
+      {criarDe && <CriarInsumoNotaModal linha={criarDe} rid={rid} categorias={categorias} onClose={() => setCriarDe(null)} onConfirmar={(dados) => void criarInsumoConfirmado(criarDe, dados)} />}
+    </Modal>
+  );
+}
+
+// Confirma os dados antes de criar um insumo a partir de um produto da nota.
+function CriarInsumoNotaModal({ linha, rid, categorias, onClose, onConfirmar }: { linha: LinhaReconc; rid: string; categorias: FtCategoria[]; onClose: () => void; onConfirmar: (d: { nome: string; base: string; custo: number; categoriaId: string; fornecedor: string }) => void }) {
+  const p = linha.produto;
+  const dim0 = dimensaoDeUnidade(p.unidade) || "massa";
+  const base0 = dim0 === "massa" ? "kg" : dim0 === "volume" ? "L" : "un";
+  const custoBase = (base: string) => { const f = fatorAutomatico(p.unidade, { unidadeBase: base } as FtInsumo) ?? 1; return custoNaBase(p.ultimo.valorUnitario, f); };
+  const [nome, setNome] = useState(UP(p.descricaoExemplo));
+  const [base, setBase] = useState(base0);
+  const [custo, setCusto] = useState(maskMoeda(String(Math.round(custoBase(base0) * 100))));
+  const [categoriaId, setCategoriaId] = useState("");
+  const [forn, setForn] = useState(p.fornecedor || "");
+  const [salvando, setSalvando] = useState(false);
+  const catsIns = categorias.filter(c => c.ativo !== false && (c.tipo || "ficha") === "insumo").sort((a, b) => a.nome.localeCompare(b.nome));
+  function trocarBase(b: string) { setBase(b); setCusto(maskMoeda(String(Math.round(custoBase(b) * 100)))); }
+  function confirmar() {
+    if (!nome.trim()) { alert("Dê um nome ao insumo."); return; }
+    setSalvando(true);
+    onConfirmar({ nome, base, custo: parseMoeda(custo), categoriaId, fornecedor: forn });
+  }
+  return (
+    <Modal title="Criar insumo da nota" onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2">Da nota: <strong>{p.descricaoExemplo}</strong> · {p.unidade} · {fmtMoeda(p.ultimo.valorUnitario)}{p.fornecedor ? ` · ${p.fornecedor}` : ""}. Confira e ajuste antes de criar.</div>
+        <Input label="Nome" value={nome} onChange={e => setNome(e.target.value.toUpperCase())} />
+        <div className="grid grid-cols-2 gap-2">
+          <Select label="Unidade base" value={base} onChange={async e => { if (e.target.value === "__nova__") { const nu = await criarUnidadeMedida(rid); if (nu) trocarBase(nu); } else trocarBase(e.target.value); }}>
+            {unidadesBase().map(u => <option key={u.unidade} value={u.unidade}>{u.label}{DIMENSAO_LABEL[u.dimensao] ? ` (${DIMENSAO_LABEL[u.dimensao]})` : ""}</option>)}
+            <option value="__nova__">+ criar unidade…</option>
+          </Select>
+          <CampoMoeda label={`Custo por ${base}`} value={custo} onChange={e => setCusto(maskMoeda(e.target.value))} />
+        </div>
+        <Select label="Categoria" value={categoriaId} onChange={async e => { if (e.target.value === "__nova__") { const id = await criarCategoriaInsumoPrompt(rid, categorias); if (id) setCategoriaId(id); } else setCategoriaId(e.target.value); }}>
+          <option value="">— sem categoria —</option>
+          {catsIns.map(c => <option key={c.id} value={c.id}>{UP(c.nome)}</option>)}
+          <option value="__nova__">+ criar categoria…</option>
+        </Select>
+        <Input label="Fornecedor" value={forn} onChange={e => setForn(e.target.value)} />
+        <div className="flex justify-end gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={confirmar} disabled={salvando}>{salvando ? "Criando…" : "Criar e vincular"}</Button></div>
+      </div>
     </Modal>
   );
 }
