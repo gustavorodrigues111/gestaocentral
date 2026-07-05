@@ -3236,6 +3236,25 @@ export type Rotina = {
   atualizadoEm?: string;
 };
 
+// Configuração de canais/destinatários de uma notificação (aviso de sistema ou
+// rotina) por restaurante. id = `${restaurantId}_${tipo}`. Camada que rege a
+// Central de Avisos + email + WhatsApp — controlada no módulo "Rotinas e Avisos".
+export type NotificacaoDestinatarioModo = "permissao" | "pessoas" | "funcoes";
+export type NotificacaoConfig = {
+  id: string;
+  restaurantId: string;
+  tipo: string;                    // "checklists" | "fechamentoCaixa" | … (ver avisosCatalogo)
+  inApp?: boolean;                 // aparece na Central (default true)
+  email?: boolean;                 // dispara email
+  whatsapp?: boolean;              // dispara WhatsApp
+  horario?: string;                // "HH:MM" (Brasília) — canais disparados
+  diasSemana?: number[];           // [] = todos
+  respeitarFolga?: boolean;        // pula quem está de folga na escala
+  destinatarios?: { modo: NotificacaoDestinatarioModo; pessoaIds?: string[]; funcoes?: string[] };
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+};
+
 // Registro de que uma pessoa concluiu a ocorrência de uma rotina numa data.
 // id determinístico = `${rotinaId}_${ocorrenciaData}_${pessoaId}` (idempotente).
 export type RotinaConclusao = {

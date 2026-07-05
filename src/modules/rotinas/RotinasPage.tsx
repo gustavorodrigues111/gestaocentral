@@ -9,6 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { MODULES } from "../../config/modules";
 import type { ModuleId, Pessoa, Rotina } from "../../core/types";
 import { RotinaModal } from "./RotinaModal";
+import { AvisosSistemaTab } from "./AvisosSistemaTab";
 import { apagarRotina } from "./repository";
 import { recorrenciaLabel, proximaData } from "./rotinasEngine";
 import { subDestinoLabel } from "./subDestinos";
@@ -36,6 +37,7 @@ export function RotinasPage() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Rotina | "new" | null>(null);
+  const [tab, setTab] = useState<"sistema" | "rotinas">("sistema");
 
   useEffect(() => {
     if (!rid) return;
@@ -82,6 +84,18 @@ export function RotinasPage() {
 
   return (
     <div className="max-w-5xl">
+      {/* Abas */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+        {([["sistema", "Avisos do sistema"], ["rotinas", "Rotinas"]] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setTab(v)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+        ))}
+      </div>
+
+      {tab === "sistema" ? (
+        <AvisosSistemaTab rid={rid} pessoas={pessoas} modulosAtivos={modulosAtivos} meId={me?.id || ""} podeGerenciar={podeGerenciar} />
+      ) : (
+      <>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Lembretes recorrentes que aparecem na Central de Avisos dos responsáveis no dia devido.
@@ -144,6 +158,8 @@ export function RotinasPage() {
           meNome={me.nome}
           onClose={() => setEditing(null)}
         />
+      )}
+      </>
       )}
     </div>
   );

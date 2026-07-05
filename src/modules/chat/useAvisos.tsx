@@ -25,6 +25,7 @@ import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/typ
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
 import { deepLinkRotina } from "../rotinas/subDestinos";
+import { configTipoDoCard } from "../rotinas/avisosCatalogo";
 
 export type Aviso = {
   id: string;
@@ -118,6 +119,17 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     );
     return () => unsub();
   }, [pid]);
+
+  // ── Config de canais por notificação (gating in-app da Central) ──
+  const [notifConfigs, setNotifConfigs] = useState<Record<string, { inApp?: boolean }>>({});
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, "notificacaoConfigs"), (snap) => {
+      const m: Record<string, { inApp?: boolean }> = {};
+      snap.docs.forEach((d) => { const c = d.data() as { restaurantId?: string; tipo?: string; inApp?: boolean }; if (c.restaurantId && c.tipo) m[`${c.restaurantId}_${c.tipo}`] = { inApp: c.inApp }; });
+      setNotifConfigs(m);
+    }, () => setNotifConfigs({}));
+    return () => unsub();
+  }, []);
 
   // ── Fontes por-item ──
   const escala = useAvisoSource({ ...base,
@@ -414,13 +426,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   }, [pessoaId]);
 
   const api = useMemo<AvisosApi>(() => {
+    // Gating in-app: some se a config do tipo desligou o canal in-app.
+    // Rotinas (tipo "rotina") nunca são gated — são lembretes próprios da pessoa.
+    const visivel = (a: Aviso) => {
+      if (a.tipo === "rotina") return true;
+      const key = `${a.restauranteId}_${configTipoDoCard(a.tipo)}`;
+      return notifConfigs[key]?.inApp !== false;
+    };
+    const visiveis = todos.filter(visivel);
     const estaLido = (a: Aviso) => {
       if (a.tipo === "rotina") return false; // rotina some só quando concluída
       const snap = lidos[a.id];
       return snap != null && (a.em || "") <= snap;
     };
-    const inbox = todos.filter((a) => !estaLido(a));
-    const historico = todos.filter((a) => estaLido(a));
+    const inbox = visiveis.filter((a) => !estaLido(a));
+    const historico = visiveis.filter((a) => estaLido(a));
 
     const persistir = (next: Record<string, string>) => {
       setLidos(next); // otimista
@@ -433,7 +453,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     };
 
     return {
-      todos, inbox, historico,
+      todos: visiveis, inbox, historico,
       marcarLido: (a) => persistir({ ...lidos, [a.id]: a.em || EM_ALTO }),
       marcarNaoLido: (a) => {
         const next = { ...lidos };
@@ -446,7 +466,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         persistir(next);
       },
     };
-  }, [todos, lidos, pessoaId]);
+  }, [todos, lidos, pessoaId, notifConfigs]);
 
   return <AvisosCtx.Provider value={api}>{children}</AvisosCtx.Provider>;
 }
