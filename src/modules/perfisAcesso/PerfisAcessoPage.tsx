@@ -1,22 +1,30 @@
 // Página de gestão de Perfis de Acesso. Só master entra aqui.
 // Lista perfis (built-in + custom) + editor inline com UI subtrativa.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
 import { MODULES, AREA_INFO } from "../../config/modules";
-import type { ModuleArea } from "../../core/types";
+import type { ModuleArea, Pessoa } from "../../core/types";
 import { isBuiltinProfileId } from "../../core/auth/builtinProfiles";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Modal } from "../../core/ui/Modal";
 import type { AccessProfile, PermissoesPerfil } from "../../core/types";
 
 export function PerfisAcessoPage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const { perfis, perfisCustomDb, loading, erro, salvar, deletar } = useAccessProfiles();
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "pessoas"), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
+    return () => u();
+  }, []);
 
   // Estado: id do perfil em edição, ou "new" pra criar, ou null pra lista.
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -65,6 +73,8 @@ export function PerfisAcessoPage() {
         perfil={perfilEditando}
         isNew={editing === "new"}
         restaurantes={restaurants}
+        pessoas={pessoas}
+        perfis={perfis}
         onCancelar={fecharEditor}
         onSalvar={async (p) => {
           await salvar(p, me);
@@ -223,12 +233,117 @@ function CardPerfil({ perfil, tipoLabel, escopo, onEditar, onDuplicar }: {
   );
 }
 
+// ─── VÍNCULOS (quem tem este perfil) ──────────────────────────────────────
+// O vínculo pessoa↔perfil é por restaurante (pessoa.profileIds[rid]). Se o
+// perfil é exclusivo de um restaurante, o contexto é fixo; se é global, dá pra
+// escolher em qual restaurante gerenciar os vínculos.
+function VinculosPerfil({ profile, pessoas, perfis, restaurantes }: {
+  profile: AccessProfile; pessoas: Pessoa[]; perfis: AccessProfile[]; restaurantes: { id: string; nome: string }[];
+}) {
+  const [ctxRid, setCtxRid] = useState(profile.restaurantId || restaurantes[0]?.id || "");
+  const [addOpen, setAddOpen] = useState(false);
+  const perfilNome = (id?: string) => perfis.find(p => p.id === id)?.nome || "";
+  const nomeRest = restaurantes.find(r => r.id === ctxRid)?.nome || "";
+  const atribuidas = pessoas.filter(p => p.profileIds?.[ctxRid] === profile.id).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+
+  async function setProfile(pessoa: Pessoa, profileId: string | null) {
+    const profileIds = { ...(pessoa.profileIds || {}) };
+    if (profileId) profileIds[ctxRid] = profileId; else delete profileIds[ctxRid];
+    await updateDoc(doc(db, "pessoas", pessoa.id), { profileIds });
+  }
+
+  if (!ctxRid) return <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 text-xs text-gray-400">Sem restaurante pra gerenciar vínculos.</div>;
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 space-y-2">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Pessoas com este perfil {atribuidas.length > 0 && <span className="text-gray-400 font-normal normal-case">· {atribuidas.length}</span>}</div>
+        <div className="flex items-center gap-2">
+          {!profile.restaurantId && restaurantes.length > 1 && (
+            <select value={ctxRid} onChange={e => setCtxRid(e.target.value)} title="Restaurante" className="h-8 text-xs px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              {restaurantes.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+            </select>
+          )}
+          <Button size="sm" onClick={() => setAddOpen(true)}>+ Adicionar</Button>
+        </div>
+      </div>
+      {atribuidas.length === 0 ? (
+        <p className="text-xs text-gray-400">Ninguém com este perfil{profile.restaurantId ? "" : ` em ${nomeRest}`} ainda.</p>
+      ) : (
+        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          {atribuidas.map(p => (
+            <div key={p.id} className="flex items-center justify-between gap-2 py-1.5">
+              <span className="text-sm text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
+              <button type="button" onClick={() => { if (confirm(`Remover ${p.nome} deste perfil? Ela fica sem perfil neste restaurante.`)) void setProfile(p, null); }} className="text-[11px] text-gray-400 hover:text-rose-600 shrink-0">remover</button>
+            </div>
+          ))}
+        </div>
+      )}
+      {addOpen && <AdicionarPessoaModal profile={profile} ctxRid={ctxRid} nomeRest={nomeRest} pessoas={pessoas} perfilNome={perfilNome} onAtribuir={setProfile} onClose={() => setAddOpen(false)} />}
+    </div>
+  );
+}
+
+function AdicionarPessoaModal({ profile, ctxRid, nomeRest, pessoas, perfilNome, onAtribuir, onClose }: {
+  profile: AccessProfile; ctxRid: string; nomeRest: string; pessoas: Pessoa[]; perfilNome: (id?: string) => string;
+  onAtribuir: (p: Pessoa, profileId: string) => Promise<void>; onClose: () => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const [confirmar, setConfirmar] = useState<Pessoa | null>(null);
+  const candidatos = pessoas
+    .filter(p => (p.restaurantIds || []).includes(ctxRid))
+    .filter(p => p.profileIds?.[ctxRid] !== profile.id)
+    .filter(p => { const q = busca.trim().toLowerCase(); return !q || p.nome.toLowerCase().includes(q); })
+    .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")).slice(0, 80);
+
+  async function escolher(p: Pessoa) {
+    const atual = p.profileIds?.[ctxRid];
+    if (atual) { setConfirmar(p); return; }   // já tem perfil → confirma a troca
+    await onAtribuir(p, profile.id); onClose();
+  }
+
+  return (
+    <Modal title={`Adicionar ao perfil "${profile.nome}"`} onClose={onClose} maxWidth="max-w-md">
+      {confirmar ? (
+        <div className="space-y-4">
+          <div className="rounded-xl border-2 border-amber-300 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-3.5 text-sm text-amber-900 dark:text-amber-200">
+            <b>{confirmar.nome}</b> já tem o perfil <b>{perfilNome(confirmar.profileIds?.[ctxRid]) || "—"}</b>{nomeRest ? ` em ${nomeRest}` : ""}.<br />
+            Trocar para <b>{profile.nome}</b>?
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setConfirmar(null)}>Voltar</Button>
+            <Button onClick={async () => { await onAtribuir(confirmar, profile.id); onClose(); }}>Trocar perfil</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <input autoFocus value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar pessoa…" className="w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <p className="text-[11px] text-gray-400">Pessoas com acesso a {nomeRest || "este restaurante"}. Já vinculadas a este perfil não aparecem.</p>
+          <div className="max-h-72 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 rounded-lg border border-gray-200 dark:border-gray-800">
+            {candidatos.length === 0 ? <div className="px-3 py-4 text-sm text-gray-400 text-center">Ninguém encontrado.</div>
+              : candidatos.map(p => {
+                const atual = perfilNome(p.profileIds?.[ctxRid]);
+                return (
+                  <button key={p.id} type="button" onClick={() => void escolher(p)} className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                    <span className="text-sm text-gray-900 dark:text-gray-100 truncate">{p.nome}</span>
+                    <span className="text-[11px] text-gray-400 shrink-0">{atual ? `atual: ${atual}` : "sem perfil"}</span>
+                  </button>
+                );
+              })}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
 // ─── EDITOR ──────────────────────────────────────────────────────────────
 
-function PerfilEditor({ perfil, isNew, restaurantes, onSalvar, onCancelar, onDeletar }: {
+function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, onCancelar, onDeletar }: {
   perfil: AccessProfile;
   isNew: boolean;
   restaurantes: { id: string; nome: string }[];
+  pessoas: Pessoa[];
+  perfis: AccessProfile[];
   onSalvar: (p: AccessProfile) => Promise<void>;
   onCancelar: () => void;
   onDeletar?: () => Promise<void>;
@@ -393,6 +508,8 @@ function PerfilEditor({ perfil, isNew, restaurantes, onSalvar, onCancelar, onDel
           </select>
         </div>
       </div>
+
+      {!isNew && <VinculosPerfil profile={perfil} pessoas={pessoas} perfis={perfis} restaurantes={restaurantes} />}
 
       {/* Bulk actions */}
       <div className="flex items-center justify-between gap-2 text-xs flex-wrap">
