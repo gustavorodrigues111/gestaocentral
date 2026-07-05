@@ -268,11 +268,7 @@ export function WhatsappInboxPage() {
             <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3 text-sm">
               <div>
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Pessoa vinculada</label>
-                <select value={contatoSel?.pessoaId || autoMatch?.id || ""} onChange={e => void salvarContato(sel, { pessoaId: e.target.value || null })}
-                  className="w-full mt-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                  <option value="">— não vinculada —</option>
-                  {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}{p.whatsapp ? ` · ${foneBonito(p.whatsapp)}` : ""}</option>)}
-                </select>
+                <PessoaPicker pessoas={pessoas} valueId={contatoSel?.pessoaId || null} autoMatch={autoMatch} onChange={id => void salvarContato(sel, { pessoaId: id })} />
                 {!contatoSel?.pessoaId && autoMatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Vinculada automaticamente pelo número: <strong>{autoMatch.nome}</strong></p>}
               </div>
               <div>
@@ -329,6 +325,56 @@ export function WhatsappInboxPage() {
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
+    </div>
+  );
+}
+
+// Seletor de Pessoa com busca por nome/telefone, ordenado alfabeticamente.
+// Native <select> no mobile não permite pesquisar numa lista longa.
+function PessoaPicker({ pessoas, valueId, autoMatch, onChange }: { pessoas: Pessoa[]; valueId: string | null; autoMatch: Pessoa | null; onChange: (id: string | null) => void }) {
+  const [open, setOpen] = useState(false);
+  const [busca, setBusca] = useState("");
+  const selecionada = pessoas.find(p => p.id === valueId) || null;
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    const qd = soDig(busca);
+    return pessoas
+      .filter(p => { if (!q) return true; return p.nome.toLowerCase().includes(q) || (!!qd && soDig(p.whatsapp).includes(qd)); })
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"))
+      .slice(0, 60);
+  }, [pessoas, busca]);
+
+  const rotulo = selecionada ? selecionada.nome : (autoMatch ? `${autoMatch.nome} (automático)` : "— não vinculada —");
+
+  return (
+    <div className="relative mt-1">
+      <button type="button" onClick={() => { setOpen(v => !v); setBusca(""); }}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-left">
+        <span className={`truncate ${selecionada ? "text-gray-900 dark:text-gray-100" : "text-gray-500"}`}>{rotulo}</span>
+        <span className="text-gray-400 shrink-0">⌄</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-[190]" onClick={() => setOpen(false)} />
+          <div className="absolute z-[200] mt-1 w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl max-h-72 overflow-hidden flex flex-col">
+            <div className="p-2 border-b border-gray-100 dark:border-gray-800">
+              <input autoFocus value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar nome ou número…"
+                className="w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            </div>
+            <div className="overflow-y-auto">
+              <button type="button" onClick={() => { onChange(null); setOpen(false); }} className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/40">— não vinculada —</button>
+              {lista.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhuma pessoa encontrada.</div>}
+              {lista.map(p => (
+                <button key={p.id} type="button" onClick={() => { onChange(p.id); setOpen(false); }}
+                  className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 ${p.id === valueId ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>
+                  <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome}</div>
+                  {p.whatsapp && <div className="text-[11px] text-gray-400">{foneBonito(p.whatsapp)}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
