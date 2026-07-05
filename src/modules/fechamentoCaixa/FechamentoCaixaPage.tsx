@@ -828,30 +828,37 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
         )}
 
         {confirmarDT && (
-          <div className="fixed inset-0 bg-black/50 z-[300] flex items-center justify-center p-4" onClick={() => setConfirmarDT(null)}>
-            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-start gap-2">
-                <span className="text-2xl">⚠️</span>
-                <div><h3 className="font-bold text-gray-900 dark:text-gray-100">Confirme o dia e o turno</h3><p className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">{confirmarDT}</p></div>
-              </div>
-              <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 space-y-3">
-                <div className="text-[11px] text-gray-500">Fechando agora: <b>{fmtDataHora(new Date().toISOString())}</b></div>
+          <div className="fixed inset-0 bg-black/60 z-[300] flex items-center justify-center p-4" onClick={() => setConfirmarDT(null)}>
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden ring-4 ring-red-500/30" onClick={(e) => e.stopPropagation()}>
+              {/* Banner vermelho grande e pulsante */}
+              <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3 animate-pulse motion-reduce:animate-none">
+                <span className="text-4xl leading-none">⚠️</span>
                 <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data deste fechamento</label>
-                  <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-full h-11 px-3 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                  <div className="font-extrabold text-lg leading-tight">Espera! Confira antes de fechar</div>
+                  <div className="text-sm text-red-50">Parece ter algo errado na data ou no turno.</div>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
-                  <div className="flex gap-2">
-                    {(["almoco", "jantar", "dia"] as TurnoCaixa[]).map((t) => (
-                      <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-2.5 px-1 rounded-lg border text-sm font-medium ${turno === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>{TURNO_CAIXA_LABEL[t]}</button>
-                    ))}
+              </div>
+              <div className="p-5 space-y-3">
+                <div className="rounded-xl border-2 border-red-300 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3.5 text-[15px] font-semibold text-red-800 dark:text-red-200">{confirmarDT}</div>
+                <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 p-3 space-y-3">
+                  <div className="text-[11px] text-gray-500">Fechando agora: <b>{fmtDataHora(new Date().toISOString())}</b></div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data deste fechamento</label>
+                    <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-full h-11 px-3 text-base rounded-lg border-2 border-red-300 dark:border-red-800 bg-white dark:bg-gray-900 [color-scheme:light] dark:[color-scheme:dark]" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
+                    <div className="flex gap-2">
+                      {(["almoco", "jantar", "dia"] as TurnoCaixa[]).map((t) => (
+                        <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-2.5 px-1 rounded-lg border text-sm font-medium ${turno === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>{TURNO_CAIXA_LABEL[t]}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="flex gap-2 justify-end">
-                <Button variant="secondary" onClick={() => setConfirmarDT(null)}>Cancelar</Button>
-                <Button onClick={() => { dtConfirmadoRef.current = true; setConfirmarDT(null); void salvar(); }}>Confirmar e fechar</Button>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <button type="button" onClick={() => { dtConfirmadoRef.current = true; setConfirmarDT(null); void salvar(); }} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 underline underline-offset-2">Fechar assim mesmo</button>
+                  <Button onClick={() => setConfirmarDT(null)}>✓ Corrigir</Button>
+                </div>
               </div>
             </div>
           </div>
