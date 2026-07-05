@@ -19,7 +19,6 @@ export type AvisoCatalogoItem = {
 export const AVISO_CATALOGO: AvisoCatalogoItem[] = [
   { tipo: "checklists",     label: "Checklists do dia",   icone: "✅", modulo: "checklists",     quando: "Checklist do turno pendente hoje",   email: "soon", whatsapp: "soon" },
   { tipo: "planoDeAcao",    label: "Plano de Ação",       icone: "🎯", modulo: "planoDeAcao",    quando: "Ação sua aberta / produção atribuída", email: "soon", whatsapp: "soon" },
-  { tipo: "fechamentoCaixa", label: "Fechamento de Caixa", icone: "💰", modulo: "fechamentoCaixa", quando: "Caixa fechado (aos sócios)",         email: "live", whatsapp: "live" },
   { tipo: "escala",         label: "Escala",              icone: "📅", modulo: "escala",         quando: "Ajuste solicitado pelo empregado",    email: "soon", whatsapp: "soon" },
   { tipo: "ocorrencias",    label: "Ocorrências",         icone: "⚠️", modulo: "ocorrencias",    quando: "Ocorrência em aberto",                email: "soon", whatsapp: "soon" },
   { tipo: "eventos",        label: "Eventos",             icone: "🎉", modulo: "eventos",        quando: "Novo lead de evento",                 email: "soon", whatsapp: "soon" },
@@ -39,7 +38,6 @@ export const AVISO_CATALOGO: AvisoCatalogoItem[] = [
 // Mapeia o `tipo` do card da Central (useAvisos) → `tipo` de config.
 // Cards que não constam aqui usam o próprio tipo.
 const CARD_PARA_CONFIG: Record<string, string> = {
-  fechamento: "fechamentoCaixa",
   escala_solicitacao: "escala",
   fale_dp: "faleDp",
   acoes: "planoDeAcao",
