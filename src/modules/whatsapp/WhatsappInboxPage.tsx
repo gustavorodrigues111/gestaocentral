@@ -18,6 +18,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { enviarWhatsapp } from "../../core/whatsapp/enviar";
+import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import type { Pessoa, WhatsappTag, WhatsappContato } from "../../core/types";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null };
@@ -54,6 +55,7 @@ export function WhatsappInboxPage() {
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState(false);
   const [gerenciarTags, setGerenciarTags] = useState(false);
+  const [tab, setTab] = useState<"conversas" | "templates">("conversas");
 
   const ridsKey = restaurants.map(r => r.id).join(",");
   const restNome = useMemo(() => Object.fromEntries(restaurants.map(r => [r.id, r.nome])), [restaurants]);
@@ -205,9 +207,21 @@ export function WhatsappInboxPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
           <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
         </div>
-        <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>
+        {tab === "conversas" && !sel && <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
       </div>
 
+      {/* Abas */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+        {([["conversas", "Conversas"], ["templates", "Templates"]] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => { setTab(v); setSel(null); }}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+        ))}
+      </div>
+
+      {tab === "templates" ? (
+        <WhatsappTemplatesTab podeConfig={podeResponder} />
+      ) : (
+      <>
       {!sel && (
         <>
           {/* Filtro por restaurante */}
@@ -342,6 +356,9 @@ export function WhatsappInboxPage() {
             </div>
           )}
         </div>
+      )}
+
+      </>
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
