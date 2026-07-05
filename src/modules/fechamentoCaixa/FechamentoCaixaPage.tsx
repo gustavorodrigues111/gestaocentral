@@ -496,6 +496,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     if (data === hoje && turno === "almoco" && h >= 23) return `Está quase meia-noite (${String(h).padStart(2, "0")}:${mm}) e marcado como ALMOÇO de hoje — não seria o jantar?`;
     const diffDias = Math.round((new Date(`${hoje}T12:00:00`).getTime() - new Date(`${data}T12:00:00`).getTime()) / 864e5);
     if (diffDias > 1) return `O fechamento está marcado para ${fmtData(data)} — ${diffDias} dias atrás. Confira a data.`;
+    if (turno === "dia") return "Você marcou Dia inteiro — confirme que houve apenas UM fechamento neste dia (almoço + jantar juntos).";
     return null;
   }
 
@@ -510,7 +511,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
       if (seq !== leituraSeq.current) return;
       if (resp.ok) {
         if (typeof j.data === "string" && /^\d{4}-\d{2}-\d{2}$/.test(j.data)) setData(j.data);
-        if (j.turno === "almoco" || j.turno === "jantar") setTurno(j.turno);
+        if (j.turno === "almoco" || j.turno === "jantar" || j.turno === "dia") setTurno(j.turno);
         if (j.totalVendas != null) setTotalVendas(fmtMilhar(String(j.totalVendas)));
       }
     } catch { /* best-effort — usuário digita */ }
@@ -633,7 +634,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     } finally { setSalvando(false); }
   }
 
-  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const inputCls = "w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   if (salvo) {
     return (
       <Modal title="💵 Novo fechamento" onClose={onSalvo} maxWidth="max-w-lg">
@@ -759,12 +760,13 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
         {etapa === "conferencia" && (
           <div className="space-y-3">
             <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 4.</strong> Confira tudo e feche o caixa.</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
-                <div className="flex gap-2">{(["almoco", "jantar"] as TurnoCaixa[]).map((t) => (
-                  <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${turno === t ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>{TURNO_CAIXA_LABEL[t]}</button>
+                <div className="flex gap-2">{(["almoco", "jantar", "dia"] as TurnoCaixa[]).map((t) => (
+                  <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 text-sm font-medium px-2 py-2.5 rounded-lg border ${turno === t ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>{TURNO_CAIXA_LABEL[t]}</button>
                 ))}</div>
+                {turno === "dia" && <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Um único fechamento pro dia inteiro (almoço + jantar juntos). Use só quando não houve fechamento separado por turno.</p>}
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
@@ -839,8 +841,8 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
                 <div>
                   <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Turno</label>
                   <div className="flex gap-2">
-                    {(["almoco", "jantar"] as TurnoCaixa[]).map((t) => (
-                      <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-2.5 rounded-lg border text-sm font-medium ${turno === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>{TURNO_CAIXA_LABEL[t]}</button>
+                    {(["almoco", "jantar", "dia"] as TurnoCaixa[]).map((t) => (
+                      <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 py-2.5 px-1 rounded-lg border text-sm font-medium ${turno === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>{TURNO_CAIXA_LABEL[t]}</button>
                     ))}
                   </div>
                 </div>
@@ -1975,7 +1977,7 @@ function EditarFechamentoModal({ f, onClose, onSaved }: { f: FechamentoCaixa; on
   const [maquininhas, setMaquininhas] = useState<MaquininhaFechamento[]>((f.maquininhas || []).map((m) => ({ ...m })));
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
-  const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const inputCls = "w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   async function salvar() {
     setErro(""); setSalvando(true);
     try {
