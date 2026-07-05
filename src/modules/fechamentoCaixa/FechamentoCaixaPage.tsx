@@ -770,7 +770,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
-                <input type="date" value={data} onChange={(e) => setData(e.target.value)} className={`${inputCls} [color-scheme:light] dark:[color-scheme:dark]`} />
+                <input type="date" value={data} onChange={(e) => setData(e.target.value)} className="w-48 max-w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
               </div>
             </div>
             <div className="rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/20 p-3 flex items-center justify-between gap-2">
