@@ -1259,6 +1259,55 @@ function CadastroInsumos({ rid, insumos, fichas, categorias, recebimentos, vincu
   );
 }
 
+// Conversor: comprei uma embalagem (ex: garrafa de 3,2 L por R$ X) → calcula o
+// custo por unidade base (R$/litro). Usa paraBase() pra converter as unidades.
+function ConversorEmbalagem({ unidadeBase, onAplicar }: { unidadeBase: string; onAplicar: (custoPorBase: number) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [preco, setPreco] = useState("");
+  const [qtd, setQtd] = useState("");
+  const [unidade, setUnidade] = useState(unidadeBase);
+  useEffect(() => { setUnidade(unidadeBase); }, [unidadeBase]);
+  const dim = dimensaoDeUnidade(unidadeBase);
+  const unidades = unidadesBase().filter(u => dimensaoDeUnidade(u.unidade) === dim);
+  const p = parseMoeda(preco);
+  const q = parseFloat((qtd || "").replace(",", "."));
+  const b1 = paraBase(1, unidadeBase), bq = q > 0 ? paraBase(q, unidade) : null;
+  const custoPorBase = p > 0 && q > 0 && b1 && bq ? (p * b1) / bq : null;
+
+  if (!aberto) return (
+    <button type="button" onClick={() => setAberto(true)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">🧮 Comprei em outra embalagem? Converter pra {labelUnidade(unidadeBase)}</button>
+  );
+  return (
+    <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-900/10 p-3 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 uppercase tracking-wide">Converter embalagem → R$/{labelUnidade(unidadeBase)}</span>
+        <button type="button" onClick={() => setAberto(false)} className="text-[11px] text-gray-400 hover:text-gray-600">fechar</button>
+      </div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">Preço que você pagou por uma embalagem e o tamanho dela.</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-gray-500 block mb-0.5">Preço pago</label>
+          <input value={preco} onChange={e => setPreco(maskMoeda(e.target.value))} inputMode="decimal" placeholder="R$ 0,00" className="w-full h-9 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 block mb-0.5">Tamanho</label>
+          <input value={qtd} onChange={e => setQtd(e.target.value.replace(/[^\d.,]/g, ""))} inputMode="decimal" placeholder="ex: 3,2" className="w-full h-9 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        </div>
+        <div>
+          <label className="text-[10px] text-gray-500 block mb-0.5">Unidade</label>
+          <select value={unidade} onChange={e => setUnidade(e.target.value)} className="w-full h-9 px-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+            {unidades.map(u => <option key={u.unidade} value={u.unidade}>{u.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs text-gray-600 dark:text-gray-300">{custoPorBase != null ? <>= <b className="text-gray-900 dark:text-gray-100">{fmtMoeda(custoPorBase)}</b> por {labelUnidade(unidadeBase)}</> : <span className="text-gray-400">preencha preço e tamanho</span>}</span>
+        <Button size="sm" disabled={custoPorBase == null} onClick={() => { if (custoPorBase != null) { onAplicar(custoPorBase); setAberto(false); } }}>Usar como custo</Button>
+      </div>
+    </div>
+  );
+}
+
 function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, meId, onMesclar, onClose }: { insumo: FtInsumo; fichas: FtFicha[]; categorias: FtCategoria[]; recebimentos: RecebimentoNota[]; vinculos: FtVinculoRecebimento[]; meId?: string; onMesclar?: () => void; onClose: () => void }) {
   const [nome, setNome] = useState(insumo.nome);
   const [custo, setCusto] = useState(insumo.custo ? maskMoeda(String(Math.round(insumo.custo * 100))) : "");
@@ -1377,6 +1426,7 @@ function EditarCustoModal({ insumo, fichas, categorias, recebimentos, vinculos, 
             <option value="__nova__">+ criar unidade…</option>
           </Select>
         </div>
+        <ConversorEmbalagem unidadeBase={unidadeBase} onAplicar={c => setCusto(maskMoeda(String(Math.round(c * 100))))} />
         {mudouUnidade && !mudouDim && (
           <div className="text-[11px] rounded-lg p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200">Custo convertido pra R$/{labelUnidade(unidadeBase)} automaticamente.</div>
         )}
