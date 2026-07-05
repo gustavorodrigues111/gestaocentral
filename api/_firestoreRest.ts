@@ -54,6 +54,53 @@ function encVal(v: unknown): Record<string, unknown> | null {
   return { stringValue: String(v) };
 }
 
+// Converte um campo da REST API do Firestore de volta pra valor JS.
+function decVal(f: Record<string, unknown>): unknown {
+  if (f == null) return null;
+  if ("nullValue" in f) return null;
+  if ("booleanValue" in f) return f.booleanValue;
+  if ("integerValue" in f) return Number(f.integerValue);
+  if ("doubleValue" in f) return f.doubleValue;
+  if ("stringValue" in f) return f.stringValue;
+  if ("timestampValue" in f) return f.timestampValue;
+  if ("arrayValue" in f) { const a = (f.arrayValue as { values?: Array<Record<string, unknown>> }).values || []; return a.map(decVal); }
+  if ("mapValue" in f) { const m = (f.mapValue as { fields?: Record<string, Record<string, unknown>> }).fields || {}; const o: Record<string, unknown> = {}; for (const [k, v] of Object.entries(m)) o[k] = decVal(v); return o; }
+  return null;
+}
+function decDoc(doc: { name?: string; fields?: Record<string, Record<string, unknown>> }): Record<string, unknown> {
+  const o: Record<string, unknown> = {};
+  const f = doc.fields || {};
+  for (const [k, v] of Object.entries(f)) o[k] = decVal(v);
+  o.id = (doc.name || "").split("/").pop();
+  return o;
+}
+
+// Lista todos os docs de uma coleção (pagina automático). Uso interno (cron).
+export async function firestoreListar(colecao: string): Promise<Array<Record<string, unknown>>> {
+  const token = await idToken();
+  const out: Array<Record<string, unknown>> = [];
+  let pageToken = "";
+  do {
+    const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}?pageSize=300${pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ""}`;
+    const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!resp.ok) throw new Error(`Firestore listar ${resp.status}: ${(await resp.text()).slice(0, 160)}`);
+    const j = (await resp.json()) as { documents?: Array<{ name?: string; fields?: Record<string, Record<string, unknown>> }>; nextPageToken?: string };
+    for (const d of j.documents || []) out.push(decDoc(d));
+    pageToken = j.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
+
+// Lê um doc por id. null se não existe (404).
+export async function firestoreLer(colecao: string, docId: string): Promise<Record<string, unknown> | null> {
+  const token = await idToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}/${encodeURIComponent(docId)}`;
+  const resp = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`Firestore ler ${resp.status}`);
+  return decDoc((await resp.json()) as { name?: string; fields?: Record<string, Record<string, unknown>> });
+}
+
 // Cria um doc com id conhecido. 409 (já existe) = ok (dedupe). Devolve true se gravou/existia.
 export async function firestoreCriar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
   const token = await idToken();

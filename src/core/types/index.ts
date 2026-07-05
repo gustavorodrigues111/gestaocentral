@@ -3224,6 +3224,11 @@ export type Rotina = {
   responsaveis: string[];          // pessoaIds
   responsaveisNomes?: Record<string, string>; // snapshot pra exibir
   recorrencia: RotinaRecorrencia;
+  // Aviso por WhatsApp: no dia em que a rotina vence, o cron manda o template
+  // lembrete_rotina pros responsáveis que ainda não concluíram.
+  notificarWhatsapp?: boolean;
+  whatsappHora?: string;           // "HH:MM" (horário de Brasília) — quando disparar
+  respeitarFolga?: boolean;        // não avisar quem está de folga/férias na escala do dia
   ativo: boolean;
   criadoEm: string;
   criadoPor: string;

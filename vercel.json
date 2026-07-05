@@ -17,6 +17,10 @@
     {
       "path": "/api/tarefas-gerar",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/rotinas-notificar",
+      "schedule": "*/30 * * * *"
     }
   ]
 }
