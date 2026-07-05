@@ -144,6 +144,8 @@ service cloud.firestore {
     match /whatsappEnvios/{id}         { allow read, write: if authed(); }
     match /whatsappMensagens/{id}      { allow read, write: if authed(); }
     match /whatsappStatus/{id}         { allow read, write: if authed(); }
+    match /whatsappContatos/{id}       { allow read, write: if authed(); }
+    match /whatsappTags/{id}           { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }
     match /ftVinculosRecebimento/{id}  { allow read, write: if authed(); }

@@ -5552,3 +5552,24 @@ export type FtFicha = {
   criadoPor?: string;
   criadoPorNome?: string;
 };
+
+// ── WhatsApp: catálogo de tags e metadados por conversa ─────────────────────
+// A caixa de entrada do WhatsApp usa número ÚNICO da plataforma (não por
+// restaurante). Cada conversa (waId) pode ser vinculada a um restaurante e a
+// uma Pessoa, e receber tags. WhatsappContato guarda esses metadados.
+export type WhatsappTag = {
+  id: string;
+  nome: string;
+  cor?: string;        // hex (ex "#6366f1")
+  criadoEm?: string;
+};
+
+export type WhatsappContato = {
+  id: string;                 // = waId (dígitos, com DDI)
+  restaurantId?: string | null;   // override manual do restaurante da conversa
+  pessoaId?: string | null;       // Pessoa vinculada (auto ou manual)
+  nomeManual?: string | null;     // nome sobrescrito manualmente
+  tagIds?: string[];
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+};
