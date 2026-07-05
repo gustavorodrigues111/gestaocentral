@@ -11,7 +11,7 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
 import { MODULES, AREA_INFO } from "../../config/modules";
 import type { ModuleArea, Pessoa } from "../../core/types";
-import { isBuiltinProfileId, BUILTIN_GERENTE_RESTAURANTE } from "../../core/auth/builtinProfiles";
+import { BUILTIN_GERENTE_RESTAURANTE } from "../../core/auth/builtinProfiles";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -116,7 +116,6 @@ export function PerfisAcessoPage() {
 
       <ListaPerfis
         perfis={perfis}
-        perfisCustomDb={perfisCustomDb}
         restaurantes={restaurants}
         onEditar={(id) => setEditing(id)}
         onDuplicar={duplicarPerfil}
@@ -127,78 +126,32 @@ export function PerfisAcessoPage() {
 
 // ─── LISTA ──────────────────────────────────────────────────────────────
 
-function ListaPerfis({ perfis, perfisCustomDb, restaurantes, onEditar, onDuplicar }: {
+function ListaPerfis({ perfis, restaurantes, onEditar, onDuplicar }: {
   perfis: AccessProfile[];
-  perfisCustomDb: AccessProfile[];
   restaurantes: { id: string; nome: string }[];
   onEditar: (id: string) => void;
   onDuplicar: (p: AccessProfile) => void;
 }) {
-  const builtins = perfis.filter(p => p.builtin);
-  const customs = perfis.filter(p => !p.builtin);
-  const overrideIds = new Set(perfisCustomDb.map(p => p.id).filter(id => isBuiltinProfileId(id)));
+  const nomeRestaurante = (rid: string | null) => rid === null ? "Global" : (restaurantes.find(r => r.id === rid)?.nome || rid);
+  const ordenados = [...perfis].sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
 
-  function nomeRestaurante(rid: string | null) {
-    if (rid === null) return "Global";
-    return restaurantes.find(r => r.id === rid)?.nome || rid;
-  }
-
-  return (
-    <div className="space-y-4">
-      <Section titulo="Built-in (vem com o sistema)" cor="indigo">
-        <div className="divide-y divide-gray-100 dark:divide-gray-800">
-          {builtins.map(p => (
-            <CardPerfil
-              key={p.id}
-              perfil={p}
-              tipoLabel={overrideIds.has(p.id) ? "Built-in (modificado)" : "Built-in"}
-              escopo={nomeRestaurante(p.restaurantId)}
-              onEditar={() => onEditar(p.id)}
-              onDuplicar={() => onDuplicar(p)}
-            />
-          ))}
-        </div>
-      </Section>
-
-      <Section titulo="Custom (criados por você)" cor="emerald">
-        {customs.length === 0 ? (
-          <p className="text-sm text-gray-500 dark:text-gray-400 px-3 py-4 text-center">
-            Nenhum perfil custom ainda. Clique "+ Novo perfil" pra criar.
-          </p>
-        ) : (
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {customs.map(p => (
-              <CardPerfil
-                key={p.id}
-                perfil={p}
-                tipoLabel="Custom"
-                escopo={nomeRestaurante(p.restaurantId)}
-                onEditar={() => onEditar(p.id)}
-                onDuplicar={() => onDuplicar(p)}
-              />
-            ))}
-          </div>
-        )}
-      </Section>
+  return ordenados.length === 0 ? (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
+      Nenhum perfil ainda. Clique "+ Novo perfil" pra criar.
     </div>
-  );
-}
-
-function Section({ titulo, cor, children }: {
-  titulo: string;
-  cor: "indigo" | "emerald";
-  children: React.ReactNode;
-}) {
-  const corClasse = cor === "indigo"
-    ? "text-indigo-600 dark:text-indigo-400"
-    : "text-emerald-600 dark:text-emerald-400";
-  return (
-    <section className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-      <div className={`px-3 py-2 border-b border-gray-100 dark:border-gray-800 text-xs font-bold uppercase tracking-wider ${corClasse}`}>
-        {titulo}
-      </div>
-      {children}
-    </section>
+  ) : (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
+      {ordenados.map(p => (
+        <CardPerfil
+          key={p.id}
+          perfil={p}
+          tipoLabel={p.builtin ? "base do sistema" : ""}
+          escopo={nomeRestaurante(p.restaurantId)}
+          onEditar={() => onEditar(p.id)}
+          onDuplicar={() => onDuplicar(p)}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -221,8 +174,7 @@ function CardPerfil({ perfil, tipoLabel, escopo, onEditar, onDuplicar }: {
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{perfil.descricao}</div>
         )}
         <div className="text-[11px] text-gray-400 mt-1 flex gap-2 flex-wrap">
-          <span>{tipoLabel}</span>
-          <span>·</span>
+          {tipoLabel && <><span className="text-indigo-500/80 dark:text-indigo-400/80">🔒 {tipoLabel}</span><span>·</span></>}
           <span>📍 {escopo}</span>
           <span>·</span>
           <span>{totalAcoes} ações habilitadas</span>
