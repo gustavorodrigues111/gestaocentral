@@ -9,7 +9,7 @@
 // pessoa.permissions[rid] é derivada do perfil pelo bridge no AuthContext.
 
 import type { Pessoa, ModuleId, AccessProfile } from "../types";
-import { BUILTIN_BY_ID } from "./builtinProfiles";
+import { BUILTIN_BY_ID, LEGACY_PROFILE_FALLBACK } from "./builtinProfiles";
 
 // Pode VER o módulo neste restaurante?
 // Implementação: pessoa.permissions[rid][moduleId] é derivada do perfil
@@ -106,7 +106,8 @@ export function resolverPerfil(
     const override = perfisCustom.find(p => p.id === profileId);
     return override ?? builtin;
   }
-  return perfisCustom.find(p => p.id === profileId) ?? null;
+  // Doc custom do Firestore; senão fallback legado (ex: Gerente antes de semear).
+  return perfisCustom.find(p => p.id === profileId) ?? LEGACY_PROFILE_FALLBACK[profileId] ?? null;
 }
 
 /**

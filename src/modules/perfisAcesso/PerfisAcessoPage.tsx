@@ -2,15 +2,16 @@
 // Lista perfis (built-in + custom) + editor inline com UI subtrativa.
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { collection, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
 import { MODULES, AREA_INFO } from "../../config/modules";
 import type { ModuleArea, Pessoa } from "../../core/types";
-import { isBuiltinProfileId } from "../../core/auth/builtinProfiles";
+import { isBuiltinProfileId, BUILTIN_GERENTE_RESTAURANTE } from "../../core/auth/builtinProfiles";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
@@ -25,6 +26,19 @@ export function PerfisAcessoPage() {
     const u = onSnapshot(collection(db, "pessoas"), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
     return () => u();
   }, []);
+
+  // Migração: o Gerente de Restaurante deixou de ser built-in. Materializa ele
+  // como perfil CUSTOM no Firestore (mesmo id → não quebra vínculos), 1 vez.
+  useEffect(() => {
+    if (loading || !me?.isMaster) return;
+    const gid = BUILTIN_GERENTE_RESTAURANTE.id;
+    const existente = perfisCustomDb.find(p => p.id === gid);
+    if (!existente) {
+      void setDoc(doc(db, "accessProfiles", gid), sanitizeForFirestore({ ...BUILTIN_GERENTE_RESTAURANTE, builtin: false })).catch(() => {});
+    } else if (existente.builtin) {
+      void updateDoc(doc(db, "accessProfiles", gid), { builtin: false }).catch(() => {});
+    }
+  }, [loading, perfisCustomDb, me]);
 
   // Estado: id do perfil em edição, ou "new" pra criar, ou null pra lista.
   const [editing, setEditing] = useState<string | "new" | null>(null);
@@ -80,7 +94,7 @@ export function PerfisAcessoPage() {
           await salvar(p, me);
           fecharEditor();
         }}
-        onDeletar={editing !== "new" && !isBuiltinProfileId(perfilEditando.id)
+        onDeletar={editing !== "new" && !perfilEditando.builtin
           ? async () => {
               if (!confirm(`Deletar perfil "${perfilEditando.nome}"? Não tem volta.`)) return;
               await deletar(perfilEditando.id);
@@ -352,7 +366,7 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
-  const isBuiltin = isBuiltinProfileId(perfil.id);
+  const isBuiltin = perfil.builtin === true;
 
   function setAcao(moduleId: string, actionId: string, valor: boolean) {
     setForm(prev => {

@@ -192,8 +192,10 @@ export const BUILTIN_PORTAL_EMPREGADO: AccessProfile = {
   },
 };
 
+// Só o Portal do Empregado é built-in de verdade. O Gerente de Restaurante
+// virou um perfil CUSTOM (editável/deletável) — é semeado no Firestore com o
+// mesmo id (builtin:false) na 1ª vez que um master abre Perfis de Acesso.
 export const BUILTIN_PROFILES: AccessProfile[] = [
-  BUILTIN_GERENTE_RESTAURANTE,
   BUILTIN_PORTAL_EMPREGADO,
 ];
 
@@ -202,7 +204,14 @@ export const BUILTIN_BY_ID: Record<string, AccessProfile> = Object.fromEntries(
   BUILTIN_PROFILES.map(p => [p.id, p])
 );
 
-/** Predicate: id pertence a algum built-in? */
+// Fallback de RESOLUÇÃO (não de UI): garante que quem já está vinculado ao id
+// antigo do Gerente resolva as permissões mesmo antes do doc custom ser semeado
+// (evita janela "sem acesso"). O doc do Firestore, quando existe, tem prioridade.
+export const LEGACY_PROFILE_FALLBACK: Record<string, AccessProfile> = {
+  [BUILTIN_GERENTE_RESTAURANTE.id]: { ...BUILTIN_GERENTE_RESTAURANTE, builtin: false },
+};
+
+/** Predicate: id pertence a algum built-in? (padrão de id legado). */
 export function isBuiltinProfileId(id: string): boolean {
   return id.startsWith("_builtin_");
 }
