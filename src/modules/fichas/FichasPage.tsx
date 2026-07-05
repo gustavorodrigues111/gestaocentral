@@ -446,7 +446,7 @@ function ListaFichas({ grupo, fichas, insumos, categorias, onEditar, podeEditar,
               {grupos.map(g => (
                 <div key={g.nome}>
                   <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-2">{g.nome} <span className="text-gray-400 font-normal normal-case">· {g.itens.length}</span></div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{g.itens.map(renderCard)}</div>
+                  <div className="grid grid-cols-1 gap-2">{g.itens.map(renderCard)}</div>
                 </div>
               ))}
             </div>
