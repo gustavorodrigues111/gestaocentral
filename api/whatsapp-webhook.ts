@@ -44,8 +44,11 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   // Sempre devolve 200 rápido pra Meta não reenviar (processa o que der).
   try {
     const body = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as WebhookBody | null;
+    const value = body?.entry?.[0]?.changes?.[0]?.value;
+    console.log("[wpp-webhook] POST", JSON.stringify({ disponivel: firestoreDisponivel(), msgs: value?.messages?.length || 0, statuses: value?.statuses?.length || 0 }));
     if (firestoreDisponivel()) await processar(body);
-  } catch { /* best-effort */ }
+    else console.log("[wpp-webhook] firestore indisponivel — env vars ausentes");
+  } catch (e) { console.log("[wpp-webhook] erro:", (e as Error)?.message); }
   res.status(200).json({ ok: true });
 }
 
@@ -66,11 +69,14 @@ async function processar(body: WebhookBody | null): Promise<void> {
     if (!m.id || !m.from) continue;
     const texto = m.text?.body || m.image?.caption || m.document?.caption || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || (m.type && m.type !== "text" ? `[${m.type}]` : "");
     const ts = m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString();
-    await firestoreCriar("whatsappMensagens", m.id, {
-      waId: m.from, nome, direcao: "in", tipo: m.type || "text", texto,
-      timestamp: ts, recebidoEm: new Date().toISOString(), lido: false,
-      messageId: m.id, phoneNumberId: value.metadata?.phone_number_id || null,
-    });
+    try {
+      await firestoreCriar("whatsappMensagens", m.id, {
+        waId: m.from, nome, direcao: "in", tipo: m.type || "text", texto,
+        timestamp: ts, recebidoEm: new Date().toISOString(), lido: false,
+        messageId: m.id, phoneNumberId: value.metadata?.phone_number_id || null,
+      });
+      console.log("[wpp-webhook] gravou msg de", m.from);
+    } catch (e) { console.log("[wpp-webhook] FALHA ao gravar:", (e as Error)?.message); }
   }
   // Status de entrega dos que ENVIAMOS (marca no doc do envio, se existir).
   for (const s of value.statuses || []) {
