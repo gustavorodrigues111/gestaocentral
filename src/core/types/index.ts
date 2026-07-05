@@ -5187,7 +5187,7 @@ export type BoletoNota = {
 
 // ─── Fechamento de Caixa ─────────────────────────────────────────────────────
 export type TurnoCaixa = "almoco" | "jantar" | "dia";
-export const TURNO_CAIXA_LABEL: Record<TurnoCaixa, string> = { almoco: "Almoço", jantar: "Jantar", dia: "Dia inteiro" };
+export const TURNO_CAIXA_LABEL: Record<TurnoCaixa, string> = { almoco: "Almoço", jantar: "Jantar", dia: "Dia todo" };
 // Grupos de anexo do fechamento (organização/rótulo).
 export type GrupoAnexoFechamento = "comprovante" | "filipeta" | "comanda" | "dinheiro" | "outro";
 export const GRUPO_ANEXO_LABEL: Record<GrupoAnexoFechamento, string> = {

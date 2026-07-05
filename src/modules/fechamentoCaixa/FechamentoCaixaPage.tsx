@@ -498,7 +498,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     if (data === hoje && turno === "almoco" && h >= 23) return `Está quase meia-noite (${String(h).padStart(2, "0")}:${mm}) e marcado como ALMOÇO de hoje — não seria o jantar?`;
     const diffDias = Math.round((new Date(`${hoje}T12:00:00`).getTime() - new Date(`${data}T12:00:00`).getTime()) / 864e5);
     if (diffDias > 1) return `O fechamento está marcado para ${fmtData(data)} — ${diffDias} dias atrás. Confira a data.`;
-    if (turno === "dia") return "Você marcou Dia inteiro — confirme que houve apenas UM fechamento neste dia (almoço + jantar juntos).";
+    if (turno === "dia") return "Você marcou Dia todo — confirme que houve apenas UM fechamento neste dia (almoço + jantar juntos).";
     return null;
   }
 
@@ -768,7 +768,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
                 <div className="flex gap-2">{(["almoco", "jantar", "dia"] as TurnoCaixa[]).map((t) => (
                   <button key={t} type="button" onClick={() => setTurno(t)} className={`flex-1 text-sm font-medium px-2 py-2.5 rounded-lg border ${turno === t ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>{TURNO_CAIXA_LABEL[t]}</button>
                 ))}</div>
-                {turno === "dia" && <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Um único fechamento pro dia inteiro (almoço + jantar juntos). Use só quando não houve fechamento separado por turno.</p>}
+                {turno === "dia" && <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">Um único fechamento pro dia todo (almoço + jantar juntos). Use só quando não houve fechamento separado por turno.</p>}
               </div>
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Data</label>
