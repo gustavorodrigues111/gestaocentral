@@ -5566,7 +5566,8 @@ export type WhatsappTag = {
 
 export type WhatsappContato = {
   id: string;                 // = waId (dígitos, com DDI)
-  restaurantId?: string | null;   // override manual do restaurante da conversa
+  restaurantIds?: string[] | null;  // override manual (multi). null/ausente = herda da Pessoa
+  restaurantId?: string | null;     // legado (single) — lido como fallback
   pessoaId?: string | null;       // Pessoa vinculada (auto ou manual)
   nomeManual?: string | null;     // nome sobrescrito manualmente
   tagIds?: string[];

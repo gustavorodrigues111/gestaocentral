@@ -104,12 +104,18 @@ export function WhatsappInboxPage() {
     if (c?.pessoaId) return pessoaById[c.pessoaId] || null;
     return pessoaByFone[foneKey(waId)] || null;
   }
-  // Resolve restaurante (override manual → restaurante principal da Pessoa).
-  function restDaConversa(waId: string): string | null {
+  // Resolve restaurantes (override manual multi → herda todos os da Pessoa).
+  function restsDaConversa(waId: string): string[] {
     const c = contatos[waId];
-    if (c?.restaurantId) return c.restaurantId;
+    if (c?.restaurantIds != null) return c.restaurantIds;
+    if (c?.restaurantId) return [c.restaurantId];   // legado single
     const p = pessoaDaConversa(waId);
-    return p?.restaurantIds?.[0] || null;
+    return p?.restaurantIds || [];
+  }
+  // Se o contato ainda não tem override manual (herda da Pessoa).
+  function restHerdado(waId: string): boolean {
+    const c = contatos[waId];
+    return c?.restaurantIds == null && !c?.restaurantId;
   }
 
   // ── Conversas agrupadas ──────────────────────────────────────────────────
@@ -130,8 +136,8 @@ export function WhatsappInboxPage() {
   // Filtro por restaurante + tag.
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
     if (filtroRest !== "all") {
-      const r = restDaConversa(c.waId);
-      if (filtroRest === "none" ? !!r : r !== filtroRest) return false;
+      const rs = restsDaConversa(c.waId);
+      if (filtroRest === "none" ? rs.length > 0 : !rs.includes(filtroRest)) return false;
     }
     if (filtroTag) { if (!(contatos[c.waId]?.tagIds || []).includes(filtroTag)) return false; }
     return true;
@@ -156,6 +162,11 @@ export function WhatsappInboxPage() {
     const atuais = contatos[waId]?.tagIds || [];
     const novas = atuais.includes(tagId) ? atuais.filter(t => t !== tagId) : [...atuais, tagId];
     await salvarContato(waId, { tagIds: novas });
+  }
+  async function toggleRestConversa(waId: string, restId: string) {
+    const efet = restsDaConversa(waId); // materializa o herdado no 1º clique
+    const novas = efet.includes(restId) ? efet.filter(r => r !== restId) : [...efet, restId];
+    await salvarContato(waId, { restaurantIds: novas });
   }
   async function criarTag(nome: string, cor: string) {
     const n = nome.trim(); if (!n) return;
@@ -183,7 +194,8 @@ export function WhatsappInboxPage() {
 
   const contatoSel = sel ? contatos[sel] : undefined;
   const pessoaSel = sel ? pessoaDaConversa(sel) : null;
-  const restSel = sel ? restDaConversa(sel) : null;
+  const restsSel = sel ? restsDaConversa(sel) : [];
+  const herdaRest = sel ? restHerdado(sel) : false;
   const autoMatch = sel ? pessoaByFone[foneKey(sel)] : null;
 
   return (
@@ -228,7 +240,7 @@ export function WhatsappInboxPage() {
         ) : (
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
             {conversasFiltradas.map(c => {
-              const r = restDaConversa(c.waId);
+              const rs = restsDaConversa(c.waId);
               const cTags = (contatos[c.waId]?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
               return (
                 <button key={c.waId} type="button" onClick={() => { setSel(c.waId); setDetalhes(false); }} className="w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40">
@@ -237,7 +249,8 @@ export function WhatsappInboxPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{nomeConversa(c.waId, c.nome)}</span>
                       {c.naoLidas > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-500 text-white">{c.naoLidas}</span>}
-                      {r && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">{restNome[r] || "—"}</span>}
+                      {rs.slice(0, 2).map(r => <span key={r} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">{restNome[r] || "—"}</span>)}
+                      {rs.length > 2 && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">+{rs.length - 2}</span>}
                       {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
                     </div>
                     <div className="text-xs text-gray-500 truncate">{c.ultima.direcao === "out" ? "Você: " : ""}{c.ultima.texto || `[${c.ultima.tipo || "msg"}]`}</div>
@@ -254,9 +267,9 @@ export function WhatsappInboxPage() {
           <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800">
             <button type="button" onClick={() => setSel(null)} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">←</button>
             <div className="min-w-0 flex-1">
-              <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
+              <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-2 flex-wrap">
                 {nomeSel}
-                {restSel && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">{restNome[restSel] || "—"}</span>}
+                {restsSel.map(r => <span key={r} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300">{restNome[r] || "—"}</span>)}
               </div>
               <div className="text-[11px] text-gray-400">{foneBonito(sel)}{pessoaSel && <> · 👤 {pessoaSel.nome}</>}</div>
             </div>
@@ -272,12 +285,19 @@ export function WhatsappInboxPage() {
                 {!contatoSel?.pessoaId && autoMatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Vinculada automaticamente pelo número: <strong>{autoMatch.nome}</strong></p>}
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Restaurante</label>
-                <select value={contatoSel?.restaurantId || ""} onChange={e => void salvarContato(sel, { restaurantId: e.target.value || null })}
-                  className="w-full mt-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                  <option value="">{pessoaSel?.restaurantIds?.[0] ? `Automático (${restNome[pessoaSel.restaurantIds[0]] || "—"})` : "— nenhum —"}</option>
-                  {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-                </select>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Restaurantes <span className="normal-case font-normal text-gray-400">(pode marcar vários)</span></label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {restaurants.map(r => {
+                    const on = restsSel.includes(r.id);
+                    return (
+                      <button key={r.id} type="button" onClick={() => void toggleRestConversa(sel, r.id)}
+                        className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {r.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+                {herdaRest && restsSel.length > 0 && <p className="text-[11px] text-gray-400 mt-1">Herdado da pessoa. Clique pra ajustar manualmente.</p>}
               </div>
               <div>
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tags</label>
