@@ -20,6 +20,13 @@ export function PerfisAcessoPage() {
 
   // Estado: id do perfil em edição, ou "new" pra criar, ou null pra lista.
   const [editing, setEditing] = useState<string | "new" | null>(null);
+  // Perfil-semente pra "novo a partir de duplicação" (pré-preenche o editor).
+  const [seed, setSeed] = useState<AccessProfile | null>(null);
+  const fecharEditor = () => { setEditing(null); setSeed(null); };
+  const duplicarPerfil = (p: AccessProfile) => {
+    setSeed({ ...p, id: "", nome: `${p.nome} (cópia)`, builtin: false, criadoEm: new Date().toISOString(), permissions: structuredClone(p.permissions) });
+    setEditing("new");
+  };
 
   if (!me) return null;
   if (!me.isMaster) {
@@ -43,7 +50,7 @@ export function PerfisAcessoPage() {
   // Modo de edição
   if (editing) {
     const perfilEditando = editing === "new"
-      ? criarPerfilVazio()
+      ? (seed || criarPerfilVazio())
       : perfis.find(p => p.id === editing);
     if (!perfilEditando) {
       return (
@@ -58,16 +65,16 @@ export function PerfisAcessoPage() {
         perfil={perfilEditando}
         isNew={editing === "new"}
         restaurantes={restaurants}
-        onCancelar={() => setEditing(null)}
+        onCancelar={fecharEditor}
         onSalvar={async (p) => {
           await salvar(p, me);
-          setEditing(null);
+          fecharEditor();
         }}
         onDeletar={editing !== "new" && !isBuiltinProfileId(perfilEditando.id)
           ? async () => {
               if (!confirm(`Deletar perfil "${perfilEditando.nome}"? Não tem volta.`)) return;
               await deletar(perfilEditando.id);
-              setEditing(null);
+              fecharEditor();
             }
           : undefined
         }
@@ -88,6 +95,7 @@ export function PerfisAcessoPage() {
         perfisCustomDb={perfisCustomDb}
         restaurantes={restaurants}
         onEditar={(id) => setEditing(id)}
+        onDuplicar={duplicarPerfil}
       />
     </div>
   );
@@ -95,11 +103,12 @@ export function PerfisAcessoPage() {
 
 // ─── LISTA ──────────────────────────────────────────────────────────────
 
-function ListaPerfis({ perfis, perfisCustomDb, restaurantes, onEditar }: {
+function ListaPerfis({ perfis, perfisCustomDb, restaurantes, onEditar, onDuplicar }: {
   perfis: AccessProfile[];
   perfisCustomDb: AccessProfile[];
   restaurantes: { id: string; nome: string }[];
   onEditar: (id: string) => void;
+  onDuplicar: (p: AccessProfile) => void;
 }) {
   const builtins = perfis.filter(p => p.builtin);
   const customs = perfis.filter(p => !p.builtin);
@@ -121,6 +130,7 @@ function ListaPerfis({ perfis, perfisCustomDb, restaurantes, onEditar }: {
               tipoLabel={overrideIds.has(p.id) ? "Built-in (modificado)" : "Built-in"}
               escopo={nomeRestaurante(p.restaurantId)}
               onEditar={() => onEditar(p.id)}
+              onDuplicar={() => onDuplicar(p)}
             />
           ))}
         </div>
@@ -140,6 +150,7 @@ function ListaPerfis({ perfis, perfisCustomDb, restaurantes, onEditar }: {
                 tipoLabel="Custom"
                 escopo={nomeRestaurante(p.restaurantId)}
                 onEditar={() => onEditar(p.id)}
+                onDuplicar={() => onDuplicar(p)}
               />
             ))}
           </div>
@@ -167,11 +178,12 @@ function Section({ titulo, cor, children }: {
   );
 }
 
-function CardPerfil({ perfil, tipoLabel, escopo, onEditar }: {
+function CardPerfil({ perfil, tipoLabel, escopo, onEditar, onDuplicar }: {
   perfil: AccessProfile;
   tipoLabel: string;
   escopo: string;
   onEditar: () => void;
+  onDuplicar: () => void;
 }) {
   const totalAcoes = Object.values(perfil.permissions).reduce(
     (sum, modulo) => sum + Object.values(modulo).filter(v => v === true).length,
@@ -192,12 +204,21 @@ function CardPerfil({ perfil, tipoLabel, escopo, onEditar }: {
           <span>{totalAcoes} ações habilitadas</span>
         </div>
       </div>
-      <button
-        onClick={onEditar}
-        className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors shrink-0"
-      >
-        Editar
-      </button>
+      <div className="flex items-center gap-1.5 shrink-0">
+        <button
+          onClick={onDuplicar}
+          title="Criar um novo perfil a partir de uma cópia deste"
+          className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          Duplicar
+        </button>
+        <button
+          onClick={onEditar}
+          className="text-xs px-3 py-1.5 rounded-md bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          Editar
+        </button>
+      </div>
     </div>
   );
 }
