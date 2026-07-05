@@ -847,6 +847,7 @@ export type Restaurant = {
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
   fechamentoSociosEmails?: string[];
+  fechamentoSociosWhatsapp?: string[];     // números (só dígitos) que recebem o aviso por WhatsApp
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   fechamentoTemIfood?: boolean;            // restaurante tem iFood → conciliação aceita planilha do iFood

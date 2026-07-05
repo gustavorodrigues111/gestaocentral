@@ -20,6 +20,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
+import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import type { AnexoFechamento, ComandaCadastro, ComandaConsumo, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
 import { pickDriveFolder } from "../../core/google/drivePicker";
@@ -437,7 +438,7 @@ function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro
 type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
 function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo }: {
   rid: string;
-  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoPedirObsTurno?: boolean };
+  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoPedirObsTurno?: boolean };
   por: { id: string; nome: string };
   recentes: FechamentoCaixa[];
   onClose: () => void;
@@ -617,6 +618,15 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
       await addDoc(collection(db, "fechamentosCaixa"), fechamento);
       // Email de resumo pros sócios (best-effort — não trava o save).
       if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
+      // WhatsApp pros sócios (mesma ideia do email — aditivo, best-effort). Só dispara
+      // quando o template aviso_fechamento estiver aprovado; senão fica logado como erro.
+      const zaps = (restaurant.fechamentoSociosWhatsapp || []).filter((n) => n.replace(/\D/g, "").length >= 10);
+      if (zaps.length) {
+        const totalStr = parseBRL(totalVendas) != null ? fmtBRL(parseBRL(totalVendas)!) : "—";
+        const quando = `${fmtData(data)} · ${TURNO_CAIXA_LABEL[turno]}`;
+        const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
+        for (const num of zaps) void enviarWhatsapp({ to: num, template: "aviso_fechamento", params: ["sócio(a)", restaurant.nome || "Restaurante", quando, totalStr, link], contexto: "fechamento_socios", restaurantId: rid, criadoPor: por?.id });
+      }
       setSalvo(true);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o fechamento.");
@@ -1517,7 +1527,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean; fechamentoPedirObsTurno?: boolean } }) {
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean; fechamentoPedirObsTurno?: boolean } }) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [temIfood, setTemIfood] = useState(!!restaurant.fechamentoTemIfood);
@@ -1536,6 +1546,8 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
   const [destino, setDestino] = useState("");
   const [emails, setEmails] = useState<string[]>(restaurant.fechamentoSociosEmails || []);
   const [novoEmail, setNovoEmail] = useState("");
+  const [zaps, setZaps] = useState<string[]>(restaurant.fechamentoSociosWhatsapp || []);
+  const [novoZap, setNovoZap] = useState("");
   const [remetente, setRemetente] = useState(restaurant.fechamentoEmailRemetente || "");
   const [remetenteMsg, setRemetenteMsg] = useState("");
   const [comandas, setComandas] = useState<ComandaCadastro[]>(restaurant.fechamentoComandas || []);
@@ -1600,6 +1612,19 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
     setErro(""); setNovoEmail("");
     void salvarEmails([...emails, e]);
   }
+  async function salvarZaps(lista: string[]) {
+    setZaps(lista);
+    try { await updateDoc(doc(db, "restaurants", rid), { fechamentoSociosWhatsapp: lista.length ? lista : deleteField() }); }
+    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar os números."); }
+  }
+  function addZap() {
+    const d = novoZap.replace(/\D/g, "");
+    if (d.length < 10) { setErro("Número inválido — inclua DDD."); return; }
+    if (zaps.includes(d)) { setNovoZap(""); return; }
+    setErro(""); setNovoZap("");
+    void salvarZaps([...zaps, d]);
+  }
+  const fmtZap = (d: string) => { const n = d.startsWith("55") ? d.slice(2) : d; return n.length >= 10 ? `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}` : d; };
   async function salvarRemetente() {
     setRemetenteMsg("");
     try {
@@ -1650,6 +1675,26 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
           <input value={novoEmail} onChange={(e) => setNovoEmail(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addEmail(); }} placeholder="socio@email.com" type="email"
             className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
           <Button variant="secondary" size="sm" onClick={addEmail}>+ Adicionar</Button>
+        </div>
+
+        <div className="pt-3 border-t border-gray-100 dark:border-gray-800">
+          <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Sócios que recebem por WhatsApp <span className="font-normal text-gray-400 text-xs">— opcional</span></h4>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-2">Além do email, o mesmo aviso pode ir por WhatsApp pra estes números. (Dispara quando o modelo <code>aviso_fechamento</code> for aprovado pela Meta.)</p>
+          {zaps.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
+              {zaps.map((z) => (
+                <div key={z} className="px-3 py-1.5 text-sm flex items-center gap-2">
+                  <span className="flex-1 truncate">💬 {fmtZap(z)}</span>
+                  <button type="button" className="text-[11px] text-gray-500 hover:text-rose-600" onClick={() => void salvarZaps(zaps.filter((x) => x !== z))}>remover</button>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <input value={novoZap} onChange={(e) => setNovoZap(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addZap(); }} placeholder="(11) 99999-9999" inputMode="tel"
+              className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+            <Button variant="secondary" size="sm" onClick={addZap}>+ Adicionar</Button>
+          </div>
         </div>
         <div className="pt-2 border-t border-gray-100 dark:border-gray-800">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Email remetente <span className="font-normal text-gray-400">— opcional (override)</span></label>
