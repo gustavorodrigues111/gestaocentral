@@ -491,6 +491,8 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
   function checarTurnoData(agora: Date): string | null {
     const hoje = ymd(agora);
     const h = agora.getHours(), mm = String(agora.getMinutes()).padStart(2, "0");
+    // Ano diferente do atual = quase sempre engano (o mais fácil de passar batido).
+    if (data.slice(0, 4) !== hoje.slice(0, 4)) return `⚠️ O ANO do fechamento está ${data.slice(0, 4)}, mas estamos em ${hoje.slice(0, 4)}. Isso quase sempre é engano — corrija a data (${fmtData(data)}).`;
     if (data > hoje) return `A data marcada (${fmtData(data)}) está no futuro.`;
     if (data === hoje && turno === "jantar" && h < 18) return `Agora são ${String(h).padStart(2, "0")}:${mm} e está marcado como JANTAR de hoje — o jantar só fecha à noite. Confira o turno.`;
     if (data === hoje && turno === "almoco" && h >= 23) return `Está quase meia-noite (${String(h).padStart(2, "0")}:${mm}) e marcado como ALMOÇO de hoje — não seria o jantar?`;
