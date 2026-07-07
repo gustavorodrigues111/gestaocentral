@@ -291,7 +291,8 @@ export function ContasFixasPage() {
                           onClick={() => noCadastro ? setEditando(c) : void togglePago(c, cmp)}
                           title={noCadastro ? `${c.nome} — clique pra editar` : `${c.nome} — clique pra marcar pago`}
                           className={`rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${noCadastro ? "cursor-pointer hover:shadow-sm" : "cursor-grab active:cursor-grabbing"} ${dragId === c.id ? "opacity-40" : ""} ${corCard}`}>
-                          <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{!noCadastro && st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.nome}</span></div>
+                          <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{!noCadastro && st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.fornecedor?.trim() || c.nome}</span></div>
+                          {c.fornecedor?.trim() && c.nome ? <div className="text-gray-600 dark:text-gray-300 break-words">{c.nome}</div> : null}
                           <div className="text-gray-500 dark:text-gray-400">{CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}{c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}{noCadastro && c.recorrencia !== "mensal" ? ` · ${CONTA_FIXA_RECORRENCIA_LABEL[c.recorrencia]}` : ""}</div>
                           {end && <div className="text-gray-400 dark:text-gray-500 truncate">📍 {end.apelido}</div>}
                           {!noCadastro && c.ajustesData?.[cmp] && <div className="text-[9px] text-amber-600">• movida neste mês</div>}
@@ -320,12 +321,12 @@ export function ContasFixasPage() {
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
-                      {c.nome}
+                      {c.fornecedor?.trim() || c.nome}
                       {aba === "visualizacao" && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STCOR[st]}`}>{STLBL[st]}</span>}
                     </div>
+                    {c.fornecedor?.trim() && c.nome ? <div className="text-sm text-gray-600 dark:text-gray-300 mt-0.5">{c.nome}</div> : null}
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}
-                      {c.fornecedor && ` · ${c.fornecedor}`}
                       {c.diaDoMes ? ` · dia ${c.diaDoMes}` : ""}
                       {c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}
                       {c.observacoes ? ` · ${c.observacoes}` : ""}
@@ -495,13 +496,13 @@ function ContaFixaForm({ conta, init, onClose, restaurantes, enderecos, pessoaId
   });
 
   async function salvar() {
-    if (!f.nome) { alert("Nome obrigatório"); return; }
+    if (!f.fornecedor?.trim() && !f.nome?.trim()) { alert("Informe ao menos o Nome"); return; }
     const now = new Date().toISOString();
     const id = conta?.id || `cf-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const data: ContaFixa = {
       id,
-      nome: f.nome,
-      fornecedor: f.fornecedor,
+      nome: f.nome?.trim() || "",
+      fornecedor: f.fornecedor?.trim() || undefined,
       categoria: f.categoria || "outros",
       restaurantIds: f.restaurantIds || [],
       enderecoId: f.enderecoId,
@@ -550,10 +551,10 @@ function ContaFixaForm({ conta, init, onClose, restaurantes, enderecos, pessoaId
         </h2>
         <div className="space-y-3">
           <Field label="Nome *">
-            <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} className="cf-input" autoFocus placeholder="Ex: Aluguel Imóvel Harmonia,322" />
+            <input value={f.fornecedor || ""} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} className="cf-input" autoFocus placeholder="Ex: ENEL, Grenna Imóveis, Vivo" />
           </Field>
-          <Field label="Fornecedor">
-            <input value={f.fornecedor || ""} onChange={(e) => setF({ ...f, fornecedor: e.target.value })} className="cf-input" placeholder="Ex: Grenna Imóveis" />
+          <Field label="Descrição">
+            <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} className="cf-input" placeholder="Ex: Conta de energia, Aluguel do imóvel" />
           </Field>
           <Field label="Categoria *">
             <select value={f.categoria} onChange={(e) => setF({ ...f, categoria: e.target.value as ContaFixaCategoria })} className="cf-input">
