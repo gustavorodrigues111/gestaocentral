@@ -55,6 +55,28 @@ export default async function handler(req: Req, res: Res): Promise<void> {
       return;
     }
 
+    // ── Editar (corpo/categoria). Volta pra análise da Meta (PENDING). ──
+    if (req.method === "PATCH") {
+      const b = (typeof req.body === "string" ? JSON.parse(req.body) : req.body) as
+        { id?: string; category?: string; bodyText?: string; examples?: string[] } | null;
+      const id = (b?.id || "").trim();
+      const bodyText = (b?.bodyText || "").trim();
+      if (!id) { res.status(400).json({ error: "Informe o id do template." }); return; }
+      if (!bodyText) { res.status(400).json({ error: "Informe o corpo da mensagem." }); return; }
+      const nVars = (bodyText.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
+      const examples = Array.isArray(b?.examples) ? b!.examples!.slice(0, nVars).map(x => String(x || "exemplo")) : [];
+      while (examples.length < nVars) examples.push("exemplo");
+      const bodyComp: Record<string, unknown> = { type: "BODY", text: bodyText };
+      if (nVars > 0) bodyComp.example = { body_text: [examples] };
+      const payload: Record<string, unknown> = { components: [bodyComp] };
+      if (b?.category) payload.category = String(b.category).toUpperCase();
+      const r = await fetch(`https://graph.facebook.com/${VER}/${encodeURIComponent(id)}?access_token=${TOKEN}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const j = (await r.json()) as { success?: boolean; error?: { error_user_msg?: string; message?: string } };
+      if (!r.ok || j.success === false) { res.status(400).json({ error: j.error?.error_user_msg || j.error?.message || "Falha ao editar template." }); return; }
+      res.status(200).json({ ok: true });
+      return;
+    }
+
     // ── Excluir ──
     if (req.method === "DELETE") {
       const name = String(req.query?.name || "");

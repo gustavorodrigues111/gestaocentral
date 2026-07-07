@@ -6,7 +6,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 
-type Comp = { type: string; text?: string };
+type Comp = { type: string; text?: string; example?: { body_text?: string[][] } };
 type Template = { id?: string; name: string; status?: string; category?: string; language?: string; components?: Comp[]; rejected_reason?: string };
 
 const STATUS: Record<string, { label: string; cls: string }> = {
@@ -16,12 +16,14 @@ const STATUS: Record<string, { label: string; cls: string }> = {
   PAUSED: { label: "pausado", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
 };
 const bodyDe = (t: Template) => t.components?.find(c => c.type === "BODY")?.text || "";
+const examplesDe = (t: Template) => t.components?.find(c => c.type === "BODY")?.example?.body_text?.[0] || [];
 
 export function WhatsappTemplatesTab({ podeConfig }: { podeConfig: boolean }) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
   const [novo, setNovo] = useState(false);
+  const [editando, setEditando] = useState<Template | null>(null);
 
   const carregar = useCallback(async () => {
     setLoading(true); setErro("");
@@ -69,7 +71,8 @@ export function WhatsappTemplatesTab({ podeConfig }: { podeConfig: boolean }) {
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${st.cls}`}>{st.label}</span>
                   <span className="text-[10px] text-gray-400 uppercase">{t.category}</span>
                   <span className="text-[10px] text-gray-400">{t.language}</span>
-                  {podeConfig && <button type="button" onClick={() => void excluir(t.name)} className="ml-auto text-[11px] text-gray-400 hover:text-rose-600">excluir</button>}
+                  {podeConfig && <button type="button" onClick={() => setEditando(t)} className="ml-auto text-[11px] text-indigo-500 hover:text-indigo-700">editar</button>}
+                  {podeConfig && <button type="button" onClick={() => void excluir(t.name)} className="text-[11px] text-gray-400 hover:text-rose-600">excluir</button>}
                 </div>
                 <p className="text-xs text-gray-600 dark:text-gray-400 mt-1.5 whitespace-pre-wrap">{bodyDe(t)}</p>
                 {t.status === "REJECTED" && t.rejected_reason && <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1">Motivo: {t.rejected_reason}</p>}
@@ -79,20 +82,22 @@ export function WhatsappTemplatesTab({ podeConfig }: { podeConfig: boolean }) {
         </div>
       )}
 
-      {novo && <NovoTemplateModal onClose={() => setNovo(false)} onCriado={() => { setNovo(false); void carregar(); }} />}
+      {novo && <NovoTemplateModal onClose={() => setNovo(false)} onSalvo={() => { setNovo(false); void carregar(); }} />}
+      {editando && <NovoTemplateModal editar={{ id: editando.id || "", name: editando.name, category: editando.category || "UTILITY", bodyText: bodyDe(editando), examples: examplesDe(editando) }} onClose={() => setEditando(null)} onSalvo={() => { setEditando(null); void carregar(); }} />}
     </div>
   );
 }
 
-function NovoTemplateModal({ onClose, onCriado }: { onClose: () => void; onCriado: () => void }) {
-  const [name, setName] = useState("");
-  const [categoria, setCategoria] = useState("UTILITY");
-  const [corpo, setCorpo] = useState("");
+function NovoTemplateModal({ editar, onClose, onSalvo }: { editar?: { id: string; name: string; category: string; bodyText: string; examples: string[] }; onClose: () => void; onSalvo: () => void }) {
+  const editando = !!editar;
+  const [name, setName] = useState(editar?.name || "");
+  const [categoria, setCategoria] = useState(editar?.category || "UTILITY");
+  const [corpo, setCorpo] = useState(editar?.bodyText || "");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
 
   const nVars = (corpo.match(/\{\{\s*\d+\s*\}\}/g) || []).length;
-  const [exemplos, setExemplos] = useState<string[]>([]);
+  const [exemplos, setExemplos] = useState<string[]>(editar?.examples || []);
   useEffect(() => { setExemplos(prev => { const n = [...prev]; while (n.length < nVars) n.push(""); return n.slice(0, nVars); }); }, [nVars]);
 
   // Validações espelhando as regras da Meta.
@@ -101,32 +106,32 @@ function NovoTemplateModal({ onClose, onCriado }: { onClose: () => void; onCriad
   const comecaVar = /^\s*\{\{\s*\d+\s*\}\}/.test(corpoTrim);
   const varComQuebra = exemplos.some(e => /\n|\t/.test(e));
 
-  async function criar() {
+  async function salvar() {
     setErro("");
-    if (!name.trim()) return setErro("Dê um nome (ex: lembrete_reuniao).");
+    if (!editando && !name.trim()) return setErro("Dê um nome (ex: lembrete_reuniao).");
     if (!corpoTrim) return setErro("Escreva o corpo da mensagem.");
     if (comecaVar || terminaVar) return setErro("A mensagem não pode começar nem terminar com variável ({{n}}). Ponha texto antes/depois.");
     setEnviando(true);
     try {
-      const r = await fetch("/api/whatsapp-templates", {
-        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ name: name.trim(), category: categoria, bodyText: corpoTrim, examples: exemplos }),
-      });
+      const r = editando
+        ? await fetch("/api/whatsapp-templates", { method: "PATCH", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ id: editar!.id, category: categoria, bodyText: corpoTrim, examples: exemplos }) })
+        : await fetch("/api/whatsapp-templates", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ name: name.trim(), category: categoria, bodyText: corpoTrim, examples: exemplos }) });
       const j = await r.json();
-      if (r.ok && j.ok) onCriado();
-      else setErro(j.error || "Falha ao criar.");
+      if (r.ok && j.ok) onSalvo();
+      else setErro(j.error || "Falha ao salvar.");
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro."); }
     finally { setEnviando(false); }
   }
 
   const input = "w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
-    <Modal title="Novo template" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={editando ? `Editar "${editar!.name}"` : "Novo template"} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
+        {editando && <div className="text-[11px] rounded-lg p-2 bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-200">Editar <b>re-submete o template pra análise da Meta</b> (volta a “em análise”). O nome e o idioma não mudam. Há limite de edições por período.</div>}
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome</label>
-          <input value={name} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} placeholder="lembrete_reuniao" className={`${input} font-mono`} />
-          <p className="text-[11px] text-gray-400 mt-0.5">Só minúsculas, números e _ (underscore).</p>
+          <input value={name} disabled={editando} onChange={e => setName(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, "_"))} placeholder="lembrete_reuniao" className={`${input} font-mono ${editando ? "opacity-60" : ""}`} />
+          {!editando && <p className="text-[11px] text-gray-400 mt-0.5">Só minúsculas, números e _ (underscore).</p>}
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Categoria</label>
@@ -158,9 +163,9 @@ function NovoTemplateModal({ onClose, onCriado }: { onClose: () => void; onCriad
         {erro && <div className="text-sm text-rose-600 dark:text-rose-400">{erro}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void criar()} disabled={enviando}>{enviando ? "Enviando…" : "Criar e submeter"}</Button>
+          <Button onClick={() => void salvar()} disabled={enviando}>{enviando ? "Enviando…" : (editando ? "Salvar e re-submeter" : "Criar e submeter")}</Button>
         </div>
-        <p className="text-[11px] text-gray-400">Depois de criar, a Meta analisa (minutos a horas). O status aparece na lista.</p>
+        <p className="text-[11px] text-gray-400">Depois de {editando ? "salvar" : "criar"}, a Meta analisa (minutos a horas). O status aparece na lista.</p>
       </div>
     </Modal>
   );
