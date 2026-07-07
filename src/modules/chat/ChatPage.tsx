@@ -43,7 +43,11 @@ export function ChatPage() {
 
   const multiRest = restaurants.length > 1;
   const [aba, setAba] = useState<AbaCentral>("avisos");
+  const [filtroRestAvisos, setFiltroRestAvisos] = useState<string>("all");
   const [msgAberta, setMsgAberta] = useState<{ msg: FaleDpMensagem; nome: string } | null>(null);
+
+  // Avisos filtrados por restaurante (chips na aba Avisos do sistema).
+  const inboxVis = useMemo(() => filtroRestAvisos === "all" ? inbox : inbox.filter(a => a.restauranteId === filtroRestAvisos), [inbox, filtroRestAvisos]);
 
   // Não-lidas do WhatsApp (badge da aba).
   const [whatsUnread, setWhatsUnread] = useState(0);
@@ -103,17 +107,17 @@ export function ChatPage() {
       </header>
 
       {/* Abas */}
-      <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+      <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
-          { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length },
-          ...(podeWhats ? [{ k: "whatsapp" as const, label: "💬 WhatsApp", n: whatsUnread }] : []),
-          { k: "historico" as const, label: "🗂️ Histórico", n: historico.length },
-          ...(podeConfig ? [{ k: "config" as const, label: "⚙️ Configurações", n: 0 }] : []),
+          { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length, alerta: true },
+          ...(podeWhats ? [{ k: "whatsapp" as const, label: "💬 WhatsApp", n: whatsUnread, alerta: true }] : []),
+          { k: "historico" as const, label: "🗂️ Histórico", n: historico.length, alerta: false },
+          ...(podeConfig ? [{ k: "config" as const, label: "⚙️ Configurações", n: 0, alerta: false }] : []),
         ]).map((t) => (
           <button
             key={t.k}
             onClick={() => setAba(t.k)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${
+            className={`px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${
               aba === t.k
                 ? "border-indigo-600 text-indigo-700 dark:text-indigo-300"
                 : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -122,7 +126,7 @@ export function ChatPage() {
             {t.label}
             {t.n > 0 && (
               <span className={`ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold ${
-                aba === t.k ? "bg-indigo-600 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                t.alerta ? "bg-red-500 text-white" : (aba === t.k ? "bg-indigo-600 text-white" : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300")
               }`}>{t.n}</span>
             )}
           </button>
@@ -138,6 +142,14 @@ export function ChatPage() {
           </div>
         ) : (
           <>
+            {multiRest && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                <ChipRest ativo={filtroRestAvisos === "all"} onClick={() => setFiltroRestAvisos("all")}>Todos</ChipRest>
+                {restaurants.map(r => (
+                  <ChipRest key={r.id} ativo={filtroRestAvisos === r.id} onClick={() => setFiltroRestAvisos(r.id)}>{r.nome}</ChipRest>
+                ))}
+              </div>
+            )}
             <div className="flex justify-end mb-2">
               <button
                 onClick={marcarTodosLidos}
@@ -146,17 +158,21 @@ export function ChatPage() {
                 ✓ Marcar todos como lidos
               </button>
             </div>
-            <div className="space-y-2.5">
-              {inbox.map((a) => (
-                <AvisoCard
-                  key={a.id} aviso={a} multiRest={multiRest}
-                  onAbrir={() => abrirAviso(a)}
-                  acao={a.rotina
-                    ? { label: "Marcar como feita", icone: "✓", onClick: () => concluirRotinaAviso(a) }
-                    : { label: "Marcar como lido", icone: "✓", onClick: () => marcarLido(a) }}
-                />
-              ))}
-            </div>
+            {inboxVis.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum aviso nesse restaurante.</div>
+            ) : (
+              <div className="space-y-2.5">
+                {inboxVis.map((a) => (
+                  <AvisoCard
+                    key={a.id} aviso={a} multiRest={multiRest}
+                    onAbrir={() => abrirAviso(a)}
+                    acao={a.rotina
+                      ? { label: "Marcar como feita", icone: "✓", onClick: () => concluirRotinaAviso(a) }
+                      : { label: "Marcar como lido", icone: "✓", onClick: () => marcarLido(a) }}
+                  />
+                ))}
+              </div>
+            )}
           </>
         )
       )}
@@ -217,6 +233,12 @@ export function ChatPage() {
         />
       )}
     </div>
+  );
+}
+
+function ChipRest({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{children}</button>
   );
 }
 
