@@ -415,9 +415,11 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       const prevT = wrap ? wrap.style.transform : "";
       if (wrap) wrap.style.transform = "none";
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      let dims = "";
       try {
         for (let i = 0; i < nodes.length; i++) {
           const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 0, ignoreElements: (el) => el.classList?.contains("guia-margem") });
+          if (i === 0) dims = `${canvas.width}×${canvas.height}px`;
           const img = canvas.toDataURL("image/png");
           if (i > 0) pdf.addPage();
           pdf.addImage(img, "PNG", 0, 0, W, H, undefined, "FAST");
@@ -426,6 +428,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
         if (wrap) wrap.style.transform = prevT;
       }
       pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
+      setErroBaixar(`✓ PDF gerado a ${dims} (scale ${scale}). Se ainda estiver mole, me mande esse número.`);
     } catch (e) {
       console.error("cardapio PDF:", e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -594,7 +597,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
        {/* Rodapé: status + salvar + baixar + fechar */}
        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
          <span className="text-[13px] min-w-0">
-           {erroBaixar ? <span className="text-rose-600 dark:text-rose-400">{erroBaixar}</span>
+           {erroBaixar ? <span className={erroBaixar.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}>{erroBaixar}</span>
              : salvando ? <span className="text-gray-500">salvando…</span>
              : salvoFlash ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ Formatação salva</span>
              : dirty ? <span className="text-amber-600 dark:text-amber-400">● Alterações não salvas</span>
