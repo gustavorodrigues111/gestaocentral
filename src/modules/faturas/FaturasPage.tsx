@@ -75,7 +75,7 @@ export function FaturasPage() {
       </header>
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {([["visualizacao", "Visualização"], ...(podeClassificar ? [["classificacao", "Classificação"] as const] : []), ...(podeCategorias ? [["categorias", "Categorias"] as const] : [])] as const).map(([v, l]) => (
+        {([["visualizacao", "Visualização"], ...(podeClassificar ? [["classificacao", "Classificação"] as const] : []), ...(podeCategorias ? [["categorias", "Config"] as const] : [])] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
             className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
@@ -83,9 +83,9 @@ export function FaturasPage() {
 
       {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
-        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
+        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
       )}
-      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} />}
+      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} />}
     </div>
   );
 }
@@ -202,18 +202,19 @@ function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento
 }
 
 // ─── Classificação (subir + extrair + classificar + salvar) ──────────────────
-function Classificacao({ rid, meId, pixPadrao, outrasEmpresas, catsDe, minhas }: {
-  rid: string; meId?: string; pixPadrao?: string; outrasEmpresas: { id: string; nome: string }[];
+function Classificacao({ rid, meId, pixPadrao, cartoes, outrasEmpresas, catsDe, minhas }: {
+  rid: string; meId?: string; pixPadrao?: string; cartoes: string[]; outrasEmpresas: { id: string; nome: string }[];
   catsDe: (entId: string) => CartaoCategoria[]; minhas: CartaoLancamento[];
 }) {
-  const [cartao, setCartao] = useState(CARTOES[0]);
-  const [competencia, setCompetencia] = useState(mesAtual());
+  const [cartao, setCartao] = useState("");        // identificado pela IA; editável
   const [subindo, setSubindo] = useState(false);
   const [erro, setErro] = useState("");
   const [linhas, setLinhas] = useState<Extraido[]>([]);
   const [venc, setVenc] = useState<string | null>(null);
   const [totalFatura, setTotalFatura] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
+  // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
+  const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
 
   // Memória de comerciante: por nome normalizado → última classificação usada.
   const memoria = useMemo(() => {
@@ -228,10 +229,11 @@ function Classificacao({ rid, meId, pixPadrao, outrasEmpresas, catsDe, minhas }:
       const path = `faturas-cartao/${rid}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const snap = await uploadBytes(storageRef(storage, path), file, { contentType: "application/pdf" });
       const url = await getDownloadURL(snap.ref);
-      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartao }) });
+      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
       setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
+      setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
       const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null }) => {
         const mem = memoria.get(normNome(l.descricao));
         return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela,
@@ -290,29 +292,39 @@ function Classificacao({ rid, meId, pixPadrao, outrasEmpresas, catsDe, minhas }:
   const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
   return (
     <div className="space-y-3">
-      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-wrap items-end gap-3">
-        <div><label className="text-[11px] text-gray-500 block mb-0.5">Cartão</label>
-          <select value={cartao} onChange={e => setCartao(e.target.value)} className={inp}>{CARTOES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
-        <div><label className="text-[11px] text-gray-500 block mb-0.5">Competência</label>
-          <input type="month" value={competencia} onChange={e => setCompetencia(e.target.value)} className={inp} /></div>
-        <label className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 cursor-pointer">
-          {subindo ? "Lendo a fatura…" : "📄 Subir PDF da fatura"}
-          <input type="file" accept="application/pdf" className="hidden" disabled={subindo} onChange={e => { const f = e.target.files?.[0]; if (f) void subirEExtrair(f); e.currentTarget.value = ""; }} />
-        </label>
-        {erro && <span className="text-xs text-rose-600">{erro}</span>}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border border-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 cursor-pointer font-medium">
+            {subindo ? "Lendo a fatura…" : "📄 Subir PDF da fatura"}
+            <input type="file" accept="application/pdf" className="hidden" disabled={subindo} onChange={e => { const f = e.target.files?.[0]; if (f) void subirEExtrair(f); e.currentTarget.value = ""; }} />
+          </label>
+          <span className="text-xs text-gray-500">A IA lê o PDF e identifica sozinha o cartão, o vencimento e os lançamentos.</span>
+        </div>
+        {cartoes.length === 0 && <p className="text-xs text-amber-600 mt-2">⚠️ Cadastre seus cartões na aba <b>Config</b> pra IA saber de qual cartão é cada fatura.</p>}
+        {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
       {linhas.length > 0 && (
         <>
-          <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
-            <div className="flex gap-3 flex-wrap">
-              <span>Vencimento: <b>{venc ? venc.split("-").reverse().join("/") : "—"}</b></span>
-              <span>Total fatura: <b>{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
-              <span>Classificado: <b>{fmtBRL(somaClass)}</b></span>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap text-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="text-gray-500">Cartão:</span>
+                {cartoes.length > 0 ? (
+                  <select value={cartao} onChange={e => setCartao(e.target.value)} className={`${inp} py-1 ${!cartao ? "border-amber-300" : ""}`}>
+                    <option value="">— escolher —</option>
+                    {cartoes.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                ) : <b>{cartao || "—"}</b>}
+                {cartoes.length > 0 && cartao && <span className="text-[10px] text-emerald-600">✓ identificado</span>}
+              </div>
+              <span className="text-gray-500">Vencimento: <b className="text-gray-800 dark:text-gray-200">{venc ? venc.split("-").reverse().join("/") : "—"}</b></span>
+              <span className="text-gray-500">Total: <b className="text-gray-800 dark:text-gray-200">{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
+              <span className="text-gray-500">Classificado: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
               {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-amber-600"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
               {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
             </div>
-            <Button size="sm" onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "✓ Salvar fatura"}</Button>
+            <Button size="sm" onClick={() => void salvar()} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "Salvando…" : "✓ Salvar fatura"}</Button>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
@@ -354,18 +366,51 @@ function Classificacao({ rid, meId, pixPadrao, outrasEmpresas, catsDe, minhas }:
   );
 }
 
-// ─── Categorias + Pix ────────────────────────────────────────────────────────
-function Categorias({ rid, categorias, pixPadrao }: { rid: string; categorias: CartaoCategoria[]; pixPadrao: string }) {
+// ─── Config: Cartões + Pix + Categorias ──────────────────────────────────────
+function Categorias({ rid, categorias, pixPadrao, cartoes }: { rid: string; categorias: CartaoCategoria[]; pixPadrao: string; cartoes: string[] }) {
   const [nome, setNome] = useState("");
   const [pix, setPix] = useState(pixPadrao);
   const [salvandoPix, setSalvandoPix] = useState(false);
+  const [novoCartao, setNovoCartao] = useState("");
   useEffect(() => { setPix(pixPadrao); }, [pixPadrao]);
   async function criar() { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "cartaoCategorias"), sanitizeForFirestore({ restaurantId: rid, nome: n, ativo: true, criadoEm: new Date().toISOString() })); setNome(""); }
   async function excluir(id: string) { if (confirm("Excluir categoria?")) await deleteDoc(doc(db, "cartaoCategorias", id)); }
   async function salvarPix() { setSalvandoPix(true); try { await updateDoc(doc(db, "restaurants", rid), { cartaoChavePixPadrao: pix.trim() }); } finally { setSalvandoPix(false); } }
   const pixMudou = pix.trim() !== (pixPadrao || "").trim();
+  async function addCartao(nomeCartao: string) { const n = nomeCartao.trim(); if (!n || cartoes.some(c => c.toLowerCase() === n.toLowerCase())) return; await updateDoc(doc(db, "restaurants", rid), { cartoesCadastrados: [...cartoes, n] }); setNovoCartao(""); }
+  async function removerCartao(nomeCartao: string) { await updateDoc(doc(db, "restaurants", rid), { cartoesCadastrados: cartoes.filter(c => c !== nomeCartao) }); }
+  const sugestoes = CARTOES.filter(c => !cartoes.some(x => x.toLowerCase() === c.toLowerCase()));
   return (
     <div className="max-w-lg space-y-5">
+      {/* Cartões cadastrados — a IA casa cada fatura com um deles */}
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2.5">
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 Meus cartões</div>
+        <p className="text-xs text-gray-500">Cadastre os cartões cujas faturas você sobe aqui. Ao subir um PDF, a IA identifica sozinha de qual cartão é.</p>
+        {cartoes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {cartoes.map(c => (
+              <span key={c} className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                {c}
+                <button type="button" onClick={() => void removerCartao(c)} className="text-gray-400 hover:text-rose-600 leading-none">×</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2">
+          <input value={novoCartao} onChange={e => setNovoCartao(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void addCartao(novoCartao); }} placeholder="Ex: Master Itaú, Visa Santander…"
+            className="flex-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <Button onClick={() => void addCartao(novoCartao)} disabled={!novoCartao.trim()}>+ Adicionar</Button>
+        </div>
+        {sugestoes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            <span className="text-[11px] text-gray-400 self-center">Sugestões:</span>
+            {sugestoes.map(c => (
+              <button key={c} type="button" onClick={() => void addCartao(c)} className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:border-indigo-400 hover:text-indigo-600">+ {c}</button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
         <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">🔑 Chave Pix pra receber reembolsos</div>
         <p className="text-xs text-gray-500">Quando você atribui um gasto a outra empresa, essa chave vai junto pra ela te pagar.</p>

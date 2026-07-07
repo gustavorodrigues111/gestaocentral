@@ -854,6 +854,7 @@ export type Restaurant = {
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
+  cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];
   fechamentoSociosWhatsapp?: string[];     // números (só dígitos) que recebem o aviso por WhatsApp
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
