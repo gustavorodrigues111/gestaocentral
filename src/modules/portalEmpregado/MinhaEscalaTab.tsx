@@ -5,6 +5,7 @@ import { Button } from "../../core/ui/Button";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, shiftMonth,
 } from "../../core/utils/date";
+import { mesAntesDaFundacao } from "../../core/config/fundacao";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -128,9 +129,11 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
+    if (mesAntesDaFundacao(next.ano, next.mes)) return; // não navega antes da fundação
     setAno(next.ano);
     setMes(next.mes);
   }
+  const semAnterior = mesAntesDaFundacao(shiftMonth(ano, mes, -1).ano, shiftMonth(ano, mes, -1).mes);
 
   return (
     <div className="space-y-4">
@@ -139,7 +142,7 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           {cargo?.nome || empregado.nome}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
+          <Button variant="secondary" size="sm" disabled={semAnterior} onClick={() => navegarMes(-1)}>←</Button>
           <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[140px] text-center">
             {nomeMes(mes)} {ano}
           </div>

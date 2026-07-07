@@ -6,6 +6,7 @@ import { Button } from "../../core/ui/Button";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
+import { DATA_FUNDACAO, mesAntesDaFundacao } from "../../core/config/fundacao";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
 import { getActiveSplitVersion } from "../gorjetas/splitRules";
@@ -43,7 +44,7 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
         // Só mostra pro empregado o que foi explicitamente publicado pelo
         // escritório (botão "Publicar" no admin). Doc sem o campo, publicada=false
         // ou semGorjeta=true ficam invisíveis pro empregado.
-        .filter(g => g.date >= inicio && g.date <= fim && g.publicada === true && !g.semGorjeta);
+        .filter(g => g.date >= inicio && g.date <= fim && g.date >= DATA_FUNDACAO && g.publicada === true && !g.semGorjeta);
       list.sort((a, b) => a.date.localeCompare(b.date));
       setGorjetas(list);
     });
@@ -138,9 +139,11 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
 
   function navegarMes(delta: number) {
     const next = shiftMonth(ano, mes, delta);
+    if (mesAntesDaFundacao(next.ano, next.mes)) return; // não navega antes da fundação
     setAno(next.ano);
     setMes(next.mes);
   }
+  const semAnterior = mesAntesDaFundacao(shiftMonth(ano, mes, -1).ano, shiftMonth(ano, mes, -1).mes);
 
   return (
     <div className="space-y-4">
@@ -150,7 +153,7 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
           Extrato de gorjetas de {empregado.nome}
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" size="sm" onClick={() => navegarMes(-1)}>←</Button>
+          <Button variant="secondary" size="sm" disabled={semAnterior} onClick={() => navegarMes(-1)}>←</Button>
           <div className="px-4 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 font-medium text-sm min-w-[140px] text-center">
             {nomeMes(mes)} {ano}
           </div>

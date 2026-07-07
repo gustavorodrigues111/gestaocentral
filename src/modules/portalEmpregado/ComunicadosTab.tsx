@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
+import { DATA_FUNDACAO } from "../../core/config/fundacao";
 import type { Cargo, Comunicado, ComunicadoLeitura, Empregado } from "../../core/types";
 
 const PRIORIDADE_INFO = {
@@ -56,6 +57,7 @@ export function ComunicadosTab({ empregado, cargo, restaurantId }: Props) {
   const visiveis = useMemo(() => {
     return comunicados.filter(c => {
       if (!c.ativo) return false;
+      if ((c.criadoEm || "").slice(0, 10) < DATA_FUNDACAO) return false; // piso da fundação
       if (c.validoAte && c.validoAte < today) return false;
       // Destinatários
       const dest = c.destinatarios;
