@@ -262,7 +262,7 @@ export function ContasFixasPage() {
                 ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/25"
                 : naoUtil
                   ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/15"
-                  : "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/10";
+                  : "border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/15";
               return (
                 <div key={d}
                   onDragOver={noCadastro ? undefined : (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropDia !== d) setDropDia(d); }}
@@ -270,7 +270,7 @@ export function ContasFixasPage() {
                   onDrop={noCadastro ? undefined : (e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const [id, cmp] = raw.split("|"); setDropDia(null); setDragId(null); if (id) void moverPara(id, cmp, d); }}
                   title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
                   className={`rounded-xl border p-1.5 min-h-[150px] flex flex-col ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${corDia}`}>
-                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
+                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
                     <span>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]} {diaMes}</span>
                     {itens.length > 0 && <span className="opacity-60">{itens.length}</span>}
                   </div>
