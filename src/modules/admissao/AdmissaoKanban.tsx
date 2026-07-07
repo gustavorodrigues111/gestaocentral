@@ -67,6 +67,7 @@ import { SubtarefasDrawer } from "./SubtarefasDrawer";
 import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { VerPreenchimentoModal } from "./VerPreenchimentoModal";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
+import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 
 function fmtDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -376,9 +377,19 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
       const prazoDias = getPrazoDias(activeRestaurant);
       await marcarLinkEnviado(adm, prazoDias, me);
       const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
+      const nome1 = (adm.candidato.nome || "").split(" ")[0] || adm.candidato.nome;
+      // 1) Envia pelo NÚMERO DA PLATAFORMA (template aprovado). Automático.
+      const r = await enviarWhatsapp({
+        to: adm.candidato.whatsapp, template: "admissao_formulario",
+        params: [nome1, activeRestaurant.nome, url],
+        contexto: "admissao_link", restaurantId: activeRestaurant.id, criadoPor: me.id,
+      });
+      if (r.ok) { alert(`✅ Link enviado pra ${nome1} pelo WhatsApp da plataforma.`); return; }
+      // 2) Fallback: abre o SEU WhatsApp com a mensagem pronta (envio manual).
       const msg = montarMensagemEnvioLink(adm.candidato.nome, activeRestaurant.nome, url, prazoDias, activeRestaurant);
       const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
-      if (!link) { alert("WhatsApp do candidato inválido — confira o cadastro."); return; }
+      if (!link) { alert(r.erro ? `Falha no envio automático (${r.erro}) e WhatsApp do candidato inválido.` : "WhatsApp do candidato inválido — confira o cadastro."); return; }
+      alert((r.naoConfigurado ? "WhatsApp da plataforma não configurado." : `Envio automático falhou (${r.erro || "erro"}).`) + "\n\nAbrindo o seu WhatsApp pra enviar manualmente…");
       window.open(link, "_blank");
     } catch (e) {
       alert("Erro ao enviar link: " + (e instanceof Error ? e.message : "?"));
