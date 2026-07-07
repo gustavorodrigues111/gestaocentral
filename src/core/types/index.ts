@@ -71,6 +71,9 @@ export type ModuleId =
   // Migra Comunicados, Fale com DP e notificações in-app pra mesma timeline.
   // WhatsApp via gateway plugável (Evolution / UAZAPI / Cloud API) em C4.
   | "chat"
+  // Wiki de Processos — documentação viva dos processos internos por área.
+  // Cada processo em texto/checklist/passo-a-passo + fotos; consulta da equipe.
+  | "wikiProcessos"
   // Portal do Empregado — área pessoal do empregado (minha escala, meus
   // horários, minha gorjeta, futuro: minha folha de ponto, meus uniformes,
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
