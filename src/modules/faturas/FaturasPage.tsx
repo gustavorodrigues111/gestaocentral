@@ -318,7 +318,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     return `Rateio · ${r.length} empresas`;
   };
 
-  const rascunhos = faturas.filter(f => (f.status || "rascunho") === "rascunho").sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  // Todas as faturas (rascunho E fechada) são editáveis/reabríveis pelos chips.
+  const faturasLista = faturas.slice().sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  const statusFatura = (id: string | null) => faturas.find(f => f.id === id)?.status;
+  const ehFechada = statusFatura(faturaId) === "fechada";
   const editando = linhas.length > 0;
 
   // Carrega um rascunho salvo de volta pro editor.
@@ -467,11 +470,17 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           }));
           return;
         }
-        // Rateio: normaliza (%>0) e calcula o valor de cada fatia.
-        const partes: CartaoRateioParte[] = (l.rateio || []).filter(p => p.empresaId && p.percentual > 0).map(p => ({
-          empresaId: p.empresaId, percentual: p.percentual, valor: round2((l.valor || 0) * p.percentual / 100),
-          status: fechar ? "pendente" : undefined, pagoEm: null, pagoPor: null, pagoPorNome: null,
-        }));
+        // Rateio: normaliza (%>0) e calcula o valor de cada fatia. Preserva o
+        // status de PAGO da versão anterior (editar fatura publicada sem zerar pagamentos).
+        const antigo = minhas.find(x => x.id === id);
+        const partes: CartaoRateioParte[] = (l.rateio || []).filter(p => p.empresaId && p.percentual > 0).map(p => {
+          const ap = antigo?.rateio?.find(x => x.empresaId === p.empresaId);
+          return {
+            empresaId: p.empresaId, percentual: p.percentual, valor: round2((l.valor || 0) * p.percentual / 100),
+            status: fechar ? (ap?.status || "pendente") : undefined,
+            pagoEm: ap?.pagoEm ?? null, pagoPor: ap?.pagoPor ?? null, pagoPorNome: ap?.pagoPorNome ?? null,
+          };
+        });
         const ehEmpresa = partes.length > 0;
         batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
           id, restaurantId: rid, faturaId: fid, cartao,
@@ -488,8 +497,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         }));
       });
       await batch.commit();
-      if (fechar) { limpar(); alert("✅ Fatura fechada. Reembolsos publicados pras outras empresas."); }
-      else { setFaturaId(fid); alert("💾 Rascunho salvo. Dá pra continuar editando depois na lista de rascunhos."); }
+      if (fechar) { const jaEra = faturaAtual?.status === "fechada"; limpar(); alert(jaEra ? "✅ Alterações salvas (fatura publicada)." : "✅ Fatura fechada. Reembolsos publicados pras outras empresas."); }
+      else { setFaturaId(fid); alert("💾 Salvo como rascunho. Dá pra continuar editando pelos chips no topo."); }
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
@@ -509,19 +518,19 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
-      {/* Chips de navegação entre faturas em aberto — sempre no topo */}
-      {(rascunhos.length > 0 || editando) && (
+      {/* Chips de navegação entre faturas — sempre no topo (rascunho + publicadas) */}
+      {(faturasLista.length > 0 || editando) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-gray-400 mr-0.5">Faturas em aberto:</span>
-          {rascunhos.map(f => (
-            <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}</SubChip>
+          <span className="text-[11px] text-gray-400 mr-0.5">Faturas:</span>
+          {faturasLista.map(f => (
+            <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}{f.status === "fechada" ? " ✓" : ""}</SubChip>
           ))}
           {editando && !faturaId && <SubChip ativo onClick={() => { /* atual */ }}>{cartao || "Nova"} · não salva</SubChip>}
         </div>
       )}
 
-      {!editando && rascunhos.length > 0 && (
-        <Vazio texto="Selecione uma fatura acima pra continuar, ou suba um novo PDF." />
+      {!editando && faturasLista.length > 0 && (
+        <Vazio texto="Selecione uma fatura acima pra editar, ou suba um novo PDF." />
       )}
 
       {editando && (
@@ -550,12 +559,23 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               <span className="text-gray-500">Classificado: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
               {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-amber-600"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
               {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
-              {faturaId && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
+              {faturaId && (ehFechada
+                ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">publicada</span>
+                : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>)}
             </div>
             <div className="flex items-center gap-1.5">
               <Button size="sm" variant={faturaId ? "danger" : "ghost"} onClick={() => void descartar()} disabled={salvando}>{faturaId ? "🗑 Excluir fatura" : "Descartar"}</Button>
-              <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
-              <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
+              {ehFechada ? (
+                <>
+                  <Button size="sm" variant="ghost" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "↩ Virar rascunho"}</Button>
+                  <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "💾 Salvar (publicada)"}</Button>
+                </>
+              ) : (
+                <>
+                  <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
+                  <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
+                </>
+              )}
             </div>
           </div>
           <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>
